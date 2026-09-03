@@ -7,8 +7,23 @@
   "serverModule": "./server/plugin.mjs",
   "capabilities": ["navigation"],
   "permissions": ["navigation.dock", "plugin.server"],
-  "layout": {
-    "slug": "fieldwork-review",
-    "source": "./layout.json"
-  }
+  "workspacePanes": [
+    {
+      "version": "1.0",
+      "id": "pane:plugin%3Afieldwork-review:fieldwork-review:fieldwork-review",
+      "name": "Fieldwork Review",
+      "rendererId": "renderer:plugin%3Afieldwork-review:plugin-component:fieldwork-review-main",
+      "renderer": {
+        "kind": "plugin-component",
+        "name": "fieldwork-review-main"
+      },
+      "placement": {
+        "supportedRegions": ["primary"],
+        "preferredRegion": "primary"
+      },
+      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
+      "provenance": { "origin": "plugin", "pluginId": "fieldwork-review" },
+      "lifecycle": { "stage": "stable" }
+    }
+  ]
 }

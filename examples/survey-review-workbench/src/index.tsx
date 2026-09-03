@@ -1,6 +1,6 @@
 /**
- * Survey Review Workbench layout — mounts @kontourai/survey's Review
- * Workbench inside a Station project layout.
+ * Survey Review Workbench pane — mounts @kontourai/survey's Review
+ * Workbench inside a Station Project.
  *
  * - Sessions persist per project through the plugin's server module
  *   (Survey `ReviewSessionEventStore` contract via
@@ -252,8 +252,8 @@ export function SurveyReviewWorkbench(_props: LayoutComponentProps) {
       <div className="srw-shell srw-empty" data-testid="srw-no-project">
         <h2>Survey Review Workbench</h2>
         <p>
-          Open this layout inside a project — review sessions are stored per
-          project.
+          Open this pane inside a Project — review sessions are stored per
+          Project.
         </p>
       </div>
     );

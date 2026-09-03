@@ -7,7 +7,6 @@
   "description": "Station application plugin that hosts the published Fieldwork review application per project.",
   "main": "./src/index.tsx",
   "files": [
-    "layout.json",
     "plugin.json",
     "server",
     "src"

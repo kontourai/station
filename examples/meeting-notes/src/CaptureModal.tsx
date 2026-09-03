@@ -5,8 +5,8 @@
  *
  * Filename mirrors `examples/meeting-transcription/src/
  * MeetingTranscriptionModal.tsx` (read-only precedent) per the plan's file
- * list, even though this renders as an inline "Capture" tab pane
- * (`layout.json`) rather than a floating dialog — the tabbed layout shape is
+ * list, even though this renders as an inline "Capture" Workspace Pane
+ * rather than a floating dialog — the pane shape is
  * the right fit here, not an overlay.
  *
  * Live capture reuses `useSTT()`'s exact call shape (same options/return

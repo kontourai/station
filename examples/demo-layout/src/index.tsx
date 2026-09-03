@@ -72,7 +72,7 @@ function Welcome({ onShowChat }: WorkspaceComponentProps) {
             <code>station plugin install &lt;path-or-url&gt;</code>
           </li>
           <li>Review any requested permissions in System → Plugins</li>
-          <li>Add its layout from the project layout picker</li>
+          <li>Enable its panes from a Project's Add pane picker</li>
         </ol>
       </section>
     </main>

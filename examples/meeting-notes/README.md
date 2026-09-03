@@ -10,7 +10,7 @@ complements, and
 [docs/design/knowledge-foundation.md](../../docs/design/knowledge-foundation.md)'s
 "K5 — Meeting notes app" callout for the full landed-file/deviation record.
 
-## The three tabs
+## The three panes
 
 - **Capture** (`src/CaptureModal.tsx`) — a root picker (personal + active-
   project roots, manual choice only, per R3), a paste/upload/live-capture
@@ -164,8 +164,8 @@ npm run build
 ```
 
 Install the built plugin the same way as any other `examples/*` plugin (see
-[docs/guides/plugins.md](../../docs/guides/plugins.md)), then open the
-`meeting-notes` layout in a project (or personal workspace) that has at
+[docs/guides/plugins.md](../../docs/guides/plugins.md)), then enable the
+`meeting-notes` panes in a Project that has at
 least one registered knowledge-store root (see
 [docs/guides/knowledge.md](../../docs/guides/knowledge.md)'s onboarding
 section for creating one).

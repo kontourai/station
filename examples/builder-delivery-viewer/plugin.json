@@ -7,5 +7,46 @@
   "serverModule": "./server/plugin.mjs",
   "capabilities": ["navigation"],
   "permissions": ["navigation.dock"],
-  "layout": { "slug": "builder-delivery", "source": "./layout.json" }
+  "workspacePanes": [
+    {
+      "version": "1.0",
+      "id": "pane:plugin%3Abuilder-delivery-viewer:builder-delivery:viewer",
+      "name": "Builder sessions",
+      "rendererId": "renderer:plugin%3Abuilder-delivery-viewer:plugin-component:builder-delivery-viewer-main",
+      "renderer": {
+        "kind": "plugin-component",
+        "name": "builder-delivery-viewer-main"
+      },
+      "placement": {
+        "supportedRegions": ["primary"],
+        "preferredRegion": "primary"
+      },
+      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
+      "provenance": {
+        "origin": "plugin",
+        "pluginId": "builder-delivery-viewer"
+      },
+      "lifecycle": { "stage": "stable" }
+    },
+    {
+      "version": "1.0",
+      "id": "pane:plugin%3Abuilder-delivery-viewer:builder-delivery:runs",
+      "name": "Flow runs",
+      "rendererId": "renderer:plugin%3Abuilder-delivery-viewer:builtin-component:flow-run-console",
+      "renderer": {
+        "kind": "builtin-component",
+        "name": "flow-run-console"
+      },
+      "placement": {
+        "supportedRegions": ["primary"],
+        "preferredRegion": "primary"
+      },
+      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
+      "provenance": {
+        "origin": "plugin",
+        "pluginId": "builder-delivery-viewer"
+      },
+      "lifecycle": { "stage": "stable" }
+    }
+  ]
 }

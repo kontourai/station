@@ -23,7 +23,7 @@ function EmptyProject() {
     >
       <h2>Fieldwork Review</h2>
       <p>
-        Open this layout inside a project to keep task files, sources, and run
+        Open this pane inside a Project to keep task files, sources, and run
         artifacts project-scoped.
       </p>
     </main>

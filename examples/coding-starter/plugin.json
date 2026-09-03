@@ -6,8 +6,44 @@
   "entrypoint": "src/index.tsx",
   "capabilities": ["chat", "navigation"],
   "permissions": ["navigation.dock"],
-  "layout": {
-    "slug": "coding",
-    "source": "./layout.json"
-  }
+  "workspacePanes": [
+    {
+      "version": "1.0",
+      "id": "pane:plugin%3Acoding-starter:coding:workspace",
+      "name": "Workspace",
+      "rendererId": "renderer:plugin%3Acoding-starter:plugin-component:coding-workspace",
+      "renderer": { "kind": "plugin-component", "name": "coding-workspace" },
+      "placement": {
+        "supportedRegions": ["primary"],
+        "preferredRegion": "primary"
+      },
+      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
+      "actions": [
+        {
+          "type": "prompt",
+          "label": "Review current diff",
+          "data": "Review the current diff for correctness, missing tests, and risky assumptions."
+        }
+      ],
+      "provenance": { "origin": "plugin", "pluginId": "coding-starter" },
+      "lifecycle": { "stage": "stable" }
+    },
+    {
+      "version": "1.0",
+      "id": "pane:plugin%3Acoding-starter:coding:diff",
+      "name": "Diff",
+      "rendererId": "renderer:plugin%3Acoding-starter:plugin-component:coding-diff-review",
+      "renderer": {
+        "kind": "plugin-component",
+        "name": "coding-diff-review"
+      },
+      "placement": {
+        "supportedRegions": ["primary"],
+        "preferredRegion": "primary"
+      },
+      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
+      "provenance": { "origin": "plugin", "pluginId": "coding-starter" },
+      "lifecycle": { "stage": "stable" }
+    }
+  ]
 }

@@ -6,7 +6,6 @@
   "type": "module",
   "main": "./src/index.tsx",
   "files": [
-    "layout.json",
     "plugin.json",
     "server",
     "src"

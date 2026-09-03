@@ -6,8 +6,23 @@
   "entrypoint": "./src/index.tsx",
   "capabilities": ["chat", "navigation"],
   "permissions": ["navigation.dock"],
-  "layout": {
-    "slug": "minimal",
-    "source": "./layout.json"
-  }
+  "workspacePanes": [
+    {
+      "version": "1.0",
+      "id": "pane:plugin%3Aminimal-layout:minimal:workspace",
+      "name": "Workspace",
+      "rendererId": "renderer:plugin%3Aminimal-layout:plugin-component:minimal-workspace",
+      "renderer": {
+        "kind": "plugin-component",
+        "name": "minimal-workspace"
+      },
+      "placement": {
+        "supportedRegions": ["primary"],
+        "preferredRegion": "primary"
+      },
+      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
+      "provenance": { "origin": "plugin", "pluginId": "minimal-layout" },
+      "lifecycle": { "stage": "stable" }
+    }
+  ]
 }

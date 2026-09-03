@@ -1,14 +1,14 @@
-# Enterprise Layout Example
+# Enterprise Workspace Pane Example
 
-A full-featured layout plugin demonstrating how to build an integrated workspace with calendar, CRM, email, and notes — all backed by MCP tool providers.
+A full-featured UI plugin demonstrating how to build an integrated workspace with calendar, CRM, email, and notes — all backed by MCP tool providers.
 
 ## Patterns Demonstrated
 
 ### Multi-Provider Architecture
-The layout declares `requiredProviders` in `layout.json` and registers typed provider implementations at startup via `src/data/init.ts`. Each provider maps MCP tool calls into view models that UI components consume through React Query hooks.
+Each `workspacePanes` mode declares `requiredProviders` in `plugin.json` and registers typed provider implementations at startup via `src/data/init.ts`. Each provider maps MCP tool calls into view models that UI components consume through React Query hooks.
 
 ```
-layout.json (requiredProviders) → providerTypes.ts (type map) → init.ts (registration) → providers/*.ts (implementations)
+plugin.json (workspacePanes.requiredProviders) → providerTypes.ts (type map) → init.ts (registration) → providers/*.ts (implementations)
 ```
 
 ### Provider Contracts (`src/data/providers.ts`)
@@ -29,7 +29,7 @@ The plugin declares a `notes` knowledge namespace with RAG behavior, enabling se
 ### Command skills
 Markdown files under the manifest's `prompts.source` directory are read IN
 PLACE as read-only command skills, and are exposed as quick actions in the
-Layout's tab and global action bars. `prompts` is the plugin MANIFEST's own
+pane action surfaces. `prompts` is the plugin MANIFEST's own
 field name — the manifest's `skills` field already means the skill-package
 list, so the two cannot be merged.
 
@@ -37,8 +37,7 @@ list, so the two cannot be merged.
 
 ```
 enterprise-layout/
-├── plugin.json                    # Plugin manifest
-├── layout.json                    # Layout definition (tabs, actions, agents)
+├── plugin.json                    # Manifest and Workspace Pane declarations
 ├── package.json
 ├── agents/
 │   └── enterprise-assistant/

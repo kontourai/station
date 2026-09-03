@@ -6,7 +6,6 @@
   "description": "Knowledge K5 meeting-notes plugin: capture a transcript, compile it into a provenance-linked note, recall via wikilink graph + retrieval-grounded Q&A.",
   "main": "./src/index.tsx",
   "files": [
-    "layout.json",
     "plugin.json",
     "agents",
     "src"

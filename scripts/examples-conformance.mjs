@@ -11,7 +11,9 @@
  *
  *   - `plugin.json` parses and carries the fields PluginManifest requires.
  *   - Every path the manifest names actually exists: entrypoint, serverModule,
- *     agent sources, layout sources, prompt sources.
+ *     agent sources, prompt sources.
+ *   - First-party examples use versioned Workspace Pane declarations rather
+ *     than the retired Layout input or a stray `layout.json` asset.
  *   - Every `npm run <script>` a README documents exists in that example's
  *     package.json — the failure mode that shipped `npm run dev` for an example
  *     with no dev script.
@@ -52,12 +54,6 @@ function declaredPaths(manifest) {
   for (const agent of manifest.agents ?? []) {
     paths.push([`agents[${agent.slug}].source`, agent.source]);
   }
-  for (const layout of [
-    ...(manifest.layout ? [manifest.layout] : []),
-    ...(manifest.layouts ?? []),
-  ]) {
-    paths.push([`layout[${layout.slug}].source`, layout.source]);
-  }
   return paths;
 }
 
@@ -92,11 +88,24 @@ export function checkExample(dir, name) {
         `plugin.json name "${manifest.name}" does not match directory "${name}"`,
       );
     }
+    for (const retiredField of ['layout', 'layouts']) {
+      if (Object.hasOwn(manifest, retiredField)) {
+        problems.push(
+          `plugin.json uses retired "${retiredField}"; declare versioned workspacePanes instead`,
+        );
+      }
+    }
     for (const [field, value] of declaredPaths(manifest)) {
       if (!existsSync(resolve(dir, value))) {
         problems.push(`${field} points at a missing file: ${value}`);
       }
     }
+  }
+
+  if (existsSync(join(dir, 'layout.json'))) {
+    problems.push(
+      'contains retired layout.json; keep Workspace Pane declarations in plugin.json',
+    );
   }
 
   let pkg = null;

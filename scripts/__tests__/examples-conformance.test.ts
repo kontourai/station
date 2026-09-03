@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -98,6 +99,38 @@ describe('checkExample', () => {
     expect(checkExample(dir, 'demo')).toEqual([]);
   });
 
+  it('rejects retired Layout declarations and assets', () => {
+    const dir = makeExample('demo', {
+      ...MINIMAL,
+      'plugin.json': JSON.stringify({
+        name: 'demo',
+        version: '1.0.0',
+        layout: { slug: 'demo', source: './layout.json' },
+      }),
+      'layout.json': '{}',
+    });
+    expect(checkExample(dir, 'demo')).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('uses retired "layout"'),
+        expect.stringContaining('contains retired layout.json'),
+      ]),
+    );
+  });
+
+  it('rejects the retired plural Layout declaration even without an asset', () => {
+    const dir = makeExample('demo', {
+      ...MINIMAL,
+      'plugin.json': JSON.stringify({
+        name: 'demo',
+        version: '1.0.0',
+        layouts: [],
+      }),
+    });
+    expect(checkExample(dir, 'demo')).toContainEqual(
+      expect.stringContaining('uses retired "layouts"'),
+    );
+  });
+
   it('flags a README documenting a script nothing defines', () => {
     const dir = makeExample('demo', {
       ...MINIMAL,
@@ -186,6 +219,20 @@ describe('the repo’s own examples', () => {
   it('every example conforms', () => {
     for (const name of listExamples()) {
       expect(checkExample(join('examples', name), name), name).toEqual([]);
+    }
+  });
+
+  it('parses every first-party Workspace Pane through the public SDK contract', () => {
+    for (const name of listExamples()) {
+      const manifestPath = join('examples', name, 'plugin.json');
+      if (!existsSync(manifestPath)) continue;
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      for (const [index, pane] of (manifest.workspacePanes ?? []).entries()) {
+        expect(
+          parseWorkspacePaneDescriptor(pane),
+          `${name}: workspacePanes[${index}]`,
+        ).not.toBeNull();
+      }
     }
   });
 

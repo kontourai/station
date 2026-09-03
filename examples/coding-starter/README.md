@@ -1,12 +1,12 @@
 # Coding Starter
 
-Code-focused layout starter for teams that want a workspace shaped around files, terminal output, diffs, and agent handoff.
+Code-focused Workspace Pane starter for teams that want a workspace shaped around files, terminal output, diffs, and agent handoff.
 
 ## What It Demonstrates
 
 - A file-browser panel that can later be backed by a provider.
 - A terminal-output panel for command and test summaries.
-- A diff-review tab with explicit behavior, test, and verification prompts.
+- A diff-review pane with explicit behavior, test, and verification prompts.
 - A chat handoff button using the host navigation SDK.
 
 ## Run It

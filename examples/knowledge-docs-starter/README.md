@@ -5,7 +5,7 @@ Knowledge and documentation starter for document-heavy workflows. It gives users
 ## What It Demonstrates
 
 - Declaring a plugin-owned knowledge namespace in `plugin.json`.
-- Separating document intake, question answering, and source coverage into tabs.
+- Separating document intake, question answering, and source coverage into panes.
 - Opening chat from a source-scoped action.
 - Keeping citation quality and document ownership visible in the workspace.
 
