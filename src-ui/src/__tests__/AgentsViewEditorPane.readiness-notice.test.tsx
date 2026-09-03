@@ -39,7 +39,7 @@ vi.mock('../hooks/useIsMobile', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
   useModelConnectionsQuery: () => ({ data: [] }),
   useProjectsQuery: () => ({ data: [] }),
   useCredentialRecoveryQuery: () => ({
@@ -293,6 +293,25 @@ describe('AgentsViewEditorPane — Agent actions popover anchoring (station#4521
 });
 
 describe('AgentsViewEditorPane — one save affordance on mobile (station#4521 item 4)', () => {
+  test('header actions are siblings of identity, never nested in an interactive row', () => {
+    isMobile = false;
+    const { container } = render(
+      <AgentsViewEditorPane {...(baseProps() as any)} />,
+    );
+    const header = container.querySelector('header.detail-header');
+    expect(header).not.toBeNull();
+    expect(header?.matches('button, a, [role="button"], [role="link"]')).toBe(
+      false,
+    );
+    for (const button of header?.querySelectorAll('button') ?? []) {
+      expect(
+        button.parentElement?.closest(
+          'button, a, [role="button"], [role="link"]',
+        ),
+      ).toBeNull();
+    }
+  });
+
   test('desktop keeps the header row’s Save Changes button, and only one', () => {
     isMobile = false;
     render(<AgentsViewEditorPane {...(baseProps() as any)} />);

@@ -33,8 +33,8 @@ import {
   resolveBuiltinAgentEngineBinding,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
-  useAgentConnectionsQuery,
   useConfigQuery,
+  useEngineConnectionsQuery,
   useQueryClient,
   useReconnectACPConnectionMutation,
   useUpdateConfigMutation,
@@ -115,7 +115,7 @@ export function EnginePicker({
   onSelect,
 }: EnginePickerProps) {
   const { data: status } = useSystemStatus();
-  const { data: connections = [] } = useAgentConnectionsQuery();
+  const { data: connections = [] } = useEngineConnectionsQuery();
   const { data: config } = useConfigQuery();
   const updateConfig = useUpdateConfigMutation();
 

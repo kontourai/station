@@ -273,6 +273,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Drives the merge driver's executable entry point with a hermetic build
   // command so both measured success and fail-without-writing are real exits.
   'scripts/__tests__/ui-bundle-budget.test.ts',
+  // #1120: spawns the backlog gate without GITHUB_REPOSITORY to prove its
+  // refusal path exits non-zero and names the remedy.
+  'scripts/__tests__/backlog-priority-policy.test.ts',
   'scripts/__tests__/install-script.test.ts',
   'scripts/__tests__/installer-tool-output-parsing.test.ts',
   'scripts/__tests__/local-verification.test.ts',

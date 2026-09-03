@@ -204,7 +204,6 @@ export function ChatDockHeader({
             context than to restating the surface's own name (owner call,
             #1064). Mobile renders ChatDockMobileHeader instead of this
             component, so mobile-only branches here are unreachable (#1066). */}
-        <span className="chat-dock__subtitle">{toggleDockShortcut}</span>
         {!fullscreen ? (
           <DockPlacementControl
             availablePlacements={availableDockSlotPlacements}
@@ -253,6 +252,15 @@ export function ChatDockHeader({
             </svg>
           </button>
         )}
+        {chatControls ? (
+          <span
+            className="chat-dock__subtitle chat-dock__toggle-shortcut"
+            data-chrome-group="chat-settings"
+            style={{ flex: '0 0 auto' }}
+          >
+            {toggleDockShortcut}
+          </span>
+        ) : null}
         {workspaceControls ? (
           <LazyBoundary
             load={loadChatDockWorkspaceControls}

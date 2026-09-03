@@ -43,13 +43,23 @@ export function ProjectSidebarHeader({
           aria-hidden="true"
           className="sidebar__logo"
         />
-        <span className="sidebar__brand-name">
+        <span
+          className="sidebar__brand-name"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            lineHeight: 1.1,
+          }}
+        >
           <span>{appName}</span>
           {channelBadge && (
-            <>
-              <br />
-              <small className="sidebar__channel-badge">{channelBadge}</small>
-            </>
+            <small
+              className="sidebar__channel-badge"
+              style={{ display: 'block', marginTop: 2 }}
+            >
+              {channelBadge}
+            </small>
           )}
           {buildLabel && (
             <>

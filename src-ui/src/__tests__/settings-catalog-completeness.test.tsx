@@ -23,7 +23,7 @@ vi.mock('@kontourai/station-connect', () => ({
 vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(),
   StationReadOnlyError: class extends Error {},
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
   useAnswerSharesQuery: () => ({ data: [] }),
   useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
   useConfigProvenanceQuery: () => ({ data: {} }),

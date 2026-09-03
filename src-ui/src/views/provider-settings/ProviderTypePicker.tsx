@@ -204,7 +204,7 @@ export function ProviderTypePicker({
               {/*
                 What this creates: an ACP engine connection
                 (`onChooseCommand('custom')` routes into the same
-                `connections-acp-new` custom setup stage every other command
+                `connections-engine-new` custom setup stage every other command
                 choice above does) — never the OpenAI-compatible custom MODEL
                 connection, which lives under "More" and stays a model
                 connection.
