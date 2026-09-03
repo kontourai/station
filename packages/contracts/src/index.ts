@@ -45,6 +45,7 @@ export * from './notification.js';
 export * from './operational-event.js';
 export * from './orchestration.js';
 export * from './plugin.js';
+export * from './plugin-data.js';
 export * from './portability.js';
 export * from './principal.js';
 export * from './project.js';

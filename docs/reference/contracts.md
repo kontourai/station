@@ -26,6 +26,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes |
 | `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts |
+| `@kontourai/station-contracts/plugin-data` | Owner-qualified private plugin-data records and typed storage outcomes |
 | `@kontourai/station-contracts/project` | Project config and metadata |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses |
@@ -40,9 +41,18 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 ```ts
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import type { PluginDataRecord } from '@kontourai/station-contracts/plugin-data';
 import type { SessionMetadata } from '@kontourai/station-contracts/runtime';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 ```
+
+`plugin-data` describes the bounded host-side storage authority introduced by
+Station #1359. An owner combines the canonical plugin id with a host-issued
+installation key, so the contract never exposes a filesystem path. Writes and
+deletes require the revision the caller observed; stale writers receive a
+typed conflict instead of overwriting newer state. This tracer does not yet
+publish a plugin SDK or HTTP transport, and no plugin permission claims access
+to it until that enforcement path exists.
 
 ## Scheduler deferral events
 

@@ -48,6 +48,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [OperationalEventOutbox](#operationaleventoutbox) | Persist validated operational facts before isolated notification and expose bounded replay truth. | `src-server/services/operational-events/operational-event-outbox.ts` |
 | [OperationalEventDelivery](#operationaleventdelivery) | Claim, settle, retry, and dead-letter one scope-filtered operational fact without duplicate effects. | `src-server/services/operational-events/operational-event-delivery.ts` |
 | [OperationalEventSubscriptions](#operationaleventsubscriptions) | Authorize declarative subscribers and isolate projected at-least-once delivery. | `src-server/services/operational-events/operational-event-subscriptions.ts` |
+| [PluginDataStore](#plugindatastore) | Persist bounded owner-qualified plugin JSON without exposing paths or permitting stale overwrite. | `src-server/services/plugins/plugin-data-store.ts` |
 | [ReviewEvidenceModule](#reviewevidencemodule) | Run independent read-only reviewers over one exact revision range and retain attributable findings without minting a verdict. | `src-server/services/evidence/review-evidence-module.ts` |
 | [VerificationCoordinator](#verificationcoordinator) | Coordinate one provenance-bound verification request through admission, execution, and receipt publication. | `scripts/lib/verification-coordinator.mjs` |
 | [RuntimeResourcePostureController](#runtimeresourceposturecontroller) | Report host CPU diagnostics without influencing product work. | `src-server/services/infra/resource-posture.ts` |
@@ -355,6 +356,36 @@ Ephemeral room input has a closed schema, exact scope, server-owned monotonic ge
 **Contract.** One immutable declaration snapshot is validated and supplies every later policy decision; the authorizer receives a separate clone. The exact host authorization is re-evaluated before every claim and immediately before Adapter invocation; denial or a changed consumer/projection revokes the subscription, while policy-store unavailability claims and invokes nothing. Analytics receive only redacted identity/type/time facts with no payload, scopes, or correlations; sandboxed plugins are limited to metadata without payload even if a faulty authorizer requests an envelope. EventStore then opens the already durable, fingerprinted delivery consumer from the authorized policy. Dispatch is single-flight per subscription. The Adapter receives an AbortSignal and a maximum 30-second deadline. Close before invocation records a definitely-not-invoked retry without calling the Adapter. Timeout or close after invocation latches one exact dead-letter settlement; transient settlement unavailability retries only that capability, never the Adapter. An abort-ignoring observer remains a live execution fence even after that terminal settlement: no second Adapter call, owner release, module replacement, or shutdown completion occurs until its actual Promise settles. Accepted observation acknowledges; explicit retry schedules bounded durable retry; explicit rejection dead-letters; a thrown Adapter becomes the stable `subscriber_unavailable` retry under the subscriber's idempotency key. Malformed outcomes fail closed into `subscriber_invalid_outcome` rather than replaying an un-settleable Adapter result. Subscriber delivery remains idempotent at-least-once: a process crash after Adapter invocation but before terminal persistence can redeliver, so Adapters must deduplicate the stable idempotency key. Retention gaps remain visible and cannot be silently acknowledged by subscriber code. `close()` reports `closed`, `pending`, or `unavailable`; the registry retains every unresolved owner and releases each settled consumer exactly once.
 
 **Seam, Implementation, callers, and tests.** `EventStore.createOperationalEventSubscriptionRegistry(authorizer)` privately composes the consumer factory and one host policy. EventStore retains each registry as a shutdown capability: database and delivery-owner closure are deferred while any registry reports pending or unavailable settlement, and tracked consumer wrappers remove themselves on exact close. `PluginOperationalEventSubscriptionService` is the first production registrar: it strictly reads versioned installed-manifest declarations, derives stable consumer identity from plugin/subscription identity, requires current `plugin.server` plus `events.subscribe` grants (and `events.read-payload` for an envelope), acquires the existing quiescence-aware server module, and gives every subscription its own bounded dispatch queue. Plugin install/update/remove/grant events reconcile that set; observer code never receives registration or settlement authority. Plugin replacement composes an intent-shaped subscription quiescence before server-module quiescence, then releases them in reverse order after publication or rollback, so an old observer cannot overlap replacement code. The public contract types are exported by Station contracts and the plugin SDK, but no HTTP, CLI, or MCP mutation surface is added. Unit and real SQLite/EventStore composition proofs, including cross-EventStore shutdown fencing, grant revocation/recovery, manifest replacement, independent queues, and consumer-tracking cleanup, live in `operational-event-subscriptions.test.ts` and `plugin-operational-event-subscriptions.test.ts`. **Do not reintroduce:** subscriber-supplied grants or consumer IDs, raw delivery claims, raw-consumer shutdown that bypasses a registry, automatic gap skipping, payload access without the exact grant, post-construction policy setters, or a second event store.
+
+## PluginDataStore
+
+**Intent and Interface.** `PluginDataStore` owns bounded private JSON state for
+one host-qualified plugin installation. `get`, `list`, revision-checked `set`,
+and revision-checked `delete` return typed found, absent, conflict, capacity,
+invalid, corrupt, or transient-unavailable outcomes. The Interface accepts a
+canonical plugin id plus a host-issued installation key; it accepts no path,
+transaction callback, unbounded scan, or arbitrary filesystem value.
+
+**Contract.** The SQLite key is `(pluginId, installationKey, key)`, so a
+replacement installation cannot inherit another identity's state merely by
+choosing the same plugin name. Every write takes `BEGIN IMMEDIATE`, re-reads the
+current revision inside that transaction, and applies only when it matches the
+caller's observed revision. JSON depth, node count, per-value bytes, key count,
+and aggregate bytes are bounded before mutation. The database and exact data
+directory refuse symlinks; WAL plus an explicit busy timeout serialize Station
+processes. Invalid persisted JSON is corruption, never absence.
+
+**Seam, Implementation, callers, and tests.** The public record/outcome types
+live in `@kontourai/station-contracts/plugin-data`; the server implementation is
+`src-server/services/plugins/plugin-data-store.ts`. The initial tracer has no
+runtime caller: plugin SDK/HTTP transports, permission enforcement, install
+identity derivation, audit projection, and lifecycle retention decisions remain
+under Station #1359. Until those land, manifests cannot request this capability
+and no product surface claims plugin storage. Focused tests prove restart,
+two-handle stale-writer refusal, installation isolation, input/value bounds,
+and symlink refusal. **Do not reintroduce:** plugin-supplied paths, plaintext
+secret storage, unversioned writes, a per-plugin process-local ledger, or a
+second Knowledge store.
 
 ## ReviewEvidenceModule
 
