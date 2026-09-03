@@ -176,7 +176,7 @@ describe('learningReviewViewModel', () => {
     });
   });
 
-  test('shows activation and retirement only from exact owner stages', () => {
+  test('preserves historical activation while retirement ends current activity', () => {
     const result = learningReviewViewModel(
       available(
         projection({
@@ -212,7 +212,7 @@ describe('learningReviewViewModel', () => {
         }),
       ),
     );
-    expect(result).toMatchObject({ state: 'ready', active: true });
+    expect(result).toMatchObject({ state: 'ready', active: false });
     if (result.state !== 'ready') throw new Error('expected ready projection');
     expect(result.steps.find((step) => step.id === 'activation')).toMatchObject(
       {
@@ -267,6 +267,30 @@ describe('learningReviewViewModel', () => {
     );
     expect(result.steps.find((step) => step.id === 'decision')).toMatchObject({
       state: 'unavailable',
+    });
+  });
+
+  test('preserves corrupt and unsupported-version partial gaps exactly', () => {
+    const result = learningReviewViewModel(
+      available(
+        projection({
+          source: { state: 'unsupported-version' },
+          effect: { state: 'corrupt' },
+        }),
+      ),
+    );
+    expect(result).toMatchObject({
+      state: 'ready',
+      effectConclusion: 'corrupt',
+    });
+    if (result.state !== 'ready') throw new Error('expected ready projection');
+    expect(result.steps.find((step) => step.id === 'source')).toMatchObject({
+      state: 'unsupported-version',
+      detail: 'This projection version is unsupported.',
+    });
+    expect(result.steps.find((step) => step.id === 'effect')).toMatchObject({
+      state: 'corrupt',
+      detail: 'This owner returned an invalid projection.',
     });
   });
 });

@@ -13,7 +13,9 @@ export type LearningReviewStepState =
   | 'attention'
   | 'not-captured'
   | 'restricted'
-  | 'unavailable';
+  | 'unavailable'
+  | 'unsupported-version'
+  | 'corrupt';
 
 export type LearningEffectConclusion =
   | 'supported'
@@ -23,7 +25,9 @@ export type LearningEffectConclusion =
   | 'not-observed'
   | 'not-captured'
   | 'restricted'
-  | 'unavailable';
+  | 'unavailable'
+  | 'unsupported-version'
+  | 'corrupt';
 
 export interface LearningReviewStepViewModel {
   id: LearningReviewStageId;
@@ -76,22 +80,17 @@ function gapStep<T>(
   id: LearningReviewStageId,
   stage: Exclude<LearningReviewStage<T>, { state: 'available' }>,
 ): LearningReviewStepViewModel {
-  const state =
-    stage.state === 'restricted'
-      ? 'restricted'
-      : stage.state === 'not-captured'
-        ? 'not-captured'
-        : 'unavailable';
-  return { id, label: LABELS[id], state, detail: GAP_COPY[stage.state] };
+  return {
+    id,
+    label: LABELS[id],
+    state: stage.state,
+    detail: GAP_COPY[stage.state],
+  };
 }
 
 function effectConclusion(effect: LearningReviewStage<LearningReviewEffect>) {
   if (effect.state !== 'available') {
-    return effect.state === 'not-captured'
-      ? ('not-captured' as const)
-      : effect.state === 'restricted'
-        ? ('restricted' as const)
-        : ('unavailable' as const);
+    return effect.state;
   }
   const observations = effect.value.observations;
   if (observations.length === 0) return 'not-observed' as const;
@@ -267,7 +266,11 @@ export function learningReviewViewModel(
   const projection = outcome.projection;
   const active =
     projection.activation.state === 'available' &&
-    projection.activation.value.status === 'active';
+    projection.activation.value.status === 'active' &&
+    !(
+      projection.retirement.state === 'available' &&
+      projection.retirement.value.status === 'retired'
+    );
   return {
     state: 'ready',
     title:
