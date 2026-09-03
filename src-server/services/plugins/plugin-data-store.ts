@@ -6,9 +6,9 @@
  * silently overwrite each other.
  */
 
-import { existsSync, lstatSync, mkdirSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import type {
   PluginDataDeleteOutcome,
@@ -29,6 +29,10 @@ const INSTALLATION_KEY = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,255}$/;
 const DATA_KEY = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,127}$/;
 const JSON_DEPTH_LIMIT = 32;
 const JSON_NODE_LIMIT = 10_000;
+const UPDATED_AT_MAX_BYTES = 32;
+const MAX_SAFE_SQLITE_INTEGER = Number.MAX_SAFE_INTEGER;
+
+type StoredRecordState = 'live' | 'tombstone';
 
 const { DatabaseSync } = require('node:sqlite') as {
   DatabaseSync: new (
@@ -56,10 +60,16 @@ interface StoredRow {
 interface StoredRevisionHead {
   key: string;
   last_revision: number;
+  record_state: StoredRecordState;
+}
+
+interface RevisionHead {
+  revision: number;
+  state: StoredRecordState;
 }
 
 interface PluginDataNamespaceSnapshot {
-  revisionHeads: Map<string, number>;
+  revisionHeads: Map<string, RevisionHead>;
   rows: StoredRow[];
   records: PluginDataRecord[];
   totalBytes: number;
@@ -68,6 +78,7 @@ interface PluginDataNamespaceSnapshot {
 interface StoredPayloadBounds {
   row_count: number;
   invalid_declared_bytes: number | null;
+  invalid_metadata: number | null;
   max_value_bytes: number | null;
 }
 
@@ -332,10 +343,65 @@ function unavailable(error: unknown): {
 }
 
 export interface PluginDataStoreOptions {
+  /** Existing, canonical physical root owned by the Station host. */
+  trustedRoot: string;
+  /** Host-selected data directory at or beneath `trustedRoot`. */
   directory: string;
   busyTimeoutMs?: number;
   /** Test seam for a WAL writer between revision-head and payload reads. */
   afterRevisionHeadsRead?: () => void;
+}
+
+function prepareDataDirectory(options: PluginDataStoreOptions): string {
+  if (
+    typeof options.trustedRoot !== 'string' ||
+    typeof options.directory !== 'string'
+  ) {
+    throw new TypeError('Plugin data paths must be host-issued strings');
+  }
+  const trustedRoot = resolve(options.trustedRoot);
+  if (!existsSync(trustedRoot)) {
+    throw new Error('Plugin data trusted root must already exist');
+  }
+  const rootStat = lstatSync(trustedRoot);
+  if (
+    rootStat.isSymbolicLink() ||
+    !rootStat.isDirectory() ||
+    realpathSync(trustedRoot) !== trustedRoot
+  ) {
+    throw new Error('Plugin data trusted root must be a physical directory');
+  }
+
+  const directory = resolve(options.directory);
+  const fromRoot = relative(trustedRoot, directory);
+  if (
+    isAbsolute(fromRoot) ||
+    fromRoot === '..' ||
+    fromRoot.startsWith(`..${sep}`)
+  ) {
+    throw new Error(
+      'Plugin data directory must remain within its trusted root',
+    );
+  }
+
+  let current = trustedRoot;
+  for (const component of fromRoot.split(sep).filter(Boolean)) {
+    current = join(current, component);
+    if (existsSync(current)) {
+      const stat = lstatSync(current);
+      if (stat.isSymbolicLink() || !stat.isDirectory()) {
+        throw new Error(
+          'Plugin data directory path must contain only real directories',
+        );
+      }
+    } else {
+      mkdirSync(current, { mode: 0o700 });
+    }
+  }
+  if (realpathSync(directory) !== directory) {
+    throw new Error('Plugin data directory must be a physical directory');
+  }
+  return directory;
 }
 
 export class PluginDataStore {
@@ -344,15 +410,8 @@ export class PluginDataStore {
 
   constructor(options: PluginDataStoreOptions) {
     this.afterRevisionHeadsRead = options.afterRevisionHeadsRead;
-    if (existsSync(options.directory)) {
-      const stat = lstatSync(options.directory);
-      if (stat.isSymbolicLink() || !stat.isDirectory()) {
-        throw new Error('Plugin data directory must be a real directory');
-      }
-    } else {
-      mkdirSync(options.directory, { recursive: true, mode: 0o700 });
-    }
-    const databasePath = join(options.directory, 'plugin-data.sqlite');
+    const directory = prepareDataDirectory(options);
+    const databasePath = join(directory, 'plugin-data.sqlite');
     if (existsSync(databasePath) && lstatSync(databasePath).isSymbolicLink()) {
       throw new Error('Plugin data database must not be a symbolic link');
     }
@@ -367,6 +426,7 @@ export class PluginDataStore {
         store: 'plugin data',
         onUnavailable: 'throw',
       });
+      this.db.exec('BEGIN IMMEDIATE');
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS plugin_data (
           plugin_id TEXT NOT NULL,
@@ -383,10 +443,33 @@ export class PluginDataStore {
           installation_key TEXT NOT NULL,
           key TEXT NOT NULL,
           last_revision INTEGER NOT NULL,
+          record_state TEXT NOT NULL DEFAULT 'live',
           PRIMARY KEY (plugin_id, installation_key, key)
         ) WITHOUT ROWID;
       `);
+      const stateColumn = this.db
+        .prepare(
+          `SELECT COUNT(*) AS count
+           FROM pragma_table_info('plugin_data_revisions')
+           WHERE name = 'record_state'`,
+        )
+        .get() as { count: number };
+      if (stateColumn.count === 0) {
+        // The pre-runtime tracer never had a product caller. Conservatively
+        // migrate every old head as live: a legacy head without its payload
+        // is then corruption, never an invented tombstone.
+        this.db.exec(
+          `ALTER TABLE plugin_data_revisions
+           ADD COLUMN record_state TEXT NOT NULL DEFAULT 'live'`,
+        );
+      }
+      this.db.exec('COMMIT');
     } catch (error) {
+      try {
+        this.db.exec('ROLLBACK');
+      } catch {
+        // The schema/open failure remains authoritative.
+      }
       this.db.close();
       throw error;
     }
@@ -418,26 +501,53 @@ export class PluginDataStore {
       return this.readTransaction(() => {
         const revisionHead = this.db
           .prepare(
-            `SELECT key, last_revision
+            `SELECT
+               CASE
+                 WHEN typeof(last_revision) = 'integer'
+                  AND last_revision >= 1
+                  AND last_revision <= ${MAX_SAFE_SQLITE_INTEGER}
+                 THEN last_revision
+               END AS last_revision,
+               CASE
+                 WHEN typeof(record_state) = 'text'
+                  AND record_state IN ('live', 'tombstone')
+                 THEN record_state
+               END AS record_state
              FROM plugin_data_revisions
              WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
           )
           .get(owner.pluginId, owner.installationKey, key) as
-          | StoredRevisionHead
+          | Pick<StoredRevisionHead, 'last_revision' | 'record_state'>
           | undefined;
         if (
           revisionHead !== undefined &&
-          (!DATA_KEY.test(revisionHead.key) ||
-            !Number.isSafeInteger(revisionHead.last_revision) ||
-            revisionHead.last_revision < 1)
+          (!Number.isSafeInteger(revisionHead.last_revision) ||
+            (revisionHead.record_state !== 'live' &&
+              revisionHead.record_state !== 'tombstone'))
         ) {
           throw new PluginDataCorruptError();
         }
         const bounds = this.db
           .prepare(
-            `SELECT data.byte_length,
+            `SELECT CASE
+                      WHEN typeof(data.byte_length) = 'integer'
+                       AND data.byte_length >= 0
+                       AND data.byte_length <= ${PLUGIN_DATA_LIMITS.valueBytes}
+                      THEN data.byte_length
+                    END AS byte_length,
                     length(CAST(data.value_json AS BLOB)) AS actual_byte_length,
-                    data.revision
+                    CASE
+                      WHEN typeof(data.revision) = 'integer'
+                       AND data.revision >= 1
+                       AND data.revision <= ${MAX_SAFE_SQLITE_INTEGER}
+                      THEN data.revision
+                    END AS revision,
+                    typeof(data.value_json) AS value_type,
+                    CASE
+                      WHEN typeof(data.updated_at) = 'text'
+                       AND length(CAST(data.updated_at AS BLOB)) <= ${UPDATED_AT_MAX_BYTES}
+                      THEN 1 ELSE 0
+                    END AS valid_timestamp_bounds
              FROM plugin_data AS data
              WHERE data.plugin_id = ?
                AND data.installation_key = ?
@@ -448,9 +558,19 @@ export class PluginDataStore {
               byte_length: number;
               actual_byte_length: number;
               revision: number;
+              value_type: string;
+              valid_timestamp_bounds: number;
             }
           | undefined;
-        if (!bounds) return { kind: 'not-found' };
+        if (!bounds) {
+          if (
+            revisionHead === undefined ||
+            revisionHead.record_state === 'tombstone'
+          ) {
+            return { kind: 'not-found' };
+          }
+          throw new PluginDataCorruptError();
+        }
         if (
           !Number.isSafeInteger(bounds.byte_length) ||
           !Number.isSafeInteger(bounds.actual_byte_length) ||
@@ -459,7 +579,10 @@ export class PluginDataStore {
           bounds.actual_byte_length > PLUGIN_DATA_LIMITS.valueBytes ||
           !Number.isSafeInteger(bounds.revision) ||
           bounds.revision < 1 ||
+          bounds.value_type !== 'text' ||
+          bounds.valid_timestamp_bounds !== 1 ||
           revisionHead === undefined ||
+          revisionHead.record_state !== 'live' ||
           revisionHead.last_revision !== bounds.revision
         ) {
           throw new PluginDataCorruptError();
@@ -528,7 +651,8 @@ export class PluginDataStore {
         if (currentRevision !== expectedRevision) {
           return { kind: 'conflict', currentRevision };
         }
-        const priorRevision = snapshot.revisionHeads.get(key);
+        const priorHead = snapshot.revisionHeads.get(key);
+        const priorRevision = priorHead?.revision;
         if (
           priorRevision === undefined &&
           snapshot.revisionHeads.size >= PLUGIN_DATA_LIMITS.keysPerInstallation
@@ -580,10 +704,11 @@ export class PluginDataStore {
         this.db
           .prepare(
             `INSERT INTO plugin_data_revisions
-               (plugin_id, installation_key, key, last_revision)
-             VALUES (?, ?, ?, ?)
+               (plugin_id, installation_key, key, last_revision, record_state)
+             VALUES (?, ?, ?, ?, 'live')
              ON CONFLICT(plugin_id, installation_key, key) DO UPDATE SET
-               last_revision = excluded.last_revision`,
+               last_revision = excluded.last_revision,
+               record_state = excluded.record_state`,
           )
           .run(owner.pluginId, owner.installationKey, key, revision);
         return {
@@ -617,8 +742,9 @@ export class PluginDataStore {
         const revisionHead = snapshot.revisionHeads.get(key);
         if (
           revisionHead === undefined ||
-          !Number.isSafeInteger(revisionHead) ||
-          revisionHead !== current.revision
+          revisionHead.state !== 'live' ||
+          !Number.isSafeInteger(revisionHead.revision) ||
+          revisionHead.revision !== current.revision
         ) {
           throw new PluginDataCorruptError();
         }
@@ -628,6 +754,13 @@ export class PluginDataStore {
         this.db
           .prepare(
             `DELETE FROM plugin_data
+             WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
+          )
+          .run(owner.pluginId, owner.installationKey, key);
+        this.db
+          .prepare(
+            `UPDATE plugin_data_revisions
+             SET record_state = 'tombstone'
              WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
           )
           .run(owner.pluginId, owner.installationKey, key);
@@ -670,10 +803,39 @@ export class PluginDataStore {
     }
   }
 
-  private readRevisionHeads(owner: PluginDataOwner): Map<string, number> {
+  private readRevisionHeads(owner: PluginDataOwner): Map<string, RevisionHead> {
+    const bounds = this.db
+      .prepare(
+        `SELECT COUNT(*) AS row_count,
+                MAX(CASE
+                      WHEN typeof(key) = 'text'
+                       AND length(CAST(key AS BLOB)) BETWEEN 1 AND 128
+                       AND typeof(last_revision) = 'integer'
+                       AND last_revision >= 1
+                       AND last_revision <= ${MAX_SAFE_SQLITE_INTEGER}
+                       AND typeof(record_state) = 'text'
+                       AND record_state IN ('live', 'tombstone')
+                      THEN 0 ELSE 1
+                    END) AS invalid_metadata
+         FROM plugin_data_revisions
+         WHERE plugin_id = ? AND installation_key = ?`,
+      )
+      .get(owner.pluginId, owner.installationKey) as {
+      row_count: number;
+      invalid_metadata: number | null;
+    };
+    if (
+      !Number.isSafeInteger(bounds.row_count) ||
+      bounds.row_count < 0 ||
+      bounds.row_count > PLUGIN_DATA_LIMITS.keysPerInstallation ||
+      (bounds.row_count === 0) !== (bounds.invalid_metadata === null) ||
+      (bounds.invalid_metadata !== null && bounds.invalid_metadata !== 0)
+    ) {
+      throw new PluginDataCorruptError();
+    }
     const rows = this.db
       .prepare(
-        `SELECT key, last_revision FROM plugin_data_revisions
+        `SELECT key, last_revision, record_state FROM plugin_data_revisions
          WHERE plugin_id = ? AND installation_key = ?
          ORDER BY key
          LIMIT ${PLUGIN_DATA_LIMITS.keysPerInstallation + 1}`,
@@ -682,17 +844,21 @@ export class PluginDataStore {
     if (rows.length > PLUGIN_DATA_LIMITS.keysPerInstallation) {
       throw new PluginDataCorruptError();
     }
-    const heads = new Map<string, number>();
+    const heads = new Map<string, RevisionHead>();
     for (const row of rows) {
       if (
         !DATA_KEY.test(row.key) ||
         !Number.isSafeInteger(row.last_revision) ||
         row.last_revision < 1 ||
+        (row.record_state !== 'live' && row.record_state !== 'tombstone') ||
         heads.has(row.key)
       ) {
         throw new PluginDataCorruptError();
       }
-      heads.set(row.key, row.last_revision);
+      heads.set(row.key, {
+        revision: row.last_revision,
+        state: row.record_state,
+      });
     }
     return heads;
   }
@@ -709,6 +875,17 @@ export class PluginDataStore {
                        AND byte_length <= ${PLUGIN_DATA_LIMITS.valueBytes}
                       THEN 0 ELSE 1
                     END) AS invalid_declared_bytes,
+                MAX(CASE
+                      WHEN typeof(key) = 'text'
+                       AND length(CAST(key AS BLOB)) BETWEEN 1 AND 128
+                       AND typeof(value_json) = 'text'
+                       AND typeof(revision) = 'integer'
+                       AND revision >= 1
+                       AND revision <= ${MAX_SAFE_SQLITE_INTEGER}
+                       AND typeof(updated_at) = 'text'
+                       AND length(CAST(updated_at AS BLOB)) <= ${UPDATED_AT_MAX_BYTES}
+                      THEN 0 ELSE 1
+                    END) AS invalid_metadata,
                 MAX(length(CAST(value_json AS BLOB))) AS max_value_bytes
          FROM plugin_data
          WHERE plugin_id = ? AND installation_key = ?`,
@@ -718,12 +895,14 @@ export class PluginDataStore {
       !Number.isSafeInteger(bounds.row_count) ||
       (bounds.invalid_declared_bytes !== null &&
         bounds.invalid_declared_bytes !== 0) ||
+      (bounds.invalid_metadata !== null && bounds.invalid_metadata !== 0) ||
       (bounds.max_value_bytes !== null &&
         !Number.isSafeInteger(bounds.max_value_bytes)) ||
       bounds.row_count < 0 ||
       bounds.row_count > PLUGIN_DATA_LIMITS.keysPerInstallation ||
       (bounds.row_count === 0) !==
         (bounds.invalid_declared_bytes === null &&
+          bounds.invalid_metadata === null &&
           bounds.max_value_bytes === null) ||
       (bounds.max_value_bytes ?? 0) > PLUGIN_DATA_LIMITS.valueBytes
     ) {
@@ -758,12 +937,19 @@ export class PluginDataStore {
       )
       .all(owner.pluginId, owner.installationKey) as StoredRow[];
     const records = rows.map(parseRow);
+    const recordsByKey = new Map(records.map((record) => [record.key, record]));
     const totalBytes = totals.actual_bytes;
     if (
       records.length > PLUGIN_DATA_LIMITS.keysPerInstallation ||
       totalBytes > PLUGIN_DATA_LIMITS.totalBytesPerInstallation ||
-      records.some(
-        (record) => revisionHeads.get(record.key) !== record.revision,
+      records.some((record) => {
+        const head = revisionHeads.get(record.key);
+        return head?.state !== 'live' || head.revision !== record.revision;
+      }) ||
+      [...revisionHeads].some(([key, head]) =>
+        head.state === 'live'
+          ? recordsByKey.get(key)?.revision !== head.revision
+          : recordsByKey.has(key),
       )
     ) {
       throw new PluginDataCorruptError();

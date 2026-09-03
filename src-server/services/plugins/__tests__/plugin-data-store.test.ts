@@ -1,6 +1,8 @@
 import {
+  existsSync,
   lstatSync,
   mkdtempSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -15,9 +17,15 @@ import { PluginDataStore } from '../plugin-data-store.js';
 const roots: string[] = [];
 
 function root(): string {
-  const value = mkdtempSync(join(tmpdir(), 'station-plugin-data-'));
+  const value = realpathSync(
+    mkdtempSync(join(tmpdir(), 'station-plugin-data-')),
+  );
   roots.push(value);
   return value;
+}
+
+function store(directory: string): PluginDataStore {
+  return new PluginDataStore({ trustedRoot: directory, directory });
 }
 
 afterEach(() => {
@@ -33,7 +41,7 @@ const owner = {
 describe('PluginDataStore', () => {
   test('persists owner-qualified JSON across handles', () => {
     const directory = root();
-    const firstStore = new PluginDataStore({ directory });
+    const firstStore = store(directory);
     const first = firstStore.bind(owner);
     const created = first.set('preferences.theme', { mode: 'dark' }, null);
     expect(created).toMatchObject({
@@ -46,7 +54,7 @@ describe('PluginDataStore', () => {
     });
     firstStore.close();
 
-    const secondStore = new PluginDataStore({ directory });
+    const secondStore = store(directory);
     const second = secondStore.bind(owner);
     expect(second.get('preferences.theme')).toMatchObject({
       kind: 'found',
@@ -55,10 +63,55 @@ describe('PluginDataStore', () => {
     secondStore.close();
   });
 
+  test('migrates the pre-runtime revision schema conservatively', () => {
+    const directory = root();
+    const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
+    database.exec(`
+      CREATE TABLE plugin_data (
+        plugin_id TEXT NOT NULL,
+        installation_key TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value_json TEXT NOT NULL,
+        byte_length INTEGER NOT NULL,
+        revision INTEGER NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (plugin_id, installation_key, key)
+      ) WITHOUT ROWID;
+      CREATE TABLE plugin_data_revisions (
+        plugin_id TEXT NOT NULL,
+        installation_key TEXT NOT NULL,
+        key TEXT NOT NULL,
+        last_revision INTEGER NOT NULL,
+        PRIMARY KEY (plugin_id, installation_key, key)
+      ) WITHOUT ROWID;
+      INSERT INTO plugin_data VALUES
+        ('${owner.pluginId}', '${owner.installationKey}', 'state', '"one"', 5, 1, '2026-09-03T00:00:00.000Z');
+      INSERT INTO plugin_data_revisions VALUES
+        ('${owner.pluginId}', '${owner.installationKey}', 'state', 1);
+    `);
+    database.close();
+
+    const migrated = store(directory);
+    expect(migrated.bind(owner).get('state')).toMatchObject({
+      kind: 'found',
+      record: { value: 'one', revision: 1 },
+    });
+    migrated.close();
+    const inspected = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
+    expect(
+      inspected
+        .prepare(
+          "SELECT record_state FROM plugin_data_revisions WHERE key = 'state'",
+        )
+        .get(),
+    ).toEqual({ record_state: 'live' });
+    inspected.close();
+  });
+
   test('requires the observed revision for update and delete', () => {
     const directory = root();
-    const firstStore = new PluginDataStore({ directory });
-    const secondStore = new PluginDataStore({ directory });
+    const firstStore = store(directory);
+    const secondStore = store(directory);
     const first = firstStore.bind(owner);
     const second = secondStore.bind(owner);
     expect(first.set('state', { value: 1 }, null)).toMatchObject({
@@ -91,8 +144,8 @@ describe('PluginDataStore', () => {
   });
 
   test('isolates data by host-issued installation identity', () => {
-    const store = new PluginDataStore({ directory: root() });
-    const original = store.bind(owner);
+    const dataStore = store(root());
+    const original = dataStore.bind(owner);
     const replacement = {
       ...owner,
       installationKey: `sha256:${'b'.repeat(64)}`,
@@ -100,7 +153,7 @@ describe('PluginDataStore', () => {
     expect(original.set('state', 'original', null)).toMatchObject({
       kind: 'written',
     });
-    const replacementCapability = store.bind(replacement);
+    const replacementCapability = dataStore.bind(replacement);
     expect(replacementCapability.get('state')).toEqual({ kind: 'not-found' });
     expect(
       replacementCapability.set('state', 'replacement', null),
@@ -111,15 +164,15 @@ describe('PluginDataStore', () => {
       kind: 'found',
       record: { value: 'original' },
     });
-    store.close();
+    dataStore.close();
   });
 
   test('rejects unsafe identities, keys, and non-JSON values before writing', () => {
-    const store = new PluginDataStore({ directory: root() });
-    expect(() => store.bind({ ...owner, pluginId: '../escape' })).toThrow(
+    const dataStore = store(root());
+    expect(() => dataStore.bind({ ...owner, pluginId: '../escape' })).toThrow(
       'pluginId must be a canonical plugin identifier',
     );
-    const capability = store.bind(owner);
+    const capability = dataStore.bind(owner);
     expect(capability.set('../escape', 'x', null)).toMatchObject({
       kind: 'invalid',
     });
@@ -154,16 +207,16 @@ describe('PluginDataStore', () => {
         throw new Error('owner trap');
       },
     });
-    expect(() => store.bind(trappingOwner)).toThrow(
+    expect(() => dataStore.bind(trappingOwner)).toThrow(
       'Plugin data owner must be a host-issued identity',
     );
     expect(capability.list()).toEqual({ kind: 'available', records: [] });
-    store.close();
+    dataStore.close();
   });
 
   test('bounds each serialized value before mutation', () => {
-    const store = new PluginDataStore({ directory: root() });
-    const capability = store.bind(owner);
+    const dataStore = store(root());
+    const capability = dataStore.bind(owner);
     const stringify = vi.spyOn(JSON, 'stringify');
     const parse = vi.spyOn(JSON, 'parse');
     try {
@@ -187,12 +240,12 @@ describe('PluginDataStore', () => {
     }
     expect(capability.get('large')).toEqual({ kind: 'not-found' });
     expect(capability.get('large-property')).toEqual({ kind: 'not-found' });
-    store.close();
+    dataStore.close();
   });
 
   test('bounds key count and aggregate bytes per installation', () => {
-    const store = new PluginDataStore({ directory: root() });
-    const capability = store.bind(owner);
+    const dataStore = store(root());
+    const capability = dataStore.bind(owner);
     for (
       let index = 0;
       index < PLUGIN_DATA_LIMITS.keysPerInstallation;
@@ -220,7 +273,7 @@ describe('PluginDataStore', () => {
       ...owner,
       installationKey: `sha256:${'c'.repeat(64)}`,
     };
-    const aggregate = store.bind(aggregateOwner);
+    const aggregate = dataStore.bind(aggregateOwner);
     const chunk = 'x'.repeat(PLUGIN_DATA_LIMITS.valueBytes - 2);
     for (let index = 0; index < 16; index += 1) {
       expect(aggregate.set(`chunk-${index}`, chunk, null)).toMatchObject({
@@ -231,7 +284,7 @@ describe('PluginDataStore', () => {
       kind: 'capacity',
       reason: 'total-bytes',
     });
-    store.close();
+    dataStore.close();
   });
 
   test.each([
@@ -244,16 +297,18 @@ describe('PluginDataStore', () => {
     ],
   ])('reports %s as corrupt instead of serving it', (_name, mutation) => {
     const directory = root();
-    const store = new PluginDataStore({ directory });
-    expect(store.bind(owner).set('state', { value: 1 }, null)).toMatchObject({
+    const dataStore = store(directory);
+    expect(
+      dataStore.bind(owner).set('state', { value: 1 }, null),
+    ).toMatchObject({
       kind: 'written',
     });
-    store.close();
+    dataStore.close();
     const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
     database.exec(`UPDATE plugin_data SET ${mutation} WHERE key = 'state'`);
     database.close();
 
-    const reopened = new PluginDataStore({ directory });
+    const reopened = store(directory);
     expect(reopened.bind(owner).get('state')).toEqual({
       kind: 'unavailable',
       reason: 'corrupt',
@@ -263,8 +318,8 @@ describe('PluginDataStore', () => {
 
   test('refuses delete when the retained revision head is corrupt', () => {
     const directory = root();
-    const store = new PluginDataStore({ directory });
-    const capability = store.bind(owner);
+    const dataStore = store(directory);
+    const capability = dataStore.bind(owner);
     expect(capability.set('state', 'one', null)).toMatchObject({
       kind: 'written',
     });
@@ -275,14 +330,14 @@ describe('PluginDataStore', () => {
       kind: 'written',
       record: { revision: 3 },
     });
-    store.close();
+    dataStore.close();
     const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
     database.exec(
       "UPDATE plugin_data_revisions SET last_revision = 1 WHERE key = 'state'",
     );
     database.close();
 
-    const reopened = new PluginDataStore({ directory });
+    const reopened = store(directory);
     const rebound = reopened.bind(owner);
     expect(rebound.delete('state', 3)).toEqual({
       kind: 'unavailable',
@@ -297,16 +352,16 @@ describe('PluginDataStore', () => {
 
   test('does not repair a missing retained revision head during reopen', () => {
     const directory = root();
-    const store = new PluginDataStore({ directory });
-    expect(store.bind(owner).set('state', 'one', null)).toMatchObject({
+    const dataStore = store(directory);
+    expect(dataStore.bind(owner).set('state', 'one', null)).toMatchObject({
       kind: 'written',
     });
-    store.close();
+    dataStore.close();
     const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
     database.exec("DELETE FROM plugin_data_revisions WHERE key = 'state'");
     database.close();
 
-    const reopened = new PluginDataStore({ directory });
+    const reopened = store(directory);
     expect(reopened.bind(owner).get('state')).toEqual({
       kind: 'unavailable',
       reason: 'corrupt',
@@ -318,23 +373,74 @@ describe('PluginDataStore', () => {
     reopened.close();
   });
 
-  test('reports a corrupt tombstone revision head instead of absence', () => {
+  test('does not reinterpret a missing live payload as a tombstone', () => {
     const directory = root();
-    const store = new PluginDataStore({ directory });
-    const capability = store.bind(owner);
+    const dataStore = store(directory);
+    expect(dataStore.bind(owner).set('state', 'one', null)).toMatchObject({
+      kind: 'written',
+      record: { revision: 1 },
+    });
+    dataStore.close();
+    const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
+    database.prepare('DELETE FROM plugin_data WHERE key = ?').run('state');
+    database.close();
+
+    const reopened = store(directory);
+    const rebound = reopened.bind(owner);
+    expect(rebound.get('state')).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    expect(rebound.list()).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    expect(rebound.set('state', 'replacement', null)).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    reopened.close();
+  });
+
+  test('persists explicit tombstones across restart and monotonic recreation', () => {
+    const directory = root();
+    const dataStore = store(directory);
+    const capability = dataStore.bind(owner);
     expect(capability.set('state', 'one', null)).toMatchObject({
       kind: 'written',
       record: { revision: 1 },
     });
     expect(capability.delete('state', 1)).toEqual({ kind: 'deleted' });
-    store.close();
+    dataStore.close();
+
+    const reopened = store(directory);
+    const rebound = reopened.bind(owner);
+    expect(rebound.get('state')).toEqual({ kind: 'not-found' });
+    expect(rebound.list()).toEqual({ kind: 'available', records: [] });
+    expect(rebound.set('state', 'two', null)).toMatchObject({
+      kind: 'written',
+      record: { revision: 2, value: 'two' },
+    });
+    reopened.close();
+  });
+
+  test('reports a corrupt tombstone revision head instead of absence', () => {
+    const directory = root();
+    const dataStore = store(directory);
+    const capability = dataStore.bind(owner);
+    expect(capability.set('state', 'one', null)).toMatchObject({
+      kind: 'written',
+      record: { revision: 1 },
+    });
+    expect(capability.delete('state', 1)).toEqual({ kind: 'deleted' });
+    dataStore.close();
     const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
     database.exec(
       "UPDATE plugin_data_revisions SET last_revision = -1 WHERE key = 'state'",
     );
     database.close();
 
-    const reopened = new PluginDataStore({ directory });
+    const reopened = store(directory);
     expect(reopened.bind(owner).get('state')).toEqual({
       kind: 'unavailable',
       reason: 'corrupt',
@@ -344,22 +450,22 @@ describe('PluginDataStore', () => {
 
   test('refuses every namespace mutation when a peer revision head is corrupt', () => {
     const directory = root();
-    const store = new PluginDataStore({ directory });
-    const capability = store.bind(owner);
+    const dataStore = store(directory);
+    const capability = dataStore.bind(owner);
     expect(capability.set('corrupt-peer', 'one', null)).toMatchObject({
       kind: 'written',
     });
     expect(capability.set('healthy-peer', 'one', null)).toMatchObject({
       kind: 'written',
     });
-    store.close();
+    dataStore.close();
     const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
     database.exec(
       "UPDATE plugin_data_revisions SET last_revision = 2 WHERE key = 'corrupt-peer'",
     );
     database.close();
 
-    const reopened = new PluginDataStore({ directory });
+    const reopened = store(directory);
     const rebound = reopened.bind(owner);
     expect(rebound.set('healthy-peer', 'two', 1)).toEqual({
       kind: 'unavailable',
@@ -378,7 +484,7 @@ describe('PluginDataStore', () => {
 
   test('lists one coherent WAL snapshot while another handle commits', () => {
     const directory = root();
-    const seeded = new PluginDataStore({ directory });
+    const seeded = store(directory);
     expect(seeded.bind(owner).set('state', 'one', null)).toMatchObject({
       kind: 'written',
     });
@@ -387,6 +493,7 @@ describe('PluginDataStore', () => {
     const writer = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
     let interleaved = false;
     const reader = new PluginDataStore({
+      trustedRoot: directory,
       directory,
       afterRevisionHeadsRead() {
         if (interleaved) return;
@@ -418,8 +525,8 @@ describe('PluginDataStore', () => {
 
   test('refuses an oversized persisted namespace on reads and updates', () => {
     const directory = root();
-    const store = new PluginDataStore({ directory });
-    store.close();
+    const dataStore = store(directory);
+    dataStore.close();
     const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
     const insertData = database.prepare(
       `INSERT INTO plugin_data
@@ -444,7 +551,7 @@ describe('PluginDataStore', () => {
     database.exec('COMMIT');
     database.close();
 
-    const reopened = new PluginDataStore({ directory });
+    const reopened = store(directory);
     const rebound = reopened.bind(owner);
     expect(rebound.list()).toEqual({
       kind: 'unavailable',
@@ -459,8 +566,8 @@ describe('PluginDataStore', () => {
 
   test('classifies overflowing persisted declared-byte totals as corrupt', () => {
     const directory = root();
-    const store = new PluginDataStore({ directory });
-    store.close();
+    const dataStore = store(directory);
+    dataStore.close();
     const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
     database.exec(`
       INSERT INTO plugin_data
@@ -476,7 +583,55 @@ describe('PluginDataStore', () => {
     `);
     database.close();
 
-    const reopened = new PluginDataStore({ directory });
+    const reopened = store(directory);
+    expect(reopened.bind(owner).list()).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    reopened.close();
+  });
+
+  test('rejects oversized persisted metadata before row materialization', () => {
+    const directory = root();
+    const dataStore = store(directory);
+    expect(dataStore.bind(owner).set('state', 'one', null)).toMatchObject({
+      kind: 'written',
+    });
+    dataStore.close();
+    const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
+    database.exec(
+      "UPDATE plugin_data SET updated_at = zeroblob(1000000) WHERE key = 'state'",
+    );
+    database.close();
+    const afterRevisionHeadsRead = vi.fn();
+
+    const reopened = new PluginDataStore({
+      trustedRoot: directory,
+      directory,
+      afterRevisionHeadsRead,
+    });
+    expect(reopened.bind(owner).list()).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    expect(afterRevisionHeadsRead).not.toHaveBeenCalled();
+    reopened.close();
+  });
+
+  test('rejects oversized persisted revision-head keys', () => {
+    const directory = root();
+    const dataStore = store(directory);
+    expect(dataStore.bind(owner).set('state', 'one', null)).toMatchObject({
+      kind: 'written',
+    });
+    dataStore.close();
+    const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
+    database.exec(
+      "UPDATE plugin_data_revisions SET key = zeroblob(1000000) WHERE key = 'state'",
+    );
+    database.close();
+
+    const reopened = store(directory);
     expect(reopened.bind(owner).list()).toEqual({
       kind: 'unavailable',
       reason: 'corrupt',
@@ -489,11 +644,32 @@ describe('PluginDataStore', () => {
     const target = join(root(), 'outside.sqlite');
     writeFileSync(target, 'not a database');
     symlinkSync(target, join(directory, 'plugin-data.sqlite'));
-    expect(() => new PluginDataStore({ directory })).toThrow(
+    expect(() => store(directory)).toThrow(
       'Plugin data database must not be a symbolic link',
     );
     expect(
       lstatSync(join(directory, 'plugin-data.sqlite')).isSymbolicLink(),
     ).toBe(true);
+  });
+
+  test('refuses an ancestor symlink beneath the trusted physical root', () => {
+    const trustedRoot = root();
+    const outside = root();
+    const linked = join(trustedRoot, 'linked');
+    symlinkSync(outside, linked);
+    const directory = join(linked, 'data');
+
+    expect(() => new PluginDataStore({ trustedRoot, directory })).toThrow(
+      'Plugin data directory path must contain only real directories',
+    );
+    expect(existsSync(join(outside, 'data', 'plugin-data.sqlite'))).toBe(false);
+  });
+
+  test('refuses a data directory outside its trusted physical root', () => {
+    const trustedRoot = root();
+    const outside = root();
+    expect(
+      () => new PluginDataStore({ trustedRoot, directory: outside }),
+    ).toThrow('Plugin data directory must remain within its trusted root');
   });
 });
