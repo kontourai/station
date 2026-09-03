@@ -200,13 +200,12 @@ test("Home's away action asks the HOST to undock — it owns no dock semantics",
   expect(undock).toHaveBeenCalledTimes(1);
 });
 
-test('Activity renders its away state while the published dock occupant is Activity', () => {
+test('Activity ignores the ambient dock occupant — the region model is its only away-state authority (#928)', () => {
+  // No host publishes Activity as an ambient occupant any more; a stale
+  // publication must not resurrect the retired "in the dock" away state.
   renderActivity(publishedAction(WORKSPACE_ACTIVITY_PANE_INSTANCE.instanceId));
-  expect(screen.getByText('Activity is in the dock')).not.toBeNull();
-  expect(
-    screen.getByRole('button', { name: 'Bring it back here' }),
-  ).not.toBeNull();
-  expect(screen.queryByTestId('activity-surface')).toBeNull();
+  expect(screen.queryByText('Activity is in the dock')).toBeNull();
+  expect(screen.getByTestId('activity-surface')).not.toBeNull();
 });
 
 test('Activity renders its pane when the occupant is someone else or absent', () => {
@@ -262,15 +261,6 @@ test('coarse device: hidden Activity offers a working action for the rendered bo
   expect(regionOccupant.setRegion).toHaveBeenCalledWith('right', {
     visible: true,
   });
-});
-
-test("Activity's away action asks the HOST to undock", () => {
-  const undock = vi.fn();
-  renderActivity(
-    publishedAction(WORKSPACE_ACTIVITY_PANE_INSTANCE.instanceId, undock),
-  );
-  fireEvent.click(screen.getByRole('button', { name: 'Bring it back here' }));
-  expect(undock).toHaveBeenCalledTimes(1);
 });
 
 /* ------------------------------------------------------------------ *

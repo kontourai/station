@@ -13,10 +13,6 @@ import {
   regionLabel,
 } from '../regions/region-model';
 import { WorkspacePaneAwayState } from '../workspace-panes/WorkspacePaneAwayState';
-import {
-  isAmbientDockOccupant,
-  useWorkspacePaneDockAction,
-} from '../workspace-panes/WorkspacePaneDockContext';
 import { selectClientWorkspacePaneRenderer } from '../workspace-panes/workspacePaneRendererSelection';
 import { ActivityWorkspacePane } from './activity/ActivityWorkspacePane';
 import { ActivityWorkspacePaneBindingProvider } from './activity/ActivityWorkspacePaneBinding';
@@ -50,7 +46,6 @@ export function ActivityView({
   focusHint?: 'evidence';
 }) {
   const config = useConfig();
-  const dock = useWorkspacePaneDockAction();
   const regionModel = useRegionModelOptional();
   const bottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
   const activityRegion = regionModel
@@ -66,18 +61,6 @@ export function ActivityView({
       instance: WORKSPACE_ACTIVITY_PANE_INSTANCE,
     },
   );
-  // While Activity's canonical occurrence occupies the ambient dock, this
-  // route renders the away state instead of a second live copy of the pane
-  // (archive#4090). Derived from the host's own published occupant state
-  // through `isAmbientDockOccupant` — never a route-local flag — so choosing
-  // another dock occupant clears this state without route-side bookkeeping.
-  if (isAmbientDockOccupant(dock, WORKSPACE_ACTIVITY_PANE_INSTANCE)) {
-    return (
-      <WorkspacePaneAwayState
-        paneName={WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.name}
-      />
-    );
-  }
   if (activityRegion && regionModel) {
     const activityIsShown = bottomOnly
       ? foldedRegion === activityRegion &&
