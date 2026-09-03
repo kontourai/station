@@ -255,13 +255,40 @@ function canonicalJson(
     return Number.isFinite(value) ? value : undefined;
   }
   if (Array.isArray(value)) {
-    const output: PluginForegroundWorkJson[] = [];
-    for (const entry of value) {
-      const projected = canonicalJson(entry, depth + 1, budget);
-      if (projected === undefined) return undefined;
-      output.push(projected);
+    try {
+      if (
+        value.length >
+          PLUGIN_FOREGROUND_WORK_LIMITS.inputNodes - budget.nodes ||
+        Object.getOwnPropertySymbols(value).length > 0
+      ) {
+        return undefined;
+      }
+      const descriptors = Object.getOwnPropertyDescriptors(value);
+      const keys = Object.keys(descriptors).filter((key) => key !== 'length');
+      if (
+        keys.length !== value.length ||
+        keys.some((key, index) => key !== String(index))
+      ) {
+        return undefined;
+      }
+      const output: PluginForegroundWorkJson[] = [];
+      for (const key of keys) {
+        const descriptor = descriptors[key];
+        if (
+          !descriptor ||
+          !('value' in descriptor) ||
+          descriptor.enumerable !== true
+        ) {
+          return undefined;
+        }
+        const projected = canonicalJson(descriptor.value, depth + 1, budget);
+        if (projected === undefined) return undefined;
+        output.push(projected);
+      }
+      return output;
+    } catch {
+      return undefined;
     }
-    return output;
   }
   if (value === null || typeof value !== 'object') return undefined;
   try {
@@ -557,6 +584,26 @@ function executionOwner(
       };
 }
 
+interface PluginForegroundCancellationIntent {
+  readonly executionOwner: PluginForegroundExecutionOwner;
+  outcome?: 'confirmed' | 'unknown';
+  settlementNow?: string;
+  inFlight?: Promise<PluginForegroundCancellationResult>;
+}
+
+function sameExecutionOwner(
+  left: PluginForegroundExecutionOwner,
+  right: PluginForegroundExecutionOwner,
+): boolean {
+  return (
+    left.id === right.id &&
+    left.pid === right.pid &&
+    left.identityKind === right.identityKind &&
+    (left.identityKind === 'unverified' ||
+      (right.identityKind === 'exact' && left.birth === right.birth))
+  );
+}
+
 /**
  * Deep host adapter for foreground plugin work. The coordinator is the only
  * source of run truth; Action Operations are a best-effort public observer.
@@ -603,11 +650,20 @@ export function createPluginForegroundRuns(options: {
     ]),
   );
   let executionOwnerActive = true;
+  let executionOwnerEpoch = 0;
   const observerHandles = new Map<string, PluginForegroundRunObserverHandle>();
+  const cancellationIntents = new Map<
+    string,
+    PluginForegroundCancellationIntent
+  >();
+
+  const ownerFenceIsCurrent = (epoch: number) =>
+    executionOwnerActive && executionOwnerEpoch === epoch;
 
   const runObserver = async <T>(
     runId: string,
     work: () => Promise<T>,
+    onLateCompleted?: (value: T) => Promise<void>,
   ): Promise<T | undefined> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const operation = Promise.resolve()
@@ -634,6 +690,23 @@ export function createPluginForegroundRuns(options: {
             ? result.error.message
             : String(result.error),
     });
+    if (result.kind === 'timed-out' && onLateCompleted) {
+      void operation.then(async (lateResult) => {
+        if (lateResult.kind === 'completed') {
+          try {
+            await onLateCompleted(lateResult.value);
+          } catch (error) {
+            options.logger?.warn(
+              'Plugin foreground run late observation unavailable',
+              {
+                runId,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+          }
+        }
+      });
+    }
     return undefined;
   };
 
@@ -645,9 +718,133 @@ export function createPluginForegroundRuns(options: {
     await runObserver(run.runId, () => handle.update(run));
   };
 
+  const attachObserver = async (
+    runId: string,
+    handle: PluginForegroundRunObserverHandle | undefined,
+  ): Promise<void> => {
+    if (!handle) return;
+    // Publish the handle first so a concurrent terminal transition cannot miss it.
+    observerHandles.set(runId, handle);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      let current: PluginForegroundRunRecord | null;
+      try {
+        current = options.coordinator.read(runId);
+      } catch (error) {
+        options.logger?.warn('Plugin foreground run observation unavailable', {
+          runId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
+      if (!current) {
+        observerHandles.delete(runId);
+        return;
+      }
+      await updateObserver(handle, publicRun(current));
+      if (isTerminal(current.state)) {
+        observerHandles.delete(runId);
+        return;
+      }
+      let latest: PluginForegroundRunRecord | null;
+      try {
+        latest = options.coordinator.read(runId);
+      } catch {
+        return;
+      }
+      if (!latest) {
+        observerHandles.delete(runId);
+        return;
+      }
+      if (
+        latest.state === current.state &&
+        latest.updatedAt === current.updatedAt
+      ) {
+        return;
+      }
+    }
+  };
+
+  const observeTransition = async (
+    result: PluginForegroundRunTransition,
+  ): Promise<PluginForegroundRunTransition> => {
+    if (result.kind === 'applied') {
+      await updateObserver(
+        observerHandles.get(result.record.runId),
+        publicRun(result.record),
+      );
+      if (isTerminal(result.record.state)) {
+        observerHandles.delete(result.record.runId);
+      }
+    }
+    return result;
+  };
+
+  const driveCancellation = (
+    record: PluginForegroundRunRecord,
+    intent: PluginForegroundCancellationIntent,
+  ): Promise<PluginForegroundCancellationResult> => {
+    if (intent.inFlight) return intent.inFlight;
+    const operation =
+      (async (): Promise<PluginForegroundCancellationResult> => {
+        if (!intent.outcome) {
+          let cancellation: 'confirmed' | 'refused' | 'unknown';
+          try {
+            cancellation = await options.cancellationAdapter!.cancel({
+              runId: record.runId,
+              executionOwner: intent.executionOwner,
+            });
+          } catch {
+            cancellation = 'unknown';
+          }
+          if (cancellation === 'refused') {
+            cancellationIntents.delete(record.runId);
+            return { kind: 'refused', run: publicRun(record) };
+          }
+          intent.outcome = cancellation;
+          intent.settlementNow = new Date().toISOString();
+        }
+        let transition: PluginForegroundRunTransition;
+        try {
+          transition = options.coordinator.settleCancellation({
+            runId: record.runId,
+            executionOwnerId: intent.executionOwner.id,
+            to: intent.outcome === 'confirmed' ? 'cancelled' : 'indeterminate',
+            now: intent.settlementNow!,
+            ...(intent.outcome === 'unknown'
+              ? { failureSummary: 'Cancellation could not be confirmed.' }
+              : {}),
+          });
+        } catch {
+          transition = { kind: 'unavailable' };
+        }
+        if (transition.kind === 'unavailable') {
+          return { kind: 'unavailable' };
+        }
+        cancellationIntents.delete(record.runId);
+        if (transition.kind !== 'applied') {
+          return {
+            kind: 'refused',
+            run: publicRun(transition.record ?? record),
+          };
+        }
+        await observeTransition(transition);
+        return {
+          kind: intent.outcome,
+          run: publicRun(transition.record),
+        };
+      })();
+    intent.inFlight = operation;
+    const clearInFlight = () => {
+      if (intent.inFlight === operation) intent.inFlight = undefined;
+    };
+    void operation.then(clearInFlight, clearInFlight);
+    return operation;
+  };
+
   const runs: PluginForegroundRuns = {
     async start(owner, request) {
-      if (!executionOwnerActive) {
+      const admissionEpoch = executionOwnerEpoch;
+      if (!ownerFenceIsCurrent(admissionEpoch)) {
         return { kind: 'refused', reason: 'run-authority-unavailable' };
       }
       const valid = validRequest(request);
@@ -666,6 +863,9 @@ export function createPluginForegroundRuns(options: {
         });
       } catch {
         authorization = { kind: 'unavailable' };
+      }
+      if (!ownerFenceIsCurrent(admissionEpoch)) {
+        return { kind: 'refused', reason: 'run-authority-unavailable' };
       }
       if (authorization.kind !== 'granted') {
         return {
@@ -703,6 +903,9 @@ export function createPluginForegroundRuns(options: {
         ...(request.sessionId ? { sessionId: request.sessionId } : {}),
       };
       let admission: ReturnType<PluginForegroundRunCoordinator['admit']>;
+      if (!ownerFenceIsCurrent(admissionEpoch)) {
+        return { kind: 'refused', reason: 'run-authority-unavailable' };
+      }
       try {
         admission = options.coordinator.admit(record);
       } catch {
@@ -718,26 +921,18 @@ export function createPluginForegroundRuns(options: {
       }
 
       const observer = options.observer
-        ? await runObserver(record.runId, () =>
-            options.observer!.begin({
-              owner: structuredClone(owner),
-              declaration: structuredClone(declaration),
-              run: publicRun(record),
-            }),
+        ? await runObserver(
+            record.runId,
+            () =>
+              options.observer!.begin({
+                owner: structuredClone(owner),
+                declaration: structuredClone(declaration),
+                run: publicRun(record),
+              }),
+            (lateObserver) => attachObserver(record.runId, lateObserver),
           )
         : undefined;
-      if (observer) {
-        observerHandles.set(record.runId, observer);
-      }
-      const observe = async (result: PluginForegroundRunTransition) => {
-        if (result.kind === 'applied') {
-          await updateObserver(observer, publicRun(result.record));
-          if (isTerminal(result.record.state)) {
-            observerHandles.delete(result.record.runId);
-          }
-        }
-        return result;
-      };
+      await attachObserver(record.runId, observer);
       let beginIntent:
         | { now: string; authorization: PluginForegroundAuthorizationOutcome }
         | undefined;
@@ -751,6 +946,9 @@ export function createPluginForegroundRuns(options: {
           }
         | undefined;
       const settle = async (intent: NonNullable<typeof terminalIntent>) => {
+        if (!ownerFenceIsCurrent(admissionEpoch)) {
+          return { kind: 'stale' } as const;
+        }
         if (
           terminalIntent &&
           JSON.stringify(terminalIntent) !== JSON.stringify(intent)
@@ -759,7 +957,7 @@ export function createPluginForegroundRuns(options: {
         }
         terminalIntent ??= intent;
         const settledIntent = terminalIntent;
-        const result = await observe(
+        const result = await observeTransition(
           transitionWithIntent({
             coordinator: options.coordinator,
             runId: record.runId,
@@ -783,7 +981,9 @@ export function createPluginForegroundRuns(options: {
       };
       const claim: PluginForegroundRunClaim = Object.freeze({
         beginEffect: async (beginNow: string) => {
-          if (!executionOwnerActive) return { kind: 'stale' } as const;
+          if (!ownerFenceIsCurrent(admissionEpoch)) {
+            return { kind: 'stale' } as const;
+          }
           if (!beginIntent) {
             let currentAuthorization: PluginForegroundAuthorizationOutcome;
             try {
@@ -807,6 +1007,9 @@ export function createPluginForegroundRuns(options: {
             beginIntent = undefined;
             return { kind: 'unavailable' } as const;
           }
+          if (!ownerFenceIsCurrent(admissionEpoch)) {
+            return { kind: 'stale' } as const;
+          }
           if (beginIntent.authorization.kind === 'denied') {
             return settle({
               to: 'failed',
@@ -816,7 +1019,7 @@ export function createPluginForegroundRuns(options: {
               summary: 'Permission changed before plugin work started.',
             });
           }
-          return observe(
+          return observeTransition(
             transitionWithIntent({
               coordinator: options.coordinator,
               runId: record.runId,
@@ -895,48 +1098,19 @@ export function createPluginForegroundRuns(options: {
         declarations.get(record.kind)?.cancellation !== 'supported' ||
         !options.cancellationAdapter
       ) {
+        cancellationIntents.delete(runId);
         return { kind: 'refused', run: publicRun(record) };
       }
-      let cancellation: 'confirmed' | 'refused' | 'unknown';
-      try {
-        cancellation = await options.cancellationAdapter.cancel({
-          runId,
-          executionOwner: executionOwner(record),
-        });
-      } catch {
-        cancellation = 'unknown';
+      const recordedOwner = executionOwner(record);
+      let intent = cancellationIntents.get(runId);
+      if (intent && !sameExecutionOwner(intent.executionOwner, recordedOwner)) {
+        return { kind: 'unavailable' };
       }
-      if (cancellation === 'refused') {
-        return { kind: 'refused', run: publicRun(record) };
+      if (!intent) {
+        intent = { executionOwner: recordedOwner };
+        cancellationIntents.set(runId, intent);
       }
-      let transition: PluginForegroundRunTransition;
-      try {
-        transition = options.coordinator.settleCancellation({
-          runId,
-          executionOwnerId: record.executionOwnerId,
-          to: cancellation === 'confirmed' ? 'cancelled' : 'indeterminate',
-          now: new Date().toISOString(),
-          ...(cancellation === 'unknown'
-            ? { failureSummary: 'Cancellation could not be confirmed.' }
-            : {}),
-        });
-      } catch {
-        transition = { kind: 'unavailable' };
-      }
-      if (transition.kind !== 'applied') {
-        return transition.kind === 'unavailable'
-          ? { kind: 'unavailable' }
-          : { kind: 'refused', run: publicRun(transition.record ?? record) };
-      }
-      await updateObserver(
-        observerHandles.get(runId),
-        publicRun(transition.record),
-      );
-      observerHandles.delete(runId);
-      return {
-        kind: cancellation,
-        run: publicRun(transition.record),
-      };
+      return driveCancellation(record, intent);
     },
 
     reconcile(now) {
@@ -967,6 +1141,7 @@ export function createPluginForegroundRuns(options: {
                 : 'Plugin work may have continued before Station stopped.',
           });
           if (result.kind === 'unavailable') return { kind: 'unavailable' };
+          if (result.kind === 'applied') void observeTransition(result);
         }
         return { kind: 'available' };
       } catch {
@@ -1019,6 +1194,7 @@ export function createPluginForegroundRuns(options: {
 
     releaseOwner() {
       executionOwnerActive = false;
+      executionOwnerEpoch += 1;
     },
   };
   return Object.freeze(runs);

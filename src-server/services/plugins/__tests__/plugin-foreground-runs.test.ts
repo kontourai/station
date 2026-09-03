@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PLUGIN_FOREGROUND_WORK_SCHEMA_VERSION } from '@kontourai/station-contracts/plugin-foreground-work';
@@ -17,6 +17,7 @@ import {
 
 class MemoryCoordinator implements PluginForegroundRunCoordinator {
   readonly records = new Map<string, PluginForegroundRunRecord>();
+  cancellationUnavailableCount = 0;
 
   admit(record: PluginForegroundRunRecord) {
     const existing = this.records.get(record.runId);
@@ -68,6 +69,10 @@ class MemoryCoordinator implements PluginForegroundRunCoordinator {
   settleCancellation(
     input: Parameters<PluginForegroundRunCoordinator['settleCancellation']>[0],
   ) {
+    if (this.cancellationUnavailableCount > 0) {
+      this.cancellationUnavailableCount -= 1;
+      return { kind: 'unavailable' as const };
+    }
     const current = this.records.get(input.runId);
     if (!current || current.executionOwnerId !== input.executionOwnerId) {
       return { kind: 'stale' as const };
@@ -140,7 +145,11 @@ function createHarness(
   options: {
     coordinator?: MemoryCoordinator;
     ownerId?: string;
-    authorization?: () => 'granted' | 'denied' | 'unavailable';
+    authorization?: () =>
+      | 'granted'
+      | 'denied'
+      | 'unavailable'
+      | Promise<'granted' | 'denied' | 'unavailable'>;
     cancellation?: () => Promise<'confirmed' | 'refused' | 'unknown'>;
     probe?: () =>
       | { state: 'dead' }
@@ -155,8 +164,8 @@ function createHarness(
     declarations: [declaration],
     coordinator,
     authorizer: {
-      authorize: () => ({
-        kind: options.authorization?.() ?? 'granted',
+      authorize: async () => ({
+        kind: (await options.authorization?.()) ?? 'granted',
       }),
     },
     executionOwner: {
@@ -198,6 +207,25 @@ describe('plugin foreground run authority', () => {
       kind: 'refused',
       reason: 'invalid',
     });
+    expect(getter).not.toHaveBeenCalled();
+  });
+
+  test('refuses accessor-backed and sparse arrays without reading them', async () => {
+    const getter = vi.fn(() => 'secret');
+    const accessorInput: unknown[] = [];
+    Object.defineProperty(accessorInput, '0', {
+      enumerable: true,
+      get: getter,
+    });
+    accessorInput.length = 1;
+    const { runs } = createHarness();
+
+    await expect(
+      runs.start(owner, { ...request, input: accessorInput as never }),
+    ).resolves.toEqual({ kind: 'refused', reason: 'invalid' });
+    await expect(
+      runs.start(owner, { ...request, input: Array(1) as never }),
+    ).resolves.toEqual({ kind: 'refused', reason: 'invalid' });
     expect(getter).not.toHaveBeenCalled();
   });
 
@@ -381,6 +409,93 @@ describe('plugin foreground run authority', () => {
     ).resolves.toEqual({ kind: 'stale' });
   });
 
+  test('a released owner cannot settle claims returned before release', async () => {
+    const admittedHarness = createHarness({ ownerId: 'released-admitted' });
+    const admitted = await admittedHarness.runs.start(owner, request);
+    if (admitted.kind !== 'admitted') throw new Error('expected admission');
+    admittedHarness.runs.releaseOwner();
+    await expect(
+      admitted.claim.failedBeforeEffect(
+        '2026-09-03T00:00:01.000Z',
+        'Worker stopped.',
+      ),
+    ).resolves.toEqual({ kind: 'stale' });
+    expect(admittedHarness.coordinator.read(admitted.run.runId)).toMatchObject({
+      state: 'admitted',
+    });
+
+    const runningHarness = createHarness({ ownerId: 'released-running' });
+    const running = await runningHarness.runs.start(owner, {
+      ...request,
+      idempotencyKey: 'request-running',
+    });
+    if (running.kind !== 'admitted') throw new Error('expected admission');
+    await running.claim.beginEffect('2026-09-03T00:00:01.000Z');
+    runningHarness.runs.releaseOwner();
+    await expect(
+      running.claim.completed('2026-09-03T00:00:02.000Z'),
+    ).resolves.toEqual({ kind: 'stale' });
+    expect(runningHarness.coordinator.read(running.run.runId)).toMatchObject({
+      state: 'running',
+    });
+  });
+
+  test('release fences admission and effect transitions after authorization awaits', async () => {
+    let enterAdmission!: () => void;
+    const admissionEntered = new Promise<void>((resolve) => {
+      enterAdmission = resolve;
+    });
+    let resolveAdmission!: (value: 'granted') => void;
+    const admissionAuthorization = new Promise<'granted'>((resolve) => {
+      resolveAdmission = resolve;
+    });
+    const admissionHarness = createHarness({
+      ownerId: 'released-during-admission',
+      authorization: () => {
+        enterAdmission();
+        return admissionAuthorization;
+      },
+    });
+    const pendingAdmission = admissionHarness.runs.start(owner, request);
+    await admissionEntered;
+    admissionHarness.runs.releaseOwner();
+    resolveAdmission('granted');
+    await expect(pendingAdmission).resolves.toEqual({
+      kind: 'refused',
+      reason: 'run-authority-unavailable',
+    });
+    expect(admissionHarness.coordinator.list()).toEqual([]);
+
+    let authorizationCalls = 0;
+    let enterEffect!: () => void;
+    const effectEntered = new Promise<void>((resolve) => {
+      enterEffect = resolve;
+    });
+    let resolveEffect!: (value: 'granted') => void;
+    const effectAuthorization = new Promise<'granted'>((resolve) => {
+      resolveEffect = resolve;
+    });
+    const effectHarness = createHarness({
+      ownerId: 'released-during-effect',
+      authorization: () => {
+        authorizationCalls += 1;
+        if (authorizationCalls === 1) return 'granted';
+        enterEffect();
+        return effectAuthorization;
+      },
+    });
+    const started = await effectHarness.runs.start(owner, request);
+    if (started.kind !== 'admitted') throw new Error('expected admission');
+    const pendingEffect = started.claim.beginEffect('2026-09-03T00:00:01.000Z');
+    await effectEntered;
+    effectHarness.runs.releaseOwner();
+    resolveEffect('granted');
+    await expect(pendingEffect).resolves.toEqual({ kind: 'stale' });
+    expect(effectHarness.coordinator.read(started.run.runId)).toMatchObject({
+      state: 'admitted',
+    });
+  });
+
   test('targets cancellation at the recorded exact owner and makes an unknown outcome indeterminate', async () => {
     const cancel = vi.fn(async () => 'unknown' as const);
     const { runs } = createHarness({ cancellation: cancel });
@@ -430,6 +545,38 @@ describe('plugin foreground run authority', () => {
       kind: 'confirmed',
       run: { state: 'cancelled', effectDepth: 'possible-effect' },
     });
+  });
+
+  test('coalesces cancellation and retries only uncertain settlement', async () => {
+    const coordinator = new MemoryCoordinator();
+    coordinator.cancellationUnavailableCount = 1;
+    let confirmCancellation!: (value: 'confirmed') => void;
+    const cancellation = vi.fn(
+      () =>
+        new Promise<'confirmed'>((resolve) => {
+          confirmCancellation = resolve;
+        }),
+    );
+    const { runs } = createHarness({ coordinator, cancellation });
+    const started = await runs.start(owner, request);
+    if (started.kind !== 'admitted') throw new Error('expected admission');
+    await started.claim.beginEffect('2026-09-03T00:00:01.000Z');
+
+    const first = runs.cancel(owner, started.run.runId);
+    const concurrent = runs.cancel(owner, started.run.runId);
+    expect(cancellation).toHaveBeenCalledOnce();
+    confirmCancellation('confirmed');
+    await expect(Promise.all([first, concurrent])).resolves.toEqual([
+      { kind: 'unavailable' },
+      { kind: 'unavailable' },
+    ]);
+    expect(cancellation).toHaveBeenCalledOnce();
+
+    await expect(runs.cancel(owner, started.run.runId)).resolves.toMatchObject({
+      kind: 'confirmed',
+      run: { state: 'cancelled', effectDepth: 'possible-effect' },
+    });
+    expect(cancellation).toHaveBeenCalledOnce();
   });
 
   test('does not let a stale terminal method poison the applicable settlement', async () => {
@@ -495,6 +642,73 @@ describe('plugin foreground run authority', () => {
       'Plugin foreground run observation unavailable',
       expect.objectContaining({ error: 'observer timed out' }),
     );
+  });
+
+  test('reconciles an observer handle that resolves after its begin timeout', async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), 'plugin-runs-late-actions-'),
+    );
+    try {
+      const operations = new ActionOperationService(
+        new FileActionOperationStore(directory),
+      );
+      let allowCreate!: () => void;
+      const createGate = new Promise<void>((resolve) => {
+        allowCreate = resolve;
+      });
+      let markCreated!: () => void;
+      const created = new Promise<void>((resolve) => {
+        markCreated = resolve;
+      });
+      const runs = createPluginForegroundRuns({
+        declarations: [declaration],
+        coordinator: new MemoryCoordinator(),
+        authorizer: { authorize: () => ({ kind: 'granted' }) },
+        executionOwner: {
+          id: 'worker-late-actions',
+          pid: process.pid,
+          birth: 'birth-late-actions',
+          identityKind: 'exact',
+        },
+        processIdentity: { probe: () => ({ state: 'dead' }) },
+        canRead: () => true,
+        observerTimeoutMs: 5,
+        observer: createPluginForegroundActionOperationObserver({
+          service: {
+            create: async (actor, operation) => {
+              await createGate;
+              const result = await operations.create(actor, operation);
+              markCreated();
+              return result;
+            },
+            update: (actor, operationId, update) =>
+              operations.update(actor, operationId, update),
+          },
+          actorFor: (candidate) => ({
+            accountId: candidate.accountId,
+            canReadSession: () => true,
+          }),
+        }),
+      });
+      const started = await runs.start(owner, request);
+      if (started.kind !== 'admitted') throw new Error('expected admission');
+      allowCreate();
+      await created;
+      await started.claim.beginEffect('2026-09-03T00:00:01.000Z');
+      await started.claim.completed('2026-09-03T00:00:02.000Z');
+
+      await expect
+        .poll(async () => {
+          const operation = await operations.get(
+            { accountId: owner.accountId, canReadSession: () => true },
+            started.run.runId,
+          );
+          return operation?.status;
+        })
+        .toBe('succeeded');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   test('mirrors lifecycle into Action Operations without giving the observer run authority', async () => {
