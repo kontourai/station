@@ -79,6 +79,8 @@ export function usePluginManagementViewModel() {
     select: selectPlugin,
     deselect: deselectPlugin,
   } = useUrlSelection('/plugins');
+  const selectedPluginRef = useRef(selectedPlugin);
+  selectedPluginRef.current = selectedPlugin;
 
   // `error`/`refetch` too, or a failed read renders the definitive
   // "No plugins installed yet" over plugins Station simply could not read.
@@ -91,7 +93,11 @@ export function usePluginManagementViewModel() {
     data: Plugin[];
     error?: unknown;
     isLoading: boolean;
-    refetch: () => Promise<{ error: unknown; isError: boolean }>;
+    refetch: () => Promise<{
+      data?: Plugin[];
+      error: unknown;
+      isError: boolean;
+    }>;
   };
   const { data: updates = [] } = usePluginUpdatesQuery() as {
     data: PluginUpdateSummary[];
@@ -191,6 +197,9 @@ export function usePluginManagementViewModel() {
 
   async function reloadRejectedPlugin() {
     if (rejectedReloadInFlight.current) return;
+    const selectionAtStart = selectedPlugin;
+    const rejectedDirectoryAtStart =
+      selected && isRejectedPlugin(selected) ? selected.name : null;
     rejectedReloadInFlight.current = true;
     setReloadRejectedPending(true);
     setMessage(null);
@@ -222,6 +231,19 @@ export function usePluginManagementViewModel() {
         throw refreshed.error instanceof Error
           ? refreshed.error
           : new Error('Plugin collection refresh failed');
+      }
+      if (
+        selectionAtStart &&
+        selectedPluginRef.current === selectionAtStart &&
+        rejectedDirectoryAtStart
+      ) {
+        const repaired = refreshed.data?.find(
+          (plugin) =>
+            !isRejectedPlugin(plugin) &&
+            plugin.name === rejectedDirectoryAtStart,
+        );
+        if (repaired) selectPlugin(pluginSelectionId(repaired));
+        else deselectPlugin();
       }
     } catch (error) {
       setMessage({

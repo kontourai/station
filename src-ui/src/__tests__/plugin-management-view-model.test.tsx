@@ -39,7 +39,11 @@ const mocks = vi.hoisted(() => ({
   // `PluginManagementView` claimed "No plugins installed yet" over a read
   // that never answered.
   pluginsError: undefined as unknown,
+  pluginsData: [] as unknown[],
   refetchPlugins: vi.fn(),
+  selectedId: null as string | null,
+  selectPlugin: vi.fn(),
+  deselectPlugin: vi.fn(),
   previewOnSuccess: null as ((data: unknown) => void) | null,
 }));
 
@@ -72,9 +76,9 @@ vi.mock('../core/PluginRegistry', () => ({
 
 vi.mock('../hooks/useUrlSelection', () => ({
   useUrlSelection: () => ({
-    selectedId: null,
-    select: vi.fn(),
-    deselect: vi.fn(),
+    selectedId: mocks.selectedId,
+    select: mocks.selectPlugin,
+    deselect: mocks.deselectPlugin,
   }),
 }));
 
@@ -96,7 +100,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   usePluginSettingsMutation: () => ({ mutate: vi.fn() }),
   usePluginSettingsQuery: () => ({ data: undefined }),
   usePluginsQuery: () => ({
-    data: [],
+    data: mocks.pluginsData,
     error: mocks.pluginsError,
     isLoading: false,
     refetch: mocks.refetchPlugins,
@@ -132,6 +136,10 @@ describe('usePluginManagementViewModel', () => {
     mocks.reloadClientRegistry.mockReset().mockResolvedValue('ready');
     mocks.installOnSuccess = null;
     mocks.pluginsError = undefined;
+    mocks.pluginsData = [];
+    mocks.selectedId = null;
+    mocks.selectPlugin.mockReset();
+    mocks.deselectPlugin.mockReset();
     mocks.refetchPlugins.mockReset().mockResolvedValue({
       isError: false,
       error: null,
@@ -153,6 +161,27 @@ describe('usePluginManagementViewModel', () => {
   });
 
   test('reloads server, client registry, and collection after manifest repair', async () => {
+    mocks.selectedId = 'rejected:repairable';
+    mocks.pluginsData = [
+      {
+        status: 'rejected',
+        name: 'repairable',
+        displayName: 'repairable',
+        rejection: {
+          code: 'malformed-json',
+          reason: 'plugin.json contains malformed JSON.',
+          recovery: {
+            kind: 'repair-manifest',
+            instruction: 'Repair plugin.json, then choose Reload plugins.',
+          },
+        },
+      },
+    ];
+    mocks.refetchPlugins.mockResolvedValueOnce({
+      data: [{ name: 'repairable', version: '2.0.0' }],
+      isError: false,
+      error: null,
+    });
     const { result } = renderHook(() => usePluginManagementViewModel());
 
     await act(async () => {
@@ -174,6 +203,8 @@ describe('usePluginManagementViewModel', () => {
       [{ queryKey: ['agents'] }],
       [{ queryKey: ['projects'] }],
     ]);
+    expect(mocks.selectPlugin).toHaveBeenCalledWith('repairable');
+    expect(mocks.deselectPlugin).not.toHaveBeenCalled();
   });
 
   test('keeps a client-registry reload failure visible and does not refresh the collection', async () => {

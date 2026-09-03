@@ -141,6 +141,21 @@ describe('installed plugin inventory', () => {
     expect(JSON.stringify(entry)).not.toContain(root);
   });
 
+  test.each(['JSON_Plugin', 'unsafe_Plugin'])(
+    'does not let validation value %s choose its rejection category',
+    (name) => {
+      const root = home();
+      plugin(root, 'invalid-name', { name, version: '1.0.0' });
+
+      const [entry] = scanInstalledPluginInventory(join(root, 'plugins'));
+
+      expect(entry).toMatchObject({
+        state: 'rejected',
+        rejection: { code: 'invalid-plugin-name' },
+      });
+    },
+  );
+
   test('recovers from current directory truth without a rejection store', () => {
     const root = home();
     plugin(root, 'repairable', '{');

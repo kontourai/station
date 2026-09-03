@@ -60,26 +60,12 @@ export function describePluginManifestRejection(
       },
     );
   }
-  if (
-    error instanceof SyntaxError ||
-    /JSON|Unexpected token|unterminated/i.test(message)
-  ) {
+  if (error instanceof SyntaxError) {
     return rejection('malformed-json', 'plugin.json contains malformed JSON.', {
       kind: 'repair-manifest',
       instruction:
         'Repair plugin.json so it is valid JSON, then choose Reload plugins.',
     });
-  }
-  if (/unsafe|hidden|control character/i.test(message)) {
-    return rejection(
-      'unsafe-manifest-content',
-      'plugin.json contains unsafe hidden or control content.',
-      {
-        kind: 'repair-manifest',
-        instruction:
-          'Remove hidden control content from plugin.json, then choose Reload plugins.',
-      },
-    );
   }
   if (/name .*not a canonical plugin id/i.test(message)) {
     return rejection('invalid-plugin-name', message, {
@@ -108,6 +94,24 @@ export function describePluginManifestRejection(
       instruction:
         'Repair the named workspacePanes declaration, then choose Reload plugins.',
     });
+  }
+  if (/Unexpected token|unterminated JSON/i.test(message)) {
+    return rejection('malformed-json', 'plugin.json contains malformed JSON.', {
+      kind: 'repair-manifest',
+      instruction:
+        'Repair plugin.json so it is valid JSON, then choose Reload plugins.',
+    });
+  }
+  if (/unsafe|hidden|control character/i.test(message)) {
+    return rejection(
+      'unsafe-manifest-content',
+      'plugin.json contains unsafe hidden or control content.',
+      {
+        kind: 'repair-manifest',
+        instruction:
+          'Remove hidden control content from plugin.json, then choose Reload plugins.',
+      },
+    );
   }
   return rejection(
     'invalid-manifest',
