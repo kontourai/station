@@ -70,6 +70,14 @@ function baseViewModel(overrides: Record<string, unknown> = {}) {
     remove: vi.fn(),
     removeConfirm: null,
     requestConsent: vi.fn(),
+    requestRevokePermission: vi.fn(),
+    revokeConfirm: null as null | {
+      pluginName: string;
+      permission: string;
+      label: string;
+    },
+    revokePermission: vi.fn(),
+    revokingPermissions: new Set<string>(),
     savePluginSetting: vi.fn(),
     search: '',
     selected: null,
@@ -82,6 +90,7 @@ function baseViewModel(overrides: Record<string, unknown> = {}) {
     setLayoutAssignment: vi.fn(),
     setPreviewData: vi.fn(),
     setRemoveConfirm: vi.fn(),
+    setRevokeConfirm: vi.fn(),
     setSearch: vi.fn(),
     setShowFolderPicker: vi.fn(),
     setShowInstallModal: vi.fn(),
@@ -130,6 +139,25 @@ describe('PluginManagementView error wiring (Review H1)', () => {
 
     expect(screen.getByText('No plugins installed yet')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  test('trusted revocation explains completed versus winding-down retirement', () => {
+    viewModel = baseViewModel({
+      revokeConfirm: {
+        pluginName: 'provider-plugin',
+        permission: 'providers.register',
+        label: 'Register system providers',
+      },
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    expect(
+      screen.getByText(
+        /drain running module work and retire registered providers/,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/still winding down/)).toBeTruthy();
+    expect(screen.queryByText(/continues until the plugin reloads/)).toBeNull();
   });
 });
 

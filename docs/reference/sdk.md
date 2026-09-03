@@ -847,6 +847,14 @@ Removes an installed plugin. Invalidates plugins and layouts caches on success.
 
 Saves plugin settings and invalidates that plugin's settings cache on success.
 
+### `useRevokePluginPermissionMutation()`
+
+Durably withdraws plugin permissions and returns the effective `granted` set
+plus runtime `reconciliation` truth. `completed` means the affected runtime
+generation retired; `winding-down` names an owned continuation; `superseded`
+means a newer grant/install generation won; and `incomplete` names stages that
+need another idempotent revoke attempt.
+
 ### `usePluginProviderToggleMutation()`
 
 Toggles plugin provider overrides (enable/disable specific providers).

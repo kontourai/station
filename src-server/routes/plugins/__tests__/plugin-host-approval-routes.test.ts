@@ -40,7 +40,12 @@ afterEach(async () => {
   );
 });
 
-function setup(options: { withChannel?: boolean } = {}) {
+function setup(
+  options: {
+    withChannel?: boolean;
+    grantReconciliation?: { reconcile: ReturnType<typeof vi.fn> };
+  } = {},
+) {
   const projectHomeDir = mkdtempSync(join(tmpdir(), 'station-host-approval-'));
   cleanup.push(projectHomeDir);
   const pluginsDir = join(projectHomeDir, 'plugins');
@@ -79,6 +84,7 @@ function setup(options: { withChannel?: boolean } = {}) {
     pluginsDir,
     projectHomeDir,
     consentChannel: channel,
+    grantReconciliation: options.grantReconciliation as any,
   });
   return { app, consentApp, channel, emit, projectHomeDir, pluginDir };
 }
@@ -230,7 +236,16 @@ describe('plugin host approval routes (consent-transaction consumer)', () => {
   });
 
   test('the grant only happens through the consent listener: render, nonce, exact origin, authenticated decision', async () => {
-    const { app, consentApp, emit, projectHomeDir } = setup();
+    const reconcile = vi.fn(async () => ({
+      status: 'completed' as const,
+      operationId: 'grant-operation',
+      generation: 1,
+      installationGeneration: 'sha256:generation',
+      effects: ['provider-activation'],
+    }));
+    const { app, consentApp, emit, projectHomeDir } = setup({
+      grantReconciliation: { reconcile },
+    });
     const { approval } = await createApproval(app);
     expect(hasGrant(projectHomeDir, 'server-plugin', 'plugin.server')).toBe(
       false,
@@ -284,6 +299,14 @@ describe('plugin host approval routes (consent-transaction consumer)', () => {
       name: 'server-plugin',
       granted: ['plugin.server'],
       withdrawn: [],
+      reconciliation: expect.objectContaining({
+        status: 'completed',
+        operationId: 'grant-operation',
+      }),
+    });
+    expect(reconcile).toHaveBeenCalledWith({
+      pluginName: 'server-plugin',
+      permissions: ['plugin.server'],
     });
 
     const status = await app.request(`/host-approvals/${approval.id}`);

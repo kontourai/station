@@ -32,7 +32,19 @@ const mocks = vi.hoisted(() => ({
   },
   reloadClientRegistry: vi.fn(),
   reloadPlugins: vi.fn(),
-  revokePermission: vi.fn(async () => ({ granted: [] })),
+  revokePermission: vi.fn(async () => ({
+    granted: [],
+    reconciliation: {
+      status: 'completed',
+      effects: [],
+    } as {
+      status: string;
+      effects?: string[];
+      operationId?: string;
+      generation?: number;
+      failures?: string[];
+    },
+  })),
   requestConsent: vi.fn(),
   // `data: plugins = []` alone makes a failed `usePluginsQuery`
   // read indistinguishable from a host with no plugins installed, so
@@ -128,6 +140,10 @@ describe('usePluginManagementViewModel', () => {
     });
     mocks.reloadPlugins.mockReset().mockResolvedValue(undefined);
     mocks.reloadClientRegistry.mockReset().mockResolvedValue(undefined);
+    mocks.revokePermission.mockReset().mockResolvedValue({
+      granted: [],
+      reconciliation: { status: 'completed', effects: [] },
+    });
     mocks.installOnSuccess = null;
     mocks.pluginsError = undefined;
     mocks.refetchPlugins.mockReset();
@@ -160,6 +176,47 @@ describe('usePluginManagementViewModel', () => {
       'Network Kit was installed, but required permissions were not approved.',
     );
   });
+
+  test.each([
+    {
+      status: 'completed',
+      expected:
+        'Make network requests through the server was removed and its runtime capability is retired.',
+    },
+    {
+      status: 'winding-down',
+      expected:
+        'Make network requests through the server was removed. Existing work is still winding down.',
+    },
+    {
+      status: 'incomplete',
+      expected:
+        'Make network requests through the server was removed, but runtime cleanup is incomplete. Retry the removal to reconcile it again.',
+    },
+  ] as const)(
+    'reports $status runtime revocation truth',
+    async ({ status, expected }) => {
+      mocks.revokePermission.mockResolvedValueOnce({
+        granted: [],
+        reconciliation:
+          status === 'completed'
+            ? { status, effects: [] }
+            : status === 'winding-down'
+              ? { status, operationId: 'operation-1', generation: 1 }
+              : { status, failures: ['provider-retirement'] },
+      });
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      await act(() =>
+        result.current.revokePermission('plugin-a', 'network.fetch'),
+      );
+
+      expect(result.current.message).toEqual({
+        type: 'success',
+        text: expected,
+      });
+    },
+  );
 
   /**
    * archive#4288. Everything below drives the real sequence: preview, then

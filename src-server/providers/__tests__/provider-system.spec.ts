@@ -18,12 +18,14 @@ import {
   getProviderAdapter,
   getProviderAdapters,
   listProviders,
+  pluginProviderSourceGeneration,
   providerAdapterLaunchabilitySource,
   registerBrandingProvider,
   registerProvider,
   registerProviderAdapter,
   replacePluginProviders,
   replacePluginProvidersForSource,
+  retirePluginProvidersForSourceGeneration,
 } from '../registries/registry.js';
 import { resolvePluginProviders } from '../resolver.js';
 
@@ -640,6 +642,52 @@ describe('Provider System', () => {
 
       expect(getProviderAdapter('bedrock')).toBeUndefined();
       expect(getProvider('auth')).toBe(sourceB);
+    });
+
+    it('refuses a stale generation retirement without removing replacement providers', async () => {
+      const first = { id: 'first' };
+      const replacement = { id: 'replacement' };
+      await replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: first, source: 'plugin-a' },
+      ]);
+      const firstGeneration = pluginProviderSourceGeneration('plugin-a');
+      await replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: replacement, source: 'plugin-a' },
+      ]);
+
+      await expect(
+        retirePluginProvidersForSourceGeneration('plugin-a', firstGeneration),
+      ).resolves.toBe('superseded');
+      expect(getProvider('auth')).toBe(replacement);
+
+      await expect(
+        retirePluginProvidersForSourceGeneration(
+          'plugin-a',
+          pluginProviderSourceGeneration('plugin-a'),
+        ),
+      ).resolves.toBe('retired');
+      expect(getProvider('auth')).not.toBe(replacement);
+    });
+
+    it('does not reuse a provider generation after a clear and reload', async () => {
+      const first = { id: 'first' };
+      const replacement = { id: 'replacement' };
+      await replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: first, source: 'plugin-a' },
+      ]);
+      const staleGeneration = pluginProviderSourceGeneration('plugin-a');
+      clearAll();
+      await replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: replacement, source: 'plugin-a' },
+      ]);
+
+      expect(pluginProviderSourceGeneration('plugin-a')).toBeGreaterThan(
+        staleGeneration,
+      );
+      await expect(
+        retirePluginProvidersForSourceGeneration('plugin-a', staleGeneration),
+      ).resolves.toBe('superseded');
+      expect(getProvider('auth')).toBe(replacement);
     });
 
     it('restores an older plugin adapter when a newer same-provider source is removed', async () => {

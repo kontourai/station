@@ -2331,6 +2331,39 @@ Returns all installed plugins with manifest info, bundle status, git metadata, a
 
 ---
 
+### Revoke Plugin Permissions
+```http
+DELETE /plugins/:name/grant
+```
+
+The grant-store withdrawal commits before runtime reconciliation begins. New
+per-call use stops immediately. Lifecycle permissions additionally retire the
+exact installed plugin generation's server module, operational-event
+subscriptions, provider registrations/adapters, and engine connections.
+
+`200` means reconciliation reached a terminal `completed`, `superseded`, or
+`incomplete` result. `202` means the durable withdrawal succeeded but existing
+work is still `winding-down`; its operation id and generation identify that
+owned continuation. An `incomplete` result names bounded cleanup stages and can
+be retried with the same idempotent DELETE.
+
+```json
+{
+  "success": true,
+  "revoked": ["providers.register"],
+  "granted": [],
+  "reconciliation": {
+    "status": "completed",
+    "operationId": "8f3f...",
+    "generation": 4,
+    "installationGeneration": "sha256:...",
+    "effects": ["provider-retirement", "adapter-retirement", "engine-connections"]
+  }
+}
+```
+
+---
+
 ### Preview Plugin (Pre-install Validation)
 ```http
 POST /plugins/preview

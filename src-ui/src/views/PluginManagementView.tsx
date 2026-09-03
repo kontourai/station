@@ -191,7 +191,7 @@ export function PluginManagementView({
         title="Remove this trusted permission?"
         message={
           revokeConfirm
-            ? `${revokeConfirm.label} will stop being usable for new work. Anything already running, or a provider already registered, continues until the plugin reloads. Granting it again needs the separate host review page.`
+            ? `${revokeConfirm.label} will stop being usable for new work immediately. Station will drain running module work and retire registered providers before reporting completion; if that takes longer, the result will say it is still winding down. Granting it again needs the separate host review page.`
             : ''
         }
         confirmLabel="Remove"

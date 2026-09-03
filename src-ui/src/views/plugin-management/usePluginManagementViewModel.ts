@@ -381,9 +381,21 @@ export function usePluginManagementViewModel() {
     setRevokingPermissions((current) => new Set(current).add(permission));
     setMessage(null);
     try {
-      await revokePermissionMutation.mutateAsync({
+      const outcome = await revokePermissionMutation.mutateAsync({
         name: pluginName,
         permissions: [permission],
+      });
+      const label = describePermission(permission);
+      setMessage({
+        type: 'success',
+        text:
+          outcome.reconciliation.status === 'completed'
+            ? `${label} was removed and its runtime capability is retired.`
+            : outcome.reconciliation.status === 'winding-down'
+              ? `${label} was removed. Existing work is still winding down.`
+              : outcome.reconciliation.status === 'superseded'
+                ? `${label} changed again while runtime state was reconciling; the latest grant state won.`
+                : `${label} was removed, but runtime cleanup is incomplete. Retry the removal to reconcile it again.`,
       });
     } catch (error) {
       // A failed withdrawal used to be silent: the row stopped spinning, the

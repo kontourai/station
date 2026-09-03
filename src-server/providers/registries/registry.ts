@@ -56,6 +56,18 @@ export interface PreparedPluginProviderRegistration {
 const PREPARED_ADAPTER_CLEANUP_TIMEOUT_MS = 2_000;
 const retainedPreparedAdapterCleanup = new Set<ProviderAdapterShape>();
 let pluginProviderMutationQueue = Promise.resolve();
+const pluginProviderSourceGenerations = new Map<string, number>();
+
+function advancePluginProviderSourceGeneration(source: string): void {
+  pluginProviderSourceGenerations.set(
+    source,
+    (pluginProviderSourceGenerations.get(source) ?? 0) + 1,
+  );
+}
+
+export function pluginProviderSourceGeneration(source: string): number {
+  return pluginProviderSourceGenerations.get(source) ?? 0;
+}
 
 function serializePluginProviderMutation<T>(
   operation: () => Promise<T>,
@@ -258,10 +270,20 @@ export function clearAll(): void {
   const hadProviderAdapters =
     (additiveStore.get('providerAdapter')?.length ?? 0) > 0 ||
     (pluginAdditiveStore.get('providerAdapter')?.length ?? 0) > 0;
+  const pluginSources = new Set([
+    ...[...pluginStore.values()].flatMap((entries) =>
+      [...entries.values()].map((entry) => entry.source),
+    ),
+    ...[...pluginAdditiveStore.values()].flatMap((entries) =>
+      entries.map((entry) => entry.source),
+    ),
+  ]);
   store.clear();
   pluginStore.clear();
   additiveStore.clear();
   pluginAdditiveStore.clear();
+  for (const source of pluginSources)
+    advancePluginProviderSourceGeneration(source);
   if (hadProviderAdapters) commitProviderAdapterLaunchabilityRevision();
 }
 
@@ -272,8 +294,17 @@ export function clearAll(): void {
 export function clearPluginProviders(): void {
   const pluginAdapterCount =
     pluginAdditiveStore.get('providerAdapter')?.length ?? 0;
+  const sources = new Set([
+    ...[...pluginStore.values()].flatMap((entries) =>
+      [...entries.values()].map((entry) => entry.source),
+    ),
+    ...[...pluginAdditiveStore.values()].flatMap((entries) =>
+      entries.map((entry) => entry.source),
+    ),
+  ]);
   pluginStore.clear();
   pluginAdditiveStore.clear();
+  for (const source of sources) advancePluginProviderSourceGeneration(source);
   if (pluginAdapterCount > 0) commitProviderAdapterLaunchabilityRevision();
 }
 
@@ -318,7 +349,7 @@ export async function registerPreparedPluginProviders(
   await replacePluginProvidersForSource(source, registrations);
 }
 
-export async function replacePluginProvidersForSource(
+async function replacePluginProvidersForSourceInsideMutation(
   source: string,
   registrations: PreparedPluginProviderRegistration[],
 ): Promise<void> {
@@ -327,53 +358,74 @@ export async function replacePluginProvidersForSource(
       'Plugin provider source replacement received mixed sources.',
     );
   }
-  await serializePluginProviderMutation(async () => {
-    const { active, displaced } = splitPreparedPluginProviders(registrations);
+  const { active, displaced } = splitPreparedPluginProviders(registrations);
+  try {
+    await disposePreparedPluginProviders(displaced);
+  } catch (error) {
+    const cleanupErrors: unknown[] = [error];
     try {
-      await disposePreparedPluginProviders(displaced);
-    } catch (error) {
-      const cleanupErrors: unknown[] = [error];
-      try {
-        await disposePreparedPluginProviders(active);
-      } catch (cleanupError) {
-        cleanupErrors.push(cleanupError);
-      }
-      throw new AggregateError(
-        cleanupErrors,
-        'Plugin provider registration preparation failed.',
-      );
+      await disposePreparedPluginProviders(active);
+    } catch (cleanupError) {
+      cleanupErrors.push(cleanupError);
     }
-    const nextStore = new Map<string, Map<string, ProviderEntry>>();
-    for (const [type, entries] of pluginStore) {
-      const retained = new Map(
-        [...entries].filter(([, entry]) => entry.source !== source),
-      );
-      if (retained.size > 0) nextStore.set(type, retained);
-    }
-    const nextAdditiveStore = new Map<string, ProviderEntry[]>();
-    for (const [type, entries] of pluginAdditiveStore) {
-      const retained = entries.filter((entry) => entry.source !== source);
-      if (retained.length > 0) nextAdditiveStore.set(type, retained);
-    }
-    for (const registration of active) {
-      registerPreparedInto(nextStore, nextAdditiveStore, registration);
-    }
-
-    const hadSourceAdapters = (
-      pluginAdditiveStore.get('providerAdapter') ?? []
-    ).some((entry) => entry.source === source);
-    const hasSourceAdapters = active.some(
-      (registration) => registration.type === 'providerAdapter',
+    throw new AggregateError(
+      cleanupErrors,
+      'Plugin provider registration preparation failed.',
     );
-    pluginStore.clear();
-    for (const [type, entries] of nextStore) pluginStore.set(type, entries);
-    pluginAdditiveStore.clear();
-    for (const [type, entries] of nextAdditiveStore) {
-      pluginAdditiveStore.set(type, entries);
+  }
+  const nextStore = new Map<string, Map<string, ProviderEntry>>();
+  for (const [type, entries] of pluginStore) {
+    const retained = new Map(
+      [...entries].filter(([, entry]) => entry.source !== source),
+    );
+    if (retained.size > 0) nextStore.set(type, retained);
+  }
+  const nextAdditiveStore = new Map<string, ProviderEntry[]>();
+  for (const [type, entries] of pluginAdditiveStore) {
+    const retained = entries.filter((entry) => entry.source !== source);
+    if (retained.length > 0) nextAdditiveStore.set(type, retained);
+  }
+  for (const registration of active) {
+    registerPreparedInto(nextStore, nextAdditiveStore, registration);
+  }
+
+  const hadSourceAdapters = (
+    pluginAdditiveStore.get('providerAdapter') ?? []
+  ).some((entry) => entry.source === source);
+  const hasSourceAdapters = active.some(
+    (registration) => registration.type === 'providerAdapter',
+  );
+  pluginStore.clear();
+  for (const [type, entries] of nextStore) pluginStore.set(type, entries);
+  pluginAdditiveStore.clear();
+  for (const [type, entries] of nextAdditiveStore) {
+    pluginAdditiveStore.set(type, entries);
+  }
+  advancePluginProviderSourceGeneration(source);
+  if (hadSourceAdapters || hasSourceAdapters) {
+    commitProviderAdapterLaunchabilityRevision();
+  }
+}
+
+export async function replacePluginProvidersForSource(
+  source: string,
+  registrations: PreparedPluginProviderRegistration[],
+): Promise<void> {
+  await serializePluginProviderMutation(() =>
+    replacePluginProvidersForSourceInsideMutation(source, registrations),
+  );
+}
+
+export async function retirePluginProvidersForSourceGeneration(
+  source: string,
+  expectedGeneration: number,
+): Promise<'retired' | 'superseded'> {
+  return serializePluginProviderMutation(async () => {
+    if (pluginProviderSourceGeneration(source) !== expectedGeneration) {
+      return 'superseded';
     }
-    if (hadSourceAdapters || hasSourceAdapters) {
-      commitProviderAdapterLaunchabilityRevision();
-    }
+    await replacePluginProvidersForSourceInsideMutation(source, []);
+    return 'retired';
   });
 }
 
@@ -381,6 +433,14 @@ export async function replacePluginProviders(
   registrations: PreparedPluginProviderRegistration[],
 ): Promise<void> {
   await serializePluginProviderMutation(async () => {
+    const priorSources = new Set([
+      ...[...pluginStore.values()].flatMap((entries) =>
+        [...entries.values()].map((entry) => entry.source),
+      ),
+      ...[...pluginAdditiveStore.values()].flatMap((entries) =>
+        entries.map((entry) => entry.source),
+      ),
+    ]);
     const { active, displaced } = splitPreparedPluginProviders(registrations);
     try {
       await disposePreparedPluginProviders(displaced);
@@ -411,6 +471,10 @@ export async function replacePluginProviders(
     pluginAdditiveStore.clear();
     for (const [type, entries] of nextAdditiveStore) {
       pluginAdditiveStore.set(type, entries);
+    }
+    const nextSources = new Set(active.map((entry) => entry.source));
+    for (const source of new Set([...priorSources, ...nextSources])) {
+      advancePluginProviderSourceGeneration(source);
     }
     if (hadPluginAdapters || hasPluginAdapters) {
       commitProviderAdapterLaunchabilityRevision();

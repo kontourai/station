@@ -42,6 +42,7 @@ import {
   computePluginContentDigest,
   withPluginContentLock,
 } from '../../services/plugins/plugin-content-integrity.js';
+import type { PluginGrantReconciliationService } from '../../services/plugins/plugin-grant-reconciliation.js';
 import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   assertGrantablePermissions,
@@ -65,6 +66,7 @@ interface PluginHostApprovalRouteDeps {
    * rest of Station stays usable (owner decision 3).
    */
   consentChannel?: ConsentChannelService;
+  grantReconciliation?: PluginGrantReconciliationService;
 }
 
 /**
@@ -334,6 +336,14 @@ export function registerPluginHostApprovalRoutes(
           name: pluginName,
           granted: outcome.granted,
           withdrawn: outcome.withdrawn,
+          ...(deps.grantReconciliation
+            ? {
+                reconciliation: await deps.grantReconciliation.reconcile({
+                  pluginName,
+                  permissions: normalized,
+                }),
+              }
+            : {}),
         });
       },
     });
