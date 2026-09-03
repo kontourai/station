@@ -45,6 +45,7 @@ function harness(
     }),
     removeEngineConnections: vi.fn(async () => {
       order.push('remove-connections');
+      return 'removed' as const;
     }),
     reconcileEngineConnections: vi.fn(async () => {
       order.push('reconcile-connections');
@@ -195,6 +196,46 @@ describe('plugin grant reconciliation', () => {
       }),
     ).resolves.toMatchObject({ status: 'superseded' });
     expect(fixture.adapters.removeEngineConnections).not.toHaveBeenCalled();
+  });
+
+  test('does not remove replacement connections when a regrant wins after the final snapshot but before deletion', async () => {
+    const fixture = harness();
+    let removed = false;
+    vi.mocked(fixture.adapters.removeEngineConnections).mockImplementation(
+      async (_pluginName, expected) => {
+        fixture.setSnapshot({
+          installed: true,
+          installationGeneration: 'sha256:generation-2',
+          providerGeneration: expected.providerGeneration + 1,
+          grants: ['providers.register'],
+        });
+        if (
+          expected.installationGeneration !== 'sha256:generation-2' ||
+          expected.providerGeneration !== 3
+        ) {
+          return 'superseded';
+        }
+        removed = true;
+        return 'removed';
+      },
+    );
+    const service = createPluginGrantReconciliationService(fixture.adapters);
+
+    await expect(
+      service.reconcile({
+        pluginName: 'provider-plugin',
+        permissions: ['providers.register'],
+      }),
+    ).resolves.toMatchObject({ status: 'superseded' });
+    expect(fixture.adapters.removeEngineConnections).toHaveBeenCalledWith(
+      'provider-plugin',
+      {
+        installed: true,
+        installationGeneration: 'sha256:generation-1',
+        providerGeneration: 2,
+      },
+    );
+    expect(removed).toBe(false);
   });
 
   test('reports winding-down while retaining ownership of a slow drain', async () => {

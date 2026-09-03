@@ -295,7 +295,7 @@ describe('plugin-public-routes', () => {
         retireProviders: async () => 'retired',
         activateProviders: async () => {},
         settleProviderAdapters: async () => {},
-        removeEngineConnections: async () => {},
+        removeEngineConnections: async () => 'removed',
         reconcileEngineConnections: async () => {},
         reconcileSubscriptions: async () => ({ kind: 'applied' }),
       },

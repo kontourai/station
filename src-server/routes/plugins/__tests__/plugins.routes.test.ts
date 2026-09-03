@@ -14,6 +14,18 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 const clearPluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProvidersForSource = vi.hoisted(() => vi.fn());
+const pluginProviderSourceGeneration = vi.hoisted(() => vi.fn(() => 1));
+const retirePluginProvidersForSourceGeneration = vi.hoisted(() =>
+  vi.fn(async () => 'retired' as const),
+);
+const withPluginProviderSourceGeneration = vi.hoisted(() =>
+  vi.fn(
+    async (_source: string, _generation: number, operation: () => unknown) => ({
+      kind: 'applied' as const,
+      value: await operation(),
+    }),
+  ),
+);
 const agentRegistryProvider = vi.hoisted(() => ({
   install: vi.fn().mockResolvedValue({ success: true }),
   listAvailable: vi.fn().mockResolvedValue([]),
@@ -38,6 +50,9 @@ vi.mock('../../../providers/registries/registry.js', () => ({
   clearPluginProviders,
   replacePluginProviders,
   replacePluginProvidersForSource,
+  pluginProviderSourceGeneration,
+  retirePluginProvidersForSourceGeneration,
+  withPluginProviderSourceGeneration,
   getAgentRegistryProvider: vi.fn().mockReturnValue(agentRegistryProvider),
   getIntegrationRegistryProvider: vi
     .fn()

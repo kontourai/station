@@ -10,6 +10,11 @@ export interface PluginGrantRuntimeSnapshot {
   readonly grants: readonly string[];
 }
 
+export type PluginGrantRuntimeGenerationFence = Pick<
+  PluginGrantRuntimeSnapshot,
+  'installed' | 'installationGeneration' | 'providerGeneration'
+>;
+
 export interface PluginGrantQuiescence {
   release(): void;
 }
@@ -24,7 +29,10 @@ export interface PluginGrantReconciliationAdapters {
   ): Promise<'retired' | 'superseded'>;
   activateProviders(pluginName: string): Promise<void>;
   settleProviderAdapters(): Promise<void>;
-  removeEngineConnections(pluginName: string): Promise<void>;
+  removeEngineConnections(
+    pluginName: string,
+    expected: PluginGrantRuntimeGenerationFence,
+  ): Promise<'removed' | 'superseded'>;
   reconcileEngineConnections(pluginName: string): Promise<void>;
   reconcileSubscriptions(): Promise<{ kind: 'applied' | 'unavailable' }>;
 }
@@ -298,7 +306,22 @@ export function createPluginGrantReconciliationService(
           }
           try {
             if (retiredSnapshot) {
-              await adapters.removeEngineConnections(input.pluginName);
+              const removed = await adapters.removeEngineConnections(
+                input.pluginName,
+                {
+                  installed: retiredSnapshot.installed,
+                  installationGeneration:
+                    retiredSnapshot.installationGeneration,
+                  providerGeneration: retiredSnapshot.providerGeneration,
+                },
+              );
+              if (removed === 'superseded') {
+                return {
+                  status: 'superseded',
+                  operationId: input.operationId,
+                  generation: input.generation,
+                };
+              }
               effects.push('engine-connections');
             }
           } catch {

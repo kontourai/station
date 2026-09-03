@@ -429,6 +429,29 @@ export async function retirePluginProvidersForSourceGeneration(
   });
 }
 
+/**
+ * Runs a non-registry side effect while the exact plugin provider generation
+ * remains current. Provider replacement for this or any other source queues
+ * behind the operation, so callers can make generation-qualified cleanup a
+ * single CAS boundary instead of checking and then acting on stale state.
+ * The callback must not call a serialized provider mutation recursively.
+ */
+export async function withPluginProviderSourceGeneration<T>(
+  source: string,
+  expectedGeneration: number,
+  operation: () => Promise<T>,
+): Promise<
+  | { readonly kind: 'applied'; readonly value: T }
+  | { readonly kind: 'superseded' }
+> {
+  return serializePluginProviderMutation(async () => {
+    if (pluginProviderSourceGeneration(source) !== expectedGeneration) {
+      return { kind: 'superseded' };
+    }
+    return { kind: 'applied', value: await operation() };
+  });
+}
+
 export async function replacePluginProviders(
   registrations: PreparedPluginProviderRegistration[],
 ): Promise<void> {

@@ -26,6 +26,7 @@ import {
   replacePluginProviders,
   replacePluginProvidersForSource,
   retirePluginProvidersForSourceGeneration,
+  withPluginProviderSourceGeneration,
 } from '../registries/registry.js';
 import { resolvePluginProviders } from '../resolver.js';
 
@@ -688,6 +689,57 @@ describe('Provider System', () => {
         retirePluginProvidersForSourceGeneration('plugin-a', staleGeneration),
       ).resolves.toBe('superseded');
       expect(getProvider('auth')).toBe(replacement);
+    });
+
+    it('holds the exact provider generation through qualified side effects so replacement cannot interleave', async () => {
+      const first = { id: 'first' };
+      const replacement = { id: 'replacement' };
+      await replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: first, source: 'plugin-a' },
+      ]);
+      const expectedGeneration = pluginProviderSourceGeneration('plugin-a');
+      let releaseRemoval!: () => void;
+      const removalGate = new Promise<void>((resolve) => {
+        releaseRemoval = resolve;
+      });
+      const order: string[] = [];
+      const removal = withPluginProviderSourceGeneration(
+        'plugin-a',
+        expectedGeneration,
+        async () => {
+          order.push('remove-start');
+          await removalGate;
+          order.push('remove-end');
+        },
+      );
+      await vi.waitFor(() => expect(order).toEqual(['remove-start']));
+      const update = replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: replacement, source: 'plugin-a' },
+      ]).then(() => order.push('replacement-published'));
+      await Promise.resolve();
+      expect(order).toEqual(['remove-start']);
+
+      releaseRemoval();
+      await expect(removal).resolves.toMatchObject({ kind: 'applied' });
+      await update;
+      expect(order).toEqual([
+        'remove-start',
+        'remove-end',
+        'replacement-published',
+      ]);
+      expect(getProvider('auth')).toBe(replacement);
+
+      let staleRemovalRan = false;
+      await expect(
+        withPluginProviderSourceGeneration(
+          'plugin-a',
+          expectedGeneration,
+          async () => {
+            staleRemovalRan = true;
+          },
+        ),
+      ).resolves.toEqual({ kind: 'superseded' });
+      expect(staleRemovalRan).toBe(false);
     });
 
     it('restores an older plugin adapter when a newer same-provider source is removed', async () => {

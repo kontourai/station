@@ -8,11 +8,15 @@ import { Hono } from 'hono';
 import {
   pluginProviderSourceGeneration,
   retirePluginProvidersForSourceGeneration,
+  withPluginProviderSourceGeneration,
 } from '../../providers/registries/registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
-import { computePluginContentDigest } from '../../services/plugins/plugin-content-integrity.js';
+import {
+  computePluginContentDigest,
+  withPluginContentLock,
+} from '../../services/plugins/plugin-content-integrity.js';
 import { createPluginGrantReconciliationService } from '../../services/plugins/plugin-grant-reconciliation.js';
 import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
 import { getPluginGrants } from '../../services/plugins/plugin-permissions.js';
@@ -87,7 +91,30 @@ export function createPluginRoutes(
             );
           },
           settleProviderAdapters: runtime.settleProviderAdapterRetirements,
-          removeEngineConnections: runtime.removeEngineConnections,
+          removeEngineConnections: (pluginName, expected) =>
+            withPluginContentLock(pluginsDir, pluginName, async () => {
+              const installed = existsSync(
+                join(pluginsDir, pluginName, 'plugin.json'),
+              );
+              const installationGeneration = computePluginContentDigest(
+                pluginsDir,
+                pluginName,
+              );
+              if (
+                installed !== expected.installed ||
+                installationGeneration !== expected.installationGeneration
+              ) {
+                return 'superseded' as const;
+              }
+              const removal = await withPluginProviderSourceGeneration(
+                pluginName,
+                expected.providerGeneration,
+                () => runtime.removeEngineConnections!(pluginName),
+              );
+              return removal.kind === 'applied'
+                ? ('removed' as const)
+                : ('superseded' as const);
+            }),
           reconcileEngineConnections: runtime.reconcileEngineConnections,
           reconcileSubscriptions: runtime.reconcileEventSubscriptions,
         })
