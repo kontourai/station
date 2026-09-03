@@ -365,6 +365,24 @@ describe('one-revision native promotion contract', () => {
       ios,
       'Upload a previously unobserved IPA to TestFlight',
     );
+    const packageVerification = namedStep(
+      ios,
+      'Verify IPA identity, profile and package contents',
+    );
+    expect(packageVerification.run).toContain(
+      'scripts/ios-exported-entitlements.mjs',
+    );
+    expect(packageVerification.run).not.toContain(
+      'plutil -extract keychain-access-groups',
+    );
+    const failedPackage = namedStep(
+      ios,
+      'Retain the built IPA when package verification fails',
+    );
+    expect((failedPackage as any).if).toBe('failure()');
+    expect(failedPackage.with?.path).toBe(
+      'src-desktop/gen/apple/build/arm64/*.ipa',
+    );
     expect(upload.with?.['wait-for-processing']).toBe('true');
     expect((upload as any).if).toContain(
       "steps.reconcile.outputs.upload == 'true'",
