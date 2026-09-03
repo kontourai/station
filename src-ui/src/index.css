@@ -7428,9 +7428,6 @@ button.tool-call__line:hover {
 
   .app__main > [data-region="right"] {
     grid-column: 3;
-  }
-
-  .app__main > [data-region="right"] {
     border-left: 2px solid var(--accent-primary);
   }
 
