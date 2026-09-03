@@ -287,7 +287,6 @@ describe('AgentPluginLoader', () => {
     async () => {
       const stationHome = home();
       const root = plugin(stationHome);
-      skill(root, 'valid');
       const outside = join(stationHome, 'outside-skill');
       mkdirSync(outside, { recursive: true });
       writeFileSync(
@@ -299,9 +298,7 @@ describe('AgentPluginLoader', () => {
       symlinkSync(join(outside, 'SKILL.md'), join(escapingSkill, 'SKILL.md'));
 
       const loader = new AgentPluginLoader({ projectHomeDir: stationHome });
-      expect(
-        loader.listInstalled()[0]?.skills.map((entry) => entry.name),
-      ).toEqual(['valid']);
+      expect(loader.listInstalled()[0]?.skills).toEqual([]);
       const service = new SkillService(
         new ConfigLoader({ projectHomeDir: stationHome }),
         { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
@@ -309,9 +306,6 @@ describe('AgentPluginLoader', () => {
       );
       await service.discoverSkills(stationHome);
 
-      expect(service.listSkills().map((entry) => entry.name)).toContain(
-        'valid',
-      );
       expect(service.listSkills().map((entry) => entry.name)).not.toContain(
         'escape',
       );

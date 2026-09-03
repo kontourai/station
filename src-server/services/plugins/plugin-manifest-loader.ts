@@ -21,15 +21,34 @@ const MAX_PLUGIN_EVENT_SUBSCRIPTIONS = 16;
 export async function readPluginManifestFile(
   manifestPath: string,
 ): Promise<PluginManifest> {
+  return (await readPluginManifestFileWithFormat(manifestPath)).manifest;
+}
+
+export type PluginManifestFormat = 'legacy' | 'agent-plugin-1.0';
+
+export interface PluginManifestWithFormat {
+  manifest: PluginManifest;
+  format: PluginManifestFormat;
+}
+
+export async function readPluginManifestFileWithFormat(
+  manifestPath: string,
+): Promise<PluginManifestWithFormat> {
   const raw = await readFile(manifestPath, 'utf-8');
-  return parsePluginManifestDocument(raw, manifestPath);
+  return parsePluginManifestDocumentWithFormat(raw, manifestPath);
 }
 
 export function readPluginManifestFileSync(
   manifestPath: string,
 ): PluginManifest {
+  return readPluginManifestFileSyncWithFormat(manifestPath).manifest;
+}
+
+export function readPluginManifestFileSyncWithFormat(
+  manifestPath: string,
+): PluginManifestWithFormat {
   const raw = readFileSync(manifestPath, 'utf-8');
-  return parsePluginManifestDocument(raw, manifestPath);
+  return parsePluginManifestDocumentWithFormat(raw, manifestPath);
 }
 
 /** Dispatches recognized Agent Plugins documents without weakening legacy reads. */
@@ -37,8 +56,23 @@ export function parsePluginManifestDocument(
   raw: string,
   manifestPath: string,
 ): PluginManifest {
+  return parsePluginManifestDocumentWithFormat(raw, manifestPath).manifest;
+}
+
+export function parsePluginManifestDocumentWithFormat(
+  raw: string,
+  manifestPath: string,
+): PluginManifestWithFormat {
+  // Both manifest families enter the same hidden-content boundary. Agent
+  // Plugins dispatch must not become a way around legacy manifest safety.
+  assertSafeContextText(raw, {
+    profile: 'hidden-only',
+    source: `plugin manifest '${dirname(manifestPath)}/${basename(manifestPath)}'`,
+  });
   const agentPlugin = readAgentPluginManifest(raw, manifestPath);
-  return agentPlugin ?? parsePluginManifest(raw, manifestPath);
+  return agentPlugin
+    ? { manifest: agentPlugin, format: 'agent-plugin-1.0' }
+    : { manifest: parsePluginManifest(raw, manifestPath), format: 'legacy' };
 }
 
 function readAgentPluginManifest(

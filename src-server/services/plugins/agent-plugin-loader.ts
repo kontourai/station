@@ -494,21 +494,20 @@ export class AgentPluginLoader {
   }
 
   skillSources(): CanonicalSkillSource[] {
-    return this.listInstalled().flatMap((plugin) =>
-      plugin.skills.length
-        ? [
-            {
-              root: join(plugin.root, 'skills'),
-              label: `agent-plugin:${plugin.manifest.name}` as const,
-              version: plugin.manifest.version,
-              origin: 'plugin' as const,
-              immediateOnly: true,
-              validateAgentSkills: true,
-              containmentRoot: plugin.root,
-            },
-          ]
-        : [],
-    );
+    // Emit an ownership marker for every recognized package, even when no
+    // portable Skill survived validation. SkillService derives its legacy
+    // scanner exclusions from these roots; filtering empty packages here
+    // would let invalid, nested, or escaping Skills fall back into the more
+    // permissive legacy recursive scan.
+    return this.listInstalled().map((plugin) => ({
+      root: join(plugin.root, 'skills'),
+      label: `agent-plugin:${plugin.manifest.name}` as const,
+      version: plugin.manifest.version,
+      origin: 'plugin' as const,
+      immediateOnly: true,
+      validateAgentSkills: true,
+      containmentRoot: plugin.root,
+    }));
   }
 
   loadIntegration(id: string): ToolDef | undefined {

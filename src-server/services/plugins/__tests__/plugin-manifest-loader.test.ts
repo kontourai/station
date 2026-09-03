@@ -209,6 +209,23 @@ describe('plugin-manifest-loader', () => {
     );
   });
 
+  test('applies hidden-content safety before Agent Plugin dispatch', async () => {
+    const manifestPath = join(dir, 'plugin.json');
+    writeFileSync(
+      manifestPath,
+      `{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "unsafe-portable",
+  "description": "safe​text"
+}
+`,
+    );
+
+    await expect(readPluginManifestFile(manifestPath)).rejects.toBeInstanceOf(
+      ContextSafetyError,
+    );
+  });
+
   test('normalizes a versioned direct Workspace Pane declaration', async () => {
     const manifestPath = join(dir, 'plugin.json');
     writeFileSync(

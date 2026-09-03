@@ -51,7 +51,10 @@ import {
   derivePluginConsentBasis,
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
-import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
+import {
+  readPluginManifestFile,
+  readPluginManifestFileWithFormat,
+} from '../../services/plugins/plugin-manifest-loader.js';
 import {
   hasGrant,
   rebindGrantsAfterContentChange,
@@ -1234,7 +1237,9 @@ export async function installPluginFromSource(
   let eventSubscriptionQuiescence: { release(): void } | null = null;
   let releaseInstallPublication: (() => Promise<void>) | undefined;
   try {
-    const manifest = await readPluginManifestFile(join(tempDir, 'plugin.json'));
+    const { manifest, format: manifestFormat } =
+      await readPluginManifestFileWithFormat(join(tempDir, 'plugin.json'));
+    const isAgentPlugin = manifestFormat === 'agent-plugin-1.0';
     const pluginName = manifest.name || tempName;
     assertPluginNameSegment(pluginName);
     // The identity itself, not just its shape as a path segment: Station
@@ -1431,7 +1436,9 @@ export async function installPluginFromSource(
           }
         }
 
-        scanPluginPromptGeneration(tempDir, pluginName);
+        if (!isAgentPlugin) {
+          scanPluginPromptGeneration(tempDir, pluginName);
+        }
         await buildPlugin(tempDir, pluginName);
         assertPluginBundleAssetsContained(tempDir);
 
@@ -1464,10 +1471,12 @@ export async function installPluginFromSource(
           join(projectHomeDir, 'integrations'),
           pluginName,
         );
-        const copiedIntegrations = copyPluginIntegrations(
-          pluginDir,
-          join(projectHomeDir, 'integrations'),
-        );
+        const copiedIntegrations = isAgentPlugin
+          ? []
+          : copyPluginIntegrations(
+              pluginDir,
+              join(projectHomeDir, 'integrations'),
+            );
         for (const integrationId of copiedIntegrations) {
           logger.info(`Copied tool config: ${integrationId}`);
         }

@@ -19,8 +19,8 @@ import {
   withPluginContentLock,
 } from '../../services/plugins/plugin-content-integrity.js';
 import {
-  readPluginManifestFile,
   readPluginManifestFileSync,
+  readPluginManifestFileWithFormat,
 } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   hasGrant,
@@ -418,7 +418,10 @@ export function registerPluginLifecycleRoutes(
               backupRoot = createStationTempDirSync('plugin-update');
               const backupDir = join(backupRoot, 'plugin');
               cpSync(pluginDir, backupDir, PLUGIN_TREE_COPY);
-              const originalManifest = await readPluginManifestFile(
+              const {
+                manifest: originalManifest,
+                format: originalManifestFormat,
+              } = await readPluginManifestFileWithFormat(
                 join(backupDir, 'plugin.json'),
               );
               const originalIdentity = originalManifest.name || name;
@@ -472,14 +475,17 @@ export function registerPluginLifecycleRoutes(
                   }
 
                   const manifestPath = join(pluginDir, 'plugin.json');
-                  const manifest = await readPluginManifestFile(manifestPath);
+                  const { manifest, format: manifestFormat } =
+                    await readPluginManifestFileWithFormat(manifestPath);
                   updatedManifest = manifest;
                   if ((manifest.name || name) !== originalIdentity) {
                     throw new PluginUpdateRejectedError(
                       `Plugin identity cannot change during update: ${originalIdentity}`,
                     );
                   }
-                  scanPluginPromptGeneration(pluginDir, originalIdentity);
+                  if (manifestFormat !== 'agent-plugin-1.0') {
+                    scanPluginPromptGeneration(pluginDir, originalIdentity);
+                  }
 
                   await synchronizePluginAgentDefinitions({
                     agentsDir,
@@ -497,10 +503,12 @@ export function registerPluginLifecycleRoutes(
                     join(projectHomeDir, 'integrations'),
                     originalIdentity,
                   );
-                  copyPluginIntegrations(
-                    pluginDir,
-                    join(projectHomeDir, 'integrations'),
-                  );
+                  if (manifestFormat !== 'agent-plugin-1.0') {
+                    copyPluginIntegrations(
+                      pluginDir,
+                      join(projectHomeDir, 'integrations'),
+                    );
+                  }
                   // archive#4288 — the fix. Consent was given to the bytes
                   // this update just replaced, so it is re-bound HERE: after
                   // the build and the integration copy (the tree is final,
@@ -579,10 +587,12 @@ export function registerPluginLifecycleRoutes(
                       join(projectHomeDir, 'integrations'),
                       originalIdentity,
                     );
-                    copyPluginIntegrations(
-                      pluginDir,
-                      join(projectHomeDir, 'integrations'),
-                    );
+                    if (originalManifestFormat !== 'agent-plugin-1.0') {
+                      copyPluginIntegrations(
+                        pluginDir,
+                        join(projectHomeDir, 'integrations'),
+                      );
+                    }
                     // The tree is back to the reviewed bytes, so the consent
                     // recorded against them comes back with it — digest
                     // included, so the restored entry is `bound` again and
