@@ -4,11 +4,15 @@ import {
 } from '@kontourai/station-contracts/workspace-activity-pane';
 import { ErrorState } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
-import { WorkspacePaneAwayState } from '../workspace-panes/WorkspacePaneAwayState';
+import { useRegionModelOptional } from '../contexts/RegionModelContext';
+import { availablePlacements, useDockSlotDevice } from '../hooks/useIsMobile';
 import {
-  isAmbientDockOccupant,
-  useWorkspacePaneDockAction,
-} from '../workspace-panes/WorkspacePaneDockContext';
+  DOCK_REGION_IDS,
+  foldedDockRegion,
+  occupiedDockRegion,
+  regionLabel,
+} from '../regions/region-model';
+import { WorkspacePaneAwayState } from '../workspace-panes/WorkspacePaneAwayState';
 import { selectClientWorkspacePaneRenderer } from '../workspace-panes/workspacePaneRendererSelection';
 import { ActivityWorkspacePane } from './activity/ActivityWorkspacePane';
 import { ActivityWorkspacePaneBindingProvider } from './activity/ActivityWorkspacePaneBinding';
@@ -42,7 +46,14 @@ export function ActivityView({
   focusHint?: 'evidence';
 }) {
   const config = useConfig();
-  const dock = useWorkspacePaneDockAction();
+  const regionModel = useRegionModelOptional();
+  const bottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
+  const activityRegion = regionModel
+    ? occupiedDockRegion(regionModel.regions, 'activity')
+    : undefined;
+  const foldedRegion = regionModel
+    ? foldedDockRegion(regionModel.regions, regionModel.lastShownRegion)
+    : undefined;
   const selection = selectClientWorkspacePaneRenderer(
     WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
     {
@@ -50,15 +61,30 @@ export function ActivityView({
       instance: WORKSPACE_ACTIVITY_PANE_INSTANCE,
     },
   );
-  // While Activity's canonical occurrence occupies the ambient dock, this
-  // route renders the away state instead of a second live copy of the pane
-  // (archive#4090). Derived from the host's own published occupant state
-  // through `isAmbientDockOccupant` — never a route-local flag — so choosing
-  // another dock occupant clears this state without route-side bookkeeping.
-  if (isAmbientDockOccupant(dock, WORKSPACE_ACTIVITY_PANE_INSTANCE)) {
+  if (activityRegion && regionModel) {
+    const activityIsShown = bottomOnly
+      ? foldedRegion === activityRegion &&
+        regionModel.regions[activityRegion].visible
+      : regionModel.regions[activityRegion].visible;
     return (
       <WorkspacePaneAwayState
         paneName={WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.name}
+        regionName={
+          bottomOnly
+            ? 'the bottom bar'
+            : `the ${regionLabel(activityRegion)} region`
+        }
+        regionVisible={activityIsShown}
+        onShowPane={() => {
+          if (bottomOnly) {
+            regionModel.placeSurface('activity', activityRegion);
+            for (const id of DOCK_REGION_IDS) {
+              if (id !== activityRegion)
+                regionModel.setRegion(id, { visible: false });
+            }
+          }
+          regionModel.setRegion(activityRegion, { visible: true });
+        }}
       />
     );
   }

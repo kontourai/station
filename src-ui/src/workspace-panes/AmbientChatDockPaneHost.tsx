@@ -1,9 +1,4 @@
 import {
-  isCanonicalWorkspaceActivityPaneInstance,
-  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-  WORKSPACE_ACTIVITY_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-activity-pane';
-import {
   createWorkspaceChatPaneInstance,
   isCanonicalWorkspaceChatPaneInstance,
   WORKSPACE_CHAT_PANE_DESCRIPTOR,
@@ -24,10 +19,8 @@ import {
   workspacePaneHostSuppliableContexts,
 } from '@kontourai/station-contracts/workspace-pane-host';
 import {
-  lazy,
   type ReactElement,
   type ReactNode,
-  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -37,12 +30,9 @@ import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
 import { DockShell } from '../components/chat-dock/DockShell';
 import type { DockSnap } from '../components/chat-dock/dockSnap';
 import { shouldMaximizeAfterDockingAsOnlyContent } from '../components/chat-dock/mobile-chrome';
-import { SkeletonBlock } from '../components/state';
-import { useApiBase } from '../contexts/ApiBaseContext';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { reportRegionClearance } from '../regions/region-clearance';
 import type { DockMode, NavigationView } from '../types';
-import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
 import {
   HomeWorkspacePane,
   HomeWorkspacePaneBindingProvider,
@@ -139,29 +129,24 @@ function admitsAmbientDockInstance(
   return ambientDockDescriptorFor(instance) ? instance : null;
 }
 
-// Lazy on purpose, unlike Home's occupant: providing the Activity BINDING
-// is a small context module, but the renderer's import graph is the whole
-// sessions surface. This host's chunk is requested at entry time (ChatDock
-// pre-warms it), so a static import here would ship that surface with the
-// shell for a pane most devices never dock.
-const LazyActivityWorkspacePane = lazy(() =>
-  import('../views/activity/ActivityWorkspacePane').then(
-    ({ ActivityWorkspacePane }) => ({ default: ActivityWorkspacePane }),
-  ),
-);
-
 /**
  * The dock-placement control every non-Chat occupant shares — factored out
- * so Home and Activity, which have no other header content, don't each
- * hand-roll the same `ChatDockHeader` call (archive#4460). `occupantPicker`
+ * so Home, which has no other header content, does not hand-roll the shared
+ * `ChatDockHeader` call (archive#4460). `occupantPicker`
  * is NOT included: it is occupant-specific (a different `current` per
  * occupant) and already lives, pre-rendered, on `shellChrome.occupantPicker`
  * — see `AmbientDockShellApi`.
  */
-function ambientNonChatHeaderProps(shellChrome: AmbientDockShellApi) {
+function ambientNonChatHeaderProps(
+  shellChrome: AmbientDockShellApi,
+  surfaceTitle: string,
+) {
   return {
     regionVisible: shellChrome.isDockOpen,
     shellMaximized: shellChrome.isDockMaximized,
+    canMaximize: shellChrome.canMaximize,
+    surfaceShortcutId: shellChrome.surfaceShortcutId,
+    surfaceTitle,
     isDragging: shellChrome.isDragging,
     onDockSnap: shellChrome.applyDockSnap,
     availableDockSlotPlacements: shellChrome.availableDockSlotPlacements,
@@ -169,44 +154,6 @@ function ambientNonChatHeaderProps(shellChrome: AmbientDockShellApi) {
     onDockPlacementChange: shellChrome.commitDockPlacement,
     occupantPicker: shellChrome.occupantPicker,
   };
-}
-
-function AmbientActivityDock({
-  shellChrome,
-}: {
-  shellChrome: AmbientDockShellApi;
-}) {
-  // The same occurrence the `/activity` route places; only the placement
-  // differs. While Activity occupies the dock, the `/activity` route renders
-  // its away state instead of a second co-mounted copy (archive#4090).
-  const { apiBase } = useApiBase();
-  return (
-    <>
-      {/* archive#4460: the SAME shared header Chat renders through — resize,
-          maximize/collapse, placement and the occupant picker all come from
-          it, not a second hand-rolled copy. */}
-      <ChatDockHeader {...ambientNonChatHeaderProps(shellChrome)} />
-      {/* No routed sessionId: a deep-linked selection belongs to the route
-          placement, and the dock occupant starts at the list. */}
-      <div className="dock-slot__body">
-        <ActivityWorkspacePaneBindingProvider binding={{ apiBase }}>
-          {/* Activity is already the ambient occupant. Only the header's
-              picker may replace it, so the occupant itself does not offer a
-              meaningless second "Dock this pane" control. */}
-          <WorkspacePaneDockContext.Provider value={null}>
-            <Suspense
-              fallback={<SkeletonBlock count={3} label="Loading Activity" />}
-            >
-              <LazyActivityWorkspacePane
-                descriptor={WORKSPACE_ACTIVITY_PANE_DESCRIPTOR}
-                instance={WORKSPACE_ACTIVITY_PANE_INSTANCE}
-              />
-            </Suspense>
-          </WorkspacePaneDockContext.Provider>
-        </ActivityWorkspacePaneBindingProvider>
-      </div>
-    </>
-  );
 }
 
 function AmbientHomeDock({
@@ -224,7 +171,12 @@ function AmbientHomeDock({
   const model = useHomeViewModel(onNavigate);
   return (
     <>
-      <ChatDockHeader {...ambientNonChatHeaderProps(shellChrome)} />
+      <ChatDockHeader
+        {...ambientNonChatHeaderProps(
+          shellChrome,
+          WORKSPACE_HOME_PANE_DESCRIPTOR.name,
+        )}
+      />
       <div className="dock-slot__body">
         <HomeWorkspacePaneBindingProvider
           binding={{ model, continuation, onNavigate }}
@@ -254,12 +206,12 @@ function AmbientHomeDock({
  * at every dock state and both can strand the main area the same way; and
  * `occupantPicker`, a pre-rendered `DockOccupantPicker` naming THIS occupant
  * (a different node per occupant — Chat's names "Chat", Home's names
- * "Home"). Every occupant (Chat, Home, Activity) receives exactly this shape
+ * "Home"). Every legacy ambient occupant receives exactly this shape
  * (archive#4460) — one contract, not three per-occupant ones.
  *
  * `occupantPicker` is pre-rendered, not `{current, onChoose}` data:
- * `DockOccupantPicker` pulls in `ambientDockOccupants.ts` and all
- * three pane-descriptor contracts modules, and this host is the one place
+ * `DockOccupantPicker` pulls in `ambientDockOccupants.ts` and both legacy
+ * ambient pane-descriptor contract modules, and this host is the one place
  * that chunk stays LAZY — passing the raw data through would let a consumer
  * (`ChatDockHeader`, which the EAGER `ChatDock.tsx` imports) reconstruct the
  * element itself and drag that whole import graph into the entry bundle,
@@ -430,7 +382,7 @@ export function AmbientChatDockPaneHost({
     replace,
     undockOccupant,
   ]);
-  // DockShell wraps every occupant (Chat, Home, Activity) — the one dock
+  // DockShell wraps each legacy ambient occupant (Chat or Home) — the one dock
   // chrome shell (archive#4460): root box, resize handle, geometry/snap/
   // drag state, `dock.toggle`/`dock.maximize`. Its geometry report goes to
   // the clearance reducer, one entry per rendered region (#928; the reducer
@@ -499,12 +451,6 @@ export function AmbientChatDockPaneHost({
                   continuation={homeContinuation}
                   onNavigate={onNavigate}
                   shellChrome={shellApiFor(WORKSPACE_HOME_PANE_DESCRIPTOR)}
-                />
-              ) : instance.descriptorId ===
-                  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id &&
-                isCanonicalWorkspaceActivityPaneInstance(instance) ? (
-                <AmbientActivityDock
-                  shellChrome={shellApiFor(WORKSPACE_ACTIVITY_PANE_DESCRIPTOR)}
                 />
               ) : null
             }
