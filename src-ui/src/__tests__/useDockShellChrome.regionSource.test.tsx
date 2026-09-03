@@ -14,7 +14,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const harness = vi.hoisted(() => ({
@@ -59,6 +59,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
   beforeEach(() => {
     harness.isDockOpen = true;
     harness.dockMode = 'bottom';
+    harness.setDeviceSetting.mockReset();
   });
 
   test('follows the region model when it diverges from navigation', () => {
@@ -119,6 +120,26 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.regions.right.occupant).toBe('fixture');
     expect(result.current.regions.right.visible).toBe(true);
     expect(result.current.regions.bottom.visible).toBe(false);
+  });
+
+  test('an inbound dockMode naming Activity does not evict it or move Chat over it', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result, rerender } = renderHook(() => useRegionModel(), {
+      wrapper,
+    });
+    act(() => result.current.placeSurface('activity', 'right'));
+    harness.dockMode = 'right';
+    rerender();
+
+    expect(result.current.regions.right.occupant).toBe('activity');
+    expect(result.current.regions.bottom.occupant).toBe('chat');
   });
 
   // Step 3b makes the region model authoritative; navigation is its durable
@@ -280,10 +301,113 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.model.regions.bottom.size).toBe(320);
   });
 
-  test('a side shell folded to the bottom persists its drag as a bottom height', () => {
+  test('dragging an Activity region never mirrors its width into Chat settings', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+          regionId: 'right',
+        }),
+        model: useRegionModel(),
+      }),
+      { wrapper },
+    );
+    act(() => result.current.model.placeSurface('activity', 'right'));
+    harness.setDeviceSetting.mockClear();
+    act(() => {
+      result.current.chrome.setIsDragging(true);
+      result.current.chrome.setDockWidth(517);
+    });
+    act(() => result.current.chrome.setIsDragging(false));
+
+    expect(result.current.model.regions.right.size).toBe(517);
+    expect(harness.setDeviceSetting).not.toHaveBeenCalledWith(
+      'chatDockWidth',
+      517,
+    );
+  });
+
+  test("Activity collapse and expand never rewrite Chat's persisted snap", () => {
+    localStorage.setItem('station.chatDock.snap', 'half');
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: true,
+          registersDockShortcuts: false,
+          regionId: 'right',
+        }),
+        model: useRegionModel(),
+      }),
+      { wrapper },
+    );
+    act(() => result.current.model.placeSurface('activity', 'right'));
+    expect(result.current.chrome.canMaximize).toBe(false);
+
+    act(() => result.current.chrome.applyDockSnap('collapsed'));
+    expect(result.current.chrome.dockSnap).toBe('collapsed');
+    expect(localStorage.getItem('station.chatDock.snap')).toBe('half');
+    act(() => result.current.chrome.applyDockSnap('half'));
+    expect(localStorage.getItem('station.chatDock.snap')).toBe('half');
+  });
+
+  test("an Activity shell mounts from the default snap, not Chat's persisted one", () => {
+    localStorage.setItem('station.chatDock.snap', 'collapsed');
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    // The shell mounts only once Activity holds the region, as RegionShells
+    // renders a shell per occupied region.
+    function ActivityInRight({ children }: { children: ReactNode }) {
+      const model = useRegionModel();
+      useEffect(() => {
+        if (model.regions.right.occupant !== 'activity')
+          model.placeSurface('activity', 'right');
+      }, [model]);
+      return model.regions.right.occupant === 'activity' ? children : null;
+    }
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>
+          <ActivityInRight>{children}</ActivityInRight>
+        </RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () =>
+        useDockShellChrome({
+          publishesDockSlotClearance: true,
+          registersDockShortcuts: false,
+          regionId: 'right',
+        }),
+      { wrapper },
+    );
+    expect(result.current.canMaximize).toBe(false);
+    expect(result.current.dockSnap).toBe('half');
+    expect(localStorage.getItem('station.chatDock.snap')).toBe('collapsed');
+  });
+
+  test('a Chat shell folded to bottom persists no drag size: the height belongs to neither region', () => {
     // ≤768px folds every placement to bottom (useIsMobile.ts
-    // `availablePlacements`); the dragged value is a height and must not
-    // land in the side region's `size`, which mirrors to `chatDockWidth`.
+    // `availablePlacements`); the dragged value is a height, so it must not
+    // land in Activity's bottom region nor in Chat's side region, whose
+    // `size` is a width that mirrors to `chatDockWidth`.
     const innerWidth = Object.getOwnPropertyDescriptor(window, 'innerWidth');
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
@@ -309,15 +433,20 @@ describe('useDockShellChrome reads its open state from the region model', () => 
         }),
         { wrapper },
       );
-      act(() => result.current.model.placeSurface('chat', 'right'));
+      act(() => result.current.model.placeSurface('activity', 'right'));
+      act(() => result.current.model.placeSurface('activity', 'bottom'));
+      expect(result.current.model.regions.bottom.occupant).toBe('activity');
+      expect(result.current.model.regions.right.occupant).toBe('chat');
       expect(result.current.chrome.effectiveDockSlotPlacement).toBe('bottom');
+      const rightWidthBefore = result.current.model.regions.right.size;
+      expect(rightWidthBefore).not.toBe(410);
       act(() => {
         result.current.chrome.setIsDragging(true);
         result.current.chrome.setDockHeight(410);
       });
       act(() => result.current.chrome.setIsDragging(false));
-      expect(result.current.model.regions.bottom.size).toBe(410);
-      expect(result.current.model.regions.right.size).toBe(400);
+      expect(result.current.model.regions.bottom.size).toBe(320);
+      expect(result.current.model.regions.right.size).toBe(rightWidthBefore);
     } finally {
       if (innerWidth) Object.defineProperty(window, 'innerWidth', innerWidth);
     }
