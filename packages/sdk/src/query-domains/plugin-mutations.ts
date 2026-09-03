@@ -47,6 +47,12 @@ export interface PluginInstallConsent {
   permissions: string[];
   contentDigest: string;
   dependencies: string[];
+  dependencyApprovals?: Array<{
+    id: string;
+    permissions: string[];
+    contentDigest: string;
+    dependencies: string[];
+  }>;
 }
 
 export function usePluginInstallMutation() {

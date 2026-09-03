@@ -154,6 +154,39 @@ async function approvedConsent(
   }
 }
 
+async function dependencyApproval(
+  id: string,
+  source: string,
+  root: string,
+): Promise<{
+  id: string;
+  permissions: string[];
+  contentDigest: string;
+  dependencies: string[];
+}> {
+  const staged = await fetchPluginSource(
+    source,
+    join(root, 'plugins'),
+    logger(),
+  );
+  if ('error' in staged) throw new Error(staged.error);
+  try {
+    const manifest = await readPluginManifestFile(
+      join(staged.tempDir, 'plugin.json'),
+    );
+    const basis = derivePluginConsentBasis(staged.tempDir, manifest);
+    if (!basis) throw new Error(`no dependency consent basis for ${source}`);
+    return {
+      id,
+      permissions: basis.required,
+      contentDigest: basis.contentDigest,
+      dependencies: basis.dependencies,
+    };
+  } finally {
+    rmSync(staged.tempDir, { recursive: true, force: true });
+  }
+}
+
 afterEach(async () => {
   vi.clearAllMocks();
   getPluginRegistryProviders.mockReturnValue([]);
@@ -3169,5 +3202,204 @@ describe('plugin install consent gate (station#4288)', () => {
     expect(refusal.reason).toBe('content');
     expect(refusal.pluginName).toBe('contributor');
     expect(refusal.required).toEqual(['network.fetch']);
+  });
+
+  describe('lifecycle-bearing plugin dependencies', () => {
+    function writeProviderDependency(root: string, name = 'shared-providers') {
+      const source = join(root, name);
+      writePlugin(source, {
+        name,
+        version: '1.0.0',
+        settings: [
+          {
+            key: 'endpoint',
+            label: 'Endpoint',
+            type: 'string',
+            default: 'https://example.test',
+          },
+        ],
+        providers: [{ type: 'auth', module: './provider.js' }],
+      });
+      writeFileSync(
+        join(source, 'provider.js'),
+        'export default function provider() { return { source: "dependency" }; }\n',
+      );
+      return source;
+    }
+
+    async function approvedParent(
+      parentSource: string,
+      dependencySource: string,
+      root: string,
+    ) {
+      const consent = await approvedConsent(parentSource, root);
+      return {
+        ...consent,
+        dependencyApprovals: [
+          await dependencyApproval('shared-providers', dependencySource, root),
+        ],
+      };
+    }
+
+    test('installs relative provider/settings dependencies once and cleans owned lifecycle state on uninstall', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [
+          { id: 'shared-providers', source: '../shared-providers' },
+        ],
+      });
+      const installDeps = deps(root);
+
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+      expect(
+        JSON.parse(
+          readFileSync(
+            join(
+              root,
+              'plugins',
+              'enterprise-layout',
+              '.station-dependency-ownership.json',
+            ),
+            'utf-8',
+          ),
+        ).dependencies,
+      ).toEqual([
+        expect.objectContaining({
+          id: 'shared-providers',
+          contentDigest: expect.stringMatching(/^sha256:/),
+        }),
+      ]);
+      expect(readPluginGrantState(root, 'shared-providers').granted).toEqual(
+        [],
+      );
+      expect(
+        replacePluginProvidersForSource.mock.calls.filter(
+          ([source]) => source === 'shared-providers',
+        ),
+      ).toHaveLength(1);
+
+      await uninstallInstalledPlugin('enterprise-layout', installDeps);
+
+      expect(existsSync(join(root, 'plugins', 'enterprise-layout'))).toBe(
+        false,
+      );
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(readPluginGrantState(root, 'shared-providers').granted).toEqual(
+        [],
+      );
+      expect(replacePluginProvidersForSource).toHaveBeenCalledWith(
+        'shared-providers',
+        [],
+      );
+    });
+
+    test('rolls dependency providers, grants, and bytes back when the parent fails', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const installDeps = {
+        ...deps(root),
+        buildPlugin: vi.fn(async (_dir: string, name: string) => {
+          if (name === 'enterprise-layout') throw new Error('parent failed');
+        }),
+      };
+
+      await expect(
+        installPluginFromSource(parentSource, [], installDeps, {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        }),
+      ).rejects.toThrow('parent failed');
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(existsSync(join(root, 'plugins', 'enterprise-layout'))).toBe(
+        false,
+      );
+      expect(readPluginGrantState(root, 'shared-providers').granted).toEqual(
+        [],
+      );
+      expect(replacePluginProvidersForSource).toHaveBeenCalledWith(
+        'shared-providers',
+        [],
+      );
+    });
+
+    test('rejects a dependency provider collision before grants or bytes land', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      writePlugin(join(root, 'plugins', 'existing-provider'), {
+        name: 'existing-provider',
+        version: '1.0.0',
+        providers: [{ type: 'auth', module: './provider.js' }],
+      });
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+
+      await expect(
+        installPluginFromSource(parentSource, [], deps(root), {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        }),
+      ).rejects.toThrow(/collides with plugin 'existing-provider'/);
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(existsSync(join(root, 'plugins', 'enterprise-layout'))).toBe(
+        false,
+      );
+      expect(readPluginGrantState(root, 'shared-providers').granted).toEqual(
+        [],
+      );
+      expect(replacePluginProvidersForSource).not.toHaveBeenCalledWith(
+        'shared-providers',
+        expect.anything(),
+      );
+    });
+
+    test('preserves a dependency that was installed separately', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const installDeps = deps(root);
+      await installPluginFromSource(dependencySource, [], installDeps, {
+        consent: await approvedConsent(dependencySource, root),
+      });
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      await uninstallInstalledPlugin('enterprise-layout', installDeps);
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+      expect(readPluginGrantState(root, 'shared-providers').granted).toEqual(
+        [],
+      );
+    });
   });
 });

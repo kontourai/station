@@ -333,6 +333,8 @@ export function registerPluginInstallRoutes(
             },
           }),
           logger,
+          undefined,
+          source,
         );
         const git = await getPluginGitInfo(tempDir, logger);
         // archive#4288: the preview already staged and validated everything a
@@ -420,6 +422,9 @@ export function registerPluginInstallRoutes(
         permissions: consent.permissions,
         contentDigest: consent.contentDigest,
         dependencies: consent.dependencies ?? [],
+        ...(consent.dependencyApprovals
+          ? { dependencyApprovals: consent.dependencyApprovals }
+          : {}),
       };
       const mutation = await captureConfigurationMutation(
         applyConfigurationMutation,

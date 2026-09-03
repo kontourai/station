@@ -24,14 +24,17 @@
  * before a single byte is written outside the staging directory. A mismatch
  * refuses there, which costs nothing to undo because nothing has happened.
  *
- * A decision names two things, and both are checked, because they fail
+ * A decision names the parent bytes/permissions and its dependency ids. The
+ * canonical dependency lifecycle additionally carries one byte/permission
+ * approval per lifecycle-bearing dependency. They are checked separately
+ * because they fail
  * differently:
  *
  * - `permissions` — the derived set the operator was shown. Checked because
  *   the digest cannot catch it: a client that sends the right digest and an
  *   EMPTY permission list has consented to nothing while matching bytes
  *   perfectly.
- * - `contentDigest` — the bytes the operator was shown, via
+ * - `contentDigest` — the parent bytes the operator was shown, via
  *   {@link computePluginContentDigest}. Checked because the permission set
  *   cannot catch it: a source can change between preview and install and
  *   derive exactly the same permissions. That is the laundering shape.
@@ -56,7 +59,7 @@
  *
  * It establishes NEITHER against an arbitrary credentialed API caller. The
  * values a decision carries are all readable from `POST /preview` — the
- * derived permission set, the content digest, the dependency ids — so any
+ * derived permission sets, content digests, and dependency ids — so any
  * caller holding a Station credential can call `/preview`, read them back,
  * echo them into `/install`, and install with no operator in the loop. That
  * is not only browser-resident plugin code: a server-side agent with a shell
@@ -166,6 +169,13 @@ export type PluginInstallConsent =
       contentDigest: string;
       /** The dependency ids the operator was shown. */
       dependencies: string[];
+      /** Per-dependency bytes and permissions shown by preview. */
+      dependencyApprovals?: Array<{
+        id: string;
+        permissions: string[];
+        contentDigest: string;
+        dependencies: string[];
+      }>;
     }
   | {
       kind: 'no-operator-decision';

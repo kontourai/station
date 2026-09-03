@@ -819,6 +819,16 @@ mutate({
     permissions: preview.permissions.required,
     contentDigest: preview.contentDigest,
     dependencies: preview.dependencies.map((entry) => entry.id),
+    dependencyApprovals: preview.dependencies.flatMap((entry) =>
+      entry.consent
+        ? [{
+            id: entry.id,
+            permissions: entry.consent.permissions,
+            contentDigest: entry.consent.contentDigest,
+            dependencies: entry.consent.dependencies,
+          }]
+        : [],
+    ),
   },
 });
 ```
@@ -827,8 +837,9 @@ mutate({
 
 Previews a plugin before installing. Returns manifest, components, conflicts,
 resolved dependencies, the derived `permissions` (`required`, `autoGranted`,
-`pendingConsent`) and the `contentDigest` of the copy it staged — everything a
-consent decision needs, without installing anything.
+`pendingConsent`) and the `contentDigest` of the copy it staged. Lifecycle-bearing
+dependencies additionally carry their own `consent` object, binding their
+permissions and bytes before installation.
 
 ```tsx
 const { mutate } = usePluginPreviewMutation();

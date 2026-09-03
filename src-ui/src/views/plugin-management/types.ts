@@ -79,6 +79,12 @@ export interface PreviewData {
     status: string;
     components?: Array<{ type: string; id: string }>;
     git?: GitInfo;
+    consent?: {
+      contentDigest: string;
+      permissions: string[];
+      dependencies: string[];
+      pendingConsent: Array<{ permission: string; tier: PermissionTier }>;
+    };
   }>;
   git?: GitInfo;
 }

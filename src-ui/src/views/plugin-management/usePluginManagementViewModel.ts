@@ -253,7 +253,15 @@ export function usePluginManagementViewModel() {
 
     const displayName =
       basis.manifest?.displayName || basis.manifest?.name || source;
-    const pendingConsent = basis.permissions.pendingConsent;
+    const pendingConsent = [
+      ...basis.permissions.pendingConsent,
+      ...(basis.dependencies ?? []).flatMap((dependency) =>
+        (dependency.consent?.pendingConsent ?? []).map((entry) => ({
+          ...entry,
+          permission: `${dependency.id}: ${entry.permission}`,
+        })),
+      ),
+    ];
     if (pendingConsent.length > 0) {
       const approved = await requestInstallConsent(
         basis.manifest?.name || displayName,
@@ -283,6 +291,25 @@ export function usePluginManagementViewModel() {
           dependencies: (basis.dependencies ?? []).map(
             (dependency) => dependency.id,
           ),
+          ...((basis.dependencies ?? []).some(
+            (dependency) => dependency.consent,
+          )
+            ? {
+                dependencyApprovals: (basis.dependencies ?? []).flatMap(
+                  (dependency) =>
+                    dependency.consent
+                      ? [
+                          {
+                            id: dependency.id,
+                            permissions: dependency.consent.permissions,
+                            contentDigest: dependency.consent.contentDigest,
+                            dependencies: dependency.consent.dependencies,
+                          },
+                        ]
+                      : [],
+                ),
+              }
+            : {}),
         },
       },
       {

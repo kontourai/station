@@ -253,6 +253,55 @@ describe('usePluginManagementViewModel', () => {
     ).toBeLessThan(mocks.installMutate.mock.invocationCallOrder[0]);
   });
 
+  test('names dependency permissions in the decision and carries their byte-bound approval', async () => {
+    mocks.requestInstallConsent.mockResolvedValue(true);
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await primePreview(result, {
+      ...PREVIEW,
+      dependencies: [
+        {
+          id: 'shared-providers',
+          status: 'will-install',
+          consent: {
+            permissions: ['providers.register'],
+            contentDigest: 'sha256:dependency',
+            dependencies: [],
+            pendingConsent: [
+              { permission: 'providers.register', tier: 'trusted' },
+            ],
+          },
+        },
+      ],
+    });
+
+    await act(async () => {
+      await result.current.install([]);
+    });
+
+    expect(mocks.requestInstallConsent).toHaveBeenCalledWith(
+      'network-kit',
+      'Network Kit',
+      [
+        { permission: 'network.fetch', tier: 'active' },
+        {
+          permission: 'shared-providers: providers.register',
+          tier: 'trusted',
+        },
+      ],
+    );
+    expect(mocks.installMutate.mock.calls[0][0].consent).toMatchObject({
+      dependencies: ['shared-providers'],
+      dependencyApprovals: [
+        {
+          id: 'shared-providers',
+          permissions: ['providers.register'],
+          contentDigest: 'sha256:dependency',
+          dependencies: [],
+        },
+      ],
+    });
+  });
+
   test('will not install a source it has no preview to approve against', async () => {
     const { result } = renderHook(() => usePluginManagementViewModel());
 

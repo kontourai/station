@@ -9,6 +9,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "@tanstack/react-query": "^5.0.0",
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.24.0",
+    "zod": "^4.4.3"
   }
 }

@@ -143,6 +143,12 @@ export async function requestRegistryCatalogAction(
       permissions: string[];
       contentDigest: string;
       dependencies: string[];
+      dependencyApprovals?: Array<{
+        id: string;
+        permissions: string[];
+        contentDigest: string;
+        dependencies: string[];
+      }>;
     };
     /** Preview conflict components to skip, as `type:id` keys. */
     skip?: string[];

@@ -61,4 +61,8 @@ Other plugins reference this in their `plugin.json`:
 }
 ```
 
-Station loads the dependency first, making its providers available to the dependent plugin's layout and agents.
+Station installs the dependency first through the same content-lock, consent,
+provenance, and rollback lifecycle as a direct plugin. Its checked-in JavaScript
+modules are the executable assets; the manifest cannot run a host build command.
+`providers.register` remains inactive until the host-owned trusted-permission
+review approves it.

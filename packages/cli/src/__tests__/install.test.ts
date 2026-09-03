@@ -63,7 +63,20 @@ describe('plugin CLI API authority', () => {
       manifest: { name: 'demo', version: '1.0.0', entrypoint: 'src/index.tsx' },
       components: [],
       conflicts: [],
-      dependencies: [{ id: 'shared-lib', status: 'will-install' }],
+      dependencies: [
+        {
+          id: 'shared-lib',
+          status: 'will-install',
+          consent: {
+            permissions: ['providers.register'],
+            contentDigest: 'sha256:dependency',
+            dependencies: [],
+            pendingConsent: [
+              { permission: 'providers.register', tier: 'trusted' },
+            ],
+          },
+        },
+      ],
       contentDigest: 'sha256:reviewed',
       permissions: {
         required: ['navigation.dock', 'network.fetch'],
@@ -100,6 +113,14 @@ describe('plugin CLI API authority', () => {
             permissions: ['navigation.dock', 'network.fetch'],
             contentDigest: 'sha256:reviewed',
             dependencies: ['shared-lib'],
+            dependencyApprovals: [
+              {
+                id: 'shared-lib',
+                permissions: ['providers.register'],
+                contentDigest: 'sha256:dependency',
+                dependencies: [],
+              },
+            ],
           },
         }),
       }),
@@ -116,6 +137,7 @@ describe('plugin CLI API authority', () => {
     expect(printed).toContain('sha256:reviewed');
     expect(printed).toContain('network.fetch (active)');
     expect(printed).toContain('shared-lib');
+    expect(printed).toContain('shared-lib requires providers.register');
     expect(printed).toContain('an in-page bundle');
   });
 

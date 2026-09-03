@@ -654,6 +654,12 @@ export function createRegistryRoutes(
         permissions: string[];
         contentDigest: string;
         dependencies?: string[];
+        dependencyApprovals?: Array<{
+          id: string;
+          permissions: string[];
+          contentDigest: string;
+          dependencies: string[];
+        }>;
       };
     },
   ) => {
@@ -677,6 +683,9 @@ export function createRegistryRoutes(
           permissions: consentBody.permissions,
           contentDigest: consentBody.contentDigest,
           dependencies: consentBody.dependencies ?? [],
+          ...(consentBody.dependencyApprovals
+            ? { dependencyApprovals: consentBody.dependencyApprovals }
+            : {}),
         }
       : {
           kind: 'no-operator-decision',

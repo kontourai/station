@@ -793,9 +793,12 @@ Plugins can declare dependencies on other plugins. The server resolves and insta
 ```
 
 - If `source` is provided and the dependency isn't installed, it's cloned and installed automatically
+- Relative dependency sources resolve from the declaring local plugin directory
 - If no `source`, the server tries the configured registry
 - Dependencies are resolved recursively (cycle detection included)
-- `station plugin preview <source>` shows dependency resolution status before install
+- `station plugin preview <source>` shows dependency resolution status, exact content digest, and dependency-specific permissions before install
+- Provider/settings-only dependencies use the canonical plugin lifecycle. Station records which dependency trees the parent created, rolls their grants/providers/bytes back with a failed parent install, and removes them with the parent unless another installed plugin references them or their content changed. A dependency that already existed is never adopted for deletion.
+- Trusted dependency permissions such as `providers.register` remain pending for the separate host-owned approval surface; dependency installation does not downgrade that authority.
 
 ## Installation Flow
 
@@ -849,7 +852,13 @@ curl -X POST "$API_BASE/api/plugins/install" \
         "consent": {
           "permissions": ["navigation.dock", "network.fetch"],
           "contentDigest": "sha256:…",
-          "dependencies": ["shared-lib"]
+          "dependencies": ["shared-lib"],
+          "dependencyApprovals": [{
+            "id": "shared-lib",
+            "permissions": ["providers.register"],
+            "contentDigest": "sha256:…",
+            "dependencies": []
+          }]
         }
       }'
 

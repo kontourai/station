@@ -128,6 +128,17 @@ export const pluginInstallConsentSchema = z.object({
   permissions: z.array(z.string()).max(256),
   contentDigest: z.string().min(1).max(256),
   dependencies: z.array(z.string()).max(256).optional(),
+  dependencyApprovals: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(128),
+        permissions: z.array(z.string()).max(256),
+        contentDigest: z.string().min(1).max(256),
+        dependencies: z.array(z.string()).max(256),
+      }),
+    )
+    .max(256)
+    .optional(),
 });
 
 export const pluginInstallSchema = z.object({

@@ -91,7 +91,16 @@ interface PluginPreviewResult {
   error?: string;
   manifest?: PluginManifest;
   components: Array<{ type: string; id: string; conflict?: unknown }>;
-  dependencies?: Array<{ id: string; status?: string }>;
+  dependencies?: Array<{
+    id: string;
+    status?: string;
+    consent?: {
+      contentDigest: string;
+      permissions: string[];
+      dependencies: string[];
+      pendingConsent: Array<{ permission: string; tier: string }>;
+    };
+  }>;
   contentDigest?: string;
   permissions?: {
     required: string[];
@@ -168,6 +177,12 @@ function describeInstall(
     lines.push(
       `  installs  ${dependencies.map((entry) => entry.id).join(', ')} alongside it`,
     );
+    for (const dependency of dependencies) {
+      const required = dependency.consent?.permissions ?? [];
+      lines.push(
+        `    ${dependency.id} requires ${required.length > 0 ? required.join(', ') : 'no permissions'}`,
+      );
+    }
   }
   // Contribution kinds no permission expresses. Named from the manifest the
   // server returned, for the same reason the server refuses them for callers
@@ -249,6 +264,25 @@ export async function install(
           dependencies: (previewed.dependencies ?? []).map(
             (dependency) => dependency.id,
           ),
+          ...((previewed.dependencies ?? []).some(
+            (dependency) => dependency.consent,
+          )
+            ? {
+                dependencyApprovals: (previewed.dependencies ?? []).flatMap(
+                  (dependency) =>
+                    dependency.consent
+                      ? [
+                          {
+                            id: dependency.id,
+                            permissions: dependency.consent.permissions,
+                            contentDigest: dependency.consent.contentDigest,
+                            dependencies: dependency.consent.dependencies,
+                          },
+                        ]
+                      : [],
+                ),
+              }
+            : {}),
         },
       }),
     },

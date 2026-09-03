@@ -314,7 +314,15 @@ export function RegistryView({
       data.manifest?.name ||
       item.displayName ||
       itemId;
-    const pendingConsent = data.permissions.pendingConsent;
+    const pendingConsent = [
+      ...data.permissions.pendingConsent,
+      ...(data.dependencies ?? []).flatMap((dependency) =>
+        (dependency.consent?.pendingConsent ?? []).map((entry) => ({
+          ...entry,
+          permission: `${dependency.id}: ${entry.permission}`,
+        })),
+      ),
+    ];
     if (pendingConsent.length > 0) {
       const approved = await requestInstallConsent(
         data.manifest?.name || itemId,
@@ -350,6 +358,23 @@ export function RegistryView({
         dependencies: (data.dependencies ?? []).map(
           (dependency) => dependency.id,
         ),
+        ...((data.dependencies ?? []).some((dependency) => dependency.consent)
+          ? {
+              dependencyApprovals: (data.dependencies ?? []).flatMap(
+                (dependency) =>
+                  dependency.consent
+                    ? [
+                        {
+                          id: dependency.id,
+                          permissions: dependency.consent.permissions,
+                          contentDigest: dependency.consent.contentDigest,
+                          dependencies: dependency.consent.dependencies,
+                        },
+                      ]
+                    : [],
+              ),
+            }
+          : {}),
       },
       skip: Array.from(previewSkips),
     };

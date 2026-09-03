@@ -24,10 +24,40 @@
       "source": "./agents/enterprise-assistant/agent.json"
     }
   ],
-  "layout": {
-    "slug": "enterprise",
-    "source": "./layout.json"
-  },
+  "workspacePanes": [
+    {
+      "version": "1.0",
+      "id": "pane:plugin%3Aenterprise-layout:enterprise:dashboard",
+      "name": "Dashboard",
+      "rendererId": "renderer:plugin%3Aenterprise-layout:plugin-component:enterprise-portfolio",
+      "renderer": {
+        "kind": "plugin-component",
+        "name": "enterprise-portfolio"
+      },
+      "placement": {
+        "supportedRegions": ["primary"],
+        "preferredRegion": "primary"
+      },
+      "modes": [
+        {
+          "id": "default",
+          "contextRequirement": {
+            "project": true
+          }
+        }
+      ],
+      "actions": [
+        {
+          "type": "prompt",
+          "label": "Daily Overview",
+          "icon": "📅",
+          "data": "enterprise-layout:daily"
+        }
+      ],
+      "provenance": { "origin": "plugin", "pluginId": "enterprise-layout" },
+      "lifecycle": { "stage": "stable" }
+    }
+  ],
   "prompts": {
     "source": "./prompts"
   },
