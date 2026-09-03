@@ -33,13 +33,22 @@ interface SDKAdapterProps {
   children: ReactNode;
   authToken?: string;
   layout?: LayoutDefinition;
+  /**
+   * Project slug already admitted by the host's authoritative bound context.
+   * Direct Pane routes use this instead of ambient navigation selection.
+   */
+  boundProjectSlug?: string;
 }
 
 /**
  * SDKAdapter - Provides SDK context to plugin components
  * Injects core app contexts into the SDK for plugin consumption
  */
-export function SDKAdapter({ children, layout }: SDKAdapterProps) {
+export function SDKAdapter({
+  children,
+  layout,
+  boundProjectSlug,
+}: SDKAdapterProps) {
   // Get API base from the single source of truth
   const { apiBase } = useApiBase();
 
@@ -65,7 +74,21 @@ export function SDKAdapter({ children, layout }: SDKAdapterProps) {
   // Get all the core contexts
   const agents = useAgents();
   const navigation = useNavigation();
-  const { selectedProject, selectedProjectLayout } = navigation;
+  const selectedProject = boundProjectSlug ?? navigation.selectedProject;
+  // A direct Pane occurrence is not a persisted legacy Layout selection. Do
+  // not let the last ambient layout from another route leak into its SDK
+  // `useLayout` result or query identity; the explicit Pane layout below is
+  // the only layout-shaped context it owns.
+  const selectedProjectLayout = boundProjectSlug
+    ? null
+    : navigation.selectedProjectLayout;
+  const sdkNavigation = boundProjectSlug
+    ? {
+        ...navigation,
+        selectedProject: boundProjectSlug,
+        selectedProjectLayout: null,
+      }
+    : navigation;
   const { data: layouts = [] } = useProjectLayoutsQuery(selectedProject || '', {
     enabled: !!selectedProject,
   });
@@ -78,6 +101,35 @@ export function SDKAdapter({ children, layout }: SDKAdapterProps) {
   );
   const conversations = useConversations(layout?.slug || '');
   const toast = useToast();
+  // The public SDK has shipped both `showToast(message, type, duration)` and
+  // the object form used by the first-party starters. The shell context's
+  // second argument is an internal session id, so passing it through directly
+  // silently turns a public toast type into attribution and renders an object
+  // as `[object Object]`. Normalize both public spellings at the ONE adapter
+  // seam instead of teaching plugin panes about shell storage.
+  const sdkToast = {
+    ...toast,
+    showToast: (
+      request:
+        | string
+        | {
+            message: string;
+            type?: 'info' | 'success' | 'warning' | 'error';
+            duration?: number;
+            action?: { label: string; onClick: () => void };
+          },
+      _type?: 'info' | 'success' | 'warning' | 'error',
+      duration?: number,
+    ) =>
+      typeof request === 'string'
+        ? toast.showToast(request, undefined, duration)
+        : toast.showToast(
+            request.message,
+            undefined,
+            request.duration,
+            request.action ? [request.action] : undefined,
+          ),
+  };
   const sendMessage = useSendMessage(apiBase);
   const createChatSession = useCreateChatSession();
   const activeChatActions = useActiveChatActions();
@@ -95,8 +147,8 @@ export function SDKAdapter({ children, layout }: SDKAdapterProps) {
         useLayout?: () => { data: unknown };
       },
       conversations: { useConversations: () => conversations },
-      navigation: { useNavigation: () => navigation },
-      toast: { useToast: () => toast },
+      navigation: { useNavigation: () => sdkNavigation },
+      toast: { useToast: () => sdkToast },
       config: { useApiBase: () => ({ apiBase }) },
       auth: { useAuth: () => auth },
       activeChats: {

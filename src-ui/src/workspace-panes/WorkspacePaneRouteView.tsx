@@ -5,11 +5,15 @@ import type {
 } from '@kontourai/station-contracts';
 import { withWorkspacePaneInstanceLayoutBinding } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
-import { useProjectLayoutQuery } from '@kontourai/station-sdk';
+import {
+  LayoutNavigationProvider,
+  useProjectLayoutQuery,
+} from '@kontourai/station-sdk';
 import { useEffect, useState } from 'react';
 import { ErrorState, SkeletonList } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { SDKAdapter } from '../core/SDKAdapter';
 import { LayoutRenderer } from '../layouts';
 import { getBuiltinWorkspacePaneRenderer } from './builtinWorkspacePaneRegistry';
 import { trackMcpAppDisplayModeDecision } from './mcpAppDisplayModeTelemetry';
@@ -347,6 +351,28 @@ export function WorkspacePaneRouteView({
       component: selectedRenderer.renderer,
       actions: entry.descriptor.actions,
     };
+    const paneLayout = {
+      name: entry.descriptor.name,
+      slug: boundInstance.instanceId,
+      tabs: [selectedTab],
+    };
+    const renderer = (
+      <LayoutRenderer
+        componentId={selectedRenderer.renderer}
+        trustedPluginLayout={trustedPluginLayout ?? undefined}
+        layout={paneLayout}
+        activeTab={selectedTab}
+        activeTabId={selectedTab.id}
+        onMcpUiResolution={handleMcpUiResolution}
+        mcpUiResolutionIdentity={currentMcpResolutionFingerprint}
+        mcpUiPaneIdentity={{
+          descriptorId: boundInstance.descriptorId,
+          instanceId: boundInstance.instanceId,
+          stateKey: boundInstance.stateKey,
+        }}
+        onMcpUiDisplayModeDecision={trackMcpAppDisplayModeDecision}
+      />
+    );
     return (
       <section
         className="project-page project-page__workspace-pane-route"
@@ -357,25 +383,22 @@ export function WorkspacePaneRouteView({
             instanceId={boundInstance.instanceId}
             paneName={entry.descriptor.name}
           >
-            <LayoutRenderer
-              componentId={selectedRenderer.renderer}
-              trustedPluginLayout={trustedPluginLayout ?? undefined}
-              layout={{
-                name: entry.descriptor.name,
-                slug: boundInstance.instanceId,
-                tabs: [selectedTab],
-              }}
-              activeTab={selectedTab}
-              activeTabId={selectedTab.id}
-              onMcpUiResolution={handleMcpUiResolution}
-              mcpUiResolutionIdentity={currentMcpResolutionFingerprint}
-              mcpUiPaneIdentity={{
-                descriptorId: boundInstance.descriptorId,
-                instanceId: boundInstance.instanceId,
-                stateKey: boundInstance.stateKey,
-              }}
-              onMcpUiDisplayModeDecision={trackMcpAppDisplayModeDecision}
-            />
+            {trustedPluginLayout ? (
+              // The route slug is accepted only after the server-issued
+              // catalog Project id matches this occurrence above. Reuse the
+              // ONE legacy plugin SDK composition with that admitted slug;
+              // do not create parallel Agent/navigation/toast authorities.
+              <SDKAdapter layout={paneLayout} boundProjectSlug={projectSlug}>
+                <LayoutNavigationProvider
+                  activeTabId={selectedTab.id}
+                  layoutSlug={paneLayout.slug}
+                >
+                  {renderer}
+                </LayoutNavigationProvider>
+              </SDKAdapter>
+            ) : (
+              renderer
+            )}
           </WorkspacePaneFrame>
         </div>
       </section>

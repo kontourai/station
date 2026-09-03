@@ -33,8 +33,13 @@ const catalogMock = vi.hoisted(() => ({
 const { resolveClientTrustedPluginLayoutMock } = vi.hoisted(() => ({
   resolveClientTrustedPluginLayoutMock: vi.fn(),
 }));
+const { sdkAdapterMock } = vi.hoisted(() => ({
+  sdkAdapterMock: vi.fn(),
+}));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  LayoutNavigationProvider: ({ children }: { children: React.ReactNode }) =>
+    children,
   useProjectLayoutQuery: (
     projectSlug: string,
     layoutSlug: string,
@@ -51,6 +56,21 @@ vi.mock('@kontourai/station-sdk', () => ({
       : undefined,
     isLoading: false,
   }),
+}));
+
+vi.mock('../../core/SDKAdapter', () => ({
+  SDKAdapter: ({
+    children,
+    layout,
+    boundProjectSlug,
+  }: {
+    children: React.ReactNode;
+    layout: unknown;
+    boundProjectSlug?: string;
+  }) => {
+    sdkAdapterMock({ layout, boundProjectSlug });
+    return children;
+  },
 }));
 
 vi.mock('../resolvedWorkspacePaneCatalog', () => ({
@@ -208,6 +228,7 @@ describe('WorkspacePaneRouteView', () => {
   });
 
   test('mounts the catalog-selected contributed renderer without branching on contributor identity', () => {
+    sdkAdapterMock.mockClear();
     resolveClientTrustedPluginLayoutMock.mockReturnValue(() => null);
     catalogMock.entries = [
       {
@@ -279,6 +300,70 @@ describe('WorkspacePaneRouteView', () => {
       }),
       expect.objectContaining({ instanceId: 'third-party-issues-1' }),
     );
+    expect(sdkAdapterMock).toHaveBeenCalledWith({
+      boundProjectSlug: 'demo',
+      layout: expect.objectContaining({
+        slug: 'third-party-issues-1',
+        tabs: [
+          expect.objectContaining({
+            id: 'third-party-issues-1',
+            component: {
+              kind: 'plugin-component',
+              name: 'issues-read-only',
+            },
+          }),
+        ],
+      }),
+    });
+  });
+
+  test('rejects a cross-Project plugin occurrence before composing its SDK boundary', () => {
+    sdkAdapterMock.mockClear();
+    resolveClientTrustedPluginLayoutMock.mockClear();
+    resolveClientTrustedPluginLayoutMock.mockReturnValue(() => null);
+    catalogMock.entries = [
+      {
+        descriptor: {
+          id: 'pane:plugin%3Athird-party:review:cross-project',
+          name: 'Cross Project plugin',
+          renderer: { kind: 'plugin-component', name: 'cross-project' },
+          provenance: { origin: 'plugin', pluginId: 'third-party-review' },
+        },
+        instance: {
+          instanceId: 'cross-project-plugin-1',
+          boundContext: { projectId: 'project-b' },
+        },
+        selectedRenderer: {
+          source: 'primary',
+          rendererId: 'cross-project-renderer',
+          renderer: { kind: 'plugin-component', name: 'cross-project' },
+          contributorProvenance: {
+            origin: 'plugin',
+            pluginId: 'third-party-review',
+          },
+          requiredCapabilities: ['trusted-plugin-react'],
+        },
+        availability: {
+          state: 'available',
+          reason: { code: 'ready', source: 'resolver' },
+        },
+        clientRendererPresence: 'present',
+      },
+    ] as any;
+
+    render(
+      <WorkspacePaneRouteView
+        projectSlug="demo"
+        descriptorId="pane:plugin%3Athird-party:review:cross-project"
+        instanceId="cross-project-plugin-1"
+      />,
+    );
+
+    expect(
+      screen.getByText('This pane belongs to a different Project.'),
+    ).toBeTruthy();
+    expect(sdkAdapterMock).not.toHaveBeenCalled();
+    expect(resolveClientTrustedPluginLayoutMock).not.toHaveBeenCalled();
   });
 
   test('asynchronously reselects only the declared standard-data alternative after a missing MCP resource', () => {

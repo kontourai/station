@@ -703,6 +703,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/plugin-pane-sdk-context.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves a Registry-installed plugin receives a server-issued Project Pane occurrence and executes public Agent, navigation, and toast SDK hooks after explicit selection from the Add pane picker.',
+    exceptions: [],
+  },
+  {
     path: 'tests/default-agent-workflow.spec.ts',
     bucket: 'product',
     surface: 'Agents',
