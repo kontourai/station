@@ -267,6 +267,12 @@ describe('frozen stable client-build provenance', () => {
       'Regenerate the Xcode project with the manual signing template',
       'Build signed and channel-audited iOS package',
     ]);
+    const initialize = namedStep(
+      delivery,
+      'Initialize the channel-specific Xcode project',
+    );
+    expect(initialize.run).toContain('station_iOS/Info.plist');
+    expect(initialize.run).toContain('gen/apple/station_iOS/Info.plist');
     const regenerate = namedStep(
       delivery,
       'Regenerate the Xcode project with the manual signing template',
@@ -282,6 +288,8 @@ describe('frozen stable client-build provenance', () => {
     expect(run).toContain(
       "grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' gen/apple/project.yml",
     );
+    expect(run).toContain('station_iOS/Info.plist');
+    expect(run).toContain('gen/apple/station_iOS/Info.plist');
     // The regeneration deletes gen/apple, so the gitignored provenance
     // resource must be staged again afterwards or IPA verification fails.
     const restage =
