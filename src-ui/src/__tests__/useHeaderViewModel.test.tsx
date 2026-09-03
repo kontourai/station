@@ -13,7 +13,7 @@ const { launchChat, navigate, telemetryTrack } = vi.hoisted(() => ({
 
 vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: telemetryTrack },
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),

@@ -94,7 +94,7 @@ vi.mock('@kontourai/station-sdk', () => ({
       { name: 'salad-skill', description: 'Tosses a salad' },
     ],
   }),
-  useAgentConnectionsQuery: () => ({
+  useEngineConnectionsQuery: () => ({
     isLoading: false,
     data: agentConnections,
     error: agentConnectionsQueryError,
@@ -376,7 +376,7 @@ describe('AgentConnectionView', () => {
     expect(screen.getAllByText('Engines').length).toBeGreaterThan(1);
   });
 
-  // archive#771 regression: `useAgentConnectionsQuery`'s isLoading was
+  // archive#771 regression: `useEngineConnectionsQuery`'s isLoading was
   // consulted by `SplitPaneLayout`'s `loading` prop but its error was never
   // passed through, so a settled read failure rendered the same "no engines"
   // empty state as a host with none configured — no error, no retry.
@@ -518,13 +518,13 @@ describe('AgentConnectionView', () => {
     // rows — the accessible name carries the engine's own name too.
     fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
     expect(onNavigate).toHaveBeenCalledWith({
-      type: 'connections-acp-new',
+      type: 'connections-engine-new',
       providerId: 'kiro',
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Set up OpenCode' }));
     expect(onNavigate).toHaveBeenCalledWith({
-      type: 'connections-acp-new',
+      type: 'connections-engine-new',
       providerId: 'opencode',
     });
   });
@@ -541,7 +541,7 @@ describe('AgentConnectionView', () => {
       screen.getByRole('button', { name: 'Set up custom engine' }),
     );
     expect(onNavigate).toHaveBeenCalledWith({
-      type: 'connections-acp-new',
+      type: 'connections-engine-new',
       providerId: 'custom',
     });
   });

@@ -1,4 +1,4 @@
-import { useAgentConnectionsQuery } from '@kontourai/station-sdk';
+import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
 import { Button } from '../components/Button';
 import { PageRow } from '../components/PageRow';
@@ -29,7 +29,7 @@ export function CommandsView() {
   const chats = useAllActiveChats();
   const agents = useAgents();
   const models = useModels();
-  const { data: agentConnections = [] } = useAgentConnectionsQuery();
+  const { data: agentConnections = [] } = useEngineConnectionsQuery();
   const { updateChat } = useActiveChatActions();
   const createChatSession = useCreateChatSession();
   const activeEntry = Object.entries(chats).find(

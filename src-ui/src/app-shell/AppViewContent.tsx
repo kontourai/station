@@ -301,14 +301,14 @@ function AppViewContentBody({
   if (currentView.type === 'connections') {
     return <ConnectionsHub />;
   }
-  if (currentView.type === 'connections-providers') {
+  if (currentView.type === 'connections-models') {
     return (
       <ConnectionsSectionFrame sectionId="models">
         <ProviderSettingsView onNavigate={onNavigate} />
       </ConnectionsSectionFrame>
     );
   }
-  if (currentView.type === 'connections-provider-edit') {
+  if (currentView.type === 'connections-model-edit') {
     return (
       <ConnectionsSectionFrame sectionId="models">
         <ProviderSettingsView
@@ -318,7 +318,7 @@ function AppViewContentBody({
       </ConnectionsSectionFrame>
     );
   }
-  if (currentView.type === 'connections-runtime-edit') {
+  if (currentView.type === 'connections-engine-edit') {
     return (
       <ConnectionsSectionFrame sectionId="engines">
         <AgentConnectionView
@@ -335,7 +335,7 @@ function AppViewContentBody({
       </ConnectionsSectionFrame>
     );
   }
-  if (currentView.type === 'connections-acp-new') {
+  if (currentView.type === 'connections-engine-new') {
     return (
       <ConnectionsSectionFrame sectionId="engines">
         <ACPConnectionsView

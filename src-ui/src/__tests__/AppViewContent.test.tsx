@@ -375,7 +375,7 @@ describe('AppViewContent — the page header while a route loads', () => {
     render(
       <AppViewContent
         {...baseProps}
-        currentView={{ type: 'connections-providers' }}
+        currentView={{ type: 'connections-models' }}
       />,
     );
 
@@ -390,7 +390,7 @@ describe('AppViewContent — the page header while a route loads', () => {
     const { rerender } = render(
       <AppViewContent
         {...baseProps}
-        currentView={{ type: 'connections-providers' }}
+        currentView={{ type: 'connections-models' }}
       />,
     );
     await screen.findByText('ProviderSettings');
@@ -439,7 +439,7 @@ describe('AppViewContent — Connections surface continuity', () => {
     const { container, rerender } = render(
       <AppViewContent
         {...baseProps}
-        currentView={{ type: 'connections-providers' }}
+        currentView={{ type: 'connections-models' }}
       />,
     );
     await screen.findByText('ProviderSettings');
@@ -452,12 +452,12 @@ describe('AppViewContent — Connections surface continuity', () => {
       container
         .querySelector('[data-route-key]')
         ?.getAttribute('data-route-key'),
-    ).toBe('connections-providers');
+    ).toBe('connections-models');
 
     rerender(
       <AppViewContent
         {...baseProps}
-        currentView={{ type: 'connections-provider-edit', id: 'model-1' }}
+        currentView={{ type: 'connections-model-edit', id: 'model-1' }}
       />,
     );
     expect(container.querySelector('.route-transition')).toBe(surface);
@@ -472,12 +472,12 @@ describe('AppViewContent — Connections surface continuity', () => {
       container
         .querySelector('[data-route-key]')
         ?.getAttribute('data-route-key'),
-    ).toBe('connections-provider-edit:model-1');
+    ).toBe('connections-model-edit:model-1');
 
     rerender(
       <AppViewContent
         {...baseProps}
-        currentView={{ type: 'connections-providers' }}
+        currentView={{ type: 'connections-models' }}
       />,
     );
     expect(

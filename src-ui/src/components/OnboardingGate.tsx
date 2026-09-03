@@ -713,11 +713,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         deferSetupBanner();
         navigate(
           setupBannerContent.actionTarget === 'providers'
-            ? getPathForView({ type: 'connections-providers' })!
+            ? getPathForView({ type: 'connections-models' })!
             : setupBannerContent.actionTarget === 'engine' &&
                 setupBannerContent.engineConnectionId
               ? getPathForView({
-                  type: 'connections-runtime-edit',
+                  type: 'connections-engine-edit',
                   id: setupBannerContent.engineConnectionId,
                 })!
               : getPathForView({ type: 'connections' })!,
