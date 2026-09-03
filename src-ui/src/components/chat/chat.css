@@ -1192,12 +1192,6 @@
   white-space: nowrap;
 }
 
-@media (max-width: 420px) {
-  .chat-input__agent-name {
-    display: none;
-  }
-}
-
 .chat-input__meta .chat-input__agent-btn:hover:not(:disabled) {
   background: var(--accent-light);
 }

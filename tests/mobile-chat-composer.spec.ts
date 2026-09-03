@@ -2332,8 +2332,26 @@ for (const viewport of [
     );
     const modelButton = page.locator('.chat-input__model-btn');
     await expect(modelButton).toBeVisible();
+    await expect(modelButton.locator('.chat-input__choice-label')).toHaveText(
+      'Model',
+    );
+    await expect(modelButton.locator('.chat-input__model-name')).toHaveText(
+      'test-model',
+    );
+    await expect(modelButton).toContainText('⌄');
     const modelBox = await modelButton.boundingBox();
     expect(modelBox!.x + modelBox!.width).toBeLessThanOrEqual(viewport.width);
+    const agentButton = page.getByRole('button', {
+      name: /^Agent: .*\. Change Agent$/,
+    });
+    await expect(agentButton).toBeVisible();
+    await expect(agentButton.locator('.chat-input__choice-label')).toHaveText(
+      'Agent',
+    );
+    await expect(agentButton.locator('.chat-input__agent-name')).toHaveText(
+      'Claude',
+    );
+    await expect(agentButton).toContainText('⌄');
     const attach = page.getByRole('button', { name: 'Attach files' });
     const attachBox = await attach.boundingBox();
     expect(attachBox!.x + attachBox!.width).toBeLessThanOrEqual(viewport.width);
