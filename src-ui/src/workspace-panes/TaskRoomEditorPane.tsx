@@ -177,7 +177,10 @@ export function TaskRoomEditorPane({
     );
   }, [shared]);
   useLayoutEffect(() => {
-    if (document.data?.kind === 'snapshot' || document.data?.kind === 'delta') {
+    if (
+      !document.isError &&
+      (document.data?.kind === 'snapshot' || document.data?.kind === 'delta')
+    ) {
       const requireCurrentStream =
         sharedStreamPresentRef.current && queryApplicationInitialized.current;
       queryApplicationInitialized.current = true;
@@ -188,7 +191,7 @@ export function TaskRoomEditorPane({
     } else {
       queryApplicationInitialized.current = true;
     }
-  }, [document.data]);
+  }, [document.data, document.isError]);
   const queryDocument =
     document.data?.kind === 'snapshot' || document.data?.kind === 'delta'
       ? document.data
@@ -196,6 +199,13 @@ export function TaskRoomEditorPane({
   const displayedDocument = appliedDocument ?? queryDocument;
   const documentLoaded = displayedDocument !== undefined;
   const documentRevision = displayedDocument?.revision;
+  // A stream-applied document may remain visible while recovery is needed,
+  // but gap/unavailable/error query truth revokes edit authority immediately.
+  // Display continuity is not authority to plan or save from stale text.
+  const documentAuthorityCurrent =
+    !document.isError &&
+    document.data?.kind !== 'gap' &&
+    document.data?.kind !== 'unavailable';
   useLayoutEffect(() => {
     if (
       import.meta.env.MODE !== 'test' &&
@@ -226,7 +236,10 @@ export function TaskRoomEditorPane({
     room.data?.kind === 'opened' || room.data?.kind === 'existing'
       ? room.data.capabilities
       : undefined;
-  const readable = documentLoaded && capabilities?.documentRead === true;
+  const readable =
+    documentLoaded &&
+    documentAuthorityCurrent &&
+    capabilities?.documentRead === true;
   const writable =
     readable && capabilities?.documentWrite === true && authorizationCurrent;
   const paneId = projectTaskRoomEditorPaneId(taskId);

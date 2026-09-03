@@ -248,6 +248,63 @@ describe('TaskRoomEditorPane', () => {
     unsubscribe();
   });
 
+  test.each([
+    {
+      label: 'gap',
+      data: { kind: 'gap', floor: 'revision-stream' },
+      isError: false,
+      status: 'The shared document is stale. Resync before editing.',
+    },
+    {
+      label: 'unavailable',
+      data: { kind: 'unavailable' },
+      isError: false,
+      status: 'The shared document is unavailable. Editing is disabled.',
+    },
+    {
+      label: 'failed read',
+      data: {
+        kind: 'snapshot',
+        revision: 'revision-before-failure',
+        text: 'older query text',
+      },
+      isError: true,
+      status:
+        'The shared document could not be loaded. Editing is disabled until a successful resync.',
+    },
+  ])(
+    'keeps stream text visible but revokes edit/save authority after $label query truth',
+    async ({ data, isError, status }) => {
+      const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+      await waitFor(() => expect(mocks.documentListener).toBeDefined());
+      act(() =>
+        mocks.documentListener?.({
+          kind: 'delta',
+          revision: 'revision-stream',
+          text: 'stream applied',
+        }),
+      );
+      await waitFor(() =>
+        expect((editor() as HTMLTextAreaElement).value).toBe('stream applied'),
+      );
+      expect((editor() as HTMLTextAreaElement).readOnly).toBe(false);
+
+      mocks.document.data = data as never;
+      mocks.document.isError = isError;
+      rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+
+      expect((editor() as HTMLTextAreaElement).value).toBe('stream applied');
+      expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
+      expect(screen.getByText(status)).toBeTruthy();
+      const save = screen.getByRole('button', {
+        name: 'Save shared document',
+      });
+      expect(save.matches(':disabled')).toBe(true);
+      fireEvent.click(save);
+      expect(mocks.plan).not.toHaveBeenCalled();
+    },
+  );
+
   test('guards browser Back and keeps the draft on cancel before replaying on confirm', async () => {
     navigationStore.navigate('/guard-back-origin');
     navigationStore.navigate('/guard-back-editor');

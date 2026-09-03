@@ -2,7 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
-import { type ReactNode } from 'react';
+import { type ReactNode, useLayoutEffect } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 
 let resolveDocument: ((value: unknown) => void) | undefined;
@@ -11,9 +11,15 @@ const documentRequests: Array<{
   init: RequestInit;
   resolve(value: unknown): void;
 }> = [];
-let callbacks:
-  | { onEvent(event: { kind: string; value?: unknown }): void }
-  | undefined;
+type StreamCallbacks = {
+  onCheckpoint?(id: string): void;
+  onEvent(event: { kind: string; value?: unknown }): void;
+};
+let callbacks: StreamCallbacks | undefined;
+const streamConnections: Array<{
+  taskId: string;
+  callbacks: StreamCallbacks;
+}> = [];
 
 vi.mock('../api', () => ({ _getApiBase: async () => 'https://station.test' }));
 vi.mock('../client/project-task-rooms', () => ({
@@ -30,10 +36,11 @@ vi.mock('../client/project-task-rooms', () => ({
     }),
   subscribeProjectTaskRoomEvents: (
     _base: string,
-    _task: string,
-    input: typeof callbacks,
+    taskId: string,
+    input: StreamCallbacks,
   ) => {
     callbacks = input;
+    streamConnections.push({ taskId, callbacks: input });
     return { close: vi.fn(), restart: vi.fn(), completed: Promise.resolve() };
   },
   parseAuthoritativeProjectTaskRoomDocumentEvent: (value: any) =>
@@ -64,6 +71,7 @@ afterEach(() => {
   documentSignal = undefined;
   documentRequests.splice(0);
   callbacks = undefined;
+  streamConnections.splice(0);
 });
 
 test('committed settlement replaces only its exact observed document object', () => {
@@ -382,6 +390,60 @@ test('isolates throwing document observers without delaying cache normalization'
   expect(
     client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
   ).toEqual({ kind: 'snapshot', revision: 'rev2', text: 'two' });
+});
+
+test('rejects callbacks from the previous Task during the render-to-cleanup handoff', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const delivered: string[] = [];
+  let injectedOldConnection = false;
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const rendered = renderHook(
+    ({ taskId }: { taskId: string }) => {
+      useProjectTaskRoomStream(taskId, {
+        onAuthoritativeDocument: (document) =>
+          delivered.push(`${taskId}:document:${document.text}`),
+        onCheckpoint: (id) => delivered.push(`${taskId}:checkpoint:${id}`),
+        onTerminal: () => delivered.push(`${taskId}:terminal`),
+      });
+      // This is the review's exact window: Task B has committed and the stream
+      // hook's layout fence has advanced, but Task A's passive cleanup has not
+      // run yet. Hook layout effects execute in declaration order.
+      useLayoutEffect(() => {
+        if (
+          taskId !== 'task-b' ||
+          injectedOldConnection ||
+          !streamConnections[0]
+        )
+          return;
+        injectedOldConnection = true;
+        streamConnections[0].callbacks.onCheckpoint?.('late-a');
+        streamConnections[0].callbacks.onEvent({
+          kind: 'document',
+          value: { kind: 'committed', revision: 'rev-a', text: 'task a' },
+        });
+        streamConnections[0].callbacks.onEvent({ kind: 'terminal' });
+      }, [taskId]);
+    },
+    { initialProps: { taskId: 'task-a' }, wrapper },
+  );
+  await waitFor(() => expect(streamConnections).toHaveLength(1));
+
+  rendered.rerender({ taskId: 'task-b' });
+
+  expect(delivered).toEqual([]);
+  expect(
+    client.getQueryData(projectTaskRoomQueries.document('task-a').queryKey),
+  ).toBeUndefined();
+  await waitFor(() => expect(streamConnections).toHaveLength(2));
+  streamConnections[1].callbacks.onEvent({
+    kind: 'document',
+    value: { kind: 'committed', revision: 'rev-b', text: 'task b' },
+  });
+  expect(delivered).toEqual(['task-b:document:task b']);
 });
 
 test('committed SSE cancels a deferred older GET and duplicate cannot regress cache', async () => {

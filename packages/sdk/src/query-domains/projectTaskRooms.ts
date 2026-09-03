@@ -8,7 +8,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { _getApiBase } from '../api';
 import {
   appendProjectTaskRoomHumanMessage,
@@ -243,11 +243,27 @@ export function useProjectTaskRoomStream(
   connectionGeneration = 0,
 ) {
   const client = useQueryClient();
+  const streamKey = `${taskId}\u0000${connectionGeneration}`;
   const callbackRef = useRef(callbacks);
+  const streamIdentityRef = useRef({
+    key: streamKey,
+    generation: 1,
+  });
   const connectionRef = useRef<
     ReturnType<typeof subscribeProjectTaskRoomEvents> | undefined
   >(undefined);
-  callbackRef.current = callbacks;
+  useLayoutEffect(() => {
+    if (streamIdentityRef.current.key !== streamKey) {
+      streamIdentityRef.current = {
+        key: streamKey,
+        generation: streamIdentityRef.current.generation + 1,
+      };
+      // A restart request after this Task commits but before passive cleanup
+      // must not target the previous Task/generation's connection.
+      connectionRef.current = undefined;
+    }
+    callbackRef.current = callbacks;
+  }, [callbacks, streamKey]);
   useEffect(() => {
     // Hosts may rotate the one stream instance without changing Task identity.
     void connectionGeneration;
@@ -256,23 +272,33 @@ export function useProjectTaskRoomStream(
     let connection:
       | ReturnType<typeof subscribeProjectTaskRoomEvents>
       | undefined;
+    const streamGeneration = streamIdentityRef.current.generation;
+    const isCurrentStream = () =>
+      !closed &&
+      streamIdentityRef.current.key === streamKey &&
+      streamIdentityRef.current.generation === streamGeneration;
+    const notifyCurrent = (callback: (() => void) | undefined) => {
+      if (!isCurrentStream()) return;
+      notifyProjectTaskRoomCallback(callback);
+    };
     void _getApiBase().then((base) => {
-      if (closed) return;
+      if (!isCurrentStream()) return;
       connection = subscribeProjectTaskRoomEvents(base, taskId, {
-        onCheckpoint: (id) => callbackRef.current?.onCheckpoint?.(id),
+        onCheckpoint: (id) =>
+          notifyCurrent(() => callbackRef.current?.onCheckpoint?.(id)),
         onEvent: (event) => {
-          if (closed) return;
+          if (!isCurrentStream()) return;
           if (event.kind === 'document') {
-            notifyProjectTaskRoomCallback(() =>
-              callbackRef.current?.onDocument?.(event.value),
-            );
+            notifyCurrent(() => callbackRef.current?.onDocument?.(event.value));
+            if (!isCurrentStream()) return;
             const document = parseAuthoritativeProjectTaskRoomDocumentEvent(
               event.value,
             );
             if (document?.kind === 'snapshot' || document?.kind === 'delta')
-              notifyProjectTaskRoomCallback(() =>
+              notifyCurrent(() =>
                 callbackRef.current?.onAuthoritativeDocument?.(document),
               );
+            if (!isCurrentStream()) return;
             if (document?.kind === 'gap')
               void refetchAuthoritativeProjectTaskRoomDocument(
                 client,
@@ -296,7 +322,7 @@ export function useProjectTaskRoomStream(
           } else if (event.kind === 'room') {
             const live = parseProjectTaskRoomBrowserLiveSnapshot(event.value);
             if (live?.scope.taskId === taskId)
-              callbackRef.current?.onRoom?.(live);
+              notifyCurrent(() => callbackRef.current?.onRoom?.(live));
             else
               void client.invalidateQueries({
                 queryKey: projectTaskRoomQueries.history(taskId).queryKey,
@@ -304,7 +330,8 @@ export function useProjectTaskRoomStream(
           } else if (event.kind === 'snapshot') {
             const live = parseProjectTaskRoomBrowserLiveSnapshot(event.value);
             if (live?.scope.taskId === taskId)
-              callbackRef.current?.onRoom?.(live);
+              notifyCurrent(() => callbackRef.current?.onRoom?.(live));
+            if (!isCurrentStream()) return;
             let document:
               | ReturnType<typeof parseProjectTaskRoomDocumentResponse>
               | undefined;
@@ -319,13 +346,13 @@ export function useProjectTaskRoomStream(
               // never an optimistic cache write.
             }
             if (document?.kind === 'snapshot' || document?.kind === 'delta')
-              notifyProjectTaskRoomCallback(() =>
+              notifyCurrent(() =>
                 callbackRef.current?.onAuthoritativeDocument?.(document),
               );
+            if (!isCurrentStream()) return;
             if (document)
-              notifyProjectTaskRoomCallback(() =>
-                callbackRef.current?.onDocument?.(document),
-              );
+              notifyCurrent(() => callbackRef.current?.onDocument?.(document));
+            if (!isCurrentStream()) return;
             void client.invalidateQueries({
               queryKey: projectTaskRoomQueries.discovery(taskId).queryKey,
             });
@@ -339,19 +366,28 @@ export function useProjectTaskRoomStream(
               );
             else
               void refetchAuthoritativeProjectTaskRoomDocument(client, taskId);
-          } else callbackRef.current?.onTerminal?.();
+          } else notifyCurrent(() => callbackRef.current?.onTerminal?.());
         },
       });
+      if (!isCurrentStream()) {
+        connection.close();
+        connection = undefined;
+        return;
+      }
       const connectionId = `${taskId}:${++taskRoomConnectionSequence}`;
       let notifiedClosed = false;
       const notifyClosed = () => {
         if (notifiedClosed) return;
         notifiedClosed = true;
-        callbackRef.current?.onConnectionClosed?.(connectionId);
+        notifyCurrent(() =>
+          callbackRef.current?.onConnectionClosed?.(connectionId),
+        );
       };
-      callbackRef.current?.onConnectionCreated?.(connectionId);
+      notifyCurrent(() =>
+        callbackRef.current?.onConnectionCreated?.(connectionId),
+      );
       void connection.completed.finally(notifyClosed);
-      connectionRef.current = connection;
+      if (isCurrentStream()) connectionRef.current = connection;
     });
     return () => {
       closed = true;
@@ -359,6 +395,6 @@ export function useProjectTaskRoomStream(
       if (connectionRef.current === connection)
         connectionRef.current = undefined;
     };
-  }, [client, connectionGeneration, taskId]);
+  }, [client, connectionGeneration, streamKey, taskId]);
   return useCallback(() => connectionRef.current?.restart(), []);
 }
