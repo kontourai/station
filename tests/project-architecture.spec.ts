@@ -258,6 +258,20 @@ async function openCustomizationNavigation(page: Page) {
   return navigation;
 }
 
+/**
+ * station#4460 consolidated the old per-occupant `.dock-slot` /
+ * `.dock-slot__header` markup into one shared `#chat-dock` shell
+ * (`aria-label="Dock"`) — `.dock-slot` no longer renders anywhere (see
+ * `DockShell.tsx` and `dock-bottom-clearance.test.ts`). The occupant is
+ * identified by the header's occupant-picker trigger, whose accessible name
+ * is `Docked pane: <name>` (#1046, matching dock-occupant-picker.spec.ts).
+ */
+function dockOccupantTrigger(page: Page, name: string) {
+  return page
+    .locator('#chat-dock')
+    .getByRole('button', { name: `Docked pane: ${name}` });
+}
+
 test.describe('Project Sidebar', () => {
   test.beforeEach(async ({ page }) => {
     await seedRoutes(page);
@@ -838,7 +852,7 @@ test.describe('ChatDock', () => {
       .locator('#station-main')
       .getByRole('button', { name: 'Dock this pane' })
       .click();
-    await expect(page.locator('.dock-slot')).toBeVisible();
+    await expect(dockOccupantTrigger(page, 'Home')).toBeVisible();
     await expect
       .poll(() =>
         page.evaluate(() =>
@@ -849,19 +863,19 @@ test.describe('ChatDock', () => {
       )
       .toContain('pane:builtin:home');
     await page.reload();
-    await expect(page.locator('.dock-slot')).toBeVisible();
+    await expect(dockOccupantTrigger(page, 'Home')).toBeVisible();
     // M5: the fixed header "return to Chat" action is gone — the header's
     // occupant picker replaces the occupant, Chat as one entry of the list.
-    await page
-      .locator('.dock-slot__header')
-      .getByRole('button', { name: 'Docked pane: Home' })
-      .click();
+    await dockOccupantTrigger(page, 'Home').click();
     await page
       .getByRole('menu', { name: 'Docked pane' })
       .getByRole('menuitemradio', { name: 'Chat' })
       .click();
     await expect(page.locator('.chat-dock')).toBeVisible();
-    await expect(page.locator('.dock-slot')).toHaveCount(0);
+    await expect(
+      dockOccupantTrigger(page, 'Chat'),
+      'returning to Chat must restore the ambient slot to the Chat occupant',
+    ).toBeVisible();
     expect(
       await page.evaluate(
         () => document.querySelector('.chat-dock')?.parentElement?.className,
@@ -909,14 +923,23 @@ test.describe('Ambient chat dock host at 390x844', () => {
   // The phone half of the same journey — removed in archive#3929, back with
   // archive#4090 / epic archive#4142 M2 for the same reason as the desktop
   // half above.
+  //
+  // `#station-main`'s "Dock this pane" button (`WorkspacePaneDockAction`,
+  // `.home-view__top-actions`) is hidden by `HomeView.css` at
+  // `max-width: 1024px` by design — "Docking is desktop composition. At
+  // phone/tablet widths the ambient dock already owns the mobile pane
+  // picker/maximize contract" — so at 390x844 it never appears, at any load
+  // (proven 6/6 at 10s and 20s timeouts in dock-occupant-picker.spec.ts,
+  // #1046/#1060). Dock Home through that mobile contract instead: the Chat
+  // mobile header's "⋯" overflow sheet (station#520/#524).
   test('keeps a docked Home pane within the phone viewport', async ({
     page,
   }) => {
-    await page
-      .locator('#station-main')
-      .getByRole('button', { name: 'Dock this pane' })
-      .click();
-    await expect(page.locator('.dock-slot')).toBeVisible();
+    const overflowTrigger = page.getByRole('button', { name: 'Chat actions' });
+    await expect(overflowTrigger).toBeVisible({ timeout: 15_000 });
+    await overflowTrigger.click();
+    await page.getByRole('menuitem', { name: 'Switch to Home' }).click();
+    await expect(dockOccupantTrigger(page, 'Home')).toBeVisible();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -924,9 +947,7 @@ test.describe('Ambient chat dock host at 390x844', () => {
       'a docked non-chat pane must not push the phone document sideways',
     ).toBe(true);
     // M5: the header affordance is the occupant picker now.
-    const action = page
-      .locator('.dock-slot__header')
-      .getByRole('button', { name: 'Docked pane: Home' });
+    const action = dockOccupantTrigger(page, 'Home');
     const bounds = await action.boundingBox();
     expect(
       bounds?.height,

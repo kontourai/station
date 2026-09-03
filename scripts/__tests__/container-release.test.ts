@@ -26,22 +26,36 @@ function dockerStage(dockerfile: string, name: string): string {
   return lines.slice(begin, end).join('\n');
 }
 
+// Models Docker's MatchesOrParentMatches: each pattern is evaluated in order
+// against the path AND every parent directory of it, and the last match wins.
+// The parent check is what lets the leading `*` exclude a nested file such as
+// packaging/node-pty-prebuilds/manifest.json through its top-level directory.
+// The previous helper matched the path alone, so any slashed path no pattern
+// named came back "included" by default — and reported the #1264 break (a
+// COPY of a directory the allowlist never admits) as green.
 function dockerContextIncludes(ignore: string, path: string): boolean {
+  const candidates = [path];
+  for (let i = path.lastIndexOf('/'); i > 0; i = path.lastIndexOf('/', i - 1)) {
+    candidates.push(path.slice(0, i));
+  }
   let included = true;
   for (const raw of ignore.split('\n')) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
     const negated = line.startsWith('!');
-    const pattern = negated ? line.slice(1) : line;
+    // Docker cleans each pattern, so a trailing slash names the directory.
+    const pattern = (negated ? line.slice(1) : line).replace(/\/+$/, '');
     const escaped = pattern
-      .replaceAll('**', '\u0000')
+      .replaceAll('**/', '@@ANYDIRS@@')
+      .replaceAll('**', '@@ANY@@')
       .replace(/[.+^${}()|\\]/g, '\\$&')
       .replaceAll('*', '[^/]*')
-      .replaceAll('\u0000', '.*');
-    const regex = new RegExp(
-      `^${escaped}${pattern.endsWith('/') ? '.*' : ''}$`,
-    );
-    if (regex.test(path)) included = negated;
+      .replaceAll('@@ANYDIRS@@', '(.*/)?')
+      .replaceAll('@@ANY@@', '.*');
+    const regex = new RegExp(`^${escaped}$`);
+    if (candidates.some((candidate) => regex.test(candidate))) {
+      included = negated;
+    }
   }
   return included;
 }
@@ -505,10 +519,37 @@ describe('container source contract', () => {
       '.npmrc',
       'config/dependency-lifecycle-allowlist.json',
       'patches/example.patch',
+      'packaging/node-pty-prebuilds/manifest.json',
       'scripts/dependency-lifecycle.mjs',
       'scripts/lib/dependency-lifecycle-policy.mjs',
     ])
       expect(dockerContextIncludes(ignore, path)).toBe(true);
+    // A hand-written list only covers the paths someone remembered to add.
+    // #1264 added `COPY packaging/node-pty-prebuilds` without admitting the
+    // directory here, and the container smoke on main was the first thing to
+    // notice. So the contract is derived from the Dockerfile: every COPY
+    // source the context-reading stages name must be admitted by the
+    // allowlist. (The runtime stage copies only from the build stage, and
+    // its sources are pinned separately above.)
+    for (const stageName of ['dependencies', 'build']) {
+      const stage = dockerStage(dockerfile, stageName);
+      expect(stage, `Dockerfile must define stage "${stageName}"`).toBeTruthy();
+      expect(
+        stage,
+        `stage "${stageName}" is expected to COPY from the build context only`,
+      ).not.toMatch(/^\s*COPY\b[^\n]*--from=/m);
+      for (const source of parseCopySources(stage)) {
+        expect(
+          dockerContextIncludes(ignore, source),
+          `.dockerignore must admit "${source}", which stage "${stageName}" COPYs`,
+        ).toBe(true);
+      }
+    }
+    // Only the prebuild channel comes in from packaging/ — its siblings
+    // (installer and tap material) stay out of the image.
+    expect(dockerContextIncludes(ignore, 'packaging/homebrew/station.rb')).toBe(
+      false,
+    );
     // Post-flip policy: tracked config/ and scripts/ ship wholesale (the
     // repo is public; per-file curation cost five consecutive build breaks).
     // The discriminating exclusions are the test and dogfood trees.

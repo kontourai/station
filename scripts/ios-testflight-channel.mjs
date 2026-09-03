@@ -10,7 +10,7 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     scheme: 'station-stable',
     icon: 'icons/icon.png',
     environment: 'native-release',
-    internalGroup: 'Station Stable Internal',
+    internalGroup: 'Internal Testers',
   }),
   beta: Object.freeze({
     bundleId: 'io.kontourai.station.beta',

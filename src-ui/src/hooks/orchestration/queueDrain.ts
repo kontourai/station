@@ -2,6 +2,7 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { contextRegistry } from '@kontourai/station-sdk';
 import { ChatHttpError } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
@@ -247,7 +248,7 @@ export function drainQueuedMessageOnTurnCompleted(
                     // `at` orders and displays; `id` is the dismiss/React
                     // key — Date.now is not an identity (two drains can
                     // settle in one millisecond; archive#3706).
-                    id: crypto.randomUUID(),
+                    id: randomCorrelationId(),
                     content: nextMessage,
                     reason: sessionEnded
                       ? 'This chat had already ended when Station tried to send it.'

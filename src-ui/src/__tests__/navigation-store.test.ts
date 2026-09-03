@@ -428,7 +428,6 @@ describe('navigationStore dockMode device-scope fallback', () => {
   beforeEach(() => {
     localStorage.clear();
     window.history.replaceState({}, '', '/');
-    navigationStore.dockModeOverride = null;
     navigationStore.navigate('/', { dockSlotPlacement: null });
   });
 
@@ -436,7 +435,6 @@ describe('navigationStore dockMode device-scope fallback', () => {
     deviceSettingsStore.reset('dockSlotPlacement');
     localStorage.clear();
     window.history.replaceState({}, '', '/');
-    navigationStore.dockModeOverride = null;
   });
 
   test('falls back to the remembered dock-slot placement when no URL param is present', () => {
@@ -484,9 +482,7 @@ describe('navigationStore dockMode device-scope fallback', () => {
   test('a later navigation with no URL param and no in-memory override picks up the persisted device default (last-set-wins-across-sessions)', () => {
     navigationStore.setDockMode('right');
 
-    // Simulate a fresh navigation with neither an explicit URL param nor a
-    // layout's quiet override in play (e.g. a reload of a non-layout route).
-    navigationStore.dockModeOverride = null;
+    // Simulate a fresh navigation with no explicit URL param (e.g. a reload).
     navigationStore.navigate('/', { dockSlotPlacement: null });
 
     expect(navigationStore.getSnapshot().dockMode).toBe('right');
@@ -506,7 +502,6 @@ describe('navigationStore dockMode subscribes to live device-store changes (slic
   beforeEach(() => {
     localStorage.clear();
     window.history.replaceState({}, '', '/');
-    navigationStore.dockModeOverride = null;
     navigationStore.navigate('/', { dockSlotPlacement: null });
   });
 
@@ -514,10 +509,9 @@ describe('navigationStore dockMode subscribes to live device-store changes (slic
     deviceSettingsStore.reset('dockSlotPlacement');
     localStorage.clear();
     window.history.replaceState({}, '', '/');
-    navigationStore.dockModeOverride = null;
   });
 
-  test('a device-store change updates the resolved dockMode with NO navigation, when no URL param or override governs', () => {
+  test('a device-store change updates the resolved dockMode with NO navigation, when no URL param governs', () => {
     expect(navigationStore.getSnapshot().dockMode).toBe('bottom');
 
     deviceSettingsStore.set('dockSlotPlacement', 'right');
@@ -534,14 +528,12 @@ describe('navigationStore dockMode subscribes to live device-store changes (slic
     expect(navigationStore.getSnapshot().dockMode).toBe('bottom');
   });
 
-  test('a device-store change is a no-op when dockModeOverride (a layout quiet preference) already governs', () => {
-    navigationStore.setDockModeQuiet('right');
-    expect(navigationStore.getSnapshot().dockMode).toBe('right');
+  test('a later device-settings change takes effect after navigating away from an earlier URL placement', () => {
+    navigationStore.setDockMode('right');
+    navigationStore.navigate('/', { dockSlotPlacement: null });
+    deviceSettingsStore.set('dockSlotPlacement', 'left');
 
-    deviceSettingsStore.set('dockSlotPlacement', 'bottom');
-
-    // dockModeOverride still governs — unaffected by the device-store write.
-    expect(navigationStore.getSnapshot().dockMode).toBe('right');
+    expect(navigationStore.getSnapshot().dockMode).toBe('left');
   });
 
   test('a cross-tab storage event for the device envelope updates the resolved dockMode', () => {

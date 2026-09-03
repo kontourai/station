@@ -38,12 +38,14 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // EventStore owns a high-cardinality SQLite fixture whose large replay and
+  // backfill assertions are scheduler-sensitive under the two-worker pool.
+  'src-server/services/orchestration/__tests__/event-store.test.ts',
   // Owns detached real-process fixtures, scans live sibling instances, and
   // contains synchronous crash-recovery probes that Vitest cannot interrupt
   // while another process-heavy file is consuming the host.
   'packages/cli/src/__tests__/lifecycle.test.ts',
   'scripts/__tests__/test-reliability-machine.test.ts',
-  'scripts/__tests__/verification-coordinator.test.ts',
   'src-server/routes/orchestration/__tests__/orchestration.routes.test.ts',
   // station#3218: its correctness bound IS an event-loop responsiveness
   // measurement — it compares how much a `PRAGMA quick_check` blocks this
@@ -57,6 +59,20 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
   // Runs the real Play upload wrapper through SIGTERM escalation and asserts
   // exact owned-PID cleanup; overlap would weaken the ownership boundary.
   'scripts/__tests__/play-upload-retry.test.ts',
+]);
+
+export const CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // station#1309/#1311: coordinates the exact SQLite index drop/create window
+  // with multiple real Node children and file barriers. It needs exclusive
+  // execution, but not the verification coordinator's remaining phase budget.
+  'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts',
+]);
+
+export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // station#1354: exercises host-global verification leases, checkpoint
+  // recovery, cleanup fencing, and deliberate timeout scenarios for roughly
+  // three minutes. Give that authority its own phase budget and receipt.
+  'scripts/__tests__/verification-coordinator.test.ts',
 ]);
 
 // Direct `node:child_process` importers discovered from the root corpus, with
@@ -181,11 +197,26 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // paths' EXIT STATUS and printed verdicts are proven, not just the pure
   // evaluation functions.
   'scripts/__tests__/codeql-sarif-policy.cli.test.ts',
+  // station#1312: same shape again — the issue-lifecycle module graph is
+  // loaded in fresh node children, one entry module per case, because only a
+  // cold import proves the graph has no evaluation-order cycle; in-process
+  // tests inherit whatever order Vitest already resolved.
+  'scripts/__tests__/issue-lifecycle-entry.test.ts',
   // station#3749: same shape again — the SDK refusal-message gate is driven as
   // a real child process against throwaway git repositories so its `FAIL:`
   // sentence and its EXIT STATUS are proven, not just its pure decision
   // functions. Bounded single-shot children per case.
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
+  // station#1137: same shape again — the crypto.randomUUID guard is driven as
+  // a real child process against throwaway git repositories so its `FAIL:`
+  // sentence and its EXIT STATUS are proven, not just its pure decision
+  // functions. Bounded single-shot children per case.
+  'scripts/__tests__/random-uuid-guard.test.ts',
+  // #1130: same shape again — the dialog-surface-class guard is driven as a
+  // real child process against throwaway git repositories so its `FAIL:`
+  // sentence and its EXIT STATUS are proven, not just its pure decision
+  // functions. Bounded single-shot children per case.
+  'scripts/__tests__/dialog-surface-class-guard.test.ts',
   'scripts/__tests__/dependency-advisory-policy.test.ts',
   // station#1085: builds throwaway git checkouts and drives `git` through
   // `execFileSync` to prove the manifest derives real revision/branch values
@@ -447,10 +478,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture. The children are network-free and short-lived, but the actual
   // process boundary is the claim, so it belongs in the bounded spawn pool.
   'scripts/__tests__/version-packages-lock.test.ts',
-  // station#3616: invokes the real Claude and Codex CLIs against isolated
-  // config homes; their child lifecycles and host binary availability make
-  // this an explicit process-heavy integration test, never ordinary work.
-  'src-server/services/orchestration/__tests__/event-store.test.ts',
   // The room runtime intentionally hard-exits a child after durable history
   // commit and before recovery settlement, then reopens the same SQLite file.
   // That crash/reopen lifecycle must not overlap ordinary workers.
@@ -497,10 +524,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // claim cannot be reconciled, then SIGKILLs it before reclaiming exactly
   // once. This has the same detached-process lifecycle as event-store.test.
   'src-server/services/orchestration/__tests__/recovery-ledger.test.ts',
-  // station#2562: starts a real Node process that holds the cross-process
-  // credential-profile mutation fence, then SIGKILLs it before reclaiming.
-  // It owns the same child lifecycle as recovery-ledger.test.ts.
-  'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts',
   // station#1528: synchronizes four real EventStore processes at one append
   // boundary to prove global ordering and duplicate rejection across SQLite
   // connections. Keep child ownership out of the ordinary worker pool.
@@ -601,6 +624,12 @@ export const VITEST_RESOURCE_MANIFEST = Object.freeze({
   ordinary: Object.freeze({ maxWorkers: ORDINARY_MAX_WORKERS }),
   processHeavy: Object.freeze({ files: PROCESS_HEAVY_VITEST_FILES }),
   processExclusive: Object.freeze({ files: PROCESS_EXCLUSIVE_VITEST_FILES }),
+  coordinatorExclusive: Object.freeze({
+    files: COORDINATOR_EXCLUSIVE_VITEST_FILES,
+  }),
+  credentialLedgerExclusive: Object.freeze({
+    files: CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES,
+  }),
   sharedOutput: Object.freeze({ files: SHARED_OUTPUT_VITEST_FILES }),
   dogfoodReconcile: Object.freeze({ prefix: DOGFOOD_RECONCILE_PREFIX }),
 });
@@ -737,6 +766,8 @@ function explicitFiles(manifest) {
   return [
     ...manifest.processHeavy.files,
     ...manifest.processExclusive.files,
+    ...manifest.coordinatorExclusive.files,
+    ...manifest.credentialLedgerExclusive.files,
     ...manifest.sharedOutput.files,
   ];
 }
@@ -751,6 +782,8 @@ export function ordinaryVitestExcludes(manifest = VITEST_RESOURCE_MANIFEST) {
   return Object.freeze([
     ...manifest.processHeavy.files,
     ...manifest.processExclusive.files,
+    ...manifest.coordinatorExclusive.files,
+    ...manifest.credentialLedgerExclusive.files,
     ...manifest.sharedOutput.files,
     `${manifest.dogfoodReconcile.prefix}*.test.ts`,
     `${manifest.dogfoodReconcile.prefix}/**`,
@@ -826,6 +859,8 @@ export function buildVitestResourceGroups(
     ordinary: [],
     processHeavy: [],
     processExclusive: [],
+    coordinatorExclusive: [],
+    credentialLedgerExclusive: [],
     sharedOutput: [],
     dogfoodReconcile: [],
   };
@@ -835,6 +870,10 @@ export function buildVitestResourceGroups(
       groups.sharedOutput.push(file);
     else if (manifest.processExclusive.files.includes(file))
       groups.processExclusive.push(file);
+    else if (manifest.coordinatorExclusive.files.includes(file))
+      groups.coordinatorExclusive.push(file);
+    else if (manifest.credentialLedgerExclusive.files.includes(file))
+      groups.credentialLedgerExclusive.push(file);
     else if (manifest.processHeavy.files.includes(file))
       groups.processHeavy.push(file);
     else groups.ordinary.push(file);

@@ -152,7 +152,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
       branding.appName = 'Remote Station';
       render(<ProjectSidebar />);
       const home = screen.getByRole('button', {
-        name: `Station${badge ? ` ${badge}` : ''} v0.1.2 home`,
+        name: `Station${badge ? ` ${badge}` : ''} v0.1.2 Build timestamp unavailable. home`,
       });
       expect(
         home.querySelector('.sidebar__brand-name > span')?.textContent,

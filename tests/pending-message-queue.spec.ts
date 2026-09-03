@@ -217,7 +217,7 @@ test.describe('Pending message queue (#613)', () => {
     // which is the state every enqueue step below runs in. Its fieldset carries
     // the stable accessible name (`:430-432`).
     const textarea = page
-      .getByRole('group', { name: 'Message composer file drop area' })
+      .getByRole('group', { name: 'Message composer', exact: true })
       .getByRole('textbox');
     // Send exists only while the composer is idle: mid-turn
     // `ChatInputArea.tsx:597-625` swaps it for "Stop the current turn", and a

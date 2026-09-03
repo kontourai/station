@@ -560,7 +560,7 @@ test.describe('compatibility-aware reconnect', () => {
     // assertion below would otherwise pass against ordinary mobile chrome
     // while proving nothing about the state named in the title.
     await expect(page.locator('.app__main')).toHaveClass(
-      /app__main--mobile-chat-fullscreen/,
+      /app__main--mobile-dock-fullscreen/,
     );
     const chatDock = page.locator('.app__main > .chat-dock');
     await expect(chatDock).toBeVisible();

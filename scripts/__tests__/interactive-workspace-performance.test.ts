@@ -2009,9 +2009,12 @@ describe('interactive workspace performance contract', () => {
     );
     expect(oneHourJob).toContain('timeout-minutes: 125');
     expect(oneHourJob).toContain('needs: reference-performance');
-    expect(oneHourJob).toContain(
-      "if: always() && !cancelled() && github.event_name != 'pull_request'",
-    );
+    // Both one-hour lanes depend on the contract job and carry no status
+    // function, so GitHub's implicit success() keeps them off a red
+    // contract (#1331); the pull-request exclusion stays at the head.
+    expect(oneHourJob).toContain("if: github.event_name != 'pull_request'");
+    // Job-level condition only: steps below legitimately use `if: always()`.
+    expect(oneHourJob).not.toContain('\n    if: always()');
     expect(oneHourJob).toContain("STATION_PERFORMANCE_ONE_HOUR_REFERENCE: '1'");
     expect(oneHourJob).toContain(
       'STATION_PERFORMANCE_E2E_FIXTURES: long-session-bounded-growth',
@@ -2024,6 +2027,11 @@ describe('interactive workspace performance contract', () => {
       'name: One-hour Work Board growth reference',
     );
     expect(workBoardHourJob).toContain('timeout-minutes: 125');
+    expect(workBoardHourJob).toContain('needs: reference-performance');
+    expect(workBoardHourJob).toContain(
+      "if: github.event_name != 'pull_request'",
+    );
+    expect(workBoardHourJob).not.toContain('\n    if: always()');
     expect(workBoardHourJob).toContain(
       'STATION_PERFORMANCE_E2E_FIXTURES: work-board-one-hour-v1',
     );

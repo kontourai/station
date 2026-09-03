@@ -2,15 +2,11 @@ import { engineConnectionId } from '@kontourai/station-contracts/agent-identity'
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { describe, expect, test } from 'vitest';
 import {
-  agentConnectionLabel,
   buildProviderOptions,
   canAgentStartChat,
-  connectionDisplayLabel,
   connectionEvidenceDetail,
   connectionEvidenceLabel,
-  connectionTypeLabel,
   executionStatusLabel,
-  formatExecutionSummary,
   guaranteeConcreteModel,
   isManagedRuntimeConnectionId,
   preferredChatRuntime,
@@ -29,58 +25,6 @@ import {
 } from '../utils/execution';
 
 describe('execution utils', () => {
-  test('names the built-in Bedrock runtime after its actual provider', () => {
-    expect(connectionTypeLabel('bedrock')).toBe('Amazon Bedrock');
-    expect(agentConnectionLabel('bedrock')).toBe('Amazon Bedrock');
-  });
-
-  /**
-   * archive#3739: /connections/engines printed `muse` as an engine
-   * name, and the built-in vector store as `lancedb`. Every type Station's own
-   * adapter registry and connection factories ship has to have a name
-   * somebody chose; anything left over falls through to the slug, and that is
-   * the case this list exists to keep empty.
-   */
-  test('every connection type Station ships has a chosen name', () => {
-    for (const type of [
-      'bedrock',
-      'ollama',
-      'openai-compat',
-      'anthropic',
-      'google',
-      'lancedb',
-      'claude',
-      'codex',
-      'muse',
-      'acp',
-    ]) {
-      expect(connectionTypeLabel(type)).not.toBe(type);
-    }
-  });
-
-  // A connection is named the way its owner named it, wherever the record is
-  // in hand — the server's own provider label first, then the name, and only
-  // then the type.
-  test('a connection record is named by its own name, never its slug', () => {
-    expect(
-      connectionDisplayLabel({
-        name: 'Muse Code',
-        type: 'muse',
-        config: {},
-      } as never),
-    ).toBe('Muse Code');
-    expect(
-      connectionDisplayLabel({
-        name: 'My box',
-        type: 'muse',
-        config: { providerLabel: 'Muse Code' },
-      } as never),
-    ).toBe('Muse Code');
-    expect(
-      connectionDisplayLabel({ name: '  ', type: 'acp', config: {} } as never),
-    ).toBe('Custom engine');
-  });
-
   // "None catalog" was the enum read out loud.
   test('the catalogue fact reads as a phrase, not as an enum', () => {
     expect(runtimeCatalogSourceSentence('none')).toBe('No model catalog');
@@ -128,12 +72,6 @@ describe('execution utils', () => {
       model: 'claude-sonnet',
       providerOptions: { effort: 'medium', thinking: true },
     });
-    expect(
-      formatExecutionSummary({
-        model: 'claude-sonnet',
-        execution: { agentConnectionId: engineConnectionId('claude') },
-      }),
-    ).toBe('Claude Code · claude-sonnet');
   });
 
   test('resolveAgentExecution returns provider acp for an agent bound to an ACP engine connection (station#954)', () => {
@@ -561,7 +499,7 @@ describe('execution utils', () => {
         name: 'Managed Runtime',
         enabled: true,
         capabilities: ['agent-runtime'],
-        config: { executionClass: 'managed' },
+        config: { engineId: 'station' },
         status: 'ready',
         prerequisites: [],
       },
@@ -573,7 +511,7 @@ describe('execution utils', () => {
         enabled: true,
         capabilities: ['agent-runtime'],
         config: {
-          executionClass: 'connected',
+          engineId: 'codex',
           defaultModel: 'gpt-5-codex',
         },
         status: 'ready',
@@ -605,7 +543,7 @@ describe('execution utils', () => {
         name: 'Managed Runtime',
         enabled: true,
         capabilities: ['agent-runtime'],
-        config: { executionClass: 'managed' },
+        config: { engineId: 'station' },
         status: 'ready',
         prerequisites: [],
       },
@@ -616,7 +554,7 @@ describe('execution utils', () => {
         name: 'Codex Runtime',
         enabled: true,
         capabilities: ['agent-runtime'],
-        config: { executionClass: 'connected' },
+        config: { engineId: 'codex' },
         status: 'ready',
         prerequisites: [],
       },
@@ -822,7 +760,7 @@ describe('execution utils', () => {
         [
           {
             id: 'codex',
-            config: { executionClass: 'connected' },
+            config: { engineId: 'codex' },
           } as any,
         ],
       ),
@@ -846,7 +784,7 @@ describe('execution utils', () => {
           name: 'Managed Runtime',
           enabled: true,
           capabilities: ['agent-runtime'],
-          config: { executionClass: 'managed' },
+          config: { engineId: 'station' },
           status: 'ready',
           prerequisites: [],
         } as any,

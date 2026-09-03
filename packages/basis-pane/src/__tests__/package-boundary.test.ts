@@ -13,6 +13,14 @@ const external = [
   '@kontourai/*',
 ];
 
+// The complete V1 public browser boundary is the native SessionInventory
+// renderer (2,351 gzip bytes alone) plus the separately exported
+// session-inventory-view model (2,029 gzip bytes alone). The bundled entry is
+// exactly 4,067 gzip bytes: it contains no private Station dependency or
+// accidental duplicate module. Keep this cap exact rather than reserving
+// unearned headroom for the V1 desktop/mobile progressive-disclosure contract.
+const SESSION_INVENTORY_V1_BROWSER_GZIP_BYTES = 4_067;
+
 async function bundledGzipBytes(entry: string) {
   const result = await build({
     entryPoints: [join(source, entry)],
@@ -78,7 +86,7 @@ describe('@kontourai/station-basis-pane package boundary', () => {
       await bundledGzipBytes('workspace-basis-pane.ts'),
     ).toBeLessThanOrEqual(1_536);
     expect(await combinedSessionInventoryGzipBytes()).toBeLessThanOrEqual(
-      2_944,
+      SESSION_INVENTORY_V1_BROWSER_GZIP_BYTES,
     );
 
     const css = await readFile(join(source, 'station-basis-pane.css'));

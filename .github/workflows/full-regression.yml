@@ -21,12 +21,21 @@ jobs:
       group: hosted-full-regression-${{ inputs.source_sha }}
       cancel-in-progress: false
     runs-on: ubuntu-22.04
-    # Every phase gets its own fail-closed deadline. Eight ordinary slices can
-    # consume 160 minutes by contract, so the hosted envelope must outlive the
-    # complete 243-minute phase plan rather than interrupt a valid final slice.
-    timeout-minutes: 270
+    # Every phase gets its own fail-closed deadline; their sum is the
+    # canonical 251-minute phase plan (scripts/verification-lanes.mjs
+    # FULL_REGRESSION_TIMEOUT_MS). Literally every step before and after
+    # that gate now carries an explicit deadline, including the two local,
+    # network-free bash checks: source-SHA validation 2m, checkout 10m,
+    # checkout-matches proof 2m, setup-node 5m, actionlint 5m (mirrored in
+    # ci.yml's fast-checks copy so the two stay identical), dependencies:ci
+    # 15m, the 5-minute zsh step, the 20-minute Chromium step, the receipt
+    # upload 10m = 74m bounded setup. 340 keeps real margin over that
+    # 325-minute bounded worst case rather than interrupting a valid final
+    # phase slice or a completed gate's receipt upload.
+    timeout-minutes: 340
     steps:
       - name: Validate immutable source identity
+        timeout-minutes: 2
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
@@ -36,17 +45,20 @@ jobs:
           }
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 10
         with:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Prove checkout matches the requested source
+        timeout-minutes: 2
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        timeout-minutes: 5
         with:
           node-version-file: .nvmrc
 
@@ -57,6 +69,7 @@ jobs:
       # `actionlint-gate.mjs` pins this copy through
       # `fullRegressionActionlintFindings`, so it cannot drift from ci.yml's.
       - name: Install pinned actionlint
+        timeout-minutes: 5
         env:
           ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
@@ -69,6 +82,18 @@ jobs:
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 
       - run: npm run dependencies:ci
+        timeout-minutes: 15
+
+      - name: Provision and preflight zsh for process-heavy installer fixtures
+        timeout-minutes: 5
+        run: |
+          if [[ ! -x /bin/zsh ]]; then
+            sudo apt-get update
+            sudo apt-get install --yes zsh
+          fi
+          command -v zsh
+          test -x /bin/zsh
+          /bin/zsh --version
 
       - name: Install Chromium for full-corpus browser assertions
         timeout-minutes: 20
@@ -94,6 +119,7 @@ jobs:
 
       - name: Retain exact-SHA completion receipts
         if: always()
+        timeout-minutes: 10
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: full-regression-${{ inputs.source_sha }}-${{ github.run_id }}

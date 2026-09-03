@@ -309,13 +309,20 @@ describe('POST self-update apply (#1624)', () => {
     const { mkdtempSync, mkdirSync: mkdir } = await import('node:fs');
     const { tmpdir } = await import('node:os');
     const { join: joinPath } = await import('node:path');
-    const home = mkdtempSync(joinPath(tmpdir(), 'self-update-lock-'));
-    const stationRoot = joinPath(home, '.station');
-    mkdir(joinPath(stationRoot, 'cache', 'nightly', 'install.lock'), {
+    // The lock lives under the root THIS runtime actually uses, which is
+    // derived from STATION_HOME. A decoy `$HOME/.station` holds no lock: the
+    // route used to re-derive `~/.station` by hand, ignoring STATION_HOME, so
+    // it read the decoy and let a second installer start on top of a running
+    // one for every instance whose home is not the ambient default.
+    const decoyHome = mkdtempSync(joinPath(tmpdir(), 'self-update-decoy-'));
+    mkdir(joinPath(decoyHome, '.station'), { recursive: true });
+    const stationHome = mkdtempSync(joinPath(tmpdir(), 'self-update-lock-'));
+    mkdir(joinPath(stationHome, 'cache', 'nightly', 'install.lock'), {
       recursive: true,
     });
-    vi.stubEnv('HOME', home);
+    vi.stubEnv('HOME', decoyHome);
     vi.stubEnv('STATION_ROOT', '');
+    vi.stubEnv('STATION_HOME', stationHome);
     try {
       vi.mocked(resolveInstallProvenance).mockReturnValue({
         ...bundleProvenance,

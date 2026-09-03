@@ -11,6 +11,7 @@ import {
   sessionDeliveryChannels,
   UNKNOWN_EXTERNAL_ENGINE_MATRIX,
 } from '../engine-capability-matrix';
+import { engineDisplayLabel } from '../engine-display';
 
 /**
  * The ACP adapter's declared capabilities, restated here rather than imported:
@@ -109,7 +110,7 @@ describe('engine capability matrix', () => {
     });
   });
 
-  test('resolveEngineCapabilityMatrix branch order (executionClass, acp, unknown-external)', () => {
+  test('resolveEngineCapabilityMatrix branch order (engineId, acp, unknown-external)', () => {
     expect(resolveEngineCapabilityMatrix()).toBe(
       ENGINE_CAPABILITY_MATRICES.station,
     );
@@ -118,7 +119,7 @@ describe('engine capability matrix', () => {
     );
     expect(
       resolveEngineCapabilityMatrix('strands-runtime', {
-        config: { executionClass: 'managed' },
+        config: { engineId: 'station' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.station);
     expect(resolveEngineCapabilityMatrix('acp')).toBe(
@@ -130,13 +131,13 @@ describe('engine capability matrix', () => {
     expect(
       resolveEngineCapabilityMatrix('codex', {
         type: 'codex',
-        config: { executionClass: 'connected' },
+        config: { engineId: 'codex' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
     expect(
       resolveEngineCapabilityMatrix('claude', {
         type: 'claude',
-        config: { executionClass: 'connected' },
+        config: { engineId: 'claude' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.claude);
   });
@@ -201,25 +202,24 @@ describe('engine capability matrix', () => {
         engineId: 'station',
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.acp);
-    // Legacy executionClass (no engineId at all) still resolves exactly as
-    // before — read-compat, not a behavior change.
+    // A missing engine identity is no longer upgraded from legacy metadata.
     expect(
       resolveEngineCapabilityMatrix('strands-runtime', {
-        config: { executionClass: 'managed' },
+        config: {},
       }),
-    ).toBe(ENGINE_CAPABILITY_MATRICES.station);
+    ).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
     expect(
       resolveEngineCapabilityMatrix('codex', {
         type: 'codex',
-        config: { executionClass: 'connected' },
+        config: { engineId: 'codex' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
   });
 
-  test('an acp connection carrying a stale executionClass "managed" still resolves acp (acp is checked first)', () => {
+  test('an acp connection resolves acp regardless of other config (acp is checked first)', () => {
     const staleConnection = {
       type: 'acp',
-      config: { executionClass: 'managed' },
+      config: {},
     };
     expect(
       resolveEngineCapabilityMatrix('kiro-connection', staleConnection),
@@ -229,7 +229,7 @@ describe('engine capability matrix', () => {
   test('an unknown external engine resolves to the all-unsupported conservative matrix, never silently editable surfaces', () => {
     const result = resolveEngineCapabilityMatrix('opencode-connection', {
       type: 'opencode',
-      config: { executionClass: 'connected' },
+      config: {},
     });
     expect(result).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
     expect(result.systemPrompt).toEqual({ state: 'unsupported' });
@@ -329,7 +329,7 @@ describe('station#1194: engineControlPlaneCapability (can the engine host statio
     );
     expect(controlPlaneCapableEngineNames().sort()).toEqual(
       capable
-        .map((matrix) => matrix.displayName)
+        .map((matrix) => engineDisplayLabel(matrix.engineId))
         .filter((name): name is string => name !== null)
         .sort(),
     );
@@ -337,11 +337,11 @@ describe('station#1194: engineControlPlaneCapability (can the engine host statio
     // assistant but cannot say so would silently vanish from the sentence
     // that tells the user what to connect.
     for (const matrix of capable) {
-      expect(matrix.displayName).not.toBeNull();
+      expect(engineDisplayLabel(matrix.engineId)).not.toBeNull();
     }
   });
 
-  test('displayName is null exactly where only the live connection can name the engine', () => {
+  test('engineDisplayLabel preserves the canonical engine vocabulary', () => {
     // A command-backed connection is shown by its own name ("Kiro"), never
     // by the protocol it speaks; the unknown-engine fallback has nothing
     // honest to call itself. Neither derives 'full' from the matrix ALONE
@@ -349,11 +349,21 @@ describe('station#1194: engineControlPlaneCapability (can the engine host statio
     // is chat-only), so neither can reach controlPlaneCapableEngineNames() —
     // which deliberately passes no observation because it is a statement
     // about engines, not connections.
-    expect(ENGINE_CAPABILITY_MATRICES.acp.displayName).toBeNull();
-    expect(UNKNOWN_EXTERNAL_ENGINE_MATRIX.displayName).toBeNull();
-    expect(ENGINE_CAPABILITY_MATRICES.station.displayName).toBe('Station');
-    expect(ENGINE_CAPABILITY_MATRICES.claude.displayName).toBe('Claude Code');
-    expect(ENGINE_CAPABILITY_MATRICES.codex.displayName).toBe('Codex');
+    expect(engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.acp.engineId)).toBe(
+      'Custom engine',
+    );
+    expect(
+      engineDisplayLabel(UNKNOWN_EXTERNAL_ENGINE_MATRIX.engineId),
+    ).toBeNull();
+    expect(
+      engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.station.engineId),
+    ).toBe('Station');
+    expect(engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.claude.engineId)).toBe(
+      'Claude Code',
+    );
+    expect(engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.codex.engineId)).toBe(
+      'Codex',
+    );
   });
 
   test('a session channel WITHOUT a delivery mechanism is chat-only regardless of channel name — proves this keys on the delivery field, not a channel or engine list', () => {
@@ -799,7 +809,7 @@ describe('station#1194: resolveBuiltinAgentEngineBinding (rebind + default-selec
 describe('built-in engines resolve to their own matrix (#2301)', () => {
   const projected = (engineId: string) => ({
     type: engineId,
-    config: { engineId, executionClass: 'connected' },
+    config: { engineId },
   });
 
   test.each(['claude', 'codex', 'muse'])(
@@ -817,7 +827,7 @@ describe('built-in engines resolve to their own matrix (#2301)', () => {
   test('a genuinely unknown engineId still falls back, rather than inventing a matrix', () => {
     const result = resolveEngineCapabilityMatrix('mystery', {
       type: 'mystery-runtime',
-      config: { engineId: 'mystery', executionClass: 'connected' },
+      config: { engineId: 'mystery' },
     });
     expect(result).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
   });
@@ -935,5 +945,36 @@ describe('resolveComposerImageSupport (station#3344)', () => {
         }),
       ).toEqual({ attachable: true });
     }
+  });
+
+  // The collapse removed the branches that read the deprecated executionClass.
+  // These pin what stored connections resolve to now, so the removal is an
+  // asserted decision rather than an uncovered one: main asserted this field 12
+  // times and the collapse left it asserted nowhere.
+  test('legacy executionClass connections resolve without borrowing Station', () => {
+    // 'managed' is Station running the agent, which is the default anyway.
+    expect(
+      resolveEngineCapabilityMatrix(undefined, {
+        config: { executionClass: 'managed' },
+      } as never),
+    ).toBe(ENGINE_CAPABILITY_MATRICES.station);
+
+    // 'connected' names an external engine. Without the read-compat below it
+    // reached the final `station` return and reported Station's capabilities
+    // for an engine Station does not run.
+    expect(
+      resolveEngineCapabilityMatrix(undefined, {
+        type: 'claude-code',
+        config: { executionClass: 'connected' },
+      } as never),
+    ).not.toBe(ENGINE_CAPABILITY_MATRICES.station);
+
+    // An unrecognised type stays unknown-external rather than falling back.
+    expect(
+      resolveEngineCapabilityMatrix(undefined, {
+        type: 'not-a-known-engine',
+        config: { executionClass: 'connected' },
+      } as never),
+    ).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
   });
 });

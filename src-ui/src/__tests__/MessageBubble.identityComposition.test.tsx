@@ -127,7 +127,7 @@ describe('assistant row identity composition (station#1434)', () => {
     });
 
     // The strip's engine chip is back — and it names the engine the way the
-    // card does (`engineLabelForProvider`), not the raw slug.
+    // card does (`engineDisplayLabel`), not the raw slug.
     const chip = container.querySelector('.engine-chip');
     expect(chip?.textContent).toBe('Claude Code');
     // …and it is stated exactly ONCE on the row: the card's collapsed

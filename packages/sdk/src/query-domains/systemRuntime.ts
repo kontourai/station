@@ -139,6 +139,12 @@ export interface SystemStatus {
     {
       ready: boolean;
       source: string | null;
+      /**
+       * Specific, actionable cause recorded by the producer when `ready` is
+       * false — e.g. the `terminal` capability's node-pty load failure
+       * (station#1244). Absent when nothing specific was observed.
+       */
+      reason?: string;
     }
   >;
   recommendation?: {

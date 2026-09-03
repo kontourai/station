@@ -58,6 +58,8 @@ function renderHeader({
       effectiveDockSlotPlacement={dockMode}
       onDockPlacementChange={vi.fn()}
       fullscreen={fullscreen}
+      regionVisible={isDockOpen}
+      shellMaximized={isDockMaximized}
     />,
   );
 }
@@ -273,6 +275,8 @@ describe('occupant picker (station#4460)', () => {
         availableDockSlotPlacements={['left', 'bottom', 'right']}
         effectiveDockSlotPlacement={dockMode}
         onDockPlacementChange={vi.fn()}
+        regionVisible={isDockOpen}
+        shellMaximized={isDockMaximized}
         occupantPicker={
           <DockOccupantPicker
             current={{ id: 'pane:builtin:chat', name: 'Chat' } as never}
@@ -303,6 +307,8 @@ describe('occupant picker (station#4460)', () => {
         availableDockSlotPlacements={['left', 'bottom', 'right']}
         effectiveDockSlotPlacement={dockMode}
         onDockPlacementChange={vi.fn()}
+        regionVisible={isDockOpen}
+        shellMaximized={isDockMaximized}
         fullscreen
         occupantPicker={
           <DockOccupantPicker

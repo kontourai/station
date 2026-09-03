@@ -16,6 +16,7 @@ import {
   resolveStationRoot,
   resolveStationRuntimeContext,
   runtimeInstancePath,
+  spawnedStationRoot,
   stationProfilesPath,
 } from '../runtime-path-resolver.js';
 
@@ -141,6 +142,50 @@ describe('Station root runtime path resolver', () => {
     expect(() => admitStationRuntimeHome(ambientRoot, env)).toThrow(
       /shared Station root/,
     );
+  });
+
+  test('a spawned self-rooted home boots instead of being rejected as a root', () => {
+    // Regression: the spawner wrote the DERIVED root into the child's
+    // environment, so a raw home (`--home`, `--base`, `--temp-home`, an
+    // external `STATION_HOME`) arrived with STATION_ROOT === STATION_HOME.
+    // Admission reads an explicit STATION_ROOT as proof the root was NOT
+    // derived from this home, so it refused the home and the server crashed at
+    // boot for every non-default home. The value carries no information the
+    // child cannot re-derive, so it must be left unset.
+    const home = fixtureRoot();
+    const parent = {} as NodeJS.ProcessEnv;
+
+    expect(resolveStationRoot({ STATION_HOME: home })).toBe(home);
+    expect(spawnedStationRoot(home, parent)).toBeUndefined();
+
+    // The environment the spawn actually hands the child, assembled the way
+    // the spawner assembles it, must be admissible.
+    const childEnv = { ...parent, STATION_HOME: home } as NodeJS.ProcessEnv;
+    const spawnRoot = spawnedStationRoot(home, parent);
+    if (spawnRoot) childEnv.STATION_ROOT = spawnRoot;
+    expect(() => admitStationRuntimeHome(home, childEnv)).not.toThrow();
+    // ...and the child still derives the same root the spawner computed.
+    expect(resolveStationRoot(childEnv)).toBe(home);
+  });
+
+  test('a spawned channel home still carries its own root', () => {
+    const root = fixtureRoot();
+    const home = join(root, 'instances', 'stable');
+    expect(spawnedStationRoot(home, {} as NodeJS.ProcessEnv)).toBe(root);
+  });
+
+  test('an operator-set root is passed through even when it equals the home', () => {
+    // The original escape: a home swallowing a root it does not own stays
+    // rejected. Only a root the spawn DERIVED from the home may be omitted.
+    const root = fixtureRoot();
+    const env = { STATION_ROOT: root } as NodeJS.ProcessEnv;
+    expect(spawnedStationRoot(root, env)).toBe(root);
+    expect(() =>
+      admitStationRuntimeHome(root, {
+        STATION_ROOT: root,
+        STATION_HOME: root,
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/shared Station root/);
   });
 
   test('admits only concrete runtime leaves and never creates rejected paths', () => {

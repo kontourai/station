@@ -39,6 +39,7 @@ let sessionFlowRun: Record<string, unknown> | null = null;
 let sessionBuilderRun: Record<string, unknown> | null = null;
 const useSessionFlowRunQuery = vi.hoisted(() => vi.fn());
 const useSessionBuilderRunQuery = vi.hoisted(() => vi.fn());
+const usePairedDevicesQuery = vi.hoisted(() => vi.fn());
 const adoptionIntent = vi.hoisted(() =>
   Object.freeze({ idempotencyKey: 'adopt-session-test-intent' }),
 );
@@ -126,7 +127,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: sessionsQueryError,
     refetch: refetchSessions,
   }),
-  usePairedDevicesQuery: () => ({ data: pairedDevices }),
+  usePairedDevicesQuery,
   usePullRequestContextQuery: () => ({ data: { available: false } }),
   usePullRequestsQuery: () => ({ data: undefined }),
   useWorkflowTasksQuery: (projectSlug: string | null | undefined) => ({
@@ -336,6 +337,8 @@ describe('SessionsView', () => {
     workflowTasksByProject = {};
     sessionsQueryError = null;
     pairedDevices = [];
+    usePairedDevicesQuery.mockReset();
+    usePairedDevicesQuery.mockImplementation(() => ({ data: pairedDevices }));
     sessions = [
       {
         provider: 'claude',
@@ -4277,6 +4280,29 @@ describe('Activity presentation (sessions moved under Home)', () => {
     rendered.rerenderSession();
     expect(screen.getByText('Renamed phone')).toBeTruthy();
     expect(screen.queryByText('Brian’s Pixel')).toBeNull();
+  });
+
+  test('reads the operator-only device inventory only while the origin axis is shown', () => {
+    // /api/pairing/devices answers 401 to a paired device's own session, and
+    // the fresh-home walkthrough counts every refused request on /activity.
+    // The inventory only names origin groups, so it must not be fetched on
+    // the default task axis at all.
+    pairedDevices = [{ id: 'phone-1', name: 'Idle phone' }];
+    usePairedDevicesQuery.mockClear();
+    renderView();
+    const enabledCalls = () =>
+      usePairedDevicesQuery.mock.calls.map(
+        (call) => (call[1] as { enabled?: boolean } | undefined)?.enabled,
+      );
+    expect(enabledCalls().length).toBeGreaterThan(0);
+    expect(enabledCalls().every((enabled) => enabled === false)).toBe(true);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
+    expect(enabledCalls().at(-1)).toBe(true);
+    expect(screen.getByText('Idle phone')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'By task' }));
+    expect(enabledCalls().at(-1)).toBe(false);
   });
 
   test('renders the paired-device inventory when no sessions exist', () => {

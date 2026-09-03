@@ -1,3 +1,4 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   isSupportedTurnProvenanceEnvelope,
   type TurnProvenanceEnvelope,
@@ -17,7 +18,6 @@ import {
   formatTokenCount,
 } from '../../utils/formatTokenCount';
 import { displayModelIdentifier } from '../../utils/modelDisplay';
-import { engineLabelForProvider } from '../../utils/sessionDisplay';
 import { LazyBoundary } from '../LazyBoundary';
 import './TurnProvenanceCard.css';
 
@@ -239,7 +239,7 @@ function headlineUsage(
  */
 function engineDisplay(provider: string): { label: string; slug: string } {
   return {
-    label: engineLabelForProvider(provider) ?? provider,
+    label: engineDisplayLabel(provider) ?? provider,
     slug: provider,
   };
 }
@@ -529,6 +529,8 @@ export interface TurnProvenanceCardProps {
   accountableHuman?: string | null;
   /** Per-turn evidence navigation belongs inside this disclosure, not beside actions. */
   basisContent?: ReactNode;
+  /** The share entry point is part of the always-visible disclosure line. */
+  shareContent?: ReactNode;
 }
 
 export function TurnProvenanceCard({
@@ -536,6 +538,7 @@ export function TurnProvenanceCard({
   statedInRow = NOTHING_STATED_IN_ROW,
   accountableHuman,
   basisContent,
+  shareContent,
 }: TurnProvenanceCardProps) {
   const [open, setOpen] = useState(false);
   const detailsId = useId();
@@ -615,6 +618,7 @@ export function TurnProvenanceCard({
           {basisContent && (
             <div className="turn-provenance__basis">{basisContent}</div>
           )}
+          {shareContent}
 
           {provenance.contextInjection?.state === 'observed' && (
             <LazyBoundary

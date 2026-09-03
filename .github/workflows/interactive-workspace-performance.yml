@@ -85,7 +85,11 @@ jobs:
   one-hour-collaboration-reference:
     name: One-hour collaboration growth reference
     needs: reference-performance
-    if: always() && !cancelled() && github.event_name != 'pull_request'
+    # No `always()`: GitHub's implicit success() means these run only after a
+    # GREEN contract. With `always()` both one-hour lanes started after a red
+    # contract and spent 250 reference-hardware minutes contending with the
+    # same physical host for a result nobody could use (#1331).
+    if: github.event_name != 'pull_request'
     # This is intentionally a separate acceptance lane from reference-performance:
     # its real, unscaled hour must never be inferred from the shorter fixture job.
     runs-on: [self-hosted, Windows, X64, kontour-windows, native]
@@ -155,7 +159,11 @@ jobs:
   one-hour-work-board-reference:
     name: One-hour Work Board growth reference
     needs: reference-performance
-    if: always() && !cancelled() && github.event_name != 'pull_request'
+    # No `always()`: GitHub's implicit success() means these run only after a
+    # GREEN contract. With `always()` both one-hour lanes started after a red
+    # contract and spent 250 reference-hardware minutes contending with the
+    # same physical host for a result nobody could use (#1331).
+    if: github.event_name != 'pull_request'
     # A short smoke is useful only for wiring. It can never satisfy this
     # lane: the pane bridge must attest a real unscaled observed hour.
     runs-on: [self-hosted, Windows, X64, kontour-windows, native]

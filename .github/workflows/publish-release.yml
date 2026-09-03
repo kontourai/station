@@ -129,7 +129,7 @@ jobs:
       GITHUB_REPOSITORY: ${{ github.repository }}
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
       VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
-      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ vars.NATIVE_APP_UPDATE_CHANNEL }}
+      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ needs.resolve.outputs.channel == 'preview' && 'beta' || 'stable' }}
       VITE_NATIVE_APP_VERSION: ${{ needs.resolve.outputs.version }}
       NATIVE_APP_UPDATE_ACTION_URL: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
       NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
@@ -159,6 +159,18 @@ jobs:
           test "$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync("release-assets/station-release-inventory.json")).sourceSha)' )" = "$RELEASE_SHA"
           test "$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync("release-assets/station-container-release.json")).createdAt)' )" = "$RELEASE_CREATED_AT"
           scripts/verify-release-checksums.sh release-assets
+      - name: Derive the common frozen desktop provenance only after all package gates
+        run: |
+          set -euo pipefail
+          for architecture in aarch64 x86_64; do
+            archive="release-assets/station-${RELEASE_TAG}-macos-${architecture}.app.tar.gz"
+            manifest_path=$(tar -tzf "$archive" | grep '/Contents/Resources/dist-server/station-build.json$')
+            test "$(printf '%s\n' "$manifest_path" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+            tar -xOf "$archive" "$manifest_path" > "$RUNNER_TEMP/station-client-build-${architecture}.json"
+            test "$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1])).sha' "$RUNNER_TEMP/station-client-build-${architecture}.json")" = "$RELEASE_SHA"
+          done
+          cmp "$RUNNER_TEMP/station-client-build-aarch64.json" "$RUNNER_TEMP/station-client-build-x86_64.json"
+          cp "$RUNNER_TEMP/station-client-build-aarch64.json" "$RUNNER_TEMP/station-desktop-common-client-build.json"
       - name: Verify GitHub provenance for every downloaded asset
         env:
           GH_TOKEN: ${{ github.token }}
@@ -275,9 +287,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NATIVE_APP_UPDATE_PUBLISH_TOKEN: ${{ secrets.NATIVE_APP_UPDATE_PUBLISH_TOKEN }}
         run: |
-          test -n "$NATIVE_APP_UPDATE_PUBLISH_TOKEN" || { echo "Missing native update provider credential" >&2; exit 1; }
-          feed="release-assets/station-mobile-${VITE_NATIVE_APP_UPDATE_CHANNEL}.json"
-          scripts/publish-mobile-feed-transaction.sh "$feed"
+          feed_args=()
+          if [ -n "$VITE_NATIVE_APP_UPDATE_FEED_URL" ]; then
+            feed_args+=("release-assets/station-mobile-${VITE_NATIVE_APP_UPDATE_CHANNEL}.json")
+          fi
+          scripts/publish-mobile-feed-transaction.sh "${feed_args[@]}"
 
       # The tag-bound release is public before this pointer advances. Updater
       # archives are uploaded first and latest.json is a separate invocation,
@@ -392,6 +406,7 @@ jobs:
             --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             --gate-result "release.yml producer gates and publish-release revalidation/attestations success on $RELEASE_SHA"
             --github-repo "$GITHUB_REPOSITORY"
+            --artifact-manifest "$RUNNER_TEMP/station-desktop-common-client-build.json"
             --artifact "github-release:$RELEASE_TAG (desktop installers, portable archive, SBOMs)")
           shopt -s nullglob
           assets=(release-assets/*)

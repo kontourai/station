@@ -1,3 +1,4 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   type CredentialUsage,
   type CredentialUsageEntry,
@@ -24,10 +25,10 @@ import { ConnectionsHubSection } from './ConnectionsHubSection';
  *  - **Say when it was read.** These are point-in-time reads of a remote
  *    counter, not Station's own accounting.
  */
-const USAGE_ENGINES: ReadonlyArray<{ id: string; label: string }> = [
-  { id: 'claude', label: 'Claude Code' },
-  { id: 'codex', label: 'Codex' },
-];
+const USAGE_ENGINES = ['claude', 'codex'].map((id) => ({
+  id,
+  label: engineDisplayLabel(id) ?? id,
+}));
 
 function relativeReset(resetsAt: string | undefined): string | null {
   if (!resetsAt) return null;

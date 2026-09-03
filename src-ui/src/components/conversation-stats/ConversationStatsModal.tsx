@@ -1,3 +1,4 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   cacheInclusivePromptTokens,
   cacheInclusiveTotalTokens,
@@ -10,7 +11,6 @@ import {
   formatMeasuredTokens,
   UNREPORTED_MEASUREMENT_TEXT,
 } from '@kontourai/station-shared/usage-measurement';
-import { engineLabelForProvider } from '../../utils/sessionDisplay';
 import { Button } from '../Button';
 import {
   ResponsiveDialogCloseButton,
@@ -95,7 +95,7 @@ export function ConversationStatsModal({
   const unreportedNote = stats
     ? describeUnreportedMeasurements(
         conversationStatsMeasurementView(stats),
-        engineLabelForProvider,
+        engineDisplayLabel,
       )
     : null;
 

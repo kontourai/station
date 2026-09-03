@@ -17,6 +17,7 @@ export * from './channel-log.js';
 export * from './chat-attachment.js';
 export * from './client-origin.js';
 export * from './config.js';
+export * from './connection.js';
 export * from './connection-quota.js';
 export * from './connection-recovery.js';
 export * from './contribution.js';

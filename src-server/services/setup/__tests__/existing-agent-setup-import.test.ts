@@ -23,7 +23,10 @@ import {
   SETUP_IMPORT_MAX_TARGET_NAME_LENGTH,
 } from '@kontourai/station-shared/setup-import-bounds';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { ExistingAgentSetupImportModule } from '../existing-agent-setup-import.js';
+import {
+  ExistingAgentSetupImportModule,
+  SetupImportError,
+} from '../existing-agent-setup-import.js';
 import { readGuardedUtf8 } from '../guarded-setup-import-filesystem.js';
 import { SetupImportReceiptStore } from '../setup-import-receipt-store.js';
 
@@ -991,10 +994,20 @@ describe('ExistingAgentSetupImportModule', () => {
     // concurrent preview path, then restore the stable fixture identity for
     // the real receipt/apply/rollback assertions below.
     processIdentity.birth = null;
-    await expect(
-      Promise.all(modules.map((module) => module.preview('codex-prompts'))),
-    ).rejects.toThrow('STORE_UNAVAILABLE');
-    processIdentity.birth = 'setup-import-test-process-birth';
+    const faultSettlements = await Promise.allSettled(
+      modules.map((module) => module.preview('codex-prompts')),
+    );
+    try {
+      expect(faultSettlements).toHaveLength(modules.length);
+      for (const settlement of faultSettlements) {
+        expect(settlement.status).toBe('rejected');
+        if (settlement.status !== 'rejected') continue;
+        expect(settlement.reason).toBeInstanceOf(SetupImportError);
+        expect(settlement.reason.code).toBe('STORE_UNAVAILABLE');
+      }
+    } finally {
+      processIdentity.birth = 'setup-import-test-process-birth';
+    }
 
     const previews = [];
     for (const module of modules)
