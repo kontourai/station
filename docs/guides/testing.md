@@ -450,7 +450,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 - `test-full-ordinary-7-of-8` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-ordinary-8-of-8` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-process-heavy` — 60-unit host reservation; 30-minute execution deadline.
-- `test-full-process-exclusive` — 60-unit host reservation; 4-minute execution deadline.
+- `test-full-process-exclusive` — 60-unit host reservation; 6-minute execution deadline.
 - `test-full-credential-ledger-exclusive` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-shared-output` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-dogfood-reconcile` — 60-unit host reservation; 5-minute execution deadline.
