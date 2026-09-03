@@ -171,6 +171,7 @@ export function useDockShellChrome({
   registersDockShortcuts,
   regionId,
   onGeometryChange,
+  onRenderedRegionGeometryChange,
 }: {
   /**
    * Whether this instance reserves route space by publishing
@@ -191,6 +192,10 @@ export function useDockShellChrome({
   registersDockShortcuts: boolean;
   regionId?: DockMode;
   onGeometryChange?: (geometry: DockSlotGeometry | null) => void;
+  onRenderedRegionGeometryChange?: (
+    regionId: DockMode | null,
+    geometry: DockSlotGeometry | null,
+  ) => void;
 }): DockShellChrome {
   const settings = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
@@ -480,17 +485,24 @@ export function useDockShellChrome({
   // verified, archive#4460).
   useLayoutEffect(() => {
     if (!publishesDockSlotClearance) return;
-    onGeometryChange?.(
-      deriveDockSlotGeometry({
-        placement: effectiveDockSlotPlacement,
-        isOpen: readerIsDockOpen,
-        height: dockHeight,
-        width: dockWidth,
-        liveDragHeight,
-      }),
+    const geometry = deriveDockSlotGeometry({
+      placement: effectiveDockSlotPlacement,
+      isOpen: readerIsDockOpen,
+      height: dockHeight,
+      width: dockWidth,
+      liveDragHeight,
+    });
+    onGeometryChange?.(geometry);
+    onRenderedRegionGeometryChange?.(
+      regionId ? effectiveDockSlotPlacement : null,
+      geometry,
     );
     return () => {
       onGeometryChange?.(null);
+      onRenderedRegionGeometryChange?.(
+        regionId ? effectiveDockSlotPlacement : null,
+        null,
+      );
     };
   }, [
     effectiveDockSlotPlacement,
@@ -499,7 +511,9 @@ export function useDockShellChrome({
     dockHeight,
     liveDragHeight,
     publishesDockSlotClearance,
+    regionId,
     onGeometryChange,
+    onRenderedRegionGeometryChange,
   ]);
 
   const { onPointerDown: onSidePanelResizePointerDown } = useDragResize({

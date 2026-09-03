@@ -34,7 +34,10 @@ export function DockShell({
   regionId,
   children,
 }: {
-  onGeometryChange?: (geometry: DockSlotGeometry | null) => void;
+  onGeometryChange?: (
+    regionId: DockMode | null,
+    geometry: DockSlotGeometry | null,
+  ) => void;
   regionId?: DockMode;
   children: (chrome: DockShellChrome) => ReactNode;
 }) {
@@ -48,7 +51,7 @@ export function DockShell({
     // second shell's retraction would leave ⌘M dead (#1202's shape).
     registersDockShortcuts: occupant === 'chat',
     regionId,
-    onGeometryChange,
+    onRenderedRegionGeometryChange: onGeometryChange,
   });
 
   const isPaneOpen = chrome.isDockOpen;

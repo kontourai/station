@@ -134,6 +134,6 @@ describe('the dock clearance is one derivation (station#3902)', () => {
     expect(
       writers,
       `second dock-slot publisher(s): ${writers.join(', ')}`,
-    ).toEqual(['workspace-panes/AmbientChatDockPaneHost.tsx']);
+    ).toEqual(['regions/region-clearance.ts']);
   });
 });

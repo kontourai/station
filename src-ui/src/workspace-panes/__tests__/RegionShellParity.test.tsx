@@ -318,6 +318,21 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     ).toHaveLength(1);
   });
 
+  test('an occupant without a registered shell renders nothing', async () => {
+    seedPlacement('bottom', 'open');
+    await renderShellsSettled();
+
+    act(() =>
+      currentRegionModel().setRegion('right', {
+        occupant: 'fixture',
+        visible: true,
+      }),
+    );
+
+    expect(document.querySelector('[data-region="right"]')).toBeNull();
+    expect(shells()).toHaveLength(1);
+  });
+
   test.each(PRE_REFACTOR_CAPTURE)(
     'class set and shell id match the pre-refactor capture ($placement/$state)',
     async ({ placement, state, classes }) => {

@@ -41,6 +41,7 @@ import { SkeletonBlock } from '../components/state';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import type { DockSlotGeometry } from '../hooks/dock-slot-geometry';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
+import { reportRegionClearance } from '../regions/region-clearance';
 import type { DockMode, NavigationView } from '../types';
 import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
 import {
@@ -142,20 +143,11 @@ export function ambientWorkspacePaneDockAction(
  * maximize state.
  */
 function useAmbientDockSlotGeometryWriter() {
-  return useCallback((geometry: DockSlotGeometry | null) => {
-    const root = document.documentElement;
-    if (!geometry) {
-      root.style.removeProperty('--chat-dock-width');
-      root.style.removeProperty('--dock-slot-size');
-      return;
-    }
-    if (geometry.width === null) {
-      root.style.removeProperty('--chat-dock-width');
-    } else {
-      root.style.setProperty('--chat-dock-width', `${geometry.width}px`);
-    }
-    root.style.setProperty('--dock-slot-size', `${geometry.size}px`);
-  }, []);
+  return useCallback(
+    (regionId: DockMode | null, geometry: DockSlotGeometry | null) =>
+      reportRegionClearance(regionId ?? null, geometry),
+    [],
+  );
 }
 
 function admitsAmbientDockInstance(
