@@ -191,3 +191,28 @@ export function describeConnectionInventoryFailures(
     ? `A ${kind} connection could not be read — ${detail}`
     : `${failures.length} ${kind} connections could not be read — ${detail}`;
 }
+
+/**
+ * A price quoted for THIS route by the service that routes it (#949, #1127).
+ *
+ * Never borrowed from a sibling route, never averaged, never matched by name:
+ * a direct Anthropic route and an OpenRouter route for the same model are two
+ * routes with two prices, and only the OpenRouter one has a source Station
+ * can cite. `source` and `attributionUrl` are part of the value because the
+ * figure is only honest with its provenance attached -- OpenRouter's own
+ * documentation says its facts describe OpenRouter routing and may differ
+ * from direct-provider rates. Absent means unpriced, which surfaces must
+ * render as nothing rather than as zero.
+ */
+export interface RoutePricingReference {
+  source: 'openrouter';
+  attributionUrl: string;
+  /** USD per 1,000,000 prompt tokens, or null when the source stated none. */
+  promptUsdPerMillionTokens: number | null;
+  /** USD per 1,000,000 completion tokens, or null when the source stated none. */
+  completionUsdPerMillionTokens: number | null;
+  /** When the source was read; the reference is only as current as this. */
+  observedAt: string;
+  /** After this instant the figure must not be shown; null when unbounded. */
+  validUntil: string | null;
+}
