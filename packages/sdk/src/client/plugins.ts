@@ -137,7 +137,7 @@ export async function listPlugins(
       if (record.status === 'rejected') {
         return !isRejectedInstalledPlugin(record);
       }
-      if (Object.hasOwn(record, 'status')) return true;
+      if (Reflect.has(record, 'status')) return true;
       return (
         typeof record.name !== 'string' || typeof record.version !== 'string'
       );
