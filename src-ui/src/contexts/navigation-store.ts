@@ -139,7 +139,6 @@ class NavigationStore {
   >();
   lastProject: string | null;
   lastProjectLayout: string | null;
-  dockModeOverride: DockMode | null = null;
   /**
    * The most recently observed `true` value of `isDockMaximized`, kept
    * independent of the URL's `maximize` param itself. A closed dock always
@@ -224,10 +223,8 @@ class NavigationStore {
    * Recomputes ONLY the `dockMode` fallback when the device-scope
    * `dockSlotPlacement` setting changes (import, `set`/`merge`, or a
    * cross-tab `storage` event — every device-store mutation path already
-   * converges on its own `notify`). A no-op whenever a more specific
-   * source already governs `dockMode` for the current view (an explicit URL
-   * param, or `dockModeOverride`'s in-memory quiet layout preference) —
-   * `parseUrl`'s precedence chain means the device-scope value isn't even
+   * converges on its own `notify`). A no-op whenever an explicit URL param
+   * governs `dockMode` — `parseUrl`'s precedence chain means the device-scope value isn't even
    * being displayed in that case. Every other `NavigationState` field is
    * derived from the URL alone, so a full `parseUrl`/`commitState` isn't
    * needed here (and would be wrong: it would also fight a URL-based
@@ -236,10 +233,7 @@ class NavigationStore {
   private handleDeviceSettingsChange = (): void => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    if (
-      normalizeDockMode(params.get('dockSlotPlacement')) ||
-      this.dockModeOverride
-    ) {
+    if (normalizeDockMode(params.get('dockSlotPlacement'))) {
       return;
     }
     const nextDockMode =
@@ -402,19 +396,10 @@ class NavigationStore {
       ),
       isDockOpen: params.get('dock') === 'open',
       isDockMaximized: params.get('maximize') === 'true',
-      // archive#settings-revamp (docs/design/settings-architecture.md
-      // §3 "Chat/session", §6): dockMode gains a device-scope
-      // fallback so it survives a reload with no more specific override —
-      // precedence is URL param (explicit, this navigation) >
-      // `dockModeOverride` (in-memory quiet override — a layout's silently
-      // applied preference, or the resolved sessionStorage override behind
-      // it, see useDockModePreference.ts) > the device-scope default >
-      // 'bottom'. `deviceSettingsStore.get` always resolves to a real mode
-      // (the registry default is 'bottom'), so the trailing literal is a
-      // defensive fallback, not a reachable branch today.
+      // archive#settings-revamp (docs/design/settings-architecture.md §3, §6).
+      // Precedence: URL param, then device setting, then the registry default.
       dockMode:
         normalizeDockMode(params.get('dockSlotPlacement')) ||
-        this.dockModeOverride ||
         deviceSettingsStore.get('dockSlotPlacement') ||
         'bottom',
       fontSize: params.get('fontSize')
@@ -750,7 +735,6 @@ class NavigationStore {
   }
 
   setDockMode(mode: DockMode) {
-    this.dockModeOverride = null;
     // Explicit user choices always write the param — even the default mode —
     // so "explicit → URL" stays a single invariant now that the default is a
     // real mode rather than the absence of one (archive#1043).
@@ -761,12 +745,6 @@ class NavigationStore {
     // specific override (see `parseUrl` above). A same-value write is a
     // no-op inside the store itself.
     deviceSettingsStore.set('dockSlotPlacement', mode);
-  }
-
-  setDockModeQuiet(mode: DockMode) {
-    this.dockModeOverride = mode;
-    this.state = { ...this.state, dockMode: mode };
-    this.notify();
   }
 }
 

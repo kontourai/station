@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -12,11 +13,16 @@ import { delimiter, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { npmBuildInvocation } from '../lib/desktop-build-command.mjs';
 import {
+  assertNativeClientBuildManifestBytes,
   BUILD_MANIFEST_FILENAME,
   deriveBuildManifest,
   deriveServerBuildIdentity,
+  NATIVE_CLIENT_BUILD_MANIFEST_PATH,
+  readNativeClientBuildManifest,
   readPackagedReleaseManifest,
+  stageNativeClientBuildManifest,
   writeDesktopBuildManifest,
+  writeNativeClientBuildManifest,
 } from '../lib/desktop-build-manifest.mjs';
 
 const roots: string[] = [];
@@ -163,6 +169,130 @@ describe('desktop build manifest', () => {
     expect(written.builtAt).toBe('2026-07-10T18:00:00.000Z');
   });
 
+  test('freezes one native-client timestamp so repeated target preparation cannot restamp it', () => {
+    const root = makeRoot();
+    makeGitCheckout(root);
+    const first = writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-30T12:00:00.000Z',
+      env: {},
+      refresh: true,
+    });
+    const second = writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-30T12:01:00.000Z',
+      env: {},
+    });
+    expect(second).toBe(first);
+    expect(readNativeClientBuildManifest(root)?.builtAt).toBe(
+      '2026-08-30T12:00:00.000Z',
+    );
+  });
+
+  test('clears a stale native-client manifest when an explicit refresh cannot derive source identity', () => {
+    const root = makeRoot();
+    const manifestPath = join(root, NATIVE_CLIENT_BUILD_MANIFEST_PATH);
+    mkdirSync(join(root, 'src-desktop'), { recursive: true });
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify({
+        sha: RELEASE_SHA,
+        branch: 'refs/tags/v1.2.3',
+        builtAt: '2026-08-30T12:00:00.000Z',
+      })}\n`,
+    );
+
+    expect(
+      writeNativeClientBuildManifest(root, { refresh: true, env: {} }),
+    ).toBeNull();
+    expect(existsSync(manifestPath)).toBe(false);
+  });
+
+  test('stages preflight provenance as exact bytes and rejects a same-SHA timestamp divergence', () => {
+    const root = makeRoot();
+    const artifact = join(root, 'preflight-station-client-build.json');
+    const packaged = join(root, 'packaged-station-client-build.json');
+    const source = {
+      sha: RELEASE_SHA,
+      branch: 'refs/tags/v1.2.3',
+      builtAt: '2026-09-02T12:00:00.000Z',
+    };
+    writeFileSync(artifact, `${JSON.stringify(source, null, 2)}\n`);
+
+    const staged = stageNativeClientBuildManifest(root, artifact, {
+      expectedSha: RELEASE_SHA,
+    });
+    expect(readFileSync(staged)).toEqual(readFileSync(artifact));
+    expect(
+      assertNativeClientBuildManifestBytes(artifact, staged, {
+        expectedSha: RELEASE_SHA,
+      }),
+    ).toMatchObject(source);
+
+    writeFileSync(
+      packaged,
+      `${JSON.stringify({ ...source, builtAt: '2026-09-02T12:00:01.000Z' }, null, 2)}\n`,
+    );
+    expect(() =>
+      assertNativeClientBuildManifestBytes(artifact, packaged, {
+        expectedSha: RELEASE_SHA,
+      }),
+    ).toThrow(/differs from the preflight provenance artifact/);
+  });
+
+  test('refuses an impossible staged timestamp rather than normalizing it', () => {
+    const root = makeRoot();
+    mkdirSync(join(root, 'src-desktop'), { recursive: true });
+    writeFileSync(
+      join(root, 'src-desktop', 'station-client-build.json'),
+      JSON.stringify({
+        sha: RELEASE_SHA,
+        branch: 'main',
+        builtAt: '2026-02-31T12:00:00.000Z',
+      }),
+    );
+    expect(readNativeClientBuildManifest(root)).toBeNull();
+  });
+
+  test('desktop packaging makes client, bundled-server, and resource stamps agree', () => {
+    const root = makeRoot();
+    makeGitCheckout(root);
+    writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-30T12:00:00.000Z',
+      env: {},
+    });
+    const baked = deriveServerBuildIdentity(root, {
+      builtAt: '2026-08-30T12:01:00.000Z',
+      env: { STATION_CLIENT_BUILD_REUSE: '1' },
+    });
+    const resource = writeDesktopBuildManifest(root, {
+      builtAt: '2026-08-30T12:02:00.000Z',
+      env: {},
+    });
+    expect(baked?.builtAt).toBe('2026-08-30T12:00:00.000Z');
+    expect(JSON.parse(readFileSync(resource as string, 'utf8')).builtAt).toBe(
+      '2026-08-30T12:00:00.000Z',
+    );
+  });
+
+  test('reuses a staged manifest across a detached checkout branch alias', () => {
+    const root = makeRoot();
+    makeGitCheckout(root);
+    const manifestPath = writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-30T12:00:00.000Z',
+      env: { STATION_BUILD_BRANCH: 'refs/tags/v0.1.10' },
+    });
+    const staged = readFileSync(manifestPath as string, 'utf8');
+
+    writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-30T12:01:00.000Z',
+      env: {
+        STATION_CLIENT_BUILD_REUSE: '1',
+        STATION_BUILD_BRANCH: 'HEAD',
+      },
+    });
+
+    expect(readFileSync(manifestPath as string, 'utf8')).toBe(staged);
+  });
+
   test('refuses to write when the server bundle it should describe is absent', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-desktop-manifest-'));
     roots.push(root);
@@ -180,10 +310,21 @@ describe('desktop build manifest', () => {
     ) as { scripts: Record<string, string> };
     const step = pkg.scripts['build:desktop:resources'];
 
-    expect(step).toContain('node scripts/write-desktop-build-manifest.mjs');
-    expect(step.indexOf('npm run build')).toBeLessThan(
-      step.indexOf('write-desktop-build-manifest'),
+    expect(step).toBe('node scripts/build-desktop-resources.mjs');
+    const resourceScript = readFileSync(
+      new URL('../build-desktop-resources.mjs', import.meta.url),
+      'utf8',
     );
+    expect(resourceScript).toContain(
+      'scripts/write-desktop-build-manifest.mjs',
+    );
+    expect(resourceScript.indexOf("['run', 'build']")).toBeLessThan(
+      resourceScript.indexOf('write-desktop-build-manifest'),
+    );
+    // Windows uses this same beforeBuildCommand; environment inheritance must
+    // be a Node child-process option, never a POSIX inline assignment.
+    expect(resourceScript).toContain("STATION_CLIENT_BUILD_REUSE: '1'");
+    expect(resourceScript).not.toContain('STATION_CLIENT_BUILD_REUSE=1 npm');
 
     for (const platform of ['macos', 'linux', 'windows']) {
       const config = JSON.parse(

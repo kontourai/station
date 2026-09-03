@@ -3168,6 +3168,9 @@ describe('collectDoctorReport', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     const report = await lifecycle.collectDoctorReport({
+      // #1244: pin the probe so these reports do not depend on whether THIS
+      // machine's node-pty compiled.
+      probeTerminalPty: () => ({ state: 'available' as const }),
       checkOllama: async () => false,
       inspectKontourDependencies: () => ({ exactPins: [], mismatches: [] }),
       inspectSupervisorWedges: async () => ['service-test'],
@@ -3189,6 +3192,9 @@ describe('collectDoctorReport', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     const report = await lifecycle.collectDoctorReport({
+      // #1244: pin the probe so these reports do not depend on whether THIS
+      // machine's node-pty compiled.
+      probeTerminalPty: () => ({ state: 'available' as const }),
       checkOllama: async () => false,
       inspectKontourDependencies: () => ({
         exactPins: [],
@@ -3222,6 +3228,9 @@ describe('collectDoctorReport', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     const report = await lifecycle.collectDoctorReport({
+      // #1244: pin the probe so these reports do not depend on whether THIS
+      // machine's node-pty compiled.
+      probeTerminalPty: () => ({ state: 'available' as const }),
       checkOllama: async () => true,
       inspectKontourDependencies: () => ({
         exactPins: [],
@@ -3283,6 +3292,9 @@ describe('collectDoctorReport', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     const report = await lifecycle.collectDoctorReport({
+      // #1244: pin the probe so these reports do not depend on whether THIS
+      // machine's node-pty compiled.
+      probeTerminalPty: () => ({ state: 'available' as const }),
       checkOllama: async () => false,
       inspectKontourDependencies: () => ({
         exactPins: [],
@@ -3343,6 +3355,9 @@ describe('collectDoctorReport', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     const report = await lifecycle.collectDoctorReport({
+      // #1244: pin the probe so these reports do not depend on whether THIS
+      // machine's node-pty compiled.
+      probeTerminalPty: () => ({ state: 'available' as const }),
       checkOllama: async () => false,
       inspectKontourDependencies: () => ({
         exactPins: [],
@@ -3392,6 +3407,9 @@ describe('collectDoctorReport', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     const report = await lifecycle.collectDoctorReport({
+      // #1244: pin the probe so these reports do not depend on whether THIS
+      // machine's node-pty compiled.
+      probeTerminalPty: () => ({ state: 'available' as const }),
       checkOllama: async () => false,
       inspectKontourDependencies: () => ({
         exactPins: [],
@@ -3438,6 +3456,9 @@ describe('collectDoctorReport', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     const report = await lifecycle.collectDoctorReport({
+      // #1244: pin the probe so these reports do not depend on whether THIS
+      // machine's node-pty compiled.
+      probeTerminalPty: () => ({ state: 'available' as const }),
       checkOllama: async () => true,
       env: {},
       exec: (command) => {

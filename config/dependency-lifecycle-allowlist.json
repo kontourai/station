@@ -147,7 +147,7 @@
       ],
       "decision": "execute",
       "owner": "station-security",
-      "reason": "Terminal integration needs node-pty and the exact native artifact arrays are loaded and PTY-spawned on each supported platform.",
+      "reason": "Terminal integration needs node-pty and the exact native artifact arrays are loaded and PTY-spawned on each supported platform. Linux may consume the attested, digest-pinned prebuild channel in packaging/node-pty-prebuilds when its manifest pins this version; the artifact arrays must then name prebuilds/linux-* instead of build/Release (enforced by the prebuild consistency check).",
       "platform": { "os": [], "cpu": [] },
       "artifact": {
         "path": "prebuilds/{platform}-{arch}/pty.node",
@@ -190,7 +190,8 @@
       "triggers": [
         "dependency refresh",
         "node-pty advisory",
-        "terminal transport change"
+        "terminal transport change",
+        "node-pty prebuild refresh"
       ]
     },
     {

@@ -191,7 +191,13 @@ describe('i18n foundation', () => {
     });
   });
 
-  test('excludes the pseudo-locale module from the production build', async () => {
+  // A real `vite build --mode production` of the whole UI. On a hosted runner
+  // sharing the machine with the rest of a sweep it needs well over the 30 s
+  // default (the Fresh-home walkthrough's src-ui sweep hit exactly that), so
+  // the budget is the build's, not the suite's.
+  test('excludes the pseudo-locale module from the production build', {
+    timeout: 180_000,
+  }, async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'station-i18n-production-'));
     try {
       await execFile(

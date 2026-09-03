@@ -2,6 +2,7 @@ import {
   useOrchestrationSessionsQuery,
   useReorderProjectsMutation,
 } from '@kontourai/station-sdk';
+import { formatArtifactBuildTimestamp } from '@kontourai/station-shared/build-provenance';
 import {
   captureReturnFocus,
   restoreReturnFocus,
@@ -72,8 +73,19 @@ export function ProjectSidebar() {
   // presentation authority. Native chrome derives its visible and accessible
   // identity from the same trusted channel report and build metadata.
   const appName = platformProfile.isTauri ? 'Station' : branding.appName;
+  const clientBuild = formatArtifactBuildTimestamp(
+    platformProfile.clientBuild?.builtAt,
+    { development: platformProfile.isDevBuild },
+  );
+  const clientBuildLabel =
+    clientBuild.state === 'available' ? `Built ${clientBuild.age}` : undefined;
   const homeLabel = platformProfile.isTauri
-    ? [appName, releaseChannelBadge, `v${buildInfo.version}`]
+    ? [
+        appName,
+        releaseChannelBadge,
+        `v${buildInfo.version}`,
+        clientBuild.description,
+      ]
         .filter(Boolean)
         .join(' ')
     : appName;
@@ -255,6 +267,8 @@ export function ProjectSidebar() {
           appName={appName}
           homeLabel={homeLabel}
           channelBadge={releaseChannelBadge}
+          buildLabel={clientBuildLabel}
+          buildDescription={clientBuild.description}
           collapsed={effectiveCollapsed}
           isMobile={isMobile}
           onCloseMobile={() => setMobileOpen(false)}

@@ -10,15 +10,20 @@ import { createRequire } from 'node:module';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  assertNodePtyPrebuildConsistency,
   confinedPackageTarget,
+  degradableLifecycleCapability,
   evaluateLifecyclePolicy,
   expectedLifecyclePurls,
   installedPackagePath,
+  isArtifactAbsent,
   optionalPackageMayBeAbsent,
   platformMatches,
   preflightLifecycleArtifactTargets,
   prepareLifecycleArtifacts,
   readLifecycleLocks,
+  readNodePtyPrebuildManifest,
+  stageNodePtyPrebuild,
   verifyArtifact,
 } from './lib/dependency-lifecycle-policy.mjs';
 import { assertWorkspaceDependencySatisfaction } from './lib/workspace-dependency-satisfaction.mjs';
@@ -44,6 +49,10 @@ export function check({ cwd = root } = {}) {
     throw new Error(
       `dependency lifecycle policy failed:\n${findings.map((finding) => `- ${finding}`).join('\n')}`,
     );
+  // #1245: a pinned Linux prebuild and its allowlist verification path must
+  // flip together; any mixed state either verifies a file staging never
+  // wrote or skips verifying the file the loader actually uses.
+  assertNodePtyPrebuildConsistency(allowlist, readNodePtyPrebuildManifest(cwd));
   return allowlist;
 }
 
@@ -80,14 +89,36 @@ function command(command, args, options = {}) {
   });
 }
 
-export function inertInstallTimeout(platform = process.platform) {
+export const INERT_INSTALL_TIMEOUT_ENV =
+  'STATION_DEPENDENCY_INSTALL_TIMEOUT_MS';
+
+export function inertInstallTimeout(
+  platform = process.platform,
+  env = process.env,
+) {
+  const override = env?.[INERT_INSTALL_TIMEOUT_ENV];
+  if (override !== undefined && override !== '') {
+    // Only a positive, finite, integral millisecond count is a timeout. A
+    // malformed value is a mistake in the caller's environment, not a licence
+    // to fall back to a default they believed they had replaced.
+    const parsed = Number(override);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0)
+      throw new Error(
+        `${INERT_INSTALL_TIMEOUT_ENV} must be a positive whole number of milliseconds; received ${JSON.stringify(override)}`,
+      );
+    return parsed;
+  }
   return platform === 'win32' ? 1_200_000 : 600_000;
 }
 
 function npmCommand(args, cwd = root) {
   // A cold workspace install can legitimately exceed the short lifecycle-hook
-  // bound. Windows cache misses may be slower; this remains finite at twenty
-  // minutes there and ten minutes elsewhere. Lifecycle hooks stay at 2 minutes.
+  // bound, and the default here is not a claim about the slowest supported
+  // machine: a cold 1552-package install measured 11 minutes on an ARM64
+  // handset, which the previous fixed ten-minute bound killed outright. The
+  // deadline stays finite so a wedged install still fails, and
+  // STATION_DEPENDENCY_INSTALL_TIMEOUT_MS raises it for a host that is merely
+  // slow rather than stuck. Lifecycle hooks stay at 2 minutes.
   command(process.execPath, [resolveNpmCli(), ...args], {
     cwd,
     timeout: inertInstallTimeout(),
@@ -210,6 +241,21 @@ function runExactHook(packageRoot, hook) {
   throw new Error(`unsupported reviewed lifecycle command: ${hook.command}`);
 }
 
+/**
+ * #1244: a degradable entry's failure becomes a loud capability report, not
+ * an aborted install. One fixed, greppable line shape so `install.sh` logs,
+ * CI receipts, and humans all find it: `DEGRADED <capability>: ...`.
+ */
+function reportDegradedCapability(entry, phase, error) {
+  const degradable = degradableLifecycleCapability(entry);
+  const cause = String(error instanceof Error ? error.message : error)
+    .split(/\r?\n/, 1)[0]
+    .trim();
+  console.warn(
+    `[dependency-lifecycle] DEGRADED ${degradable.capability}: ${entry.name} ${phase} failed — ${degradable.consequence}. Remediation: ${degradable.remediation}. Cause: ${cause}`,
+  );
+}
+
 export function runApprovedHooks(allowlist, { cwd = root } = {}) {
   const ready = preflightInstalledLifecycle(allowlist, { cwd });
   for (const { entry } of ready)
@@ -220,15 +266,68 @@ export function runApprovedHooks(allowlist, { cwd = root } = {}) {
     console.log(
       `[dependency-lifecycle] approved build ${entry.lock}:${entry.path}`,
     );
-    for (const hook of entry.hooks) {
-      const started = performance.now();
-      runExactHook(packageRoot, hook);
-      console.log(
-        `[dependency-lifecycle] executed ${entry.lock}:${entry.path}:${hook.name} in ${Math.round(performance.now() - started)}ms`,
-      );
+    let built = true;
+    try {
+      for (const hook of entry.hooks) {
+        const started = performance.now();
+        runExactHook(packageRoot, hook);
+        console.log(
+          `[dependency-lifecycle] executed ${entry.lock}:${entry.path}:${hook.name} in ${Math.round(performance.now() - started)}ms`,
+        );
+      }
+    } catch (error) {
+      // #1244: only an entry that backs a degradable capability (today:
+      // node-pty/terminal) may convert a failed BUILD into a loud degraded
+      // install — typically a Linux host without a C++ toolchain. Every
+      // other lifecycle failure still aborts, and the tamper/confinement
+      // preflights above ran before any hook, so this never bypasses them.
+      if (!degradableLifecycleCapability(entry)) throw error;
+      reportDegradedCapability(entry, 'build', error);
+      built = false;
     }
-    prepareLifecycleArtifacts(cwd, entry);
+    // Artifact preparation is outside that catch on purpose. It enforces
+    // confinement and restores only the approved execute bit, so its failure
+    // is a trust-boundary result rather than "no compiler here" — it must
+    // abort even for a degradable entry. Skipped when the build did not
+    // produce anything to prepare.
+    if (built) prepareLifecycleArtifacts(cwd, entry);
   }
+}
+
+/**
+ * Runs every root artifact proof. A failure on an entry backing a degradable
+ * capability (#1244, see `degradableLifecycleCapability`) becomes a loud
+ * DEGRADED report and a `{ degraded: true }` result instead of an aborted
+ * verify; every other entry's failure still throws. The artifact proof
+ * itself stays fail-closed — `verifyArtifact` threw before this caught it.
+ */
+export function verifyLifecycleArtifacts(allowlist, { cwd = root } = {}) {
+  return allowlist.entries
+    .filter(
+      (entry) =>
+        entry.scope === 'root' && !optionalPackageMayBeAbsent(cwd, entry),
+    )
+    .map((entry) => {
+      try {
+        return verifyArtifact(cwd, entry);
+      } catch (error) {
+        // Degrade ONLY when the artifact is absent. verifyArtifact also
+        // rejects redirected or escaping paths, installed-version drift, a
+        // non-file target, and a failed real-PTY handshake; accepting those
+        // as degradation would let a tampered or mis-identified native module
+        // pass as merely unavailable, which is the opposite of this gate's
+        // purpose. Being the terminal-backing entry buys a pass on "was never
+        // built", never on a trust-boundary result.
+        if (!degradableLifecycleCapability(entry) || !isArtifactAbsent(error))
+          throw error;
+        reportDegradedCapability(entry, 'artifact verification', error);
+        return {
+          skipped: false,
+          degraded: true,
+          detail: `${entry.lock}:${entry.path}`,
+        };
+      }
+    });
 }
 
 export function verify({ cwd = root } = {}) {
@@ -238,16 +337,13 @@ export function verify({ cwd = root } = {}) {
   // receipt. It validates what Node will resolve from each workspace, not
   // merely the versions represented somewhere in a lockfile.
   assertWorkspaceDependencySatisfaction({ root: cwd });
-  const results = allowlist.entries
-    .filter(
-      (entry) =>
-        entry.scope === 'root' && !optionalPackageMayBeAbsent(cwd, entry),
-    )
-    .map((entry) => verifyArtifact(cwd, entry));
-  for (const result of results)
+  const results = verifyLifecycleArtifacts(allowlist, { cwd });
+  for (const result of results) {
+    if (result.degraded) continue;
     console.log(
       `[dependency-lifecycle] ${result.skipped ? 'NOT_APPLICABLE' : 'artifact'} ${result.detail}`,
     );
+  }
   return { allowlist, purls: expectedLifecyclePurls(allowlist) };
 }
 
@@ -270,12 +366,33 @@ function inertInstall(developer) {
   npmCommand([verb, '--ignore-scripts']);
 }
 
+/**
+ * #1245: stage the pinned, attested node-pty Linux prebuild (when this
+ * checkout ships one for this platform/arch) into the installed package
+ * BEFORE its approved hook runs, so `node scripts/prebuild.js || node-gyp
+ * rebuild` takes the prebuild branch and no C++ toolchain is required.
+ * See packaging/node-pty-prebuilds/README.md for the trust chain.
+ */
+export function stageLifecyclePrebuilds(allowlist, { cwd = root } = {}) {
+  for (const entry of allowlist.entries) {
+    if (entry.scope !== 'root' || entry.artifact?.proof !== 'node-pty-smoke')
+      continue;
+    const result = stageNodePtyPrebuild(cwd, entry);
+    console.log(
+      result.staged
+        ? `[dependency-lifecycle] staged pinned prebuild ${entry.lock}:${entry.path}:${result.target} (sha256 ${result.sha256.slice(0, 12)})`
+        : `[dependency-lifecycle] prebuild staging skipped for ${entry.lock}:${entry.path}: ${result.reason}`,
+    );
+  }
+}
+
 export function install({ developer = false } = {}) {
   // Node is a trust boundary for every following command. Check it before npm.
   command(process.execPath, ['scripts/node-runtime-contract.mjs']);
   const allowlist = check();
   inertInstall(developer);
   check();
+  stageLifecyclePrebuilds(allowlist);
   runApprovedHooks(allowlist);
   stationOwnedHooks();
   return verify();

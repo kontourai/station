@@ -74,6 +74,7 @@ interface TriageContext {
     version: string;
     channel: string;
     sourceRevision: string;
+    artifactBuiltAt: string | null;
   };
   target: {
     station: string | null;
@@ -604,6 +605,7 @@ function cliIdentity(
       version: bundle.version,
       channel: bundle.channel,
       sourceRevision: bundle.sourceSha,
+      artifactBuiltAt: bundle.builtAt ?? null,
     };
   }
   return {
@@ -611,6 +613,7 @@ function cliIdentity(
     version: readCliVersion(),
     channel: 'development',
     sourceRevision: sourceRevision?.() ?? 'unavailable',
+    artifactBuiltAt: null,
   };
 }
 
@@ -823,6 +826,7 @@ export function validateTriageContext(value: TriageContext): void {
       'version',
       'channel',
       'sourceRevision',
+      'artifactBuiltAt',
     ]) ||
     !hasExactKeys(value.target, [
       'station',
@@ -931,6 +935,7 @@ function renderMarkdown(context: TriageContext): string {
     '## Capability boundary',
     '',
     `- CLI: ${context.cli.distribution} (${context.cli.channel})`,
+    `- CLI artifact built at: ${context.cli.artifactBuiltAt ?? 'unavailable (development source or unstamped package)'}`,
     `- Local host filesystem: ${context.capabilities.localHostFilesystem}`,
     `- Source doctor: ${context.capabilities.sourceDoctor}`,
     `- Recent logs: ${context.capabilities.recentLogs}`,

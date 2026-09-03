@@ -9,7 +9,7 @@ const source = readFileSync(workflowPath, 'utf8');
 const document = load(source) as Record<string, any>;
 
 const FLOW_AGENTS_REVIEW =
-  'kontourai/flow-agents/.github/actions/codex-pr-review@7f8b66336b73452a2932fc3d9295b5af05bfed0c';
+  'kontourai/flow-agents/.github/actions/codex-pr-review@b0adbb4a5defdff0b0d2c7641f1735c06dd121e8';
 const CHECKOUT = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
 const UPLOAD_ARTIFACT =
   'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
@@ -56,6 +56,14 @@ describe('standalone Codex PR review workflow', () => {
       (step: Record<string, any>) => step.uses === FLOW_AGENTS_REVIEW,
     );
     expect(codex.with).toEqual({
+      // Engine selection: one org/repo variable, defaulting to codex. The
+      // kiro credential is separate by design — the composite never reads
+      // openai-api-key on the kiro path, so this expression pair cannot
+      // leak the OpenAI secret cross-vendor.
+      engine: expression("vars.REVIEW_ENGINE || 'codex'"),
+      'api-key': expression(
+        "vars.REVIEW_ENGINE == 'kiro' && secrets.KIRO_API_KEY || ''",
+      ),
       // Provider override: an org/repo secret CODEX_REVIEW_API_KEY takes
       // precedence, falling back to the official OPENAI_API_KEY — absent
       // configuration is byte-identical to the pre-override workflow.

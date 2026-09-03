@@ -281,6 +281,64 @@ describe('verification reporter', () => {
     expect(summary.failingStep).toBe('typecheck:scripts');
   });
 
+  // The release lane reported `failingStep: test:full:ordinary:raw` and a
+  // `[vitest-corpus] ordinary: FAIL` tally for eight consecutive tagged
+  // releases whose real terminal status was `timed_out`. Nothing had failed;
+  // a 45-minute phase deadline had expired, which is why no failing test name
+  // appeared anywhere in the receipt. These two statuses had no coverage at
+  // all, which is how the misattribution survived.
+  test.each(['timed_out', 'canceled'])(
+    'names the in-flight step without calling it failing when the status is %s',
+    (status) => {
+      const summary = summarizeVerificationOutput({
+        stdout: [
+          '> station@0.1.0 verify:static:raw',
+          'ok',
+          '> station@0.1.0 test:full:ordinary:raw',
+          'partial transcript',
+        ].join('\n'),
+        stderr: '',
+        terminal: { status, exitCode: null },
+        counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 0 },
+        cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+        maxBytes: 2048,
+      });
+      expect(summary.inFlightStep).toBe('test:full:ordinary:raw');
+      expect(summary.failingStep).toBeUndefined();
+      expect(summary.terminal).toBe(status);
+    },
+  );
+
+  test('keeps the in-flight step out of a truncated capture, as failingStep already does', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> station@0.1.0 verify:static:raw',
+        'ok',
+        '> station@0.1.0 test:full:ordinary:raw',
+      ].join('\n'),
+      stderr: '',
+      terminal: { status: 'timed_out', exitCode: null, truncated: true },
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(summary.inFlightStep).toBeUndefined();
+    expect(summary.failingStep).toBeUndefined();
+  });
+
+  test('a completed status with a non-zero exit stays a failure, not an in-flight step', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: ['> station@0.1.0 typecheck:scripts', 'tsc failed'].join('\n'),
+      stderr: '',
+      terminal: { status: 'completed', exitCode: 2 },
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(summary.failingStep).toBe('typecheck:scripts');
+    expect(summary.inFlightStep).toBeUndefined();
+  });
+
   // Found by this batch's own gate. Biome's format diagnostics have no
   // line:col -- the header is `<path> format ━━━` -- so the matcher did not
   // recognise them, and a run whose only ERROR was a formatting error reported

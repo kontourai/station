@@ -1,8 +1,11 @@
 /** Deterministic, deliberately narrow reducer for the two issue handoff labels. */
 import { BACKLOG_POLICY } from './backlog-priority-policy.mjs';
+import { NEEDS_MAINTAINER, NEEDS_REPORTER } from './lifecycle-labels.mjs';
 
-export const NEEDS_MAINTAINER = 'needs:maintainer';
-export const NEEDS_REPORTER = 'needs:reporter';
+// Re-exported so existing importers keep working; the names live in a leaf
+// module because this file's policy import reaches label-manifest.mjs, which
+// must not import back into a module still being evaluated (#1312).
+export { NEEDS_MAINTAINER, NEEDS_REPORTER };
 export const BUG_LABEL = 'bug';
 export const BUG_PRIORITY = 'P1';
 export const LIFECYCLE_LABELS = Object.freeze([

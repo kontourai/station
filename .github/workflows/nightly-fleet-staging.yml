@@ -20,6 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ inputs.source_sha }}", fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+      - run: npm run dependencies:ci
       - id: source
         name: Bind staging to the current main event SHA
         run: |
@@ -57,9 +60,9 @@ jobs:
           created_at=$(node --input-type=module -e 'const epoch=Number(process.argv[1]); if(!Number.isSafeInteger(epoch)||epoch<0)process.exit(1); process.stdout.write(new Date(epoch*1000).toISOString())' "$commit_epoch")
           scripts/package-portable-release.sh --output-dir fleet-assets --ref "nightly-$(date -u +%F)-$GITHUB_RUN_ATTEMPT" --sha "${{ needs.fleet-plan.outputs.source_sha }}" --created-at "$created_at"
           (cd fleet-assets && sha256sum -c station-nightly-portable.tar.gz.sha256)
-          node --input-type=module -e 'import {readFileSync,writeFileSync} from "node:fs"; const manifest=JSON.parse(readFileSync("fleet-assets/station-nightly-portable-manifest.json")); if(manifest.sha!==process.argv[1]||manifest.channel!=="nightly-staging"||manifest.releaseChannel!=="nightly-staging") process.exit(1); writeFileSync("fleet-assets/portable-build-check.json", JSON.stringify({kind:"station.portable-build-check/v1",result:"PASSED",sourceSha:manifest.sha,archive:manifest.archive})+"\\n")' "${{ needs.fleet-plan.outputs.source_sha }}"
+          node --input-type=module -e 'import {readFileSync,writeFileSync} from "node:fs"; const manifest=JSON.parse(readFileSync("fleet-assets/station-nightly-portable-manifest.json")); if(manifest.sha!==process.argv[1]||manifest.channel!=="nightly-staging"||manifest.prerelease!==true||Object.hasOwn(manifest,"releaseChannel")) process.exit(1); writeFileSync("fleet-assets/portable-build-check.json", JSON.stringify({kind:"station.portable-build-check/v1",result:"PASSED",sourceSha:manifest.sha,archive:manifest.archive})+"\\n")' "${{ needs.fleet-plan.outputs.source_sha }}"
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-        with: { path: fleet-assets, format: cyclonedx-json, output-file: fleet-assets/portable-sbom.cdx.json, syft-version: 1.51.0, upload-artifact: false, upload-release-assets: false }
+        with: { path: fleet-assets, format: cyclonedx-json, output-file: fleet-assets/portable-sbom.cdx.json, syft-version: v1.51.0, upload-artifact: false, upload-release-assets: false }
       - name: Construct one content-bound portable stage receipt
         env: { SOURCE_SHA: "${{ needs.fleet-plan.outputs.source_sha }}", COHORT_ID: "${{ needs.fleet-plan.outputs.cohort_id }}", PLAN_DIGEST: "${{ needs.fleet-plan.outputs.plan_digest }}" }
         run: |
@@ -79,20 +82,28 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.fleet-plan.outputs.source_sha }}", persist-credentials: false }
+      # `staged-fleet-inventory.mjs` validates the stage receipt with ajv, so
+      # this job needs the pinned Node and the locked dependencies like its
+      # siblings; on the runner's default Node with no node_modules the first
+      # Nightly to reach this leg died with ERR_MODULE_NOT_FOUND (ajv).
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+      - run: npm run dependencies:ci
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: "nightly-fleet-portable-${{ github.run_id }}", path: staged }
       - name: Verify every attested subject with exact workflow identity
-        env: { SOURCE_SHA: "${{ needs.fleet-plan.outputs.source_sha }}" }
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: "${{ needs.fleet-plan.outputs.source_sha }}"
         run: |
           set -euo pipefail
           node scripts/staged-fleet-inventory.mjs assert-stage-receipt staged/stage-receipt-portable.json staged
-          node --input-type=module -e 'import {readFileSync,writeFileSync} from "node:fs"; const receipt=JSON.parse(readFileSync("staged/stage-receipt-portable.json")); writeFileSync("staged/subjects.json", JSON.stringify(receipt.attestation.subjects)+"\\n")'
           index=0
           while IFS= read -r subject; do
             name=$(printf '%s' "$subject" | jq -r .name)
             gh attestation verify "staged/$name" --repo "$GITHUB_REPOSITORY" --source-ref refs/heads/main --source-digest "$SOURCE_SHA" --cert-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/nightly-fleet-staging.yml@refs/heads/main" --cert-oidc-issuer https://token.actions.githubusercontent.com --deny-self-hosted-runners --format json > "staged/attestation-verify-$index.json"
             index=$((index + 1))
-          done < <(jq -c '.[]' staged/subjects.json)
+          done < <(jq -c '.attestation.subjects[]' staged/stage-receipt-portable.json)
       - name: Compose the fixed plan and admit only byte and proof matches
         run: node scripts/staged-fleet-inventory.mjs admit-fixed config/nightly-fleet-staging-plan.json staged/stage-receipt-portable.json staged > staged/staged-fleet-inventory.json
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
