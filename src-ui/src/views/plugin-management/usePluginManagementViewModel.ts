@@ -2,6 +2,7 @@ import type { PermissionTier } from '@kontourai/station-contracts/plugin';
 import {
   type PluginProviderDetail,
   type PluginSettingField,
+  reloadPlugins,
   useAddProjectLayoutFromPluginMutation,
   useCreateProjectMutation,
   usePluginChangelogQuery,
@@ -20,7 +21,7 @@ import {
   waitForAgentHealth,
 } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useProjects } from '../../contexts/ProjectsContext';
@@ -90,7 +91,7 @@ export function usePluginManagementViewModel() {
     data: Plugin[];
     error?: unknown;
     isLoading: boolean;
-    refetch: () => unknown;
+    refetch: () => Promise<{ error: unknown; isError: boolean }>;
   };
   const { data: updates = [] } = usePluginUpdatesQuery() as {
     data: PluginUpdateSummary[];
@@ -121,6 +122,8 @@ export function usePluginManagementViewModel() {
     null,
   );
   const [changelogExpanded, setChangelogExpanded] = useState(false);
+  const rejectedReloadInFlight = useRef(false);
+  const [reloadRejectedPending, setReloadRejectedPending] = useState(false);
 
   const selected = plugins.find(
     (plugin) => pluginSelectionId(plugin) === selectedPlugin,
@@ -184,13 +187,24 @@ export function usePluginManagementViewModel() {
   }
 
   async function reloadRejectedPlugin() {
+    if (rejectedReloadInFlight.current) return;
+    rejectedReloadInFlight.current = true;
+    setReloadRejectedPending(true);
     setMessage(null);
     try {
-      await reloadPluginsMutation.mutateAsync();
+      // Use the direct request rather than the generic mutation hook here.
+      // That hook invalidates the collection as soon as the server answers,
+      // which can refetch before the browser registry has finished reloading.
+      await reloadPlugins();
       // Recovery is one ordered operation. A stale client registry means the
       // repaired package is not ready even if the server reload succeeded.
       await pluginRegistry.reload();
-      await refetchPlugins();
+      const refreshed = await refetchPlugins();
+      if (refreshed.isError) {
+        throw refreshed.error instanceof Error
+          ? refreshed.error
+          : new Error('Plugin collection refresh failed');
+      }
     } catch (error) {
       setMessage({
         type: 'error',
@@ -199,6 +213,9 @@ export function usePluginManagementViewModel() {
             ? `Plugins were not reloaded: ${error.message}`
             : 'Plugins were not reloaded.',
       });
+    } finally {
+      rejectedReloadInFlight.current = false;
+      setReloadRejectedPending(false);
     }
   }
 
@@ -502,7 +519,7 @@ export function usePluginManagementViewModel() {
     pluginsError,
     refetchPlugins,
     reloadRejectedPlugin,
-    reloadRejectedPending: reloadPluginsMutation.isPending,
+    reloadRejectedPending,
     changelogData,
     changelogExpanded,
     createProjectForLayout,

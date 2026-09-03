@@ -103,6 +103,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   usePluginUpdateMutation: () => ({ mutate: vi.fn() }),
   usePluginUpdatesQuery: () => ({ data: [] }),
+  reloadPlugins: mocks.reloadPlugins,
   useReloadPluginsMutation: () => ({
     isPending: false,
     mutateAsync: mocks.reloadPlugins,
@@ -131,7 +132,10 @@ describe('usePluginManagementViewModel', () => {
     mocks.reloadClientRegistry.mockReset().mockResolvedValue(undefined);
     mocks.installOnSuccess = null;
     mocks.pluginsError = undefined;
-    mocks.refetchPlugins.mockReset();
+    mocks.refetchPlugins.mockReset().mockResolvedValue({
+      isError: false,
+      error: null,
+    });
   });
 
   test('surfaces the query error as pluginsError (Review H1)', () => {
@@ -182,6 +186,97 @@ describe('usePluginManagementViewModel', () => {
       type: 'error',
       text: 'Plugins were not reloaded: registry is still unavailable',
     });
+  });
+
+  test('keeps a collection refetch failure visible after both reload steps', async () => {
+    mocks.refetchPlugins.mockResolvedValueOnce({
+      isError: true,
+      error: new Error('collection is still unavailable'),
+    });
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.reloadClientRegistry).toHaveBeenCalledOnce();
+    expect(result.current.message).toEqual({
+      type: 'error',
+      text: 'Plugins were not reloaded: collection is still unavailable',
+    });
+  });
+
+  test('owns one pending latch across server, registry, and collection reloads', async () => {
+    let releaseServerReload!: () => void;
+    let releaseClientReload!: () => void;
+    let releaseCollectionReload!: () => void;
+    mocks.reloadPlugins.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseServerReload = resolve;
+        }),
+    );
+    mocks.reloadClientRegistry.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseClientReload = resolve;
+        }),
+    );
+    mocks.refetchPlugins.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseCollectionReload = () =>
+            resolve({ isError: false, error: null });
+        }),
+    );
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    let first!: Promise<void>;
+    act(() => {
+      first = result.current.reloadRejectedPlugin();
+    });
+    await waitFor(() =>
+      expect(result.current.reloadRejectedPending).toBe(true),
+    );
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.reloadClientRegistry).not.toHaveBeenCalled();
+    expect(mocks.refetchPlugins).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releaseServerReload();
+    });
+    await waitFor(() =>
+      expect(mocks.reloadClientRegistry).toHaveBeenCalledOnce(),
+    );
+    expect(result.current.reloadRejectedPending).toBe(true);
+    expect(mocks.refetchPlugins).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      releaseClientReload();
+    });
+    await waitFor(() => expect(mocks.refetchPlugins).toHaveBeenCalledOnce());
+    expect(result.current.reloadRejectedPending).toBe(true);
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      releaseCollectionReload();
+      await first;
+    });
+    expect(result.current.reloadRejectedPending).toBe(false);
   });
 
   test('uses host approval copy only for trusted pending permissions', () => {

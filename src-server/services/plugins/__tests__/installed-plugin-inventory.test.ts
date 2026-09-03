@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  describePluginManifestRejection,
   rejectedInstalledPluginRecord,
   scanInstalledPluginInventory,
 } from '../installed-plugin-inventory.js';
@@ -33,6 +34,26 @@ function plugin(root: string, name: string, manifest?: unknown) {
 }
 
 describe('installed plugin inventory', () => {
+  test('classifies coded read failures before the plugin.json path text', () => {
+    const error = Object.assign(
+      new Error(
+        "EACCES: permission denied, open '/private/home/plugins/example/plugin.json'",
+      ),
+      { code: 'EACCES' },
+    );
+
+    expect(describePluginManifestRejection(error)).toEqual({
+      code: 'manifest-unreadable',
+      reason:
+        'plugin.json exists but could not be read as a regular manifest file.',
+      recovery: {
+        kind: 'restore-manifest',
+        instruction:
+          'Restore readable plugin.json permissions or replace the file, then choose Reload plugins.',
+      },
+    });
+  });
+
   test('keeps valid and rejected directories in one deterministic fresh scan', () => {
     const root = home();
     plugin(root, 'valid-plugin', {

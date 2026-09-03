@@ -327,7 +327,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connect-remote-auth-recovery.spec.ts',
     'tests/connect-reconnect-banner.spec.ts',
     'tests/plugin-update.spec.ts',
-    'tests/plugin-rejection-visibility.spec.ts',
     'tests/schedule-runs.spec.ts',
     'tests/schedule.spec.ts',
     'tests/monitoring.spec.ts',
@@ -377,6 +376,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // change under it.
     'tests/connection-lost-access-request.spec.ts',
     'tests/plugin-preview.spec.ts',
+    // Creates and repairs one invalid plugin directory in the runner-owned
+    // temporary home, then removes it and reloads before yielding the server.
+    'tests/plugin-rejection-visibility.spec.ts',
     'tests/plugin-system.spec.ts',
     'tests/survey-review-workbench.spec.ts',
     'tests/fieldwork-review.spec.ts',

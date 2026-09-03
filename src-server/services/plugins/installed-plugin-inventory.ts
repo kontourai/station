@@ -28,6 +28,24 @@ export function describePluginManifestRejection(
   error: unknown,
 ): PluginManifestRejection {
   const message = error instanceof Error ? error.message : String(error);
+  // Filesystem diagnostics commonly include the `plugin.json` path. Classify
+  // their stable error code before looking for JSON-related words in the
+  // message, or an EACCES/EPERM read failure becomes a malformed-JSON claim.
+  const filesystemCode =
+    error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: unknown }).code)
+      : '';
+  if (/^E[A-Z0-9]+$/.test(filesystemCode)) {
+    return rejection(
+      'manifest-unreadable',
+      'plugin.json exists but could not be read as a regular manifest file.',
+      {
+        kind: 'restore-manifest',
+        instruction:
+          'Restore readable plugin.json permissions or replace the file, then choose Reload plugins.',
+      },
+    );
+  }
   if (
     error instanceof SyntaxError ||
     /JSON|Unexpected token|unterminated/i.test(message)
@@ -76,21 +94,6 @@ export function describePluginManifestRejection(
       instruction:
         'Repair the named workspacePanes declaration, then choose Reload plugins.',
     });
-  }
-  const filesystemCode =
-    error && typeof error === 'object' && 'code' in error
-      ? String((error as { code?: unknown }).code)
-      : '';
-  if (/^E[A-Z0-9]+$/.test(filesystemCode)) {
-    return rejection(
-      'manifest-unreadable',
-      'plugin.json exists but could not be read as a regular manifest file.',
-      {
-        kind: 'restore-manifest',
-        instruction:
-          'Restore readable plugin.json permissions or replace the file, then choose Reload plugins.',
-      },
-    );
   }
   return rejection(
     'invalid-manifest',

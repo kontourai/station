@@ -40,6 +40,20 @@ describe('client plugin collection', () => {
     await expect(listPlugins('https://station.example')).rejects.toThrow(
       'Plugin collection response is malformed',
     );
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          plugins: [
+            { status: 'quarantined', name: 'future-state', version: '1' },
+          ],
+        }),
+      ),
+    );
+    await expect(listPlugins('https://station.example')).rejects.toThrow(
+      'Plugin collection response is malformed',
+    );
   });
 
   test('preserves a validated rejected-manifest row without inventing a version', async () => {
