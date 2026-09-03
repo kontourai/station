@@ -47,15 +47,17 @@ export interface AgentPluginManifestV1 {
   extensions?: AgentPluginExtensionsV1;
 }
 
+interface StationPluginSettingBaseV1 {
+  key: string;
+  title: string;
+  description?: string;
+  required?: boolean;
+}
+
 export type StationPluginSettingV1 =
-  | {
-      key: string;
-      title: string;
-      type: 'string' | 'number' | 'boolean';
-      description?: string;
-      default?: string | number | boolean;
-      required?: boolean;
-    }
+  | (StationPluginSettingBaseV1 & { type: 'string'; default?: string })
+  | (StationPluginSettingBaseV1 & { type: 'number'; default?: number })
+  | (StationPluginSettingBaseV1 & { type: 'boolean'; default?: boolean })
   | {
       key: string;
       title: string;
@@ -95,6 +97,7 @@ export interface StationAgentPluginExtensionV1
   serverModule?: string;
   build?: string;
   capabilities?: string[];
+  commands?: unknown[];
   links?: unknown;
   agents?: unknown[];
   workspacePanes?: unknown[];

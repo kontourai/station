@@ -57,6 +57,7 @@ describe('Agent Plugins 1.0 identity contract', () => {
         schemaVersion: '1.0',
         title: 'Acme tools',
         permissions: ['network.fetch'],
+        commands: [{ version: '1.0', id: 'acme.tools.open' }],
         dependencies: [{ name: 'acme.shared', version: '^1.0.0' }],
         secretReferences: [{ key: 'api-key', title: 'API key' }],
         workspacePanes: [{ version: '1.0', id: 'home' }],
@@ -70,6 +71,18 @@ describe('Agent Plugins 1.0 identity contract', () => {
         schemaVersion: '1.0',
         providers: [
           { type: 'model', module: './provider.js', layout: 'legacy' },
+        ],
+      },
+      {
+        schemaVersion: '1.0',
+        settings: [
+          { key: 'retries', title: 'Retries', type: 'number', default: '3' },
+        ],
+      },
+      {
+        schemaVersion: '1.0',
+        providers: [
+          { type: 'model', module: './provider.js', moduel: './typo.js' },
         ],
       },
       {

@@ -5,15 +5,15 @@ Extension Ecosystem covers how Station is extended by plugins, registry items, p
 ## Language
 
 **Plugin**:
-An Agent Plugins package with portable skills/MCP plus optional Station-owned
+Target v1: an Agent Plugins package with portable skills/MCP plus optional Station-owned
 Pane, agent, provider, knowledge, setting, and server contributions under
 `io.kontourai.station`.
 _Avoid_: integration if it contributes more than tools
 
 **Plugin manifest**:
-The closed portable root `plugin.json`. Station host declarations live only in
+Target v1: the closed portable root `plugin.json`. Station host declarations live only in
 `extensions["io.kontourai.station"]`; portable skills and MCP use their fixed
-package locations.
+package locations. The current legacy loader has not completed this migration.
 _Avoid_: package metadata
 
 **Plugin provider**:

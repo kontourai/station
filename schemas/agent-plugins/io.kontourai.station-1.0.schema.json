@@ -40,6 +40,11 @@
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/id" }
     },
+    "commands": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "type": "object" }
+    },
     "links": {},
     "agents": { "type": "array", "items": { "type": "object" } },
     "workspacePanes": {
@@ -58,12 +63,12 @@
       "items": {
         "type": "object",
         "required": ["type", "module"],
+        "additionalProperties": false,
         "properties": {
           "type": { "$ref": "#/$defs/id" },
           "module": { "$ref": "#/$defs/pluginRelativePath" },
           "layout": false
-        },
-        "additionalProperties": true
+        }
       }
     },
     "integrations": { "type": "object" },
@@ -110,29 +115,9 @@
     },
     "setting": {
       "oneOf": [
-        {
-          "allOf": [
-            { "$ref": "#/$defs/settingBase" },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "key": true,
-                "title": true,
-                "type": { "enum": ["string", "number", "boolean"] },
-                "description": true,
-                "default": {
-                  "anyOf": [
-                    { "type": "string" },
-                    { "type": "number" },
-                    { "type": "boolean" }
-                  ]
-                },
-                "required": true
-              }
-            }
-          ]
-        },
+        { "$ref": "#/$defs/stringSetting" },
+        { "$ref": "#/$defs/numberSetting" },
+        { "$ref": "#/$defs/booleanSetting" },
         {
           "allOf": [
             { "$ref": "#/$defs/settingBase" },
@@ -164,6 +149,57 @@
               }
             }
           ]
+        }
+      ]
+    },
+    "stringSetting": {
+      "allOf": [
+        { "$ref": "#/$defs/settingBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "key": true,
+            "title": true,
+            "type": { "const": "string" },
+            "description": true,
+            "default": { "type": "string" },
+            "required": true
+          }
+        }
+      ]
+    },
+    "numberSetting": {
+      "allOf": [
+        { "$ref": "#/$defs/settingBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "key": true,
+            "title": true,
+            "type": { "const": "number" },
+            "description": true,
+            "default": { "type": "number" },
+            "required": true
+          }
+        }
+      ]
+    },
+    "booleanSetting": {
+      "allOf": [
+        { "$ref": "#/$defs/settingBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "key": true,
+            "title": true,
+            "type": { "const": "boolean" },
+            "description": true,
+            "default": { "type": "boolean" },
+            "required": true
+          }
         }
       ]
     },

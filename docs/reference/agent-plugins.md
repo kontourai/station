@@ -1,13 +1,18 @@
 # Agent Plugins contract
 
+This document defines Station's **target v1 authoring contract**. The current
+runtime still accepts the legacy Station manifest until #344, #346, and #348
+land; this document must not be read as a present conformance claim.
+
 Station targets the published **Agent Plugins 1.0.0** contract. The upstream
 1.1.0 document is a working draft and is not a supported package version until
 it is published and Station explicitly recognizes it. Runtime loading must use
 vendored schemas; it must never fetch schemas while loading a plugin.
 
 Portable package data remains in the closed root `plugin.json` shape. Station
-implements one client extension namespace, `io.kontourai.station`, for both the
-manifest entry and optional top-level extension directory. Other namespaces
+reserves one client extension namespace, `io.kontourai.station`, for both the
+manifest entry and a future optional top-level extension directory. Runtime
+discovery of that directory belongs to #344. Other namespaces
 remain opaque and are ignored without validation.
 
 ## Field classification
@@ -23,7 +28,7 @@ remain opaque and are ignored without validation.
 | `dependencies[].source` | none | dropped; dependency sources are not package authority |
 | `displayName` | `extensions["io.kontourai.station"].title` | Station host |
 | `sdkVersion`, `entrypoint`, `serverModule`, `build` | same key under the Station namespace | Station host |
-| `capabilities`, `links`, `agents`, `workspacePanes` | same key under the Station namespace | Station host |
+| `capabilities`, `commands`, `links`, `agents`, `workspacePanes` | same key under the Station namespace | Station host |
 | `operationalEventSubscriptions`, `providers`, `integrations`, `tools`, `knowledge`, `prompts` | same key under the Station namespace | Station host |
 | inline `skills` | fixed `skills/<name>/SKILL.md` discovery | dropped |
 | inline MCP/integration configuration | fixed root `mcp.json` | dropped |
@@ -54,10 +59,13 @@ non-fatal reporting rules, not Station's extension-schema policy.
 
 ## Identity
 
-Station uses the Agent Plugins 1.0 name alphabet at storage boundaries:
+The v1 target uses the Agent Plugins 1.0 name alphabet at storage boundaries:
 1–64 lowercase ASCII letters, digits, hyphens, or periods; alphanumeric first
 and last characters; no `--` or `..`. There is no second Station-only plugin ID
-grammar.
+grammar. The legacy loader still rejects the otherwise-valid names
+`constructor` and `prototype` because older object-keyed stores are not all
+hardened; #344/#346 must remove that temporary conformance exception rather
+than teaching it as a second identifier grammar.
 
 ## Secret boundary
 
