@@ -1,4 +1,4 @@
-import { useAgentConnectionsQuery } from '@kontourai/station-sdk';
+import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { type Dispatch, type SetStateAction, useRef, useState } from 'react';
 import {
   type AgentFixRoute,
@@ -157,7 +157,7 @@ export function AgentsViewEditorPane({
   const [addModalType, setAddModalType] = useState<
     'integrations' | 'skills' | null
   >(null);
-  const { data: agentConnections = [] } = useAgentConnectionsQuery();
+  const { data: agentConnections = [] } = useEngineConnectionsQuery();
   // archive#4521: the mobile footer is the ONE save affordance on a
   // touch/narrow surface (DetailHeader's own sticky bar below), so the
   // header's row must not ALSO render one there — that produced two Save

@@ -48,10 +48,10 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     subtitle: 'Where work runs and what powers it',
     width: 'narrow',
   },
-  'connections-providers': SPLIT_PANE,
-  'connections-provider-edit': SPLIT_PANE,
+  'connections-models': SPLIT_PANE,
+  'connections-model-edit': SPLIT_PANE,
   'connections-engines': SPLIT_PANE,
-  'connections-runtime-edit': SPLIT_PANE,
+  'connections-engine-edit': SPLIT_PANE,
   // The Engines section (CONNECTION_SECTIONS): the frame names the section,
   // so this default must agree with it rather than introduce a second title
   // for the same destination.
@@ -63,7 +63,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   // fallback shown before that chunk arrives. (#592 slice 2: the sibling
   // 'connections-acp' route this comment used to justify agreeing with is
   // retired — this is now the only frame naming Engines this way.)
-  'connections-acp-new': {
+  'connections-engine-new': {
     eyebrow: 'Connections',
     title: 'Engines',
     subtitle: 'Agent CLIs installed here, and custom engines you connected.',

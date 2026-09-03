@@ -22,7 +22,7 @@ let statusData: any = { providers: { configuredChatReady: false } };
 let configData: any;
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useAgentConnectionsQuery: () => ({ data: connectionsData }),
+  useEngineConnectionsQuery: () => ({ data: connectionsData }),
   useConfigQuery: () => ({ data: configData }),
   useUpdateConfigMutation: () => ({ mutate, isPending: false }),
   // archive#1549: the lazily-loaded EnginePicker this row opens now probes

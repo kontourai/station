@@ -209,10 +209,10 @@ describe('routePendingShape — read off the destination’s own frame', () => {
         'detail-sheet',
       );
       expect(shapeOf({ type: 'agent-new' }, true)).toBe('detail-sheet');
-      expect(
-        shapeOf({ type: 'connections-provider-edit', id: 'p' }, true),
-      ).toBe('detail-sheet');
-      expect(shapeOf({ type: 'connections-runtime-edit', id: 'r' }, true)).toBe(
+      expect(shapeOf({ type: 'connections-model-edit', id: 'p' }, true)).toBe(
+        'detail-sheet',
+      );
+      expect(shapeOf({ type: 'connections-engine-edit', id: 'r' }, true)).toBe(
         'detail-sheet',
       );
       expect(shapeOf({ type: 'connections-tool-edit', id: 't' }, true)).toBe(
@@ -231,9 +231,7 @@ describe('routePendingShape — read off the destination’s own frame', () => {
       expect(shapeOf({ type: 'plugins' }, true)).toBe('split-pane');
       expect(shapeOf({ type: 'review-queue' }, true)).toBe('split-pane');
       expect(shapeOf({ type: 'activity' }, true)).toBe('split-pane');
-      expect(shapeOf({ type: 'connections-providers' }, true)).toBe(
-        'split-pane',
-      );
+      expect(shapeOf({ type: 'connections-models' }, true)).toBe('split-pane');
     });
 
     test('the same routes on a desktop viewport keep both panes', () => {
@@ -260,7 +258,7 @@ describe('routePendingShape — read off the destination’s own frame', () => {
       expect(shapeOf({ type: 'agent-edit', slug: 'a' })).toBe('detail-sheet');
 
       persistCollapsed('connections-models');
-      expect(shapeOf({ type: 'connections-providers' })).toBe('detail-sheet');
+      expect(shapeOf({ type: 'connections-models' })).toBe('detail-sheet');
 
       persistCollapsed('connections-agent-apps');
       expect(shapeOf({ type: 'connections-engines' })).toBe('detail-sheet');
@@ -268,7 +266,7 @@ describe('routePendingShape — read off the destination’s own frame', () => {
 
     test('one pane’s collapse says nothing about another’s', () => {
       persistCollapsed('agents');
-      expect(shapeOf({ type: 'connections-providers' })).toBe('split-pane');
+      expect(shapeOf({ type: 'connections-models' })).toBe('split-pane');
       // Review persists nothing at all — it mounts its pane without an id, so
       // it always starts expanded.
       expect(shapeOf({ type: 'review-queue' })).toBe('split-pane');

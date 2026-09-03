@@ -19,7 +19,7 @@
  */
 
 import {
-  useAgentConnectionsQuery,
+  useEngineConnectionsQuery,
   useGlobalKnowledgeStatusQuery,
   useIntegrationsQuery,
   useModelConnectionsQuery,
@@ -41,7 +41,7 @@ export interface ConnectionSectionSignals {
 
 export function useConnectionSectionSignals(): ConnectionSectionSignals {
   const { data: connections = [] } = useModelConnectionsQuery();
-  const { data: engines = [] } = useAgentConnectionsQuery();
+  const { data: engines = [] } = useEngineConnectionsQuery();
   const { data: tools = [] } = useIntegrationsQuery();
   const { data: knowledge } = useGlobalKnowledgeStatusQuery();
   const { rows: computers } = useComputerRows();
