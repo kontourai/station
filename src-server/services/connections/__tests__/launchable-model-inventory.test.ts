@@ -69,6 +69,9 @@ describe('buildLaunchableModelInventory', () => {
             'sonnet',
           ),
           modelConnection('ollama-1', 'ollama', {}, 'claude-sonnet-4-5'),
+          // A DEFINED family that the reviewed data never paired with this id:
+          // direct Anthropic does not issue the Claude Code alias.
+          modelConnection('anthropic-alias', 'anthropic', {}, 'sonnet'),
         ],
       }),
     );
@@ -84,6 +87,9 @@ describe('buildLaunchableModelInventory', () => {
       byConnection('other-compat')?.canonicalModelIdentity,
     ).toBeUndefined();
     expect(byConnection('ollama-1')?.canonicalModelIdentity).toBeUndefined();
+    expect(
+      byConnection('anthropic-alias')?.canonicalModelIdentity,
+    ).toBeUndefined();
   });
 
   test('marks curated routes and leaves an unknown provider-native id ungrouped', () => {
