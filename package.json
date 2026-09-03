@@ -190,6 +190,7 @@
     "test:full:ordinary:8:raw": "node scripts/run-vitest-corpus.mjs --group=ordinary --shard=8/8",
     "test:full:process-heavy:raw": "node scripts/run-vitest-corpus.mjs --group=process-heavy",
     "test:full:process-exclusive:raw": "node scripts/run-vitest-corpus.mjs --group=process-exclusive",
+    "test:full:coordinator-exclusive:raw": "node scripts/run-vitest-corpus.mjs --group=coordinator-exclusive",
     "test:full:credential-ledger-exclusive:raw": "node scripts/run-vitest-corpus.mjs --group=credential-ledger-exclusive",
     "test:full:shared-output:raw": "node scripts/run-vitest-corpus.mjs --group=shared-output",
     "test:full:dogfood-reconcile:raw": "node scripts/run-vitest-corpus.mjs --group=dogfood-reconcile",

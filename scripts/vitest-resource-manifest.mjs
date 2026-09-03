@@ -46,7 +46,6 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
   // while another process-heavy file is consuming the host.
   'packages/cli/src/__tests__/lifecycle.test.ts',
   'scripts/__tests__/test-reliability-machine.test.ts',
-  'scripts/__tests__/verification-coordinator.test.ts',
   'src-server/routes/orchestration/__tests__/orchestration.routes.test.ts',
   // station#3218: its correctness bound IS an event-loop responsiveness
   // measurement — it compares how much a `PRAGMA quick_check` blocks this
@@ -67,6 +66,13 @@ export const CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES = Object.freeze([
   // with multiple real Node children and file barriers. It needs exclusive
   // execution, but not the verification coordinator's remaining phase budget.
   'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts',
+]);
+
+export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // station#1354: exercises host-global verification leases, checkpoint
+  // recovery, cleanup fencing, and deliberate timeout scenarios for roughly
+  // three minutes. Give that authority its own phase budget and receipt.
+  'scripts/__tests__/verification-coordinator.test.ts',
 ]);
 
 // Direct `node:child_process` importers discovered from the root corpus, with
@@ -618,6 +624,9 @@ export const VITEST_RESOURCE_MANIFEST = Object.freeze({
   ordinary: Object.freeze({ maxWorkers: ORDINARY_MAX_WORKERS }),
   processHeavy: Object.freeze({ files: PROCESS_HEAVY_VITEST_FILES }),
   processExclusive: Object.freeze({ files: PROCESS_EXCLUSIVE_VITEST_FILES }),
+  coordinatorExclusive: Object.freeze({
+    files: COORDINATOR_EXCLUSIVE_VITEST_FILES,
+  }),
   credentialLedgerExclusive: Object.freeze({
     files: CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES,
   }),
@@ -757,6 +766,7 @@ function explicitFiles(manifest) {
   return [
     ...manifest.processHeavy.files,
     ...manifest.processExclusive.files,
+    ...manifest.coordinatorExclusive.files,
     ...manifest.credentialLedgerExclusive.files,
     ...manifest.sharedOutput.files,
   ];
@@ -772,6 +782,7 @@ export function ordinaryVitestExcludes(manifest = VITEST_RESOURCE_MANIFEST) {
   return Object.freeze([
     ...manifest.processHeavy.files,
     ...manifest.processExclusive.files,
+    ...manifest.coordinatorExclusive.files,
     ...manifest.credentialLedgerExclusive.files,
     ...manifest.sharedOutput.files,
     `${manifest.dogfoodReconcile.prefix}*.test.ts`,
@@ -848,6 +859,7 @@ export function buildVitestResourceGroups(
     ordinary: [],
     processHeavy: [],
     processExclusive: [],
+    coordinatorExclusive: [],
     credentialLedgerExclusive: [],
     sharedOutput: [],
     dogfoodReconcile: [],
@@ -858,6 +870,8 @@ export function buildVitestResourceGroups(
       groups.sharedOutput.push(file);
     else if (manifest.processExclusive.files.includes(file))
       groups.processExclusive.push(file);
+    else if (manifest.coordinatorExclusive.files.includes(file))
+      groups.coordinatorExclusive.push(file);
     else if (manifest.credentialLedgerExclusive.files.includes(file))
       groups.credentialLedgerExclusive.push(file);
     else if (manifest.processHeavy.files.includes(file))

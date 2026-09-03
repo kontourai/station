@@ -101,6 +101,10 @@ describe('canonical completion lane literal', () => {
         weight: 60,
       }),
       expect.objectContaining({
+        id: 'test-full-coordinator-exclusive',
+        weight: 60,
+      }),
+      expect.objectContaining({
         id: 'test-full-credential-ledger-exclusive',
         weight: 60,
       }),
@@ -136,7 +140,7 @@ describe('canonical completion lane literal', () => {
         0,
       ),
     );
-    expect(FULL_REGRESSION_TIMEOUT_MS).toBe(249 * 60_000);
+    expect(FULL_REGRESSION_TIMEOUT_MS).toBe(251 * 60_000);
     expect(resolveLane('full-regression').timeoutMs).toBe(
       FULL_REGRESSION_TIMEOUT_MS,
     );

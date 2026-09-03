@@ -59,6 +59,7 @@ const trackedVitestFixture = Object.freeze([
   'scripts/__tests__/ordinary-second.test.ts',
   'scripts/__tests__/process-heavy.test.ts',
   'scripts/__tests__/process-exclusive.test.ts',
+  'scripts/__tests__/coordinator-exclusive.test.ts',
   'scripts/__tests__/credential-ledger-exclusive.test.ts',
   'scripts/__tests__/shared-output.test.ts',
   'scripts/__tests__/dogfood-reconcile.test.ts',
@@ -69,9 +70,10 @@ function completeVitestGroups() {
     ordinary: [trackedVitestFixture[0], trackedVitestFixture[1]],
     processHeavy: [trackedVitestFixture[2]],
     processExclusive: [trackedVitestFixture[3]],
-    credentialLedgerExclusive: [trackedVitestFixture[4]],
-    sharedOutput: [trackedVitestFixture[5]],
-    dogfoodReconcile: [trackedVitestFixture[6]],
+    coordinatorExclusive: [trackedVitestFixture[4]],
+    credentialLedgerExclusive: [trackedVitestFixture[5]],
+    sharedOutput: [trackedVitestFixture[6]],
+    dogfoodReconcile: [trackedVitestFixture[7]],
   };
 }
 
