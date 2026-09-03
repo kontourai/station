@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vitest';
 const root = resolve(import.meta.dirname, '../..');
 
 type Step = {
+  env?: Record<string, unknown>;
   id?: string;
   name?: string;
   uses?: string;
