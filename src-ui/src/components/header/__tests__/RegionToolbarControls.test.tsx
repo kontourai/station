@@ -17,6 +17,7 @@ const harness = vi.hoisted(() => ({
   setDockState: vi.fn(),
   setRegion: vi.fn(),
   placeSurface: vi.fn(),
+  showSurface: vi.fn(),
   bottomOnly: false,
   shortcuts: new Map<
     string,
@@ -45,12 +46,14 @@ vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
       surfaces: REGION_SURFACE_REGISTRY,
       setRegion: vi.fn(),
       placeSurface: harness.placeSurface,
+      showSurface: harness.showSurface,
     }),
     useRegionModel: () => ({
       regions: harness.regions,
       surfaces: REGION_SURFACE_REGISTRY,
       setRegion: harness.setRegion,
       placeSurface: harness.placeSurface,
+      showSurface: harness.showSurface,
     }),
   };
 });
@@ -110,6 +113,7 @@ describe('RegionToolbarControls', () => {
     harness.setDockState.mockReset();
     harness.setRegion.mockReset();
     harness.placeSurface.mockReset();
+    harness.showSurface.mockReset();
     harness.bottomOnly = false;
     harness.shortcuts.clear();
   });
@@ -135,7 +139,7 @@ describe('RegionToolbarControls', () => {
     expect(harness.regions.bottom.occupant).toBe('chat');
 
     harness.shortcuts.get('activity.toggle')?.handler();
-    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
+    expect(harness.showSurface).toHaveBeenCalledWith('activity');
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Hide Chat Bottom region' }),
@@ -155,7 +159,7 @@ describe('RegionToolbarControls', () => {
 
     harness.shortcuts.get('activity.toggle')?.handler();
 
-    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'bottom');
+    expect(harness.showSurface).toHaveBeenCalledWith('activity');
   });
 
   test('the Activity chord toggles its existing region hidden and visible', () => {
@@ -260,14 +264,9 @@ describe('RegionToolbarControls', () => {
         .getAttribute('aria-pressed'),
     ).toBe('false');
     fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
-    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
-    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
-      visible: false,
-    });
-    expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: true });
+    expect(harness.showSurface).toHaveBeenCalledWith('activity');
 
     fireEvent.click(screen.getByRole('button', { name: 'Show Chat' }));
-    expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: false });
-    expect(harness.setRegion).toHaveBeenCalledWith('bottom', { visible: true });
+    expect(harness.showSurface).toHaveBeenCalledWith('chat');
   });
 });

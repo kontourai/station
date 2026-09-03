@@ -34,6 +34,7 @@ const regionOccupant = vi.hoisted(() => ({
   lastShownRegion: 'right' as 'right' | 'bottom',
   setRegion: vi.fn(),
   placeSurface: vi.fn(),
+  showSurface: vi.fn(),
 }));
 
 vi.mock('../contexts/RegionModelContext', async (importOriginal) => {
@@ -61,6 +62,7 @@ vi.mock('../contexts/RegionModelContext', async (importOriginal) => {
             lastShownRegion: regionOccupant.lastShownRegion,
             setRegion: regionOccupant.setRegion,
             placeSurface: regionOccupant.placeSurface,
+            showSurface: regionOccupant.showSurface,
           }
         : null,
   };
@@ -133,6 +135,7 @@ beforeEach(() => {
   regionOccupant.lastShownRegion = 'right';
   regionOccupant.setRegion.mockReset();
   regionOccupant.placeSurface.mockReset();
+  regionOccupant.showSurface.mockReset();
 });
 
 function publishedAction(
@@ -238,9 +241,7 @@ test('desktop: a hidden Activity region offers a working Show Activity action', 
     screen.getByText('Activity is hidden from the Right region'),
   ).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
-  expect(regionOccupant.setRegion).toHaveBeenCalledWith('right', {
-    visible: true,
-  });
+  expect(regionOccupant.showSurface).toHaveBeenCalledWith('activity');
 });
 
 test('coarse device: hidden Activity offers a working action for the rendered bottom bar', () => {
@@ -254,13 +255,7 @@ test('coarse device: hidden Activity offers a working action for the rendered bo
     screen.getByText('Activity is hidden from the bottom bar'),
   ).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
-  expect(regionOccupant.placeSurface).toHaveBeenCalledWith('activity', 'right');
-  expect(regionOccupant.setRegion).toHaveBeenCalledWith('bottom', {
-    visible: false,
-  });
-  expect(regionOccupant.setRegion).toHaveBeenCalledWith('right', {
-    visible: true,
-  });
+  expect(regionOccupant.showSurface).toHaveBeenCalledWith('activity');
 });
 
 /* ------------------------------------------------------------------ *

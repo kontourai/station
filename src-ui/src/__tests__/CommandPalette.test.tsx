@@ -98,6 +98,7 @@ vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
 }));
 
 const navigateMock = vi.fn();
+const showSurfaceMock = vi.fn();
 const setProjectMock = vi.fn();
 const setDockStateMock = vi.fn();
 
@@ -109,6 +110,9 @@ vi.mock('../contexts/NavigationContext', () => ({
     selectedProject: 'alpha',
     selectedProjectLayout: selectedProjectLayoutMock,
   }),
+}));
+vi.mock('../contexts/RegionModelContext', () => ({
+  useShowSurface: () => showSurfaceMock,
 }));
 
 vi.mock('../platform/PlatformProfileContext', () => ({
@@ -171,6 +175,7 @@ afterEach(() => {
   indexRebuilds.count = 0;
   resetOpenChatIdentitiesCacheForTests();
   navigateMock.mockReset();
+  showSurfaceMock.mockReset();
   setProjectMock.mockReset();
   setDockStateMock.mockReset();
   registeredCommand.mockReset();
@@ -766,6 +771,18 @@ describe('CommandPalette', () => {
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' });
     expect(navigateMock).toHaveBeenCalledWith('/schedule');
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('Activity navigation reveals its registered region surface', async () => {
+    await renderCommandPalette();
+    open();
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'activity' },
+    });
+    fireEvent.click(screen.getByRole('option', { name: /^Activity/ }));
+
+    expect(showSurfaceMock).toHaveBeenCalledWith('activity');
+    expect(navigateMock).not.toHaveBeenCalledWith('/activity');
   });
 
   test('IME Enter does not run the highlighted command, then plain Enter does', async () => {

@@ -2,11 +2,13 @@ import {
   WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
   WORKSPACE_ACTIVITY_PANE_INSTANCE,
 } from '@kontourai/station-contracts/workspace-activity-pane';
+import { useMemo } from 'react';
 import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
 import { DockShell } from '../components/chat-dock/DockShell';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
 import { useApiBase } from '../contexts/ApiBaseContext';
+import { useRegionModel } from '../contexts/RegionModelContext';
 import { reportRegionClearance } from '../regions/region-clearance';
 import {
   type DockRegionId,
@@ -21,6 +23,18 @@ const loadActivityWorkspacePane = () =>
 
 export function ActivityRegionShell({ regionId }: { regionId: DockRegionId }) {
   const { apiBase } = useApiBase();
+  const model = useRegionModel();
+  const intent = model.surfaceIntents.activity;
+  const binding = useMemo(
+    () => ({
+      apiBase,
+      sessionId: intent?.session,
+      focusHint: intent?.focus,
+      intentToken: intent?.token,
+      onFocusConsumed: () => model.clearSurfaceIntentFocus('activity'),
+    }),
+    [apiBase, intent, model],
+  );
   return (
     <DockShell
       regionId={regionId}
@@ -41,7 +55,7 @@ export function ActivityRegionShell({ regionId }: { regionId: DockRegionId }) {
             onDockPlacementChange={chrome.commitDockPlacement}
           />
           <div className="dock-slot__body">
-            <ActivityWorkspacePaneBindingProvider binding={{ apiBase }}>
+            <ActivityWorkspacePaneBindingProvider binding={binding}>
               <LazyBoundary
                 load={loadActivityWorkspacePane}
                 componentProps={{

@@ -354,11 +354,13 @@ export function SessionsView({
   apiBase,
   sessionId,
   focusHint,
+  intentToken,
+  onFocusConsumed,
 }: {
   apiBase: string;
   sessionId?: string;
   /**
-   * Route-owned one-shot intent (`/activity?session=<id>&focus=evidence`):
+   * Region-owned one-shot intent for a selected session's evidence:
    * once the routed session is selected, bring its evidence region into
    * view. Consumed and cleared here after adoption, the same way
    * `openFilePreviewIntent` is cleared after host admission
@@ -368,6 +370,8 @@ export function SessionsView({
    * same-path navigation.
    */
   focusHint?: 'evidence';
+  intentToken?: number;
+  onFocusConsumed?: () => void;
 }) {
   const {
     data: sessions = [],
@@ -390,12 +394,13 @@ export function SessionsView({
   } | null>(null);
   const routedSessionIdRef = useRef<string | undefined>(undefined);
   const routedFocusRef = useRef<'evidence' | undefined>(undefined);
+  const routedIntentTokenRef = useRef<number | undefined>(undefined);
   const pendingRouteSelectionRef = useRef<{
     sessionId: string;
     intent: number;
     focus?: 'evidence';
   } | null>(null);
-  const { navigate, updateParams } = useNavigation();
+  const { updateParams } = useNavigation();
   const evidenceRevealTokenRef = useRef(0);
   const [evidenceReveal, setEvidenceReveal] =
     useState<SessionEvidenceReveal | null>(null);
@@ -454,9 +459,10 @@ export function SessionsView({
     (threadId: string) => {
       evidenceRevealTokenRef.current += 1;
       setEvidenceReveal({ threadId, token: evidenceRevealTokenRef.current });
-      updateParams({ focus: null });
+      if (onFocusConsumed) onFocusConsumed();
+      else updateParams({ focus: null });
     },
-    [updateParams],
+    [onFocusConsumed, updateParams],
   );
 
   useEffect(() => {
@@ -467,11 +473,13 @@ export function SessionsView({
     // activation from the route the reader is already on.
     if (
       sessionId !== routedSessionIdRef.current ||
-      focusHint !== routedFocusRef.current
+      focusHint !== routedFocusRef.current ||
+      intentToken !== routedIntentTokenRef.current
     ) {
       const intent = ++selectionIntentRef.current;
       routedSessionIdRef.current = sessionId;
       routedFocusRef.current = focusHint;
+      routedIntentTokenRef.current = intentToken;
       if (!sessionId) {
         pendingRouteSelectionRef.current = null;
         // a route without a session is never an evidence arm —
@@ -539,6 +547,7 @@ export function SessionsView({
     isLoading,
     sessionId,
     focusHint,
+    intentToken,
     sessions,
     setSelection,
     armEvidenceReveal,
@@ -721,12 +730,11 @@ export function SessionsView({
                 {showEvidence && (
                   <SessionEvidenceButton
                     sessionTitle={sessionTitle(s)}
-                    onActivate={() =>
-                      navigate('/activity', {
-                        session: s.threadId,
-                        focus: 'evidence',
-                      })
-                    }
+                    onActivate={() => {
+                      selectionIntentRef.current += 1;
+                      setSelection(s.threadId);
+                      armEvidenceReveal(s.threadId);
+                    }}
                   />
                 )}
                 {projectLabel ? (

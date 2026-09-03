@@ -8,14 +8,15 @@ interface UseChatDockActiveChatSyncArgs {
   agentCatalogKey: string;
   /**
    * station#1284 (D2c): the cold-path fallback when resolution definitively
-   * fails — navigates to `/activity?session=<id>` (the same working pattern
-   * `ChatDock.tsx`'s own inbox panel already uses via
-   * `navigate('/activity', { session: threadId })`) instead of silently
-   * clearing the pointer with `setActiveChat(null)`. `/activity` is not a
-   * project layout, so a plain `navigate()` from `useNavigation()` is the
-   * correct call here (never `setLayout`/raw `window.location`).
+   * fails — reveals the Activity region with the unresolved session instead
+   * of silently clearing the pointer with `setActiveChat(null)`.
    */
   navigate: (pathname: string, params?: Record<string, string | null>) => void;
+  updateParams: (params: Record<string, string | null>) => void;
+  showSurface: (
+    surfaceId: string,
+    intent?: { session?: string; focus?: 'evidence' },
+  ) => void;
   /**
    * Whether the agent catalog query has resolved SUCCESSFULLY at least once
    * — not merely settled (`useAgentsLoaded` deliberately excludes an errored
@@ -53,7 +54,8 @@ export function useChatDockActiveChatSync({
   sessions,
   openConversation,
   setActiveSessionId,
-  navigate,
+  updateParams,
+  showSurface,
 }: UseChatDockActiveChatSyncArgs) {
   const [lookupRetryGeneration, setLookupRetryGeneration] = useState(0);
   const attemptRef = useRef<{
@@ -62,10 +64,12 @@ export function useChatDockActiveChatSync({
   } | null>(null);
   const requestGenerationRef = useRef(0);
   const openConversationRef = useRef(openConversation);
-  const navigateRef = useRef(navigate);
+  const updateParamsRef = useRef(updateParams);
+  const showSurfaceRef = useRef(showSurface);
   const sessionsRef = useRef(sessions);
   openConversationRef.current = openConversation;
-  navigateRef.current = navigate;
+  updateParamsRef.current = updateParams;
+  showSurfaceRef.current = showSurface;
   sessionsRef.current = sessions;
 
   useEffect(() => {
@@ -118,7 +122,7 @@ export function useChatDockActiveChatSync({
     const catalogWasLoadedForThisAttempt = agentsLoaded;
     // station#1284 (D2c): the definitive-miss fallback — never a silent
     // setActiveChat(null). Mirrors the working pattern ChatDock's own inbox
-    // panel already uses (`navigate('/activity', { session: threadId })`),
+    // panel already uses (an Activity-region session intent),
     // plus explicitly clearing the `chat` param in the SAME navigate call —
     // leaving it would re-seed `activeChat` from the URL on the very next
     // render (parseUrl() reads `chat` regardless of pathname) and loop this
@@ -127,19 +131,15 @@ export function useChatDockActiveChatSync({
     // preserves every unlisted param, and a dock-targeting deep link
     // (station#1284 AC4) already stamps `dock=open` on the URL this pointer
     // came from — without this, the fallback would land on
-    // `/activity?dock=open` and force the dock open and empty on a page
-    // that has no conversation to show in it.
+    // a stale open dock alongside Activity with no conversation to show.
     // Reads `navigateRef`/the closed-over `activeChat` rather than being
     // listed as an effect dependency, matching this file's existing pattern
     // for callback stability (openConversationRef, sessionsRef, ...) — a
     // fresh function identity every render must never force this attempt-
     // budget effect to re-run.
     const fallbackToActivityRoute = () => {
-      navigateRef.current('/activity', {
-        chat: null,
-        dock: null,
-        session: activeChat,
-      });
+      updateParamsRef.current({ chat: null, dock: null });
+      showSurfaceRef.current('activity', { session: activeChat });
     };
     /**
      * A persisted tab can hydrate at any point while a cold lookup is in

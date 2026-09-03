@@ -40,6 +40,7 @@ describe('Activity rename sweep', () => {
 
   test('Activity owns the canonical route and legacy deep links redirect with their query', () => {
     expect(surface!.route).toBe('/activity');
+    expect(surface!.regionSurface).toBe('activity');
     expect(resolveViewFromPath('/activity')).toEqual({ type: 'activity' });
     expect(resolveViewFromPath('/activity?session=thread-1')).toEqual({
       type: 'activity',

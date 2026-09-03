@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-sdk/action-operations';
 import { useEffect, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useShowSurface } from '../../contexts/RegionModelContext';
 import { relativeTimeAgo } from '../../utils/relativeTime';
 import { SkeletonList } from '../state';
 import './ActionOperationsSection.css';
@@ -143,6 +144,7 @@ export function ActionOperationsSection() {
   const { data, isLoading, isFetching, error } = useActionOperationsQuery();
   const cancel = useCancelActionOperationMutation();
   const { navigate } = useNavigation();
+  const showSurface = useShowSurface();
   const online = useBrowserOnline();
   if (!online && !data) {
     return (
@@ -192,7 +194,7 @@ export function ActionOperationsSection() {
       return;
     }
     if (operation.reentry.kind === 'session') {
-      navigate('/activity', { session: operation.reentry.sessionId });
+      showSurface('activity', { session: operation.reentry.sessionId });
       return;
     }
     navigate('/monitoring', {

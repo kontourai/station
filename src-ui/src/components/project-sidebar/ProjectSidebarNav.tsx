@@ -6,7 +6,12 @@ import {
   type SurfaceSection,
 } from '../../app-shell/surface-registry';
 import { usePendingRouteSurfaceId } from '../../app-shell/useRoutePending';
+import {
+  useRegionModelOptional,
+  useShowSurface,
+} from '../../contexts/RegionModelContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
+import { occupiedDockRegion } from '../../regions/region-model';
 import { PROJECT_SIDEBAR_NAV_GROUPS, surfaceIcon } from './nav-items';
 
 interface ProjectSidebarNavProps {
@@ -26,6 +31,8 @@ export function ProjectSidebarNav({
   activePath,
   onAfterNavigate,
 }: ProjectSidebarNavProps) {
+  const regionModel = useRegionModelOptional();
+  const showSurface = useShowSurface();
   const activeSurface = APP_SURFACE_REGISTRY.getSurfaceForView(
     resolveViewFromPath(activePath ?? window.location.pathname),
   );
@@ -58,7 +65,13 @@ export function ProjectSidebarNav({
 
   const renderRow = (surface: SurfaceDefinition) => {
     const label = surface.label();
-    const isActive = activeSurface?.id === surface.id;
+    const occupiedRegion =
+      surface.regionSurface && regionModel
+        ? occupiedDockRegion(regionModel.regions, surface.regionSurface)
+        : undefined;
+    const isActive = surface.regionSurface
+      ? Boolean(occupiedRegion && regionModel?.regions[occupiedRegion].visible)
+      : activeSurface?.id === surface.id;
     // SHELL-05: the route chunk takes ~1.4 s to arrive on a cold surface, and
     // the row the user clicked said nothing for all of it. `pendingSurfaceId`
     // is the suspended route outlet itself, not a timer started at click, and
@@ -75,7 +88,8 @@ export function ProjectSidebarNav({
         }`}
         aria-busy={isPending || undefined}
         onClick={() => {
-          navigate(surface.route);
+          if (surface.regionSurface) showSurface(surface.regionSurface);
+          else navigate(surface.route);
           if (isMobile) onAfterNavigate?.();
         }}
         title={collapsed ? label : undefined}

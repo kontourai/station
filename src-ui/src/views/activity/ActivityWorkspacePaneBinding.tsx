@@ -8,7 +8,7 @@ import { createContext, type ReactNode, useContext } from 'react';
  * placement that has them, read by the renderer that needs them. For
  * Activity those inputs are the API base its session queries and mutations
  * are addressed to, and — only for the standalone route placement — the
- * deep-linked session id (`/activity/:sessionId`). A routed selection is
+ * deep-linked region intent. A routed selection is
  * presentation state of that placement, never pane identity, which is why it
  * lives here and not on the occurrence.
  *
@@ -26,6 +26,9 @@ export interface ActivityWorkspacePaneBinding {
   sessionId?: string;
   /** Routed focus target, forwarded to the sessions surface untouched. */
   focusHint?: 'evidence';
+  /** Monotonic activation identity, including repeated intents for the same session. */
+  intentToken?: number;
+  onFocusConsumed?: () => void;
 }
 
 const ActivityWorkspacePaneContext =

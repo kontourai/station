@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatDockActiveChatSync } from '../components/chat-dock/useChatDockActiveChatSync';
 
 const fetchConversationById = vi.fn();
+const updateParams = vi.fn();
+const showSurface = vi.fn();
 
 vi.mock('@kontourai/station-sdk', () => ({
   fetchConversationById: (...args: unknown[]) => fetchConversationById(...args),
@@ -15,6 +17,8 @@ vi.mock('@kontourai/station-sdk', () => ({
 describe('useChatDockActiveChatSync', () => {
   beforeEach(() => {
     fetchConversationById.mockReset();
+    updateParams.mockReset();
+    showSurface.mockReset();
     fetchConversationById.mockResolvedValue({
       id: 'thread-1',
       agentSlug: 'claude',
@@ -39,6 +43,8 @@ describe('useChatDockActiveChatSync', () => {
           openConversation,
           setActiveSessionId,
           navigate,
+          updateParams,
+          showSurface,
         }),
       {
         initialProps: {
@@ -83,6 +89,8 @@ describe('useChatDockActiveChatSync', () => {
         openConversation,
         setActiveSessionId: vi.fn(),
         navigate: vi.fn(),
+        updateParams,
+        showSurface,
       }),
     );
 
@@ -118,6 +126,8 @@ describe('useChatDockActiveChatSync', () => {
         openConversation,
         setActiveSessionId,
         navigate: vi.fn(),
+        updateParams,
+        showSurface,
       }),
     );
 
@@ -146,6 +156,8 @@ describe('useChatDockActiveChatSync', () => {
           openConversation: vi.fn(),
           setActiveSessionId,
           navigate,
+          updateParams,
+          showSurface,
         }),
       { initialProps: { sessions: [] as never[] } },
     );
@@ -180,6 +192,8 @@ describe('useChatDockActiveChatSync', () => {
           openConversation,
           setActiveSessionId: vi.fn(),
           navigate: vi.fn(),
+          updateParams,
+          showSurface,
         }),
       { initialProps: { openConversation: firstOpener } },
     );
@@ -212,6 +226,8 @@ describe('useChatDockActiveChatSync', () => {
           openConversation,
           setActiveSessionId: vi.fn(),
           navigate: vi.fn(),
+          updateParams,
+          showSurface,
         }),
       {
         initialProps: {
@@ -260,6 +276,8 @@ describe('useChatDockActiveChatSync', () => {
           openConversation,
           setActiveSessionId: vi.fn(),
           navigate,
+          updateParams,
+          showSurface,
         }),
       { initialProps: { activeChat: 'thread-1' as string | null } },
     );
@@ -286,8 +304,8 @@ describe('useChatDockActiveChatSync', () => {
   // be cleared rather than left aimed at a chat that will never render.
   //
   // archive#1284: the clear is no longer silent -- it must
-  // navigate to /activity?session=<id> (clearing the dead `chat` param in
-  // the same call) instead of only calling setActiveChat(null), or the dock
+  // reveal Activity with the session (clearing the dead `chat` param first)
+  // instead of only calling setActiveChat(null), or the dock
   // is left showing nothing with no way back to the conversation.
   it('navigates to /activity instead of silently clearing when the owning agent can no longer be opened', async () => {
     const opener = vi.fn().mockResolvedValue(false);
@@ -304,17 +322,18 @@ describe('useChatDockActiveChatSync', () => {
         openConversation: opener,
         setActiveSessionId,
         navigate,
+        updateParams,
+        showSurface,
       }),
     );
 
     await waitFor(() => expect(opener).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity', {
-        chat: null,
-        dock: null,
+      expect(showSurface).toHaveBeenCalledWith('activity', {
         session: 'thread-1',
       }),
     );
+    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
   });
 
   it('leaves the active chat alone when the opener succeeds', async () => {
@@ -332,6 +351,8 @@ describe('useChatDockActiveChatSync', () => {
         openConversation: opener,
         setActiveSessionId,
         navigate,
+        updateParams,
+        showSurface,
       }),
     );
 
@@ -356,6 +377,8 @@ describe('useChatDockActiveChatSync', () => {
         openConversation: opener,
         setActiveSessionId: vi.fn(),
         navigate,
+        updateParams,
+        showSurface,
       }),
     );
 
@@ -387,6 +410,8 @@ describe('useChatDockActiveChatSync', () => {
           openConversation,
           setActiveSessionId,
           navigate,
+          updateParams,
+          showSurface,
         }),
       {
         initialProps: {
@@ -431,6 +456,8 @@ describe('useChatDockActiveChatSync', () => {
           openConversation,
           setActiveSessionId,
           navigate,
+          updateParams,
+          showSurface,
         }),
       {
         initialProps: {
@@ -452,12 +479,11 @@ describe('useChatDockActiveChatSync', () => {
 
     await waitFor(() => expect(loadedCatalogOpener).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity', {
-        chat: null,
-        dock: null,
+      expect(showSurface).toHaveBeenCalledWith('activity', {
         session: 'thread-1',
       }),
     );
+    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
   });
 
   // archive#945 MED finding: `agentCatalogKey` is built by joining agent slugs, so
@@ -486,6 +512,8 @@ describe('useChatDockActiveChatSync', () => {
           openConversation: opener,
           setActiveSessionId,
           navigate,
+          updateParams,
+          showSurface,
         }),
       { initialProps: { agentsLoaded: false } },
     );
@@ -502,12 +530,11 @@ describe('useChatDockActiveChatSync', () => {
 
     await waitFor(() => expect(opener).toHaveBeenCalledTimes(2));
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity', {
-        chat: null,
-        dock: null,
+      expect(showSurface).toHaveBeenCalledWith('activity', {
         session: 'thread-1',
       }),
     );
+    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
   });
 
   // archive#945 MED finding: `useAgentsLoaded`'s first cut derived
@@ -543,6 +570,8 @@ describe('useChatDockActiveChatSync', () => {
         openConversation: opener,
         setActiveSessionId,
         navigate,
+        updateParams,
+        showSurface,
       }),
     );
 
@@ -581,16 +610,17 @@ describe('useChatDockActiveChatSync', () => {
         openConversation,
         setActiveSessionId,
         navigate,
+        updateParams,
+        showSurface,
       }),
     );
 
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity', {
-        chat: null,
-        dock: null,
+      expect(showSurface).toHaveBeenCalledWith('activity', {
         session: 'dead-chat',
       }),
     );
+    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
     expect(openConversation).not.toHaveBeenCalled();
   });
 
@@ -612,15 +642,16 @@ describe('useChatDockActiveChatSync', () => {
         openConversation: vi.fn(),
         setActiveSessionId,
         navigate,
+        updateParams,
+        showSurface,
       }),
     );
 
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity', {
-        chat: null,
-        dock: null,
+      expect(showSurface).toHaveBeenCalledWith('activity', {
         session: 'thread-network-error',
       }),
     );
+    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
   });
 });

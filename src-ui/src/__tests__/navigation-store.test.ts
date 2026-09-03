@@ -312,6 +312,28 @@ describe('navigationStore legacy Activity canonicalization', () => {
   });
 });
 
+describe('navigationStore shell surface intents', () => {
+  test('parses a surface intent and carries its shell params across route changes', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/?surface=activity&session=thread%2Falpha&focus=evidence',
+    );
+    window.dispatchEvent(new PopStateEvent('popstate'));
+
+    expect(navigationStore.getSnapshot().surfaceIntent).toEqual({
+      surfaceId: 'activity',
+      sessionId: 'thread/alpha',
+      focus: 'evidence',
+    });
+
+    navigationStore.navigate('/registry');
+    expect(window.location.pathname + window.location.search).toBe(
+      '/registry?surface=activity&session=thread%2Falpha&focus=evidence',
+    );
+  });
+});
+
 describe('navigationStore Workspace Pane selection history', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/projects/demo/layouts/coding');

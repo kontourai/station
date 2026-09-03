@@ -1,4 +1,8 @@
 import {
+  activityDeepLink,
+  clearSurfaceDeepLinkParams,
+} from '@kontourai/station-contracts/surface-deep-link';
+import {
   createContext,
   type ReactNode,
   useCallback,
@@ -8,6 +12,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { availablePlacements, useDockSlotDevice } from '../hooks/useIsMobile';
 import {
   chatRegion,
   DOCK_REGION_IDS,
@@ -17,7 +22,9 @@ import {
   type RegionId,
   type RegionLayout,
   type RegionState,
+  revealSurface,
   seedRegionLayoutFromDock,
+  showSurfaceAlone,
   syncRegionLayoutFromDock,
   updateRegion,
 } from '../regions/region-model';
@@ -26,6 +33,16 @@ import {
   useDeviceSettingsActions,
 } from './DeviceSettingsContext';
 import { useNavigation } from './NavigationContext';
+import { navigationStore } from './navigation-store';
+
+export interface SurfaceIntent {
+  session?: string;
+  focus?: 'evidence';
+}
+
+export interface SurfaceIntentRecord extends SurfaceIntent {
+  token: number;
+}
 
 interface RegionModelValue {
   regions: RegionLayout;
@@ -33,14 +50,25 @@ interface RegionModelValue {
   surfaces: typeof REGION_SURFACE_REGISTRY;
   setRegion(id: RegionId, patch: Partial<RegionState>): void;
   placeSurface(surfaceId: string, regionId: RegionId): void;
+  showSurface(surfaceId: string, intent?: SurfaceIntent): void;
+  surfaceIntents: Readonly<Partial<Record<string, SurfaceIntentRecord>>>;
+  clearSurfaceIntentFocus(surfaceId: string): void;
 }
 
 const RegionModelContext = createContext<RegionModelValue | null>(null);
 
 export function RegionModelProvider({ children }: { children: ReactNode }) {
   const settings = useDeviceSettings();
-  const { isDockOpen, isDockMaximized, dockMode, setDockMode, setDockState } =
-    useNavigation();
+  const {
+    isDockOpen,
+    isDockMaximized,
+    dockMode,
+    surfaceIntent,
+    setDockMode,
+    setDockState,
+    updateParams,
+  } = useNavigation();
+  const bottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
   const { setDeviceSetting } = useDeviceSettingsActions();
   const [regions, setRegions] = useState<RegionLayout>(
     // Step 1 persists region layout via legacy dock keys; its own record arrives when regions become user-visible.
@@ -49,6 +77,10 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   const [lastShownRegion, setLastShownRegion] = useState<RegionId | null>(
     () => chatRegion(regions) ?? null,
   );
+  const [surfaceIntents, setSurfaceIntents] = useState<
+    Partial<Record<string, SurfaceIntentRecord>>
+  >({});
+  const surfaceIntentTokenRef = useRef(0);
   const regionsRef = useRef(regions);
   const mirroredRegionsRef = useRef(regions);
   regionsRef.current = regions;
@@ -67,6 +99,45 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     regionsRef.current = next;
     setLastShownRegion(regionId);
     setRegions(next);
+  }, []);
+
+  const showSurface = useCallback(
+    (surfaceId: string, intent?: SurfaceIntent) => {
+      const surface = REGION_SURFACE_REGISTRY.get(surfaceId);
+      if (!surface) return;
+      const shown = bottomOnly
+        ? showSurfaceAlone(regionsRef.current, surfaceId, surface.defaultRegion)
+        : revealSurface(regionsRef.current, surfaceId, surface.defaultRegion);
+      regionsRef.current = shown.layout;
+      setLastShownRegion(shown.region);
+      setRegions(shown.layout);
+      if (intent) {
+        const token = ++surfaceIntentTokenRef.current;
+        setSurfaceIntents((current) => {
+          const previous = current[surfaceId];
+          return {
+            ...current,
+            [surfaceId]: {
+              ...(previous?.session ? { session: previous.session } : {}),
+              ...intent,
+              ...(intent.session === undefined && previous?.session
+                ? { session: previous.session }
+                : {}),
+              token,
+            },
+          };
+        });
+      }
+    },
+    [bottomOnly],
+  );
+
+  const clearSurfaceIntentFocus = useCallback((surfaceId: string) => {
+    setSurfaceIntents((current) => {
+      const intent = current[surfaceId];
+      if (!intent?.focus) return current;
+      return { ...current, [surfaceId]: { ...intent, focus: undefined } };
+    });
   }, []);
 
   useEffect(() => {
@@ -115,6 +186,22 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     setRegions(next);
   }, [dockMode, isDockOpen]);
 
+  const intentKey = surfaceIntent
+    ? `${surfaceIntent.surfaceId}|${surfaceIntent.sessionId ?? ''}|${surfaceIntent.focus ?? ''}`
+    : null;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the stable string key prevents replaceState reparses from adopting the same intent twice.
+  useEffect(() => {
+    if (!intentKey || !surfaceIntent) return;
+    if (REGION_SURFACE_REGISTRY.has(surfaceIntent.surfaceId)) {
+      showSurface(surfaceIntent.surfaceId, {
+        session: surfaceIntent.sessionId,
+        focus: surfaceIntent.focus,
+      });
+    }
+    updateParams(clearSurfaceDeepLinkParams());
+  }, [intentKey]);
+
   const value = useMemo(
     () => ({
       regions,
@@ -122,13 +209,40 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       surfaces: REGION_SURFACE_REGISTRY,
       setRegion,
       placeSurface,
+      showSurface,
+      surfaceIntents,
+      clearSurfaceIntentFocus,
     }),
-    [regions, lastShownRegion, setRegion, placeSurface],
+    [
+      regions,
+      lastShownRegion,
+      setRegion,
+      placeSurface,
+      showSurface,
+      surfaceIntents,
+      clearSurfaceIntentFocus,
+    ],
   );
   return (
     <RegionModelContext.Provider value={value}>
       {children}
     </RegionModelContext.Provider>
+  );
+}
+
+export function useShowSurface(): RegionModelValue['showSurface'] {
+  const model = useRegionModelOptional();
+  return useCallback(
+    (surfaceId: string, intent?: SurfaceIntent) => {
+      if (model) {
+        model.showSurface(surfaceId, intent);
+        return;
+      }
+      navigationStore.navigate(
+        activityDeepLink({ sessionId: intent?.session, focus: intent?.focus }),
+      );
+    },
+    [model],
   );
 }
 

@@ -48,6 +48,7 @@ const {
   coreUpdateStatus,
   invalidateQueries,
   navigate,
+  showSurface,
   setDockMode,
   setLayout,
   showToast,
@@ -92,6 +93,7 @@ const {
   },
   invalidateQueries: vi.fn(),
   navigate: vi.fn(),
+  showSurface: vi.fn(),
   setDockMode: vi.fn(),
   setLayout: vi.fn(),
   showToast: vi.fn(),
@@ -295,6 +297,10 @@ vi.mock('../contexts/NavigationContext', () => ({
 vi.mock('../contexts/ProjectsContext', () => ({
   ProjectsProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
+vi.mock('../contexts/RegionModelContext', () => ({
+  useRegionModelOptional: () => null,
+  useShowSurface: () => showSurface,
+}));
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast }),
 }));
@@ -326,6 +332,7 @@ function resetHooks() {
   window.history.replaceState({}, '', '/');
   invalidateQueries.mockClear();
   navigate.mockClear();
+  showSurface.mockClear();
   setDockMode.mockClear();
   setLayout.mockClear();
   showToast.mockClear();
@@ -462,8 +469,9 @@ describe('App home route resolution', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue fixture' }));
 
-    expect(navigate).toHaveBeenCalledWith('/activity', {
+    expect(showSurface).toHaveBeenCalledWith('activity', {
       session: 'thread/alpha',
+      focus: undefined,
     });
   });
 

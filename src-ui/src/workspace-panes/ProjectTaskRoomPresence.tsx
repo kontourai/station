@@ -1,3 +1,4 @@
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { useLayoutEffect, useState } from 'react';
 import {
   browserEpochMs,
@@ -136,7 +137,9 @@ export function ProjectTaskRoomPresence({ taskId }: { taskId: string }) {
             {participant.actor.kind === 'agent' ? (
               <span>
                 <a
-                  href={`/activity?session=${encodeURIComponent(participant.work.sessionId)}`}
+                  href={activityDeepLink({
+                    sessionId: participant.work.sessionId,
+                  })}
                 >
                   View agent session
                 </a>

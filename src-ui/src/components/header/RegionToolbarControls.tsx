@@ -12,7 +12,6 @@ import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import {
   DOCK_REGION_IDS,
-  firstFreeDockRegion,
   foldedDockRegion,
   occupiedDockRegion,
   type RegionId,
@@ -145,6 +144,7 @@ function ConnectedRegionToolbarControls() {
     surfaces,
     setRegion,
     placeSurface: placeSurfaceInModel,
+    showSurface,
   } = useRegionModel();
   const available = availablePlacements(useDockSlotDevice());
   const bottomOnly = available.length === 1;
@@ -156,49 +156,24 @@ function ConnectedRegionToolbarControls() {
   const [menuAnchorRight, setMenuAnchorRight] = useState(8);
   const foldedRegion = foldedDockRegion(regions, lastShownRegion);
 
-  const showSurfaceAlone = useCallback(
-    (surfaceId: string, regionId: DockMode) => {
-      placeSurfaceInModel(surfaceId, regionId);
-      for (const id of DOCK_REGION_IDS) {
-        if (id !== regionId) setRegion(id, { visible: false });
-      }
-      setRegion(regionId, { visible: true });
-    },
-    [placeSurfaceInModel, setRegion],
-  );
-
   const toggleSurface = useCallback(
     (surface: RegisteredSurface) => {
       const occupied = occupiedDockRegion(regions, surface.id);
       if (!occupied) {
-        if (bottomOnly) showSurfaceAlone(surface.id, surface.defaultRegion);
-        else {
-          const destination = firstFreeDockRegion(
-            regions,
-            surface.defaultRegion,
-          );
-          if (destination) placeSurfaceInModel(surface.id, destination);
-        }
+        showSurface(surface.id);
         return;
       }
       if (bottomOnly) {
         if (occupied === foldedRegion && regions[occupied].visible) {
           setRegion(occupied, { visible: false });
         } else {
-          showSurfaceAlone(surface.id, occupied);
+          showSurface(surface.id);
         }
         return;
       }
       setRegion(occupied, { visible: !regions[occupied].visible });
     },
-    [
-      bottomOnly,
-      foldedRegion,
-      placeSurfaceInModel,
-      regions,
-      setRegion,
-      showSurfaceAlone,
-    ],
+    [bottomOnly, foldedRegion, regions, setRegion, showSurface],
   );
 
   const openMenu = useCallback((id: DockMode, trigger: HTMLButtonElement) => {

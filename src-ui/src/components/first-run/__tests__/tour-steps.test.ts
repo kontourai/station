@@ -30,8 +30,12 @@ describe('first-run tour anchors resolve to canonical routes', () => {
   test.each(FIRST_RUN_TOUR_STEPS)(
     'step $id derives a serializable canonical path',
     (step) => {
-      expect(tourStepPath(step)).toBe(getPathForView(step.view));
-      expect(tourStepPath(step)).not.toBeNull();
+      if ('surface' in step && step.surface) {
+        expect(tourStepPath(step)).toBeNull();
+      } else {
+        expect(tourStepPath(step)).toBe(getPathForView(step.view));
+        expect(tourStepPath(step)).not.toBeNull();
+      }
     },
   );
 
@@ -42,14 +46,15 @@ describe('first-run tour anchors resolve to canonical routes', () => {
       // Non-null here means `getLegacyPathRedirect` recognised the path as a
       // retired name it must rewrite — i.e. the tour is spelling a legacy
       // route.
-      expect(getLegacyPathRedirect(path!)).toBeNull();
+      if (path) expect(getLegacyPathRedirect(path)).toBeNull();
     },
   );
 
   test.each(FIRST_RUN_TOUR_STEPS)(
     'step $id round-trips back to the view it declared',
     (step) => {
-      expect(resolveViewFromPath(tourStepPath(step)!)).toEqual(step.view);
+      const path = tourStepPath(step);
+      if (path) expect(resolveViewFromPath(path)).toEqual(step.view);
     },
   );
 

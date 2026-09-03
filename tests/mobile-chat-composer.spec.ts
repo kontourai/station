@@ -1699,7 +1699,7 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
 
   await expect(page.getByText('Delegated to Codex')).toBeVisible();
   await page.getByRole('button', { name: 'Open task' }).click();
-  await expect.poll(() => new URL(page.url()).pathname).toBe('/activity');
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/');
   expect(new URL(page.url()).searchParams.get('session')).toBe(
     'task:mobile-delegation',
   );

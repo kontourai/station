@@ -3,6 +3,7 @@ import {
   useLiveActivityQuery,
 } from '@kontourai/station-sdk/live-activity';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useShowSurface } from '../../contexts/RegionModelContext';
 import { relativeTimeAgo } from '../../utils/relativeTime';
 
 function actorKind(kind: LiveActivityParticipant['actor']['kind']): string {
@@ -18,6 +19,7 @@ function workState(
 export function LiveCollaboratorsSection() {
   const { data } = useLiveActivityQuery();
   const { navigate } = useNavigation();
+  const showSurface = useShowSurface();
   if (!data || (data.participants.length === 0 && data.connectedClients === 0))
     return null;
   const publishing = data.participants.length;
@@ -78,8 +80,8 @@ export function LiveCollaboratorsSection() {
                       type="button"
                       aria-label={`View ${participant.actor.label}'s session for ${participant.work.workName}`}
                       onClick={() =>
-                        navigate('/activity', {
-                          session: participant.work.sessionId ?? null,
+                        showSurface('activity', {
+                          session: participant.work.sessionId,
                         })
                       }
                     >

@@ -240,26 +240,52 @@ vi.mock('../hooks/orchestration/useSessionEventStream', () => ({
 
 import { SessionsView } from '../views/SessionsView';
 
-function renderView(sessionId?: string, focusHint?: 'evidence') {
+function renderView(
+  sessionId?: string,
+  focusHint?: 'evidence',
+  intentToken?: number,
+  onFocusConsumed?: () => void,
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const view = (nextSessionId?: string, nextFocusHint?: 'evidence') => (
+  const view = (
+    nextSessionId?: string,
+    nextFocusHint?: 'evidence',
+    nextIntentToken?: number,
+    nextOnFocusConsumed?: () => void,
+  ) => (
     <QueryClientProvider client={client}>
       <NavigationProvider>
         <SessionsView
           apiBase="http://test.local"
           sessionId={nextSessionId}
           focusHint={nextFocusHint}
+          intentToken={nextIntentToken}
+          onFocusConsumed={nextOnFocusConsumed}
         />
       </NavigationProvider>
     </QueryClientProvider>
   );
-  const rendered = render(view(sessionId, focusHint));
+  const rendered = render(
+    view(sessionId, focusHint, intentToken, onFocusConsumed),
+  );
   return {
     ...rendered,
-    rerenderSession: (nextSessionId?: string, nextFocusHint?: 'evidence') =>
-      rendered.rerender(view(nextSessionId, nextFocusHint)),
+    rerenderSession: (
+      nextSessionId?: string,
+      nextFocusHint?: 'evidence',
+      nextIntentToken?: number,
+      nextOnFocusConsumed?: () => void,
+    ) =>
+      rendered.rerender(
+        view(
+          nextSessionId,
+          nextFocusHint,
+          nextIntentToken,
+          nextOnFocusConsumed,
+        ),
+      ),
   };
 }
 
@@ -1668,7 +1694,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -1706,7 +1732,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -1745,7 +1771,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -1788,7 +1814,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -2033,7 +2059,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -2090,7 +2116,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -2964,7 +2990,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -3148,7 +3174,7 @@ describe('SessionsView', () => {
           createdAt: '2026-06-28T00:00:02.000Z',
           updatedAt: '2026-06-28T00:00:02.000Z',
           sessionId: 'thread-alpha',
-          openHref: '/activity?session=thread-alpha',
+          openHref: '/?surface=activity&session=thread-alpha',
           source: {
             notificationId: 'notif-1',
             notificationSource: 'approval-inbox',
@@ -3922,8 +3948,8 @@ describe('SessionsView', () => {
   /**
    * archive#4052: a session row that has ENDED is one activation from
    * the evidence behind its outcome. The control rides the existing
-   * `/activity?session=<id>` deep-link path plus the one-shot
-   * `focus=evidence` route intent the session detail honors exactly once.
+   * local Activity selection path plus the one-shot evidence intent the
+   * session detail honors exactly once.
    */
   describe('evidence affordance (station#4052 slice 3)', () => {
     function flatSession(
@@ -4044,7 +4070,7 @@ describe('SessionsView', () => {
       ).toBeNull();
     });
 
-    test('activation rides the session deep link with the one-shot focus hint, which is honored then cleared', async () => {
+    test('activation selects locally and focuses evidence without changing the route', async () => {
       sessions = [flatSession({})];
       const view = renderView();
 
@@ -4052,14 +4078,8 @@ describe('SessionsView', () => {
         screen.getByRole('button', { name: 'Evidence for Completed work' }),
       );
 
-      // The control navigated the same working deep-link path every other
-      // surface uses, plus the one-shot focus intent…
       expect(window.location.pathname).toBe('/activity');
-      expect(window.location.search).toBe('?session=done&focus=evidence');
-
-      // …which the route plumbing hands back as props
-      // (`AppViewContent`: `sessionId={view.sessionId} focusHint={view.focus}`).
-      view.rerenderSession('done', 'evidence');
+      expect(window.location.search).toBe('');
 
       expect(screen.getByTestId('session-detail')).toBeTruthy();
       const region = screen.getByTestId('session-evidence-region');
@@ -4067,14 +4087,14 @@ describe('SessionsView', () => {
       // Consumed one-shot: the focus param is cleared after admission (the
       // `openFilePreviewIntent` idiom), so a stale hint can never re-fire on
       // the next same-path navigation.
-      expect(window.location.search).toBe('?session=done');
+      expect(window.location.search).toBe('');
 
       // A later render with the routed props unchanged must not drag the
       // reader back to the region they have since left.
       screen
         .getByRole('button', { name: 'Evidence for Completed work' })
         .focus();
-      view.rerenderSession('done', 'evidence');
+      view.rerenderSession();
       expect(document.activeElement).not.toBe(region);
     });
 
@@ -4136,7 +4156,7 @@ describe('SessionsView', () => {
       );
     });
 
-    test('the Evidence control is keyboard-operable', () => {
+    test('the Evidence control is keyboard-operable', async () => {
       sessions = [flatSession({})];
       renderView();
 
@@ -4154,7 +4174,32 @@ describe('SessionsView', () => {
       control.focus();
       expect(document.activeElement).toBe(control);
       fireEvent.click(document.activeElement as HTMLElement);
-      expect(window.location.search).toBe('?session=done&focus=evidence');
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByTestId('session-evidence-region'),
+        ),
+      );
+      expect(window.location.search).toBe('');
+    });
+
+    test('a new intent token re-fires the same mounted session and focus intent', async () => {
+      sessions = [flatSession({})];
+      const onFocusConsumed = vi.fn();
+      const view = renderView('done', 'evidence', 1, onFocusConsumed);
+
+      const evidenceRegion = await screen.findByTestId(
+        'session-evidence-region',
+      );
+      await waitFor(() => expect(document.activeElement).toBe(evidenceRegion));
+      expect(onFocusConsumed).toHaveBeenCalledTimes(1);
+
+      screen
+        .getByRole('button', { name: 'Evidence for Completed work' })
+        .focus();
+      view.rerenderSession('done', 'evidence', 2, onFocusConsumed);
+
+      await waitFor(() => expect(document.activeElement).toBe(evidenceRegion));
+      expect(onFocusConsumed).toHaveBeenCalledTimes(2);
     });
   });
 });

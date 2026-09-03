@@ -19,9 +19,13 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const navigate = vi.fn();
+const showSurface = vi.fn();
 
 vi.mock('../../../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate }),
+}));
+vi.mock('../../../contexts/RegionModelContext', () => ({
+  useShowSurface: () => showSurface,
 }));
 
 import { FirstRunFlow } from '../FirstRunFlow';
@@ -30,6 +34,7 @@ import { FIRST_RUN_TOUR_STEPS, tourStepPath } from '../tour-steps';
 
 beforeEach(() => {
   navigate.mockReset();
+  showSurface.mockReset();
   firstRunStore.reset();
 });
 
@@ -54,9 +59,7 @@ describe('the tour opens only when it is asked for', () => {
     await waitFor(() =>
       expect(screen.getByTestId('first-run-coachmark')).toBeTruthy(),
     );
-    expect(navigate).toHaveBeenLastCalledWith(
-      tourStepPath(FIRST_RUN_TOUR_STEPS[1]),
-    );
+    expect(showSurface).toHaveBeenLastCalledWith('activity');
   });
 
   test('a finished run stays finished until someone asks again', async () => {

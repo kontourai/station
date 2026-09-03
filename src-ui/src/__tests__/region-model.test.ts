@@ -9,7 +9,9 @@ import {
   occupiedDockRegion,
   placeSurface,
   REGION_SURFACE_REGISTRY,
+  revealSurface,
   seedRegionLayoutFromDock,
+  showSurfaceAlone,
   syncRegionLayoutFromDock,
   updateRegion,
 } from '../regions/region-model';
@@ -91,6 +93,67 @@ describe('region model', () => {
       'right',
     );
     expect(firstFreeDockRegion(chatAtRight, 'right')).toBe('bottom');
+  });
+
+  test('revealSurface makes an occupied hidden surface visible without moving it', () => {
+    const hidden = updateRegion(
+      placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'activity', 'right'),
+      'right',
+      { visible: false },
+    );
+
+    const shown = revealSurface(hidden, 'activity', 'left');
+
+    expect(shown.region).toBe('right');
+    expect(shown.layout.right).toMatchObject({
+      occupant: 'activity',
+      visible: true,
+    });
+    expect(shown.layout.left).toEqual(hidden.left);
+  });
+
+  test('revealSurface uses the preferred free region', () => {
+    const shown = revealSurface(
+      DEFAULT_DEVICE_REGION_LAYOUT,
+      'activity',
+      'right',
+    );
+
+    expect(shown.region).toBe('right');
+    expect(shown.layout.right).toMatchObject({
+      occupant: 'activity',
+      visible: true,
+    });
+  });
+
+  test('revealSurface uses the first free region when the preferred region is occupied', () => {
+    const occupiedPreferred = placeSurface(
+      DEFAULT_DEVICE_REGION_LAYOUT,
+      'fixture',
+      'right',
+    );
+
+    const shown = revealSurface(occupiedPreferred, 'activity', 'right');
+
+    expect(shown.region).toBe('left');
+    expect(shown.layout.left.occupant).toBe('activity');
+  });
+
+  test('showSurfaceAlone leaves the revealed surface as the only visible dock region', () => {
+    const visible = updateRegion(
+      placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'fixture', 'left'),
+      'bottom',
+      { visible: true },
+    );
+
+    const shown = showSurfaceAlone(visible, 'activity', 'right');
+
+    expect(shown.region).toBe('right');
+    expect(
+      ['left', 'right', 'bottom'].filter(
+        (id) => shown.layout[id as 'left' | 'right' | 'bottom'].visible,
+      ),
+    ).toEqual(['right']);
   });
 
   test('registers Chat and Activity with their default regions', () => {

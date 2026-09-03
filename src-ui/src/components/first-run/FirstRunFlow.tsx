@@ -38,6 +38,7 @@ import {
 } from '@kontourai/station-shared/return-focus';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useShowSurface } from '../../contexts/RegionModelContext';
 import { Coachmark } from './Coachmark';
 import {
   firstRunStore,
@@ -52,6 +53,7 @@ import { FIRST_RUN_TOUR_STEPS, tourStepPath } from './tour-steps';
 export function FirstRunFlow() {
   const progress = useFirstRunProgress();
   const { navigate } = useNavigation();
+  const showSurface = useShowSurface();
 
   // `active` is state, not derived from `progress`, precisely so a finished
   // tour stays finished until someone explicitly asks for it again. A cold
@@ -147,12 +149,16 @@ export function FirstRunFlow() {
     if (lastNavigatedStep.current === step.id) return;
     lastNavigatedStep.current = step.id;
     firstRunStore.recordTourStep(step.id);
+    if ('surface' in step && step.surface) {
+      showSurface(step.surface);
+      return;
+    }
     const path = tourStepPath(step);
     // `null` means the step names a view the router cannot serialize — an
     // authoring mistake the tour tests fail on. Skip the navigation rather
     // than sending the user to a guessed route.
     if (path) navigate(path);
-  }, [step, navigate]);
+  }, [step, navigate, showSurface]);
 
   const endRun = useCallback(() => {
     firstRunStore.finish();
