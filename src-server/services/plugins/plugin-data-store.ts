@@ -55,6 +55,17 @@ interface StoredRow {
 
 class PluginDataCorruptError extends Error {}
 
+export interface PluginDataCapability {
+  get(key: string): PluginDataReadOutcome;
+  list(): PluginDataListOutcome;
+  set(
+    key: string,
+    value: PluginDataJson,
+    expectedRevision: number | null,
+  ): PluginDataWriteOutcome;
+  delete(key: string, expectedRevision: number): PluginDataDeleteOutcome;
+}
+
 function validateOwner(owner: PluginDataOwner): string | null {
   if (!isCanonicalPluginId(owner.pluginId)) {
     return 'pluginId must be a canonical plugin identifier';
@@ -71,47 +82,101 @@ function validateKey(key: string): string | null {
     : 'key must be a bounded identifier containing letters, numbers, dot, colon, underscore, or dash';
 }
 
-function validateJson(value: unknown): value is PluginDataJson {
-  let nodes = 0;
-  const visit = (candidate: unknown, depth: number): boolean => {
-    nodes += 1;
-    if (nodes > JSON_NODE_LIMIT || depth > JSON_DEPTH_LIMIT) return false;
-    if (
-      candidate === null ||
-      typeof candidate === 'string' ||
-      typeof candidate === 'boolean'
-    ) {
-      return true;
-    }
-    if (typeof candidate === 'number') return Number.isFinite(candidate);
-    if (Array.isArray(candidate)) {
-      return candidate.every((entry) => visit(entry, depth + 1));
-    }
-    if (
-      typeof candidate !== 'object' ||
-      candidate === null ||
-      Object.getPrototypeOf(candidate) !== Object.prototype
-    ) {
-      return false;
-    }
-    return Object.values(candidate).every((entry) => visit(entry, depth + 1));
-  };
-  return visit(value, 0);
+function validatedJson(
+  value: unknown,
+): { value: PluginDataJson; json: string } | undefined {
+  try {
+    let nodes = 0;
+    const visit = (candidate: unknown, depth: number): boolean => {
+      nodes += 1;
+      if (nodes > JSON_NODE_LIMIT || depth > JSON_DEPTH_LIMIT) return false;
+      if (
+        candidate === null ||
+        typeof candidate === 'string' ||
+        typeof candidate === 'boolean'
+      ) {
+        return true;
+      }
+      if (typeof candidate === 'number') return Number.isFinite(candidate);
+      if (typeof candidate !== 'object' || candidate === null) return false;
+      if (
+        Object.getPrototypeOf(candidate) !== Object.prototype &&
+        !Array.isArray(candidate)
+      ) {
+        return false;
+      }
+      if (Object.getOwnPropertySymbols(candidate).length > 0) return false;
+      const descriptors = Object.getOwnPropertyDescriptors(candidate);
+      if (Array.isArray(candidate)) {
+        const keys = Object.keys(descriptors).filter((key) => key !== 'length');
+        if (
+          keys.length !== candidate.length ||
+          keys.some((key, index) => key !== String(index))
+        ) {
+          return false;
+        }
+        return keys.every((key) => {
+          const descriptor = descriptors[key];
+          return (
+            descriptor !== undefined &&
+            'value' in descriptor &&
+            descriptor.enumerable === true &&
+            visit(descriptor.value, depth + 1)
+          );
+        });
+      }
+      return Object.entries(descriptors).every(([, descriptor]) => {
+        return (
+          'value' in descriptor &&
+          descriptor.enumerable === true &&
+          visit(descriptor.value, depth + 1)
+        );
+      });
+    };
+    if (!visit(value, 0)) return undefined;
+    const json = JSON.stringify(value);
+    if (json === undefined) return undefined;
+    return { value: JSON.parse(json) as PluginDataJson, json };
+  } catch {
+    return undefined;
+  }
 }
 
 function parseRow(row: StoredRow): PluginDataRecord {
   try {
     const value = JSON.parse(row.value_json) as unknown;
-    if (!validateJson(value)) throw new PluginDataCorruptError();
+    const normalized = validatedJson(value);
+    if (
+      !DATA_KEY.test(row.key) ||
+      !normalized ||
+      !Number.isSafeInteger(row.byte_length) ||
+      row.byte_length < 0 ||
+      row.byte_length > PLUGIN_DATA_LIMITS.valueBytes ||
+      Buffer.byteLength(row.value_json) !== row.byte_length ||
+      !Number.isSafeInteger(row.revision) ||
+      row.revision < 1 ||
+      !safeTimestamp(row.updated_at)
+    ) {
+      throw new PluginDataCorruptError();
+    }
     return {
       key: row.key,
-      value,
+      value: normalized.value,
       revision: row.revision,
       updatedAt: row.updated_at,
     };
   } catch (error) {
     if (error instanceof PluginDataCorruptError) throw error;
     throw new PluginDataCorruptError('plugin data contains invalid JSON');
+  }
+}
+
+function safeTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try {
+    return new Date(value).toISOString() === value;
+  } catch {
+    return false;
   }
 }
 
@@ -171,6 +236,16 @@ export class PluginDataStore {
           updated_at TEXT NOT NULL,
           PRIMARY KEY (plugin_id, installation_key, key)
         ) WITHOUT ROWID;
+        CREATE TABLE IF NOT EXISTS plugin_data_revisions (
+          plugin_id TEXT NOT NULL,
+          installation_key TEXT NOT NULL,
+          key TEXT NOT NULL,
+          last_revision INTEGER NOT NULL,
+          PRIMARY KEY (plugin_id, installation_key, key)
+        ) WITHOUT ROWID;
+        INSERT OR IGNORE INTO plugin_data_revisions
+          (plugin_id, installation_key, key, last_revision)
+        SELECT plugin_id, installation_key, key, revision FROM plugin_data;
       `);
     } catch (error) {
       this.db.close();
@@ -182,7 +257,24 @@ export class PluginDataStore {
     this.db.close();
   }
 
-  get(owner: PluginDataOwner, key: string): PluginDataReadOutcome {
+  bind(owner: PluginDataOwner): PluginDataCapability {
+    const invalid = validateOwner(owner);
+    if (invalid) throw new TypeError(invalid);
+    const boundOwner = Object.freeze({ ...owner });
+    return Object.freeze({
+      get: (key: string) => this.get(boundOwner, key),
+      list: () => this.list(boundOwner),
+      set: (
+        key: string,
+        value: PluginDataJson,
+        expectedRevision: number | null,
+      ) => this.set(boundOwner, key, value, expectedRevision),
+      delete: (key: string, expectedRevision: number) =>
+        this.delete(boundOwner, key, expectedRevision),
+    });
+  }
+
+  private get(owner: PluginDataOwner, key: string): PluginDataReadOutcome {
     const invalid = validateOwner(owner) ?? validateKey(key);
     if (invalid) return { kind: 'invalid', reason: invalid };
     try {
@@ -203,7 +295,7 @@ export class PluginDataStore {
     }
   }
 
-  list(owner: PluginDataOwner): PluginDataListOutcome {
+  private list(owner: PluginDataOwner): PluginDataListOutcome {
     const invalid = validateOwner(owner);
     if (invalid) return { kind: 'invalid', reason: invalid };
     try {
@@ -221,7 +313,7 @@ export class PluginDataStore {
     }
   }
 
-  set(
+  private set(
     owner: PluginDataOwner,
     key: string,
     value: PluginDataJson,
@@ -238,10 +330,11 @@ export class PluginDataStore {
         reason: 'expectedRevision must be null or a positive integer',
       };
     }
-    if (!validateJson(value)) {
+    const normalized = validatedJson(value);
+    if (!normalized) {
       return { kind: 'invalid', reason: 'value must be bounded JSON data' };
     }
-    const valueJson = JSON.stringify(value);
+    const valueJson = normalized.json;
     const byteLength = Buffer.byteLength(valueJson);
     if (byteLength > PLUGIN_DATA_LIMITS.valueBytes) {
       return { kind: 'capacity', reason: 'value-bytes' };
@@ -249,41 +342,63 @@ export class PluginDataStore {
 
     try {
       return this.transaction(() => {
-        const current = this.db
+        const currentRow = this.db
           .prepare(
-            `SELECT revision, byte_length
+            `SELECT key, value_json, byte_length, revision, updated_at
              FROM plugin_data
              WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
           )
           .get(owner.pluginId, owner.installationKey, key) as
-          | { revision: number; byte_length: number }
+          | StoredRow
           | undefined;
+        const current = currentRow ? parseRow(currentRow) : undefined;
         const currentRevision = current?.revision ?? null;
         if (currentRevision !== expectedRevision) {
           return { kind: 'conflict', currentRevision };
         }
-        const totals = this.db
+        const rows = this.db
           .prepare(
-            `SELECT COUNT(*) AS key_count, COALESCE(SUM(byte_length), 0) AS total_bytes
+            `SELECT key, value_json, byte_length, revision, updated_at
              FROM plugin_data
              WHERE plugin_id = ? AND installation_key = ?`,
           )
-          .get(owner.pluginId, owner.installationKey) as {
-          key_count: number;
-          total_bytes: number;
-        };
+          .all(owner.pluginId, owner.installationKey) as StoredRow[];
+        const validatedRows = rows.map(parseRow);
         if (
           !current &&
-          totals.key_count >= PLUGIN_DATA_LIMITS.keysPerInstallation
+          validatedRows.length >= PLUGIN_DATA_LIMITS.keysPerInstallation
         ) {
           return { kind: 'capacity', reason: 'keys' };
         }
+        const totalBytes = rows.reduce(
+          (total, row) => total + row.byte_length,
+          0,
+        );
         const nextTotal =
-          totals.total_bytes - (current?.byte_length ?? 0) + byteLength;
+          totalBytes - (currentRow?.byte_length ?? 0) + byteLength;
         if (nextTotal > PLUGIN_DATA_LIMITS.totalBytesPerInstallation) {
           return { kind: 'capacity', reason: 'total-bytes' };
         }
-        const revision = (current?.revision ?? 0) + 1;
+        const priorRevision = this.db
+          .prepare(
+            `SELECT last_revision FROM plugin_data_revisions
+             WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
+          )
+          .get(owner.pluginId, owner.installationKey, key) as
+          | { last_revision: number }
+          | undefined;
+        if (
+          priorRevision &&
+          (!Number.isSafeInteger(priorRevision.last_revision) ||
+            priorRevision.last_revision < 1 ||
+            (current !== undefined &&
+              priorRevision.last_revision !== current.revision) ||
+            priorRevision.last_revision >= Number.MAX_SAFE_INTEGER)
+        ) {
+          throw new PluginDataCorruptError();
+        }
+        const revision =
+          (priorRevision?.last_revision ?? current?.revision ?? 0) + 1;
         const updatedAt = new Date().toISOString();
         this.db
           .prepare(
@@ -305,9 +420,18 @@ export class PluginDataStore {
             revision,
             updatedAt,
           );
+        this.db
+          .prepare(
+            `INSERT INTO plugin_data_revisions
+               (plugin_id, installation_key, key, last_revision)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(plugin_id, installation_key, key) DO UPDATE SET
+               last_revision = excluded.last_revision`,
+          )
+          .run(owner.pluginId, owner.installationKey, key, revision);
         return {
           kind: 'written',
-          record: { key, value, revision, updatedAt },
+          record: { key, value: normalized.value, revision, updatedAt },
         };
       });
     } catch (error) {
@@ -315,7 +439,7 @@ export class PluginDataStore {
     }
   }
 
-  delete(
+  private delete(
     owner: PluginDataOwner,
     key: string,
     expectedRevision: number,

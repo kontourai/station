@@ -360,20 +360,25 @@ Ephemeral room input has a closed schema, exact scope, server-owned monotonic ge
 ## PluginDataStore
 
 **Intent and Interface.** `PluginDataStore` owns bounded private JSON state for
-one host-qualified plugin installation. `get`, `list`, revision-checked `set`,
-and revision-checked `delete` return typed found, absent, conflict, capacity,
-invalid, corrupt, or transient-unavailable outcomes. The Interface accepts a
-canonical plugin id plus a host-issued installation key; it accepts no path,
+one host-qualified plugin installation. `bind` accepts a canonical plugin id
+plus a host-issued installation key once and returns an owner-scoped capability
+whose `get`, `list`, revision-checked `set`, and revision-checked `delete`
+return typed found, absent, conflict, capacity, invalid, corrupt, or
+transient-unavailable outcomes. The capability accepts no owner, path,
 transaction callback, unbounded scan, or arbitrary filesystem value.
 
 **Contract.** The SQLite key is `(pluginId, installationKey, key)`, so a
 replacement installation cannot inherit another identity's state merely by
 choosing the same plugin name. Every write takes `BEGIN IMMEDIATE`, re-reads the
 current revision inside that transaction, and applies only when it matches the
-caller's observed revision. JSON depth, node count, per-value bytes, key count,
-and aggregate bytes are bounded before mutation. The database and exact data
-directory refuse symlinks; WAL plus an explicit busy timeout serialize Station
-processes. Invalid persisted JSON is corruption, never absence.
+caller's observed revision. A retained per-key revision head survives deletion,
+so delete/recreate cannot manufacture an old revision and admit an ABA stale
+writer. JSON depth, node count, per-value bytes, key count, and aggregate bytes
+are bounded before mutation. Caller objects with accessors, symbols, sparse
+arrays, exotic prototypes, or trapping proxies are invalid. The database and
+exact data directory refuse symlinks; WAL plus an explicit busy timeout
+serialize Station processes. Invalid persisted JSON, keys, revisions,
+timestamps, or byte accounting are corruption, never absence.
 
 **Seam, Implementation, callers, and tests.** The public record/outcome types
 live in `@kontourai/station-contracts/plugin-data`; the server implementation is

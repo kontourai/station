@@ -47,10 +47,11 @@ import type { ToolDef } from '@kontourai/station-contracts/tool';
 ```
 
 `plugin-data` describes the bounded host-side storage authority introduced by
-Station #1359. An owner combines the canonical plugin id with a host-issued
-installation key, so the contract never exposes a filesystem path. Writes and
-deletes require the revision the caller observed; stale writers receive a
-typed conflict instead of overwriting newer state. This tracer does not yet
+Station #1359. The host binds the canonical plugin id and its host-issued
+installation key into an owner-scoped capability, so plugin calls cannot select
+another namespace and the contract never exposes a filesystem path. Writes and
+deletes require the revision the caller observed; retained revision heads keep
+stale writers conflicting even across delete/recreate. This tracer does not yet
 publish a plugin SDK or HTTP transport, and no plugin permission claims access
 to it until that enforcement path exists.
 
