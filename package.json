@@ -243,6 +243,7 @@
     "gate:ui-contracts": "npm run unsaved-guard:gate && npm run state-primitives:ratchet && node scripts/mobile-css-ratchet.mjs && npm run motion-contract:ratchet && npm run responsive-surface:ratchet && npm run focus-visible:ratchet && npm run accent-foreground:ratchet && npm run shell-conformance:ratchet && npm run a11y:ratchet && npm run claim-fixture:ratchet && npm run font-origin:ratchet && npm run lazy-boundary:ratchet && npm run sdk-error-message:ratchet && npm run random-uuid:guard && npm run dialog-surface-class:guard && npm run stored-path-expansion:guard",
     "gate:platform": "npm run knowledge-kit-import:gate && npm run builder-delivery-viewer-import:gate && npm run native-platform:ratchet && npm run release:static && npm run examples:conformance && npm run docs:reference:gate",
     "a11y:ratchet": "node scripts/a11y-ratchet.mjs",
+    "literal-swap:report": "node scripts/literal-swap-gate.mjs",
     "examples:conformance": "node scripts/examples-conformance.mjs",
     "examples:build": "node scripts/examples-conformance.mjs --build",
     "docs:reference:gate": "node scripts/docs-reference-gate.mjs",
