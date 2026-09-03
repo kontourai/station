@@ -610,8 +610,11 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     ]);
     await openChat(page, HANDOFF_CONVERSATION);
 
-    await page.getByRole('button', { name: 'Composer actions' }).click();
-    await page.getByRole('menuitem', { name: /Continue with/ }).click();
+    const agentTrigger = page.getByRole('button', {
+      name: /^Agent: .*\. Change Agent$/,
+    });
+    await agentTrigger.focus();
+    await page.keyboard.press('Enter');
     const dialog = page.getByRole('dialog', {
       name: 'Continue with another Agent',
     });
@@ -645,6 +648,10 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       name: /Continued with Codex Runtime/,
     });
     await expect(boundary).toBeVisible({ timeout: 10_000 });
+    // The accepted target becomes current before focus restoration, so the
+    // same control now carries its new Agent and may temporarily be unavailable
+    // while that Agent starts. Its stable host selector proves return focus.
+    await expect(page.locator('.chat-input__agent-btn')).toBeFocused();
     await boundary.getByText('What carried and reset').click();
     await expect(boundary).toContainText('Conversation transcript');
     await expect(boundary).toContainText('Provider-native cursor');

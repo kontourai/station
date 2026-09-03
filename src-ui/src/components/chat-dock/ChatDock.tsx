@@ -2651,6 +2651,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               invalidate(orchestrationQueries.sessions().queryKey);
               invalidate(conversationQueries.inventory().queryKey);
               setHandoffSource(null);
+              requestAnimationFrame(() =>
+                handoffReturnFocusRef.current?.focus(),
+              );
               showToast(
                 `Continuing with ${target?.name ?? `deleted Agent “${targetId}”`}`,
                 'success',

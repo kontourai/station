@@ -3,7 +3,12 @@
  * It is additive so older clients can keep treating unknown sources as a
  * generic run while newer clients can link the raw invoke response to `/runs`.
  */
-export type RunSource = 'orchestration' | 'schedule' | 'invoke' | 'voice';
+export type RunSource =
+  | 'orchestration'
+  | 'schedule'
+  | 'invoke'
+  | 'voice'
+  | 'plugin';
 
 export type RunStatus =
   | 'queued'
