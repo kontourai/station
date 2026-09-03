@@ -88,6 +88,7 @@
     "./proposed-change": "./src/proposed-change.ts",
     "./plugin": "./src/plugin.ts",
     "./plugin-data": "./src/plugin-data.ts",
+    "./plugin-foreground-work": "./src/plugin-foreground-work.ts",
     "./project": "./src/project.ts",
     "./project-identity": "./src/project-identity.ts",
     "./project-task-room": "./src/project-task-room.ts",
