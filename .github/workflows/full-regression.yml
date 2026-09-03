@@ -23,12 +23,15 @@ jobs:
     runs-on: ubuntu-22.04
     # Every phase gets its own fail-closed deadline; their sum is the
     # canonical 251-minute phase plan (scripts/verification-lanes.mjs
-    # FULL_REGRESSION_TIMEOUT_MS). Setup before the phases start (checkout,
-    # actionlint, dependencies:ci, the 5-minute zsh step, the 20-minute
-    # Chromium step) can add up to ~27 worst-case minutes on its own
-    # per-step deadlines. 300 keeps real margin over both rather than
-    # interrupting a valid final phase slice.
-    timeout-minutes: 300
+    # FULL_REGRESSION_TIMEOUT_MS). Setup and receipt publication now carry
+    # explicit deadlines too (checkout 10m, dependencies:ci 15m, the
+    # 5-minute zsh step, the 20-minute Chromium step, the receipt upload
+    # 10m = 60m), except the actionlint install, which is asserted
+    # byte-identical to ci.yml's fast-checks copy and stays unbounded like
+    # that copy rather than drift the two. 330 keeps real margin over the
+    # bounded 311-minute worst case rather than interrupting a valid final
+    # phase slice or a completed gate's receipt upload.
+    timeout-minutes: 330
     steps:
       - name: Validate immutable source identity
         env:
@@ -40,6 +43,7 @@ jobs:
           }
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 10
         with:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 0
@@ -73,6 +77,7 @@ jobs:
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 
       - run: npm run dependencies:ci
+        timeout-minutes: 15
 
       - name: Provision and preflight zsh for process-heavy installer fixtures
         timeout-minutes: 5
@@ -109,6 +114,7 @@ jobs:
 
       - name: Retain exact-SHA completion receipts
         if: always()
+        timeout-minutes: 10
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: full-regression-${{ inputs.source_sha }}-${{ github.run_id }}
