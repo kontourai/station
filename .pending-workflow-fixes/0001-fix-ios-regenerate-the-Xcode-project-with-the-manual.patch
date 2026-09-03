@@ -1,0 +1,59 @@
+From cc9642804ce7966bf5a4feb6c2cdea8f3b889d8c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 3 Sep 2026 00:59:43 +0000
+Subject: [PATCH] fix(ios): regenerate the Xcode project with the manual
+ signing template before building
+
+Tauri renders bundle.iOS.template only while `tauri ios init` writes
+project.yml; `tauri ios build` reuses whatever project gen/apple already
+holds. The TestFlight delivery workflow ran init before the signing
+material was imported, then handed the signing overlay to the build, so
+the generated project still carried automatic signing and xcodebuild
+refused with "station_iOS requires a provisioning profile". Every
+Nightly and tagged-release iOS delivery has failed at this step.
+
+After the profile and template are ready, run init a second time with
+both configs, restore the reviewed non-identity resources exactly as the
+first pass does, and prove the regenerated spec carries the manual
+signing block before the signed build starts.
+
+Closes #1338.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Mqw74Bp4SiuWmHpMs7WYrs
+---
+ .github/workflows/testflight-delivery.yml | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/.github/workflows/testflight-delivery.yml b/.github/workflows/testflight-delivery.yml
+index 07eb70dc..063ef46a 100644
+--- a/.github/workflows/testflight-delivery.yml
++++ b/.github/workflows/testflight-delivery.yml
+@@ -199,6 +199,24 @@ jobs:
+           profile_uuid=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).uuid' "$profile_metadata")
+           [[ "$profile_uuid" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]]
+           cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
++      - name: Regenerate the Xcode project with the manual signing template
++        working-directory: src-desktop
++        run: |
++          # Tauri renders `bundle.iOS.template` only while `tauri ios init`
++          # writes project.yml; `tauri ios build` reuses whatever project
++          # gen/apple already holds. The first init produced the channel
++          # identity the signing template was derived from, so run it again
++          # with the signing overlay and prove the generated spec carries the
++          # manual provisioning that xcodebuild demands before it will sign.
++          preserved="$RUNNER_TEMP/station-ios-preserved"
++          rm -rf gen/apple
++          npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json"
++          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources; do
++            ditto "$preserved/$item" "gen/apple/$item"
++          done
++          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources
++          grep -Fq 'CODE_SIGN_STYLE: Manual' gen/apple/project.yml
++          grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' gen/apple/project.yml
+       - name: Build signed and channel-audited iOS package
+         working-directory: src-desktop
+         run: |
+-- 
+2.43.0
+

@@ -1,0 +1,54 @@
+From 4484f09c463ff440efc42d1c04856febe552d9e9 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 3 Sep 2026 00:59:43 +0000
+Subject: [PATCH] fix(ci): run the one-hour performance lanes only after a
+ green contract
+
+Both one-hour reference jobs carried `if: always()`, so a red
+reference-performance contract still started them and they spent about
+250 reference-hardware minutes contending with the same physical host
+for a result nobody could use. GitHub's implicit success() is the
+behaviour wanted here; the explicit condition keeps the pull_request
+exclusion the workflow policy requires at the head of the expression.
+
+Refs #1331.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Mqw74Bp4SiuWmHpMs7WYrs
+---
+ .../workflows/interactive-workspace-performance.yml  | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/.github/workflows/interactive-workspace-performance.yml b/.github/workflows/interactive-workspace-performance.yml
+index 90a8f909..66c83d51 100644
+--- a/.github/workflows/interactive-workspace-performance.yml
++++ b/.github/workflows/interactive-workspace-performance.yml
+@@ -85,7 +85,11 @@ jobs:
+   one-hour-collaboration-reference:
+     name: One-hour collaboration growth reference
+     needs: reference-performance
+-    if: always() && !cancelled() && github.event_name != 'pull_request'
++    # No `always()`: GitHub's implicit success() means these run only after a
++    # GREEN contract. With `always()` both one-hour lanes started after a red
++    # contract and spent 250 reference-hardware minutes contending with the
++    # same physical host for a result nobody could use (#1331).
++    if: github.event_name != 'pull_request'
+     # This is intentionally a separate acceptance lane from reference-performance:
+     # its real, unscaled hour must never be inferred from the shorter fixture job.
+     runs-on: [self-hosted, Windows, X64, kontour-windows, native]
+@@ -155,7 +159,11 @@ jobs:
+   one-hour-work-board-reference:
+     name: One-hour Work Board growth reference
+     needs: reference-performance
+-    if: always() && !cancelled() && github.event_name != 'pull_request'
++    # No `always()`: GitHub's implicit success() means these run only after a
++    # GREEN contract. With `always()` both one-hour lanes started after a red
++    # contract and spent 250 reference-hardware minutes contending with the
++    # same physical host for a result nobody could use (#1331).
++    if: github.event_name != 'pull_request'
+     # A short smoke is useful only for wiring. It can never satisfy this
+     # lane: the pane bridge must attest a real unscaled observed hour.
+     runs-on: [self-hosted, Windows, X64, kontour-windows, native]
+-- 
+2.43.0
+
