@@ -1326,7 +1326,7 @@ describe('verification coordinator', () => {
       expect(first.disposition).toBe('executed');
       expect(projected.disposition).toBe('reused');
       expect(localReuse.disposition).toBe('reused');
-      expect(phaseCalls).toBe(17);
+      expect(phaseCalls).toBe(18);
       expect(projected.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.artifacts).toEqual(projected.receipt.artifacts);
@@ -1369,6 +1369,7 @@ describe('verification coordinator', () => {
         ...ORDINARY_FULL_PHASE_IDS.map((id) => `0:${id}`),
         '0:test-full-process-heavy',
         '0:test-full-process-exclusive',
+        '0:test-full-coordinator-exclusive',
         '0:test-full-credential-ledger-exclusive',
         '0:test-full-shared-output',
         '1:test-full-shared-output',
@@ -1798,6 +1799,7 @@ describe('verification coordinator', () => {
         ...ORDINARY_FULL_PHASE_IDS,
         'test-full-process-heavy',
         'test-full-process-exclusive',
+        'test-full-coordinator-exclusive',
         'test-full-credential-ledger-exclusive',
         'test-full-shared-output',
         'test-full-dogfood-reconcile',
@@ -1806,7 +1808,7 @@ describe('verification coordinator', () => {
       const phaseArtifacts = ciResult.receipt.artifacts.filter((artifact) =>
         artifact.path.includes('/attachment-'),
       );
-      expect(phaseArtifacts).toHaveLength(17);
+      expect(phaseArtifacts).toHaveLength(18);
       const records = phaseArtifacts.map((artifact) =>
         JSON.parse(readFileSync(join(worktree, artifact.path), 'utf8')),
       );
@@ -2381,6 +2383,7 @@ setInterval(() => {
         ...ORDINARY_FULL_PHASE_IDS,
         'test-full-process-heavy',
         'test-full-process-exclusive',
+        'test-full-coordinator-exclusive',
         'test-full-credential-ledger-exclusive',
         'test-full-shared-output',
         'test-full-dogfood-reconcile',
@@ -2439,6 +2442,7 @@ setInterval(() => {
           ...ORDINARY_FULL_PHASE_IDS.map((id) => `1:${id}`),
           '1:test-full-process-heavy',
           '1:test-full-process-exclusive',
+          '1:test-full-coordinator-exclusive',
           '1:test-full-credential-ledger-exclusive',
           '1:test-full-shared-output',
           '1:test-full-dogfood-reconcile',
@@ -2492,6 +2496,7 @@ setInterval(() => {
         ...ORDINARY_FULL_PHASE_IDS.map((id) => `1:${id}`),
         '1:test-full-process-heavy',
         '1:test-full-process-exclusive',
+        '1:test-full-coordinator-exclusive',
         '1:test-full-credential-ledger-exclusive',
         '1:test-full-shared-output',
         '1:test-full-dogfood-reconcile',
@@ -2522,7 +2527,7 @@ setInterval(() => {
     try {
       const first = await coordinateVerification(options);
       expect(first.receipt.terminal.passed).toBe(true);
-      expect(executedPhases).toHaveLength(17);
+      expect(executedPhases).toHaveLength(18);
 
       const path = join(
         worktree,
