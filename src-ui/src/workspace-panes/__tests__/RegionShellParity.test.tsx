@@ -28,6 +28,7 @@ import {
   useRegionModel,
 } from '../../contexts/RegionModelContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
+import { DOCK_REGION_IDS } from '../../regions/region-model';
 import type { DockMode } from '../../types';
 import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
 
@@ -276,7 +277,9 @@ function shortcutEntries(id: string) {
   );
 }
 
-function clearance(name: '--dock-slot-size' | '--chat-dock-width'): string {
+function clearance(
+  name: '--dock-slot-size' | '--chat-dock-width' | `--region-${DockMode}-size`,
+): string {
   return document.documentElement.style.getPropertyValue(name);
 }
 
@@ -306,6 +309,10 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       // The re-propped instance republishes clearance for its new region.
       await waitFor(() => expect(clearance('--dock-slot-size')).toBe('0px'));
       expect(clearance('--chat-dock-width')).toBe('400px');
+      // Per-region clearance follows the shell: the vacated region's
+      // variable is withdrawn, the destination's is written.
+      expect(clearance(`--region-${destination}-size`)).toBe('400px');
+      expect(clearance(`--region-${placement}-size`)).toBe('');
     },
   );
 
@@ -317,6 +324,21 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(
       document.querySelectorAll('section[aria-label="Dock"]'),
     ).toHaveLength(1);
+  });
+
+  test('an occupant without a registered shell renders nothing', async () => {
+    seedPlacement('bottom', 'open');
+    await renderShellsSettled();
+
+    act(() =>
+      currentRegionModel().setRegion('right', {
+        occupant: 'fixture',
+        visible: true,
+      }),
+    );
+
+    expect(document.querySelector('[data-region="right"]')).toBeNull();
+    expect(shells()).toHaveLength(1);
   });
 
   test.each(PRE_REFACTOR_CAPTURE)(
@@ -340,6 +362,33 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
         expect(clearance('--dock-slot-size')).toBe(dockSlotSize),
       );
       expect(clearance('--chat-dock-width')).toBe(chatDockWidth);
+    },
+  );
+
+  /**
+   * #928 contract, not a capture: the rendered region's variable carries
+   * the value its legacy alias does (a side's width, bottom's size) and the
+   * other two regions publish nothing. A collapsed side still reports its
+   * expanded width — the 36px rail is owned by the `.is-collapsed` track
+   * override in index.css/BannerHost.css, not by `--region-<id>-size`.
+   */
+  test.each(PRE_REFACTOR_CAPTURE)(
+    'the rendered region alone publishes --region-<id>-size ($placement/$state)',
+    async ({ placement, state, dockSlotSize, chatDockWidth }) => {
+      seedPlacement(placement, state);
+      await renderShellsSettled();
+      await waitFor(() =>
+        expect(clearance('--dock-slot-size')).toBe(dockSlotSize),
+      );
+      for (const region of DOCK_REGION_IDS) {
+        expect(clearance(`--region-${region}-size`)).toBe(
+          region !== placement
+            ? ''
+            : placement === 'bottom'
+              ? dockSlotSize
+              : chatDockWidth,
+        );
+      }
     },
   );
 
@@ -470,6 +519,12 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(shell.dataset.region).toBe('bottom');
     expect(shell.classList.contains('chat-dock--bottom')).toBe(true);
     await waitFor(() => expect(clearance('--dock-slot-size')).not.toBe(''));
+    // Clearance is reported under the rendered region (the one the grid
+    // keys on, #1366), not the persisted one.
+    expect(clearance('--region-bottom-size')).toBe(
+      clearance('--dock-slot-size'),
+    );
+    expect(clearance('--region-right-size')).toBe('');
   });
 
   // A wide coarse-pointer device (landscape tablet) keeps the desktop grid ON
