@@ -8,7 +8,7 @@ import type { NavigationView } from '../types';
  * tabs that are themselves navigations.** Nothing else. Concretely:
  *
  * - INCLUDED — the record: `agent-edit.slug`, `task.taskId`, `project.slug`,
- *   the three `connections-*-edit` ids, `connections-acp-new.providerId`,
+ *   the three `connections-*-edit` ids, `connections-engine-new.providerId`,
  *   `layout`'s project+layout, `workspace-pane`'s full pane identity,
  *   `project-flow-console`'s run, `activity.sessionId`, `not-found.path`.
  *   Going from `/agents/a` to `/agents/b` is a navigation to a different
@@ -49,14 +49,14 @@ export function routeIdentity(view: NavigationView): string {
       return view.reference.kind === 'task'
         ? `board:task:${view.reference.projectId}:${view.reference.id}`
         : `board:session:${view.reference.id}`;
-    case 'connections-provider-edit':
-      return `connections-provider-edit:${view.id}`;
-    case 'connections-runtime-edit':
-      return `connections-runtime-edit:${view.id}`;
+    case 'connections-model-edit':
+      return `connections-model-edit:${view.id}`;
+    case 'connections-engine-edit':
+      return `connections-engine-edit:${view.id}`;
     case 'connections-tool-edit':
       return `connections-tool-edit:${view.id}`;
-    case 'connections-acp-new':
-      return `connections-acp-new:${view.providerId}`;
+    case 'connections-engine-new':
+      return `connections-engine-new:${view.providerId}`;
     case 'project':
       return `project:${view.slug}`;
     case 'project-edit':
@@ -84,11 +84,11 @@ export function routeIdentity(view: NavigationView): string {
  */
 export function routeSurfaceIdentity(view: NavigationView): string {
   switch (view.type) {
-    case 'connections-providers':
-    case 'connections-provider-edit':
+    case 'connections-models':
+    case 'connections-model-edit':
       return 'connections-models';
     case 'connections-engines':
-    case 'connections-runtime-edit':
+    case 'connections-engine-edit':
       return 'connections-engines';
     case 'connections-tools':
     case 'connections-tool-edit':

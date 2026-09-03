@@ -11,7 +11,7 @@ let agentConnections: any[] = [];
 const modelConnections: any[] = [];
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useAgentConnectionsQuery: () => ({ data: agentConnections }),
+  useEngineConnectionsQuery: () => ({ data: agentConnections }),
   useModelConnectionsQuery: () => ({ data: modelConnections }),
   useProjectsQuery: () => ({ data: [] }),
   useCredentialRecoveryQuery: () => ({

@@ -79,7 +79,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   // the rail's count against the rows the body actually drew.
   useConnectionsQuery: () => ({ data: [] }),
   useModelConnectionsQuery: () => ({ data: [] }),
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
   useIntegrationsQuery: () => ({ data: [] }),
   useGlobalKnowledgeStatusQuery: () => ({ data: undefined }),
   useSshEnvironmentsQuery: () => ({

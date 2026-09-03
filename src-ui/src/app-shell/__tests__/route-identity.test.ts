@@ -21,13 +21,13 @@ const REPLAYS: Array<[string, NavigationView, NavigationView]> = [
   ],
   [
     'a different provider record',
-    { type: 'connections-provider-edit', id: 'p1' },
-    { type: 'connections-provider-edit', id: 'p2' },
+    { type: 'connections-model-edit', id: 'p1' },
+    { type: 'connections-model-edit', id: 'p2' },
   ],
   [
     'a different engine record',
-    { type: 'connections-runtime-edit', id: 'r1' },
-    { type: 'connections-runtime-edit', id: 'r2' },
+    { type: 'connections-engine-edit', id: 'r1' },
+    { type: 'connections-engine-edit', id: 'r2' },
   ],
   [
     'a different tool record',
@@ -36,8 +36,8 @@ const REPLAYS: Array<[string, NavigationView, NavigationView]> = [
   ],
   [
     'a different ACP provider',
-    { type: 'connections-acp-new', providerId: 'x' },
-    { type: 'connections-acp-new', providerId: 'y' },
+    { type: 'connections-engine-new', providerId: 'x' },
+    { type: 'connections-engine-new', providerId: 'y' },
   ],
   [
     'a different project',
@@ -161,7 +161,7 @@ describe('routeIdentity', () => {
       { type: 'agents' },
       { type: 'agent-new' },
       { type: 'connections' },
-      { type: 'connections-providers' },
+      { type: 'connections-models' },
       { type: 'connections-engines' },
       { type: 'connections-tools' },
       { type: 'connections-knowledge' },
@@ -205,10 +205,10 @@ describe('routeIdentity', () => {
 
 describe('routeSurfaceIdentity', () => {
   test('keeps exact route identities distinct while coalescing only Connections split-pane families', () => {
-    const models = { type: 'connections-providers' } as const;
-    const modelEdit = { type: 'connections-provider-edit', id: 'p1' } as const;
+    const models = { type: 'connections-models' } as const;
+    const modelEdit = { type: 'connections-model-edit', id: 'p1' } as const;
     const engines = { type: 'connections-engines' } as const;
-    const engineEdit = { type: 'connections-runtime-edit', id: 'e1' } as const;
+    const engineEdit = { type: 'connections-engine-edit', id: 'e1' } as const;
     const tools = { type: 'connections-tools' } as const;
     const toolEdit = { type: 'connections-tool-edit', id: 't1' } as const;
 
@@ -227,7 +227,10 @@ describe('routeSurfaceIdentity', () => {
   });
 
   test('does not broaden surface identity to ACP, new agents, or Activity', () => {
-    const acpNew = { type: 'connections-acp-new', providerId: 'p1' } as const;
+    const acpNew = {
+      type: 'connections-engine-new',
+      providerId: 'p1',
+    } as const;
     const agentNew = { type: 'agent-new' } as const;
     const agentEdit = { type: 'agent-edit', slug: 'a' } as const;
     const activity = { type: 'activity' } as const;
