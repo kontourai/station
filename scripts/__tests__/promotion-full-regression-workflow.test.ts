@@ -61,7 +61,7 @@ describe('promotion full-regression workflow', () => {
 
     const gate = reusable.jobs?.['full-regression'] ?? {};
     expect(gate.uses).toBeUndefined();
-    expect(gate['timeout-minutes']).toBe(330);
+    expect(gate['timeout-minutes']).toBe(340);
     expect(source('full-regression.yml')).not.toContain('timeout-minutes: 150');
     const validate = namedStep(gate, 'Validate immutable source identity');
     expect(validate.run).toContain('^[0-9a-f]{40}$');
@@ -121,8 +121,15 @@ describe('promotion full-regression workflow', () => {
       gate,
       'Install Chromium for full-corpus browser assertions',
     );
+    const setupNode = gate.steps?.find((step) =>
+      step.uses?.startsWith('actions/setup-node@'),
+    );
+    expect(setupNode?.['timeout-minutes']).toBe(5);
+    expect(actionlint['timeout-minutes']).toBe(5);
     const boundedSetupMinutes =
       (checkout?.['timeout-minutes'] ?? 0) +
+      (setupNode?.['timeout-minutes'] ?? 0) +
+      (actionlint['timeout-minutes'] ?? 0) +
       (gateSteps[dependenciesIndex]['timeout-minutes'] ?? 0) +
       (zsh['timeout-minutes'] ?? 0) +
       (chromium['timeout-minutes'] ?? 0) +

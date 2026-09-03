@@ -23,15 +23,15 @@ jobs:
     runs-on: ubuntu-22.04
     # Every phase gets its own fail-closed deadline; their sum is the
     # canonical 251-minute phase plan (scripts/verification-lanes.mjs
-    # FULL_REGRESSION_TIMEOUT_MS). Setup and receipt publication now carry
-    # explicit deadlines too (checkout 10m, dependencies:ci 15m, the
-    # 5-minute zsh step, the 20-minute Chromium step, the receipt upload
-    # 10m = 60m), except the actionlint install, which is asserted
-    # byte-identical to ci.yml's fast-checks copy and stays unbounded like
-    # that copy rather than drift the two. 330 keeps real margin over the
-    # bounded 311-minute worst case rather than interrupting a valid final
-    # phase slice or a completed gate's receipt upload.
-    timeout-minutes: 330
+    # FULL_REGRESSION_TIMEOUT_MS). Every pre-gate and publication step now
+    # carries an explicit deadline: checkout 10m, setup-node 5m, actionlint
+    # 5m (mirrored in ci.yml's fast-checks copy so the two stay identical),
+    # dependencies:ci 15m, the 5-minute zsh step, the 20-minute Chromium
+    # step, the receipt upload 10m = 70m bounded setup. 340 keeps real
+    # margin over that 321-minute bounded worst case rather than
+    # interrupting a valid final phase slice or a completed gate's receipt
+    # upload.
+    timeout-minutes: 340
     steps:
       - name: Validate immutable source identity
         env:
@@ -55,6 +55,7 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        timeout-minutes: 5
         with:
           node-version-file: .nvmrc
 
@@ -65,6 +66,7 @@ jobs:
       # `actionlint-gate.mjs` pins this copy through
       # `fullRegressionActionlintFindings`, so it cannot drift from ci.yml's.
       - name: Install pinned actionlint
+        timeout-minutes: 5
         env:
           ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
