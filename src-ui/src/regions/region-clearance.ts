@@ -15,8 +15,6 @@ export function createRegionClearanceWriter(root: HTMLElement) {
 
   const write = (name: (typeof MANAGED_VARIABLES)[number], value?: number) => {
     if (value === undefined) root.style.removeProperty(name);
-    else if (name === '--dock-slot-size')
-      root.style.setProperty('--dock-slot-size', `${value}px`);
     else root.style.setProperty(name, `${value}px`);
   };
 
