@@ -5,7 +5,13 @@ import {
 import { ErrorState } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
-import { occupiedDockRegion, regionLabel } from '../regions/region-model';
+import { availablePlacements, useDockSlotDevice } from '../hooks/useIsMobile';
+import {
+  DOCK_REGION_IDS,
+  foldedDockRegion,
+  occupiedDockRegion,
+  regionLabel,
+} from '../regions/region-model';
 import { WorkspacePaneAwayState } from '../workspace-panes/WorkspacePaneAwayState';
 import {
   isAmbientDockOccupant,
@@ -46,8 +52,12 @@ export function ActivityView({
   const config = useConfig();
   const dock = useWorkspacePaneDockAction();
   const regionModel = useRegionModelOptional();
+  const bottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
   const activityRegion = regionModel
     ? occupiedDockRegion(regionModel.regions, 'activity')
+    : undefined;
+  const foldedRegion = regionModel
+    ? foldedDockRegion(regionModel.regions, regionModel.lastShownRegion)
     : undefined;
   const selection = selectClientWorkspacePaneRenderer(
     WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
@@ -68,11 +78,30 @@ export function ActivityView({
       />
     );
   }
-  if (activityRegion) {
+  if (activityRegion && regionModel) {
+    const activityIsShown = bottomOnly
+      ? foldedRegion === activityRegion &&
+        regionModel.regions[activityRegion].visible
+      : regionModel.regions[activityRegion].visible;
     return (
       <WorkspacePaneAwayState
         paneName={WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.name}
-        regionName={`${regionLabel(activityRegion)} region`}
+        regionName={
+          bottomOnly
+            ? 'the bottom bar'
+            : `${regionLabel(activityRegion)} region`
+        }
+        regionVisible={activityIsShown}
+        onShowPane={() => {
+          if (bottomOnly) {
+            regionModel.placeSurface('activity', activityRegion);
+            for (const id of DOCK_REGION_IDS) {
+              if (id !== activityRegion)
+                regionModel.setRegion(id, { visible: false });
+            }
+          }
+          regionModel.setRegion(activityRegion, { visible: true });
+        }}
       />
     );
   }

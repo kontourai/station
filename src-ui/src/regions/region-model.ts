@@ -7,7 +7,6 @@ export const DOCK_REGION_IDS = [
   'right',
   'bottom',
 ] as const satisfies readonly RegionId[];
-export type RegionBreakpoint = 'phone' | 'desktop';
 export interface RegionState {
   visible: boolean;
   size: number;
@@ -34,6 +33,16 @@ export function occupiedDockRegion(
   surfaceId: string,
 ): DockRegionId | undefined {
   return DOCK_REGION_IDS.find((id) => layout[id].occupant === surfaceId);
+}
+
+export function firstFreeDockRegion(
+  layout: RegionLayout,
+  preferred: DockRegionId,
+): DockRegionId | undefined {
+  if (layout[preferred].occupant === null) return preferred;
+  return (['bottom', 'right', 'left'] as const).find(
+    (id) => layout[id].occupant === null,
+  );
 }
 
 /** The dock region holding chat; undefined when chat sits outside the dock (e.g. 'main'). */
@@ -130,7 +139,7 @@ export function placeSurface(
   if (previousRegion) {
     return updateRegion(next, previousRegion, {
       occupant: displacedSurface,
-      ...(displacedSurface === null ? { visible: false } : {}),
+      visible: displacedSurface === null ? false : layout[regionId].visible,
     });
   }
   return next;
@@ -151,8 +160,10 @@ export function dockMirrorDiff(
     visible?: boolean;
     size?: Partial<Record<RegionId, number>>;
   } = {};
-  if (placement !== previousPlacement && placement)
+  if (placement !== previousPlacement && placement) {
     result.placement = placement;
+    result.size = { [placement]: next[placement].size };
+  }
   // Visibility is compared across the move, not re-emitted with it: a
   // same-visibility move must not reach `setDockState`, which records
   // `lastDockMaximized` (navigation-store.ts) as a side effect.
@@ -165,17 +176,9 @@ export function dockMirrorDiff(
   for (const id of DOCK_REGION_IDS)
     if (next[id].occupant === 'chat' && next[id].size !== previous[id].size)
       sizes[id] = next[id].size;
-  if (Object.keys(sizes).length) result.size = sizes;
+  if (Object.keys(sizes).length) result.size = { ...result.size, ...sizes };
   return result;
 }
-
-/** Breakpoint availability belongs to the region model, never to a surface. */
-export const REGION_AVAILABILITY: Readonly<
-  Record<RegionBreakpoint, readonly RegionId[]>
-> = {
-  phone: ['main', 'bottom'],
-  desktop: REGION_IDS,
-};
 
 export interface SurfaceShortcut {
   id: string;
@@ -232,13 +235,6 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     sourceFile: 'src-ui/src/views/activity/ActivityWorkspacePane.tsx',
   },
 ]);
-
-export function isRegionAvailable(
-  id: RegionId,
-  breakpoint: RegionBreakpoint,
-): boolean {
-  return REGION_AVAILABILITY[breakpoint].includes(id);
-}
 
 export function updateRegion(
   layout: RegionLayout,

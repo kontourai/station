@@ -28,6 +28,8 @@ export function ActivityRegionShell({ regionId }: { regionId: DockRegionId }) {
           <ChatDockHeader
             regionVisible={chrome.isDockOpen}
             shellMaximized={chrome.isDockMaximized}
+            canMaximize={chrome.canMaximize}
+            surfaceShortcutId={chrome.surfaceShortcutId}
             isDragging={chrome.isDragging}
             onDockSnap={chrome.applyDockSnap}
             availableDockSlotPlacements={chrome.availableDockSlotPlacements}

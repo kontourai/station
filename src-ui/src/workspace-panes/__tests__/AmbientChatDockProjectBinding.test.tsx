@@ -223,6 +223,45 @@ describe('the dock project binding survives an occupant switch (station#4525 Pha
       'the binding must survive the real Chat occupant remount, not reset to "No project"',
     ).toBe('alpha');
   });
+
+  test('bind alpha, repeat Home to Chat switches through both restore paths — binding remains intact', async () => {
+    const action = await dockedAction();
+    await act(async () => screen.getByText('Bind alpha').click());
+
+    act(() =>
+      action.dockPane(
+        WORKSPACE_HOME_PANE_DESCRIPTOR,
+        WORKSPACE_HOME_PANE_INSTANCE,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
+    );
+    act(() => action.undockOccupant());
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+    );
+    act(() =>
+      action.dockPane(
+        WORKSPACE_HOME_PANE_DESCRIPTOR,
+        WORKSPACE_HOME_PANE_INSTANCE,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
+    );
+    act(() =>
+      action.dockPane(
+        WORKSPACE_CHAT_PANE_DESCRIPTOR,
+        createWorkspaceChatPaneInstance()!,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+    );
+
+    expect(boundSlug()).toBe('alpha');
+  });
 });
 
 describe('the dock project binding survives a full host remount (station#4525 Phase 1 trigger #3: reconnect/session churn)', () => {

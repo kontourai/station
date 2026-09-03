@@ -2150,6 +2150,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               onDockPlacementChange={commitDockPlacement}
               regionVisible={isDockOpen}
               shellMaximized={isDockMaximized}
+              canMaximize={chrome.canMaximize}
+              surfaceShortcutId={chrome.surfaceShortcutId}
               // station#4460: Chat is one entry in the SAME occupant
               // switcher Home/Activity carry — not a special case with no
               // way to leave. Absent for a full-screen placement, which has

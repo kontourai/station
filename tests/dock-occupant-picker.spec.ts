@@ -130,6 +130,26 @@ test.describe('Dock occupant picker', () => {
     ).toBeVisible();
   });
 
+  test('choosing Chat replaces Home and clears the Home away state on `/`', async ({
+    page,
+  }) => {
+    await dockHomeFromRoot(page);
+    const main = page.locator('#station-main');
+    await expect(main.getByText('Home is in the dock')).toBeVisible();
+
+    await dockOccupantTrigger(page, 'Home').click();
+    await page
+      .getByRole('menu', { name: 'Docked pane' })
+      .getByRole('menuitemradio', { name: 'Chat' })
+      .click();
+
+    await expect(dockOccupantTrigger(page, 'Chat')).toBeVisible();
+    await expect(main.getByText('Home is in the dock')).toHaveCount(0);
+    await expect(
+      main.getByRole('button', { name: 'Dock this pane' }),
+    ).toBeVisible();
+  });
+
   test('the occupant menu opens within the window on a BOTTOM dock', async ({
     page,
   }) => {

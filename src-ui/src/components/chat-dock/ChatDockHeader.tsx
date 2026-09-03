@@ -127,6 +127,10 @@ interface ChatDockHeaderProps {
   occupantPicker?: React.ReactNode;
   regionVisible: boolean;
   shellMaximized: boolean;
+  /** Registered visibility shortcut for the shell's surface. */
+  surfaceShortcutId?: string;
+  /** Whether this shell owns the Chat-only maximize state. */
+  canMaximize?: boolean;
 }
 
 export function ChatDockHeader({
@@ -144,10 +148,12 @@ export function ChatDockHeader({
   occupantPicker,
   regionVisible,
   shellMaximized,
+  surfaceShortcutId = 'dock.toggle',
+  canMaximize = true,
 }: ChatDockHeaderProps) {
   const isDockOpen = regionVisible;
   const isDockMaximized = shellMaximized;
-  const toggleDockShortcut = useShortcutDisplay('dock.toggle');
+  const toggleDockShortcut = useShortcutDisplay(surfaceShortcutId);
   const maximizeShortcut = useShortcutDisplay('dock.maximize');
   const side =
     effectiveDockSlotPlacement === 'bottom' ? null : effectiveDockSlotPlacement;
@@ -356,32 +362,34 @@ export function ChatDockHeader({
         )}
         {!fullscreen && (
           <>
-            <button
-              type="button"
-              className="chat-dock__maximize-btn"
-              onClick={handleMaximize}
-              title={
-                isDockMaximized
-                  ? withShortcutHint(
-                      'Restore dock region size',
-                      'dock.maximize',
-                      () => maximizeShortcut,
-                    )
-                  : withShortcutHint(
-                      'Expand dock region to workspace',
-                      'dock.maximize',
-                      () => maximizeShortcut,
-                    )
-              }
-              aria-label={
-                isDockMaximized
-                  ? 'Restore dock region size'
-                  : 'Expand dock region to workspace'
-              }
-            >
-              <RegionExtentGlyph expanded={isDockMaximized} />
-              <span className="chat-dock__subtitle">{maximizeShortcut}</span>
-            </button>
+            {canMaximize ? (
+              <button
+                type="button"
+                className="chat-dock__maximize-btn"
+                onClick={handleMaximize}
+                title={
+                  isDockMaximized
+                    ? withShortcutHint(
+                        'Restore dock region size',
+                        'dock.maximize',
+                        () => maximizeShortcut,
+                      )
+                    : withShortcutHint(
+                        'Expand dock region to workspace',
+                        'dock.maximize',
+                        () => maximizeShortcut,
+                      )
+                }
+                aria-label={
+                  isDockMaximized
+                    ? 'Restore dock region size'
+                    : 'Expand dock region to workspace'
+                }
+              >
+                <RegionExtentGlyph expanded={isDockMaximized} />
+                <span className="chat-dock__subtitle">{maximizeShortcut}</span>
+              </button>
+            ) : null}
             <button
               type="button"
               className="chat-dock__icon-btn"
@@ -390,14 +398,14 @@ export function ChatDockHeader({
                 onDockSnap(
                   isDockOpen
                     ? 'collapsed'
-                    : readDockSnap() === 'full'
+                    : canMaximize && readDockSnap() === 'full'
                       ? 'full'
                       : 'half',
                 );
               }}
               title={withShortcutHint(
                 !isDockOpen ? 'Show dock region' : 'Hide dock region',
-                'dock.toggle',
+                surfaceShortcutId,
                 () => toggleDockShortcut,
               )}
               aria-label={!isDockOpen ? 'Show dock region' : 'Hide dock region'}

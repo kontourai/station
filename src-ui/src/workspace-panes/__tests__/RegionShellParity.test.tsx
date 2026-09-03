@@ -18,6 +18,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -449,6 +450,28 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(shortcutEntries('dock.toggle')).toHaveLength(1);
   });
 
+  test('the Activity chord places into a free region without evicting Chat, then toggles visibility', async () => {
+    seedPlacement('right', 'open');
+    await renderShellsSettled();
+    const activityToggle = shortcutEntries('activity.toggle')[0];
+    if (!activityToggle) throw new Error('activity.toggle must be registered');
+
+    act(() => activityToggle.handler());
+    await waitFor(() =>
+      expect(currentRegionModel().regions.bottom.occupant).toBe('activity'),
+    );
+    expect(currentRegionModel().regions.right.occupant).toBe('chat');
+
+    act(() => shortcutEntries('activity.toggle')[0]?.handler());
+    await waitFor(() =>
+      expect(currentRegionModel().regions.bottom.visible).toBe(false),
+    );
+    act(() => shortcutEntries('activity.toggle')[0]?.handler());
+    await waitFor(() =>
+      expect(currentRegionModel().regions.bottom.visible).toBe(true),
+    );
+  });
+
   test('a non-chat shell neither takes the chat id nor the maximize command', async () => {
     seedPlacement('bottom', 'maximized');
     const twoShells = (showRight: boolean) => (
@@ -533,14 +556,51 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     const activityShell = document.querySelector<HTMLElement>(
       'section[aria-label="Activity"]',
     );
+    if (!activityShell) throw new Error('Activity shell never rendered');
+    expect(
+      within(activityShell).queryByLabelText('Expand dock region to workspace'),
+    ).toBeNull();
+    expect(within(activityShell).queryByText('⌘M')).toBeNull();
+    expect(
+      within(activityShell)
+        .getByLabelText('Hide dock region')
+        .getAttribute('title'),
+    ).toContain('Ctrl+Shift+A');
+    expect(
+      within(activityShell).getByLabelText('Resize Activity'),
+    ).toBeTruthy();
+
+    window.localStorage.setItem('station.chatDock.snap', 'half');
+    fireEvent.click(within(activityShell).getByLabelText('Hide dock region'));
+    await waitFor(() =>
+      expect(activityShell.classList.contains('is-collapsed')).toBe(true),
+    );
+    fireEvent.click(within(activityShell).getByLabelText('Show dock region'));
+    await waitFor(() =>
+      expect(activityShell.classList.contains('is-collapsed')).toBe(false),
+    );
+    expect(window.localStorage.getItem('station.chatDock.snap')).toBe('half');
+
+    act(() => {
+      currentRegionModel().setRegion('right', { visible: false, size: 600 });
+    });
+    const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
     fireEvent.click(
       screen.getByRole('button', { name: 'Change Bottom region surface' }),
     );
-    fireEvent.click(
-      screen.getByRole('menuitemradio', { name: 'Swap in Activity' }),
-    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Swap in Activity' }));
     await waitFor(() => expect(chatShell?.dataset.region).toBe('right'));
     expect(activityShell?.dataset.region).toBe('bottom');
+    expect(currentRegionModel().regions.right.visible).toBe(true);
+    expect(currentRegionModel().regions.bottom.visible).toBe(true);
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().dockMode).toBe('right'),
+    );
+    expect(dockModeWrite).toHaveBeenCalledTimes(1);
+    await act(async () => Promise.resolve());
+    expect(dockModeWrite).toHaveBeenCalledTimes(1);
+    expect(deviceSettingsStore.get('chatDockWidth')).toBe(600);
+    expect(currentRegionModel().regions.right.size).toBe(600);
     expect(shells()).toHaveLength(2);
     expect(document.querySelector('#chat-dock')).toBe(chatShell);
     expect(document.querySelector('section[aria-label="Activity"]')).toBe(
@@ -589,6 +649,50 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       ).not.toBeNull(),
     );
     expect(shells()).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Activity' }));
+    await waitFor(() =>
+      expect(
+        document.querySelector('section[aria-label="Activity"]'),
+      ).toBeNull(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
+    await waitFor(() =>
+      expect(
+        document.querySelector('section[aria-label="Activity"]'),
+      ).not.toBeNull(),
+    );
+  });
+
+  test('rotating a two-visible-occupant desktop layout to coarse keeps only the last shown occupant', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+    seedPlacement('bottom', 'open');
+    await renderShellsSettled();
+    act(() => currentRegionModel().placeSurface('activity', 'right'));
+    await waitFor(() => expect(shells()).toHaveLength(2));
+
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 390,
+    });
+    act(() => window.dispatchEvent(new Event('resize')));
+
+    await waitFor(() => expect(shells()).toHaveLength(1));
+    expect(
+      document.querySelector('section[aria-label="Activity"]'),
+    ).not.toBeNull();
+    expect(document.querySelector('#chat-dock')).toBeNull();
   });
 
   // A wide coarse-pointer device (landscape tablet) keeps the desktop grid ON

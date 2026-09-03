@@ -48,6 +48,8 @@ export function DockShell({
     occupant === 'chat'
       ? 'Dock'
       : (regionModel?.surfaces.get(occupant ?? '')?.title ?? 'Dock');
+  const resizeLabel =
+    occupant === 'chat' ? 'Resize chat dock' : `Resize ${landmarkLabel}`;
   const chrome = useDockShellChrome({
     publishesDockSlotClearance: true,
     // `DockShell` owns the region maximize command, and only the shell
@@ -103,7 +105,7 @@ export function DockShell({
             type="button"
             tabIndex={-1}
             className={`chat-dock__resize-handle chat-dock__resize-handle--horizontal${renderedRegion === 'left' ? ' chat-dock__resize-handle--left' : ''}`}
-            aria-label="Resize chat dock"
+            aria-label={resizeLabel}
             onPointerDown={chrome.onSidePanelResizePointerDown}
             // M5 (station#4460 review): this handle sits OUTSIDE any
             // occupant's file-drop boundary (Chat's, when Chat is docked;
@@ -119,6 +121,7 @@ export function DockShell({
         )
       ) : (
         <ChatDockResizeHandle
+          ariaLabel={resizeLabel}
           mode={chrome.isMobile ? 'mobile-snap' : 'desktop-free'}
           currentHeight={chrome.dockHeight}
           snap={

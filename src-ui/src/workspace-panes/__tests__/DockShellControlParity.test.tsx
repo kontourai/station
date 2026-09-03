@@ -11,6 +11,10 @@
  */
 
 import {
+  createWorkspaceChatPaneInstance,
+  WORKSPACE_CHAT_PANE_DESCRIPTOR,
+} from '@kontourai/station-contracts/workspace-chat-pane';
+import {
   WORKSPACE_HOME_PANE_DESCRIPTOR,
   WORKSPACE_HOME_PANE_INSTANCE,
 } from '@kontourai/station-contracts/workspace-home-pane';
@@ -180,9 +184,7 @@ async function placeChatRight() {
   fireEvent.click(
     screen.getByRole('button', { name: 'Choose a surface for Right region' }),
   );
-  fireEvent.click(
-    screen.getByRole('menuitemradio', { name: 'Place Chat here' }),
-  );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Place Chat here' }));
   await waitFor(() =>
     expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
   );
@@ -192,9 +194,7 @@ function chooseChatForEmptyRight() {
   fireEvent.click(
     screen.getByRole('button', { name: 'Choose a surface for Right region' }),
   );
-  fireEvent.click(
-    screen.getByRole('menuitemradio', { name: 'Place Chat here' }),
-  );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Place Chat here' }));
 }
 
 function dockToggle(): () => void {
@@ -380,6 +380,7 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     expect(dockStateWrite).not.toHaveBeenCalled();
     expect(deviceWrite.mock.calls.map(([key]) => key)).toEqual([
       'dockSlotPlacement',
+      'chatDockWidth',
     ]);
 
     dockModeWrite.mockClear();
@@ -556,5 +557,95 @@ describe('every ambient occupant gets the full dock chrome (station#4460)', () =
       expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
     });
     expectFullDockControls('Home');
+  });
+});
+
+describe('maximize state survives a Chat and Home occupant switch (archive#4460)', () => {
+  test('a maximized Home remains maximized through Chat and exposes restore when Home returns', async () => {
+    const action = await dockedAction();
+    act(() =>
+      action.dockPane(
+        WORKSPACE_HOME_PANE_DESCRIPTOR,
+        WORKSPACE_HOME_PANE_INSTANCE,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
+    );
+    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
+    );
+
+    act(() =>
+      action.dockPane(
+        WORKSPACE_CHAT_PANE_DESCRIPTOR,
+        createWorkspaceChatPaneInstance()!,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+    );
+    expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull();
+
+    act(() =>
+      action.dockPane(
+        WORKSPACE_HOME_PANE_DESCRIPTOR,
+        WORKSPACE_HOME_PANE_INSTANCE,
+      ),
+    );
+    const restore = await screen.findByLabelText('Restore dock region size');
+    fireEvent.click(restore);
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).toBeNull(),
+    );
+  });
+});
+
+describe('dock-slot geometry is stable across a Chat and Home occupant switch (archive#4460)', () => {
+  test('a maximized height survives Home to Chat to Home without a settings-derived jump', async () => {
+    const action = await dockedAction();
+    act(() =>
+      action.dockPane(
+        WORKSPACE_HOME_PANE_DESCRIPTOR,
+        WORKSPACE_HOME_PANE_INSTANCE,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
+    );
+    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
+    );
+    const maximizedSize =
+      document.documentElement.style.getPropertyValue('--dock-slot-size');
+    expect(maximizedSize).not.toBe('');
+    expect(maximizedSize).not.toBe('320px');
+
+    act(() =>
+      action.dockPane(
+        WORKSPACE_CHAT_PANE_DESCRIPTOR,
+        createWorkspaceChatPaneInstance()!,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+    );
+    expect(
+      document.documentElement.style.getPropertyValue('--dock-slot-size'),
+    ).toBe(maximizedSize);
+    act(() =>
+      action.dockPane(
+        WORKSPACE_HOME_PANE_DESCRIPTOR,
+        WORKSPACE_HOME_PANE_INSTANCE,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
+    );
+    expect(
+      document.documentElement.style.getPropertyValue('--dock-slot-size'),
+    ).toBe(maximizedSize);
   });
 });

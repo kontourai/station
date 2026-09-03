@@ -12,6 +12,7 @@ import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import {
   DOCK_REGION_IDS,
+  firstFreeDockRegion,
   foldedDockRegion,
   occupiedDockRegion,
   type RegionId,
@@ -64,12 +65,14 @@ function RegionSurfaceMenu({
   surfaces,
   onClose,
   onPlace,
+  anchorRight,
 }: {
   regionId: DockMode;
   occupant: string | null;
   surfaces: readonly RegisteredSurface[];
   onClose: () => void;
   onPlace: (surfaceId: string, regionId: DockMode) => void;
+  anchorRight: number;
 }) {
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
   useEffect(() => {
@@ -97,7 +100,12 @@ function RegionSurfaceMenu({
           inset: 0,
           zIndex: 'calc(var(--layer-navigation) - 1)',
         }}
-        onPointerDown={onClose}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          requestAnimationFrame(onClose);
+        }}
+        onClick={(event) => event.stopPropagation()}
       />
       <div
         ref={menuRef}
@@ -105,13 +113,13 @@ function RegionSurfaceMenu({
         role="menu"
         aria-label={`${label} region surfaces`}
         tabIndex={-1}
+        style={{ right: `${anchorRight}px` }}
       >
         {choices.map((surface) => (
           <button
             key={surface.id}
             type="button"
-            role="menuitemradio"
-            aria-checked="false"
+            role="menuitem"
             onClick={() => {
               onPlace(surface.id, regionId);
               onClose();
@@ -143,6 +151,7 @@ function ConnectedRegionToolbarControls() {
     available.includes(id),
   );
   const [menuRegion, setMenuRegion] = useState<DockMode | null>(null);
+  const [menuAnchorRight, setMenuAnchorRight] = useState(8);
   const foldedRegion = foldedDockRegion(regions, lastShownRegion);
 
   const showSurfaceAlone = useCallback(
@@ -161,17 +170,41 @@ function ConnectedRegionToolbarControls() {
       const occupied = occupiedDockRegion(regions, surface.id);
       if (!occupied) {
         if (bottomOnly) showSurfaceAlone(surface.id, surface.defaultRegion);
-        else placeSurfaceInModel(surface.id, surface.defaultRegion);
+        else {
+          const destination = firstFreeDockRegion(
+            regions,
+            surface.defaultRegion,
+          );
+          if (destination) placeSurfaceInModel(surface.id, destination);
+        }
         return;
       }
       if (bottomOnly) {
-        showSurfaceAlone(surface.id, occupied);
+        if (occupied === foldedRegion && regions[occupied].visible) {
+          setRegion(occupied, { visible: false });
+        } else {
+          showSurfaceAlone(surface.id, occupied);
+        }
         return;
       }
       setRegion(occupied, { visible: !regions[occupied].visible });
     },
-    [bottomOnly, placeSurfaceInModel, regions, setRegion, showSurfaceAlone],
+    [
+      bottomOnly,
+      foldedRegion,
+      placeSurfaceInModel,
+      regions,
+      setRegion,
+      showSurfaceAlone,
+    ],
   );
+
+  const openMenu = useCallback((id: DockMode, trigger: HTMLButtonElement) => {
+    setMenuAnchorRight(
+      window.innerWidth - trigger.getBoundingClientRect().right,
+    );
+    setMenuRegion(id);
+  }, []);
 
   const placeSurface = useCallback(
     (surfaceId: string, id: DockMode) => {
@@ -195,8 +228,12 @@ function ConnectedRegionToolbarControls() {
       {bottomOnly
         ? surfaceList.map((surface) => {
             const occupied = occupiedDockRegion(regions, surface.id);
-            const pressed = occupied === foldedRegion;
-            const actionLabel = `Show ${surface.title}`;
+            const pressed = Boolean(
+              occupied &&
+                occupied === foldedRegion &&
+                regions[occupied].visible,
+            );
+            const actionLabel = `${pressed ? 'Hide' : 'Show'} ${surface.title}`;
             return (
               <button
                 key={surface.id}
@@ -225,11 +262,16 @@ function ConnectedRegionToolbarControls() {
                   type="button"
                   className="app-toolbar__region-btn"
                   aria-label={actionLabel}
-                  aria-pressed={pressed}
+                  {...(surface
+                    ? { 'aria-pressed': pressed }
+                    : {
+                        'aria-haspopup': 'menu' as const,
+                        'aria-expanded': menuRegion === id,
+                      })}
                   title={actionLabel}
-                  onClick={() => {
+                  onClick={(event) => {
                     if (surface) toggleSurface(surface);
-                    else setMenuRegion(id);
+                    else openMenu(id, event.currentTarget);
                   }}
                 >
                   <RegionGlyph id={id} />
@@ -241,10 +283,11 @@ function ConnectedRegionToolbarControls() {
                   <button
                     type="button"
                     className="app-toolbar__region-swap"
+                    style={{ minWidth: 24, minHeight: 24 }}
                     aria-label={`Change ${label} region surface`}
                     aria-haspopup="menu"
                     aria-expanded={menuRegion === id}
-                    onClick={() => setMenuRegion(id)}
+                    onClick={(event) => openMenu(id, event.currentTarget)}
                   >
                     ⋯
                   </button>
@@ -257,6 +300,7 @@ function ConnectedRegionToolbarControls() {
           regionId={menuRegion}
           occupant={regions[menuRegion].occupant}
           surfaces={surfaceList}
+          anchorRight={menuAnchorRight}
           onClose={() => setMenuRegion(null)}
           onPlace={placeSurface}
         />

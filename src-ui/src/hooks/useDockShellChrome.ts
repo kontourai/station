@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import {
+  DEFAULT_DOCK_SNAP,
   DOCK_COLLAPSED_HEIGHT,
   type DockSnap,
   dockSnapPixels,
@@ -88,6 +89,8 @@ export interface DockShellChrome {
   visualViewport: ReturnType<typeof useMobileVisualViewport>;
   availableDockSlotPlacements: readonly DockMode[];
   effectiveDockSlotPlacement: DockMode;
+  surfaceShortcutId: string;
+  canMaximize: boolean;
   applyDockSnap: (next: DockSnap) => void;
   commitDesktopBottomHeight: (height: number) => void;
   commitDockPlacement: (mode: DockMode) => void;
@@ -248,11 +251,9 @@ export function useDockShellChrome({
     [setDeviceSetting],
   );
   // Project-deletion cleanup (archive#4525 acceptance: "only an explicit
-  // picker change (or project deletion)" may change the binding). Gated on
-  // `publishesDockSlotClearance` — the same single-writer flag every other
-  // side effect in this hook already uses — so only the one ambient
-  // `DockShell` instance reconciles this; a full-screen placement's own
-  // local instance never fights it.
+  // picker change (or project deletion)" may change the binding). The Chat
+  // shell is the one derived owner of this Chat setting. Other region shells
+  // also publish clearance, so that geometry fact cannot identify the writer.
   //
   // (archive#4525): the original guard was `!isLoading`,
   // which is ALSO true the instant the query settles into an ERROR — and
@@ -268,13 +269,14 @@ export function useDockShellChrome({
     isConfirmedLoaded: projectsConfirmedLoaded,
   } = useProjects();
   useEffect(() => {
-    if (!publishesDockSlotClearance) return;
+    if (!publishesDockSlotClearance || shellOccupant !== 'chat') return;
     if (!activeProjectSlug || !projectsConfirmedLoaded) return;
     const boundProjectStillExists = projectsForBindingCleanup.some(
       (project) => project.slug === activeProjectSlug,
     );
     if (!boundProjectStillExists) setActiveProjectSlug(null);
   }, [
+    shellOccupant,
     publishesDockSlotClearance,
     activeProjectSlug,
     projectsConfirmedLoaded,
@@ -302,33 +304,33 @@ export function useDockShellChrome({
   const setIsDragging = useCallback(
     (value: boolean) => {
       if (draggingRef.current && !value) {
-        // Chat keeps the legacy folded-bottom height contract. A non-Chat
-        // shell retains its own region axis so Activity cannot rewrite the
-        // Chat region or its mirrored device setting through the phone fold
-        // (#928).
-        const persistedRegion =
-          regionId && shellOccupant !== 'chat'
-            ? regionId
-            : effectiveDockSlotPlacement;
-        if (persistedRegion === 'bottom') {
+        // A region's size is measured along its own edge. A shell folded to
+        // the bottom of a coarse device (useIsMobile.ts `availablePlacements`)
+        // drags a height that belongs to no side region, so it persists only
+        // when the rendered edge is the shell's own region (#928).
+        const persistedRegion = regionId ?? effectiveDockSlotPlacement;
+        if (persistedRegion === effectiveDockSlotPlacement) {
           regionModel?.setRegion(persistedRegion, {
-            size: Math.round(clampDockHeight(dockHeightRef.current)),
-          });
-        } else {
-          regionModel?.setRegion(persistedRegion, {
-            size: Math.round(clampDockWidth(dockWidthRef.current)),
+            size:
+              persistedRegion === 'bottom'
+                ? Math.round(clampDockHeight(dockHeightRef.current))
+                : Math.round(clampDockWidth(dockWidthRef.current)),
           });
         }
       }
       draggingRef.current = value;
       setIsDraggingState(value);
     },
-    [effectiveDockSlotPlacement, regionId, regionModel, shellOccupant],
+    [effectiveDockSlotPlacement, regionId, regionModel],
   );
   const [previousDockHeight, setPreviousDockHeight] = useState(dockHeight);
   const [previousDockOpen, setPreviousDockOpen] = useState(true);
   const [isDragging, setIsDraggingState] = useState(false);
-  const [dockSnap, setDockSnap] = useState<DockSnap>(() => readDockSnap());
+  // `station.chatDock.snap` is Chat's key; other shells start from the default
+  // and keep their snap in memory (see `applyDockSnap`).
+  const [dockSnap, setDockSnap] = useState<DockSnap>(() =>
+    shellOccupant === 'chat' ? readDockSnap() : DEFAULT_DOCK_SNAP,
+  );
   const [liveDragHeight, setLiveDragHeight] = useState<number | null>(null);
   const isCollapsedDragPreview = !readerIsDockOpen && liveDragHeight !== null;
 
@@ -356,7 +358,7 @@ export function useDockShellChrome({
   const applyDockSnap = useCallback(
     (next: DockSnap) => {
       setDockSnap(next);
-      writeDockSnap(next);
+      if (shellOccupant === 'chat') writeDockSnap(next);
       const px = dockSnapPixels(next, {
         viewportHeight: visualViewport.height,
         toolbarHeight,
@@ -379,6 +381,7 @@ export function useDockShellChrome({
       dockHeight,
       setDockHeight,
       setShellDockState,
+      shellOccupant,
       visualViewport.height,
     ],
   );
@@ -423,11 +426,17 @@ export function useDockShellChrome({
     const reconciled = snapAfterNavigationRestore(dockSnap);
     if (reconciled) {
       setDockSnap(reconciled);
-      writeDockSnap(reconciled);
+      if (shellOccupant === 'chat') writeDockSnap(reconciled);
     }
     setDockHeight(previousDockHeight);
     collapseMaximizedDock();
-  }, [dockSnap, previousDockHeight, setDockHeight, collapseMaximizedDock]);
+  }, [
+    dockSnap,
+    previousDockHeight,
+    setDockHeight,
+    collapseMaximizedDock,
+    shellOccupant,
+  ]);
 
   const previousPathnameRef = useRef(pathname);
   useEffect(() => {
@@ -609,6 +618,11 @@ export function useDockShellChrome({
     visualViewport,
     availableDockSlotPlacements,
     effectiveDockSlotPlacement,
+    surfaceShortcutId:
+      (shellOccupant
+        ? regionModel?.surfaces.get(shellOccupant)?.shortcut.id
+        : undefined) ?? 'dock.toggle',
+    canMaximize: shellOccupant === 'chat',
     applyDockSnap,
     commitDesktopBottomHeight,
     commitDockPlacement,

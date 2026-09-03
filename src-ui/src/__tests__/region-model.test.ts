@@ -4,8 +4,8 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   DEFAULT_DEVICE_REGION_LAYOUT,
   dockMirrorDiff,
+  firstFreeDockRegion,
   foldedDockRegion,
-  isRegionAvailable,
   occupiedDockRegion,
   placeSurface,
   REGION_SURFACE_REGISTRY,
@@ -18,19 +18,6 @@ describe('region model', () => {
   afterEach(() => {
     localStorage.clear();
     vi.resetModules();
-  });
-
-  test('declares availability once per breakpoint', () => {
-    expect(
-      (['main', 'left', 'right', 'bottom'] as const).filter((id) =>
-        isRegionAvailable(id, 'phone'),
-      ),
-    ).toEqual(['main', 'bottom']);
-    expect(
-      (['main', 'left', 'right', 'bottom'] as const).filter((id) =>
-        isRegionAvailable(id, 'desktop'),
-      ),
-    ).toEqual(['main', 'left', 'right', 'bottom']);
   });
 
   test('a region has one occupant and assigning another replaces it', () => {
@@ -83,6 +70,29 @@ describe('region model', () => {
     expect(foldedDockRegion(allHidden, null)).toBe('bottom');
   });
 
+  test('the coarse fold chooses lastShownRegion when two occupied regions are visible', () => {
+    const bothVisible = updateRegion(
+      placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'activity', 'right'),
+      'bottom',
+      { visible: true },
+    );
+
+    expect(foldedDockRegion(bothVisible, 'right')).toBe('right');
+    expect(foldedDockRegion(bothVisible, 'bottom')).toBe('bottom');
+  });
+
+  test('a homeless surface prefers a free default and otherwise takes the first free dock region', () => {
+    expect(firstFreeDockRegion(DEFAULT_DEVICE_REGION_LAYOUT, 'right')).toBe(
+      'right',
+    );
+    const chatAtRight = placeSurface(
+      DEFAULT_DEVICE_REGION_LAYOUT,
+      'chat',
+      'right',
+    );
+    expect(firstFreeDockRegion(chatAtRight, 'right')).toBe('bottom');
+  });
+
   test('registers Chat and Activity with their default regions', () => {
     expect([...REGION_SURFACE_REGISTRY.values()]).toEqual([
       expect.objectContaining({
@@ -120,10 +130,29 @@ describe('region model', () => {
       occupant: 'activity',
     });
     expect(swapped.right).toEqual({
-      visible: true,
+      visible: false,
       size: 400,
       occupant: 'chat',
     });
+  });
+
+  test('a swap carries the displaced occupant visibility and reveals the incoming surface', () => {
+    const hiddenActivity = updateRegion(
+      updateRegion(
+        placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'activity', 'right'),
+        'right',
+        { visible: false },
+      ),
+      'bottom',
+      { visible: true },
+    );
+    const swapped = placeSurface(hiddenActivity, 'activity', 'bottom');
+
+    expect(swapped.bottom).toMatchObject({
+      occupant: 'activity',
+      visible: true,
+    });
+    expect(swapped.right).toMatchObject({ occupant: 'chat', visible: true });
   });
 
   test('placing a homeless surface vacates the displaced occupant', () => {
@@ -169,7 +198,32 @@ describe('region model', () => {
     // `visible` is compared across the move, never re-emitted with it: the
     // mirror's `setDockState` records `lastDockMaximized` as a side effect,
     // so a spurious write here would forget a remembered maximize.
-    expect(dockMirrorDiff(before, after)).toEqual({ placement: 'right' });
+    expect(dockMirrorDiff(before, after)).toEqual({
+      placement: 'right',
+      size: { right: 400 },
+    });
+  });
+
+  test("a Chat move mirrors the entered region's size and the next inbound sync preserves it", () => {
+    const sizedRight = updateRegion(
+      placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'activity', 'right'),
+      'right',
+      { size: 600 },
+    );
+    const swapped = placeSurface(sizedRight, 'activity', 'bottom');
+    const diff = dockMirrorDiff(sizedRight, swapped);
+
+    expect(diff).toEqual({ placement: 'right', size: { right: 600 } });
+    const synced = syncRegionLayoutFromDock(
+      swapped,
+      {
+        chatDockHeight: 320,
+        chatDockWidth: diff.size?.right ?? 400,
+      },
+      true,
+      'right',
+    );
+    expect(synced.right.size).toBe(600);
   });
 
   test('placing into a region while hidden mirrors the reveal', () => {
@@ -177,6 +231,7 @@ describe('region model', () => {
 
     expect(dockMirrorDiff(DEFAULT_DEVICE_REGION_LAYOUT, after)).toEqual({
       placement: 'right',
+      size: { right: 400 },
       visible: true,
     });
   });

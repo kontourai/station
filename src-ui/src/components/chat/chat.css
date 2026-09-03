@@ -148,18 +148,12 @@
   position: absolute;
   right: -3px;
   bottom: -4px;
-  min-width: 16px;
-  min-height: 16px;
   padding: 0;
   border: 0;
   background: var(--bg-primary);
   color: var(--text-secondary);
   font-size: var(--text-xs);
   line-height: 1;
-}
-
-.app-toolbar__region-menu {
-  right: 132px;
 }
 
 .app-toolbar__region-add {

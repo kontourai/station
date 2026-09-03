@@ -28,26 +28,39 @@ import { useWorkspacePaneDockAction } from './WorkspacePaneDockContext';
 export function WorkspacePaneAwayState({
   paneName,
   regionName,
+  regionVisible = true,
+  onShowPane,
 }: {
   paneName: string;
   regionName?: string;
+  regionVisible?: boolean;
+  onShowPane?: () => void;
 }) {
   const dock = useWorkspacePaneDockAction();
   const isMobile = useIsMobile();
   if (!dock && !regionName) return null;
   const location = regionName ?? (isMobile ? 'the bottom bar' : 'the dock');
+  const hiddenRegion = Boolean(regionName && !regionVisible);
   return (
     <Empty
-      label={`${paneName} is in ${location}`}
+      label={
+        hiddenRegion
+          ? `${paneName} is hidden from ${location}`
+          : `${paneName} is in ${location}`
+      }
       description={
         regionName
-          ? `This pane is currently open in the ${regionName.toLowerCase()}.`
+          ? hiddenRegion
+            ? `This pane is assigned to ${location.toLowerCase()} but is not currently shown.`
+            : `This pane is currently open in ${location.toLowerCase()}.`
           : isMobile
             ? 'This pane is currently docked in the bottom bar.'
             : 'This pane is currently docked at the edge of your workspace.'
       }
       action={
-        dock && !regionName ? (
+        regionName && onShowPane ? (
+          <Button onClick={onShowPane}>Show {paneName}</Button>
+        ) : dock && !regionName ? (
           <Button onClick={dock.undockOccupant}>Bring it back here</Button>
         ) : undefined
       }
