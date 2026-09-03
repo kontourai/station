@@ -232,6 +232,32 @@ describe('plugin CLI API authority', () => {
     expect(listPlugins).toHaveBeenCalledWith('http://127.0.0.1:3141');
   });
 
+  test('prefers a validated plugin identity over a colliding rejected directory name', async () => {
+    listPlugins.mockResolvedValue([
+      {
+        status: 'rejected',
+        name: 'demo',
+        displayName: 'demo',
+        rejection: {
+          code: 'malformed-json',
+          reason: 'Plugin manifest is malformed.',
+          recovery: {
+            kind: 'repair-manifest',
+            instruction: 'Repair plugin.json and reload plugins.',
+          },
+        },
+      },
+      { name: 'demo', version: '1.0.0' },
+    ]);
+    const { info } = await import('../commands/install.js');
+
+    await info('demo', parsed);
+
+    expect(console.log).toHaveBeenCalledWith(
+      JSON.stringify({ name: 'demo', version: '1.0.0' }, null, 2),
+    );
+  });
+
   test('resolves a local source from the CLI invocation directory before sending it', async () => {
     authenticatedFetch
       .mockResolvedValueOnce(

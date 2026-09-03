@@ -180,7 +180,10 @@ export function usePluginManagementViewModel() {
 
   async function reloadClientPluginRegistry() {
     try {
-      await pluginRegistry.reload();
+      const registryState = await pluginRegistry.reload();
+      if (registryState === 'degraded') {
+        throw new Error('browser plugin registry is still degraded');
+      }
     } catch (error) {
       console.warn('Plugin registry reload failed', error);
     }
@@ -198,7 +201,10 @@ export function usePluginManagementViewModel() {
       await reloadPlugins();
       // Recovery is one ordered operation. A stale client registry means the
       // repaired package is not ready even if the server reload succeeded.
-      await pluginRegistry.reload();
+      const registryState = await pluginRegistry.reload();
+      if (registryState === 'degraded') {
+        throw new Error('browser plugin registry is still degraded');
+      }
       const refreshed = await refetchPlugins();
       if (refreshed.isError) {
         throw refreshed.error instanceof Error

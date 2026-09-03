@@ -129,7 +129,7 @@ describe('usePluginManagementViewModel', () => {
       mocks.previewOnSuccess = options.onSuccess;
     });
     mocks.reloadPlugins.mockReset().mockResolvedValue(undefined);
-    mocks.reloadClientRegistry.mockReset().mockResolvedValue(undefined);
+    mocks.reloadClientRegistry.mockReset().mockResolvedValue('ready');
     mocks.installOnSuccess = null;
     mocks.pluginsError = undefined;
     mocks.refetchPlugins.mockReset().mockResolvedValue({
@@ -185,6 +185,23 @@ describe('usePluginManagementViewModel', () => {
     expect(result.current.message).toEqual({
       type: 'error',
       text: 'Plugins were not reloaded: registry is still unavailable',
+    });
+  });
+
+  test('treats a degraded client-registry reload as recovery failure', async () => {
+    mocks.reloadClientRegistry.mockResolvedValueOnce('degraded');
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.reloadClientRegistry).toHaveBeenCalledOnce();
+    expect(mocks.refetchPlugins).not.toHaveBeenCalled();
+    expect(result.current.message).toEqual({
+      type: 'error',
+      text: 'Plugins were not reloaded: browser plugin registry is still degraded',
     });
   });
 
