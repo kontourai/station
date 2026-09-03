@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import {
+  DEFAULT_DOCK_SNAP,
   DOCK_COLLAPSED_HEIGHT,
   type DockSnap,
   dockSnapPixels,
@@ -88,6 +89,8 @@ export interface DockShellChrome {
   visualViewport: ReturnType<typeof useMobileVisualViewport>;
   availableDockSlotPlacements: readonly DockMode[];
   effectiveDockSlotPlacement: DockMode;
+  surfaceShortcutId: string;
+  canMaximize: boolean;
   applyDockSnap: (next: DockSnap) => void;
   commitDesktopBottomHeight: (height: number) => void;
   commitDockPlacement: (mode: DockMode) => void;
@@ -134,8 +137,9 @@ export interface DockShellChrome {
 /**
  * The single owner of dock CHROME — geometry, snap state, placement,
  * drag/resize wiring and the dock.maximize shortcut. Every
- * occupant of the ambient dock (Chat, Home, Activity) reads the SAME instance
- * through `DockShell`; a full-screen Chat placement (`ChatWorkspacePane`
+ * occupant of the legacy ambient dock (Chat or Home) and every region shell
+ * (`ActivityRegionShell`) reads the SAME instance through `DockShell`; a
+ * full-screen Chat placement (`ChatWorkspacePane`
  * outside the ambient dock) gets its own independent instance so cmd+D /
  * cmd+M keep working there too.
  *
@@ -248,11 +252,9 @@ export function useDockShellChrome({
     [setDeviceSetting],
   );
   // Project-deletion cleanup (archive#4525 acceptance: "only an explicit
-  // picker change (or project deletion)" may change the binding). Gated on
-  // `publishesDockSlotClearance` — the same single-writer flag every other
-  // side effect in this hook already uses — so only the one ambient
-  // `DockShell` instance reconciles this; a full-screen placement's own
-  // local instance never fights it.
+  // picker change (or project deletion)" may change the binding). The Chat
+  // shell is the one derived owner of this Chat setting. Other region shells
+  // also publish clearance, so that geometry fact cannot identify the writer.
   //
   // (archive#4525): the original guard was `!isLoading`,
   // which is ALSO true the instant the query settles into an ERROR — and
@@ -268,13 +270,14 @@ export function useDockShellChrome({
     isConfirmedLoaded: projectsConfirmedLoaded,
   } = useProjects();
   useEffect(() => {
-    if (!publishesDockSlotClearance) return;
+    if (!publishesDockSlotClearance || shellOccupant !== 'chat') return;
     if (!activeProjectSlug || !projectsConfirmedLoaded) return;
     const boundProjectStillExists = projectsForBindingCleanup.some(
       (project) => project.slug === activeProjectSlug,
     );
     if (!boundProjectStillExists) setActiveProjectSlug(null);
   }, [
+    shellOccupant,
     publishesDockSlotClearance,
     activeProjectSlug,
     projectsConfirmedLoaded,
@@ -302,29 +305,34 @@ export function useDockShellChrome({
   const setIsDragging = useCallback(
     (value: boolean) => {
       if (draggingRef.current && !value) {
-        // The size persists to the region that was SHOWN, not the shell's
-        // own: a side shell folded to the bottom (useIsMobile.ts
-        // `effectivePlacement`) dragged a height, and its region's size is a
-        // width.
-        if (effectiveDockSlotPlacement === 'bottom') {
-          regionModel?.setRegion('bottom', {
-            size: Math.round(clampDockHeight(dockHeightRef.current)),
-          });
-        } else {
-          regionModel?.setRegion(effectiveDockSlotPlacement, {
-            size: Math.round(clampDockWidth(dockWidthRef.current)),
+        // A region's size is measured along its own edge and persists into
+        // that region (`dockMirrorDiff` mirrors only Chat's into the legacy
+        // dock state). A shell folded to the bottom of a coarse device drags a
+        // height that belongs to no side region, so it persists only when the
+        // rendered edge is the shell's region (#928).
+        const persistedRegion = regionId ?? effectiveDockSlotPlacement;
+        if (persistedRegion === effectiveDockSlotPlacement) {
+          regionModel?.setRegion(persistedRegion, {
+            size:
+              persistedRegion === 'bottom'
+                ? Math.round(clampDockHeight(dockHeightRef.current))
+                : Math.round(clampDockWidth(dockWidthRef.current)),
           });
         }
       }
       draggingRef.current = value;
       setIsDraggingState(value);
     },
-    [effectiveDockSlotPlacement, regionModel],
+    [effectiveDockSlotPlacement, regionId, regionModel],
   );
   const [previousDockHeight, setPreviousDockHeight] = useState(dockHeight);
   const [previousDockOpen, setPreviousDockOpen] = useState(true);
   const [isDragging, setIsDraggingState] = useState(false);
-  const [dockSnap, setDockSnap] = useState<DockSnap>(() => readDockSnap());
+  // `station.chatDock.snap` is Chat's key; other shells start from the default
+  // and keep their snap in memory (see `applyDockSnap`).
+  const [dockSnap, setDockSnap] = useState<DockSnap>(() =>
+    shellOccupant === 'chat' ? readDockSnap() : DEFAULT_DOCK_SNAP,
+  );
   const [liveDragHeight, setLiveDragHeight] = useState<number | null>(null);
   const isCollapsedDragPreview = !readerIsDockOpen && liveDragHeight !== null;
 
@@ -338,24 +346,35 @@ export function useDockShellChrome({
     return parseInt(raw, 10) || DOCK_COLLAPSED_HEIGHT;
   }, [isMobile]);
 
+  const setShellDockState = useCallback(
+    (open: boolean, maximized: boolean) => {
+      if (regionId && regionModel && shellOccupant !== 'chat') {
+        regionModel.setRegion(regionId, { visible: open });
+        return;
+      }
+      setDockState(open, maximized);
+    },
+    [regionId, regionModel, setDockState, shellOccupant],
+  );
+
   const applyDockSnap = useCallback(
     (next: DockSnap) => {
       setDockSnap(next);
-      writeDockSnap(next);
+      if (shellOccupant === 'chat') writeDockSnap(next);
       const px = dockSnapPixels(next, {
         viewportHeight: visualViewport.height,
         toolbarHeight,
         collapsedHeight,
       });
       if (next === 'collapsed') {
-        setDockState(false, false);
+        setShellDockState(false, false);
       } else if (next === 'full') {
         setPreviousDockHeight(dockHeight);
         setDockHeight(px);
-        setDockState(true, true);
+        setShellDockState(true, true);
       } else {
         setDockHeight(px);
-        setDockState(true, false);
+        setShellDockState(true, false);
       }
     },
     [
@@ -363,7 +382,8 @@ export function useDockShellChrome({
       collapsedHeight,
       dockHeight,
       setDockHeight,
-      setDockState,
+      setShellDockState,
+      shellOccupant,
       visualViewport.height,
     ],
   );
@@ -372,9 +392,9 @@ export function useDockShellChrome({
     (height: number) => {
       setDockHeight(height);
       setPreviousDockHeight(height);
-      setDockState(true, false);
+      setShellDockState(true, false);
     },
-    [setDockHeight, setDockState],
+    [setDockHeight, setShellDockState],
   );
 
   const commitDockPlacement = useCallback(
@@ -408,11 +428,17 @@ export function useDockShellChrome({
     const reconciled = snapAfterNavigationRestore(dockSnap);
     if (reconciled) {
       setDockSnap(reconciled);
-      writeDockSnap(reconciled);
+      if (shellOccupant === 'chat') writeDockSnap(reconciled);
     }
     setDockHeight(previousDockHeight);
     collapseMaximizedDock();
-  }, [dockSnap, previousDockHeight, setDockHeight, collapseMaximizedDock]);
+  }, [
+    dockSnap,
+    previousDockHeight,
+    setDockHeight,
+    collapseMaximizedDock,
+    shellOccupant,
+  ]);
 
   const previousPathnameRef = useRef(pathname);
   useEffect(() => {
@@ -518,7 +544,7 @@ export function useDockShellChrome({
     direction: 'horizontal',
     fromLeft: effectiveDockSlotPlacement === 'left',
     onDragStart: () => {
-      if (!readerIsDockOpen) setDockState(true, false);
+      if (!readerIsDockOpen) setShellDockState(true, false);
     },
   });
 
@@ -594,6 +620,11 @@ export function useDockShellChrome({
     visualViewport,
     availableDockSlotPlacements,
     effectiveDockSlotPlacement,
+    surfaceShortcutId:
+      (shellOccupant
+        ? regionModel?.surfaces.get(shellOccupant)?.shortcut.id
+        : undefined) ?? 'dock.toggle',
+    canMaximize: shellOccupant === 'chat',
     applyDockSnap,
     commitDesktopBottomHeight,
     commitDockPlacement,
