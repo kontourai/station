@@ -21,10 +21,14 @@ jobs:
       group: hosted-full-regression-${{ inputs.source_sha }}
       cancel-in-progress: false
     runs-on: ubuntu-22.04
-    # Every phase gets its own fail-closed deadline. Eight ordinary slices can
-    # consume 160 minutes by contract, so the hosted envelope must outlive the
-    # complete 243-minute phase plan rather than interrupt a valid final slice.
-    timeout-minutes: 270
+    # Every phase gets its own fail-closed deadline; their sum is the
+    # canonical 249-minute phase plan (scripts/verification-lanes.mjs
+    # FULL_REGRESSION_TIMEOUT_MS). Setup before the phases start (checkout,
+    # actionlint, dependencies:ci, the 5-minute zsh step, the 20-minute
+    # Chromium step) can add up to ~27 worst-case minutes on its own
+    # per-step deadlines. 300 keeps real margin over both rather than
+    # interrupting a valid final phase slice.
+    timeout-minutes: 300
     steps:
       - name: Validate immutable source identity
         env:

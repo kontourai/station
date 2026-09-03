@@ -60,7 +60,7 @@ describe('promotion full-regression workflow', () => {
 
     const gate = reusable.jobs?.['full-regression'] ?? {};
     expect(gate.uses).toBeUndefined();
-    expect(gate['timeout-minutes']).toBe(270);
+    expect(gate['timeout-minutes']).toBe(300);
     expect(source('full-regression.yml')).not.toContain('timeout-minutes: 150');
     const validate = namedStep(gate, 'Validate immutable source identity');
     expect(validate.run).toContain('^[0-9a-f]{40}$');
