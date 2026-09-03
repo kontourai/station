@@ -54,7 +54,12 @@ vi.mock('../../hooks/useActiveChatSessions', () => ({
   useLaunchChat: () => vi.fn(),
 }));
 
-import { useLayout, useNavigation, useToast } from '@kontourai/station-sdk';
+import {
+  useLayout,
+  useNavigation,
+  useSDK,
+  useToast,
+} from '@kontourai/station-sdk';
 import { SDKAdapter } from '../SDKAdapter';
 
 const paneLayout = {
@@ -93,6 +98,29 @@ function Probe() {
         String toast
       </button>
     </>
+  );
+}
+
+function IdentityProbe({
+  label,
+  onCall,
+}: {
+  label: string;
+  onCall: (value: { pluginName: string; header: string }) => void;
+}) {
+  const sdk = useSDK();
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        onCall({
+          pluginName: sdk.pluginName,
+          header: sdk.getPluginHeaders()['x-station-plugin'],
+        })
+      }
+    >
+      {label}
+    </button>
   );
 }
 
@@ -164,4 +192,52 @@ test('normalizes the documented object-form plugin toast at the shell seam', () 
     'warning',
     321,
   );
+});
+
+test('keeps simultaneous Pane API identities owner-correct across interleaved calls and unmount', () => {
+  const calls: Array<{
+    pane: string;
+    pluginName: string;
+    header: string;
+  }> = [];
+  const record =
+    (pane: string) => (value: { pluginName: string; header: string }) =>
+      calls.push({ pane, ...value });
+  const first = (
+    <SDKAdapter
+      key="first"
+      layout={{ ...paneLayout, slug: 'first-occurrence' }}
+      boundProjectSlug="project-alpha"
+      boundPluginName="plugin-alpha"
+    >
+      <IdentityProbe label="Call first" onCall={record('first')} />
+    </SDKAdapter>
+  );
+  const second = (
+    <SDKAdapter
+      key="second"
+      layout={{ ...paneLayout, slug: 'second-occurrence' }}
+      boundProjectSlug="project-alpha"
+      boundPluginName="plugin-beta"
+    >
+      <IdentityProbe label="Call second" onCall={record('second')} />
+    </SDKAdapter>
+  );
+  const view = render(
+    <>
+      {first}
+      {second}
+    </>,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Call second' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Call first' }));
+  view.rerender(first);
+  fireEvent.click(screen.getByRole('button', { name: 'Call first' }));
+
+  expect(calls).toEqual([
+    { pane: 'second', pluginName: 'plugin-beta', header: 'plugin-beta' },
+    { pane: 'first', pluginName: 'plugin-alpha', header: 'plugin-alpha' },
+    { pane: 'first', pluginName: 'plugin-alpha', header: 'plugin-alpha' },
+  ]);
 });

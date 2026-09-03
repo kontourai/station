@@ -7,7 +7,7 @@ import {
   useEffect,
   useState,
 } from 'react';
-import { _setLayoutContext } from './api';
+import type { PluginApiIdentity } from './api-core';
 
 /**
  * SDK Context - Provides access to all core app contexts and hooks
@@ -18,6 +18,8 @@ import { _setLayoutContext } from './api';
 
 export interface SDKContextValue {
   apiBase: string;
+  /** Exact request identity owned by this SDKProvider boundary. */
+  pluginApiIdentity?: PluginApiIdentity;
 
   // Core contexts (injected by core app)
   contexts: {
@@ -79,17 +81,11 @@ interface LayoutProviderProps {
 
 export function LayoutProvider({
   sdk,
-  layout,
+  layout: _layout,
   project: _project,
   activeLayout: _activeLayout,
   children,
 }: LayoutProviderProps) {
-  const [layoutContextOwner] = useState(() => ({}));
-  // Set layout context for API agent resolution
-  useEffect(() => {
-    return _setLayoutContext(layout, { owner: layoutContextOwner });
-  }, [layout, layoutContextOwner]);
-
   return <SDKProvider value={sdk}>{children}</SDKProvider>;
 }
 

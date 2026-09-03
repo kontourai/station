@@ -126,6 +126,7 @@ export {
   bulkDeleteKnowledgeDocs,
   callTool,
   createChatSession,
+  createPluginApiIdentity,
   deleteKnowledgeDoc,
   fetchAvailableLayouts,
   fetchConfig,

@@ -1,40 +1,29 @@
-import { afterEach, describe, expect, test } from 'vitest';
-import { _getPluginName, _setLayoutContext } from '../api-core';
-
-const firstOwner = {};
-const secondOwner = {};
-
-let releases: Array<() => void> = [];
-
-afterEach(() => {
-  for (const release of releases.reverse()) release();
-  releases = [];
-});
+import { describe, expect, test } from 'vitest';
+import {
+  _getPluginName,
+  _setLayoutContext,
+  createPluginApiIdentity,
+} from '../api-core';
 
 describe('SDK layout compatibility identity', () => {
-  test('keeps plugin identity distinct from the occurrence-shaped layout slug', () => {
-    releases.push(
-      _setLayoutContext(
-        { name: 'Pane', slug: 'instance:project-a:pane-a', tabs: [] },
-        { owner: firstOwner, pluginName: 'acme-plugin' },
-      ),
-    );
-    expect(_getPluginName()).toBe('acme-plugin');
+  test('keeps boundary identities independent from occurrence-shaped layout slugs', () => {
+    const identity = createPluginApiIdentity('acme-plugin');
+    expect(identity.pluginName).toBe('acme-plugin');
+    expect(identity.getHeaders()['x-station-plugin']).toBe('acme-plugin');
+    expect(
+      identity.getHeaders({ 'x-station-plugin': 'different-plugin' })[
+        'x-station-plugin'
+      ],
+    ).toBe('acme-plugin');
   });
 
-  test('an older provider cleanup cannot clear a newer owner generation', () => {
-    const releaseFirst = _setLayoutContext(
+  test('legacy layout context never becomes ambient plugin request identity', () => {
+    const release = _setLayoutContext(
       { name: 'First', slug: 'first-occurrence', tabs: [] },
-      { owner: firstOwner, pluginName: 'first-plugin' },
+      { owner: {}, pluginName: 'first-plugin' },
     );
-    const releaseSecond = _setLayoutContext(
-      { name: 'Second', slug: 'second-occurrence', tabs: [] },
-      { owner: secondOwner, pluginName: 'second-plugin' },
-    );
-    releases.push(releaseFirst, releaseSecond);
-    releaseFirst();
-    expect(_getPluginName()).toBe('second-plugin');
-    releaseSecond();
+    expect(_getPluginName()).toBe('');
+    release();
     expect(_getPluginName()).toBe('');
   });
 });

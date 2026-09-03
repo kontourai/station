@@ -6,24 +6,23 @@ import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
 
 let _apiBase = '';
-let _currentPluginName = '';
-let _currentLayoutOwner: object | undefined;
+
+export interface PluginApiIdentity {
+  readonly pluginName: string;
+  getHeaders(extraHeaders?: Record<string, string>): Record<string, string>;
+}
 
 export function _setApiBase(apiBase: string) {
   _apiBase = apiBase;
 }
 
 export function _setLayoutContext(
-  layout: LayoutDefinition | undefined,
-  options: { owner?: object; pluginName?: string } = {},
+  _layout: LayoutDefinition | undefined,
+  _options: { owner?: object; pluginName?: string } = {},
 ) {
-  _currentPluginName = options.pluginName ?? layout?.slug ?? '';
-  _currentLayoutOwner = options.owner;
-  return () => {
-    if (!options.owner || _currentLayoutOwner !== options.owner) return;
-    _currentPluginName = '';
-    _currentLayoutOwner = undefined;
-  };
+  // Compatibility-only no-op. A module global cannot identify simultaneous
+  // Pane owners; SDKProvider now supplies a boundary-local PluginApiIdentity.
+  return () => {};
 }
 
 export function _resolveAgent(agentSlug: string): AgentId {
@@ -31,7 +30,9 @@ export function _resolveAgent(agentSlug: string): AgentId {
 }
 
 export function _getPluginName(): string {
-  return _currentPluginName;
+  // Legacy imperative callers remain deliberately unqualified rather than
+  // borrowing whichever plugin Pane happened to render most recently.
+  return '';
 }
 
 export async function _getApiBase(): Promise<string> {
@@ -49,11 +50,21 @@ export async function _getApiBase(): Promise<string> {
 
 export function getPluginHeaders(
   extraHeaders?: Record<string, string>,
+  pluginName = '',
 ): Record<string, string> {
   return {
-    [STATION_PLUGIN_HEADER]: _getPluginName(),
     ...extraHeaders,
+    [STATION_PLUGIN_HEADER]: pluginName,
   };
+}
+
+export function createPluginApiIdentity(pluginName: string): PluginApiIdentity {
+  const stablePluginName = pluginName;
+  return Object.freeze({
+    pluginName: stablePluginName,
+    getHeaders: (extraHeaders?: Record<string, string>) =>
+      getPluginHeaders(extraHeaders, stablePluginName),
+  });
 }
 
 export { apiErrorMessage } from './client/api-error-message';

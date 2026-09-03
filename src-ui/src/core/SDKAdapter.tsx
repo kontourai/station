@@ -1,13 +1,13 @@
 import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
 import {
   _setApiBase,
-  _setLayoutContext,
   _setProviderFunctions,
+  createPluginApiIdentity,
   SDKProvider,
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useMemo } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
@@ -55,16 +55,15 @@ export function SDKAdapter({
   // Get API base from the single source of truth
   const { apiBase } = useApiBase();
 
-  // Set layout context synchronously so plugin tool calls resolve correctly on first render
-  const layoutContextOwner = useRef<object>({}).current;
-  const releaseLayoutContext = useRef<() => void>(() => {});
   _setApiBase(apiBase);
-  releaseLayoutContext.current = _setLayoutContext(layout as any, {
-    owner: layoutContextOwner,
-    ...(boundPluginName ? { pluginName: boundPluginName } : {}),
-  });
+  const pluginApiIdentity = useMemo(
+    () =>
+      boundPluginName ? createPluginApiIdentity(boundPluginName) : undefined,
+    [boundPluginName],
+  );
 
-  // Set API base and layout context for SDK API functions
+  // Configure process-wide host functions only. Plugin request identity stays
+  // on the SDKProvider value below and is never installed as ambient state.
   useEffect(() => {
     _setProviderFunctions({
       getProvider,
@@ -73,10 +72,6 @@ export function SDKAdapter({
       registerProvider,
       configureProvider,
     });
-
-    return () => {
-      releaseLayoutContext.current();
-    };
   }, []);
 
   // Get all the core contexts
@@ -148,6 +143,7 @@ export function SDKAdapter({
   // Create SDK context value with injected contexts
   const sdkValue = {
     apiBase,
+    ...(pluginApiIdentity ? { pluginApiIdentity } : {}),
     contexts: {
       agents: { useAgents: () => agents },
       layouts: { useLayouts: () => layouts } as {
