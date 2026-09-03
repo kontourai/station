@@ -126,7 +126,7 @@ export function ProviderSettingsView({
   useEffect(() => {
     if (!createdConnectionId || dirty) return;
     setCreatedConnectionId(null);
-    onNavigate({ type: 'connections-provider-edit', id: createdConnectionId });
+    onNavigate({ type: 'connections-model-edit', id: createdConnectionId });
   }, [createdConnectionId, dirty, onNavigate]);
 
   function guardedNavigate(view: NavigationView) {
@@ -285,7 +285,7 @@ export function ProviderSettingsView({
       setShowDeleteModal(false);
       setForm(null);
       setIsNew(false);
-      onNavigate({ type: 'connections-providers' });
+      onNavigate({ type: 'connections-models' });
     },
     onError: (err: Error) => {
       setShowDeleteModal(false);
@@ -298,7 +298,7 @@ export function ProviderSettingsView({
     // same-row click is not navigation and must not trip the unsaved guard
     // ( 2 finding).
     if (id === selectedProviderId) return;
-    guardedNavigate({ type: 'connections-provider-edit', id });
+    guardedNavigate({ type: 'connections-model-edit', id });
   }
 
   function handleAddWithType(
@@ -334,7 +334,7 @@ export function ProviderSettingsView({
     // `new` is a stable identity for as long as the draft exists;
     // `saveMutation.onSuccess` moves to the persisted id once the server can
     // answer for it.
-    onNavigate({ type: 'connections-provider-edit', id: 'new' });
+    onNavigate({ type: 'connections-model-edit', id: 'new' });
   }
 
   function setField<K extends keyof Omit<ProviderConnection, 'id'>>(
@@ -501,7 +501,7 @@ export function ProviderSettingsView({
         selectedProviderId && !isCreatingSelection
           ? {
               'connections / providers': () =>
-                guardedNavigate({ type: 'connections-providers' }),
+                guardedNavigate({ type: 'connections-models' }),
             }
           : undefined
       }
@@ -516,7 +516,7 @@ export function ProviderSettingsView({
       onDeselect={() => {
         guard(() => {
           setForm(null);
-          onNavigate({ type: 'connections-providers' });
+          onNavigate({ type: 'connections-models' });
         });
       }}
       onSearch={setSearch}
@@ -628,18 +628,18 @@ export function ProviderSettingsView({
       {isCreatingSelection && !form ? (
         <ProviderTypePicker
           onAdd={handleAddWithType}
-          onCancel={() => guardedNavigate({ type: 'connections-providers' })}
+          onCancel={() => guardedNavigate({ type: 'connections-models' })}
           agentChoices={agentChoices}
           commandChoices={commandChoices}
           onChooseAgent={(connection) =>
             guardedNavigate({
-              type: 'connections-runtime-edit',
+              type: 'connections-engine-edit',
               id: connection.id,
             })
           }
           onChooseCommand={(entry) =>
             guardedNavigate({
-              type: 'connections-acp-new',
+              type: 'connections-engine-new',
               providerId: entry === 'custom' ? 'custom' : entry.id,
             })
           }
