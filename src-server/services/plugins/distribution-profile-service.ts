@@ -251,6 +251,12 @@ function assertSafeId(value: string, label: string): void {
   }
 }
 
+function assertPluginName(value: string): void {
+  if (!isCanonicalPluginId(value)) {
+    throw new Error('Plugin name must satisfy Agent Plugins identity rules');
+  }
+}
+
 function assertSafeCatalogId(value: string): void {
   if (!LAYOUT_CATALOG_ITEM_ID_PATTERN.test(value)) {
     throw new Error(`Invalid layout catalog item id: ${value || '(empty)'}`);
@@ -474,7 +480,7 @@ export class DistributionProfileService {
   }
 
   getPluginManifest(pluginName: string): PluginManifest | undefined {
-    assertSafeId(pluginName, 'Plugin name');
+    assertPluginName(pluginName);
     if (!this.pluginIsAllowed(pluginName)) return undefined;
     try {
       return readPluginManifestFile(this.projectHomeDir, pluginName).manifest;
@@ -565,7 +571,7 @@ export class DistributionProfileService {
     for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
       if (
         !entry.isDirectory() ||
-        !SAFE_ID.test(entry.name) ||
+        !isCanonicalPluginId(entry.name) ||
         !this.pluginIsAllowed(entry.name)
       ) {
         continue;
@@ -586,7 +592,7 @@ export class DistributionProfileService {
   }
 
   private readPluginLayout(pluginName: string): PluginLayoutEntry | null {
-    assertSafeId(pluginName, 'Plugin name');
+    assertPluginName(pluginName);
     let parsed: ParsedPluginLayout;
     try {
       parsed = readPluginLayoutFiles(this.projectHomeDir, pluginName);
