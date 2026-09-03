@@ -242,4 +242,39 @@ describe('rejected installed plugins', () => {
     screen.getByRole('button', { name: 'Reload plugins' }).click();
     expect(reloadRejectedPlugin).toHaveBeenCalledOnce();
   });
+
+  test('renders a failed recovery message on the rejected detail', () => {
+    const rejected = {
+      status: 'rejected' as const,
+      name: 'broken-plugin',
+      displayName: 'broken-plugin',
+      rejection: {
+        code: 'malformed-json' as const,
+        reason: 'plugin.json contains malformed JSON.',
+        recovery: {
+          kind: 'repair-manifest' as const,
+          instruction: 'Repair plugin.json, then choose Reload plugins.',
+        },
+      },
+    };
+    viewModel = baseViewModel({
+      plugins: [rejected],
+      filtered: [rejected],
+      items: [],
+      selectedPlugin: 'rejected:broken-plugin',
+      selected: rejected,
+      message: {
+        type: 'error',
+        text: 'Plugins were not reloaded: registry is still unavailable',
+      },
+    });
+
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    expect(
+      screen.getByText(
+        'Plugins were not reloaded: registry is still unavailable',
+      ),
+    ).toBeTruthy();
+  });
 });

@@ -166,6 +166,24 @@ describe('usePluginManagementViewModel', () => {
     );
   });
 
+  test('keeps a client-registry reload failure visible and does not refresh the collection', async () => {
+    mocks.reloadClientRegistry.mockRejectedValueOnce(
+      new Error('registry is still unavailable'),
+    );
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.refetchPlugins).not.toHaveBeenCalled();
+    expect(result.current.message).toEqual({
+      type: 'error',
+      text: 'Plugins were not reloaded: registry is still unavailable',
+    });
+  });
+
   test('uses host approval copy only for trusted pending permissions', () => {
     expect(
       consentFailureMessage('Provider Kit', [

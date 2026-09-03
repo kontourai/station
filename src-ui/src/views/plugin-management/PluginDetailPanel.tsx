@@ -110,6 +110,11 @@ export function PluginDetailPanel({
   if (isRejectedPlugin(selected)) {
     return (
       <div className="detail-panel">
+        {message && (
+          <div className={`plugins__message plugins__message--${message.type}`}>
+            {message.text}
+          </div>
+        )}
         <DetailHeader
           title={selected.displayName}
           subtitle="Installed files are present, but Station rejected plugin.json."

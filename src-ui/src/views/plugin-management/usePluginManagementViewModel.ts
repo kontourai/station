@@ -187,7 +187,9 @@ export function usePluginManagementViewModel() {
     setMessage(null);
     try {
       await reloadPluginsMutation.mutateAsync();
-      await reloadClientPluginRegistry();
+      // Recovery is one ordered operation. A stale client registry means the
+      // repaired package is not ready even if the server reload succeeded.
+      await pluginRegistry.reload();
       await refetchPlugins();
     } catch (error) {
       setMessage({
