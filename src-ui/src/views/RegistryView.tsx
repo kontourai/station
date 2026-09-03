@@ -9,6 +9,7 @@ import {
   useRegistryItemsQuery,
   useRegistryLayoutActionMutation,
   useRegistrySkillActionMutation,
+  useReloadPluginsMutation,
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
@@ -92,7 +93,8 @@ export function RegistryView({
     () => new Set(),
   );
   const previewMutation = usePluginRegistryPreviewMutation();
-  const { requestInstallConsent } = usePermissions();
+  const reloadPluginsMutation = useReloadPluginsMutation();
+  const { requestConsent, requestInstallConsent } = usePermissions();
   const pluginRegistryStatus = useSyncExternalStore(
     pluginRegistry.subscribe,
     pluginRegistry.getLoadStatus,
@@ -341,12 +343,33 @@ export function RegistryView({
     const baseCallbacks = actionCallbacks(tab, item, itemId, false);
     const callbacks = {
       onError: baseCallbacks.onError,
-      onSuccess: () => {
+      onSuccess: async () => {
         baseCallbacks.onSuccess();
+        void pluginRegistry.reload();
+        for (const dependency of data.dependencies ?? []) {
+          const dependencyPending = dependency.consent?.pendingConsent ?? [];
+          if (dependencyPending.length === 0) continue;
+          const approved = await requestConsent(
+            dependency.id,
+            dependency.id,
+            dependencyPending,
+          );
+          if (!approved) {
+            setMessage(
+              `${displayName} is installed, but dependency ${dependency.id} still requires host approval.`,
+            );
+            break;
+          }
+        }
+        await reloadPluginsMutation.mutateAsync().catch((error) => {
+          setMessage(
+            `Installed ${displayName}, but plugin activation could not be refreshed: ${error instanceof Error ? error.message : 'unknown error'}`,
+          );
+        });
         // The server announces the install over SSE too; reloading here makes
         // the new layout components register without depending on that
         // connection being up.
-        void pluginRegistry.reload();
+        await pluginRegistry.reload();
       },
     };
     const variables = {

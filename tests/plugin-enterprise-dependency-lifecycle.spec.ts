@@ -56,6 +56,10 @@ test.describe
         name: string;
         hasSettings: boolean;
         providers?: Array<{ type: string; module: string }>;
+        permissions?: {
+          granted: string[];
+          missing: Array<{ permission: string }>;
+        };
       }>;
       expect(plugins.map((plugin) => plugin.name)).toEqual(
         expect.arrayContaining(['enterprise-layout', 'shared-providers']),
@@ -67,6 +71,12 @@ test.describe
         providers: expect.arrayContaining([
           { type: 'auth', module: './providers/oauth-auth.js' },
         ]),
+        permissions: {
+          granted: expect.not.arrayContaining(['providers.register']),
+          missing: expect.arrayContaining([
+            expect.objectContaining({ permission: 'providers.register' }),
+          ]),
+        },
       });
       const dependencySettings = await authenticatedRequest.get(
         `${API}/api/plugins/shared-providers/settings`,

@@ -22,6 +22,7 @@ import {
 import { ContextSafetyError } from '../../../services/orchestration/context-safety.js';
 import { DistributionProfileService } from '../../../services/plugins/distribution-profile-service.js';
 import {
+  computePluginContentDigest,
   findPluginContentLockCycleError,
   forgetPluginContentDigest,
   PluginContentLockCycleError,
@@ -2512,6 +2513,8 @@ describe('removeDependencyTreesCreatedByThisInstall lock timeout', () => {
 
     release();
     await holder;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(existsSync(join(pluginsDir, 'stuck-dep', 'plugin.json'))).toBe(true);
   });
 });
 
@@ -3205,7 +3208,11 @@ describe('plugin install consent gate (station#4288)', () => {
   });
 
   describe('lifecycle-bearing plugin dependencies', () => {
-    function writeProviderDependency(root: string, name = 'shared-providers') {
+    function writeProviderDependency(
+      root: string,
+      name = 'shared-providers',
+      providerType = 'auth',
+    ) {
       const source = join(root, name);
       writePlugin(source, {
         name,
@@ -3218,7 +3225,7 @@ describe('plugin install consent gate (station#4288)', () => {
             default: 'https://example.test',
           },
         ],
-        providers: [{ type: 'auth', module: './provider.js' }],
+        providers: [{ type: providerType, module: './provider.js' }],
       });
       writeFileSync(
         join(source, 'provider.js'),
@@ -3241,7 +3248,7 @@ describe('plugin install consent gate (station#4288)', () => {
       };
     }
 
-    test('installs relative provider/settings dependencies once and cleans owned lifecycle state on uninstall', async () => {
+    test('installs relative provider/settings dependencies once with trusted providers pending and cleans owned lifecycle state on uninstall', async () => {
       const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
       cleanupDirs.push(root);
       const dependencySource = writeProviderDependency(root);
@@ -3284,11 +3291,10 @@ describe('plugin install consent gate (station#4288)', () => {
       expect(readPluginGrantState(root, 'shared-providers').granted).toEqual(
         [],
       );
-      expect(
-        replacePluginProvidersForSource.mock.calls.filter(
-          ([source]) => source === 'shared-providers',
-        ),
-      ).toHaveLength(1);
+      expect(replacePluginProvidersForSource).toHaveBeenCalledWith(
+        'shared-providers',
+        [],
+      );
 
       await uninstallInstalledPlugin('enterprise-layout', installDeps);
 
@@ -3341,6 +3347,49 @@ describe('plugin install consent gate (station#4288)', () => {
       );
     });
 
+    test('refuses a relative dependency source outside the parent package root', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(join(root, 'outside'));
+      const parentSource = join(root, 'packages', 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [
+          { id: 'shared-providers', source: '../../outside/shared-providers' },
+        ],
+      });
+
+      await expect(
+        installPluginFromSource(parentSource, [], deps(root), {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        }),
+      ).rejects.toThrow(/relative source escapes its allowed package root/);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+    });
+
+    test('refuses a symlinked relative dependency source', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(join(root, 'outside'));
+      const packages = join(root, 'packages');
+      const parentSource = join(packages, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [
+          { id: 'shared-providers', source: '../shared-providers' },
+        ],
+      });
+      symlinkSync(dependencySource, join(packages, 'shared-providers'), 'dir');
+
+      await expect(
+        installPluginFromSource(parentSource, [], deps(root), {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        }),
+      ).rejects.toThrow(/relative source must be a physical directory/);
+    });
+
     test('rejects a dependency provider collision before grants or bytes land', async () => {
       const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
       cleanupDirs.push(root);
@@ -3376,6 +3425,34 @@ describe('plugin install consent gate (station#4288)', () => {
       );
     });
 
+    test('allows additive dependency providers to coexist', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      writePlugin(join(root, 'plugins', 'existing-provider'), {
+        name: 'existing-provider',
+        version: '1.0.0',
+        providers: [{ type: 'agentRegistry', module: './provider.js' }],
+      });
+      const dependencySource = writeProviderDependency(
+        root,
+        'shared-providers',
+        'agentRegistry',
+      );
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+
+      await expect(
+        installPluginFromSource(parentSource, [], deps(root), {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        }),
+      ).resolves.toMatchObject({ success: true });
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+    });
+
     test('preserves a dependency that was installed separately', async () => {
       const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
       cleanupDirs.push(root);
@@ -3400,6 +3477,163 @@ describe('plugin install consent gate (station#4288)', () => {
       expect(readPluginGrantState(root, 'shared-providers').granted).toEqual(
         [],
       );
+    });
+
+    test('rechecks owned dependency bytes after acquiring its content lock', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const installDeps = deps(root);
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const holder = withPluginContentLock(
+        join(root, 'plugins'),
+        'shared-providers',
+        async () => {
+          await held;
+          writeFileSync(
+            join(root, 'plugins', 'shared-providers', 'changed-after-lock.txt'),
+            'replacement bytes',
+          );
+        },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const removing = uninstallInstalledPlugin(
+        'enterprise-layout',
+        installDeps,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      release();
+      await holder;
+      await removing;
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+    });
+
+    test('rejects a forged ownership record outside the declared dependency graph', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const installDeps = deps(root);
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      writePlugin(join(root, 'plugins', 'unrelated-plugin'), {
+        name: 'unrelated-plugin',
+        version: '1.0.0',
+      });
+      const unrelatedDigest = computePluginContentDigest(
+        join(root, 'plugins'),
+        'unrelated-plugin',
+      );
+      writeFileSync(
+        join(
+          root,
+          'plugins',
+          'enterprise-layout',
+          '.station-dependency-ownership.json',
+        ),
+        JSON.stringify({
+          version: 1,
+          dependencies: [
+            { id: 'unrelated-plugin', contentDigest: unrelatedDigest },
+          ],
+        }),
+      );
+
+      await expect(
+        uninstallInstalledPlugin('enterprise-layout', installDeps),
+      ).rejects.toThrow(/outside its installed dependency graph/);
+      expect(existsSync(join(root, 'plugins', 'unrelated-plugin'))).toBe(true);
+      expect(existsSync(join(root, 'plugins', 'enterprise-layout'))).toBe(true);
+    });
+
+    test('preserves a dependency consumed transitively by another installed plugin', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const leafSource = join(root, 'transitive-leaf');
+      writePlugin(leafSource, { name: 'transitive-leaf', version: '1.0.0' });
+      const middleSource = join(root, 'middle-plugin');
+      writePlugin(middleSource, {
+        name: 'middle-plugin',
+        version: '1.0.0',
+        dependencies: [{ id: 'transitive-leaf', source: '../transitive-leaf' }],
+      });
+      const firstSource = join(root, 'first-parent');
+      writePlugin(firstSource, {
+        name: 'first-parent',
+        version: '1.0.0',
+        dependencies: [{ id: 'middle-plugin', source: '../middle-plugin' }],
+      });
+      const installDeps = deps(root);
+      await installPluginFromSource(firstSource, [], installDeps, {
+        consent: await approvedConsent(firstSource, root, [
+          'middle-plugin',
+          'transitive-leaf',
+        ]),
+      });
+      const secondSource = join(root, 'second-parent');
+      writePlugin(secondSource, {
+        name: 'second-parent',
+        version: '1.0.0',
+        dependencies: [{ id: 'middle-plugin', source: '../middle-plugin' }],
+      });
+      await installPluginFromSource(secondSource, [], installDeps, {
+        consent: await approvedConsent(secondSource, root, ['middle-plugin']),
+      });
+
+      await uninstallInstalledPlugin('first-parent', installDeps);
+
+      expect(existsSync(join(root, 'plugins', 'middle-plugin'))).toBe(true);
+      expect(existsSync(join(root, 'plugins', 'transitive-leaf'))).toBe(true);
+      expect(existsSync(join(root, 'plugins', 'second-parent'))).toBe(true);
+    });
+
+    test('restores removed dependencies when parent uninstall fails after cleanup', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const installDeps = deps(root);
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      const failingDeps = {
+        ...installDeps,
+        eventBus: {
+          emit: () => {
+            throw new Error('event publication failed');
+          },
+        },
+      };
+
+      await expect(
+        uninstallInstalledPlugin('enterprise-layout', failingDeps),
+      ).rejects.toThrow('event publication failed');
+      expect(existsSync(join(root, 'plugins', 'enterprise-layout'))).toBe(true);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
     });
   });
 });

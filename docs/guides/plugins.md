@@ -794,11 +794,15 @@ Plugins can declare dependencies on other plugins. The server resolves and insta
 
 - If `source` is provided and the dependency isn't installed, it's cloned and installed automatically
 - Relative dependency sources resolve from the declaring local plugin directory
+  but must remain inside its physical sibling package root; traversal and
+  symlinked ancestors are refused
 - If no `source`, the server tries the configured registry
 - Dependencies are resolved recursively (cycle detection included)
 - `station plugin preview <source>` shows dependency resolution status, exact content digest, and dependency-specific permissions before install
-- Provider/settings-only dependencies use the canonical plugin lifecycle. Station records which dependency trees the parent created, rolls their grants/providers/bytes back with a failed parent install, and removes them with the parent unless another installed plugin references them or their content changed. A dependency that already existed is never adopted for deletion.
+- Provider/settings-only dependencies use the canonical plugin lifecycle. Station records which dependency trees the parent created, rolls their grants/providers/bytes back with a failed parent install, and removes them with the parent unless another installed plugin references them directly or transitively, or their lock-protected content changed. A dependency that already existed is never adopted for deletion, and a failed parent uninstall restores every dependency it already removed.
 - Trusted dependency permissions such as `providers.register` remain pending for the separate host-owned approval surface; dependency installation does not downgrade that authority.
+  The Plugins and Registry install flows route each installed dependency through
+  that existing host approval before claiming its providers are active.
 
 ## Installation Flow
 

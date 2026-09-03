@@ -8,14 +8,28 @@ import {
   realpathSync,
   rmSync,
 } from 'node:fs';
-import { basename, isAbsolute, join, resolve, sep } from 'node:path';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import type {
   InstallResult,
   RegistryItem,
 } from '@kontourai/station-contracts/catalog';
-import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import {
+  isCanonicalPluginId,
+  type PluginManifest,
+} from '@kontourai/station-contracts/plugin';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
-import { withPluginContentLock } from '../../services/plugins/plugin-content-integrity.js';
+import {
+  computePluginContentDigest,
+  withPluginContentLock,
+} from '../../services/plugins/plugin-content-integrity.js';
 import { derivePluginConsentBasis } from '../../services/plugins/plugin-install-consent.js';
 import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
@@ -145,17 +159,51 @@ function assertSupportedPluginSource(source: string): void {
 export function resolvePluginDependencySource(
   dependency: { id: string; source?: string },
   parentSourceDir: string,
+  allowedLocalRoot: string = dirname(resolve(parentSourceDir)),
 ): { id: string; source?: string } {
-  if (
-    !dependency.source ||
-    shouldPreserveDependencySource(dependency.source) ||
-    dangerousProtocolOrGitSource(parentSourceDir)
-  ) {
+  if (!dependency.source || shouldPreserveDependencySource(dependency.source)) {
     return dependency;
+  }
+  if (dangerousProtocolOrGitSource(parentSourceDir)) {
+    throw new Error(
+      `Plugin dependency '${dependency.id}' uses a relative source under a non-local parent source`,
+    );
+  }
+  const source = resolve(parentSourceDir, dependency.source);
+  const root = resolve(allowedLocalRoot);
+  const sourceRelative = relative(root, source);
+  if (
+    sourceRelative === '' ||
+    sourceRelative.startsWith('..') ||
+    isAbsolute(sourceRelative)
+  ) {
+    throw new Error(
+      `Plugin dependency '${dependency.id}' relative source escapes its allowed package root`,
+    );
+  }
+  let current = root;
+  for (const segment of sourceRelative.split(sep)) {
+    if (existsSync(current)) {
+      const status = lstatSync(current);
+      if (status.isSymbolicLink() || !status.isDirectory()) {
+        throw new Error(
+          `Plugin dependency '${dependency.id}' relative source has a non-directory or symbolic-link ancestor`,
+        );
+      }
+    }
+    current = join(current, segment);
+  }
+  if (existsSync(current)) {
+    const status = lstatSync(current);
+    if (status.isSymbolicLink() || !status.isDirectory()) {
+      throw new Error(
+        `Plugin dependency '${dependency.id}' relative source must be a physical directory`,
+      );
+    }
   }
   return {
     ...dependency,
-    source: resolve(parentSourceDir, dependency.source),
+    source,
   };
 }
 
@@ -178,7 +226,7 @@ function shouldPreserveDependencySource(source: string): boolean {
 }
 
 function assertPluginDependencyId(id: string): void {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id)) {
+  if (!isCanonicalPluginId(id)) {
     throw new Error(`Invalid plugin dependency id: ${id}`);
   }
 }
@@ -530,6 +578,7 @@ export async function resolvePluginDependencies(
   logger: Logger,
   seen: Set<string> = new Set(),
   parentSourceDir: string = pluginsDir,
+  allowedLocalRoot: string = dirname(resolve(parentSourceDir)),
 ): Promise<ResolvedPluginDependency[]> {
   const dependencies: ResolvedPluginDependency[] = [];
   if (!manifest.dependencies?.length) return dependencies;
@@ -545,6 +594,7 @@ export async function resolvePluginDependencies(
     const resolvedDependency = resolvePluginDependencySource(
       dependency,
       parentSourceDir,
+      allowedLocalRoot,
     );
 
     const dependencyDir = join(pluginsDir, dependency.id);
@@ -685,6 +735,7 @@ export async function resolvePluginDependencies(
             !dangerousProtocolOrGitSource(resolvedDependency.source)
             ? resolvedDependency.source
             : dependencyDir,
+          allowedLocalRoot,
         )),
       );
     }
@@ -782,6 +833,8 @@ export async function installPluginDependency(
   createdPluginTrees: Set<string> = new Set(),
   approvedIds?: ReadonlySet<string>,
   lifecycle?: PluginDependencyLifecycle,
+  allowedLocalRoot?: string,
+  createdPluginDigests: Map<string, string> = new Map(),
 ): Promise<PluginDependencyInstallResult> {
   try {
     assertPluginDependencyId(dependency.id);
@@ -879,6 +932,7 @@ export async function installPluginDependency(
           const resolvedTransitive = resolvePluginDependencySource(
             transitive,
             dependencySource,
+            allowedLocalRoot,
           );
           const transitiveResult = await installPluginDependency(
             resolvedTransitive,
@@ -890,6 +944,8 @@ export async function installPluginDependency(
             createdPluginTrees,
             approvedIds,
             lifecycle,
+            allowedLocalRoot,
+            createdPluginDigests,
           );
           if (!transitiveResult.success) {
             throw new Error(
@@ -960,6 +1016,16 @@ export async function installPluginDependency(
             }
             // Created here and left standing: the caller may have to undo it.
             createdPluginTrees.add(dependency.id);
+            const installedDigest = computePluginContentDigest(
+              pluginsDir,
+              dependency.id,
+            );
+            if (!installedDigest) {
+              throw new Error(
+                `Plugin dependency '${dependency.id}' could not bind rollback ownership to installed bytes`,
+              );
+            }
+            createdPluginDigests.set(dependency.id, installedDigest);
             return { success: true };
           },
         );
@@ -1060,6 +1126,8 @@ export async function installPluginDependency(
             createdPluginTrees,
             approvedIds,
             lifecycle,
+            allowedLocalRoot,
+            createdPluginDigests,
           );
           if (!transitiveResult.success) {
             throw new Error(
@@ -1106,6 +1174,17 @@ export async function installPluginDependency(
       }
       // Created here and left standing: the caller may have to undo it.
       createdPluginTrees.add(dependency.id);
+      const installedDigest = computePluginContentDigest(
+        pluginsDir,
+        dependency.id,
+      );
+      if (!installedDigest) {
+        return {
+          success: false,
+          error: `Plugin dependency '${dependency.id}' could not bind rollback ownership to installed bytes`,
+        };
+      }
+      createdPluginDigests.set(dependency.id, installedDigest);
       return { success: true };
     });
   } catch (error: unknown) {

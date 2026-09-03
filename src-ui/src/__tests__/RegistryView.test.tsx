@@ -163,6 +163,7 @@ const staleAfterMutationTabs = new Set<string>();
 const installedErrorTabs = new Set<string>();
 const reconciledRefetchTabs = new Set<string>();
 const refetchInstalled = vi.fn();
+const reloadPlugins = vi.fn(async () => undefined);
 const pluginRegistryListeners = new Set<() => void>();
 let pluginRegistryStatus: {
   state: 'ready' | 'degraded';
@@ -226,6 +227,7 @@ vi.mock('@kontourai/station-sdk', () => ({
       );
     },
   }),
+  useReloadPluginsMutation: () => ({ mutateAsync: reloadPlugins }),
   useRegistryItemsQuery: (tab: string) => ({
     data: emptyTabs.has(tab)
       ? []
@@ -263,6 +265,7 @@ vi.mock('../platform/PlatformProfileContext', () => ({
 
 const pluginRegistryReload = vi.fn();
 const requestInstallConsent = vi.fn(async () => true);
+const requestConsent = vi.fn(async () => true);
 
 vi.mock('../core/PluginRegistry', () => ({
   pluginRegistry: {
@@ -277,6 +280,7 @@ vi.mock('../core/PluginRegistry', () => ({
 
 vi.mock('../core/PermissionManager', () => ({
   usePermissions: () => ({
+    requestConsent,
     requestInstallConsent,
   }),
 }));

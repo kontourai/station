@@ -336,6 +336,27 @@ export function usePluginManagementViewModel() {
               return;
             }
           }
+          for (const dependency of basis.dependencies ?? []) {
+            const dependencyPending = dependency.consent?.pendingConsent ?? [];
+            if (dependencyPending.length === 0) continue;
+            const approved = await requestConsent(
+              dependency.id,
+              dependency.id,
+              dependencyPending,
+            );
+            if (!approved) {
+              setMessage({
+                type: 'error',
+                text: consentFailureMessage(
+                  `Dependency ${dependency.id}`,
+                  dependencyPending,
+                ),
+              });
+              await reloadPluginsMutation.mutateAsync().catch(() => {});
+              await reloadClientPluginRegistry();
+              return;
+            }
+          }
 
           setInstallSource('');
           setMessage({

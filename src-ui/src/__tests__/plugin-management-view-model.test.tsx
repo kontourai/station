@@ -300,6 +300,18 @@ describe('usePluginManagementViewModel', () => {
         },
       ],
     });
+    mocks.requestConsent.mockResolvedValue(true);
+    await act(async () => {
+      await mocks.installOnSuccess?.({
+        plugin: { name: 'network-kit', displayName: 'Network Kit' },
+        permissions: { pendingConsent: [] },
+      });
+    });
+    expect(mocks.requestConsent).toHaveBeenCalledWith(
+      'shared-providers',
+      'shared-providers',
+      [{ permission: 'providers.register', tier: 'trusted' }],
+    );
   });
 
   test('will not install a source it has no preview to approve against', async () => {
