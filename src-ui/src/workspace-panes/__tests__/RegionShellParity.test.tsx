@@ -575,6 +575,9 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     await waitFor(() =>
       expect(activityShell.classList.contains('is-collapsed')).toBe(true),
     );
+    // Asserted mid-cycle: after the expand below the key would read 'half'
+    // again even if Activity had written it.
+    expect(window.localStorage.getItem('station.chatDock.snap')).toBe('half');
     fireEvent.click(within(activityShell).getByLabelText('Show dock region'));
     await waitFor(() =>
       expect(activityShell.classList.contains('is-collapsed')).toBe(false),

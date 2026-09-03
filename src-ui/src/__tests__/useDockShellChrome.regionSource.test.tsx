@@ -361,8 +361,9 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.chrome.canMaximize).toBe(false);
 
     act(() => result.current.chrome.applyDockSnap('collapsed'));
+    expect(result.current.chrome.dockSnap).toBe('collapsed');
+    expect(localStorage.getItem('station.chatDock.snap')).toBe('half');
     act(() => result.current.chrome.applyDockSnap('half'));
-
     expect(localStorage.getItem('station.chatDock.snap')).toBe('half');
   });
 
