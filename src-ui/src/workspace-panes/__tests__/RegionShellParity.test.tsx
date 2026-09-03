@@ -479,7 +479,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
 
   test('the default Bottom swap relocates Chat and mirrors its new region', async () => {
     seedPlacement('bottom', 'open');
-    await renderShellsSettled();
+    const chatShell = await renderShellsSettled();
     const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
 
     fireEvent.click(
@@ -502,6 +502,8 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     await waitFor(() =>
       expect(document.querySelector('#chat-dock')).not.toBeNull(),
     );
+    expect(chatShell.isConnected).toBe(true);
+    expect(chatShell.dataset.region).toBe('right');
     await waitFor(() =>
       expect(navigationStore.getSnapshot().dockMode).toBe('right'),
     );

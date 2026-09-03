@@ -204,7 +204,7 @@ describe('RegionToolbarControls', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  test('an occupied region exposes a keyboard-reachable swap menu that dismisses on Escape and outside pointerdown', () => {
+  test('an occupied region exposes a keyboard-reachable swap menu that dismisses on Escape and a backdrop click, not on pointerdown', () => {
     render(<RegionToolbarControls />);
 
     const trigger = screen.getByRole('button', {

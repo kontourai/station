@@ -137,8 +137,9 @@ export interface DockShellChrome {
 /**
  * The single owner of dock CHROME — geometry, snap state, placement,
  * drag/resize wiring and the dock.maximize shortcut. Every
- * occupant of the legacy ambient dock (Chat or Home) reads the SAME instance
- * through `DockShell`; a full-screen Chat placement (`ChatWorkspacePane`
+ * occupant of the legacy ambient dock (Chat or Home) and every region shell
+ * (`ActivityRegionShell`) reads the SAME instance through `DockShell`; a
+ * full-screen Chat placement (`ChatWorkspacePane`
  * outside the ambient dock) gets its own independent instance so cmd+D /
  * cmd+M keep working there too.
  *
@@ -305,9 +306,10 @@ export function useDockShellChrome({
     (value: boolean) => {
       if (draggingRef.current && !value) {
         // A region's size is measured along its own edge and persists into
-        // that region and its legacy dock mirror. A shell folded to the bottom
-        // of a coarse device drags a height that belongs to no side region, so
-        // it persists only when the rendered edge is the shell's region (#928).
+        // that region (`dockMirrorDiff` mirrors only Chat's into the legacy
+        // dock state). A shell folded to the bottom of a coarse device drags a
+        // height that belongs to no side region, so it persists only when the
+        // rendered edge is the shell's region (#928).
         const persistedRegion = regionId ?? effectiveDockSlotPlacement;
         if (persistedRegion === effectiveDockSlotPlacement) {
           regionModel?.setRegion(persistedRegion, {
