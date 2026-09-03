@@ -138,6 +138,25 @@ describe('PluginDataStore', () => {
     expect(capability.set('accessor', accessor as never, null)).toMatchObject({
       kind: 'invalid',
     });
+    expect(capability.get(Symbol('key') as never)).toMatchObject({
+      kind: 'invalid',
+    });
+    const coerciveKey = {
+      [Symbol.toPrimitive]() {
+        throw new Error('key trap');
+      },
+    };
+    expect(capability.delete(coerciveKey as never, 1)).toMatchObject({
+      kind: 'invalid',
+    });
+    const trappingOwner = new Proxy(owner, {
+      get() {
+        throw new Error('owner trap');
+      },
+    });
+    expect(() => store.bind(trappingOwner)).toThrow(
+      'Plugin data owner must be a host-issued identity',
+    );
     expect(capability.list()).toEqual({ kind: 'available', records: [] });
     store.close();
   });
@@ -210,6 +229,81 @@ describe('PluginDataStore', () => {
 
     const reopened = new PluginDataStore({ directory });
     expect(reopened.bind(owner).get('state')).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    reopened.close();
+  });
+
+  test('refuses delete when the retained revision head is corrupt', () => {
+    const directory = root();
+    const store = new PluginDataStore({ directory });
+    const capability = store.bind(owner);
+    expect(capability.set('state', 'one', null)).toMatchObject({
+      kind: 'written',
+    });
+    expect(capability.set('state', 'two', 1)).toMatchObject({
+      kind: 'written',
+    });
+    expect(capability.set('state', 'three', 2)).toMatchObject({
+      kind: 'written',
+      record: { revision: 3 },
+    });
+    store.close();
+    const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
+    database.exec(
+      "UPDATE plugin_data_revisions SET last_revision = 1 WHERE key = 'state'",
+    );
+    database.close();
+
+    const reopened = new PluginDataStore({ directory });
+    const rebound = reopened.bind(owner);
+    expect(rebound.delete('state', 3)).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    expect(rebound.get('state')).toMatchObject({
+      kind: 'found',
+      record: { revision: 3, value: 'three' },
+    });
+    reopened.close();
+  });
+
+  test('refuses an oversized persisted namespace on reads and updates', () => {
+    const directory = root();
+    const store = new PluginDataStore({ directory });
+    store.close();
+    const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
+    const insertData = database.prepare(
+      `INSERT INTO plugin_data
+        (plugin_id, installation_key, key, value_json, byte_length, revision, updated_at)
+       VALUES (?, ?, ?, 'null', 4, 1, '2026-09-03T00:00:00.000Z')`,
+    );
+    const insertHead = database.prepare(
+      `INSERT INTO plugin_data_revisions
+        (plugin_id, installation_key, key, last_revision)
+       VALUES (?, ?, ?, 1)`,
+    );
+    database.exec('BEGIN IMMEDIATE');
+    for (
+      let index = 0;
+      index <= PLUGIN_DATA_LIMITS.keysPerInstallation;
+      index += 1
+    ) {
+      const key = `corrupt-${index}`;
+      insertData.run(owner.pluginId, owner.installationKey, key);
+      insertHead.run(owner.pluginId, owner.installationKey, key);
+    }
+    database.exec('COMMIT');
+    database.close();
+
+    const reopened = new PluginDataStore({ directory });
+    const rebound = reopened.bind(owner);
+    expect(rebound.list()).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    expect(rebound.set('corrupt-0', 'updated', 1)).toEqual({
       kind: 'unavailable',
       reason: 'corrupt',
     });
