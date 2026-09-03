@@ -67,17 +67,27 @@ function factory(
 function moduleWith(
   factories: Iterable<[string, PluginCompositionFactory]>,
   options: {
-    authorize?: () => 'granted' | 'denied' | 'unavailable';
+    authorize?: () =>
+      | 'granted'
+      | 'denied'
+      | 'unavailable'
+      | Promise<'granted' | 'denied' | 'unavailable'>;
     disposerTimeoutMs?: number;
+    maxRetainedScopes?: number;
   } = {},
 ) {
   return createPluginCompositionModule({
     factories: new Map(factories),
     authorizer: {
-      authorize: () => ({ kind: options.authorize?.() ?? 'granted' }),
+      authorize: async () => ({
+        kind: (await options.authorize?.()) ?? 'granted',
+      }),
     },
     ...(options.disposerTimeoutMs
       ? { disposerTimeoutMs: options.disposerTimeoutMs }
+      : {}),
+    ...(options.maxRetainedScopes
+      ? { maxRetainedScopes: options.maxRetainedScopes }
       : {}),
   });
 }
@@ -322,6 +332,32 @@ describe('plugin composition profiles', () => {
     expect(events).toEqual([]);
   });
 
+  test('refuses duplicate plugin contribution identities before staging', async () => {
+    const events: string[] = [];
+    const module = moduleWith([
+      factory('first', events),
+      factory('second', events),
+    ]);
+    await expect(
+      module.apply(
+        profile(projectA, [
+          contribution('first', 'workspace.first', {
+            contributionId: 'shared-contribution',
+          }),
+          contribution('second', 'workspace.second', {
+            contributionId: 'shared-contribution',
+          }),
+        ]),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'refused',
+      inspection: {
+        failed: [expect.objectContaining({ reason: 'invalid-contribution' })],
+      },
+    });
+    expect(events).toEqual([]);
+  });
+
   test('keeps the prior generation active when staging fails', async () => {
     const events: string[] = [];
     const module = moduleWith([
@@ -412,6 +448,48 @@ describe('plugin composition profiles', () => {
     expect(events).toEqual([]);
   });
 
+  test('reauthorizes every staged contribution before generation publication', async () => {
+    const events: string[] = [];
+    let authorization: 'granted' | 'denied' = 'granted';
+    let releaseStage!: () => void;
+    const stageGate = new Promise<void>((resolve) => {
+      releaseStage = resolve;
+    });
+    const delayedStage = vi.fn(async () => {
+      events.push('stage:replacement');
+      await stageGate;
+      return {
+        dispose: () => {
+          events.push('dispose:replacement');
+        },
+      };
+    });
+    const module = moduleWith(
+      [factory('current', events), ['replacement', { stage: delayedStage }]],
+      { authorize: () => authorization },
+    );
+    await module.apply(
+      profile(projectA, [contribution('current', 'workspace.index')]),
+    );
+    const replacing = module.apply(
+      profile(projectA, [contribution('replacement', 'workspace.index')]),
+    );
+    await vi.waitFor(() => expect(delayedStage).toHaveBeenCalledOnce());
+    authorization = 'denied';
+    releaseStage();
+
+    await expect(replacing).resolves.toMatchObject({
+      kind: 'failed',
+      inspection: {
+        generation: 1,
+        active: [expect.objectContaining({ instanceId: 'current' })],
+        failed: [expect.objectContaining({ reason: 'authorization-denied' })],
+      },
+    });
+    expect(events).toContain('dispose:replacement');
+    expect(events).not.toContain('dispose:current');
+  });
+
   test('publishes a generation atomically while reporting bounded disposer fences', async () => {
     const events: string[] = [];
     const module = moduleWith(
@@ -433,6 +511,71 @@ describe('plugin composition profiles', () => {
         failed: [expect.objectContaining({ reason: 'disposer-timeout' })],
       },
     });
+  });
+
+  test('retains timed-out disposer fences and blocks exact identity reuse until settlement', async () => {
+    const events: string[] = [];
+    let settleOldDisposer!: () => void;
+    let oldStages = 0;
+    const oldFactory: PluginCompositionFactory = {
+      async stage() {
+        oldStages += 1;
+        events.push(`stage:old:${oldStages}`);
+        return {
+          dispose:
+            oldStages === 1
+              ? () =>
+                  new Promise<void>((resolve) => {
+                    settleOldDisposer = resolve;
+                  })
+              : () => {
+                  events.push('dispose:old:replacement');
+                },
+        };
+      },
+    };
+    const module = moduleWith([['old', oldFactory], factory('new', events)], {
+      disposerTimeoutMs: 5,
+    });
+    await module.apply(
+      profile(projectA, [contribution('old', 'workspace.index')]),
+    );
+    await expect(
+      module.apply(profile(projectA, [contribution('new', 'workspace.index')])),
+    ).resolves.toMatchObject({
+      kind: 'activated',
+      liveFences: [
+        expect.objectContaining({
+          instanceId: 'old',
+          generation: 1,
+          reason: 'disposer-timeout',
+        }),
+      ],
+    });
+
+    await expect(
+      module.apply(profile(projectA, [contribution('old', 'workspace.index')])),
+    ).resolves.toMatchObject({
+      kind: 'failed',
+      inspection: {
+        active: [expect.objectContaining({ instanceId: 'new' })],
+        failed: [
+          expect.objectContaining({
+            instanceId: 'old',
+            generation: 1,
+            reason: 'disposer-timeout',
+          }),
+        ],
+      },
+    });
+    expect(oldStages).toBe(1);
+
+    settleOldDisposer();
+    await vi.waitFor(() => expect(module.inspect(projectA).failed).toEqual([]));
+    await expect(
+      module.apply(profile(projectA, [contribution('old', 'workspace.index')])),
+    ).resolves.toMatchObject({ kind: 'activated', generation: 3 });
+    expect(oldStages).toBe(2);
   });
 
   test('serializes activation attempts for the same scope', async () => {
@@ -475,5 +618,81 @@ describe('plugin composition profiles', () => {
       generation: 2,
     });
     expect(events).toEqual(['stage:first', 'stage:second', 'dispose:first']);
+  });
+
+  test('bounds retained scopes and explicit retirement releases scope state', async () => {
+    const events: string[] = [];
+    const module = moduleWith([factory('cache', events)], {
+      maxRetainedScopes: 1,
+    });
+    await expect(
+      module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({ kind: 'activated' });
+    await expect(
+      module.apply(
+        profile(projectB, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({ kind: 'refused' });
+
+    await expect(module.retire(projectA)).resolves.toMatchObject({
+      kind: 'retired',
+      inspection: { generation: 0, active: [] },
+    });
+    await expect(
+      module.apply(
+        profile(projectB, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({ kind: 'activated' });
+  });
+
+  test('refuses malformed profiles without invoking accessors or leaking identity', async () => {
+    const module = moduleWith([]);
+    const scopeGetter = vi.fn(() => projectA);
+    const accessorProfile = Object.defineProperty({}, 'scope', {
+      enumerable: true,
+      get: scopeGetter,
+    });
+    const configurationGetter = vi.fn(() => 'secret');
+    const configuration: unknown[] = [];
+    Object.defineProperty(configuration, '0', {
+      enumerable: true,
+      get: configurationGetter,
+    });
+    configuration.length = 1;
+    const malformedContribution = contribution('cache', 'workspace.cache', {
+      configuration: configuration as never,
+    });
+    const throwingProxy = new Proxy(
+      {},
+      {
+        ownKeys() {
+          throw new Error('profile trap');
+        },
+      },
+    );
+
+    for (const candidate of [
+      null,
+      accessorProfile,
+      throwingProxy,
+      profile(projectA, [malformedContribution]),
+      { ...profile(projectA, []), contributions: Array(1) },
+    ]) {
+      await expect(module.apply(candidate as never)).resolves.toEqual({
+        kind: 'refused',
+        inspection: {
+          scope: { kind: 'project', projectId: 'invalid' },
+          generation: 0,
+          active: [],
+          pending: [],
+          failed: [],
+          shadowed: [],
+        },
+      });
+    }
+    expect(scopeGetter).not.toHaveBeenCalled();
+    expect(configurationGetter).not.toHaveBeenCalled();
   });
 });

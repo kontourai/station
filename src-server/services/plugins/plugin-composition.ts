@@ -4,12 +4,15 @@ import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 const ID = /^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?$/;
 const SCOPE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const MAX_CONTRIBUTIONS = 64;
+const MAX_DISPOSAL_FENCES_PER_SCOPE = MAX_CONTRIBUTIONS;
 const MAX_REQUIREMENTS = 16;
 const MAX_CONFIGURATION_BYTES = 64 * 1024;
 const MAX_CONFIGURATION_DEPTH = 24;
 const MAX_CONFIGURATION_NODES = 8_192;
 const DEFAULT_DISPOSER_TIMEOUT_MS = 1_000;
 const MAX_DISPOSER_TIMEOUT_MS = 30_000;
+const DEFAULT_MAX_RETAINED_SCOPES = 256;
+const MAX_RETAINED_SCOPES = 1_024;
 
 /** These authorities are fixed Station machinery, never composition slots. */
 export const FIXED_COMPOSITION_AUTHORITIES = Object.freeze([
@@ -29,6 +32,11 @@ export type PluginCompositionScope =
       readonly agentId: string;
       readonly projectId?: string;
     };
+
+const INVALID_SCOPE: PluginCompositionScope = {
+  kind: 'project',
+  projectId: 'invalid',
+};
 
 export type PluginCompositionJson =
   | null
@@ -228,13 +236,43 @@ function canonicalConfiguration(
     return Number.isFinite(value) ? value : undefined;
   }
   if (Array.isArray(value)) {
-    const output: PluginCompositionJson[] = [];
-    for (const item of value) {
-      const normalized = canonicalConfiguration(item, depth + 1, budget);
-      if (normalized === undefined) return undefined;
-      output.push(normalized);
+    try {
+      if (
+        value.length > MAX_CONFIGURATION_NODES - budget.nodes ||
+        Object.getOwnPropertySymbols(value).length > 0
+      ) {
+        return undefined;
+      }
+      const descriptors = Object.getOwnPropertyDescriptors(value);
+      const keys = Object.keys(descriptors).filter((key) => key !== 'length');
+      if (
+        keys.length !== value.length ||
+        keys.some((key, index) => key !== String(index))
+      ) {
+        return undefined;
+      }
+      const output: PluginCompositionJson[] = [];
+      for (const key of keys) {
+        const descriptor = descriptors[key];
+        if (
+          !descriptor ||
+          !('value' in descriptor) ||
+          descriptor.enumerable !== true
+        ) {
+          return undefined;
+        }
+        const normalized = canonicalConfiguration(
+          descriptor.value,
+          depth + 1,
+          budget,
+        );
+        if (normalized === undefined) return undefined;
+        output.push(normalized);
+      }
+      return output;
+    } catch {
+      return undefined;
     }
-    return output;
   }
   if (typeof value !== 'object' || value === null) return undefined;
   try {
@@ -263,6 +301,202 @@ function canonicalConfiguration(
   } catch {
     return undefined;
   }
+}
+
+function dataRecord(
+  value: unknown,
+  allowedKeys?: ReadonlySet<string>,
+): Record<string, unknown> | undefined {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return;
+    if (Object.getOwnPropertySymbols(value).length > 0) return;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const output: Record<string, unknown> = Object.create(null);
+    for (const [key, descriptor] of Object.entries(descriptors)) {
+      if (
+        (allowedKeys && !allowedKeys.has(key)) ||
+        !('value' in descriptor) ||
+        descriptor.enumerable !== true
+      ) {
+        return;
+      }
+      output[key] = descriptor.value;
+    }
+    return output;
+  } catch {
+    return;
+  }
+}
+
+function dataArray<T>(
+  value: unknown,
+  limit: number,
+  snapshot: (entry: unknown) => T | undefined,
+): T[] | undefined {
+  try {
+    if (!Array.isArray(value) || value.length > limit) return;
+    if (Object.getOwnPropertySymbols(value).length > 0) return;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Object.keys(descriptors).filter((key) => key !== 'length');
+    if (
+      keys.length !== value.length ||
+      keys.some((key, index) => key !== String(index))
+    ) {
+      return;
+    }
+    const output: T[] = [];
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (
+        !descriptor ||
+        !('value' in descriptor) ||
+        descriptor.enumerable !== true
+      ) {
+        return;
+      }
+      const entry = snapshot(descriptor.value);
+      if (entry === undefined) return;
+      output.push(entry);
+    }
+    return output;
+  } catch {
+    return;
+  }
+}
+
+const PROJECT_SCOPE_KEYS = new Set(['kind', 'projectId']);
+const AGENT_SCOPE_KEYS = new Set(['kind', 'agentId', 'projectId']);
+const REQUIREMENT_KEYS = new Set([
+  'capability',
+  'version',
+  'instanceId',
+  'scope',
+]);
+const CONTRIBUTION_KEYS = new Set([
+  'instanceId',
+  'pluginId',
+  'contributionId',
+  'implementationId',
+  'capability',
+  'version',
+  'configuration',
+  'isolation',
+  'requires',
+]);
+const PROFILE_KEYS = new Set([
+  'profileId',
+  'scope',
+  'contributions',
+  'selections',
+]);
+
+function snapshotScope(value: unknown): PluginCompositionScope | undefined {
+  const initial = dataRecord(value);
+  if (!initial) return;
+  const allowed =
+    initial.kind === 'project'
+      ? PROJECT_SCOPE_KEYS
+      : initial.kind === 'agent'
+        ? AGENT_SCOPE_KEYS
+        : undefined;
+  if (!allowed) return;
+  const record = dataRecord(value, allowed);
+  if (!record) return;
+  const scope =
+    record.kind === 'project'
+      ? { kind: 'project' as const, projectId: record.projectId as string }
+      : {
+          kind: 'agent' as const,
+          agentId: record.agentId as string,
+          ...(record.projectId === undefined
+            ? {}
+            : { projectId: record.projectId as string }),
+        };
+  return validScope(scope) ? scope : undefined;
+}
+
+function snapshotRequirement(
+  value: unknown,
+): PluginCompositionRequirement | undefined {
+  const record = dataRecord(value, REQUIREMENT_KEYS);
+  if (!record) return;
+  const scope =
+    record.scope === undefined ? undefined : snapshotScope(record.scope);
+  if (record.scope !== undefined && !scope) return;
+  return {
+    capability: record.capability as string,
+    version: record.version as string,
+    ...(record.instanceId === undefined
+      ? {}
+      : { instanceId: record.instanceId as string }),
+    ...(scope ? { scope } : {}),
+  };
+}
+
+function snapshotContribution(
+  value: unknown,
+): PluginCompositionContribution | undefined {
+  const record = dataRecord(value, CONTRIBUTION_KEYS);
+  if (!record) return;
+  const configuration = canonicalConfiguration(record.configuration);
+  const requires = dataArray(
+    record.requires,
+    MAX_REQUIREMENTS,
+    snapshotRequirement,
+  );
+  if (configuration === undefined || !requires) return;
+  return {
+    instanceId: record.instanceId as string,
+    pluginId: record.pluginId as string,
+    contributionId: record.contributionId as string,
+    implementationId: record.implementationId as string,
+    capability: record.capability as string,
+    version: record.version as string,
+    configuration,
+    isolation: record.isolation as 'profile',
+    requires,
+  };
+}
+
+function snapshotProfile(value: unknown): PluginCompositionProfile | undefined {
+  const record = dataRecord(value, PROFILE_KEYS);
+  if (!record || typeof record.profileId !== 'string') return;
+  const scope = snapshotScope(record.scope);
+  const contributions = dataArray(
+    record.contributions,
+    MAX_CONTRIBUTIONS,
+    snapshotContribution,
+  );
+  if (!scope || !contributions) return;
+  let selections: Record<string, string> | undefined;
+  if (record.selections !== undefined) {
+    const selected = dataRecord(record.selections);
+    if (
+      !selected ||
+      Object.entries(selected).some(
+        ([capability, instanceId]) =>
+          !ID.test(capability) ||
+          typeof instanceId !== 'string' ||
+          !ID.test(instanceId),
+      )
+    ) {
+      return;
+    }
+    selections = Object.fromEntries(
+      Object.entries(selected).map(([key, selectedId]) => [
+        key,
+        selectedId as string,
+      ]),
+    );
+  }
+  return {
+    profileId: record.profileId,
+    scope,
+    contributions,
+    ...(selections ? { selections } : {}),
+  };
 }
 
 function normalizeContribution(
@@ -407,39 +641,108 @@ export interface PluginCompositionModule {
     profile: PluginCompositionProfile,
   ): Promise<PluginCompositionApplyResult>;
   inspect(scope: PluginCompositionScope): PluginCompositionInspection;
+  retire(scope: PluginCompositionScope): Promise<{
+    readonly kind: 'retired' | 'refused';
+    readonly liveFences: readonly PluginCompositionInspectionEntry[];
+    readonly inspection: PluginCompositionInspection;
+  }>;
+}
+
+interface PluginCompositionDisposalFence {
+  entry: PluginCompositionInspectionEntry;
 }
 
 export function createPluginCompositionModule(options: {
   readonly factories: ReadonlyMap<string, PluginCompositionFactory>;
   readonly authorizer: PluginCompositionAuthorizer;
   readonly disposerTimeoutMs?: number;
+  readonly maxRetainedScopes?: number;
 }): PluginCompositionModule {
   const disposerTimeoutMs =
     options.disposerTimeoutMs ?? DEFAULT_DISPOSER_TIMEOUT_MS;
+  const maxRetainedScopes =
+    options.maxRetainedScopes ?? DEFAULT_MAX_RETAINED_SCOPES;
   if (
     !Number.isSafeInteger(disposerTimeoutMs) ||
     disposerTimeoutMs < 1 ||
-    disposerTimeoutMs > MAX_DISPOSER_TIMEOUT_MS
+    disposerTimeoutMs > MAX_DISPOSER_TIMEOUT_MS ||
+    !Number.isSafeInteger(maxRetainedScopes) ||
+    maxRetainedScopes < 1 ||
+    maxRetainedScopes > MAX_RETAINED_SCOPES
   ) {
-    throw new Error('Invalid plugin composition disposer timeout');
+    throw new Error('Invalid plugin composition limits');
   }
   const factories = new Map(options.factories);
   const active = new Map<string, ActiveGeneration>();
   const attempts = new Map<string, PluginCompositionInspectionEntry[]>();
   const applyChains = new Map<string, Promise<void>>();
+  const disposalFences = new Map<
+    string,
+    Map<string, PluginCompositionDisposalFence>
+  >();
+
+  const fenceKey = (generation: number, instanceIdentity: string) =>
+    `${generation}:${instanceIdentity}`;
+  const fenceEntries = (key: string) =>
+    [...(disposalFences.get(key)?.values() ?? [])].map((fence) =>
+      structuredClone(fence.entry),
+    );
+  const retainedScopeKeys = () =>
+    new Set([
+      ...active.keys(),
+      ...attempts.keys(),
+      ...applyChains.keys(),
+      ...disposalFences.keys(),
+    ]);
+  const enqueueScope = <T>(key: string, work: () => Promise<T>): Promise<T> => {
+    const prior = applyChains.get(key) ?? Promise.resolve();
+    const operation = prior.then(work);
+    const settled = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    applyChains.set(key, settled);
+    void settled.then(() => {
+      if (applyChains.get(key) === settled) applyChains.delete(key);
+    });
+    return operation;
+  };
 
   const inspect = (
     scope: PluginCompositionScope,
   ): PluginCompositionInspection => {
-    const key = scopeKey(scope);
+    const safeScope = snapshotScope(scope);
+    if (!safeScope) {
+      return {
+        scope: INVALID_SCOPE,
+        generation: 0,
+        active: [],
+        pending: [],
+        failed: [],
+        shadowed: [],
+      };
+    }
+    const key = scopeKey(safeScope);
     const generation = active.get(key);
     const latest = attempts.get(key) ?? [];
+    const failed = latest.filter((candidate) => candidate.status === 'failed');
+    for (const fence of fenceEntries(key)) {
+      if (
+        !failed.some(
+          (candidate) =>
+            candidate.instanceIdentity === fence.instanceIdentity &&
+            candidate.generation === fence.generation,
+        )
+      ) {
+        failed.push(fence);
+      }
+    }
     return cloneInspection({
-      scope,
+      scope: safeScope,
       generation: generation?.generation ?? 0,
       active: activeEntries(generation),
       pending: latest.filter((candidate) => candidate.status === 'pending'),
-      failed: latest.filter((candidate) => candidate.status === 'failed'),
+      failed,
       shadowed: latest.filter((candidate) => candidate.status === 'shadowed'),
     });
   };
@@ -451,12 +754,17 @@ export function createPluginCompositionModule(options: {
     const key = scopeKey(scope);
     attempts.set(
       key,
-      entries.map((candidate) => structuredClone(candidate)),
+      entries
+        .filter((candidate) => candidate.reason !== 'disposer-timeout')
+        .map((candidate) => structuredClone(candidate)),
     );
   };
 
   const disposeOne = async (
     contribution: ActiveContribution,
+    key: string,
+    generation: number,
+    phase: 'rollback' | 'retire',
   ): Promise<'disposed' | 'failed' | 'timed-out'> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const operation = Promise.resolve()
@@ -470,16 +778,50 @@ export function createPluginCompositionModule(options: {
     });
     const result = await Promise.race([operation, timeout]);
     if (timer) clearTimeout(timer);
+    if (result !== 'disposed') {
+      const reason =
+        result === 'timed-out'
+          ? 'disposer-timeout'
+          : phase === 'rollback'
+            ? 'rollback-failed'
+            : 'disposer-failed';
+      const fences = disposalFences.get(key) ?? new Map();
+      const id = fenceKey(generation, contribution.instanceIdentity);
+      fences.set(id, {
+        entry: entry(contribution, 'failed', reason, generation),
+      });
+      disposalFences.set(key, fences);
+      if (result === 'timed-out') {
+        void operation.then((lateResult) => {
+          const current = disposalFences.get(key)?.get(id);
+          if (!current) return;
+          if (lateResult === 'disposed') {
+            const retained = disposalFences.get(key);
+            retained?.delete(id);
+            if (retained?.size === 0) disposalFences.delete(key);
+          } else {
+            current.entry = entry(
+              contribution,
+              'failed',
+              phase === 'rollback' ? 'rollback-failed' : 'disposer-failed',
+              generation,
+            );
+          }
+        });
+      }
+    }
     return result;
   };
 
   const disposeReverse = async (
     contributions: readonly ActiveContribution[],
     phase: 'rollback' | 'retire',
+    key: string,
+    generation: number,
   ): Promise<PluginCompositionInspectionEntry[]> => {
     const failures: PluginCompositionInspectionEntry[] = [];
     for (const contribution of [...contributions].reverse()) {
-      const outcome = await disposeOne(contribution);
+      const outcome = await disposeOne(contribution, key, generation, phase);
       if (outcome === 'disposed') continue;
       failures.push(
         entry(
@@ -490,6 +832,7 @@ export function createPluginCompositionModule(options: {
             : phase === 'rollback'
               ? 'rollback-failed'
               : 'disposer-failed',
+          generation,
         ),
       );
     }
@@ -515,15 +858,22 @@ export function createPluginCompositionModule(options: {
     const normalized: NormalizedContribution[] = [];
     const invalid: PluginCompositionInspectionEntry[] = [];
     const instanceIds = new Set<string>();
+    const contributionIds = new Set<string>();
     for (const contribution of profile.contributions) {
       const candidate = normalizeContribution(profile, contribution);
-      if (!candidate || instanceIds.has(contribution.instanceId)) {
+      const contributionIdentity = `${contribution.pluginId}:${contribution.contributionId}`;
+      if (
+        !candidate ||
+        instanceIds.has(contribution.instanceId) ||
+        contributionIds.has(contributionIdentity)
+      ) {
         invalid.push(
           invalidEntry(profile, contribution, 'invalid-contribution'),
         );
         continue;
       }
       instanceIds.add(contribution.instanceId);
+      contributionIds.add(contributionIdentity);
       if (fixedAuthorities.has(candidate.declaration.capability)) {
         invalid.push(entry(candidate, 'failed', 'fixed-authority'));
         continue;
@@ -647,10 +997,33 @@ export function createPluginCompositionModule(options: {
   ): Promise<PluginCompositionApplyResult> => {
     const key = scopeKey(profile.scope);
     const previous = active.get(key);
+    const nextGeneration = (previous?.generation ?? 0) + 1;
     const planned = plan(profile);
     if (planned.kind !== 'ready') {
       recordAttempt(profile.scope, planned.entries);
       return { kind: planned.kind, inspection: inspect(profile.scope) };
+    }
+    const unsafeIdentityFences = fenceEntries(key).filter((fence) =>
+      planned.plan.selected.some(
+        (candidate) => candidate.instanceIdentity === fence.instanceIdentity,
+      ),
+    );
+    const retainedFenceCount = disposalFences.get(key)?.size ?? 0;
+    const potentialNewFences = Math.max(
+      previous?.contributions.length ?? 0,
+      planned.plan.selected.length,
+    );
+    if (
+      unsafeIdentityFences.length > 0 ||
+      retainedFenceCount + potentialNewFences > MAX_DISPOSAL_FENCES_PER_SCOPE
+    ) {
+      recordAttempt(profile.scope, [
+        ...planned.plan.selected.map((candidate) =>
+          entry(candidate, 'pending', 'activation-aborted'),
+        ),
+        ...planned.plan.shadowed,
+      ]);
+      return { kind: 'failed', inspection: inspect(profile.scope) };
     }
     const pending = planned.plan.selected.map((candidate) =>
       entry(candidate, 'pending', 'staging'),
@@ -679,7 +1052,12 @@ export function createPluginCompositionModule(options: {
             : undefined;
       const factory = factories.get(contribution.declaration.implementationId);
       if (reason || !factory) {
-        const rollback = await disposeReverse(staged, 'rollback');
+        const rollback = await disposeReverse(
+          staged,
+          'rollback',
+          key,
+          nextGeneration,
+        );
         const blocked = planned.plan.selected
           .slice(index + 1)
           .map((candidate) =>
@@ -723,7 +1101,12 @@ export function createPluginCompositionModule(options: {
         }
         staged.push({ ...contribution, handle });
       } catch {
-        const rollback = await disposeReverse(staged, 'rollback');
+        const rollback = await disposeReverse(
+          staged,
+          'rollback',
+          key,
+          nextGeneration,
+        );
         const blocked = planned.plan.selected
           .slice(index + 1)
           .map((candidate) =>
@@ -739,7 +1122,63 @@ export function createPluginCompositionModule(options: {
       }
     }
 
-    const generation = (previous?.generation ?? 0) + 1;
+    const publicationAuthorizations = await Promise.all(
+      planned.plan.selected.map(async (contribution) => {
+        try {
+          return await options.authorizer.authorize({
+            profileId: profile.profileId,
+            scope: structuredClone(profile.scope),
+            contribution: structuredClone(contribution.declaration),
+            instanceIdentity: contribution.instanceIdentity,
+          });
+        } catch {
+          return { kind: 'unavailable' as const };
+        }
+      }),
+    );
+    if (
+      publicationAuthorizations.some(
+        (authorization) => authorization.kind !== 'granted',
+      )
+    ) {
+      const rollback = await disposeReverse(
+        staged,
+        'rollback',
+        key,
+        nextGeneration,
+      );
+      const authorizationEntries = planned.plan.selected.flatMap(
+        (candidate, index) => {
+          const authorization = publicationAuthorizations[index];
+          return authorization.kind === 'granted'
+            ? []
+            : [
+                entry(
+                  candidate,
+                  authorization.kind === 'unavailable' ? 'pending' : 'failed',
+                  authorization.kind === 'unavailable'
+                    ? 'authorization-unavailable'
+                    : 'authorization-denied',
+                ),
+              ];
+        },
+      );
+      recordAttempt(profile.scope, [
+        ...authorizationEntries,
+        ...rollback,
+        ...planned.plan.shadowed,
+      ]);
+      return {
+        kind: publicationAuthorizations.some(
+          (authorization) => authorization.kind === 'unavailable',
+        )
+          ? 'pending'
+          : 'failed',
+        inspection: inspect(profile.scope),
+      };
+    }
+
+    const generation = nextGeneration;
     active.set(key, {
       generation,
       profileId: profile.profileId,
@@ -747,7 +1186,12 @@ export function createPluginCompositionModule(options: {
       contributions: staged,
     });
     const retirementFailures = previous
-      ? await disposeReverse(previous.contributions, 'retire')
+      ? await disposeReverse(
+          previous.contributions,
+          'retire',
+          key,
+          previous.generation,
+        )
       : [];
     recordAttempt(profile.scope, [
       ...planned.plan.shadowed.map((candidate) => ({
@@ -766,14 +1210,12 @@ export function createPluginCompositionModule(options: {
 
   return Object.freeze({
     apply(profile: PluginCompositionProfile) {
-      let snapshot: PluginCompositionProfile;
-      try {
-        snapshot = structuredClone(profile);
-      } catch {
+      const snapshot = snapshotProfile(profile);
+      if (!snapshot) {
         return Promise.resolve({
           kind: 'refused' as const,
           inspection: {
-            scope: profile.scope,
+            scope: INVALID_SCOPE,
             generation: 0,
             active: [],
             pending: [],
@@ -783,16 +1225,58 @@ export function createPluginCompositionModule(options: {
         });
       }
       const key = scopeKey(snapshot.scope);
-      const prior = applyChains.get(key) ?? Promise.resolve();
-      const operation = prior.then(() => applyNow(snapshot));
-      applyChains.set(
-        key,
-        operation.then(
-          () => undefined,
-          () => undefined,
-        ),
-      );
-      return operation;
+      if (
+        !retainedScopeKeys().has(key) &&
+        retainedScopeKeys().size >= maxRetainedScopes
+      ) {
+        return Promise.resolve({
+          kind: 'refused' as const,
+          inspection: inspect(snapshot.scope),
+        });
+      }
+      return enqueueScope(key, () => applyNow(snapshot));
+    },
+    retire(scope: PluginCompositionScope) {
+      const safeScope = snapshotScope(scope);
+      if (!safeScope) {
+        return Promise.resolve({
+          kind: 'refused' as const,
+          liveFences: [],
+          inspection: {
+            scope: INVALID_SCOPE,
+            generation: 0,
+            active: [],
+            pending: [],
+            failed: [],
+            shadowed: [],
+          },
+        });
+      }
+      const key = scopeKey(safeScope);
+      return enqueueScope(key, async () => {
+        const current = active.get(key);
+        const failures = current
+          ? await disposeReverse(
+              current.contributions,
+              'retire',
+              key,
+              current.generation,
+            )
+          : [];
+        active.delete(key);
+        attempts.delete(key);
+        const liveFences = fenceEntries(key);
+        return {
+          kind: 'retired' as const,
+          liveFences:
+            liveFences.length > 0
+              ? liveFences
+              : failures.filter(
+                  (candidate) => candidate.reason !== 'disposer-timeout',
+                ),
+          inspection: inspect(safeScope),
+        };
+      });
     },
     inspect,
   });
