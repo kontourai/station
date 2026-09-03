@@ -8,7 +8,7 @@ import { describe, expect, test, vi } from 'vitest';
 let runtimeConnectionsMock: Array<{ id: string; name: string }> = [];
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useAgentConnectionsQuery: () => ({
+  useEngineConnectionsQuery: () => ({
     data: runtimeConnectionsMock,
   }),
 }));

@@ -64,7 +64,7 @@ export function ACPConnectionsSection({
   // the only way this modal opens.
   const [showAddModal, setShowAddModal] = useState(Boolean(initialProviderId));
   // Review fix round 2 (#592 slice 2, M2): a captured DOM node cannot cross
-  // this boundary — `connections-acp-new`'s surface identity is per-provider
+  // this boundary — `connections-engine-new`'s surface identity is per-provider
   // (`route-identity.ts`'s `routeSurfaceIdentity` never folds it into
   // `connections-engines`), so `AppViewContent`'s `key={surfaceKey}` entrance
   // wrapper remounts everything from `ConnectionsSectionFrame` down on EVERY

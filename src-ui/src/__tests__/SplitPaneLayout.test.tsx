@@ -1414,7 +1414,7 @@ describe('SplitPaneLayout', () => {
       return render(
         <PageFrame
           spec={{ width: 'full', body: 'fill', flush: true }}
-          routeIdentity="connections-providers"
+          routeIdentity="connections-models"
         >
           <SplitPaneLayout
             label="connections / providers"
