@@ -19,6 +19,7 @@ import {
   type DistributionProfile,
   type DistributionProfileSelection,
   type DistributionRegistrySource,
+  LAYOUT_CATALOG_ITEM_ID_PATTERN,
   type LayoutCatalogItem,
   MINIMAL_DISTRIBUTION_PROFILE,
   type ResolvedCatalogLayout,
@@ -30,7 +31,10 @@ import {
   BUILTIN_PROJECT_LAYOUTS,
   type LayoutCatalogContribution,
 } from '@kontourai/station-contracts/layout';
-import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import {
+  isCanonicalPluginId,
+  type PluginManifest,
+} from '@kontourai/station-contracts/plugin';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { parsePluginManifest } from './plugin-manifest-loader.js';
 
@@ -248,11 +252,7 @@ function assertSafeId(value: string, label: string): void {
 }
 
 function assertSafeCatalogId(value: string): void {
-  if (
-    !/^(builtin|plugin):[a-z0-9][a-z0-9-]{0,62}(?::[a-z0-9][a-z0-9-]{0,62})?$/.test(
-      value,
-    )
-  ) {
+  if (!LAYOUT_CATALOG_ITEM_ID_PATTERN.test(value)) {
     throw new Error(`Invalid layout catalog item id: ${value || '(empty)'}`);
   }
 }
@@ -382,7 +382,7 @@ export class DistributionProfileService {
     for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
       if (
         !entry.isDirectory() ||
-        !SAFE_ID.test(entry.name) ||
+        !isCanonicalPluginId(entry.name) ||
         !this.pluginIsAllowed(entry.name)
       ) {
         continue;

@@ -76,6 +76,62 @@ export interface StationPluginSecretReferenceV1 {
   required?: boolean;
 }
 
+export type PluginCommandIcon =
+  | 'agent'
+  | 'chat'
+  | 'command'
+  | 'plugin'
+  | 'project'
+  | 'search';
+
+export type PluginCommandRequirement =
+  | 'active-chat'
+  | 'plugin-server'
+  | 'project'
+  | 'session'
+  | 'task';
+
+interface PluginCommandArgumentBase {
+  label: string;
+  required?: boolean;
+}
+
+export type PluginCommandArgument =
+  | (PluginCommandArgumentBase & { kind: 'text' })
+  | (PluginCommandArgumentBase & {
+      kind: 'url';
+      allowedHosts: string[];
+    })
+  | (PluginCommandArgumentBase & {
+      kind: 'project' | 'task' | 'session' | 'file' | 'registry-item';
+    });
+
+export type PluginCommandIntent =
+  | { kind: 'navigate'; surfaceId: string }
+  | {
+      kind: 'seed-composer';
+      text: string;
+      argumentMode?: 'append' | 'replace';
+    }
+  | {
+      kind: 'invoke-declared-plugin-operation';
+      operationId: string;
+      argumentMode?: 'body';
+    };
+
+/** Versioned inert row; all execution remains Station-owned and authorized. */
+export interface PluginCommandContribution {
+  version: '1.0';
+  id: string;
+  title: string;
+  subtitle?: string;
+  icon?: PluginCommandIcon;
+  keywords?: string[];
+  requires?: PluginCommandRequirement[];
+  argument?: PluginCommandArgument;
+  intent: PluginCommandIntent;
+}
+
 /** Generic candidate fields that could move to a future portable revision. */
 export interface StationPluginGenericOverlayV1 {
   permissions?: string[];
@@ -97,7 +153,7 @@ export interface StationAgentPluginExtensionV1
   serverModule?: string;
   build?: string;
   capabilities?: string[];
-  commands?: unknown[];
+  commands?: PluginCommandContribution[];
   links?: unknown;
   agents?: unknown[];
   workspacePanes?: unknown[];

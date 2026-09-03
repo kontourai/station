@@ -43,7 +43,7 @@
     "commands": {
       "type": "array",
       "maxItems": 32,
-      "items": { "type": "object" }
+      "items": { "$ref": "#/$defs/command" }
     },
     "links": {},
     "agents": { "type": "array", "items": { "type": "object" } },
@@ -213,6 +213,108 @@
         "description": { "type": "string" },
         "required": { "type": "boolean" }
       }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "id", "title", "intent"],
+      "properties": {
+        "version": { "const": "1.0" },
+        "id": { "type": "string", "minLength": 3, "maxLength": 127 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "subtitle": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "icon": {
+          "enum": ["agent", "chat", "command", "plugin", "project", "search"]
+        },
+        "keywords": {
+          "type": "array",
+          "maxItems": 12,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 32 }
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "active-chat",
+              "plugin-server",
+              "project",
+              "session",
+              "task"
+            ]
+          }
+        },
+        "argument": { "$ref": "#/$defs/commandArgument" },
+        "intent": { "$ref": "#/$defs/commandIntent" }
+      }
+    },
+    "commandArgument": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "label"],
+          "properties": {
+            "kind": {
+              "enum": ["text", "project", "task", "session", "file", "registry-item"]
+            },
+            "label": { "type": "string", "minLength": 1, "maxLength": 64 },
+            "required": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "label", "allowedHosts"],
+          "properties": {
+            "kind": { "const": "url" },
+            "label": { "type": "string", "minLength": 1, "maxLength": 64 },
+            "required": { "type": "boolean" },
+            "allowedHosts": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1, "maxLength": 253 }
+            }
+          }
+        }
+      ]
+    },
+    "commandIntent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "surfaceId"],
+          "properties": {
+            "kind": { "const": "navigate" },
+            "surfaceId": { "$ref": "#/$defs/id" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "text"],
+          "properties": {
+            "kind": { "const": "seed-composer" },
+            "text": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "argumentMode": { "enum": ["append", "replace"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "operationId"],
+          "properties": {
+            "kind": { "const": "invoke-declared-plugin-operation" },
+            "operationId": { "$ref": "#/$defs/id" },
+            "argumentMode": { "const": "body" }
+          }
+        }
+      ]
     }
   }
 }

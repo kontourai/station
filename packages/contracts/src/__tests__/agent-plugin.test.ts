@@ -7,6 +7,7 @@ import {
   isAgentPluginName,
   STATION_AGENT_PLUGIN_EXTENSION_ID,
 } from '../agent-plugin.js';
+import { LAYOUT_CATALOG_ITEM_ID_PATTERN } from '../distribution.js';
 import { isCanonicalPluginId } from '../plugin.js';
 
 describe('Agent Plugins 1.0 identity contract', () => {
@@ -25,6 +26,9 @@ describe('Agent Plugins 1.0 identity contract', () => {
       expect(isAgentPluginName(name)).toBe(true);
       expect(isCanonicalPluginId(name)).toBe(true);
     }
+    expect(
+      LAYOUT_CATALOG_ITEM_ID_PATTERN.test('plugin:acme.tools:pane-home'),
+    ).toBe(true);
     for (const name of [
       '',
       'My-Plugin',
@@ -57,7 +61,14 @@ describe('Agent Plugins 1.0 identity contract', () => {
         schemaVersion: '1.0',
         title: 'Acme tools',
         permissions: ['network.fetch'],
-        commands: [{ version: '1.0', id: 'acme.tools.open' }],
+        commands: [
+          {
+            version: '1.0',
+            id: 'acme.tools.open',
+            title: 'Open tools',
+            intent: { kind: 'navigate', surfaceId: 'tools' },
+          },
+        ],
         dependencies: [{ name: 'acme.shared', version: '^1.0.0' }],
         secretReferences: [{ key: 'api-key', title: 'API key' }],
         workspacePanes: [{ version: '1.0', id: 'home' }],
@@ -83,6 +94,21 @@ describe('Agent Plugins 1.0 identity contract', () => {
         schemaVersion: '1.0',
         providers: [
           { type: 'model', module: './provider.js', moduel: './typo.js' },
+        ],
+      },
+      {
+        schemaVersion: '1.0',
+        commands: [
+          {
+            version: '1.0',
+            id: 'acme.tools.open',
+            title: 'Open tools',
+            intent: {
+              kind: 'navigate',
+              surfaceId: 'tools',
+              route: 'javascript:alert(1)',
+            },
+          },
         ],
       },
       {

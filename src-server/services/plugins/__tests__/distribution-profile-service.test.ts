@@ -164,6 +164,21 @@ describe('DistributionProfileService', () => {
     ]);
   });
 
+  test('keeps period-bearing Agent Plugins visible in Pane discovery', () => {
+    const projectHome = home();
+    writePanePlugin(projectHome, 'acme.tools');
+    expect(
+      new DistributionProfileService(
+        projectHome,
+      ).listPluginWorkspacePaneContributions(),
+    ).toEqual([
+      expect.objectContaining({
+        id: expect.stringMatching(/^plugin:acme\.tools:pane-[a-f0-9]{12}$/),
+        pluginName: 'acme.tools',
+      }),
+    ]);
+  });
+
   test('a manually relocated plugin with divergent directory and descriptor claims is recorded for fail-closed consistency checking', () => {
     // A manifest whose `name` diverges from its installed directory passes
     // the loader (panes must name the MANIFEST name), but the issuance
