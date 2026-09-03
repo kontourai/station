@@ -543,7 +543,7 @@ export function useAgentsViewModel({
     });
   }
 
-  /** §4 "Chat with a model": Station's engine, Basics + §3.3 + Instructions. */
+  /** §4 "Run it on Station": Station's engine, Basics + §3.3 + Instructions. */
   function handleStartWithModel() {
     setEngineKindOverride('model');
     setForm((current) => ({
