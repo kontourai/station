@@ -606,6 +606,11 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'Workspace file preview public contract',
   },
   {
+    pattern: 'packages/contracts/src/surface-deep-link.ts',
+    tests: ['packages/contracts/src/__tests__/surface-deep-link.test.ts'],
+    reason: 'surface deep-link public contract',
+  },
+  {
     pattern: 'packages/contracts/package.json',
     tests: [
       'packages/contracts/src/__tests__/workspace-file-preview.test.ts',
