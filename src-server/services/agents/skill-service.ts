@@ -14,10 +14,11 @@ import {
   mkdir,
   readdir,
   readFile,
+  realpath,
   rename,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, extname, join } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import type {
   GuidanceAsset,
   SkillCommand,
@@ -43,6 +44,7 @@ import {
   toDisclosureInstructions,
   toDisclosurePrompt,
   toReadToolSchema,
+  validateSkillContent,
 } from 'agent-skills-ts-sdk';
 import type { ConfigLoader, SkillConfig } from '../../domain/config-loader.js';
 import {
@@ -253,7 +255,8 @@ export class SkillPublicationIndeterminateError extends Error {
 export class SkillService {
   private registry = new Map<string, RegisteredSkill>();
   /** Read-only package-contributed skill roots (e.g. flow-agents, S3). */
-  private readonly canonicalSources: CanonicalSkillSource[];
+  private readonly canonicalSourceProvider: () => CanonicalSkillSource[];
+  private activeCanonicalSources: CanonicalSkillSource[] = [];
   /**
    * Run/outcome counters. A side store rather than `skill.json`, so read-only
    * package and plugin skills are counted too — see `skill-usage-service.ts`.
@@ -290,7 +293,9 @@ export class SkillService {
       debug: (...a: any[]) => void;
     },
     options: {
-      canonicalSources?: CanonicalSkillSource[];
+      canonicalSources?:
+        | CanonicalSkillSource[]
+        | (() => CanonicalSkillSource[]);
       usage?: SkillUsageService;
       /**
        * Plugin-contributed command skills, scanned IN PLACE as read-only
@@ -308,7 +313,11 @@ export class SkillService {
       >;
     } = {},
   ) {
-    this.canonicalSources = options.canonicalSources ?? [];
+    const canonicalSources = options.canonicalSources;
+    this.canonicalSourceProvider =
+      typeof canonicalSources === 'function'
+        ? canonicalSources
+        : () => canonicalSources ?? [];
     this.pluginCommandSource = options.pluginCommandSource;
     this.usage =
       options.usage ??
@@ -323,14 +332,19 @@ export class SkillService {
   ): Promise<void> {
     const start = Date.now();
     this.registry.clear();
+    this.activeCanonicalSources = this.canonicalSourceProvider();
 
     // Canonical package sources scan FIRST so locally installed or
     // project-scoped skills override a canonical skill on name collision
     // (later registrations win in the registry map).
-    for (const source of this.canonicalSources) {
+    for (const source of this.activeCanonicalSources) {
       const before = this.registry.size;
       try {
-        await this.scanDirectory(source.root);
+        await this.scanDirectory(source.root, 0, {
+          maxDepth: source.immediateOnly ? 0 : 4,
+          validateAgentSkills: source.validateAgentSkills === true,
+          containmentRoot: source.containmentRoot,
+        });
       } catch (e) {
         this.logger.warn('Canonical skill source scan failed', {
           source: source.label,
@@ -339,7 +353,9 @@ export class SkillService {
         });
       }
       canonicalSkillsDiscovered.add(this.registry.size - before, {
-        source: source.label,
+        source: source.label.startsWith('agent-plugin:')
+          ? 'agent-plugin'
+          : source.label,
       });
     }
 
@@ -353,7 +369,13 @@ export class SkillService {
 
     for (const dir of dirs) {
       if (!existsSync(dir)) continue;
-      await this.scanDirectory(dir);
+      await this.scanDirectory(dir, 0, {
+        excludedRoots: new Set(
+          this.activeCanonicalSources
+            .filter((source) => source.origin === 'plugin')
+            .map((source) => dirname(source.root)),
+        ),
+      });
     }
 
     // Registered LAST, against every name already taken.
@@ -400,15 +422,37 @@ export class SkillService {
     });
   }
 
-  private async scanDirectory(dir: string, depth = 0): Promise<void> {
-    if (depth > 4) return;
+  private async scanDirectory(
+    dir: string,
+    depth = 0,
+    options: {
+      maxDepth?: number;
+      validateAgentSkills?: boolean;
+      containmentRoot?: string;
+      excludedRoots?: ReadonlySet<string>;
+    } = {},
+  ): Promise<void> {
+    if (depth > (options.maxDepth ?? 4)) return;
     const entries = await readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       if (entry.name === 'node_modules' || entry.name === '.git') continue;
 
-      const skillMdPath = join(dir, entry.name, 'SKILL.md');
+      const entryDir = join(dir, entry.name);
+      if (options.excludedRoots) {
+        let excluded = options.excludedRoots.has(entryDir);
+        if (!excluded) {
+          try {
+            excluded = options.excludedRoots.has(await realpath(entryDir));
+          } catch {
+            // The ordinary scan below owns reporting unreadable directories.
+          }
+        }
+        if (excluded) continue;
+      }
+
+      const skillMdPath = join(entryDir, 'SKILL.md');
       if (existsSync(skillMdPath)) {
         try {
           const content = await readFile(skillMdPath, 'utf-8');
@@ -417,13 +461,37 @@ export class SkillService {
           // `variables` declarations.
           const { metadata, body } = parseFrontmatter(content);
           const properties = frontmatterToProperties(metadata);
+          if (options.validateAgentSkills) {
+            const errors = validateSkillContent(content);
+            if (errors.length) throw new Error(errors.join('; '));
+            if (properties.name !== entry.name) {
+              throw new Error(
+                'Agent Skill name must match its immediate parent directory',
+              );
+            }
+          }
           const frontmatter = metadata as unknown as Record<string, unknown>;
 
           const links = extractResourceLinks(body);
           const resources: SkillResource[] = [];
           for (const link of links) {
-            const resourcePath = join(dir, entry.name, link.path);
+            const resourcePath = join(entryDir, link.path);
             if (existsSync(resourcePath)) {
+              if (options.containmentRoot) {
+                const containedRoot = await realpath(options.containmentRoot);
+                const containedResource = await realpath(resourcePath);
+                const rel = relative(containedRoot, containedResource);
+                if (
+                  rel === '..' ||
+                  rel.startsWith(`..${sep}`) ||
+                  isAbsolute(rel)
+                ) {
+                  this.logger.warn('Skipped out-of-package skill resource', {
+                    path: resourcePath,
+                  });
+                  continue;
+                }
+              }
               resources.push({
                 name: link.name,
                 path: link.path,
@@ -448,7 +516,7 @@ export class SkillService {
           });
         }
       } else {
-        await this.scanDirectory(join(dir, entry.name), depth + 1);
+        await this.scanDirectory(entryDir, depth + 1, options);
       }
     }
   }
@@ -612,7 +680,7 @@ export class SkillService {
       if (canonical) {
         return {
           skill,
-          origin: 'package' as const,
+          origin: canonical.origin ?? ('package' as const),
           install: {
             version: canonical.version,
             source: canonical.label,
@@ -664,7 +732,10 @@ export class SkillService {
     location: string | undefined,
     source: string | undefined,
   ): SkillOrigin | undefined {
-    if (location && this.canonicalSourceFor(location)) return 'package';
+    if (location) {
+      const canonical = this.canonicalSourceFor(location);
+      if (canonical) return canonical.origin ?? 'package';
+    }
     if (location) {
       const pluginsRoot = join(this.projectHomeDir(), 'plugins');
       if (location.startsWith(pluginsRoot)) return 'plugin';
@@ -877,7 +948,7 @@ export class SkillService {
         version: canonical.version,
         path: dirname(registered.location),
         body: registered.body,
-        origin: 'package',
+        origin: canonical.origin ?? 'package',
         ...(resolved.command ? { command: resolved.command } : {}),
         ...(resolved.commandDiagnostic
           ? { commandDiagnostic: resolved.commandDiagnostic }
@@ -1693,9 +1764,13 @@ export class SkillService {
   ): CanonicalSkillSource | null {
     if (!location) return null;
     return (
-      this.canonicalSources.find((source) =>
-        location.startsWith(source.root),
-      ) ?? null
+      this.activeCanonicalSources.find((source) => {
+        const rel = relative(source.root, location);
+        return (
+          rel === '' ||
+          (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
+        );
+      }) ?? null
     );
   }
 

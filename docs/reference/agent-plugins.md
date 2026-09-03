@@ -1,8 +1,10 @@
 # Agent Plugins contract
 
 This document defines Station's **target v1 authoring contract**. The current
-runtime still accepts the legacy Station manifest until #344, #346, and #348
-land; this document must not be read as a present conformance claim.
+runtime now consumes recognized Agent Plugins 1.0 packages for portable Skills
+and MCP while still accepting the legacy Station manifest until #346 and #348
+land. This document must not be read as a claim that the released tree has
+removed its legacy fallback or activates every Station extension contribution.
 
 Station targets the published **Agent Plugins 1.0.0** contract. The upstream
 1.1.0 document is a working draft and is not a supported package version until
@@ -12,8 +14,9 @@ vendored schemas; it must never fetch schemas while loading a plugin.
 Portable package data remains in the closed root `plugin.json` shape. Station
 reserves one client extension namespace, `io.kontourai.station`, for both the
 manifest entry and a future optional top-level extension directory. Runtime
-discovery of that directory belongs to #344. Other namespaces
-remain opaque and are ignored without validation.
+discovery now exposes that directory only after filesystem containment succeeds;
+later namespace-owned features decide its contents. Other namespaces remain
+opaque and are ignored without validation.
 
 ## Field classification
 
@@ -72,3 +75,27 @@ than teaching it as a second identifier grammar.
 `secretReferences` declares slots only. Secret values remain in Station's
 secret authority and are injected through a mediated capability. They are
 never written into `plugin.json`, `mcp.json` `env`, or MCP HTTP headers.
+
+## Current consumer behavior
+
+Station selects the vendored 1.0.0 manifest and MCP schemas from `$schema`; it
+does not fetch schemas during load. Portable Skills are served read-only from
+immediate `skills/*/SKILL.md` children with `agent-plugin:<name>` provenance,
+and a local Project Skill with the same name wins. MCP servers are projected
+from the live package as stable, owner-qualified Station ToolDefs rather than
+copied into `integrations/`; installing one makes it available but does not
+attach it to an Agent.
+
+The loader supports stdio and Streamable HTTP. It reports and skips SSE,
+invalid Skills, and invalid individual server entries at their narrow failure
+boundaries. Stdio children receive persistent per-plugin `PLUGIN_DATA`, exact
+`PLUGIN_ROOT`, the plugin root as default cwd, and single-pass expansion of
+only those two placeholders. Uninstall removes that plugin's data after the
+rest of the uninstall transaction has settled.
+
+Recognized Agent Plugins take this path during directory or git installation.
+The old manifest parser remains only as an explicit compatibility fallback for
+packages without an Agent Plugins `$schema`; #346 owns deleting it after the
+remaining examples move. Station namespace data is schema-validated now, but
+activation beyond the already-owned portable Skill/MCP paths remains with the
+follow-on host integration work.

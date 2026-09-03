@@ -133,4 +133,36 @@ describe('MCP 2026 connection adapter', () => {
     expect(sse.constructor.name).toBe('SSEClientTransport');
     expect(http.constructor.name).toBe('StreamableHTTPClientTransport');
   });
+
+  test('passes live cwd and literal headers to transports without letting package auth override client auth', () => {
+    const stdio = createMCPTransport({
+      id: 'stdio-options',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: process.execPath,
+      cwd: '/tmp/plugin-root',
+    }) as unknown as { _serverParams: { cwd?: string } };
+    expect(stdio._serverParams.cwd).toBe('/tmp/plugin-root');
+
+    const http = createMCPTransport(
+      {
+        id: 'http-options',
+        kind: 'mcp',
+        transport: 'streamable-http',
+        endpoint: 'https://example.test/mcp',
+        headers: {
+          Authorization: 'package-value',
+          'MCP-Session-Id': 'package-session',
+          'X-Tenant': 'public',
+        },
+      },
+      { tokens: vi.fn() } as never,
+    ) as unknown as {
+      _requestInit: { redirect?: string; headers?: Record<string, string> };
+    };
+    expect(http._requestInit).toEqual({
+      redirect: 'error',
+      headers: { 'X-Tenant': 'public' },
+    });
+  });
 });

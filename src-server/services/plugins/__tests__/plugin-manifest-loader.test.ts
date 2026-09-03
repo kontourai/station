@@ -41,6 +41,35 @@ describe('plugin-manifest-loader', () => {
     );
   });
 
+  test('dispatches recognized Agent Plugins through the vendored loader while legacy remains explicit', async () => {
+    const manifestPath = join(dir, 'plugin.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'portable.example',
+        futureField: true,
+      }),
+    );
+    await expect(readPluginManifestFile(manifestPath)).resolves.toEqual({
+      name: 'portable.example',
+      version: '0.0.0-agent-plugin-unversioned',
+      description: undefined,
+    });
+
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'portable.example',
+        layout: {},
+      }),
+    );
+    await expect(readPluginManifestFile(manifestPath)).rejects.toThrow(
+      /Agent Plugin manifest is invalid/,
+    );
+  });
+
   // archive#4307: `manifest.name` is a STORE KEY (plugin-overrides, grants,
   // the provider resolver, the installed-plugin registry) and the manifest's
   // own `name` wins over the directory it was installed into. It was

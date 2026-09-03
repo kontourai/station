@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
+import { AGENT_PLUGIN_MANIFEST_SCHEMA_1_0 } from '@kontourai/station-contracts/agent-plugin';
 import { validateOperationalEventScopes } from '@kontourai/station-contracts/operational-event';
 import {
   isCanonicalPluginId,
@@ -9,6 +10,7 @@ import {
 import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
+import { AgentPluginLoader } from './agent-plugin-loader.js';
 
 const SUBSCRIPTION_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 const SUBSCRIPTION_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$/;
@@ -20,14 +22,64 @@ export async function readPluginManifestFile(
   manifestPath: string,
 ): Promise<PluginManifest> {
   const raw = await readFile(manifestPath, 'utf-8');
-  return parsePluginManifest(raw, manifestPath);
+  return parsePluginManifestDocument(raw, manifestPath);
 }
 
 export function readPluginManifestFileSync(
   manifestPath: string,
 ): PluginManifest {
   const raw = readFileSync(manifestPath, 'utf-8');
-  return parsePluginManifest(raw, manifestPath);
+  return parsePluginManifestDocument(raw, manifestPath);
+}
+
+/** Dispatches recognized Agent Plugins documents without weakening legacy reads. */
+export function parsePluginManifestDocument(
+  raw: string,
+  manifestPath: string,
+): PluginManifest {
+  const agentPlugin = readAgentPluginManifest(raw, manifestPath);
+  return agentPlugin ?? parsePluginManifest(raw, manifestPath);
+}
+
+function readAgentPluginManifest(
+  raw: string,
+  manifestPath: string,
+): PluginManifest | null {
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (
+    !candidate ||
+    typeof candidate !== 'object' ||
+    Array.isArray(candidate) ||
+    typeof (candidate as Record<string, unknown>).$schema !== 'string'
+  ) {
+    return null;
+  }
+  const schema = (candidate as Record<string, unknown>).$schema as string;
+  if (!schema.startsWith('https://agent-plugins.org/schemas/')) return null;
+
+  const pluginRoot = dirname(manifestPath);
+  const projectHomeDir = dirname(dirname(pluginRoot));
+  const loaded = new AgentPluginLoader({ projectHomeDir }).loadPackage(
+    pluginRoot,
+    { provisionData: false, manifestDocument: candidate },
+  );
+  if (!loaded) {
+    throw new Error(
+      schema === AGENT_PLUGIN_MANIFEST_SCHEMA_1_0
+        ? 'Agent Plugin manifest is invalid'
+        : `Unsupported Agent Plugins manifest schema '${schema}'`,
+    );
+  }
+  return {
+    name: loaded.manifest.name,
+    version: loaded.manifest.version ?? '0.0.0-agent-plugin-unversioned',
+    description: loaded.manifest.description,
+  };
 }
 
 export function parsePluginManifest(

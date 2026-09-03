@@ -101,6 +101,7 @@ import { OrchestrationStreamPresence } from '../../services/orchestration/orches
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
+import { AgentPluginLoader } from '../../services/plugins/agent-plugin-loader.js';
 import type { MCPService } from '../../services/plugins/mcp-service.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import type { LayoutService } from '../../services/projects/layout-service.js';
@@ -872,10 +873,16 @@ export class StationRuntime {
         homeDir: projectHomeDir,
       });
 
+      const agentPluginLoader = new AgentPluginLoader({
+        projectHomeDir,
+        report: (report) =>
+          this.logger?.warn('Agent Plugin component was not loaded', report),
+      });
       this.configLoader = openedConfigLoader = new ConfigLoader({
         projectHomeDir,
         watchFiles: true,
         enforceHomeSchema: true,
+        integrationSources: [agentPluginLoader],
       });
       // archive#3063: the built-in tool servers' spawn identity (dist path,
       // STATION_API_BASE/STATION_PORT) is THIS instance's property, resolved
@@ -1012,6 +1019,7 @@ export class StationRuntime {
         host: this.host,
         logger: this.logger,
         configLoader: this.configLoader,
+        agentPluginLoader,
         approvalRegistry: this.approvalRegistry,
         eventBus: this.eventBus,
         orchestrationEventStore: this.orchestrationEventStore,

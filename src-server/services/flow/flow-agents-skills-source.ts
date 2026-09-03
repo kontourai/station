@@ -22,7 +22,9 @@ const require = createRequire(import.meta.url);
 
 /** Source labels for package-contributed skills (extends the skill config
  * `source` vocabulary in config-loader-storage). */
-export type CanonicalSkillSourceLabel = 'flow-agents';
+export type CanonicalSkillSourceLabel =
+  | 'flow-agents'
+  | `agent-plugin:${string}`;
 
 /** A read-only directory of SKILL.md skill folders contributed by a package. */
 export interface CanonicalSkillSource {
@@ -32,6 +34,14 @@ export interface CanonicalSkillSource {
   label: CanonicalSkillSourceLabel;
   /** Version of the providing package, when known. */
   version?: string;
+  /** Read-only Agent Plugin skills are plugin-owned rather than package-owned. */
+  origin?: 'package' | 'plugin';
+  /** Agent Plugins discover immediate children only; other sources retain recursion. */
+  immediateOnly?: boolean;
+  /** Apply the Agent Skills specification before registration. */
+  validateAgentSkills?: boolean;
+  /** Files and linked resources must remain within this resolved package root. */
+  containmentRoot?: string;
 }
 
 function hasSkillFolders(root: string): boolean {

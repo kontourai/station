@@ -312,6 +312,7 @@ export function createMCPTransport(
         command: def.command,
         args: def.args,
         env: { ...process.env, ...(def.env || {}) } as Record<string, string>,
+        cwd: def.cwd,
       });
 
     case 'sse':
@@ -326,6 +327,27 @@ export function createMCPTransport(
         );
       return new StreamableHTTPClientTransport(new URL(def.endpoint), {
         authProvider,
+        requestInit: def.headers
+          ? {
+              headers: Object.fromEntries(
+                Object.entries(def.headers).filter(([name]) => {
+                  const normalized = name.toLowerCase();
+                  if (
+                    [
+                      'mcp-method',
+                      'mcp-name',
+                      'mcp-protocol-version',
+                      'mcp-session-id',
+                    ].includes(normalized)
+                  ) {
+                    return false;
+                  }
+                  return !authProvider || normalized !== 'authorization';
+                }),
+              ),
+              redirect: 'error',
+            }
+          : { redirect: 'error' },
       });
 
     default:
@@ -334,6 +356,7 @@ export function createMCPTransport(
           command: def.command,
           args: def.args,
           env: { ...process.env, ...(def.env || {}) } as Record<string, string>,
+          cwd: def.cwd,
         });
       }
       throw new Error(
@@ -360,7 +383,9 @@ function normalizeTransportConfig(def: ToolDef): ToolDef {
     transport: normalized.transport,
     command: normalized.command,
     args: normalized.args,
+    cwd: def.cwd,
     endpoint: normalized.endpoint,
+    headers: def.headers,
     env: normalized.env as ClaudeDesktopConfig['mcpServers'][string]['env'],
     exposedTools: normalized.exposedTools,
     timeouts: normalized.timeouts,

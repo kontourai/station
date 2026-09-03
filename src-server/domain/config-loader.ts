@@ -197,6 +197,13 @@ export interface ConfigLoaderOptions {
    * Direct domain callers keep the historic opt-in behaviour for now.
    */
   enforceHomeSchema?: boolean;
+  integrationSources?: IntegrationDefinitionSource[];
+}
+
+/** Read-only live ToolDef source; Station-owned integration files still win. */
+export interface IntegrationDefinitionSource {
+  loadIntegration(id: string): ToolDef | undefined;
+  listIntegrations(): ToolMetadata[];
 }
 
 export interface SkillConfig extends SkillConfigRecord {}
@@ -255,11 +262,13 @@ export class ConfigLoader {
     string,
     () => Pick<ToolDef, 'command' | 'args' | 'env'>
   >();
+  private readonly integrationSources: IntegrationDefinitionSource[];
 
   constructor(options: ConfigLoaderOptions = {}) {
     this.projectHomeDir = resolve(options.projectHomeDir || resolveHomeDir());
     this.listeners = new Map();
     this.enforceHomeSchema = options.enforceHomeSchema === true;
+    this.integrationSources = [...(options.integrationSources ?? [])];
     this.homeSchemaReady = this.enforceHomeSchema
       ? ensureStationHomeSchema(this.projectHomeDir)
       : Promise.resolve();
@@ -726,6 +735,12 @@ export class ConfigLoader {
    */
   async loadIntegration(id: string): Promise<ToolDef> {
     await this.ensureHomeSchema();
+    if (!integrationConfigExists(this.projectHomeDir, id)) {
+      for (const source of this.integrationSources) {
+        const projected = source.loadIntegration(id);
+        if (projected) return projected;
+      }
+    }
     const def = await loadIntegrationConfig(this.projectHomeDir, id);
     return this.withBuiltinIntegrationRuntimeIdentity(id, def);
   }
@@ -854,7 +869,7 @@ export class ConfigLoader {
     // truth `loadIntegration` serves. Without this, station-control would
     // list as secret-free and the ACP tool-server picker would stop flagging
     // it, even though its loaded shape still declares env.
-    return metadata.map((entry) => {
+    const local = metadata.map((entry) => {
       const resolveIdentity = this.builtinIntegrationRuntimeIdentities.get(
         entry.id,
       );
@@ -868,6 +883,11 @@ export class ConfigLoader {
         ),
       };
     });
+    const localIds = new Set(local.map((entry) => entry.id));
+    const contributed = this.integrationSources.flatMap((source) =>
+      source.listIntegrations().filter((entry) => !localIds.has(entry.id)),
+    );
+    return [...local, ...contributed];
   }
 
   /**
@@ -894,7 +914,8 @@ export class ConfigLoader {
       id,
       'integration.json',
     );
-    return existsSync(path);
+    if (existsSync(path)) return true;
+    return this.integrationSources.some((source) => source.loadIntegration(id));
   }
 
   /**

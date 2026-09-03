@@ -20,6 +20,7 @@ import {
   withUnreadable,
 } from '../../../services/infra/__tests__/helpers/store-faults.js';
 import { ContextSafetyError } from '../../../services/orchestration/context-safety.js';
+import { AgentPluginLoader } from '../../../services/plugins/agent-plugin-loader.js';
 import { DistributionProfileService } from '../../../services/plugins/distribution-profile-service.js';
 import {
   findPluginContentLockCycleError,
@@ -378,6 +379,46 @@ describe('installPluginFromSource', () => {
     modes: [{ id: 'default' }],
     provenance: { origin: 'plugin', pluginId },
     lifecycle: { stage: 'stable' },
+  });
+
+  test('installs a period-bearing Agent Plugins package and serves its skill in place', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-agent-plugin-install-'));
+    cleanupDirs.push(root);
+    const sourceDir = join(root, 'source');
+    writePlugin(sourceDir, {
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'acme.tools',
+    });
+    const skillDir = join(sourceDir, 'skills', 'portable-review');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, 'SKILL.md'),
+      '---\nname: portable-review\ndescription: Review an installed portable package.\n---\n',
+    );
+    writeFileSync(
+      join(sourceDir, 'mcp.json'),
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json',
+        mcpServers: { local: { type: 'stdio', command: 'node' } },
+      }),
+    );
+
+    await installPluginFromSource(sourceDir, [], deps(root));
+
+    expect(existsSync(join(root, 'plugins', 'acme.tools', 'plugin.json'))).toBe(
+      true,
+    );
+    const installed = new AgentPluginLoader({
+      projectHomeDir: root,
+    }).listInstalled()[0];
+    expect(installed?.skills.map((skill) => skill.name)).toEqual([
+      'portable-review',
+    ]);
+    expect(existsSync(join(root, 'integrations'))).toBe(false);
+    writeFileSync(join(installed!.dataRoot, 'state.json'), 'preserved');
+
+    await uninstallInstalledPlugin('acme.tools', deps(root));
+    expect(existsSync(installed!.dataRoot)).toBe(false);
   });
 
   test('installs a pane-only plugin and projects its inert catalog declaration', async () => {

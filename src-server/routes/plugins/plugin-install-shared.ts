@@ -1,4 +1,5 @@
 import { execFile as execFileCb } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   cpSync,
   existsSync,
@@ -6,6 +7,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -1725,6 +1727,18 @@ export async function uninstallInstalledPlugin(
   }
 
   let backupRoot: string | null = null;
+  let stagedAgentPluginData: string | null = null;
+  let isAgentPlugin = false;
+  try {
+    const raw = JSON.parse(
+      readFileSync(join(pluginDir, 'plugin.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    isAgentPlugin =
+      raw.$schema ===
+      'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
+  } catch {
+    // The authoritative manifest read below owns the uninstall refusal.
+  }
   const manifest = await readManifestForRemoval(
     join(pluginDir, 'plugin.json'),
     installedPluginName,
@@ -1802,9 +1816,30 @@ export async function uninstallInstalledPlugin(
       manifest.name || installedPluginName,
       name,
     );
+    if (isAgentPlugin) {
+      const dataRoot = join(projectHomeDir, 'agent-plugin-data');
+      const dataDir = join(dataRoot, pluginName);
+      if (existsSync(dataDir)) {
+        stagedAgentPluginData = join(
+          dataRoot,
+          `.removed-${pluginName}-${randomUUID()}`,
+        );
+        renameSync(dataDir, stagedAgentPluginData);
+      }
+    }
     eventBus?.emit('plugins:removed', { name: pluginName });
     pluginUninstalls.add(1, { plugin: pluginName });
     logger.info('Plugin removed', { plugin: pluginName });
+    if (stagedAgentPluginData) {
+      try {
+        rmSync(stagedAgentPluginData, { recursive: true, force: true });
+      } catch (error) {
+        logger.warn('Removed plugin data awaits cleanup', {
+          plugin: pluginName,
+          error: errorMessage(error),
+        });
+      }
+    }
     return { success: true };
   } catch (error) {
     // Only a COMPLETE backup may drive the delete-and-restore rollback; an
@@ -1827,6 +1862,11 @@ export async function uninstallInstalledPlugin(
           backupRoot,
         );
         await restorePluginDurableState(projectHomeDir, backupRoot);
+        if (stagedAgentPluginData && existsSync(stagedAgentPluginData)) {
+          const dataDir = join(projectHomeDir, 'agent-plugin-data', pluginName);
+          renameSync(stagedAgentPluginData, dataDir);
+          stagedAgentPluginData = null;
+        }
         await synchronizePluginAgentDefinitions({
           agentsDir,
           pluginDir,
