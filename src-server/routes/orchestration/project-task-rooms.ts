@@ -46,6 +46,100 @@ export async function settleProjectTaskRoomCadence(input: {
   }
 }
 
+type ProjectTaskRoomSseDelivery = {
+  readonly type?: string;
+  readonly revision?: string;
+};
+
+/**
+ * Keeps document order exact while allowing an accepted document to pass
+ * already-queued presence/cursor projections. The current authority check
+ * remains immediately adjacent to the one serialized wire write.
+ */
+export function createProjectTaskRoomSseDeliveryQueue(input: {
+  aborted(): boolean;
+  subscriptionAlive(): Promise<boolean>;
+  closeTerminal(): Promise<void>;
+  write(value: ProjectTaskRoomSseDelivery): Promise<void>;
+}) {
+  type Queued = { value: ProjectTaskRoomSseDelivery; generation: number };
+  const documents: Queued[] = [];
+  const room: Queued[] = [];
+  let generation = 0;
+  let queued = 0;
+  let draining = false;
+  let terminal = false;
+
+  const terminalize = () => {
+    if (terminal) return;
+    terminal = true;
+    generation += 1;
+    queued = 0;
+    documents.splice(0);
+    room.splice(0);
+  };
+
+  const drain = async () => {
+    if (draining) return;
+    draining = true;
+    try {
+      while (!input.aborted()) {
+        const next = documents.shift() ?? room.shift();
+        if (!next) return;
+        queued = Math.max(0, queued - 1);
+        if (next.generation !== generation) continue;
+        if (terminal || next.value.type === 'terminal') {
+          await input.closeTerminal();
+          return;
+        }
+        let alive = false;
+        try {
+          alive = await input.subscriptionAlive();
+        } catch {
+          // A rejected currentness check cannot authorize content delivery.
+        }
+        if (!alive) {
+          terminalize();
+          await input.closeTerminal();
+          return;
+        }
+        if (input.aborted() || next.generation !== generation) continue;
+        try {
+          await input.write(next.value);
+        } catch {
+          terminalize();
+          await input.closeTerminal();
+          return;
+        }
+      }
+    } finally {
+      draining = false;
+    }
+  };
+
+  return Object.freeze({
+    enqueue(value: ProjectTaskRoomSseDelivery) {
+      if (input.aborted() || terminal) return;
+      if (value.type === 'terminal' || queued >= 64) {
+        terminalize();
+        const terminalEvent = { value: { type: 'terminal' }, generation };
+        documents.push(terminalEvent);
+        queued = 1;
+        void drain().catch(() => {});
+        return;
+      }
+      const target = value.type === 'document' ? documents : room;
+      target.push({ value, generation });
+      queued += 1;
+      void drain().catch(() => {});
+    },
+    terminalize,
+    get terminal() {
+      return terminal;
+    },
+  });
+}
+
 const messageSchema = z
   .object({
     proposalId: z.string().min(1).max(256),
@@ -173,15 +267,14 @@ export function createProjectTaskRoomRoutes(runtime: ProjectTaskRoomRuntime) {
   );
   app.get('/:taskId/room/events', async (c) =>
     streamSSE(c, async (stream) => {
-      let writeChain = Promise.resolve();
-      let terminal = false;
       let terminalWritten = false;
       let aborted = false;
-      let deliveryGeneration = 0;
-      let queued = 0;
       const taskId = param(c, 'taskId');
       let cadence: ReturnType<typeof setInterval> | undefined;
       let unsubscribe: (() => void) | undefined;
+      let deliveryQueue:
+        | ReturnType<typeof createProjectTaskRoomSseDeliveryQueue>
+        | undefined;
       let resolveAbort: (() => void) | undefined;
       const abort = new Promise<void>((resolve) => {
         resolveAbort = resolve;
@@ -191,7 +284,7 @@ export function createProjectTaskRoomRoutes(runtime: ProjectTaskRoomRuntime) {
       const onAbort = () => {
         if (aborted) return;
         aborted = true;
-        deliveryGeneration += 1;
+        deliveryQueue?.terminalize();
         resolveAbort?.();
       };
       stream.onAbort(onAbort);
@@ -201,13 +294,24 @@ export function createProjectTaskRoomRoutes(runtime: ProjectTaskRoomRuntime) {
       c.req.raw.signal.addEventListener('abort', onAbort, { once: true });
       const closeTerminal = async () => {
         if (aborted || terminalWritten) return;
-        terminal = true;
+        deliveryQueue?.terminalize();
         terminalWritten = true;
-        deliveryGeneration += 1;
         await stream.writeSSE({ event: 'terminal', data: '{}' });
         await stream.close();
         resolveAbort?.();
       };
+      deliveryQueue = createProjectTaskRoomSseDeliveryQueue({
+        aborted: () => aborted,
+        subscriptionAlive: () =>
+          runtime.subscriptionAlive({ taskId, request: c.req.raw }),
+        closeTerminal,
+        write: (value) =>
+          stream.writeSSE({
+            event: value.type === 'document' ? 'document' : 'room',
+            data: JSON.stringify(value),
+            ...(value.revision ? { id: value.revision } : {}),
+          }),
+      });
       try {
         const subscribed = await runtime.subscribe({
           taskId,
@@ -222,48 +326,7 @@ export function createProjectTaskRoomRoutes(runtime: ProjectTaskRoomRuntime) {
                 ? (liveProjection ?? { type: 'terminal' })
                 : event;
             const value = projected as { type?: string; revision?: string };
-            if (value.type === 'terminal') {
-              terminal = true;
-              deliveryGeneration += 1;
-            }
-            if (queued >= 64) {
-              terminal = true;
-              deliveryGeneration += 1;
-            }
-            const generation = deliveryGeneration;
-            queued += 1;
-            writeChain = writeChain
-              .then(async () => {
-                queued -= 1;
-                if (aborted || generation !== deliveryGeneration) return;
-                // Overflow invalidates the whole queued generation. Do not use
-                // the decremented queue depth here: by the time this callback
-                // reaches the head it may be zero even though the terminal was
-                // caused by the original overflow.
-                if (terminal || value.type === 'terminal') {
-                  await closeTerminal();
-                  return;
-                }
-                // Queueing is not authorization. A device can be revoked after
-                // this event was accepted but before its turn reaches the wire.
-                // Recheck immediately before every content-bearing write.
-                if (
-                  !(await runtime.subscriptionAlive({
-                    taskId,
-                    request: c.req.raw,
-                  }))
-                ) {
-                  await closeTerminal();
-                  return;
-                }
-                if (aborted) return;
-                await stream.writeSSE({
-                  event: value.type === 'document' ? 'document' : 'room',
-                  data: JSON.stringify(projected),
-                  ...(value.revision ? { id: value.revision } : {}),
-                });
-              })
-              .catch(() => {});
+            deliveryQueue?.enqueue(value);
           },
           ...(c.req.header('Last-Event-ID')
             ? { after: c.req.header('Last-Event-ID')! }
@@ -324,7 +387,7 @@ export function createProjectTaskRoomRoutes(runtime: ProjectTaskRoomRuntime) {
               request: c.req.raw,
             }),
             aborted: () => aborted,
-            terminal: () => terminal,
+            terminal: () => deliveryQueue?.terminal === true,
             subscriptionAlive: () =>
               runtime.subscriptionAlive({ taskId, request: c.req.raw }),
             closeTerminal,

@@ -1,7 +1,13 @@
 /** @vitest-environment jsdom */
 
 import { toWorkspacePaneInstanceId } from '@kontourai/station-contracts/workspace-pane';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -26,6 +32,13 @@ const mocks = vi.hoisted(() => ({
   queryClient: { setQueryData: vi.fn(), fetchQuery: vi.fn() },
   command: vi.fn(),
   stream: 'live' as 'live' | 'terminal',
+  documentListener: undefined as
+    | ((document: {
+        kind: 'snapshot' | 'delta';
+        revision: string;
+        text: string;
+      }) => void)
+    | undefined,
 }));
 
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
@@ -53,6 +66,15 @@ vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
     live: { panes: [], cursors: [] },
     command: mocks.command,
     commandPending: false,
+    subscribeDocument: (
+      listener: NonNullable<typeof mocks.documentListener>,
+    ) => {
+      mocks.documentListener = listener;
+      return () => {
+        if (mocks.documentListener === listener)
+          mocks.documentListener = undefined;
+      };
+    },
   }),
 }));
 
@@ -116,6 +138,7 @@ beforeEach(() => {
   mocks.command.mockReset();
   mocks.command.mockResolvedValue({ kind: 'available' });
   mocks.stream = 'live';
+  mocks.documentListener = undefined;
 });
 
 describe('TaskRoomEditorPane', () => {
@@ -188,6 +211,39 @@ describe('TaskRoomEditorPane', () => {
       expect.objectContaining({
         mark: expect.objectContaining({ text: 'authoritative next' }),
       }),
+    ]);
+    unsubscribe();
+  });
+
+  test('commits a parsed stream document without waiting for query notification', async () => {
+    const marks: InteractiveWorkspacePerformanceProductMark[] = [];
+    const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks((event) =>
+      marks.push(event),
+    );
+    render(<TaskRoomEditorPane taskId="task-1" />);
+    await waitFor(() => expect(mocks.documentListener).toBeDefined());
+    marks.splice(0);
+
+    act(() =>
+      mocks.documentListener?.({
+        kind: 'delta',
+        revision: 'revision-stream',
+        text: 'stream applied',
+      }),
+    );
+
+    await waitFor(() =>
+      expect((editor() as HTMLTextAreaElement).value).toBe('stream applied'),
+    );
+    expect(mocks.document.data.revision).toBe('revision-1');
+    const relevant = marks.filter(
+      (event) =>
+        (event.kind === 'task-apply' || event.kind === 'task-commit') &&
+        event.mark.workingRevision === 'revision-stream',
+    );
+    expect(relevant.map((event) => event.kind)).toEqual([
+      'task-apply',
+      'task-commit',
     ]);
     unsubscribe();
   });

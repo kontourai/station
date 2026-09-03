@@ -225,6 +225,8 @@ export function useProjectTaskRoomStream(
   callbacks?: {
     onRoom?(value: ProjectTaskRoomBrowserLiveSnapshot): void;
     onDocument?(value: unknown): void;
+    /** Parsed ordered document suitable for immediate host-owned application. */
+    onAuthoritativeDocument?(value: ProjectTaskRoomDocumentSnapshot): void;
     onTerminal?(): void;
     onCheckpoint?(id: string): void;
     onConnectionCreated?(id: string): void;
@@ -257,6 +259,8 @@ export function useProjectTaskRoomStream(
             const document = parseAuthoritativeProjectTaskRoomDocumentEvent(
               event.value,
             );
+            if (document?.kind === 'snapshot' || document?.kind === 'delta')
+              callbackRef.current?.onAuthoritativeDocument?.(document);
             if (document?.kind === 'gap')
               void refetchAuthoritativeProjectTaskRoomDocument(
                 client,
@@ -302,6 +306,8 @@ export function useProjectTaskRoomStream(
               // Unknown snapshot document shapes remain a cache invalidation,
               // never an optimistic cache write.
             }
+            if (document?.kind === 'snapshot' || document?.kind === 'delta')
+              callbackRef.current?.onAuthoritativeDocument?.(document);
             if (document) callbackRef.current?.onDocument?.(document);
             void client.invalidateQueries({
               queryKey: projectTaskRoomQueries.discovery(taskId).queryKey,

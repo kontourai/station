@@ -1,6 +1,7 @@
 import type { WorkspacePaneInstanceId } from '@kontourai/station-contracts/workspace-pane';
 import {
   adoptCommittedProjectTaskRoomDocument,
+  type ProjectTaskRoomDocument,
   refetchAuthoritativeProjectTaskRoomDocument,
   usePlanProjectTaskRoomEditMutation,
   useProjectTaskRoomDiscoveryQuery,
@@ -26,6 +27,11 @@ import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { projectTaskRoomEditorPaneId } from './ProjectTaskRoomPresence';
 import type { WorkspacePaneHostRuntime } from './workspacePaneHostRuntime';
 
+type AuthoritativeRoomDocument = Extract<
+  ProjectTaskRoomDocument,
+  { kind: 'snapshot' | 'delta' }
+>;
+
 /**
  * Browser adapter over the server's private edit planning capability. It never
  * receives operations, atoms, an epoch, or a write grant: only an opaque plan
@@ -49,6 +55,8 @@ export function TaskRoomEditorPane({
   const batch = useSubmitProjectTaskRoomBatchMutation(taskId);
   const [text, setText] = useState('');
   const [authoritativeText, setAuthoritativeText] = useState('');
+  const [appliedDocument, setAppliedDocument] =
+    useState<AuthoritativeRoomDocument>();
   const [rejection, setRejection] = useState<string>();
   const [possibleEffect, setPossibleEffect] = useState<{
     intentId: string;
@@ -62,6 +70,7 @@ export function TaskRoomEditorPane({
   const operationGeneration = useRef(0);
   const authorizationRef = useRef(true);
   const displayedTaskId = useRef(taskId);
+  const authoritativeTextRef = useRef(authoritativeText);
   const lastDocumentIdentity = useRef<string | undefined>(undefined);
   const pendingPerformanceApply = useRef<
     | {
@@ -76,6 +85,7 @@ export function TaskRoomEditorPane({
     authorizationRef.current = authorizationCurrent;
     operationGeneration.current += 1;
   }
+  authoritativeTextRef.current = authoritativeText;
   useLayoutEffect(() => {
     // Task identity defines the lifetime, even though only the generation is read.
     void taskId;
@@ -86,6 +96,42 @@ export function TaskRoomEditorPane({
   }, [taskId]);
   const isCurrentOperation = (generation: number) =>
     authorizationRef.current && operationGeneration.current === generation;
+  const applyAuthoritativeDocument = (
+    nextDocument: AuthoritativeRoomDocument,
+    requireCurrentStream = true,
+  ) => {
+    if (
+      (requireCurrentStream && !authorizationRef.current) ||
+      displayedTaskId.current !== taskId
+    )
+      return;
+    const identity = `${nextDocument.kind}\u0000${nextDocument.revision}\u0000${nextDocument.text}`;
+    if (lastDocumentIdentity.current === identity) return;
+    lastDocumentIdentity.current = identity;
+    const previousAuthoritativeText = authoritativeTextRef.current;
+    if (
+      import.meta.env.MODE === 'test' ||
+      import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1'
+    ) {
+      pendingPerformanceApply.current = {
+        workingRevision: nextDocument.revision,
+        text: nextDocument.text,
+      };
+      emitTaskDocumentApplyPerformanceMark({
+        taskId,
+        workingRevision: nextDocument.revision,
+        appliedEpochMs: browserEpochMs(),
+      });
+    }
+    setText((current) =>
+      current === previousAuthoritativeText ? nextDocument.text : current,
+    );
+    setAppliedDocument(nextDocument);
+    authoritativeTextRef.current = nextDocument.text;
+    setAuthoritativeText(nextDocument.text);
+  };
+  const applyAuthoritativeDocumentRef = useRef(applyAuthoritativeDocument);
+  applyAuthoritativeDocumentRef.current = applyAuthoritativeDocument;
   const dirty = text !== authoritativeText;
   const { DiscardModal } = useUnsavedGuard(dirty);
   useLayoutEffect(() => {
@@ -100,9 +146,13 @@ export function TaskRoomEditorPane({
       const next = document.data.text;
       lastDocumentIdentity.current = `${document.data.kind}\u0000${document.data.revision}\u0000${next}`;
       setText(next);
+      setAppliedDocument(document.data);
+      authoritativeTextRef.current = next;
       setAuthoritativeText(next);
     } else {
       setText('');
+      setAppliedDocument(undefined);
+      authoritativeTextRef.current = '';
       setAuthoritativeText('');
     }
   }, [document.data, taskId]);
@@ -117,35 +167,23 @@ export function TaskRoomEditorPane({
   }, [dirty, instanceId, runtime]);
   const room = shared?.discovery ?? discovery;
   useLayoutEffect(() => {
+    if (!shared) return;
+    return shared.subscribeDocument((nextDocument) =>
+      applyAuthoritativeDocumentRef.current(nextDocument),
+    );
+  }, [shared]);
+  useLayoutEffect(() => {
     if (document.data?.kind === 'snapshot' || document.data?.kind === 'delta') {
-      const identity = `${document.data.kind}\u0000${document.data.revision}\u0000${document.data.text}`;
-      if (lastDocumentIdentity.current === identity) return;
-      lastDocumentIdentity.current = identity;
-      const next = document.data.text;
-      if (
-        import.meta.env.MODE === 'test' ||
-        import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1'
-      ) {
-        pendingPerformanceApply.current = {
-          workingRevision: document.data.revision,
-          text: next,
-        };
-        emitTaskDocumentApplyPerformanceMark({
-          taskId,
-          workingRevision: document.data.revision,
-          appliedEpochMs: browserEpochMs(),
-        });
-      }
-      setText((current) => (current === authoritativeText ? next : current));
-      setAuthoritativeText(next);
+      applyAuthoritativeDocumentRef.current(document.data, false);
     }
-  }, [authoritativeText, document.data, taskId]);
-  const documentLoaded =
-    document.data?.kind === 'snapshot' || document.data?.kind === 'delta';
-  const documentRevision =
+  }, [document.data]);
+  const queryDocument =
     document.data?.kind === 'snapshot' || document.data?.kind === 'delta'
-      ? document.data.revision
+      ? document.data
       : undefined;
+  const displayedDocument = appliedDocument ?? queryDocument;
+  const documentLoaded = displayedDocument !== undefined;
+  const documentRevision = displayedDocument?.revision;
   useLayoutEffect(() => {
     if (
       import.meta.env.MODE !== 'test' &&
@@ -339,8 +377,10 @@ export function TaskRoomEditorPane({
     if (!isCurrentOperation(generation)) return;
     if (!adopted) return;
     setPossibleEffect(undefined);
+    authoritativeTextRef.current = adopted.text;
     setRejection(undefined);
     setSettlement(settled.kind);
+    setAppliedDocument(adopted);
     setAuthoritativeText(adopted.text);
     setText(adopted.text);
   }
@@ -353,7 +393,7 @@ export function TaskRoomEditorPane({
       batch.isPending
     )
       return;
-    const observedDocument = document.data;
+    const observedDocument = displayedDocument;
     if (
       observedDocument?.kind !== 'snapshot' &&
       observedDocument?.kind !== 'delta'
@@ -381,6 +421,7 @@ export function TaskRoomEditorPane({
       if (!isCurrentOperation(generation)) return;
       if (planned.kind === 'unchanged') {
         setPossibleEffect(undefined);
+        authoritativeTextRef.current = text;
         setAuthoritativeText(text);
         setSettlement('unchanged');
         return;

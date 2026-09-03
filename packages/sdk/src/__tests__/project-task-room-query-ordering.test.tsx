@@ -308,6 +308,44 @@ test('a committed SSE cancels an authoritative GET and preserves its newer canon
   ).toEqual({ kind: 'snapshot', revision: 'rev3', text: 'three' });
 });
 
+test('applies a parsed accepted document synchronously without a recovery refetch', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  const applied: Array<{ revision: string; beforeReturn: boolean }> = [];
+  let returned = false;
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  renderHook(
+    () => {
+      useProjectTaskRoomStream('task-1', {
+        onAuthoritativeDocument: (document) =>
+          applied.push({
+            revision: document.revision,
+            beforeReturn: !returned,
+          }),
+      });
+    },
+    { wrapper },
+  );
+  await waitFor(() => expect(callbacks).toBeDefined());
+
+  callbacks!.onEvent({
+    kind: 'document',
+    value: { kind: 'committed', revision: 'rev2', text: 'two' },
+  });
+  returned = true;
+
+  expect(applied).toEqual([{ revision: 'rev2', beforeReturn: true }]);
+  expect(documentRequests).toHaveLength(0);
+  expect(invalidate).not.toHaveBeenCalled();
+  expect(
+    client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
+  ).toEqual({ kind: 'snapshot', revision: 'rev2', text: 'two' });
+});
+
 test('committed SSE cancels a deferred older GET and duplicate cannot regress cache', async () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
