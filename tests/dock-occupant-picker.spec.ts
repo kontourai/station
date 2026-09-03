@@ -4,7 +4,7 @@
  *
  * Dock side: the dock header's fixed "return to Chat" action is gone. The
  * header names the CURRENT occupant and opens a menu of every pane the
- * ambient slot admits — the derivation, currently {Chat, Home, Activity} —
+ * ambient slot admits — the derivation, currently {Chat, Home} —
  * with the current occupant checked. Choosing replaces the occupant through
  * the existing ambient document path; Chat is one of the list, not special.
  *
@@ -106,37 +106,10 @@ test.describe('Dock occupant picker', () => {
     const menu = page.getByRole('menu', { name: 'Docked pane' });
     await expect(menu).toBeVisible();
     // The derivation, by NAME (never a raw id), current occupant checked.
-    await expect(menu.getByRole('menuitemradio')).toHaveText([
-      'Chat',
-      'Home',
-      'Activity',
-    ]);
+    await expect(menu.getByRole('menuitemradio')).toHaveText(['Chat', 'Home']);
     await expect(
       menu.getByRole('menuitemradio', { name: 'Home' }),
     ).toHaveAttribute('aria-checked', 'true');
-  });
-
-  test('choosing Activity replaces the occupant AND clears the Home away state on `/`', async ({
-    page,
-  }) => {
-    await dockHomeFromRoot(page);
-    const main = page.locator('#station-main');
-    await expect(main.getByText('Home is in the dock')).toBeVisible();
-
-    await dockOccupantTrigger(page, 'Home').click();
-    await page
-      .getByRole('menu', { name: 'Docked pane' })
-      .getByRole('menuitemradio', { name: 'Activity' })
-      .click();
-
-    await expect(dockOccupantTrigger(page, 'Activity')).toBeVisible();
-    // The case most likely to be wrong (M5 acceptance 1): Home is no longer
-    // docked, so `/` must CLEAR its away state and render Home again.
-    await expect(main.getByText('Home is in the dock')).toHaveCount(0);
-    await expect(
-      main.getByRole('button', { name: 'Dock this pane' }),
-      'Home must render on `/` again the moment it stops being the occupant',
-    ).toBeVisible();
   });
 
   test('"Bring it back here" returns the pane to the route and the dock to Chat', async ({
@@ -151,6 +124,26 @@ test.describe('Dock occupant picker', () => {
       dockOccupantTrigger(page, 'Chat'),
       'undocking Home must return the ambient slot to Chat',
     ).toBeVisible();
+    await expect(main.getByText('Home is in the dock')).toHaveCount(0);
+    await expect(
+      main.getByRole('button', { name: 'Dock this pane' }),
+    ).toBeVisible();
+  });
+
+  test('choosing Chat replaces Home and clears the Home away state on `/`', async ({
+    page,
+  }) => {
+    await dockHomeFromRoot(page);
+    const main = page.locator('#station-main');
+    await expect(main.getByText('Home is in the dock')).toBeVisible();
+
+    await dockOccupantTrigger(page, 'Home').click();
+    await page
+      .getByRole('menu', { name: 'Docked pane' })
+      .getByRole('menuitemradio', { name: 'Chat' })
+      .click();
+
+    await expect(dockOccupantTrigger(page, 'Chat')).toBeVisible();
     await expect(main.getByText('Home is in the dock')).toHaveCount(0);
     await expect(
       main.getByRole('button', { name: 'Dock this pane' }),
@@ -177,26 +170,6 @@ test.describe('Dock occupant picker', () => {
       box!.y + box!.height,
       'the occupant menu must open UPWARD, within the window — not below it',
     ).toBeLessThanOrEqual(900);
-  });
-
-  test('the /activity route shows its own away state while Activity is docked', async ({
-    page,
-  }) => {
-    await page.goto('/activity');
-    const dockAction = page
-      .locator('#station-main')
-      .getByRole('button', { name: 'Dock this pane' });
-    await expect(dockAction).toBeVisible({ timeout: 10_000 });
-    await dockAction.click();
-    await expect(dockOccupantTrigger(page, 'Activity')).toBeVisible();
-    const main = page.locator('#station-main');
-    await expect(main.getByText('Activity is in the dock')).toBeVisible();
-    await main.getByRole('button', { name: 'Bring it back here' }).click();
-    await expect(page.locator('.chat-dock')).toBeVisible();
-    await expect(main.getByText('Activity is in the dock')).toHaveCount(0);
-    await expect(
-      main.getByRole('button', { name: 'Dock this pane' }),
-    ).toBeVisible();
   });
 });
 

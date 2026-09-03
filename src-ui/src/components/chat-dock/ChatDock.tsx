@@ -2150,6 +2150,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               onDockPlacementChange={commitDockPlacement}
               regionVisible={isDockOpen}
               shellMaximized={isDockMaximized}
+              canMaximize={chrome.canMaximize}
+              surfaceShortcutId={chrome.surfaceShortcutId}
               // station#4460: Chat is one entry in the SAME occupant
               // switcher Home/Activity carry — not a special case with no
               // way to leave. Absent for a full-screen placement, which has
@@ -2738,13 +2740,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           defaultFontSize,
           showReasoning,
           showToolDetails,
-          dockMode: effectiveDockSlotPlacement,
-          // The stored preference, not the effective one: on a phone they
-          // differ, and the panel needs both to say what is in effect AND what
-          // is being kept for a wider screen (station#3928).
-          storedDockSlotPlacement: dockMode,
-          availableDockSlotPlacements,
-          pathname,
           autoHideEnabled,
           onSelectNewChat: (
             agent,
@@ -2935,7 +2930,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           onShowReasoningChange: setShowReasoning,
           onShowToolDetailsChange: setShowToolDetails,
           onAutoHideChange: setAutoHideEnabled,
-          onDockModeChange: (mode) => commitDockPlacement(mode),
         }}
         pending={null}
       />
