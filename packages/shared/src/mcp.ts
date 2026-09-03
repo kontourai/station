@@ -7,6 +7,7 @@
 
 import {
   Client,
+  type FetchLike,
   type OAuthClientProvider,
   SSEClientTransport,
   StreamableHTTPClientTransport,
@@ -298,6 +299,27 @@ export class MCPManager {
 
 // ── Transport factory ──────────────────────────────────────────────
 
+function originBoundLiteralHeaderFetch(
+  endpoint: string,
+  literals: Record<string, string>,
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch.bind(globalThis),
+): FetchLike {
+  const endpointOrigin = new URL(endpoint).origin;
+  return async (input, init) => {
+    const requestUrl = typeof input === 'string' ? new URL(input) : input;
+    if (requestUrl.origin !== endpointOrigin) {
+      return fetchImpl(input, { ...init, redirect: 'error' });
+    }
+    const headers = new Headers(literals);
+    new Headers(init?.headers).forEach((value, name) => {
+      // The SDK/client is always the final writer. This automatically covers
+      // future generated HTTP or MCP headers without a driftable denylist.
+      headers.set(name, value);
+    });
+    return fetchImpl(input, { ...init, headers, redirect: 'error' });
+  };
+}
+
 export function createMCPTransport(
   def: ToolDef,
   authProvider?: OAuthClientProvider,
@@ -327,27 +349,10 @@ export function createMCPTransport(
         );
       return new StreamableHTTPClientTransport(new URL(def.endpoint), {
         authProvider,
-        requestInit: def.headers
-          ? {
-              headers: Object.fromEntries(
-                Object.entries(def.headers).filter(([name]) => {
-                  const normalized = name.toLowerCase();
-                  if (
-                    [
-                      'mcp-method',
-                      'mcp-name',
-                      'mcp-protocol-version',
-                      'mcp-session-id',
-                    ].includes(normalized)
-                  ) {
-                    return false;
-                  }
-                  return !authProvider || normalized !== 'authorization';
-                }),
-              ),
-              redirect: 'error',
-            }
-          : { redirect: 'error' },
+        requestInit: { redirect: 'error' },
+        ...(def.headers
+          ? { fetch: originBoundLiteralHeaderFetch(def.endpoint, def.headers) }
+          : {}),
       });
 
     default:

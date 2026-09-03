@@ -11,6 +11,7 @@ import {
   statSync,
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA_1_0,
   AGENT_PLUGIN_MCP_SCHEMA_1_0,
@@ -89,7 +90,66 @@ export interface AgentPluginLoaderOptions {
   projectHomeDir: string;
   /** Injectable for tests and packaged distributions; schemas are never fetched. */
   schemaRoot?: string;
+  /** Test/packaging seam for locating schemas relative to the server module. */
+  schemaModuleUrl?: string;
   report?: (report: AgentPluginLoadReport) => void;
+}
+
+export type AgentPluginLoadOutcome =
+  | { ok: true; plugin: LoadedAgentPlugin }
+  | { ok: false; reports: AgentPluginLoadReport[] };
+
+interface AgentPluginValidators {
+  manifest: ValidateFunction;
+  mcpServer: ValidateFunction;
+  stationExtension: ValidateFunction;
+}
+
+const validatorCache = new Map<string, AgentPluginValidators>();
+
+/** Source modules and bundled dist-server assets both sit beside a shipped schemas tree. */
+export function resolveAgentPluginSchemaRoot(
+  moduleUrl: string = import.meta.url,
+): string {
+  const moduleDir = dirname(fileURLToPath(moduleUrl));
+  const candidates = [
+    join(moduleDir, '..', 'schemas', 'agent-plugins'),
+    join(moduleDir, '..', '..', '..', 'schemas', 'agent-plugins'),
+  ];
+  const found = candidates.find((candidate) =>
+    existsSync(join(candidate, '1.0.0', 'plugin.schema.json')),
+  );
+  if (!found) {
+    throw new Error('Vendored Agent Plugins schemas are unavailable');
+  }
+  return realpathSync(found);
+}
+
+function validatorsFor(schemaRoot: string): AgentPluginValidators {
+  const cached = validatorCache.get(schemaRoot);
+  if (cached) return cached;
+  const ajv = new Ajv2020({ allErrors: true, strict: true });
+  const manifestSchema = JSON.parse(
+    readBoundedRegularFile(join(schemaRoot, '1.0.0', 'plugin.schema.json')),
+  );
+  const mcpSchema = JSON.parse(
+    readBoundedRegularFile(join(schemaRoot, '1.0.0', 'mcp.schema.json')),
+  );
+  const stationSchema = JSON.parse(
+    readBoundedRegularFile(
+      join(schemaRoot, 'io.kontourai.station-1.0.schema.json'),
+    ),
+  );
+  ajv.addSchema(mcpSchema);
+  const compiled = {
+    manifest: ajv.compile(manifestSchema),
+    mcpServer: ajv.compile({
+      $ref: `${AGENT_PLUGIN_MCP_SCHEMA_1_0}#/$defs/server`,
+    }),
+    stationExtension: ajv.compile(stationSchema),
+  } satisfies AgentPluginValidators;
+  validatorCache.set(schemaRoot, compiled);
+  return compiled;
 }
 
 export interface AgentPluginLoadOptions {
@@ -234,33 +294,28 @@ export class AgentPluginLoader {
     this.pluginsDir = join(this.projectHomeDir, 'plugins');
     this.pluginDataDir = join(this.projectHomeDir, 'agent-plugin-data');
     this.reportSink = options.report;
-    const schemaRoot = resolve(
-      options.schemaRoot ?? join(process.cwd(), 'schemas', 'agent-plugins'),
-    );
-    const ajv = new Ajv2020({ allErrors: true, strict: true });
-    const manifestSchema = JSON.parse(
-      readBoundedRegularFile(join(schemaRoot, '1.0.0', 'plugin.schema.json')),
-    );
-    const mcpSchema = JSON.parse(
-      readBoundedRegularFile(join(schemaRoot, '1.0.0', 'mcp.schema.json')),
-    );
-    const stationSchema = JSON.parse(
-      readBoundedRegularFile(
-        join(schemaRoot, 'io.kontourai.station-1.0.schema.json'),
-      ),
-    );
-    ajv.addSchema(mcpSchema);
-    this.validateManifest = ajv.compile(manifestSchema);
-    this.validateMcpServer = ajv.compile({
-      $ref: `${AGENT_PLUGIN_MCP_SCHEMA_1_0}#/$defs/server`,
-    });
-    this.validateStationExtension = ajv.compile(stationSchema);
+    const schemaRoot = options.schemaRoot
+      ? realpathSync(resolve(options.schemaRoot))
+      : resolveAgentPluginSchemaRoot(options.schemaModuleUrl);
+    const validators = validatorsFor(schemaRoot);
+    this.validateManifest = validators.manifest;
+    this.validateMcpServer = validators.mcpServer;
+    this.validateStationExtension = validators.stationExtension;
   }
 
   loadPackage(
     pluginRoot: string,
     options: AgentPluginLoadOptions = {},
   ): LoadedAgentPlugin | null {
+    const outcome = this.loadPackageResult(pluginRoot, options);
+    return outcome.ok ? outcome.plugin : null;
+  }
+
+  /** Tagged result retains precise rejection reports for direct callers. */
+  loadPackageResult(
+    pluginRoot: string,
+    options: AgentPluginLoadOptions = {},
+  ): AgentPluginLoadOutcome {
     const reports: AgentPluginLoadReport[] = [];
     let root: string;
     try {
@@ -274,7 +329,7 @@ export class AgentPluginLoader {
         pluginRoot: resolve(pluginRoot),
         message: `Plugin root is unavailable: ${String(error)}`,
       });
-      return null;
+      return { ok: false, reports };
     }
 
     const manifestPath = join(root, 'plugin.json');
@@ -294,12 +349,12 @@ export class AgentPluginLoader {
           component: 'plugin.json',
           message: `Plugin manifest is invalid: ${String(error)}`,
         });
-        return null;
+        return { ok: false, reports };
       }
     }
 
     const parsed = this.parseManifest(root, rawManifest, reports);
-    if (!parsed) return null;
+    if (!parsed) return { ok: false, reports };
     const { manifest, stationExtension } = parsed;
     const stationExtensionRoot = this.discoverStationExtensionDirectory(
       root,
@@ -315,14 +370,17 @@ export class AgentPluginLoader {
       options.provisionData !== false,
     );
     return {
-      root,
-      dataRoot,
-      manifest,
-      ...(stationExtension ? { stationExtension } : {}),
-      ...(stationExtensionRoot ? { stationExtensionRoot } : {}),
-      skills,
-      tools,
-      reports,
+      ok: true,
+      plugin: {
+        root,
+        dataRoot,
+        manifest,
+        ...(stationExtension ? { stationExtension } : {}),
+        ...(stationExtensionRoot ? { stationExtensionRoot } : {}),
+        skills,
+        tools,
+        reports,
+      },
     };
   }
 
@@ -461,6 +519,25 @@ export class AgentPluginLoader {
         core[key] = fieldValue;
       }
     }
+    if (isRecord(value.extensions)) {
+      const invalidNamespace = Object.entries(value.extensions).find(
+        ([, namespaceValue]) => !isRecord(namespaceValue),
+      );
+      if (invalidNamespace) {
+        this.manifestError(
+          root,
+          reports,
+          `Plugin manifest extension '${invalidNamespace[0]}' must be an object`,
+        );
+        return null;
+      }
+      // The portable schema validates only that namespace values are objects.
+      // Empty placeholders prove that shape without inspecting unknown client
+      // namespaces or assigning semantics to their contents.
+      core.extensions = Object.fromEntries(
+        Object.keys(value.extensions).map((namespace) => [namespace, {}]),
+      );
+    }
     if (!this.validateManifest(core)) {
       this.manifestError(
         root,
@@ -504,11 +581,13 @@ export class AgentPluginLoader {
       }
     }
 
+    const portableManifest = { ...core };
+    delete portableManifest.extensions;
     return {
       // Extension namespaces are not portable manifest authority. The one
       // implemented namespace is returned separately only after validation;
       // all others stay deliberately opaque and unprojected.
-      manifest: core as unknown as AgentPluginManifestV1,
+      manifest: portableManifest as unknown as AgentPluginManifestV1,
       ...(stationExtension ? { stationExtension } : {}),
     };
   }

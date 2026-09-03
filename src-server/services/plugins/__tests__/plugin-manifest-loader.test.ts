@@ -66,7 +66,7 @@ describe('plugin-manifest-loader', () => {
       }),
     );
     await expect(readPluginManifestFile(manifestPath)).rejects.toThrow(
-      /Agent Plugin manifest is invalid/,
+      /Agent Plugin manifest is invalid: Plugin manifest uses retired Station root field 'layout'/,
     );
   });
 

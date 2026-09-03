@@ -12,6 +12,7 @@ const LEGACY_SERVER = fileURLToPath(
 const openConnections: Array<{ close(): Promise<void> }> = [];
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   await Promise.allSettled(
     openConnections.splice(0).map((item) => item.close()),
   );
@@ -134,7 +135,7 @@ describe('MCP 2026 connection adapter', () => {
     expect(http.constructor.name).toBe('StreamableHTTPClientTransport');
   });
 
-  test('passes live cwd and literal headers to transports without letting package auth override client auth', () => {
+  test('passes live cwd and lets every client header outrank same-origin literals without forwarding on redirect', async () => {
     const stdio = createMCPTransport({
       id: 'stdio-options',
       kind: 'mcp',
@@ -144,25 +145,48 @@ describe('MCP 2026 connection adapter', () => {
     }) as unknown as { _serverParams: { cwd?: string } };
     expect(stdio._serverParams.cwd).toBe('/tmp/plugin-root');
 
-    const http = createMCPTransport(
-      {
-        id: 'http-options',
-        kind: 'mcp',
-        transport: 'streamable-http',
-        endpoint: 'https://example.test/mcp',
-        headers: {
-          Authorization: 'package-value',
-          'MCP-Session-Id': 'package-session',
-          'X-Tenant': 'public',
-        },
+    const fetch = vi.fn(
+      async (_input: string | URL, _init?: RequestInit) =>
+        new Response(null, { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const http = createMCPTransport({
+      id: 'http-options',
+      kind: 'mcp',
+      transport: 'streamable-http',
+      endpoint: 'https://example.test/mcp',
+      headers: {
+        Authorization: 'package-value',
+        'MCP-Future-Header': 'package-value',
+        'X-Tenant': 'public',
       },
-      { tokens: vi.fn() } as never,
-    ) as unknown as {
-      _requestInit: { redirect?: string; headers?: Record<string, string> };
+    }) as unknown as {
+      _fetch: typeof globalThis.fetch;
+      _requestInit: { redirect?: string };
     };
-    expect(http._requestInit).toEqual({
-      redirect: 'error',
-      headers: { 'X-Tenant': 'public' },
+    expect(http._requestInit).toEqual({ redirect: 'error' });
+
+    await http._fetch('https://example.test/mcp', {
+      redirect: 'follow',
+      headers: {
+        Authorization: 'Bearer client-value',
+        'MCP-Future-Header': 'client-value',
+      },
     });
+    let request = fetch.mock.calls[0]![1]!;
+    let headers = new Headers(request.headers);
+    expect(request.redirect).toBe('error');
+    expect(headers.get('authorization')).toBe('Bearer client-value');
+    expect(headers.get('mcp-future-header')).toBe('client-value');
+    expect(headers.get('x-tenant')).toBe('public');
+
+    await http._fetch('https://redirected.example/other', {
+      headers: { 'MCP-Protocol-Version': 'client-version' },
+    });
+    request = fetch.mock.calls[1]![1]!;
+    headers = new Headers(request.headers);
+    expect(request.redirect).toBe('error');
+    expect(headers.get('mcp-protocol-version')).toBe('client-version');
+    expect(headers.has('x-tenant')).toBe(false);
   });
 });

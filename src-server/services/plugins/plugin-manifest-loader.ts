@@ -64,17 +64,19 @@ function readAgentPluginManifest(
 
   const pluginRoot = dirname(manifestPath);
   const projectHomeDir = dirname(dirname(pluginRoot));
-  const loaded = new AgentPluginLoader({ projectHomeDir }).loadPackage(
+  const outcome = new AgentPluginLoader({ projectHomeDir }).loadPackageResult(
     pluginRoot,
     { provisionData: false, manifestDocument: candidate },
   );
-  if (!loaded) {
+  if (!outcome.ok) {
+    const reason = outcome.reports[0]?.message ?? 'unknown validation failure';
     throw new Error(
       schema === AGENT_PLUGIN_MANIFEST_SCHEMA_1_0
-        ? 'Agent Plugin manifest is invalid'
+        ? `Agent Plugin manifest is invalid: ${reason}`
         : `Unsupported Agent Plugins manifest schema '${schema}'`,
     );
   }
+  const loaded = outcome.plugin;
   return {
     name: loaded.manifest.name,
     version: loaded.manifest.version ?? '0.0.0-agent-plugin-unversioned',

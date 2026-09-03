@@ -1,4 +1,5 @@
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,6 +11,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { connectMCP } from '@kontourai/station-shared/mcp';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ConfigLoader } from '../../../domain/config-loader.js';
@@ -25,8 +27,9 @@ const MCP_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json';
 const PLUGIN_ROOT_PLACEHOLDER = '$' + '{PLUGIN_ROOT}';
 const PLUGIN_DATA_PLACEHOLDER = '$' + '{PLUGIN_DATA}';
 const UNRECOGNIZED_PLACEHOLDER = '$' + '{UNRECOGNIZED}';
+const REPOSITORY_ROOT = process.cwd();
 const FIXTURE = resolve(
-  process.cwd(),
+  REPOSITORY_ROOT,
   'src-server/services/plugins/__fixtures__/agent-plugins-example',
 );
 
@@ -70,6 +73,7 @@ describe('AgentPluginLoader', () => {
   }
 
   afterEach(() => {
+    process.chdir(REPOSITORY_ROOT);
     vi.restoreAllMocks();
     for (const path of scratch.splice(0)) {
       rmSync(path, { recursive: true, force: true });
@@ -119,7 +123,9 @@ describe('AgentPluginLoader', () => {
       $schema: PLUGIN_SCHEMA,
       name: 'acme.tools',
       extensions: {
-        'com.example.unimplemented': 'not validated by Station',
+        'com.example.unimplemented': {
+          arbitraryNestedShape: ['not', 'validated', 'by', 'Station'],
+        },
         'io.kontourai.station': { schemaVersion: 'wrong' },
       },
     });
@@ -131,6 +137,67 @@ describe('AgentPluginLoader', () => {
     expect(isolated?.reports).toEqual([
       expect.objectContaining({ code: 'station-extension-invalid' }),
     ]);
+  });
+
+  test('rejects a non-object namespace member while retaining the exact reason', () => {
+    const stationHome = home();
+    const root = plugin(stationHome, 'acme.tools', {
+      extensions: { 'other.client': 7 },
+    });
+    skill(root, 'must-not-load');
+
+    const outcome = new AgentPluginLoader({
+      projectHomeDir: stationHome,
+    }).loadPackageResult(root);
+    expect(outcome).toEqual({
+      ok: false,
+      reports: [
+        expect.objectContaining({
+          code: 'manifest-invalid',
+          message: "Plugin manifest extension 'other.client' must be an object",
+        }),
+      ],
+    });
+  });
+
+  test('resolves and caches vendored schemas independently of cwd in source and packaged layouts', () => {
+    const stationHome = home();
+    const hostileCwd = home();
+    process.chdir(hostileCwd);
+    expect(
+      new AgentPluginLoader({ projectHomeDir: stationHome }).loadPackage(
+        FIXTURE,
+      )?.manifest.name,
+    ).toBe('agent-plugins-example');
+
+    const release = home();
+    const packagedSchemas = join(release, 'schemas', 'agent-plugins');
+    cpSync(join(REPOSITORY_ROOT, 'schemas', 'agent-plugins'), packagedSchemas, {
+      recursive: true,
+    });
+    const bundledModule = join(release, 'dist-server', 'command-station.js');
+    mkdirSync(resolve(bundledModule, '..'), { recursive: true });
+    writeFileSync(bundledModule, '// packaged-like module location\n');
+    const schemaModuleUrl = pathToFileURL(bundledModule).href;
+    expect(
+      new AgentPluginLoader({
+        projectHomeDir: stationHome,
+        schemaModuleUrl,
+      }).loadPackage(FIXTURE)?.manifest.name,
+    ).toBe('agent-plugins-example');
+
+    // A second reader at the same packaged schema identity reuses immutable
+    // compiled validators instead of reading/compiling on every manifest.
+    writeFileSync(
+      join(packagedSchemas, '1.0.0', 'plugin.schema.json'),
+      'not json',
+    );
+    expect(
+      new AgentPluginLoader({
+        projectHomeDir: stationHome,
+        schemaModuleUrl,
+      }).loadPackage(FIXTURE)?.manifest.name,
+    ).toBe('agent-plugins-example');
   });
 
   test.each([

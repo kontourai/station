@@ -79,6 +79,8 @@ never written into `plugin.json`, `mcp.json` `env`, or MCP HTTP headers.
 ## Current consumer behavior
 
 Station selects the vendored 1.0.0 manifest and MCP schemas from `$schema`; it
+resolves those assets relative to the source/bundled server module rather than
+the caller's working directory, caches the immutable compiled validators, and
 does not fetch schemas during load. Portable Skills are served read-only from
 immediate `skills/*/SKILL.md` children with `agent-plugin:<name>` provenance,
 and a local Project Skill with the same name wins. MCP servers are projected

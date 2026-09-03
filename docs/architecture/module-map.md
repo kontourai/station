@@ -67,7 +67,10 @@ Interface; Station-owned files retain collision precedence.
 
 **Contract.** Fatal manifest failures discover nothing. Unknown root fields and
 a non-object `extensions` value are reported and ignored; only
-`io.kontourai.station` is validated. Skill, MCP-document, MCP-entry, and
+`io.kontourai.station` is validated. An object-valued `extensions` map still
+requires every namespace member to be an object, without inspecting unknown
+namespace contents. Vendored schemas resolve from the source or bundled module
+asset tree and immutable compiled validators are shared across reads. Skill, MCP-document, MCP-entry, and
 unsupported-transport failures remain isolated at their specified boundary.
 Stdio path and environment projection owns containment, default cwd,
 single-pass placeholders, and persistent plugin data. Streamable HTTP owns URL
