@@ -25,6 +25,8 @@ import {
 const JOB_KIND = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 const HOST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const PUBLIC_TEXT_MAX = 320;
+const DEFAULT_OBSERVER_TIMEOUT_MS = 1_000;
+const MAX_OBSERVER_TIMEOUT_MS = 30_000;
 
 export interface PluginForegroundWorkOwner {
   /** Canonical manifest identity. */
@@ -94,6 +96,17 @@ export interface PluginForegroundRunCoordinator {
     readonly from: readonly PluginForegroundWorkState[];
     readonly to: PluginForegroundWorkState;
     readonly effectDepth: PluginForegroundWorkEffectDepth;
+    readonly now: string;
+    readonly failureSummary?: string;
+  }): PluginForegroundRunTransition;
+  /** Atomically derives effect depth from the current active state. */
+  settleCancellation(input: {
+    readonly runId: string;
+    readonly executionOwnerId: string;
+    readonly to: Extract<
+      PluginForegroundWorkState,
+      'cancelled' | 'indeterminate'
+    >;
     readonly now: string;
     readonly failureSummary?: string;
   }): PluginForegroundRunTransition;
@@ -212,6 +225,8 @@ export interface PluginForegroundRuns extends PluginForegroundRunReader {
   ): Promise<PluginForegroundCancellationResult>;
   /** Startup-only reconciliation. It never replays plugin work. */
   reconcile(now: string): { readonly kind: 'available' | 'unavailable' };
+  /** Releases only this composed execution owner's in-process lease. */
+  releaseOwner(): void;
 }
 
 interface JsonBudget {
@@ -443,25 +458,20 @@ function isTerminal(state: PluginForegroundWorkState): boolean {
   );
 }
 
-const activeOwners = new Set<string>();
-const releasedOwners = new Set<string>();
-
-/** Runtime shutdown releases the owner before a replacement reconciles. */
-export function releasePluginForegroundRunOwner(ownerId: string): void {
-  activeOwners.delete(ownerId);
-  releasedOwners.add(ownerId);
-}
-
 function ownerIsLive(
   record: PluginForegroundRunRecord,
   identity: PluginForegroundProcessIdentity,
+  currentOwner: PluginForegroundExecutionOwner,
+  currentOwnerActive: boolean,
 ): boolean {
-  if (releasedOwners.has(record.executionOwnerId)) return false;
   if (
-    record.executionOwnerPid === process.pid &&
-    activeOwners.has(record.executionOwnerId)
+    record.executionOwnerId === currentOwner.id &&
+    record.executionOwnerPid === currentOwner.pid &&
+    record.executionOwnerIdentityKind === currentOwner.identityKind &&
+    (currentOwner.identityKind === 'unverified' ||
+      record.executionOwnerBirth === currentOwner.birth)
   ) {
-    return true;
+    return currentOwnerActive;
   }
   const observed = identity.probe(record.executionOwnerPid);
   if (observed.state === 'dead') return false;
@@ -487,6 +497,8 @@ function stableRunIdentity(input: {
         input.owner.pluginId,
         input.owner.installationKey,
         input.owner.installationGeneration,
+        input.owner.accountId,
+        input.owner.machineId ?? null,
         input.request.kind,
         idempotencyDigest,
       ]),
@@ -561,8 +573,12 @@ export function createPluginForegroundRuns(options: {
   ) => boolean | Promise<boolean>;
   readonly cancellationAdapter?: PluginForegroundCancellationAdapter;
   readonly observer?: PluginForegroundRunObserver;
+  /** Internal test/host bound; observers never get an unbounded control wait. */
+  readonly observerTimeoutMs?: number;
   readonly logger?: Pick<Logger, 'warn'>;
 }): PluginForegroundRuns {
+  const observerTimeoutMs =
+    options.observerTimeoutMs ?? DEFAULT_OBSERVER_TIMEOUT_MS;
   if (
     options.declarations.length >
       PLUGIN_FOREGROUND_WORK_LIMITS.declarationsPerPlugin ||
@@ -573,7 +589,10 @@ export function createPluginForegroundRuns(options: {
       .size !== options.declarations.length ||
     !HOST_ID.test(options.executionOwner.id) ||
     !Number.isSafeInteger(options.executionOwner.pid) ||
-    options.executionOwner.pid < 1
+    options.executionOwner.pid < 1 ||
+    !Number.isSafeInteger(observerTimeoutMs) ||
+    observerTimeoutMs < 1 ||
+    observerTimeoutMs > MAX_OBSERVER_TIMEOUT_MS
   ) {
     throw new Error('Invalid plugin foreground work composition');
   }
@@ -583,26 +602,54 @@ export function createPluginForegroundRuns(options: {
       Object.freeze(structuredClone(declaration)),
     ]),
   );
-  activeOwners.add(options.executionOwner.id);
+  let executionOwnerActive = true;
   const observerHandles = new Map<string, PluginForegroundRunObserverHandle>();
+
+  const runObserver = async <T>(
+    runId: string,
+    work: () => Promise<T>,
+  ): Promise<T | undefined> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const operation = Promise.resolve()
+      .then(work)
+      .then(
+        (value) => ({ kind: 'completed' as const, value }),
+        (error: unknown) => ({ kind: 'failed' as const, error }),
+      );
+    const timeout = new Promise<{ kind: 'timed-out' }>((resolve) => {
+      timer = setTimeout(
+        () => resolve({ kind: 'timed-out' }),
+        observerTimeoutMs,
+      );
+    });
+    const result = await Promise.race([operation, timeout]);
+    if (timer) clearTimeout(timer);
+    if (result.kind === 'completed') return result.value;
+    options.logger?.warn('Plugin foreground run observation unavailable', {
+      runId,
+      error:
+        result.kind === 'timed-out'
+          ? 'observer timed out'
+          : result.error instanceof Error
+            ? result.error.message
+            : String(result.error),
+    });
+    return undefined;
+  };
 
   const updateObserver = async (
     handle: PluginForegroundRunObserverHandle | undefined,
     run: PluginForegroundRun,
   ): Promise<void> => {
     if (!handle) return;
-    try {
-      await handle.update(run);
-    } catch (error) {
-      options.logger?.warn('Plugin foreground run observation unavailable', {
-        runId: run.runId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    await runObserver(run.runId, () => handle.update(run));
   };
 
   const runs: PluginForegroundRuns = {
     async start(owner, request) {
+      if (!executionOwnerActive) {
+        return { kind: 'refused', reason: 'run-authority-unavailable' };
+      }
       const valid = validRequest(request);
       if (!validOwner(owner) || !valid) {
         return { kind: 'refused', reason: 'invalid' };
@@ -670,19 +717,17 @@ export function createPluginForegroundRuns(options: {
           : { kind: 'refused', reason: 'idempotency-equivocation' };
       }
 
-      let observer: PluginForegroundRunObserverHandle | undefined;
-      try {
-        observer = await options.observer?.begin({
-          owner: structuredClone(owner),
-          declaration: structuredClone(declaration),
-          run: publicRun(record),
-        });
-        if (observer) observerHandles.set(record.runId, observer);
-      } catch (error) {
-        options.logger?.warn('Plugin foreground run observation unavailable', {
-          runId: record.runId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+      const observer = options.observer
+        ? await runObserver(record.runId, () =>
+            options.observer!.begin({
+              owner: structuredClone(owner),
+              declaration: structuredClone(declaration),
+              run: publicRun(record),
+            }),
+          )
+        : undefined;
+      if (observer) {
+        observerHandles.set(record.runId, observer);
       }
       const observe = async (result: PluginForegroundRunTransition) => {
         if (result.kind === 'applied') {
@@ -713,23 +758,32 @@ export function createPluginForegroundRuns(options: {
           return { kind: 'stale' } as const;
         }
         terminalIntent ??= intent;
-        return observe(
+        const settledIntent = terminalIntent;
+        const result = await observe(
           transitionWithIntent({
             coordinator: options.coordinator,
             runId: record.runId,
             executionOwnerId: options.executionOwner.id,
-            from: terminalIntent.from,
-            to: terminalIntent.to,
-            effectDepth: terminalIntent.depth,
-            now: terminalIntent.now,
-            ...(terminalIntent.summary
-              ? { failureSummary: terminalIntent.summary }
+            from: settledIntent.from,
+            to: settledIntent.to,
+            effectDepth: settledIntent.depth,
+            now: settledIntent.now,
+            ...(settledIntent.summary
+              ? { failureSummary: settledIntent.summary }
               : {}),
           }),
         );
+        // An unavailable transition may have committed, so retries must retain
+        // exactly one intent. A definitely stale transition applied nothing
+        // and must not poison a later intent appropriate to current state.
+        if (result.kind === 'stale' && terminalIntent === settledIntent) {
+          terminalIntent = undefined;
+        }
+        return result;
       };
       const claim: PluginForegroundRunClaim = Object.freeze({
         beginEffect: async (beginNow: string) => {
+          if (!executionOwnerActive) return { kind: 'stale' } as const;
           if (!beginIntent) {
             let currentAuthorization: PluginForegroundAuthorizationOutcome;
             try {
@@ -855,19 +909,20 @@ export function createPluginForegroundRuns(options: {
       if (cancellation === 'refused') {
         return { kind: 'refused', run: publicRun(record) };
       }
-      const transition = transitionWithIntent({
-        coordinator: options.coordinator,
-        runId,
-        executionOwnerId: record.executionOwnerId,
-        from: [record.state],
-        to: cancellation === 'confirmed' ? 'cancelled' : 'indeterminate',
-        effectDepth:
-          record.state === 'admitted' ? 'uninvoked' : 'possible-effect',
-        now: new Date().toISOString(),
-        ...(cancellation === 'unknown'
-          ? { failureSummary: 'Cancellation could not be confirmed.' }
-          : {}),
-      });
+      let transition: PluginForegroundRunTransition;
+      try {
+        transition = options.coordinator.settleCancellation({
+          runId,
+          executionOwnerId: record.executionOwnerId,
+          to: cancellation === 'confirmed' ? 'cancelled' : 'indeterminate',
+          now: new Date().toISOString(),
+          ...(cancellation === 'unknown'
+            ? { failureSummary: 'Cancellation could not be confirmed.' }
+            : {}),
+        });
+      } catch {
+        transition = { kind: 'unavailable' };
+      }
       if (transition.kind !== 'applied') {
         return transition.kind === 'unavailable'
           ? { kind: 'unavailable' }
@@ -888,7 +943,15 @@ export function createPluginForegroundRuns(options: {
       if (!safeTimestamp(now)) return { kind: 'unavailable' };
       try {
         for (const record of options.coordinator.active()) {
-          if (ownerIsLive(record, options.processIdentity)) continue;
+          if (
+            ownerIsLive(
+              record,
+              options.processIdentity,
+              options.executionOwner,
+              executionOwnerActive,
+            )
+          )
+            continue;
           const result = transitionWithIntent({
             coordinator: options.coordinator,
             runId: record.runId,
@@ -952,6 +1015,10 @@ export function createPluginForegroundRuns(options: {
       } catch {
         return { kind: 'unavailable' };
       }
+    },
+
+    releaseOwner() {
+      executionOwnerActive = false;
     },
   };
   return Object.freeze(runs);
