@@ -14,6 +14,9 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 const clearPluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProvidersForSource = vi.hoisted(() => vi.fn());
+const replacePluginProvidersForSourceGeneration = vi.hoisted(() =>
+  vi.fn(async () => 'activated' as const),
+);
 const pluginProviderSourceGeneration = vi.hoisted(() => vi.fn(() => 1));
 const retirePluginProvidersForSourceGeneration = vi.hoisted(() =>
   vi.fn(async () => 'retired' as const),
@@ -50,6 +53,7 @@ vi.mock('../../../providers/registries/registry.js', () => ({
   clearPluginProviders,
   replacePluginProviders,
   replacePluginProvidersForSource,
+  replacePluginProvidersForSourceGeneration,
   pluginProviderSourceGeneration,
   retirePluginProvidersForSourceGeneration,
   withPluginProviderSourceGeneration,
@@ -61,7 +65,11 @@ vi.mock('../../../providers/registries/registry.js', () => ({
 }));
 
 const loadPluginProviders = vi.hoisted(() => vi.fn().mockResolvedValue(0));
-vi.mock('../plugin-loader.js', () => ({ loadPluginProviders }));
+const preparePluginProviders = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+vi.mock('../plugin-loader.js', () => ({
+  loadPluginProviders,
+  preparePluginProviders,
+}));
 
 // The scanner the install/lifecycle routes actually call. It used to be
 // `plugin-prompt-generation.js`, which was DELETED with the copy-into-a-store

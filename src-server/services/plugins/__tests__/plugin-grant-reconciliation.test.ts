@@ -216,8 +216,56 @@ describe('plugin grant reconciliation', () => {
         installationGeneration: 'sha256:generation-1',
         providerGeneration: 4,
       },
+      expect.any(Function),
     );
     expect(fixture.adapters.reconcileEngineConnections).not.toHaveBeenCalled();
+  });
+
+  test('prevents retained activation publication after a newer revoke generation wins', async () => {
+    const fixture = harness({
+      installed: true,
+      installationGeneration: 'sha256:generation-1',
+      providerGeneration: 4,
+      grants: ['providers.register'],
+    });
+    let releaseActivation!: () => void;
+    const activationGate = new Promise<void>((resolve) => {
+      releaseActivation = resolve;
+    });
+    let publishAttempts = 0;
+    vi.mocked(fixture.adapters.activateProviders).mockImplementation(
+      async (_pluginName, _expected, isCurrent) => {
+        fixture.order.push('activate-start');
+        await activationGate;
+        if (!isCurrent()) return 'superseded';
+        publishAttempts += 1;
+        return 'activated';
+      },
+    );
+    const service = createPluginGrantReconciliationService(fixture.adapters, {
+      responseDeadlineMs: 1_000,
+    });
+    const regrant = service.reconcile({
+      pluginName: 'provider-plugin',
+      permissions: ['providers.register'],
+    });
+    await vi.waitFor(() => expect(fixture.order).toContain('activate-start'));
+    fixture.setSnapshot({
+      installed: true,
+      installationGeneration: 'sha256:generation-1',
+      providerGeneration: 4,
+      grants: [],
+    });
+    const revoke = service.reconcile({
+      pluginName: 'provider-plugin',
+      permissions: ['providers.register'],
+    });
+    releaseActivation();
+
+    await expect(regrant).resolves.toMatchObject({ status: 'superseded' });
+    await expect(revoke).resolves.toMatchObject({ status: 'completed' });
+    expect(publishAttempts).toBe(0);
+    expect(fixture.adapters.retireProviders).toHaveBeenCalledOnce();
   });
 
   test('refuses to retire a different installed generation', async () => {

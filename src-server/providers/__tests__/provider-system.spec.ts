@@ -25,6 +25,7 @@ import {
   registerProviderAdapter,
   replacePluginProviders,
   replacePluginProvidersForSource,
+  replacePluginProvidersForSourceGeneration,
   retirePluginProvidersForSourceGeneration,
   withPluginProviderSourceGeneration,
 } from '../registries/registry.js';
@@ -668,6 +669,46 @@ describe('Provider System', () => {
         ),
       ).resolves.toBe('retired');
       expect(getProvider('auth')).not.toBe(replacement);
+    });
+
+    it('disposes staged activation instead of publishing after its lifecycle generation turns stale', async () => {
+      const current = { id: 'current' };
+      await replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: current, source: 'plugin-a' },
+      ]);
+      const expectedGeneration = pluginProviderSourceGeneration('plugin-a');
+      const displaced = new BedrockAdapter();
+      const prepared = new BedrockAdapter();
+      let releaseStagingCleanup!: () => void;
+      const stagingCleanup = new Promise<void>((resolve) => {
+        releaseStagingCleanup = resolve;
+      });
+      const stopDisplaced = vi
+        .spyOn(displaced, 'stopAll')
+        .mockImplementation(() => stagingCleanup);
+      const stopPrepared = vi.spyOn(prepared, 'stopAll').mockResolvedValue();
+      let lifecycleCurrent = true;
+
+      const activation = replacePluginProvidersForSourceGeneration(
+        'plugin-a',
+        expectedGeneration,
+        [
+          { type: 'providerAdapter', provider: displaced, source: 'plugin-a' },
+          { type: 'providerAdapter', provider: prepared, source: 'plugin-a' },
+        ],
+        () => lifecycleCurrent,
+      );
+      await vi.waitFor(() => expect(stopDisplaced).toHaveBeenCalledOnce());
+      lifecycleCurrent = false;
+      releaseStagingCleanup();
+
+      await expect(activation).resolves.toBe('superseded');
+      expect(stopPrepared).toHaveBeenCalledOnce();
+      expect(getProvider('auth')).toBe(current);
+      expect(getProviderAdapter('bedrock')).toBeUndefined();
+      expect(pluginProviderSourceGeneration('plugin-a')).toBe(
+        expectedGeneration,
+      );
     });
 
     it('does not reuse a provider generation after a clear and reload', async () => {

@@ -352,7 +352,8 @@ export async function registerPreparedPluginProviders(
 async function replacePluginProvidersForSourceInsideMutation(
   source: string,
   registrations: PreparedPluginProviderRegistration[],
-): Promise<void> {
+  canCommit: () => boolean = () => true,
+): Promise<'replaced' | 'superseded'> {
   if (registrations.some((registration) => registration.source !== source)) {
     throw new Error(
       'Plugin provider source replacement received mixed sources.',
@@ -372,6 +373,10 @@ async function replacePluginProvidersForSourceInsideMutation(
       cleanupErrors,
       'Plugin provider registration preparation failed.',
     );
+  }
+  if (!canCommit()) {
+    await disposePreparedPluginProviders(active);
+    return 'superseded';
   }
   const nextStore = new Map<string, Map<string, ProviderEntry>>();
   for (const [type, entries] of pluginStore) {
@@ -405,6 +410,7 @@ async function replacePluginProvidersForSourceInsideMutation(
   if (hadSourceAdapters || hasSourceAdapters) {
     commitProviderAdapterLaunchabilityRevision();
   }
+  return 'replaced';
 }
 
 export async function replacePluginProvidersForSource(
@@ -414,6 +420,39 @@ export async function replacePluginProvidersForSource(
   await serializePluginProviderMutation(() =>
     replacePluginProvidersForSourceInsideMutation(source, registrations),
   );
+}
+
+/**
+ * Publishes one prepared source only while both the provider source generation
+ * and the caller's owning lifecycle generation remain current. The final
+ * predicate runs after staged duplicate cleanup and immediately before the
+ * synchronous store commit, so no newer revocation can be observed and then
+ * overwritten by stale retained activation work.
+ */
+export async function replacePluginProvidersForSourceGeneration(
+  source: string,
+  expectedGeneration: number,
+  registrations: PreparedPluginProviderRegistration[],
+  isCurrent: () => boolean,
+): Promise<'activated' | 'superseded'> {
+  const current = () => {
+    try {
+      return (
+        pluginProviderSourceGeneration(source) === expectedGeneration &&
+        isCurrent() === true
+      );
+    } catch {
+      return false;
+    }
+  };
+  const result = await serializePluginProviderMutation(() =>
+    replacePluginProvidersForSourceInsideMutation(
+      source,
+      registrations,
+      current,
+    ),
+  );
+  return result === 'replaced' ? 'activated' : 'superseded';
 }
 
 export async function retirePluginProvidersForSourceGeneration(

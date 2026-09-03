@@ -30,6 +30,7 @@ export interface PluginGrantReconciliationAdapters {
   activateProviders(
     pluginName: string,
     expected: PluginGrantRuntimeGenerationFence,
+    isCurrent: () => boolean,
   ): Promise<'activated' | 'superseded'>;
   settleProviderAdapters(): Promise<void>;
   removeEngineConnections(
@@ -239,6 +240,7 @@ export function createPluginGrantReconciliationService(
                 installationGeneration: beforeEffect.installationGeneration,
                 providerGeneration: beforeEffect.providerGeneration,
               },
+              current,
             );
             if (activated === 'superseded') {
               return {

@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import {
   pluginProviderSourceGeneration,
+  replacePluginProvidersForSourceGeneration,
   retirePluginProvidersForSourceGeneration,
   withPluginProviderSourceGeneration,
 } from '../../providers/registries/registry.js';
@@ -25,7 +26,7 @@ import { registerPluginHomeRoleRoutes } from './plugin-home-role-routes.js';
 import { registerPluginHostApprovalRoutes } from './plugin-host-approval-routes.js';
 import { registerPluginInstallRoutes } from './plugin-install-routes.js';
 import { registerPluginLifecycleRoutes } from './plugin-lifecycle-routes.js';
-import { loadPluginProviders } from './plugin-loader.js';
+import { preparePluginProviders } from './plugin-loader.js';
 import { registerPluginPublicRoutes } from './plugin-public-routes.js';
 import { quiescePluginPublicServerModule } from './plugin-public-server.js';
 
@@ -76,7 +77,7 @@ export function createPluginRoutes(
               pluginName,
               expectedGeneration,
             ),
-          activateProviders: async (pluginName, expected) => {
+          activateProviders: async (pluginName, expected, isCurrent) => {
             const activation = await withPluginInstallationGeneration({
               pluginsDir,
               pluginName,
@@ -85,17 +86,23 @@ export function createPluginRoutes(
                 const manifest = await readPluginManifestFile(
                   join(pluginsDir, pluginName, 'plugin.json'),
                 );
-                await loadPluginProviders(
+                const prepared = await preparePluginProviders(
                   pluginsDir,
                   pluginName,
                   manifest,
                   logger,
                   { strict: true },
                 );
+                return replacePluginProvidersForSourceGeneration(
+                  pluginName,
+                  expected.providerGeneration,
+                  prepared,
+                  isCurrent,
+                );
               },
             });
             return activation.kind === 'applied'
-              ? ('activated' as const)
+              ? activation.value
               : ('superseded' as const);
           },
           settleProviderAdapters: runtime.settleProviderAdapterRetirements,
