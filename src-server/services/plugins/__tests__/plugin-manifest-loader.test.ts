@@ -139,6 +139,42 @@ describe('plugin-manifest-loader', () => {
         loadCommands([navigateCommand, navigateCommand]),
       ).rejects.toThrow(/contains duplicate id 'demo-plugin\.open-settings'/);
     });
+
+    test.each([{ commands: [], callback: 'run-me' }, { validator: '.*' }])(
+      'rejects unknown fields in the reserved Station namespace',
+      async (station) => {
+        const manifestPath = join(dir, 'plugin.json');
+        writeFileSync(
+          manifestPath,
+          JSON.stringify({
+            name: 'demo-plugin',
+            version: '1.0.0',
+            extensions: { [STATION_EXTENSION]: station },
+          }),
+        );
+        await expect(readPluginManifestFile(manifestPath)).rejects.toThrow(
+          /Plugin extension 'io\.kontourai\.station' contains unknown field/,
+        );
+      },
+    );
+
+    test('leaves another extension namespace opaque', async () => {
+      const manifestPath = join(dir, 'plugin.json');
+      const opaque = { callback: 'owned elsewhere', version: 7 };
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          name: 'demo-plugin',
+          version: '1.0.0',
+          extensions: { 'example.other-host': opaque },
+        }),
+      );
+      await expect(readPluginManifestFile(manifestPath)).resolves.toMatchObject(
+        {
+          extensions: { 'example.other-host': opaque },
+        },
+      );
+    });
   });
 
   // archive#4307: `manifest.name` is a STORE KEY (plugin-overrides, grants,

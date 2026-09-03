@@ -31,17 +31,19 @@ beforeEach(() => {
 
 async function dispatch(event: string) {
   const invalidateQueries = vi.fn();
-  invalidateQueriesForServerEvent(event, { invalidateQueries });
+  const setQueryData = vi.fn();
+  invalidateQueriesForServerEvent(event, { invalidateQueries, setQueryData });
   // The reload is loaded lazily through a dynamic import.
   await new Promise((resolve) => setTimeout(resolve, 0));
-  return invalidateQueries;
+  return { invalidateQueries, setQueryData };
 }
 
 test('a grants change refreshes the plugin list AND the loaded registry', async () => {
-  const invalidateQueries = await dispatch(
+  const { invalidateQueries, setQueryData } = await dispatch(
     SERVER_EVENTS.PLUGINS_GRANTS_CHANGED,
   );
 
+  expect(setQueryData).toHaveBeenCalledWith(['plugins'], []);
   expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['plugins'] });
   // Without this, a frame that is already open keeps using a withdrawn
   // permission.
@@ -53,6 +55,17 @@ test('the events that already reloaded the registry still do', async () => {
   expect(reload).toHaveBeenCalledTimes(1);
   reload.mockClear();
   await dispatch(SERVER_EVENTS.PLUGINS_UPDATED);
+  expect(reload).toHaveBeenCalledTimes(1);
+});
+
+test('plugin removal synchronously withdraws cached commands and reloads the registry', async () => {
+  const { invalidateQueries, setQueryData } = await dispatch(
+    SERVER_EVENTS.PLUGINS_REMOVED,
+  );
+
+  expect(setQueryData).toHaveBeenCalledWith(['plugins'], []);
+  expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['plugins'] });
+  expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['layouts'] });
   expect(reload).toHaveBeenCalledTimes(1);
 });
 

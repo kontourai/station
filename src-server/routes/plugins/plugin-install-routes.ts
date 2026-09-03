@@ -1,12 +1,16 @@
 import { existsSync, rmSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { STATION_PLUGIN_EXTENSION_ID } from '@kontourai/station-contracts/plugin';
+import {
+  isCanonicalPluginId,
+  STATION_PLUGIN_EXTENSION_ID,
+} from '@kontourai/station-contracts/plugin';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
+import { pluginCommandGeneration } from '../../services/plugins/plugin-command-contributions.js';
 import { scanPluginPromptFileSafety } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   findPluginContentLockCycleError,
@@ -91,12 +95,22 @@ export function registerPluginInstallRoutes(
     const plugins = [];
 
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      // Installed plugin directories have canonical manifest identities.
+      // `.preview-*` and every other host-owned staging directory are never
+      // installation authority and must not contribute live commands.
+      if (!entry.isDirectory() || !isCanonicalPluginId(entry.name)) continue;
       const manifestPath = join(pluginsDir, entry.name, 'plugin.json');
       if (!existsSync(manifestPath)) continue;
 
       try {
         const manifest = await readPluginManifestFile(manifestPath);
+        if (manifest.name !== entry.name) {
+          logger.error('Installed plugin directory does not match manifest', {
+            directory: entry.name,
+            plugin: manifest.name,
+          });
+          continue;
+        }
         const bundlePath = join(pluginsDir, entry.name, 'dist', 'bundle.js');
         const pluginDir = join(pluginsDir, entry.name);
         const git = await getPluginGitInfo(pluginDir, logger);
@@ -129,6 +143,7 @@ export function registerPluginInstallRoutes(
           links: manifest.links,
           commandContributions:
             manifest.extensions?.[STATION_PLUGIN_EXTENSION_ID]?.commands ?? [],
+          commandGeneration: pluginCommandGeneration(manifest),
           commandCapabilities: {
             invokeDeclaredOperation: manifest.serverModule
               ? granted.includes('plugin.server')

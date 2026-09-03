@@ -1,11 +1,14 @@
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
+import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import type { PluginCommandExecutionAuthority } from '../../services/plugins/plugin-command-execution.js';
 import { uiCommandOps } from '../../telemetry/metrics.js';
 
 const INVALID_PATH = /javascript:|data:|vbscript:/i;
 
 export interface UICommandRouteDeps {
+  pluginCommandExecution: PluginCommandExecutionAuthority;
   /**
    * archive#3567 fix round FIX 1: `UI_NAVIGATE` reaches a client only through
    * `/events`' `canRelayUiNavigateEvent`, which delivers in personal mode and
@@ -40,6 +43,41 @@ export function createUICommandRoutes(
   deps: UICommandRouteDeps,
 ) {
   const app = new Hono();
+
+  app.post('/plugin-command-receipts', async (c) => {
+    if (deps.isHostedDeployment()) {
+      return c.json(
+        { success: false, reason: 'hosted-audit-unavailable' as const },
+        403,
+      );
+    }
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json(
+        { success: false, reason: 'invalid-request' as const },
+        400,
+      );
+    }
+    const outcome = deps.pluginCommandExecution.authorize(
+      body,
+      resolveClientOriginForRequest(c.req.raw),
+    );
+    if (outcome.kind === 'authorized') {
+      return c.json({ success: true, receipt: outcome.receipt });
+    }
+    if (outcome.kind === 'refused') {
+      return c.json(
+        { success: false, reason: outcome.reason },
+        outcome.reason === 'invalid-request' ? 400 : 409,
+      );
+    }
+    return c.json(
+      { success: false, reason: 'audit-unavailable' as const },
+      503,
+    );
+  });
 
   app.post('/', async (c) => {
     const { command, payload } = await c.req.json<{

@@ -172,6 +172,41 @@ export interface PluginCommandContribution {
   intent: PluginCommandIntent;
 }
 
+export const PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION =
+  'station.plugin-command-execution/v1' as const;
+
+export type PluginCommandResolvedTarget =
+  | { kind: 'surface'; surfaceId: string }
+  | { kind: 'composer'; sessionId: string };
+
+/** Browser intent admitted by the host before a local palette effect. */
+export interface PluginCommandExecutionRequest {
+  schemaVersion: typeof PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION;
+  requestId: string;
+  pluginId: string;
+  pluginVersion: string;
+  commandGeneration: string;
+  commandId: string;
+  target: PluginCommandResolvedTarget;
+}
+
+/** Durable operational-event receipt. No command input or composer text. */
+export interface PluginCommandExecutionReceipt {
+  schemaVersion: typeof PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION;
+  receiptId: string;
+  requestId: string;
+  pluginId: string;
+  pluginVersion: string;
+  commandGeneration: string;
+  commandId: string;
+  target: PluginCommandResolvedTarget;
+  actor: import('./client-origin.js').ClientOriginActor;
+  reportedSurface: import('./client-origin.js').ClientOriginSurface;
+  decision: 'authorized';
+  outcome: 'admitted';
+  recordedAt: string;
+}
+
 /** Station's reserved Agent Plugins extension payload. */
 export interface StationPluginExtension {
   commands?: PluginCommandContribution[];

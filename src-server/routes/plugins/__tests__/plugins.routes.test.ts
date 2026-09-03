@@ -1244,6 +1244,7 @@ describe('Plugin Routes', () => {
     expect(p.commandContributions).toEqual([
       expect.objectContaining({ id: 'test-plugin.open-plugins' }),
     ]);
+    expect(p.commandGeneration).toMatch(/^[a-f0-9]{64}$/);
     expect(p.commandCapabilities).toEqual({
       invokeDeclaredOperation: {
         available: false,

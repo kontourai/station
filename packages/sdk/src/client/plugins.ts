@@ -8,6 +8,8 @@ export type InstalledPluginRecord = PluginManifest & {
   hasBundle?: boolean;
   /** Parsed, inert Station command declarations from the reserved extension. */
   commandContributions?: PluginCommandContribution[];
+  /** Digest of the exact normalized commands and installed plugin identity. */
+  commandGeneration?: string;
   /** Server-derived execution facts; clients never infer permission grants. */
   commandCapabilities?: {
     invokeDeclaredOperation: {

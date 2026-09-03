@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   type PluginCommandArgument,
   type PluginCommandContribution,
@@ -204,6 +205,11 @@ export function parsePluginCommandContributions(
     stationExtension,
     `Plugin extension '${STATION_PLUGIN_EXTENSION_ID}'`,
   );
+  exactKeys(
+    station,
+    ['commands'],
+    `Plugin extension '${STATION_PLUGIN_EXTENSION_ID}'`,
+  );
   if (station.commands === undefined) return [];
   if (!Array.isArray(station.commands)) {
     throw new Error(
@@ -338,4 +344,28 @@ export function parsePluginCommandContributions(
       intent,
     };
   });
+}
+
+/**
+ * Stable execution fence over the exact normalized command declaration set.
+ * It is a generation, not content provenance for the rest of the plugin.
+ */
+export function pluginCommandGeneration(
+  manifest: Pick<
+    import('@kontourai/station-contracts/plugin').PluginManifest,
+    'name' | 'version' | 'extensions'
+  >,
+): string {
+  const commands =
+    manifest.extensions?.[STATION_PLUGIN_EXTENSION_ID]?.commands ?? [];
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        'station.plugin-command-generation/v1',
+        manifest.name,
+        manifest.version,
+        commands,
+      ]),
+    )
+    .digest('hex');
 }

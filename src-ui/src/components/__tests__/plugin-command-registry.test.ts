@@ -18,6 +18,7 @@ function plugin(
   return {
     name: 'demo',
     version: '2.0.0',
+    commandGeneration: 'a'.repeat(64),
     commandContributions: [command],
     commandCapabilities: {
       invokeDeclaredOperation: { available: true },
@@ -46,9 +47,20 @@ describe('plugin command registry', () => {
         paletteId: 'plugin:demo.open-plugins',
         pluginName: 'demo',
         pluginVersion: '2.0.0',
+        commandGeneration: 'a'.repeat(64),
         unavailableReason: null,
       }),
     ]);
+  });
+
+  test('keeps a command unavailable when its installed generation is absent', () => {
+    const [row] = projectPluginPaletteCommands(
+      [{ ...plugin(), commandGeneration: undefined }],
+      context(),
+    );
+    expect(row.unavailableReason).toBe(
+      'The current plugin command installation could not be confirmed.',
+    );
   });
 
   test('keeps a collision visible but unavailable instead of replacing its owner', () => {

@@ -76,26 +76,39 @@ versioned independently of executable plugin code.
 **Contract.** Command ids are plugin-qualified and receive a final `plugin:`
 palette identity. The parser bounds every string and collection, accepts only a
 closed icon, requirement, argument, and intent vocabulary, and rejects unknown
-intent kinds, wildcard URL hosts, duplicate ids, and arguments their intent
-does not consume. Navigation names an existing `SurfaceRegistry` identity, not
-a route. Composer seeding writes a visible draft and has no send operation.
+fields in Station's reserved namespace, unknown intent kinds, wildcard URL
+hosts, duplicate ids, and arguments their intent does not consume. Navigation
+names a currently advertised `SurfaceRegistry` identity, not a route. Composer
+seeding writes a visible draft and has no send operation.
 Collision losers and missing host capabilities stay searchable but unavailable
 with an exact reason. Argument entry and plugin-operation invocation fail
-closed until their dedicated host Adapters exist.
+closed until their dedicated host Adapters exist. Every executable command
+must present its exact normalized declaration generation to the server; the
+server re-reads that installed manifest and durably records actor, target,
+decision, and admitted outcome before the browser performs the local effect.
+The receipt never contains composer text or future argument input.
+Hosted multi-tenant execution remains unavailable until this receipt carries
+an exact tenant binding.
 
 **Seam, Implementation, callers, and tests.** The server manifest loader is the
-admission parser and the installed-plugin collection exposes only its normalized
-declarations plus server-derived operation capability. Install preview lists
-each command as a non-skippable package declaration. `CommandPalette` joins the
-projection after its built-in, shortcut-derived, Project, Pane, Agent, and Skill
-rows are known, then resolves navigation or composer seeding through existing
-host owners. Behavioral coverage lives in
+admission parser and the installed-plugin collection accepts only canonical
+directory/manifest identity pairs, excluding `.preview-*` and every other
+host-owned staging tree. It exposes normalized declarations, their generation,
+and server-derived operation capability. Install preview lists each command as
+a non-skippable package declaration. `CommandPalette` joins the projection
+after its built-in, shortcut-derived, Project, Pane, Agent, and Skill rows are
+known, then calls `PluginCommandExecutionAuthority` for a durable operational-
+event receipt before resolving navigation or composer seeding through existing
+host owners. Update, grant-change, and removal events synchronously clear cached
+command generations before refetch. Behavioral coverage lives in
 `src-server/services/plugins/__tests__/plugin-manifest-loader.test.ts`,
+`src-server/services/plugins/__tests__/plugin-command-execution.test.ts`,
+`src-server/routes/plugins/__tests__/plugin-install-inventory.routes.test.ts`,
 `src-ui/src/components/__tests__/plugin-command-registry.test.ts`, and
-`src-ui/src/__tests__/CommandPalette.test.tsx`. **Do not reintroduce:** raw
-plugin routes, manifest callbacks or markup, plugin-defined shortcuts, client-
-inferred permission grants, auto-sending composer text, or a second navigation
-registry.
+`src-ui/src/__tests__/CommandPalette.test.tsx`. **Do not reintroduce:** staging
+trees in installed inventory, raw plugin routes, manifest callbacks or markup,
+plugin-defined shortcuts, client-inferred permission grants, unreceipted local
+effects, auto-sending composer text, or a second navigation registry.
 
 ## DesktopStartupReadiness
 

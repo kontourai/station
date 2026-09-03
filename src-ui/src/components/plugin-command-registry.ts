@@ -7,6 +7,7 @@ export interface InstalledPluginCommandSource {
   name: string;
   version: string;
   commandContributions?: readonly PluginCommandContribution[];
+  commandGeneration?: string;
   commandCapabilities?: {
     invokeDeclaredOperation: {
       available: boolean;
@@ -30,6 +31,7 @@ export interface PluginPaletteCommand {
   paletteId: string;
   pluginName: string;
   pluginVersion: string;
+  commandGeneration: string | null;
   contribution: PluginCommandContribution;
   unavailableReason: string | null;
 }
@@ -72,6 +74,9 @@ function commandUnavailableReason(
   command: PluginCommandContribution,
   context: PluginCommandHostContext,
 ): string | null {
+  if (!plugin.commandGeneration) {
+    return 'The current plugin command installation could not be confirmed.';
+  }
   for (const requirement of command.requires ?? []) {
     const reason = requirementUnavailableReason(requirement, plugin, context);
     if (reason) return reason;
@@ -128,6 +133,7 @@ export function projectPluginPaletteCommands(
         paletteId,
         pluginName: plugin.name,
         pluginVersion: plugin.version,
+        commandGeneration: plugin.commandGeneration ?? null,
         contribution,
         unavailableReason: collision
           ? `Command id '${paletteId}' is already registered.`

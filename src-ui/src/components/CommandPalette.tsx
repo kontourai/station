@@ -19,6 +19,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
+import { useApiBase } from '../contexts/ApiBaseContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   evaluateShortcutWhen,
@@ -56,6 +57,7 @@ import {
   type PaletteCommand,
   rankCommands,
 } from './command-palette-utils';
+import { authorizePluginPaletteCommand } from './plugin-command-execution';
 import { projectPluginPaletteCommands } from './plugin-command-registry';
 
 /** `dock.session1` … `dock.session9` — the ⌘1–⌘9 chat-switch bindings. */
@@ -143,6 +145,7 @@ export function CommandPalette() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const returnFocusRef = useRef<HTMLElement[]>([]);
+  const pluginCommandInFlight = useRef(new Set<string>());
   // archive#3313: previewFlag-gated surfaces (Developer, enabled previews)
   // appear here iff their flag is on — same set the sidebar filters with.
   const surfaceVisibilityFlags = useSurfaceVisibilityFlags();
@@ -157,6 +160,7 @@ export function CommandPalette() {
     selectedProjectLayout,
   } = useNavigation();
   const { getAllShortcuts } = useShortcutRegistry();
+  const { apiBase } = useApiBase();
   const { isMobile } = usePlatformProfile();
   const { locale } = useLocale();
 
@@ -218,7 +222,8 @@ export function CommandPalette() {
   const { data: agents = [] } = useAgentsQuery();
   const { data: projects = [] } = useProjectsQuery();
   const { data: skills = [] } = useSkillsQuery();
-  const { data: plugins = [] } = usePluginsQuery();
+  const pluginsQuery = usePluginsQuery();
+  const plugins = pluginsQuery.isError ? [] : (pluginsQuery.data ?? []);
   // SHELL-19: the palette used to advertise "Switch to session 1" … "Switch to
   // session 9" as nine static commands whatever the truth was — there was one
   // session, and eight of those rows ran a handler that returns without doing
@@ -591,7 +596,9 @@ export function CommandPalette() {
       hasSession: Boolean(activeSessionId),
       hasTask: /^\/tasks\/[^/]+/.test(pathname),
       surfaceIds: new Set(
-        APP_SURFACE_REGISTRY.getRegistered().map((surface) => surface.id),
+        APP_SURFACE_REGISTRY.getAdvertised(surfaceVisibilityFlags).map(
+          (surface) => surface.id,
+        ),
       ),
       occupiedCommandIds: new Set(list.map((command) => command.id)),
     });
@@ -617,7 +624,7 @@ export function CommandPalette() {
           </span>
         ) : undefined,
         disabled: projected.unavailableReason !== null,
-        closeOnRun: projected.unavailableReason === null,
+        closeOnRun: false,
         run: () => {
           if (projected.unavailableReason) {
             setPaneNotice({
@@ -627,20 +634,62 @@ export function CommandPalette() {
             });
             return;
           }
-          if (contribution.intent.kind === 'navigate') {
-            const surface = APP_SURFACE_REGISTRY.get(
-              contribution.intent.surfaceId,
-            );
-            if (!surface) return;
-            navigate(surface.route, surface.palette?.params);
-            return;
-          }
-          if (contribution.intent.kind === 'seed-composer' && activeSessionId) {
-            activeChatsStore.updateChat(activeSessionId, {
-              input: contribution.intent.text,
+          if (!projected.commandGeneration) return;
+          if (pluginCommandInFlight.current.has(projected.paletteId)) return;
+          const target =
+            contribution.intent.kind === 'navigate'
+              ? {
+                  kind: 'surface' as const,
+                  surfaceId: contribution.intent.surfaceId,
+                }
+              : contribution.intent.kind === 'seed-composer' && activeSessionId
+                ? { kind: 'composer' as const, sessionId: activeSessionId }
+                : null;
+          if (!target) return;
+          pluginCommandInFlight.current.add(projected.paletteId);
+          void authorizePluginPaletteCommand(apiBase, {
+            pluginId: projected.pluginName,
+            pluginVersion: projected.pluginVersion,
+            commandGeneration: projected.commandGeneration,
+            commandId: contribution.id,
+            target,
+          })
+            .then(() => {
+              if (contribution.intent.kind === 'navigate') {
+                const surfaceId = contribution.intent.surfaceId;
+                const surface = APP_SURFACE_REGISTRY.getAdvertised(
+                  surfaceVisibilityFlags,
+                ).find((candidate) => candidate.id === surfaceId);
+                if (!surface) return;
+                navigate(surface.route, surface.palette?.params);
+                close();
+                return;
+              }
+              if (
+                contribution.intent.kind === 'seed-composer' &&
+                activeSessionId &&
+                activeChatsStore.getSnapshot()[activeSessionId]
+              ) {
+                activeChatsStore.updateChat(activeSessionId, {
+                  input: contribution.intent.text,
+                });
+                setDockState(true);
+                close();
+              }
+            })
+            .catch((error: unknown) => {
+              setPaneNotice({
+                label: contribution.title,
+                stateLabel: 'Unavailable',
+                reasonLabel:
+                  error instanceof Error
+                    ? error.message
+                    : 'Plugin command admission is unavailable.',
+              });
+            })
+            .finally(() => {
+              pluginCommandInFlight.current.delete(projected.paletteId);
             });
-            setDockState(true);
-          }
         },
       });
     }
@@ -684,6 +733,8 @@ export function CommandPalette() {
     projects,
     skills,
     plugins,
+    apiBase,
+    close,
     navigate,
     setProject,
     setDockState,

@@ -10,12 +10,65 @@ const { EventBus } = await import(
   '../../../services/orchestration/event-bus.js'
 );
 
+const pluginCommandExecution = {
+  authorize: vi.fn(() => ({
+    kind: 'authorized' as const,
+    receipt: { receiptId: 'plugin-command-receipt' },
+  })),
+};
+
 describe('UI Command Routes', () => {
+  test('POST /plugin-command-receipts returns only the host authority receipt', async () => {
+    pluginCommandExecution.authorize.mockReturnValueOnce({
+      kind: 'authorized',
+      receipt: { receiptId: 'plugin-command-receipt' },
+    });
+    const app = createUICommandRoutes(new EventBus(), {
+      isHostedDeployment: () => false,
+      pluginCommandExecution: pluginCommandExecution as never,
+    });
+    const request = { schemaVersion: 'station.plugin-command-execution/v1' };
+    const response = await app.request('/plugin-command-receipts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(json(response)).resolves.toEqual({
+      success: true,
+      receipt: { receiptId: 'plugin-command-receipt' },
+    });
+    expect(pluginCommandExecution.authorize).toHaveBeenCalledWith(
+      request,
+      expect.objectContaining({ actor: { kind: 'unknown' } }),
+    );
+  });
+
+  test('plugin command receipts fail closed where audit has no tenant binding', async () => {
+    pluginCommandExecution.authorize.mockClear();
+    const app = createUICommandRoutes(new EventBus(), {
+      isHostedDeployment: () => true,
+      pluginCommandExecution: pluginCommandExecution as never,
+    });
+    const response = await app.request('/plugin-command-receipts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+
+    expect(response.status).toBe(403);
+    expect(pluginCommandExecution.authorize).not.toHaveBeenCalled();
+  });
+
   test('POST / navigate emits event', async () => {
     const bus = new EventBus();
     const fn = vi.fn();
     bus.subscribe(fn);
-    const app = createUICommandRoutes(bus, { isHostedDeployment: () => false });
+    const app = createUICommandRoutes(bus, {
+      isHostedDeployment: () => false,
+      pluginCommandExecution: pluginCommandExecution as never,
+    });
     const body = await json(
       await app.request('/', {
         method: 'POST',
@@ -35,6 +88,7 @@ describe('UI Command Routes', () => {
   test('POST / navigate rejects invalid paths', async () => {
     const app = createUICommandRoutes(new EventBus(), {
       isHostedDeployment: () => false,
+      pluginCommandExecution: pluginCommandExecution as never,
     });
     const cases = [
       'http://evil.com',
@@ -55,6 +109,7 @@ describe('UI Command Routes', () => {
   test('POST / unknown command returns 400', async () => {
     const app = createUICommandRoutes(new EventBus(), {
       isHostedDeployment: () => false,
+      pluginCommandExecution: pluginCommandExecution as never,
     });
     const res = await app.request('/', {
       method: 'POST',
@@ -74,6 +129,7 @@ describe('UI Command Routes', () => {
     bus.subscribe(fn);
     const app = createUICommandRoutes(bus, {
       isHostedDeployment: () => true,
+      pluginCommandExecution: pluginCommandExecution as never,
     });
     const res = await app.request('/', {
       method: 'POST',
@@ -97,6 +153,7 @@ describe('UI Command Routes', () => {
     bus.subscribe(fn);
     const app = createUICommandRoutes(bus, {
       isHostedDeployment: () => false,
+      pluginCommandExecution: pluginCommandExecution as never,
     });
     const body = await json(
       await app.request('/', {
