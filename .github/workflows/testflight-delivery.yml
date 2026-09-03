@@ -148,17 +148,17 @@ jobs:
           # identity-bearing project files for this channel, while preserving
           # every reviewed non-identity resource checked into gen/apple.
           preserved="$RUNNER_TEMP/station-ios-preserved"
-          mkdir -p "$preserved"
-          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources; do
+          mkdir -p "$preserved/station_iOS"
+          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             test -e "gen/apple/$item"
             ditto "gen/apple/$item" "$preserved/$item"
           done
           rm -rf gen/apple
           npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.ios.channel.json"
-          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources; do
+          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             ditto "$preserved/$item" "gen/apple/$item"
           done
-          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources
+          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
       - name: Verify App Store Connect app authority before signing
         id: app_store
         run: |
@@ -225,10 +225,10 @@ jobs:
           preserved="$RUNNER_TEMP/station-ios-preserved"
           rm -rf gen/apple
           npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json"
-          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources; do
+          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             ditto "$preserved/$item" "gen/apple/$item"
           done
-          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources
+          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
           grep -Fq 'CODE_SIGN_STYLE: Manual' gen/apple/project.yml
           grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' gen/apple/project.yml
           # `rm -rf gen/apple` also removed the staged provenance resource
