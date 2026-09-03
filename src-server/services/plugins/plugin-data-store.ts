@@ -53,6 +53,11 @@ interface StoredRow {
   updated_at: string;
 }
 
+interface StoredRevisionHead {
+  key: string;
+  last_revision: number;
+}
+
 class PluginDataCorruptError extends Error {}
 
 export interface PluginDataCapability {
@@ -308,6 +313,7 @@ export class PluginDataStore {
 
   private list(owner: PluginDataOwner): PluginDataListOutcome {
     try {
+      const revisionHeads = this.readRevisionHeads(owner);
       const rows = this.db
         .prepare(
           `SELECT key, value_json, byte_length, revision, updated_at
@@ -321,7 +327,10 @@ export class PluginDataStore {
       if (
         records.length > PLUGIN_DATA_LIMITS.keysPerInstallation ||
         rows.reduce((total, row) => total + row.byte_length, 0) >
-          PLUGIN_DATA_LIMITS.totalBytesPerInstallation
+          PLUGIN_DATA_LIMITS.totalBytesPerInstallation ||
+        records.some(
+          (record) => revisionHeads.get(record.key) !== record.revision,
+        )
       ) {
         throw new PluginDataCorruptError();
       }
@@ -360,6 +369,7 @@ export class PluginDataStore {
 
     try {
       return this.transaction(() => {
+        const revisionHeads = this.readRevisionHeads(owner);
         const currentRow = this.db
           .prepare(
             `SELECT key, value_json, byte_length, revision, updated_at
@@ -373,6 +383,13 @@ export class PluginDataStore {
         const currentRevision = current?.revision ?? null;
         if (currentRevision !== expectedRevision) {
           return { kind: 'conflict', currentRevision };
+        }
+        const priorRevision = revisionHeads.get(key);
+        if (
+          priorRevision === undefined &&
+          revisionHeads.size >= PLUGIN_DATA_LIMITS.keysPerInstallation
+        ) {
+          return { kind: 'capacity', reason: 'keys' };
         }
         const rows = this.db
           .prepare(
@@ -404,26 +421,16 @@ export class PluginDataStore {
         if (nextTotal > PLUGIN_DATA_LIMITS.totalBytesPerInstallation) {
           return { kind: 'capacity', reason: 'total-bytes' };
         }
-        const priorRevision = this.db
-          .prepare(
-            `SELECT last_revision FROM plugin_data_revisions
-             WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
-          )
-          .get(owner.pluginId, owner.installationKey, key) as
-          | { last_revision: number }
-          | undefined;
         if (
-          priorRevision &&
-          (!Number.isSafeInteger(priorRevision.last_revision) ||
-            priorRevision.last_revision < 1 ||
-            (current !== undefined &&
-              priorRevision.last_revision !== current.revision) ||
-            priorRevision.last_revision >= Number.MAX_SAFE_INTEGER)
+          priorRevision !== undefined &&
+          (!Number.isSafeInteger(priorRevision) ||
+            priorRevision < 1 ||
+            (current !== undefined && priorRevision !== current.revision) ||
+            priorRevision >= Number.MAX_SAFE_INTEGER)
         ) {
           throw new PluginDataCorruptError();
         }
-        const revision =
-          (priorRevision?.last_revision ?? current?.revision ?? 0) + 1;
+        const revision = (priorRevision ?? current?.revision ?? 0) + 1;
         const updatedAt = new Date().toISOString();
         this.db
           .prepare(
@@ -479,6 +486,7 @@ export class PluginDataStore {
     }
     try {
       return this.transaction(() => {
+        const revisionHeads = this.readRevisionHeads(owner);
         const currentRow = this.db
           .prepare(
             `SELECT key, value_json, byte_length, revision, updated_at
@@ -490,18 +498,11 @@ export class PluginDataStore {
           | undefined;
         if (!currentRow) return { kind: 'not-found' };
         const current = parseRow(currentRow);
-        const revisionHead = this.db
-          .prepare(
-            `SELECT last_revision FROM plugin_data_revisions
-             WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
-          )
-          .get(owner.pluginId, owner.installationKey, key) as
-          | { last_revision: number }
-          | undefined;
+        const revisionHead = revisionHeads.get(key);
         if (
-          !revisionHead ||
-          !Number.isSafeInteger(revisionHead.last_revision) ||
-          revisionHead.last_revision !== current.revision
+          revisionHead === undefined ||
+          !Number.isSafeInteger(revisionHead) ||
+          revisionHead !== current.revision
         ) {
           throw new PluginDataCorruptError();
         }
@@ -535,5 +536,32 @@ export class PluginDataStore {
       }
       throw error;
     }
+  }
+
+  private readRevisionHeads(owner: PluginDataOwner): Map<string, number> {
+    const rows = this.db
+      .prepare(
+        `SELECT key, last_revision FROM plugin_data_revisions
+         WHERE plugin_id = ? AND installation_key = ?
+         ORDER BY key
+         LIMIT ${PLUGIN_DATA_LIMITS.keysPerInstallation + 1}`,
+      )
+      .all(owner.pluginId, owner.installationKey) as StoredRevisionHead[];
+    if (rows.length > PLUGIN_DATA_LIMITS.keysPerInstallation) {
+      throw new PluginDataCorruptError();
+    }
+    const heads = new Map<string, number>();
+    for (const row of rows) {
+      if (
+        !DATA_KEY.test(row.key) ||
+        !Number.isSafeInteger(row.last_revision) ||
+        row.last_revision < 1 ||
+        heads.has(row.key)
+      ) {
+        throw new PluginDataCorruptError();
+      }
+      heads.set(row.key, row.last_revision);
+    }
+    return heads;
   }
 }

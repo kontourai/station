@@ -189,6 +189,15 @@ describe('PluginDataStore', () => {
       kind: 'capacity',
       reason: 'keys',
     });
+    expect(capability.delete('key-0', 1)).toEqual({ kind: 'deleted' });
+    expect(capability.set('still-one-too-many', null, null)).toEqual({
+      kind: 'capacity',
+      reason: 'keys',
+    });
+    expect(capability.set('key-0', null, null)).toMatchObject({
+      kind: 'written',
+      record: { revision: 2 },
+    });
 
     const aggregateOwner = {
       ...owner,

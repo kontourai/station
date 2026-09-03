@@ -373,7 +373,9 @@ choosing the same plugin name. Every write takes `BEGIN IMMEDIATE`, re-reads the
 current revision inside that transaction, and applies only when it matches the
 caller's observed revision. A retained per-key revision head survives deletion,
 so delete/recreate cannot manufacture an old revision and admit an ABA stale
-writer. JSON depth, node count, per-value bytes, key count, and aggregate bytes
+writer. Live keys and retained revision heads share one lifetime-key capacity;
+recreating an existing key remains possible at capacity while first-ever keys
+are refused. JSON depth, node count, per-value bytes, key count, and aggregate bytes
 are bounded before mutation. Caller objects with accessors, symbols, sparse
 arrays, exotic prototypes, or trapping proxies are invalid. The database and
 exact data directory refuse symlinks; WAL plus an explicit busy timeout

@@ -52,6 +52,7 @@ export type PluginDataDeleteOutcome =
   | { kind: 'unavailable'; reason: PluginDataUnavailableReason };
 
 export const PLUGIN_DATA_LIMITS = {
+  /** Live keys plus retained revision heads; delete does not reclaim identity. */
   keysPerInstallation: 1_024,
   valueBytes: 256 * 1_024,
   totalBytesPerInstallation: 4 * 1_024 * 1_024,
