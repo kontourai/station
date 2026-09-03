@@ -122,6 +122,7 @@
     "./workspace-pane-renderer-selection": "./src/workspace-pane-renderer-selection.ts",
     "./workspace-pane-host": "./src/workspace-pane-host.ts",
     "./workspace-pane-host-contract": "./src/workspace-pane-host-contract.ts",
+    "./workspace-pane-host-contribution": "./src/workspace-pane-host-contribution.ts",
     "./provider": "./src/provider.ts",
     "./orchestration": "./src/orchestration.ts",
     "./scheduler": "./src/scheduler.ts",
