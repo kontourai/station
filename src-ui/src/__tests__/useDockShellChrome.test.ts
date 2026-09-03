@@ -184,10 +184,10 @@ describe('useDockShellChrome', () => {
         useDockShellChrome({
           publishesDockSlotClearance: true,
           registersDockShortcuts: true,
-          onGeometryChange,
+          onRenderedRegionGeometryChange: onGeometryChange,
         }),
       );
-      expect(onGeometryChange).toHaveBeenCalledWith({
+      expect(onGeometryChange).toHaveBeenCalledWith(null, {
         size: 320,
         width: null,
       });
@@ -200,19 +200,19 @@ describe('useDockShellChrome', () => {
         useDockShellChrome({
           publishesDockSlotClearance: true,
           registersDockShortcuts: true,
-          onGeometryChange,
+          onRenderedRegionGeometryChange: onGeometryChange,
         }),
       );
       onGeometryChange.mockClear();
       act(() => result.current.setLiveDragHeight(512));
-      expect(onGeometryChange).toHaveBeenCalledWith({
+      expect(onGeometryChange).toHaveBeenCalledWith(null, {
         size: 512,
         width: null,
       });
 
       onGeometryChange.mockClear();
       act(() => result.current.setLiveDragHeight(null));
-      expect(onGeometryChange).toHaveBeenCalledWith({
+      expect(onGeometryChange).toHaveBeenCalledWith(null, {
         size: 320,
         width: null,
       });
@@ -225,7 +225,7 @@ describe('useDockShellChrome', () => {
         useDockShellChrome({
           publishesDockSlotClearance: false,
           registersDockShortcuts: true,
-          onGeometryChange,
+          onRenderedRegionGeometryChange: onGeometryChange,
         }),
       );
       expect(onGeometryChange).not.toHaveBeenCalled();

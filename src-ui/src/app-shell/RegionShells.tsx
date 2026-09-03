@@ -1,9 +1,29 @@
+import { type ComponentType, createContext, useContext } from 'react';
 import { ChatDock } from '../components/chat-dock/ChatDock';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
-import { DOCK_REGION_IDS } from '../regions/region-model';
+import { DOCK_REGION_IDS, type DockRegionId } from '../regions/region-model';
 import type { NavigationView } from '../types';
 import type { HomeViewNavigation } from '../views/home/useHomeViewModel';
 import type { WorkspacePaneDockAction } from '../workspace-panes/WorkspacePaneDockContext';
+
+interface ChatShellProps {
+  homeContinuation: HomeViewNavigation | null;
+  onNavigate: (view: NavigationView) => void;
+  onDockActionChange: (action: WorkspacePaneDockAction | null) => void;
+}
+
+const ChatShellContext = createContext<ChatShellProps | null>(null);
+
+function ChatSurfaceShell({ regionId }: { regionId: DockRegionId }) {
+  const props = useContext(ChatShellContext);
+  if (!props) return null;
+  return <ChatDock regionId={regionId} {...props} />;
+}
+
+export const REGION_SURFACE_SHELLS: ReadonlyMap<
+  string,
+  ComponentType<{ regionId: DockRegionId }>
+> = new Map([['chat', ChatSurfaceShell]]);
 
 /**
  * One `DockShell` per occupied dock region (#928). A surface occupies at most
@@ -35,18 +55,18 @@ export function RegionShells({
       />
     );
   return (
-    <>
-      {DOCK_REGION_IDS.map((id) =>
-        model.regions[id].occupant === 'chat' ? (
-          <ChatDock
-            key={model.regions[id].occupant}
-            regionId={id}
-            homeContinuation={homeContinuation}
-            onNavigate={onNavigate}
-            onDockActionChange={onDockActionChange}
-          />
-        ) : null,
-      )}
-    </>
+    <ChatShellContext.Provider
+      value={{ homeContinuation, onNavigate, onDockActionChange }}
+    >
+      {DOCK_REGION_IDS.map((id) => {
+        const occupant = model.regions[id].occupant;
+        const SurfaceShell = occupant
+          ? REGION_SURFACE_SHELLS.get(occupant)
+          : undefined;
+        return SurfaceShell ? (
+          <SurfaceShell key={occupant} regionId={id} />
+        ) : null;
+      })}
+    </ChatShellContext.Provider>
   );
 }

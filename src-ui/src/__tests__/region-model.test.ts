@@ -5,6 +5,7 @@ import {
   DEFAULT_DEVICE_REGION_LAYOUT,
   dockMirrorDiff,
   isRegionAvailable,
+  occupiedDockRegion,
   placeSurface,
   REGION_SURFACE_REGISTRY,
   seedRegionLayoutFromDock,
@@ -38,6 +39,17 @@ describe('region model', () => {
 
     expect(second.bottom.occupant).toBe('activity');
     expect(Object.keys(second.bottom)).toEqual(['visible', 'size', 'occupant']);
+  });
+
+  test('finds the dock region occupied by any surface', () => {
+    const layout = placeSurface(
+      DEFAULT_DEVICE_REGION_LAYOUT,
+      'fixture',
+      'right',
+    );
+
+    expect(occupiedDockRegion(layout, 'fixture')).toBe('right');
+    expect(occupiedDockRegion(layout, 'missing')).toBeUndefined();
   });
 
   test('hiding a region retains its occupant and size', () => {

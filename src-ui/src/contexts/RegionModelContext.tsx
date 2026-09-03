@@ -18,6 +18,7 @@ import {
   type RegionLayout,
   type RegionState,
   seedRegionLayoutFromDock,
+  syncRegionLayoutFromDock,
   updateRegion,
 } from '../regions/region-model';
 import {
@@ -88,7 +89,12 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     const placement = chatRegion(current);
     if (placement === dockMode && current[placement].visible === isDockOpen)
       return;
-    const next = seedRegionLayoutFromDock(settings, dockMode, isDockOpen);
+    const next = syncRegionLayoutFromDock(
+      regionsRef.current,
+      settings,
+      isDockOpen,
+      dockMode,
+    );
     regionsRef.current = next;
     // A seed is inbound; marking it mirrored keeps the outbound effect from
     // replaying it as a user write (which would stamp `dockSlotPlacement`
