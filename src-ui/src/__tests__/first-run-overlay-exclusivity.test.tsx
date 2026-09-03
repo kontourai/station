@@ -149,7 +149,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   // a batch; it exists so the step can mount.
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
   useForceRefetchSystemStatus: () => forceRefetch,
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
   useConfigQuery: () => ({ data: configValue, isFetching: false }),
   useUpdateConfigMutation: () => ({ mutate: () => {}, isPending: false }),
   FullScreenLoader: () => null,

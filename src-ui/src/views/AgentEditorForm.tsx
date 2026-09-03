@@ -6,7 +6,7 @@ import {
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
-import { useAgentConnectionsQuery } from '@kontourai/station-sdk';
+import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { runtimeCatalogVisibleModels } from '../utils/execution';
 import { AgentDelegationDenialCatalog } from './agent-editor/AgentDelegationDenialCatalog';
@@ -50,7 +50,7 @@ export function AgentEditorForm(props: AgentEditorFormProps) {
     stationConnectionId,
   } = props;
 
-  const { data: engineConnections = [] } = useAgentConnectionsQuery() as {
+  const { data: engineConnections = [] } = useEngineConnectionsQuery() as {
     data?: AgentConnectionView[];
   };
   const [expandedIntegrations, setExpandedIntegrations] = useState<

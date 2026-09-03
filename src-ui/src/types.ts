@@ -381,11 +381,11 @@ export type NavigationView =
       redirectFromAlias?: boolean;
     }
   | { type: 'connections' }
-  | { type: 'connections-providers' }
-  | { type: 'connections-provider-edit'; id: string }
+  | { type: 'connections-models' }
+  | { type: 'connections-model-edit'; id: string }
   | { type: 'connections-engines' }
-  | { type: 'connections-runtime-edit'; id: string }
-  | { type: 'connections-acp-new'; providerId: string }
+  | { type: 'connections-engine-edit'; id: string }
+  | { type: 'connections-engine-new'; providerId: string }
   | { type: 'connections-tools' }
   | { type: 'connections-tool-edit'; id: string }
   | { type: 'connections-knowledge' }

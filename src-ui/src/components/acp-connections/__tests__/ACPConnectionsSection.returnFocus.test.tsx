@@ -87,7 +87,7 @@ function SectionFrameStandIn({ children }: { children: ReactNode }) {
  * Reproduces the two nested keying boundaries that actually separate the
  * catalogue route from this one in production, both driven by the SAME
  * surface-identity string (`route-identity.ts`'s `routeSurfaceIdentity` —
- * `connections-acp-new` is never folded into `connections-engines`, so a
+ * `connections-engine-new` is never folded into `connections-engines`, so a
  * real navigation here always changes this string):
  *
  *  1. `PageFrame`'s OWN `.page__actions` cell carries `key={routeIdentity}`
@@ -114,7 +114,7 @@ function Harness() {
           <SectionFrameStandIn>
             <button
               type="button"
-              onClick={() => setRouteIdentity('connections-acp-new:kiro')}
+              onClick={() => setRouteIdentity('connections-engine-new:kiro')}
             >
               Kiro CLI
             </button>
