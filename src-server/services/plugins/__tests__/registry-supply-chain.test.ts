@@ -1,9 +1,11 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
 import {
+  cpSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -11,11 +13,11 @@ import { basename, dirname, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { computePluginContentDigest } from '../plugin-content-integrity.js';
 import {
+  AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL,
   finalizeRegistrySupplyChainPin,
   RegistryLastKnownGoodStore,
   type RegistryPackageClaim,
   registryPackageSignaturePayload,
-  STATION_PLUGIN_PACKAGE_SCHEMA,
   verifyRegistryPackage,
 } from '../registry-supply-chain.js';
 
@@ -52,7 +54,7 @@ function signedFixture(home: string) {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
   const pkg = packageTree(home);
   const unsigned: Omit<RegistryPackageClaim, 'signature'> = {
-    packageSchema: STATION_PLUGIN_PACKAGE_SCHEMA,
+    packageSchema: AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL,
     registryId: 'signed-plugin',
     registryKey: 'https://registry.example.test/manifest.json',
     pluginName: 'signed-plugin',
@@ -98,6 +100,60 @@ describe('registry package supply-chain policy', () => {
         verification: { kind: 'ed25519', keyId: 'registry-release' },
         invalidateExistingGrants: false,
       },
+    });
+  });
+
+  test('accepts a bounded non-SemVer Agent Plugins version', () => {
+    const fixture = signedFixture(root());
+    const { signature: _signature, ...unsigned } = fixture.claim;
+    const result = verifyRegistryPackage({
+      claim: {
+        ...unsigned,
+        packageVersion: 'release train/β 2026',
+      },
+      observedPackageDigest: fixture.digest,
+      policy: {
+        signatures: 'optional',
+        pins: 'exact',
+        trustedEd25519Keys: {},
+      },
+    });
+    expect(result).toMatchObject({
+      kind: 'verified',
+      package: {
+        claim: { packageVersion: 'release train/β 2026' },
+        verification: { kind: 'unsigned' },
+      },
+    });
+  });
+
+  test.each([
+    ['null claim', null],
+    ['array claim', []],
+    ['wrong-typed registry key', { registryKey: 42 }],
+    [
+      'throwing claim',
+      new Proxy(
+        {},
+        {
+          ownKeys() {
+            throw new Error('malformed claim trap');
+          },
+        },
+      ),
+    ],
+  ])('refuses an untyped %s without throwing', (_name, claim) => {
+    const fixture = signedFixture(root());
+    expect(
+      verifyRegistryPackage({
+        claim: claim as RegistryPackageClaim,
+        observedPackageDigest: fixture.digest,
+        policy: fixture.policy,
+      }),
+    ).toEqual({
+      kind: 'refused',
+      reason: 'invalid-claim',
+      message: 'Registry package claim is invalid.',
     });
   });
 
@@ -233,11 +289,12 @@ describe('registry last-known-good store', () => {
       registryId: fixture.claim.registryId,
       registryKey: fixture.claim.registryKey,
       pluginName: fixture.claim.pluginName,
-      packageVersion: fixture.claim.packageVersion,
+      packageVersion: 'release train/β 2026',
       source: fixture.claim.source,
       installedTree: fixture.tree,
       expectedInstalledDigest: fixture.digest,
     });
+    expect(ref.packageVersion).toBe('release train/β 2026');
     const rollback = join(home, 'rollback-stage');
     store.stageRollback(ref, rollback);
     expect(digestAt(rollback)).toBe(fixture.digest);
@@ -263,6 +320,56 @@ describe('registry last-known-good store', () => {
     expect(() =>
       store.stageRollback(ref, join(home, 'rollback-stage')),
     ).toThrow('Last-known-good tree no longer matches its pinned digest.');
+  });
+
+  test('refuses a last-known-good source beneath an escaping ancestor symlink', () => {
+    const home = root();
+    const fixture = signedFixture(home);
+    const store = new RegistryLastKnownGoodStore(home);
+    const ref = store.archive({
+      registryId: fixture.claim.registryId,
+      registryKey: fixture.claim.registryKey,
+      pluginName: fixture.claim.pluginName,
+      packageVersion: fixture.claim.packageVersion,
+      source: fixture.claim.source,
+      installedTree: fixture.tree,
+      expectedInstalledDigest: fixture.digest,
+    });
+    const archivedTree = join(home, ref.relativePath);
+    const ownerRoot = dirname(archivedTree);
+    const escapedOwner = root();
+    cpSync(fixture.tree, join(escapedOwner, 'tree'), { recursive: true });
+    rmSync(ownerRoot, { recursive: true });
+    symlinkSync(escapedOwner, ownerRoot, 'dir');
+
+    const destination = join(home, 'rollback-stage');
+    expect(() => store.stageRollback(ref, destination)).toThrow(
+      'Registry last-known-good path escapes its root.',
+    );
+    expect(() => readFileSync(join(destination, 'plugin.json'))).toThrow();
+  });
+
+  test('refuses a rollback destination beneath an escaping ancestor symlink', () => {
+    const home = root();
+    const fixture = signedFixture(home);
+    const store = new RegistryLastKnownGoodStore(home);
+    const ref = store.archive({
+      registryId: fixture.claim.registryId,
+      registryKey: fixture.claim.registryKey,
+      pluginName: fixture.claim.pluginName,
+      packageVersion: fixture.claim.packageVersion,
+      source: fixture.claim.source,
+      installedTree: fixture.tree,
+      expectedInstalledDigest: fixture.digest,
+    });
+    const escapedDestinationRoot = root();
+    symlinkSync(escapedDestinationRoot, join(home, 'escape'), 'dir');
+
+    const destination = join(home, 'escape', 'rollback-stage');
+    expect(() => store.stageRollback(ref, destination)).toThrow(
+      'Registry last-known-good path escapes its root.',
+    );
+    expect(() => readFileSync(join(destination, 'plugin.json'))).toThrow();
   });
 });
 

@@ -4,30 +4,42 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  realpathSync,
   renameSync,
   rmSync,
 } from 'node:fs';
-import { basename, dirname, join, resolve, sep } from 'node:path';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
-import type {
-  RegistryLastKnownGoodRef,
-  RegistrySupplyChainPinRecord,
+import {
+  AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL,
+  isBoundedRegistryPackageVersion,
+  type RegistryLastKnownGoodRef,
+  type RegistrySupplyChainPinRecord,
 } from '../../providers/registries/registry-install-aliases.js';
 import {
   computePluginContentDigest,
   PLUGIN_TREE_COPY,
 } from './plugin-content-integrity.js';
 
+/*
+ * This identifies the published manifest schema a claim targets. Manifest
+ * validation remains the installer's responsibility once this tracer is wired.
+ */
+export { AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL };
+
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const SIGNATURE = /^[A-Za-z0-9+/]+={0,2}$/;
 const MAX_SOURCE_CHARS = 2_048;
 const MAX_KEY_CHARS = 16 * 1_024;
-
-export const STATION_PLUGIN_PACKAGE_SCHEMA = Object.freeze({
-  kind: 'station.plugin' as const,
-  version: '1.0' as const,
-});
 
 export interface RegistryPackageSignature {
   readonly algorithm: 'ed25519';
@@ -37,7 +49,7 @@ export interface RegistryPackageSignature {
 
 /** Claim issued by a registry for one immutable package source tree. */
 export interface RegistryPackageClaim {
-  readonly packageSchema: typeof STATION_PLUGIN_PACKAGE_SCHEMA;
+  readonly packageSchema: typeof AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL;
   readonly registryId: string;
   readonly registryKey: string;
   readonly pluginName: string;
@@ -77,25 +89,68 @@ export type RegistryPackageVerification =
       readonly message: string;
     };
 
-function validClaim(claim: RegistryPackageClaim): boolean {
+const CLAIM_KEYS = new Set([
+  'packageSchema',
+  'registryId',
+  'registryKey',
+  'pluginName',
+  'packageVersion',
+  'source',
+  'packageDigest',
+  'signature',
+]);
+const SIGNATURE_KEYS = new Set(['algorithm', 'keyId', 'value']);
+
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+): boolean {
   return (
-    claim.packageSchema?.kind === STATION_PLUGIN_PACKAGE_SCHEMA.kind &&
-    claim.packageSchema.version === STATION_PLUGIN_PACKAGE_SCHEMA.version &&
-    SAFE_ID.test(claim.registryId) &&
-    claim.registryKey.length > 0 &&
-    claim.registryKey.length <= MAX_SOURCE_CHARS &&
-    isCanonicalPluginId(claim.pluginName) &&
-    SAFE_ID.test(claim.packageVersion) &&
-    claim.source.length > 0 &&
-    claim.source.length <= MAX_SOURCE_CHARS &&
-    DIGEST.test(claim.packageDigest) &&
-    (claim.signature === undefined ||
-      (claim.signature.algorithm === 'ed25519' &&
-        SAFE_ID.test(claim.signature.keyId) &&
-        claim.signature.value.length > 0 &&
-        claim.signature.value.length <= 512 &&
-        SIGNATURE.test(claim.signature.value)))
+    Object.getOwnPropertySymbols(value).length === 0 &&
+    Object.keys(value).every((key) => allowed.has(key))
   );
+}
+
+function validClaim(claim: unknown): claim is RegistryPackageClaim {
+  try {
+    if (!claim || typeof claim !== 'object' || Array.isArray(claim))
+      return false;
+    const record = claim as Record<string, unknown>;
+    if (!hasOnlyKeys(record, CLAIM_KEYS)) return false;
+    const signature = record.signature;
+    const signatureValid =
+      signature === undefined ||
+      (typeof signature === 'object' &&
+        signature !== null &&
+        !Array.isArray(signature) &&
+        hasOnlyKeys(signature as Record<string, unknown>, SIGNATURE_KEYS) &&
+        (signature as Record<string, unknown>).algorithm === 'ed25519' &&
+        typeof (signature as Record<string, unknown>).keyId === 'string' &&
+        SAFE_ID.test((signature as Record<string, unknown>).keyId as string) &&
+        typeof (signature as Record<string, unknown>).value === 'string' &&
+        ((signature as Record<string, unknown>).value as string).length > 0 &&
+        ((signature as Record<string, unknown>).value as string).length <=
+          512 &&
+        SIGNATURE.test((signature as Record<string, unknown>).value as string));
+    return (
+      record.packageSchema === AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL &&
+      typeof record.registryId === 'string' &&
+      SAFE_ID.test(record.registryId) &&
+      typeof record.registryKey === 'string' &&
+      record.registryKey.length > 0 &&
+      record.registryKey.length <= MAX_SOURCE_CHARS &&
+      isCanonicalPluginId(record.pluginName) &&
+      isBoundedRegistryPackageVersion(record.packageVersion) &&
+      typeof record.source === 'string' &&
+      record.source.length > 0 &&
+      record.source.length <= MAX_SOURCE_CHARS &&
+      typeof record.packageDigest === 'string' &&
+      DIGEST.test(record.packageDigest) &&
+      signatureValid
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Domain-separated canonical bytes signed by the registry's trusted key. */
@@ -105,8 +160,7 @@ export function registryPackageSignaturePayload(
   return Buffer.from(
     JSON.stringify([
       'station.registry-package-signature/v1',
-      claim.packageSchema.kind,
-      claim.packageSchema.version,
+      claim.packageSchema,
       claim.registryId,
       claim.registryKey,
       claim.pluginName,
@@ -122,8 +176,7 @@ function claimMatchesPin(
   pin: RegistrySupplyChainPinRecord,
 ): boolean {
   return (
-    pin.packageSchema.kind === claim.packageSchema.kind &&
-    pin.packageSchema.version === claim.packageSchema.version &&
+    pin.packageSchema === claim.packageSchema &&
     pin.registryId === claim.registryId &&
     pin.registryKey === claim.registryKey &&
     pin.pluginName === claim.pluginName &&
@@ -141,7 +194,17 @@ export function verifyRegistryPackage(input: {
   /** A separately authorized upgrade action, never inferred from availability. */
   readonly allowPinUpdate?: boolean;
 }): RegistryPackageVerification {
-  const { claim, policy } = input;
+  const { policy } = input;
+  let claim: RegistryPackageClaim;
+  try {
+    claim = structuredClone(input.claim);
+  } catch {
+    return {
+      kind: 'refused',
+      reason: 'invalid-claim',
+      message: 'Registry package claim is invalid.',
+    };
+  }
   if (
     !validClaim(claim) ||
     !DIGEST.test(input.observedPackageDigest) ||
@@ -238,7 +301,7 @@ export function verifyRegistryPackage(input: {
   return {
     kind: 'verified',
     package: {
-      claim: structuredClone(claim),
+      claim,
       verification,
       invalidateExistingGrants: Boolean(
         input.currentPin && !claimMatchesPin(claim, input.currentPin),
@@ -258,7 +321,7 @@ export function finalizeRegistrySupplyChainPin(input: {
   const claim = input.verifiedPackage.claim;
   return {
     version: 1,
-    packageSchema: STATION_PLUGIN_PACKAGE_SCHEMA,
+    packageSchema: AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL,
     registryId: claim.registryId,
     registryKey: claim.registryKey,
     pluginName: claim.pluginName,
@@ -284,10 +347,47 @@ function digestTree(path: string): string | null {
   return computePluginContentDigest(dirname(path), basename(path));
 }
 
+function entryExists(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+function contained(
+  root: string,
+  candidate: string,
+  allowRoot: boolean,
+): boolean {
+  const relation = relative(root, candidate);
+  return (
+    (allowRoot || relation !== '') &&
+    relation !== '..' &&
+    !relation.startsWith(`..${sep}`) &&
+    !isAbsolute(relation)
+  );
+}
+
 function assertContained(root: string, candidate: string): void {
   const rootPath = resolve(root);
   const candidatePath = resolve(candidate);
-  if (!candidatePath.startsWith(`${rootPath}${sep}`)) {
+  if (!contained(rootPath, candidatePath, false)) {
+    throw new Error('Registry last-known-good path escapes its root.');
+  }
+  let existingAncestor = candidatePath;
+  while (!entryExists(existingAncestor)) {
+    const parent = dirname(existingAncestor);
+    if (parent === existingAncestor) {
+      throw new Error('Registry last-known-good path escapes its root.');
+    }
+    existingAncestor = parent;
+  }
+  const realRoot = realpathSync(rootPath);
+  const realAncestor = realpathSync(existingAncestor);
+  if (!contained(realRoot, realAncestor, true)) {
     throw new Error('Registry last-known-good path escapes its root.');
   }
 }
@@ -302,7 +402,7 @@ export class RegistryLastKnownGoodStore {
 
   constructor(projectHomeDir: string) {
     this.#home = resolve(projectHomeDir);
-    this.#root = join(projectHomeDir, 'registry-last-known-good');
+    this.#root = join(this.#home, 'registry-last-known-good');
     if (existsSync(this.#root)) assertRealDirectory(this.#root, 'LKG root');
     else mkdirSync(this.#root, { recursive: true, mode: 0o700 });
   }
@@ -319,7 +419,7 @@ export class RegistryLastKnownGoodStore {
     if (
       !SAFE_ID.test(input.registryId) ||
       !isCanonicalPluginId(input.pluginName) ||
-      !SAFE_ID.test(input.packageVersion) ||
+      !isBoundedRegistryPackageVersion(input.packageVersion) ||
       !DIGEST.test(input.expectedInstalledDigest) ||
       input.registryKey.length === 0 ||
       input.registryKey.length > MAX_SOURCE_CHARS ||
@@ -391,7 +491,7 @@ export class RegistryLastKnownGoodStore {
         ref.relativePath,
       ) ||
       !DIGEST.test(ref.installedDigest) ||
-      existsSync(destination)
+      entryExists(destination)
     ) {
       throw new Error('Invalid registry rollback request.');
     }

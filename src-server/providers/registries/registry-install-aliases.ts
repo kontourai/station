@@ -6,6 +6,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
+
+export const AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL =
+  'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json' as const;
 
 export interface RegistryInstallAlias {
   pluginName: string;
@@ -25,7 +29,7 @@ export interface RegistryLastKnownGoodRef {
 /** Exact package/source pin kept with the existing registry ownership record. */
 export interface RegistrySupplyChainPinRecord {
   version: 1;
-  packageSchema: { kind: 'station.plugin'; version: '1.0' };
+  packageSchema: typeof AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL;
   registryId: string;
   registryKey: string;
   pluginName: string;
@@ -96,7 +100,7 @@ export function readRegistryInstallAliases(
       if (
         !alias ||
         typeof alias !== 'object' ||
-        typeof alias.pluginName !== 'string' ||
+        !isCanonicalPluginId(alias.pluginName) ||
         typeof alias.registryKey !== 'string'
       ) {
         throw new RegistryInstallAliasFormatError(
@@ -128,11 +132,61 @@ export function readRegistryInstallAliases(
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const SAFE_TEXT = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+const SIGNATURE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+export function isBoundedRegistryPackageVersion(
+  value: unknown,
+): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 256 &&
+    !Array.from(value).some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 31 || code === 127;
+    })
+  );
+}
+
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+): boolean {
+  return (
+    Object.getOwnPropertySymbols(value).length === 0 &&
+    Object.keys(value).every((key) => allowed.has(key))
+  );
+}
+
+const LAST_KNOWN_GOOD_KEYS = new Set([
+  'version',
+  'relativePath',
+  'installedDigest',
+  'packageVersion',
+  'source',
+]);
+const PIN_KEYS = new Set([
+  'version',
+  'packageSchema',
+  'registryId',
+  'registryKey',
+  'pluginName',
+  'packageVersion',
+  'source',
+  'packageDigest',
+  'installedDigest',
+  'verification',
+  'lastKnownGood',
+]);
+const UNSIGNED_VERIFICATION_KEYS = new Set(['kind']);
+const ED25519_VERIFICATION_KEYS = new Set(['kind', 'keyId', 'signature']);
 
 function isLastKnownGoodRef(value: unknown): value is RegistryLastKnownGoodRef {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const record = value as Partial<RegistryLastKnownGoodRef>;
+  const record = value as Partial<RegistryLastKnownGoodRef> &
+    Record<string, unknown>;
   return (
+    hasOnlyKeys(record, LAST_KNOWN_GOOD_KEYS) &&
     record.version === 1 &&
     typeof record.relativePath === 'string' &&
     /^registry-last-known-good\/[a-f0-9]{64}\/tree$/.test(
@@ -140,11 +194,30 @@ function isLastKnownGoodRef(value: unknown): value is RegistryLastKnownGoodRef {
     ) &&
     typeof record.installedDigest === 'string' &&
     DIGEST.test(record.installedDigest) &&
-    typeof record.packageVersion === 'string' &&
-    SAFE_TEXT.test(record.packageVersion) &&
+    isBoundedRegistryPackageVersion(record.packageVersion) &&
     typeof record.source === 'string' &&
     record.source.length > 0 &&
     record.source.length <= 2_048
+  );
+}
+
+function isSupplyChainVerification(
+  value: unknown,
+): value is RegistrySupplyChainPinRecord['verification'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const verification = value as Record<string, unknown>;
+  if (verification.kind === 'unsigned') {
+    return hasOnlyKeys(verification, UNSIGNED_VERIFICATION_KEYS);
+  }
+  return (
+    verification.kind === 'ed25519' &&
+    hasOnlyKeys(verification, ED25519_VERIFICATION_KEYS) &&
+    typeof verification.keyId === 'string' &&
+    SAFE_TEXT.test(verification.keyId) &&
+    typeof verification.signature === 'string' &&
+    verification.signature.length > 0 &&
+    verification.signature.length <= 512 &&
+    SIGNATURE.test(verification.signature)
   );
 }
 
@@ -152,30 +225,19 @@ function isRegistrySupplyChainPinRecord(
   value: unknown,
 ): value is RegistrySupplyChainPinRecord {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const record = value as Partial<RegistrySupplyChainPinRecord>;
-  const verification = record.verification as
-    | RegistrySupplyChainPinRecord['verification']
-    | undefined;
-  const verificationValid =
-    verification?.kind === 'unsigned' ||
-    (verification?.kind === 'ed25519' &&
-      SAFE_TEXT.test(verification.keyId) &&
-      typeof verification.signature === 'string' &&
-      verification.signature.length > 0 &&
-      verification.signature.length <= 512);
+  const record = value as Partial<RegistrySupplyChainPinRecord> &
+    Record<string, unknown>;
   return (
+    hasOnlyKeys(record, PIN_KEYS) &&
     record.version === 1 &&
-    record.packageSchema?.kind === 'station.plugin' &&
-    record.packageSchema.version === '1.0' &&
+    record.packageSchema === AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL &&
     typeof record.registryId === 'string' &&
     SAFE_TEXT.test(record.registryId) &&
     typeof record.registryKey === 'string' &&
     record.registryKey.length > 0 &&
     record.registryKey.length <= 2_048 &&
-    typeof record.pluginName === 'string' &&
-    SAFE_TEXT.test(record.pluginName) &&
-    typeof record.packageVersion === 'string' &&
-    SAFE_TEXT.test(record.packageVersion) &&
+    isCanonicalPluginId(record.pluginName) &&
+    isBoundedRegistryPackageVersion(record.packageVersion) &&
     typeof record.source === 'string' &&
     record.source.length > 0 &&
     record.source.length <= 2_048 &&
@@ -183,7 +245,7 @@ function isRegistrySupplyChainPinRecord(
     DIGEST.test(record.packageDigest) &&
     typeof record.installedDigest === 'string' &&
     DIGEST.test(record.installedDigest) &&
-    verificationValid &&
+    isSupplyChainVerification(record.verification) &&
     (record.lastKnownGood === undefined ||
       isLastKnownGoodRef(record.lastKnownGood))
   );

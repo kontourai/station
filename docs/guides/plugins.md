@@ -905,8 +905,11 @@ Station has no configured trusted signing-key source or explicit pin-update
 action. Enforcing a required-signature policy without those trust anchors would
 make every current Registry item uninstallable while claiming stronger safety.
 
-The seam is based on the Agent Plugins 1.0 package/root `plugin.json` schema
-identity, not legacy Station-only manifest contribution fields. Trust anchors
+The seam binds the canonical Agent Plugins 1.0.0 manifest schema target,
+`https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`, not legacy
+Station-only manifest contribution fields. That target identifies the published
+schema the registry claim says its root `plugin.json` uses; this tracer does not
+yet validate the manifest against that schema. Trust anchors
 come from local policy and never from the registry document being verified.
 The signature binds registry identity, registry source, package identity,
 version, source, and complete source-tree digest. A source/version change is

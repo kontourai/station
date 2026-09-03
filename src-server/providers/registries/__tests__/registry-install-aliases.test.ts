@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
+  AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL,
   RegistryInstallAliasFormatError,
   readRegistryInstallAliases,
   writeRegistryInstallAliases,
@@ -32,11 +33,11 @@ describe('registry install alias supply-chain records', () => {
         registryKey: 'https://registry.example.test/manifest.json',
         supplyChain: {
           version: 1,
-          packageSchema: { kind: 'station.plugin', version: '1.0' },
+          packageSchema: AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL,
           registryId: 'review',
           registryKey: 'https://registry.example.test/manifest.json',
           pluginName: 'review-plugin',
-          packageVersion: '1.2.3',
+          packageVersion: 'release train/β 2026',
           source: 'https://registry.example.test/review-1.2.3.tgz',
           packageDigest: digest,
           installedDigest: digest,
@@ -49,16 +50,16 @@ describe('registry install alias supply-chain records', () => {
             version: 1,
             relativePath: `registry-last-known-good/${'b'.repeat(64)}/tree`,
             installedDigest: digest,
-            packageVersion: '1.1.0',
+            packageVersion: 'release candidate/final',
             source: 'https://registry.example.test/review-1.1.0.tgz',
           },
         },
       },
     });
     expect(readRegistryInstallAliases(home).review.supplyChain).toMatchObject({
-      packageVersion: '1.2.3',
+      packageVersion: 'release train/β 2026',
       source: 'https://registry.example.test/review-1.2.3.tgz',
-      lastKnownGood: { packageVersion: '1.1.0' },
+      lastKnownGood: { packageVersion: 'release candidate/final' },
     });
   });
 
@@ -76,6 +77,66 @@ describe('registry install alias supply-chain records', () => {
         },
       }),
     );
+    expect(() => readRegistryInstallAliases(home)).toThrow(
+      RegistryInstallAliasFormatError,
+    );
+  });
+
+  test.each([
+    [
+      'pin',
+      (pin: Record<string, unknown>) => Object.assign(pin, { extra: true }),
+    ],
+    [
+      'verification',
+      (pin: Record<string, unknown>) =>
+        Object.assign(pin.verification as Record<string, unknown>, {
+          extra: true,
+        }),
+    ],
+    [
+      'last-known-good reference',
+      (pin: Record<string, unknown>) =>
+        Object.assign(pin.lastKnownGood as Record<string, unknown>, {
+          extra: true,
+        }),
+    ],
+  ])('rejects an unknown field in the persisted %s', (_name, mutate) => {
+    const home = root();
+    const digest = `sha256:${'a'.repeat(64)}`;
+    const pin: Record<string, unknown> = {
+      version: 1,
+      packageSchema: AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL,
+      registryId: 'review',
+      registryKey: 'https://registry.example.test/manifest.json',
+      pluginName: 'review-plugin',
+      packageVersion: 'release train/β 2026',
+      source: 'https://registry.example.test/review.tgz',
+      packageDigest: digest,
+      installedDigest: digest,
+      verification: { kind: 'unsigned' },
+      lastKnownGood: {
+        version: 1,
+        relativePath: `registry-last-known-good/${'b'.repeat(64)}/tree`,
+        installedDigest: digest,
+        packageVersion: 'release candidate/final',
+        source: 'https://registry.example.test/review-previous.tgz',
+      },
+    };
+    mutate(pin);
+    const path = join(home, 'config', 'registry-installs.json');
+    mkdirSync(join(home, 'config'), { recursive: true });
+    writeFileSync(
+      path,
+      JSON.stringify({
+        review: {
+          pluginName: 'review-plugin',
+          registryKey: 'https://registry.example.test/manifest.json',
+          supplyChain: pin,
+        },
+      }),
+    );
+
     expect(() => readRegistryInstallAliases(home)).toThrow(
       RegistryInstallAliasFormatError,
     );
