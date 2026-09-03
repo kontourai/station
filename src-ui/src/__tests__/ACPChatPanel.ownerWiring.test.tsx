@@ -13,7 +13,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
   // MessageRating (rendered by the real MessageBubble this test exercises)
   // needs these three — not under test here.
   useFeedbackRatingsQuery: () => ({ data: [] }),

@@ -5,8 +5,8 @@ import {
   orchestrationQueries,
   telemetry,
   useAcknowledgeConversationMutation,
-  useAgentConnectionsQuery,
   useConversationInventoryQuery,
+  useEngineConnectionsQuery,
   useGenerateSessionSummaryMutation,
   useInvalidateQuery,
   useOrchestrationSessionsQuery,
@@ -1392,7 +1392,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   // #3309: the retired tab strip's "New" behavior, now behind the header's
   // New button — exactly one chat-ready agent opens directly, else the modal.
-  const { data: agentConnections = [] } = useAgentConnectionsQuery() as {
+  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data?: ConnectionConfig[];
   };
   // #3310: fires from the chat-settings menu; the transcript's summary card
@@ -2649,6 +2649,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               invalidate(orchestrationQueries.sessions().queryKey);
               invalidate(conversationQueries.inventory().queryKey);
               setHandoffSource(null);
+              requestAnimationFrame(() =>
+                handoffReturnFocusRef.current?.focus(),
+              );
               showToast(
                 `Continuing with ${target?.name ?? `deleted Agent “${targetId}”`}`,
                 'success',

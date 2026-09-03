@@ -319,6 +319,36 @@ describe('one-revision native promotion contract', () => {
     expect(
       namedStep(ios, 'Import protected signing material bound to this channel'),
     ).toBeDefined();
+    const signingImport = namedStep(
+      ios,
+      'Import protected signing material bound to this channel',
+    );
+    expect(signingImport.run).toContain(
+      'security set-keychain-settings -lut 21600 "$keychain"',
+    );
+    const codesignCanary = namedStep(
+      ios,
+      'Prove headless codesign access before the expensive build',
+    );
+    expect((codesignCanary as any)['timeout-minutes']).toBe(2);
+    expect(codesignCanary.run).toContain(
+      '/usr/bin/codesign --force --sign "$APPLE_SIGNING_IDENTITY"',
+    );
+    expect(ios.steps?.indexOf(codesignCanary)).toBeLessThan(
+      ios.steps?.indexOf(
+        namedStep(ios, 'Build signed and channel-audited iOS package'),
+      ) ?? -1,
+    );
+    const signedBuild = namedStep(
+      ios,
+      'Build signed and channel-audited iOS package',
+    );
+    expect(signedBuild.run).toContain(
+      'security unlock-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$RUNNER_TEMP/station-ios.keychain-db"',
+    );
+    expect(signedBuild.run?.indexOf('security unlock-keychain')).toBeLessThan(
+      signedBuild.run?.indexOf('npx tauri ios build') ?? -1,
+    );
     for (const required of [
       'APPLE_API_KEY_ID',
       'APPLE_API_ISSUER_ID',
@@ -334,6 +364,24 @@ describe('one-revision native promotion contract', () => {
     const upload = namedStep(
       ios,
       'Upload a previously unobserved IPA to TestFlight',
+    );
+    const packageVerification = namedStep(
+      ios,
+      'Verify IPA identity, profile and package contents',
+    );
+    expect(packageVerification.run).toContain(
+      'scripts/ios-exported-entitlements.mjs',
+    );
+    expect(packageVerification.run).not.toContain(
+      'plutil -extract keychain-access-groups',
+    );
+    const failedPackage = namedStep(
+      ios,
+      'Retain the built IPA when package verification fails',
+    );
+    expect((failedPackage as any).if).toBe('failure()');
+    expect(failedPackage.with?.path).toBe(
+      'src-desktop/gen/apple/build/arm64/*.ipa',
     );
     expect(upload.with?.['wait-for-processing']).toBe('true');
     expect((upload as any).if).toContain(

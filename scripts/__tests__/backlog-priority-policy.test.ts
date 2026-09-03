@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import {
@@ -125,6 +126,25 @@ describe('backlog priority policy', () => {
       actionableP1: 0,
       unclassified: 2,
     });
+  });
+
+  // Run as a real child process: the message is only reached through the
+  // script's own entrypoint, and asserting the exit status is the only way to
+  // prove the rejection path still rejects.
+  test('refusing without GITHUB_REPOSITORY names the command that works', () => {
+    const { GITHUB_REPOSITORY: _dropped, ...env } = process.env;
+    const result = spawnSync(
+      process.execPath,
+      ['scripts/backlog-priority-policy.mjs'],
+      { encoding: 'utf8', env },
+    );
+    expect(result.status).not.toBe(0);
+    // The remedy, not just the mechanism: a reader who has only ever run this
+    // by hand needs the invocation, not the name of the variable it lacks.
+    expect(result.stderr).toContain(
+      'GITHUB_REPOSITORY=kontourai/station node scripts/backlog-priority-policy.mjs',
+    );
+    expect(result.stderr).toContain('--input');
   });
 
   test('does not count pull requests as unclassified open issues', () => {

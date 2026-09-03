@@ -148,17 +148,17 @@ jobs:
           # identity-bearing project files for this channel, while preserving
           # every reviewed non-identity resource checked into gen/apple.
           preserved="$RUNNER_TEMP/station-ios-preserved"
-          mkdir -p "$preserved"
-          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources; do
+          mkdir -p "$preserved/station_iOS"
+          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             test -e "gen/apple/$item"
             ditto "gen/apple/$item" "$preserved/$item"
           done
           rm -rf gen/apple
           npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.ios.channel.json"
-          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources; do
+          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             ditto "$preserved/$item" "gen/apple/$item"
           done
-          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources
+          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
       - name: Verify App Store Connect app authority before signing
         id: app_store
         run: |
@@ -192,6 +192,11 @@ jobs:
           grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' "$RUNNER_TEMP/station-ios-project.yml"
           security create-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
           security unlock-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
+          # The first clean iOS build can spend several minutes compiling
+          # before xcodebuild reaches codesign. Keep this headless keychain
+          # unlocked beyond the 90-minute job fence so codesign cannot block
+          # forever on an unavailable GUI password prompt.
+          security set-keychain-settings -lut 21600 "$keychain"
           security import "$certificate" -k "$keychain" -P "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
           security list-keychains -d user -s "$keychain"
@@ -199,6 +204,15 @@ jobs:
           profile_uuid=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).uuid' "$profile_metadata")
           [[ "$profile_uuid" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]]
           cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
+      - name: Prove headless codesign access before the expensive build
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          canary="$RUNNER_TEMP/station-ios-codesign-canary"
+          cp /usr/bin/true "$canary"
+          /usr/bin/codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp=none "$canary"
+          /usr/bin/codesign --verify --strict "$canary"
+          rm -f "$canary"
       - name: Regenerate the Xcode project with the manual signing template
         working-directory: src-desktop
         run: |
@@ -211,10 +225,10 @@ jobs:
           preserved="$RUNNER_TEMP/station-ios-preserved"
           rm -rf gen/apple
           npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json"
-          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources; do
+          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             ditto "$preserved/$item" "gen/apple/$item"
           done
-          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources
+          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
           grep -Fq 'CODE_SIGN_STYLE: Manual' gen/apple/project.yml
           grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' gen/apple/project.yml
           # `rm -rf gen/apple` also removed the staged provenance resource
@@ -230,6 +244,7 @@ jobs:
           export IOS_MOBILE_PROVISION
           node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig(process.env.STATION_MOBILE_DEFAULT_ENDPOINT), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
           rm -rf gen/apple/build
+          security unlock-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$RUNNER_TEMP/station-ios.keychain-db"
           STATION_BUILD_BRANCH="$AUTHORITY_REF" STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --export-method app-store-connect --ci --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json" -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
       - name: Verify IPA identity, profile and package contents
         id: package
@@ -252,16 +267,10 @@ jobs:
           node --input-type=module -e 'import { readFileSync, writeFileSync } from "node:fs"; import { createHash } from "node:crypto"; const receipt=JSON.parse(readFileSync("provider-receipts/channel-icon-receipt.json","utf8")); receipt.generatedAsset="AppIcon-512@2x.png"; receipt.generatedAssetSha256=createHash("sha256").update(readFileSync(process.argv[1])).digest("hex"); writeFileSync("provider-receipts/channel-icon-receipt.json", JSON.stringify(receipt,null,2)+"\n", { mode: 0o600 });' "$generated_icon"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$app/Info.plist" | grep -Fx "$(node -p 'JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP + "/tauri.ios.channel.json", "utf8")).plugins["deep-link"].mobile[0].scheme[0]')"
           entitlements="$RUNNER_TEMP/station-ios-entitlements.plist"
+          entitlements_json="$RUNNER_TEMP/station-ios-entitlements.json"
           codesign -d --entitlements :- "$app" 2>/dev/null > "$entitlements"
-          expected_application_identifier="${APPLE_DEVELOPMENT_TEAM}.${{ steps.app_store.outputs.bundle_id }}"
-          test "$(plutil -extract application-identifier raw -o - "$entitlements")" = "$expected_application_identifier"
-          test "$(plutil -extract com.apple.developer.team-identifier raw -o - "$entitlements")" = "$APPLE_DEVELOPMENT_TEAM"
-          keychain_groups=$(plutil -extract keychain-access-groups json -o - "$entitlements")
-          KEYCHAIN_GROUPS="$keychain_groups" EXPECTED_APPLICATION_IDENTIFIER="$expected_application_identifier" node --input-type=module -e 'const groups=JSON.parse(process.env.KEYCHAIN_GROUPS); if (!Array.isArray(groups) || groups.length !== 1 || groups[0] !== process.env.EXPECTED_APPLICATION_IDENTIFIER) throw new Error("keychain access groups are not exact channel identity");'
-          if plutil -extract com.apple.security.application-groups raw -o - "$entitlements" >/dev/null 2>&1; then
-            echo 'Unexpected shared application group entitlement' >&2
-            exit 1
-          fi
+          plutil -convert json -o "$entitlements_json" "$entitlements"
+          node scripts/ios-exported-entitlements.mjs "$entitlements_json" "$APPLE_DEVELOPMENT_TEAM" '${{ steps.app_store.outputs.bundle_id }}' > provider-receipts/exported-ios-entitlements.json
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Info.plist")" = "$(node -p 'JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP + "/tauri.ios.channel.json", "utf8")).productName')"
           node scripts/check-ios-store-profile.mjs --station "$app/embedded.mobileprovision" --label 'exported IPA embedded.mobileprovision' --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id '${{ steps.app_store.outputs.bundle_id }}'
           codesign --verify --deep --strict --verbose=2 "$app"
@@ -325,6 +334,14 @@ jobs:
             ${{ runner.temp }}/source-identity.json
           if-no-files-found: warn
           retention-days: 30
+      - name: Retain the built IPA when package verification fails
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: station-${{ inputs.channel }}-ios-verification-failure-${{ inputs.bundle_version }}
+          path: src-desktop/gen/apple/build/arm64/*.ipa
+          if-no-files-found: warn
+          retention-days: 7
       - name: Remove the ephemeral signing keychain
         if: always()
         run: security delete-keychain "$RUNNER_TEMP/station-ios.keychain-db" 2>/dev/null || true

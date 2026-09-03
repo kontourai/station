@@ -199,7 +199,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     ...actual,
     telemetry: { track: () => {} },
     useAcknowledgeConversationMutation: () => ({ mutate: () => {} }),
-    useAgentConnectionsQuery: () => ({ data: [] }),
+    useEngineConnectionsQuery: () => ({ data: [] }),
     useConversationInventoryQuery: () => ({ data: [] }),
     useGenerateSessionSummaryMutation: () => ({ mutate: () => {} }),
     useInvalidateQuery: () => () => {},

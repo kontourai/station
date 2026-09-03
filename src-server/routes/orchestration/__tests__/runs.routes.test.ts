@@ -7,6 +7,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import {
   NativeInvocationStorageUnavailableError,
+  PluginForegroundRunStorageUnavailableError,
   RunService,
 } from '../../../services/orchestration/run-service.js';
 import { SchedulerStorageUnavailableError } from '../../../services/scheduling/scheduler-ledger.js';
@@ -86,6 +87,24 @@ describe('Run Routes', () => {
     expect(res.status).toBe(200);
     expect(service.listRuns).toHaveBeenCalledWith(expect.anything(), {
       source: 'voice',
+      providerId: undefined,
+      sourceId: undefined,
+    });
+  });
+
+  test('GET / accepts the canonical plugin run source filter', async () => {
+    const service = {
+      listRuns: vi.fn().mockResolvedValue([]),
+      readRun: vi.fn(),
+      readOutput: vi.fn(),
+    };
+    const app = createRunRoutes(service as any, logger as any, () =>
+      sessionReadAuthorityFromRequest('test-user', undefined, undefined),
+    );
+    const res = await app.request('/?source=plugin');
+    expect(res.status).toBe(200);
+    expect(service.listRuns).toHaveBeenCalledWith(expect.anything(), {
+      source: 'plugin',
       providerId: undefined,
       sourceId: undefined,
     });
@@ -271,5 +290,20 @@ describe('Run Routes', () => {
     );
 
     expect((await app.request('/?source=invoke')).status).toBe(503);
+  });
+
+  test('maps plugin foreground run-storage unavailability to 503', async () => {
+    const app = createRunRoutes(
+      {
+        listRuns: vi
+          .fn()
+          .mockRejectedValue(new PluginForegroundRunStorageUnavailableError()),
+        readRun: vi.fn(),
+        readOutput: vi.fn(),
+      } as any,
+      logger as any,
+    );
+
+    expect((await app.request('/?source=plugin')).status).toBe(503);
   });
 });

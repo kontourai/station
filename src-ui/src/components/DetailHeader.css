@@ -99,6 +99,29 @@
   display: none;
 }
 
+/* Tablet is neither the phone sheet nor a wide desktop detail pane. Keep the
+   identity readable, then give its actions a deliberate second row instead
+   of squeezing the title down to one character. This is shared detail chrome,
+   so every SplitPaneLayout consumer gets the same intermediate contract. */
+@media (min-width: 769px) and (max-width: 1180px) {
+  .detail-header {
+    flex-wrap: wrap;
+  }
+
+  .detail-header__left {
+    flex-basis: 100%;
+  }
+
+  .detail-header__actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .detail-header__actions > :is(button, a) {
+    min-height: 44px;
+  }
+}
+
 @media (max-width: 640px) {
   .detail-header {
     align-items: stretch;

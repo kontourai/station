@@ -254,7 +254,7 @@ describe('install-registry helpers', () => {
     { 'curated-demo': 'actual/plugin' },
     { 'curated-demo': 'actual-plugin ' },
     { 'curated-demo': 'actual-plugin\u0000' },
-    Object.fromEntries([['a'.repeat(64), 'actual-plugin']]),
+    Object.fromEntries([['a'.repeat(65), 'actual-plugin']]),
   ])(
     'refuses noncanonical persisted aliases without echoing identities or mutating them: %j',
     async (invalidAliases) => {
@@ -292,7 +292,7 @@ describe('install-registry helpers', () => {
     'Curated-demo',
     'curated_demo',
     '-curated-demo',
-    'a'.repeat(64),
+    'a'.repeat(65),
   ])('rejects noncanonical alias inputs: %j', async (invalidIdentity) => {
     const { home, aliasesPath } = createRegistryHome();
     process.env.STATION_HOME = home;
@@ -315,12 +315,17 @@ describe('install-registry helpers', () => {
     const { recordRegistryInstall } = await import(
       '../commands/install-registry.js'
     );
-    const boundaryId = `a${'b'.repeat(62)}`;
+    const boundaryId = `a${'b'.repeat(63)}`;
 
     recordRegistryInstall(boundaryId, 'actual-plugin');
 
     expect(JSON.parse(readFileSync(aliasesPath, 'utf-8'))).toEqual({
       [boundaryId]: 'actual-plugin',
+    });
+
+    recordRegistryInstall('acme.tools', 'actual-plugin.tools');
+    expect(JSON.parse(readFileSync(aliasesPath, 'utf-8'))).toMatchObject({
+      'acme.tools': 'actual-plugin.tools',
     });
   });
 
@@ -741,7 +746,7 @@ describe('install-registry helpers', () => {
     'curated\\demo',
     'Curated-demo',
     'curated_demo',
-    'a'.repeat(64),
+    'a'.repeat(65),
   ])('rejects noncanonical registry manifest ids: %j', async (invalidId) => {
     const { root, home } = createRegistryHome();
     const registryDir = join(root, 'registry');

@@ -300,6 +300,9 @@ export function ChatInputArea({
       ? `${modelProviderLabel} — ${fullModelIdentity}`
       : fullModelIdentity,
     modelSource !== 'unknown' ? `(${modelSourceLabel(modelSource)})` : '',
+    !canModelSelect
+      ? `Unavailable: ${modelSelectionReason ?? 'You can’t change the model for this chat'}`
+      : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -416,28 +419,32 @@ export function ChatInputArea({
             ref={agentHandoffTriggerRef}
             type="button"
             className="chat-input__agent-btn"
-            onClick={onOpenAgentHandoff}
-            disabled={agentHandoffDisabled}
-            aria-label={`Agent: ${agentLabel ?? 'current Agent'}. Change Agent`}
+            onClick={agentHandoffDisabled ? undefined : onOpenAgentHandoff}
+            aria-disabled={agentHandoffDisabled}
+            aria-haspopup="dialog"
+            aria-label={`Agent: ${agentLabel ?? 'current Agent'}. ${
+              agentHandoffDisabled
+                ? (agentHandoffDisabledReason ?? 'Unavailable')
+                : 'Change Agent'
+            }`}
             title={
               agentHandoffDisabled
                 ? agentHandoffDisabledReason
                 : 'Continue this conversation with another Agent'
             }
           >
-            <span className="chat-input__agent-avatar" aria-hidden="true">
-              {(agentLabel ?? 'A').trim().slice(0, 1).toUpperCase()}
-            </span>
+            <span className="chat-input__choice-label">Agent</span>
             <span className="chat-input__agent-name">
               {agentLabel ?? 'Current Agent'}
             </span>
+            {'⌄'}
           </button>
         )}
         <button
           ref={modelButtonRef}
           type="button"
-          onClick={onModelOpen}
-          disabled={!canModelSelect}
+          onClick={canModelSelect ? onModelOpen : undefined}
+          aria-disabled={!canModelSelect}
           className={`chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
           aria-haspopup="dialog"
           aria-expanded={modelQuery !== null && !input.startsWith('/model ')}
@@ -455,6 +462,7 @@ export function ChatInputArea({
                 : 'Click to change model'
           }
         >
+          <span className="chat-input__choice-label">Model</span>
           <span className="chat-input__model-identity" aria-hidden="true">
             {modelProviderLabel && (
               <>
@@ -466,6 +474,7 @@ export function ChatInputArea({
             )}
             <span className="chat-input__model-name">{modelLabel}</span>
           </span>
+          {'⌄'}
         </button>
         {isOverride && (
           <button

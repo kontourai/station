@@ -110,7 +110,7 @@ describe('starved pull request detection', () => {
     const starved = pr({ number: 10 });
     const queued = pr({ number: 11, isInMergeQueue: true });
     const held = pr({ number: 12, labels: { nodes: [{ name: 'blocked' }] } });
-    expect(selectStarved([starved, queued, held]).map((p) => p.number)).toEqual(
+    expect(selectStarved([starved, queued, held]).map((p: { number: number }) => p.number)).toEqual(
       [10],
     );
   });

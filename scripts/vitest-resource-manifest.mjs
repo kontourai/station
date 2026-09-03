@@ -276,6 +276,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #1153: spawns the starved-PR reporter without GITHUB_REPOSITORY to prove
   // its refusal path exits non-zero and names the remedy.
   'scripts/__tests__/starved-pr-report.test.ts',
+  // #1120: spawns the backlog gate without GITHUB_REPOSITORY to prove its
+  // refusal path exits non-zero and names the remedy.
+  'scripts/__tests__/backlog-priority-policy.test.ts',
   'scripts/__tests__/install-script.test.ts',
   'scripts/__tests__/installer-tool-output-parsing.test.ts',
   'scripts/__tests__/local-verification.test.ts',
