@@ -21,6 +21,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | --- | --- | --- |
 | [SurfaceRegistry](#surfaceregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/surface-registry.ts` |
 | [InstalledPluginInventory](#installedplugininventory) | Keep valid and rejected installed plugin directories visible from one filesystem-backed inventory. | `src-server/services/plugins/installed-plugin-inventory.ts` |
+| [PackageMcpAdmissionJournal](#packagemcpadmissionjournal) | Retain package-incarnation admission evidence without inventing destructive retirement authority. | `src-server/services/plugins/package-mcp-admission.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
@@ -68,6 +69,34 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate exact-route owners, duplicate view owners, and duplicate sidebar or palette order slots. It never invokes a label or badge while composing or filtering; locale, branding, and attention state remain render-time inputs. A preview surface stays registered and routable while `getAdvertised` hides it until its named flag is enabled. `hiddenFromNav` removes only the sidebar affordance; route, palette, badge, and header callers remain independent projections. Parameterized Project, layout, task, Agent, connection, and Workspace Pane routes retain their domain parsers. Dynamic Workspace Panes retain their typed availability catalog and join the command palette after static registry projection rather than becoming unvalidated root-route contributions.
 
 **Seam, Implementation, callers, and tests.** The UI shell composes built-in descriptors. `routing.ts` consumes exact routes and semantic management ownership; `ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their ordered projections. Icons are a presentation Adapter keyed by the registry's finite icon vocabulary. Future trusted plugin surface contributions must enter at registry composition and pass the same validation; there is no mutable global `register()` operation or renderer callback in persisted plugin data. Contract coverage is `src-ui/src/app-shell/__tests__/surface-registry.test.ts` plus sidebar, palette, routing, and header suites. **Do not reintroduce:** component-local static destination arrays, route-to-sidebar switch statements, hard-coded badge copy outside the registry, mutable post-construction registration, or treating a contributed renderer declaration as navigation authority.
+
+## PackageMcpAdmissionJournal
+
+**Intent and Interface.** EventStore composes one journal on its existing SQLite
+handle. Host installation observations mint exact incarnation identities;
+`reserve` retains a pre-effect claim, `enterEffectBoundary` is one-way, and
+`requestRetirement` fences new admission for that package. The returned claim
+alone may release a proved never-started reservation. SDK settlement retains
+possible effects, and foreign, crashed or PID-reused owners are never pruned.
+
+**Contract.** State, generations and claims are bounded; corrupt or oversized
+metadata and uncertain commit acknowledgement fail closed. No filesystem path,
+integration definition or secret is duplicated. `inspectMutationImpact` reports
+positive recorded history or unclassified/unavailable, never a negative safety
+proof. Every inspection says `mutationAllowed: false`: compatibility and
+native/descendant/remote terminal proofs are absent. No destructive permit API
+exists. This is shared control-plane evidence, not a supervisor or sandbox.
+
+**Seam and tests.** EventStore owns schema/open/transaction lifetime and exposes
+the memoized journal before later runtime service composition. The MCP and
+Agent-Plugins mutation entry-point wiring remains a subsequent tranche. Two
+real EventStore processes in `package-mcp-admission.test.ts` cover concurrent
+reservation/fencing, owner crash, exact no-effect release, same-content
+incarnation ABA, commit uncertainty and fixed-capacity refusal. See
+[MCP UI host](../design/mcp-ui-host.md#shared-package-admission-evidence-control-plane-prerequisite).
+**Do not reintroduce:** new database opens, bare SDK-close drain receipts,
+dead-parent/TTL release, declaration absence as historical proof, or a mutable
+caller flag that upgrades this evidence into package deletion authority.
 
 ## InstalledPluginInventory
 

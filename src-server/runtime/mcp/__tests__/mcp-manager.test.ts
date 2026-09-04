@@ -8,7 +8,21 @@ const mcpLifecycle = { add: vi.fn() };
 const mcpNegotiations = { add: vi.fn() };
 const mcpNegotiationDuration = { record: vi.fn() };
 
-vi.mock('@kontourai/station-shared/mcp', () => ({ connectMCP }));
+vi.mock('@kontourai/station-shared/mcp', async (original) => {
+  const actual =
+    await original<typeof import('@kontourai/station-shared/mcp')>();
+  const { fixtureMCPCustody } = await import(
+    '../../../test-support/mcp-custody-fixture.js'
+  );
+  return {
+    ...actual,
+    connectMCP,
+    MCPLocalConnectionCustody: fixtureMCPCustody(
+      actual.MCPLocalConnectionCustody,
+      connectMCP,
+    ),
+  };
+});
 vi.mock('../../../telemetry/metrics.js', () => ({
   mcpLifecycle,
   mcpNegotiations,
@@ -23,6 +37,9 @@ const {
   loadAgentTools: loadAgentToolsImplementation,
   releaseAllNativeStationControlConnections,
 } = await import('../mcp-manager.js');
+const { MCPLocalConnectionCustody } = await import(
+  '@kontourai/station-shared/mcp'
+);
 const { createMCPToolProvenanceGeneration } = await import(
   '../../../services/orchestration/mcp-tool-provenance.js'
 );
@@ -65,6 +82,7 @@ function loadAgentTools(...args: LoadAgentToolsFixtureArgs) {
     args[9],
     createMCPToolProvenanceGeneration(),
     args[10],
+    new MCPLocalConnectionCustody(),
   );
 }
 
@@ -571,13 +589,8 @@ describe('Station-owned MCP manager', () => {
     );
     const failedCleanup = releaseAllNativeStationControlConnections();
     resolveFailedConnection!(failedConnection);
-    await expect(failedCleanup).rejects.toSatisfy(
-      (error) =>
-        error instanceof AggregateError &&
-        error.errors.some(
-          (failure: unknown) =>
-            failure instanceof Error && failure.message === 'stale disconnect',
-        ),
+    await expect(failedCleanup).rejects.toThrow(
+      'Native station-control cleanup failed.',
     );
     await failedPendingExpectation;
     expect(failedConnection.disconnect).toHaveBeenCalledOnce();
@@ -677,7 +690,11 @@ describe('Station-owned MCP manager', () => {
     );
 
     expect(connectMCP).toHaveBeenCalledTimes(1);
-    expect(mcpConfigs.get('review')).toBe(connection);
+    expect(mcpConfigs.get('review')).toMatchObject({
+      client: connection.client,
+      tools: connection.tools,
+      negotiation: connection.negotiation,
+    });
     expect(first[0]).toMatchObject({
       name: 'review_decide',
       description: 'Decide a review item.',
