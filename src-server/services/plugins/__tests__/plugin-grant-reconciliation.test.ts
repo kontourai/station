@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import {
   clearAll,
+  disposePreparedPluginProviders,
   disposeRetainedPreparedPluginProviders,
   pluginProviderSourceGeneration,
   replacePluginProvidersForSourceGeneration,
@@ -252,6 +253,64 @@ describe('plugin grant reconciliation', () => {
       1,
     );
     expect(fixture.adapters.quiesceModule).toHaveBeenCalledOnce();
+  });
+
+  test('a winning revoke joins timed-out staged cleanup until the original stopAll settles', async () => {
+    vi.useFakeTimers();
+    const pluginName = 'pending-staged-cleanup';
+    let releaseCleanup!: () => void;
+    let originalSettled = false;
+    const original = new Promise<void>((resolve) => {
+      releaseCleanup = () => {
+        originalSettled = true;
+        resolve();
+      };
+    });
+    const stopAll = vi
+      .fn()
+      .mockReturnValueOnce(original)
+      .mockResolvedValue(undefined);
+    const fixture = harness();
+    fixture.adapters.settleProviderAdapters = (source) =>
+      disposeRetainedPreparedPluginProviders(source);
+    const service = createPluginGrantReconciliationService(fixture.adapters, {
+      responseDeadlineMs: 100,
+    });
+    try {
+      const initial = disposePreparedPluginProviders([
+        {
+          type: 'providerAdapter',
+          source: pluginName,
+          provider: { provider: 'probe', stopAll },
+        },
+      ]);
+      const timedOut = expect(initial).rejects.toThrow(
+        'Prepared plugin provider cleanup failed',
+      );
+      await vi.advanceTimersByTimeAsync(2_001);
+      await timedOut;
+
+      const revoke = service.reconcile({
+        pluginName,
+        permissions: ['providers.register'],
+      });
+      await vi.advanceTimersByTimeAsync(101);
+      await expect(revoke).resolves.toMatchObject({ status: 'winding-down' });
+      expect(stopAll).toHaveBeenCalledOnce();
+      expect(originalSettled).toBe(false);
+      expect(service.inspect(pluginName)).toBeUndefined();
+
+      releaseCleanup();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(service.inspect(pluginName)).toMatchObject({
+        status: 'completed',
+      });
+      expect(stopAll).toHaveBeenCalledOnce();
+    } finally {
+      releaseCleanup();
+      await vi.advanceTimersByTimeAsync(0);
+      vi.useRealTimers();
+    }
   });
 
   test('a winning revoke retries source-bound staged adapter disposal before completing', async () => {

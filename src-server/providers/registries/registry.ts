@@ -60,25 +60,49 @@ const PREPARED_ADAPTER_CLEANUP_TIMEOUT_MS = 2_000;
  * winning grant reconciliation can settle the exact debt before reporting
  * completion. Shutdown may still drain every source by omitting the filter.
  */
-const retainedPreparedAdapterCleanup = new Map<
-  string,
-  Set<ProviderAdapterShape>
->();
-
-function retainPreparedAdapterCleanup(
-  source: string,
-  adapter: ProviderAdapterShape,
-): void {
-  const retained = retainedPreparedAdapterCleanup.get(source) ?? new Set();
-  retained.add(adapter);
-  retainedPreparedAdapterCleanup.set(source, retained);
+interface PreparedAdapterCleanupAttempt {
+  sources: Set<string>;
+  cleanup: Promise<void>;
+  state: 'pending' | 'rejected';
 }
 
-function forgetPreparedAdapterCleanup(adapter: ProviderAdapterShape): void {
-  for (const [source, retained] of retainedPreparedAdapterCleanup) {
-    retained.delete(adapter);
-    if (retained.size === 0) retainedPreparedAdapterCleanup.delete(source);
+const retainedPreparedAdapterCleanup = new Map<
+  ProviderAdapterShape,
+  PreparedAdapterCleanupAttempt
+>();
+
+function preparedAdapterCleanup(
+  source: string,
+  adapter: ProviderAdapterShape,
+): Promise<void> {
+  const retained = retainedPreparedAdapterCleanup.get(adapter);
+  if (retained?.state === 'pending') {
+    retained.sources.add(source);
+    return retained.cleanup;
   }
+
+  // Publish ownership before invoking plugin code. A deadline only bounds the
+  // waiter, never the teardown itself: every retry joins this exact promise
+  // until it settles. Only a terminal rejection authorizes another attempt.
+  const attempt: PreparedAdapterCleanupAttempt = {
+    sources: new Set([...(retained?.sources ?? []), source]),
+    cleanup: Promise.resolve().then(() => adapter.stopAll()),
+    state: 'pending',
+  };
+  retainedPreparedAdapterCleanup.set(adapter, attempt);
+  void attempt.cleanup.then(
+    () => {
+      if (retainedPreparedAdapterCleanup.get(adapter) === attempt) {
+        retainedPreparedAdapterCleanup.delete(adapter);
+      }
+    },
+    () => {
+      if (retainedPreparedAdapterCleanup.get(adapter) === attempt) {
+        attempt.state = 'rejected';
+      }
+    },
+  );
+  return attempt.cleanup;
 }
 let pluginProviderMutationQueue = Promise.resolve();
 const pluginProviderSourceGenerations = new Map<string, number>();
@@ -156,26 +180,15 @@ export async function disposePreparedPluginProviders(
   }
   const results = await Promise.allSettled(
     [...adapters].map(async ([adapter, source]) => {
-      const cleanup = Promise.resolve().then(() => adapter.stopAll());
+      const cleanup = preparedAdapterCleanup(source, adapter);
       const settled = await awaitSettlementWithin(
         cleanup,
         PREPARED_ADAPTER_CLEANUP_TIMEOUT_MS,
       );
       if (!settled) {
-        retainPreparedAdapterCleanup(source, adapter);
-        void cleanup.then(
-          () => forgetPreparedAdapterCleanup(adapter),
-          () => undefined,
-        );
         throw new Error('Prepared plugin provider cleanup timed out.');
       }
-      try {
-        await cleanup;
-        forgetPreparedAdapterCleanup(adapter);
-      } catch (error) {
-        retainPreparedAdapterCleanup(source, adapter);
-        throw error;
-      }
+      await cleanup;
     }),
   );
   const failures = results
@@ -194,23 +207,17 @@ export async function disposePreparedPluginProviders(
 export async function disposeRetainedPreparedPluginProviders(
   source?: string,
 ): Promise<void> {
-  const retained =
-    source === undefined
-      ? retainedPreparedAdapterCleanup
-      : new Map([
-          [
-            source,
-            retainedPreparedAdapterCleanup.get(source) ??
-              new Set<ProviderAdapterShape>(),
-          ],
-        ]);
   await disposePreparedPluginProviders(
-    [...retained].flatMap(([retainedSource, providers]) =>
-      [...providers].map((provider) => ({
-        type: 'providerAdapter' as const,
-        provider,
-        source: retainedSource,
-      })),
+    [...retainedPreparedAdapterCleanup].flatMap(([provider, attempt]) =>
+      [...attempt.sources]
+        .filter((retainedSource) =>
+          source === undefined ? true : retainedSource === source,
+        )
+        .map((retainedSource) => ({
+          type: 'providerAdapter' as const,
+          provider,
+          source: retainedSource,
+        })),
     ),
   );
 }

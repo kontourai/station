@@ -819,6 +819,7 @@ describe('Provider System', () => {
 
     it('bounds staged cleanup and retries retained ownership only for its source', async () => {
       vi.useFakeTimers();
+      let releaseStalled!: () => void;
       try {
         const synchronousFailure = new BedrockAdapter();
         const stalled = new BedrockAdapter();
@@ -829,7 +830,12 @@ describe('Provider System', () => {
           });
         const stopStalled = vi
           .spyOn(stalled, 'stopAll')
-          .mockImplementationOnce(() => new Promise<void>(() => undefined))
+          .mockImplementationOnce(
+            () =>
+              new Promise<void>((resolve) => {
+                releaseStalled = resolve;
+              }),
+          )
           .mockResolvedValueOnce(undefined);
 
         const cleanup = disposePreparedPluginProviders([
@@ -854,9 +860,63 @@ describe('Provider System', () => {
         expect(stopFailure).toHaveBeenCalledTimes(2);
         expect(stopStalled).toHaveBeenCalledOnce();
 
+        const retry = disposeRetainedPreparedPluginProviders('plugin-b');
+        const retryFailure = expect(retry).rejects.toThrow(
+          'Prepared plugin provider cleanup failed',
+        );
+        await vi.advanceTimersByTimeAsync(2_001);
+        await retryFailure;
+        expect(stopStalled).toHaveBeenCalledOnce();
+
+        const joined = disposeRetainedPreparedPluginProviders('plugin-b');
+        releaseStalled();
+        await joined;
         await disposeRetainedPreparedPluginProviders('plugin-b');
-        expect(stopStalled).toHaveBeenCalledTimes(2);
+        expect(stopStalled).toHaveBeenCalledOnce();
       } finally {
+        releaseStalled?.();
+        vi.useRealTimers();
+      }
+    });
+
+    it('retries a timed-out cleanup only after its original attempt rejects', async () => {
+      vi.useFakeTimers();
+      let rejectOriginal!: (error: Error) => void;
+      const adapter = new BedrockAdapter();
+      const stopAll = vi
+        .spyOn(adapter, 'stopAll')
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((_resolve, reject) => {
+              rejectOriginal = reject;
+            }),
+        )
+        .mockResolvedValue(undefined);
+      try {
+        const cleanup = disposePreparedPluginProviders([
+          {
+            type: 'providerAdapter',
+            source: 'late-rejection',
+            provider: adapter,
+          },
+        ]);
+        const timedOut = expect(cleanup).rejects.toThrow(
+          'Prepared plugin provider cleanup failed',
+        );
+        await vi.advanceTimersByTimeAsync(2_001);
+        await timedOut;
+        rejectOriginal(new Error('original cleanup failed after timeout'));
+        await vi.advanceTimersByTimeAsync(0);
+
+        await Promise.all([
+          disposeRetainedPreparedPluginProviders('late-rejection'),
+          disposeRetainedPreparedPluginProviders('late-rejection'),
+        ]);
+        expect(stopAll).toHaveBeenCalledTimes(2);
+        await disposeRetainedPreparedPluginProviders('late-rejection');
+        expect(stopAll).toHaveBeenCalledTimes(2);
+      } finally {
+        rejectOriginal?.(new Error('test cleanup'));
         vi.useRealTimers();
       }
     });
