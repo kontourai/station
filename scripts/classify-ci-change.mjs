@@ -10,9 +10,22 @@ const ZERO_SHA = '0'.repeat(40);
 export function classifyChangedPaths(paths) {
   const normalized = [...new Set(paths.filter(Boolean))];
   const nonDocs = normalized.filter((path) => !path.startsWith('docs/'));
+  const dependencies = normalized.some(
+    (changedPath) =>
+      changedPath === '.npmrc' ||
+      changedPath.endsWith('/.npmrc') ||
+      changedPath === 'package.json' ||
+      changedPath === 'package-lock.json' ||
+      changedPath === 'npm-shrinkwrap.json' ||
+      changedPath.endsWith('/package.json') ||
+      changedPath.endsWith('/package-lock.json') ||
+      changedPath.endsWith('/npm-shrinkwrap.json') ||
+      changedPath === 'scripts/dependency-advisory-exceptions.json',
+  );
   return {
     heavy: nonDocs.length > 0,
     container: nonDocs.length > 0,
+    dependencies,
     classification:
       normalized.length === 0
         ? 'no-changes'
@@ -30,6 +43,7 @@ export function classifyGitRange({ before, after, cwd = process.cwd() }) {
     return {
       heavy: true,
       container: true,
+      dependencies: true,
       classification: 'missing-before-fail-closed',
       changedFiles: null,
     };
@@ -53,6 +67,7 @@ export function renderGithubOutputs(result) {
   return [
     `heavy=${result.heavy}`,
     `container=${result.container}`,
+    `dependencies=${result.dependencies}`,
     `classification=${result.classification}`,
     `changed-files=${result.changedFiles ?? 'unknown'}`,
   ].join('\n');
@@ -69,6 +84,7 @@ function main(args) {
     result = {
       heavy: true,
       container: true,
+      dependencies: true,
       classification: 'classifier-error-fail-closed',
       changedFiles: null,
     };
