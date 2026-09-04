@@ -205,7 +205,7 @@ test.describe('Multi-turn context retention', () => {
     // Turn 1.
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await composer.fill(TURN_1_TEXT);
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
     await waitForDispatchThroughCapacityRetries(page, chatRequests, 1);
     await expect(
       transcript.getByText(FIXTURE_REPLY, { exact: true }).first(),
@@ -222,7 +222,7 @@ test.describe('Multi-turn context retention', () => {
     // Turn 2.
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await composer.fill(TURN_2_TEXT);
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
     await waitForDispatchThroughCapacityRetries(page, chatRequests, 2);
 
     // Both turns render.

@@ -144,7 +144,7 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
         new URL(response.url()).pathname === '/api/orchestration/chat' &&
         response.request().method() === 'POST',
     );
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
     const dispatch = await foregroundResponse;
     expect(dispatch.status()).toBe(200);
     const receipt = (await dispatch.json()) as ApiEnvelope<{
