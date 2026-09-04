@@ -26,9 +26,9 @@
  *
  * A decision names the parent bytes/permissions and its dependency ids. The
  * canonical dependency lifecycle additionally carries one byte/permission
- * approval per lifecycle-bearing dependency. They are checked separately
- * because they fail
- * differently:
+ * approval per executable or lifecycle-bearing dependency. Any supplied
+ * dependency approval is checked even for declarative content. They are checked
+ * separately because they fail differently:
  *
  * - `permissions` — the derived set the operator was shown. Checked because
  *   the digest cannot catch it: a client that sends the right digest and an

@@ -607,12 +607,25 @@ function createDependencyLifecycle(options: {
       );
     },
     validate({ dependencyId, dependencyDir, manifest }) {
-      if (!pluginHasDependencyLifecycle(manifest)) return;
       const approval = approvals.get(dependencyId);
       if (!approval) {
-        throw new Error(
-          `Plugin dependency '${dependencyId}' has lifecycle contributions but no preview-bound permission approval`,
-        );
+        // Provider activation is not the boundary for executing browser code.
+        // Prebuilt bundles are served even without a declared entrypoint, and
+        // permission declarations also need an explicit preview decision.
+        if (
+          pluginHasDependencyLifecycle(manifest) ||
+          manifest.entrypoint ||
+          existsSync(join(dependencyDir, 'dist', 'bundle.js')) ||
+          requiredPermissionsForManifest(manifest).length > 0
+        ) {
+          throw new Error(
+            `Plugin dependency '${dependencyId}' has executable or lifecycle contributions but no preview-bound permission approval`,
+          );
+        }
+        // Preserve named declarative dependency installs for older clients.
+        // If a client supplied an approval, even a declarative source must
+        // match it: dropping its former executable fields cannot drop binding.
+        return;
       }
       const basis = derivePluginConsentBasis(dependencyDir, manifest);
       if (!basis) {
@@ -630,6 +643,7 @@ function createDependencyLifecycle(options: {
         },
         basis,
       });
+      if (!pluginHasDependencyLifecycle(manifest)) return;
       assertDependencyProviderSlotsAvailable(
         options.pluginsDir,
         dependencyId,

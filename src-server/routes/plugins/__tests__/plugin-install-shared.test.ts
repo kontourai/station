@@ -12,6 +12,7 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
@@ -46,6 +47,7 @@ import {
 } from '../../../services/plugins/plugin-permissions.js';
 import { readCurrentWorkspacePaneCatalog } from '../../../services/projects/workspace-pane-catalog.js';
 import type { Logger } from '../../../utils/logger.js';
+import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 import {
   backupPluginDurableState,
   capturePersistedAgentOwnership,
@@ -208,6 +210,180 @@ afterEach(async () => {
       .splice(0, cleanupDirs.length)
       .map((dir) => rm(dir, { recursive: true, force: true })),
   );
+});
+
+describe('dependency approval from the real preview route', () => {
+  const families = [
+    'entrypoint',
+    'bundle',
+    'providers',
+    'settings',
+    'permissions',
+    'declarative',
+  ] as const;
+
+  async function fixture(family: (typeof families)[number]) {
+    const root = mkdtempSync(
+      join(tmpdir(), 'station-dependency-preview-binding-'),
+    );
+    cleanupDirs.push(root);
+    const dependency = join(root, 'dependency-source');
+    const contribution = {
+      entrypoint: { entrypoint: 'index.js' },
+      bundle: {},
+      providers: { providers: [{ type: 'auth', module: './index.js' }] },
+      settings: {
+        settings: [{ key: 'label', label: 'Label', type: 'string' }],
+      },
+      permissions: { permissions: ['providers.register'] },
+      declarative: {},
+    }[family];
+    writePlugin(dependency, {
+      name: 'dependency',
+      version: '1.0.0',
+      ...contribution,
+    });
+    writeFileSync(join(dependency, 'index.js'), 'export default "reviewed";');
+    if (family === 'bundle') {
+      mkdirSync(join(dependency, 'dist'));
+      writeFileSync(
+        join(dependency, 'dist', 'bundle.js'),
+        'globalThis.reviewed = true;',
+      );
+    }
+    const parent = join(root, 'parent-source');
+    writePlugin(parent, {
+      name: 'parent',
+      version: '1.0.0',
+      dependencies: [{ id: 'dependency', source: dependency }],
+    });
+    const installDeps = deps(root);
+    installDeps.buildPlugin.mockImplementation(
+      async (dir: string, name: string) => {
+        if (name === 'dependency' && family === 'entrypoint') {
+          mkdirSync(join(dir, 'dist'), { recursive: true });
+          writeFileSync(
+            join(dir, 'dist', 'bundle.js'),
+            readFileSync(join(dir, 'index.js')),
+          );
+        }
+      },
+    );
+    const app = new Hono();
+    registerPluginInstallRoutes(app, installDeps);
+    const response = await app.request('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: parent }),
+    });
+    const preview = (await response.json()) as any;
+    expect(response.status).toBe(200);
+    expect(preview.valid).toBe(true);
+    expect(preview.dependencies).toHaveLength(1);
+    expect(preview.dependencies[0].consent.contentDigest).toBeTruthy();
+    const consent: Extract<
+      PluginInstallConsent,
+      { kind: 'operator-decision' }
+    > = {
+      kind: 'operator-decision',
+      permissions: preview.permissions.required,
+      contentDigest: preview.contentDigest,
+      dependencies: preview.dependencies.map((entry: any) => entry.id),
+      dependencyApprovals: preview.dependencies.map((entry: any) => ({
+        id: entry.id,
+        permissions: entry.consent.permissions,
+        contentDigest: entry.consent.contentDigest,
+        dependencies: entry.consent.dependencies,
+      })),
+    };
+    return { root, dependency, parent, installDeps, consent };
+  }
+
+  test.each(families)(
+    'refuses changed %s dependency bytes under the original preview approval',
+    async (family) => {
+      const { root, dependency, parent, installDeps, consent } =
+        await fixture(family);
+      const changedFile =
+        family === 'bundle'
+          ? join(dependency, 'dist', 'bundle.js')
+          : join(dependency, 'index.js');
+      writeFileSync(changedFile, 'globalThis.unreviewed = true;');
+      await expect(
+        installPluginFromSource(parent, [], installDeps, { consent }),
+      ).rejects.toThrow('its files changed after it was reviewed');
+      expect(installDeps.buildPlugin).not.toHaveBeenCalled();
+      expect(existsSync(join(root, 'plugins', 'dependency'))).toBe(false);
+      expect(existsSync(join(root, 'plugins', 'parent'))).toBe(false);
+    },
+  );
+
+  test.each(families)(
+    'installs unchanged %s dependency bytes with the preview approval',
+    async (family) => {
+      const { root, parent, installDeps, consent } = await fixture(family);
+      const installed = await installPluginFromSource(parent, [], installDeps, {
+        consent,
+      });
+      expect(installed.success).toBe(true);
+      expect(existsSync(join(root, 'plugins', 'dependency', 'index.js'))).toBe(
+        true,
+      );
+    },
+  );
+
+  test.each(families.filter((family) => family !== 'declarative'))(
+    'requires an approval for a %s dependency even when the parent names its id',
+    async (family) => {
+      const { root, parent, installDeps, consent } = await fixture(family);
+      delete consent.dependencyApprovals;
+      await expect(
+        installPluginFromSource(parent, [], installDeps, { consent }),
+      ).rejects.toThrow('no preview-bound permission approval');
+      expect(existsSync(join(root, 'plugins', 'dependency'))).toBe(false);
+    },
+  );
+
+  test('preserves the named declarative dependency policy without an individual approval', async () => {
+    const { parent, installDeps, consent } = await fixture('declarative');
+    delete consent.dependencyApprovals;
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).resolves.toMatchObject({ success: true });
+  });
+
+  test('does not treat a correct digest as approval of omitted dependency permissions', async () => {
+    const { parent, installDeps, consent } = await fixture('permissions');
+    consent.dependencyApprovals![0].permissions = [];
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).rejects.toThrow(
+      'it needs providers.register, but the approval covered none',
+    );
+  });
+
+  test.each(['entrypoint', 'providers'] as const)(
+    'removing the %s declaration after preview does not remove the approval binding',
+    async (family) => {
+      const { root, dependency, parent, installDeps, consent } =
+        await fixture(family);
+      writePlugin(dependency, { name: 'dependency', version: '1.0.0' });
+      await expect(
+        installPluginFromSource(parent, [], installDeps, { consent }),
+      ).rejects.toThrow('its files changed after it was reviewed');
+      expect(existsSync(join(root, 'plugins', 'dependency'))).toBe(false);
+      expect(installDeps.buildPlugin).not.toHaveBeenCalled();
+    },
+  );
+
+  test('an approval for a different dependency id cannot authorize browser code', async () => {
+    const { root, parent, installDeps, consent } = await fixture('entrypoint');
+    consent.dependencyApprovals![0].id = 'another-dependency';
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).rejects.toThrow('no preview-bound permission approval');
+    expect(existsSync(join(root, 'plugins', 'dependency'))).toBe(false);
+  });
 });
 
 describe('resolvePluginRegistrySource', () => {
