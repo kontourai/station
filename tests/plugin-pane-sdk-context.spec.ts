@@ -42,6 +42,9 @@ const plugins = [
 
 let workspaceDir = '';
 const descriptorNames = new Map<string, string>();
+const occurrenceIds = new Map<string, string>();
+let catalogProjectId = '';
+let appliedLayoutId = '';
 
 async function installedPluginIds(): Promise<string[]> {
   const response = await authenticatedE2EFetch(`${api}/api/plugins`);
@@ -117,6 +120,9 @@ test.describe('direct plugin Pane SDK context', () => {
       },
     );
     expect(layoutResponse.status).toBe(201);
+    const applied = (await layoutResponse.json()) as { data: { id: string } };
+    appliedLayoutId = applied.data.id;
+    expect(appliedLayoutId).toBeTruthy();
 
     const catalogResponse = await authenticatedE2EFetch(
       `${api}/api/projects/${projectSlug}/panes`,
@@ -134,6 +140,7 @@ test.describe('direct plugin Pane SDK context', () => {
           provenance: { pluginId?: string };
         }>;
         instances: Array<{
+          instanceId: string;
           descriptorId: string;
           boundContext?: { projectId?: string };
         }>;
@@ -141,6 +148,7 @@ test.describe('direct plugin Pane SDK context', () => {
     };
     expect(catalogPayload.success).toBe(true);
     const catalog = catalogPayload.data!;
+    catalogProjectId = catalog.projectId;
     expect(catalog.projectSlug).toBe(projectSlug);
     for (const plugin of plugins) {
       const descriptor = catalog.descriptors.find(
@@ -151,6 +159,12 @@ test.describe('direct plugin Pane SDK context', () => {
       );
       expect(descriptor, `${plugin.id} descriptor`).toBeDefined();
       descriptorNames.set(plugin.id, descriptor!.name);
+      occurrenceIds.set(
+        plugin.id,
+        catalog.instances.find(
+          (instance) => instance.descriptorId === descriptor!.id,
+        )!.instanceId,
+      );
       expect(
         catalog.instances.find(
           (instance) => instance.descriptorId === descriptor!.id,
@@ -266,6 +280,12 @@ test.describe('direct plugin Pane SDK context', () => {
     ).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page).toHaveURL(`/projects/${projectSlug}/layouts/coding`);
+    await expect(page).toHaveURL(
+      (url) =>
+        url.pathname === `/projects/${projectSlug}/layouts/coding` &&
+        url.searchParams.get('pane') === occurrenceIds.get(builder.id) &&
+        url.searchParams.get('paneScope') ===
+          JSON.stringify(['project', catalogProjectId, appliedLayoutId]),
+    );
   });
 });
