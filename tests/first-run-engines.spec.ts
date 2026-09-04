@@ -1293,12 +1293,18 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
   await page
     .getByRole('button', { name: 'Return to New Chat', exact: true })
     .click();
-  await expect(fixture.modal.getByRole('alert')).toContainText(
-    'workspace you selected is no longer available',
-  );
+  // The SDK's failed-query retry budget can outlast Playwright's 5s assertion default.
+  await expect(fixture.modal).toBeVisible({ timeout: 15_000 });
+  await expect(
+    fixture.modal
+      .getByRole('alert')
+      .filter({ hasText: 'workspace you selected' }),
+  ).toContainText('workspace you selected is no longer available');
   await expect(
     fixture.modal.getByRole('button', { name: 'Workspace: Select workspace' }),
   ).toBeVisible();
+  await fixture.modal.locator('.new-chat-modal__context-button').click();
+  await page.locator('[data-context-value="setup-alpha"]').click();
   await fixture.modal
     .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
     .click();

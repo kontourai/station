@@ -111,6 +111,7 @@ export function NewChatModal({
   const preservedAgentSlug = useRef<string | undefined>(undefined);
   const preserveSetupContext = useRef(false);
   const [returnedFromSetup, setReturnedFromSetup] = useState(false);
+  const [admissionError, setAdmissionError] = useState<unknown>(undefined);
   const [selectedAgentIndex, setSelectedAgentIndex] = useState(0);
   const [selectedContext, setSelectedContext] = useState<string>(() =>
     resolveNewChatInitialContext(activeProjectSlug, projects),
@@ -219,7 +220,8 @@ export function NewChatModal({
           refetchModelConnections?.(),
         ]);
     },
-    onResume: () => {
+    onResume: (error) => {
+      setAdmissionError(error);
       setReturnedFromSetup(true);
       const slug = preservedAgentSlug.current;
       const index = slug
@@ -255,7 +257,7 @@ export function NewChatModal({
   const checkingSetup =
     returnedFromSetup && (setupFetching || runtimeFetching || modelsFetching);
   const returnError = returnedFromSetup
-    ? (setupError ?? runtimeError ?? modelsError)
+    ? (admissionError ?? setupError ?? runtimeError ?? modelsError)
     : undefined;
   useEffect(() => {
     if (
@@ -403,7 +405,10 @@ export function NewChatModal({
       setSelectFeedback('Wait for connections to finish checking.');
       return;
     }
-    if (returnedFromSetup && (setupError || runtimeError || modelsError)) {
+    if (
+      returnedFromSetup &&
+      (admissionError || setupError || runtimeError || modelsError)
+    ) {
       setSelectFeedback(
         'Connections could not be rechecked. Retry before starting a chat.',
       );
@@ -928,8 +933,15 @@ export function NewChatModal({
                 <button
                   type="button"
                   onClick={() => {
+                    if (returnedFromSetup) {
+                      if (!setupReturn.retry())
+                        setSelectFeedback(
+                          'Reconnect to this Station before checking setup.',
+                        );
+                      return;
+                    }
                     if (refreshSetup) {
-                      refreshSetup();
+                      void refreshSetup().catch(() => undefined);
                       return;
                     }
                     if (runtimeError) void refetchAgentConnections?.();
@@ -966,8 +978,15 @@ export function NewChatModal({
               <button
                 type="button"
                 onClick={() => {
+                  if (returnedFromSetup) {
+                    if (!setupReturn.retry())
+                      setSelectFeedback(
+                        'Reconnect to this Station before checking setup.',
+                      );
+                    return;
+                  }
                   if (refreshSetup) {
-                    refreshSetup();
+                    void refreshSetup().catch(() => undefined);
                     return;
                   }
                   if (runtimeError) void refetchAgentConnections?.();
@@ -979,68 +998,71 @@ export function NewChatModal({
             }
           />
         ) : null}
-        {groups.map((group, gi) => (
-          <React.Fragment key={group.label}>
-            <div
-              className={`new-chat-modal__group-label ${group.glyph === 'plug' ? 'new-chat-modal__group-label--acp' : ''} ${
-                // The rule between groups was an inline border; it is a class
-                // now so the header's hairline is declared beside the row
-                // hairlines it has to line up with.
-                gi > 0 ? 'new-chat-modal__group-label--divided' : ''
-              }`.trim()}
-            >
-              {group.icon || contextGlyph(group.glyph)} {group.label}
-            </div>
-            {group.agents.map((agent) => {
-              const idx = flatList.indexOf(agent);
-              const enable = resolveNewChatAgentEnable(agent);
-              const fixRoute = agentFixRoute(agent);
-              return (
-                <AgentRow
-                  key={agent.slug}
-                  agent={agent}
-                  isSelected={idx === selectedAgentIndex}
-                  selectedRef={
-                    idx === selectedAgentIndex ? selectedAgentRef : undefined
-                  }
-                  onSelect={() => handleSelect(agent)}
-                  onHover={() => {
-                    if (!checkingSetup) {
-                      preservedAgentSlug.current = undefined;
-                      setSelectedAgentIndex(idx);
+        {!admissionError &&
+          groups.map((group, gi) => (
+            <React.Fragment key={group.label}>
+              <div
+                className={`new-chat-modal__group-label ${group.glyph === 'plug' ? 'new-chat-modal__group-label--acp' : ''} ${
+                  // The rule between groups was an inline border; it is a class
+                  // now so the header's hairline is declared beside the row
+                  // hairlines it has to line up with.
+                  gi > 0 ? 'new-chat-modal__group-label--divided' : ''
+                }`.trim()}
+              >
+                {group.icon || contextGlyph(group.glyph)} {group.label}
+              </div>
+              {group.agents.map((agent) => {
+                const idx = flatList.indexOf(agent);
+                const enable = resolveNewChatAgentEnable(agent);
+                const fixRoute = agentFixRoute(agent);
+                return (
+                  <AgentRow
+                    key={agent.slug}
+                    agent={agent}
+                    isSelected={idx === selectedAgentIndex}
+                    selectedRef={
+                      idx === selectedAgentIndex ? selectedAgentRef : undefined
                     }
-                  }}
-                  modelLabel={modelFor(agent).label}
-                  modelUnavailable={
-                    modelsForAgent(agent).length === 0 && !modelsLoading
-                  }
-                  onOpenModel={() => setModelPickerAgent(agent)}
-                  interactionDisabled={mode?.pending || checkingSetup}
-                  fixDisabled={
-                    fixRoute === 'enable' && enable ? enableInFlight : undefined
-                  }
-                  onFix={(route) => {
-                    // Only the server's `engine-disabled` repair may enable
-                    // an alias. Broken and missing connections arrive as
-                    // their own unavailableFix kinds and route below.
-                    if (route === 'enable' && enable) {
-                      if (!enableInFlight) void handleEnable(agent);
-                      return;
+                    onSelect={() => handleSelect(agent)}
+                    onHover={() => {
+                      if (!checkingSetup) {
+                        preservedAgentSlug.current = undefined;
+                        setSelectedAgentIndex(idx);
+                      }
+                    }}
+                    modelLabel={modelFor(agent).label}
+                    modelUnavailable={
+                      modelsForAgent(agent).length === 0 && !modelsLoading
                     }
-                    beginSetup(
-                      route === 'edit'
-                        ? `/agents/${encodeURIComponent(agent.slug)}`
-                        : route === 'models'
-                          ? '/connections/models'
-                          : '/connections/engines',
-                      agent.slug,
-                    );
-                  }}
-                />
-              );
-            })}
-          </React.Fragment>
-        ))}
+                    onOpenModel={() => setModelPickerAgent(agent)}
+                    interactionDisabled={mode?.pending || checkingSetup}
+                    fixDisabled={
+                      fixRoute === 'enable' && enable
+                        ? enableInFlight
+                        : undefined
+                    }
+                    onFix={(route) => {
+                      // Only the server's `engine-disabled` repair may enable
+                      // an alias. Broken and missing connections arrive as
+                      // their own unavailableFix kinds and route below.
+                      if (route === 'enable' && enable) {
+                        if (!enableInFlight) void handleEnable(agent);
+                        return;
+                      }
+                      beginSetup(
+                        route === 'edit'
+                          ? `/agents/${encodeURIComponent(agent.slug)}`
+                          : route === 'models'
+                            ? '/connections/models'
+                            : '/connections/engines',
+                        agent.slug,
+                      );
+                    }}
+                  />
+                );
+              })}
+            </React.Fragment>
+          ))}
       </div>
       {modelPickerAgent && (
         <div

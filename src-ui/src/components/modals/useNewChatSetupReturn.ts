@@ -33,7 +33,7 @@ export function useNewChatSetupReturn({
 }: {
   authority: NewChatSetupAuthority;
   onCancel: () => void;
-  onResume: () => void;
+  onResume: (error?: unknown) => void;
   revalidate: () => Promise<unknown>;
 }) {
   const id = `chrome:new-chat:setup-return:${useId()}`;
@@ -83,9 +83,20 @@ export function useNewChatSetupReturn({
             bannerStore.dismiss(id, { reason: 'system' });
             callbacks.current.onResume();
           },
-          () => {
-            // An unexpected revalidation rejection cannot admit stale choices.
-            if (current.current === checking) cancel();
+          (error: unknown) => {
+            if (current.current !== checking) return;
+            if (!checking.authority.isCurrent()) {
+              cancel();
+              return;
+            }
+            current.current = null;
+            setJourney(null);
+            bannerStore.dismiss(id, { reason: 'system' });
+            callbacks.current.onResume(
+              error instanceof Error
+                ? error
+                : new Error('Chat setup could not be verified.'),
+            );
           },
         );
     },
@@ -109,6 +120,20 @@ export function useNewChatSetupReturn({
     },
     [authority],
   );
+
+  const retry = useCallback(() => {
+    if (!authority?.isCurrent()) return false;
+    const next = {
+      origin: navigationStore.captureLocation(),
+      target: navigationStore.getSnapshot().pathname,
+      authority,
+      entered: true,
+    };
+    current.current = next;
+    setJourney(next);
+    resume(false);
+    return true;
+  }, [authority, resume]);
 
   useEffect(() => {
     if (!journey) return;
@@ -180,6 +205,7 @@ export function useNewChatSetupReturn({
   return {
     suspended: journey !== null,
     begin,
+    retry,
     close: () => {
       if (!current.current) callbacks.current.onCancel();
     },

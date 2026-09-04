@@ -196,7 +196,7 @@ export function useNewChatSelectionModel({
     isLoading?: boolean;
     isFetching?: boolean;
     error?: unknown;
-    refetch: () => unknown;
+    refetch: (options?: { throwOnError?: boolean }) => Promise<unknown>;
   };
   const {
     data: modelConnections = [],
@@ -209,7 +209,7 @@ export function useNewChatSelectionModel({
     isLoading?: boolean;
     isFetching?: boolean;
     error?: unknown;
-    refetch: () => unknown;
+    refetch: (options?: { throwOnError?: boolean }) => Promise<unknown>;
   };
   const {
     data: acpConnections = [],
@@ -220,7 +220,7 @@ export function useNewChatSelectionModel({
     data?: ACPSelectionConnection[];
     isFetching?: boolean;
     error?: unknown;
-    refetch: () => Promise<unknown>;
+    refetch: (options?: { throwOnError?: boolean }) => Promise<unknown>;
   };
   const selectedProjectSlug =
     selectedContext !== GLOBAL_CONTEXT ? selectedContext : null;
@@ -462,15 +462,43 @@ export function useNewChatSelectionModel({
       selectedProjectQuery.isFetching ||
       agentCatalog.catalogState === 'reconciling',
   );
-  const refreshSetup = () =>
-    Promise.allSettled([
-      refetchAgentConnections(),
-      refetchModelConnections(),
-      refreshACPConnections(),
-      agentCatalog.refetch(),
-      projectCatalog.refetch(),
-      ...(selectedProjectSlug ? [selectedProjectQuery.refetch()] : []),
+  const refreshSetup = async () => {
+    const options = { throwOnError: true };
+    const projectsRead = projectCatalog.refetch(options);
+    const selectedProjectRead = projectsRead.then((result) => {
+      // The authorized list proves absence before a detail request is needed.
+      // Avoid retrying a known missing/revoked Project; keep its selection for
+      // explicit replacement instead of interpreting it as another Project.
+      const exists = (result.data as ProjectMetadata[] | undefined)?.some(
+        (project) => project.slug === selectedProjectSlug,
+      );
+      return selectedProjectSlug && exists
+        ? selectedProjectQuery.refetch(options)
+        : undefined;
+    });
+    const outcomes = await Promise.allSettled([
+      refetchAgentConnections(options),
+      refetchModelConnections(options),
+      refreshACPConnections(options),
+      agentCatalog.refetch(options),
+      projectsRead,
+      selectedProjectRead,
     ]);
+    for (const outcome of outcomes) {
+      if (outcome.status === 'rejected') throw outcome.reason;
+      const result = outcome.value;
+      if (
+        result &&
+        typeof result === 'object' &&
+        'isError' in result &&
+        result.isError
+      ) {
+        throw 'error' in result
+          ? result.error
+          : new Error('Chat setup could not be verified.');
+      }
+    }
+  };
   return {
     viewModel,
     defaultSelection,
