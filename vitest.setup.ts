@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { stationTempRoot } from '@kontourai/station-shared/temp-dir';
-import { enableFixtureSqliteSynchronousOffForTest } from './src-server/utils/sqlite-wal.js';
+import { enableFixtureSqliteSynchronousOffForTest } from './src-server/utils/sqlite-fixture-durability.js';
 
 /**
  * Give every test file an isolated Station root and runtime home.
@@ -34,7 +34,7 @@ mkdirSync(runRoot, { recursive: true });
 const testRootDir = mkdtempSync(join(runRoot, 'root-'));
 process.env.STATION_ROOT = testRootDir;
 // Fixture stores in this worker skip per-commit fsync (see
-// `enableFixtureSqliteSynchronousOffForTest` in src-server/utils/sqlite-wal.ts).
+// src-server/utils/sqlite-fixture-durability.ts, applied by sqlite-wal.ts).
 // An in-process flag, not an environment variable: child processes a test
 // spawns keep production durability.
 enableFixtureSqliteSynchronousOffForTest();

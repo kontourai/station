@@ -6,12 +6,14 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
-  applyWalJournalMode,
   enableFixtureSqliteSynchronousOffForTest,
-  enableWalJournalMode,
   fixtureSqliteSynchronousOffForTest,
-  isSqliteContentionError,
   resetFixtureSqliteSynchronousForTest,
+} from '../sqlite-fixture-durability.js';
+import {
+  applyWalJournalMode,
+  enableWalJournalMode,
+  isSqliteContentionError,
   WalJournalModeUnavailableError,
 } from '../sqlite-wal.js';
 
@@ -497,21 +499,41 @@ describe('fixture-only synchronous relaxation', () => {
   });
 
   test('the switch does not cross a process boundary', () => {
+    // The child loads the real helper (through tsx, like the other process
+    // cases in this file) and runs `applyWalJournalMode` itself while THIS
+    // process has the switch on. Only an in-process flag can leave the child
+    // at SQLite's default; an inherited environment variable could not.
     enableFixtureSqliteSynchronousOffForTest();
+    expect(fixtureSqliteSynchronousOffForTest()).toBe(true);
     const script = `
-      const { createRequire } = require('node:module');
-      const { DatabaseSync } = require('node:sqlite');
-      const db = new DatabaseSync(process.argv[1]);
-      db.exec('PRAGMA journal_mode = WAL');
-      process.stdout.write(String(db.prepare('PRAGMA synchronous').get().synchronous));
-      db.close();
+      (async () => {
+        const [walUrl, path] = process.argv.slice(1);
+        const { applyWalJournalMode } = await import(walUrl);
+        const { DatabaseSync } = require('node:sqlite');
+        const db = new DatabaseSync(path);
+        const result = applyWalJournalMode(db, { store: 'child fixture' });
+        process.stdout.write(JSON.stringify({
+          enabled: result.enabled,
+          synchronous: db.prepare('PRAGMA synchronous').get().synchronous,
+        }));
+        db.close();
+      })().catch((error) => { process.stderr.write(String(error && error.stack)); process.exit(9); });
     `;
-    const observed = execFileSync(
-      process.execPath,
-      ['-e', script, join(root, 'child.sqlite')],
-      { encoding: 'utf8', env: { ...process.env } },
-    );
-    expect(observed).toBe('2');
+    const observed = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [
+          '--import',
+          pathToFileURL(require.resolve('tsx')).href,
+          '-e',
+          script,
+          new URL('../sqlite-wal.ts', import.meta.url).href,
+          join(root, 'child.sqlite'),
+        ],
+        { encoding: 'utf8', timeout: 30_000, env: { ...process.env } },
+      ),
+    ) as { enabled: boolean; synchronous: number };
+    expect(observed).toEqual({ enabled: true, synchronous: 2 });
   });
 
   test('a connection that could not enter WAL is never relaxed', () => {
