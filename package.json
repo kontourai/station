@@ -4,6 +4,7 @@
   "description": "Station - local-first AI agent workspace platform",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.25.0",
   "engines": {
     "node": "24.x",
     "npm": ">=10",
@@ -395,6 +396,5 @@
     "yauzl": "^3.4.0",
     "yazl": "^3.3.1"
   },
-  "license": "Apache-2.0",
-  "packageManager": "pnpm@11.25.0"
+  "license": "Apache-2.0"
 }

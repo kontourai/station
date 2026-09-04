@@ -59,6 +59,22 @@ links, aliases, peer contexts, and platform-optional packages; npm PURLs still
 identify the registry ecosystem. A tarball integrity hash is not a hash of
 post-patch installed contents.
 
+## Refresh existing worktrees
+
+The store does not reclaim existing npm trees by itself. Refresh a worktree
+through its owner: preserve intentional source changes and needed receipts,
+finish active builds and dependency consumers, integrate the migration, then
+run the managed frozen install and artifact verification. The guarded first
+conversion retires npm or hybrid dependencies; later pnpm installs reuse the
+worktree graph. Do not install a
+new dependency graph under an old branch that still expects npm lock authority.
+
+Inspect an interrupted-install guard before retrying. Neither a dead PID nor
+an old timestamp proves that derived state is safe to reclaim. Remove finished
+worktrees or transfer baselines only after checking ownership, in-flight use,
+uncommitted work, and retained evidence; never sweep active dependencies to
+make room for another task.
+
 ## Verification required for delivery
 
 - Frozen installation and the offline gate reject manifest/lock drift.

@@ -14,7 +14,7 @@ import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { readPnpmLockfile } from './pnpm-lockfile.mjs';
 
-export const LIFECYCLE_LOCKS = Object.freeze([
+export const LEGACY_NPM_LIFECYCLE_LOCKS = Object.freeze([
   { scope: 'root', path: 'package-lock.json' },
   { scope: 'sdk', path: 'packages/sdk/package-lock.json' },
   { scope: 'shared', path: 'packages/shared/package-lock.json' },
@@ -203,7 +203,7 @@ export function readLifecycleLocks(
       ))
   )
     throw new Error('dependency lockfile is missing: pnpm-lock.yaml');
-  return LIFECYCLE_LOCKS.filter((descriptor) =>
+  return LEGACY_NPM_LIFECYCLE_LOCKS.filter((descriptor) =>
     descriptor.path.endsWith('.json'),
   ).flatMap((descriptor) =>
     collectLifecycleNodes(
@@ -354,7 +354,7 @@ function validateEntry(entry, index, findings) {
     return;
   }
   if (
-    !LIFECYCLE_LOCKS.some(
+    !LEGACY_NPM_LIFECYCLE_LOCKS.some(
       (lock) => lock.scope === entry.scope && lock.path === entry.lock,
     )
   )
