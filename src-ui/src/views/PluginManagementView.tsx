@@ -10,6 +10,7 @@ import { describePermission } from '../core/permission-vocabulary';
 import { PluginDetailPanel } from './plugin-management/PluginDetailPanel';
 import { PluginEmptyState } from './plugin-management/PluginEmptyState';
 import { PluginModalStack } from './plugin-management/PluginModalStack';
+import { isRejectedPlugin } from './plugin-management/types';
 import { usePluginManagementViewModel } from './plugin-management/usePluginManagementViewModel';
 
 /* ── Main View ── */
@@ -35,6 +36,8 @@ export function PluginManagementView({
     isLoading,
     pluginsError,
     refetchPlugins,
+    reloadRejectedPending,
+    reloadRejectedPlugin,
     items,
     layoutAssignment,
     loadingProviderDetails,
@@ -156,6 +159,8 @@ export function PluginManagementView({
             onSaveSetting={savePluginSetting}
             onToggleChangelog={() => setChangelogExpanded((value) => !value)}
             revokingPermissions={revokingPermissions}
+            onReloadRejected={() => void reloadRejectedPlugin()}
+            reloadRejectedPending={reloadRejectedPending}
             onRevokePermission={(entry) =>
               requestRevokePermission(
                 selected.name,
@@ -164,6 +169,7 @@ export function PluginManagementView({
               )
             }
             onReviewPermissions={async () => {
+              if (isRejectedPlugin(selected)) return;
               const approved = await requestConsent(
                 selected.name,
                 selected.displayName || selected.name,

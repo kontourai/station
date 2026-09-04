@@ -10,7 +10,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { listStationTempEntries } from '@kontourai/station-shared/temp-dir';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { JsonManifestRegistryProvider } from '../json-manifest-registry.js';
 
@@ -119,6 +119,56 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
         version: '1.2.3',
       }),
     ]);
+  });
+
+  test('warns through the logger when an aliased installed manifest is rejected', async () => {
+    const projectHome = await makeProjectHome();
+    const pluginsDir = resolve(projectHome, 'plugins');
+    const configDir = resolve(projectHome, 'config');
+    const manifestPath = resolve(projectHome, 'registry.json');
+    mkdirSync(resolve(pluginsDir, 'legacy-plugin'), { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      resolve(pluginsDir, 'legacy-plugin', 'plugin.json'),
+      '{"name":"legacy-plugin","version":',
+    );
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        version: 1,
+        plugins: [
+          {
+            id: 'registry-demo',
+            displayName: 'Registry Demo',
+            description: 'Rejected install fixture',
+            version: '1.0.0',
+            source: './source',
+          },
+        ],
+      }),
+    );
+    writeFileSync(
+      resolve(configDir, 'registry-installs.json'),
+      JSON.stringify({
+        'registry-demo': registryInstallRecord(manifestPath, 'legacy-plugin'),
+      }),
+    );
+    const warn = vi.fn();
+    const provider = new JsonManifestRegistryProvider(
+      manifestPath,
+      projectHome,
+      undefined,
+      { warn },
+    );
+
+    await expect(provider.listInstalled()).resolves.toEqual([]);
+    expect(warn).toHaveBeenCalledWith(
+      'Installed plugin manifest rejected',
+      expect.objectContaining({
+        pluginDirectory: 'legacy-plugin',
+        code: 'malformed-json',
+      }),
+    );
   });
 
   test('reads source-preserving canonical registry aliases without rewriting them', async () => {

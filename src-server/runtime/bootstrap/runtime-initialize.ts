@@ -684,6 +684,8 @@ export async function initializeRuntime(
     const registryProvider = new JsonManifestRegistryProvider(
       registrySource.source,
       configLoader.getProjectHomeDir(),
+      undefined,
+      logger,
     );
     registerManifestRegistryProvider(registryProvider, registrySource.origin);
     logger.info('JSON manifest registry configured', {
