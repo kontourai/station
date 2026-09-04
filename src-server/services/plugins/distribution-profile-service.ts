@@ -180,7 +180,12 @@ function parseLayoutDefinition(
         : typeof manifest.description === 'string'
           ? manifest.description
           : undefined,
-    type: typeof value.type === 'string' ? value.type : 'chat',
+    // A layout that declares no `type` is a custom composition of its own
+    // tabs, the same default the manual create route applies
+    // (`routes/projects/projects.ts`). It is not 'chat': that word is the key
+    // of the full-viewport Chat placement, and the app suspends its ambient
+    // regions for a layout that renders it (#1446).
+    type: typeof value.type === 'string' ? value.type : 'custom',
     tabs: Array.isArray(value.tabs) ? (value.tabs as any[]) : [],
     globalSkills: Array.isArray(value.globalSkills)
       ? (value.globalSkills as any[])

@@ -32,7 +32,6 @@ import {
 import { StatusGlyph } from '../components/status/StatusGlyph';
 import { Tabs, tabElementId, tabPanelElementId } from '../components/Tabs';
 import { useAgents } from '../contexts/AgentsContext';
-import { useNavigation } from '../contexts/NavigationContext';
 import { useOpenChats } from '../contexts/open-chats-store';
 import { useSessionEventStream } from '../hooks/orchestration/useSessionEventStream';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
@@ -400,7 +399,6 @@ export function SessionsView({
     intent: number;
     focus?: 'evidence';
   } | null>(null);
-  const { updateParams } = useNavigation();
   const evidenceRevealTokenRef = useRef(0);
   const [evidenceReveal, setEvidenceReveal] =
     useState<SessionEvidenceReveal | null>(null);
@@ -451,23 +449,33 @@ export function SessionsView({
   );
 
   /**
-   * Mint a fresh one-shot reveal token for the detail, then clear the
-   * consumed `focus` param from the URL (the `openFilePreviewIntent` idiom:
-   * route-owned intents are cleared by their consumer after admission).
+   * Mint a fresh one-shot reveal token for the detail, then report the routed
+   * focus consumed to whichever placement delivered it (the
+   * `openFilePreviewIntent` idiom: one-shot intents are cleared by their
+   * consumer after admission).
+   *
+   * #928: this used to fall back to clearing `focus` from the URL when no
+   * `onFocusConsumed` was supplied, which was the standalone `/activity`
+   * placement's way of consuming its own routed param. That placement is
+   * gone. The two placements left cannot reach the fallback: the region
+   * shell always supplies `onFocusConsumed`, and the Developer archive embed
+   * supplies no `sessionId` at all, so the guard below returns first on every
+   * activation. The deep link's own params are cleared where they are adopted
+   * (`RegionModelContext`'s `clearSurfaceDeepLinkParams`), not from inside
+   * the surface — this hook has no business writing the URL.
    */
   const armEvidenceReveal = useCallback(
     (threadId: string) => {
       evidenceRevealTokenRef.current += 1;
       setEvidenceReveal({ threadId, token: evidenceRevealTokenRef.current });
       // Only the routed session's own activation consumes the routed focus.
-      // Another row's Evidence click is that row's reveal; reporting or
-      // clearing it would discard a `focus=evidence` that was never
-      // delivered, and the pending route selection is rebuilt without it.
+      // Another row's Evidence click is that row's reveal; reporting it would
+      // discard a `focus=evidence` that was never delivered, and the pending
+      // route selection is rebuilt without it.
       if (threadId !== sessionId) return;
-      if (!onFocusConsumed) updateParams({ focus: null });
-      else onFocusConsumed();
+      onFocusConsumed?.();
     },
-    [onFocusConsumed, sessionId, updateParams],
+    [onFocusConsumed, sessionId],
   );
 
   useEffect(() => {

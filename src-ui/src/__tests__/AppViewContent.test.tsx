@@ -125,13 +125,6 @@ vi.mock('../views/ScheduleView', () => ({
 vi.mock('../views/ConsoleBoardView', () => ({
   ConsoleBoardView: () => <div>ConsoleBoard</div>,
 }));
-// the activity route mounts the standalone placement of the Activity
-// Workspace Pane, which owns mounting the sessions surface.
-vi.mock('../views/ActivityView', () => ({
-  ActivityView: ({ sessionId }: { sessionId?: string }) => (
-    <div data-testid="sessions-view">Sessions {sessionId}</div>
-  ),
-}));
 vi.mock('../views/SettingsView', () => ({
   SettingsView: () => <div data-testid="settings-view">Settings</div>,
 }));
@@ -196,18 +189,6 @@ describe('AppViewContent — R3 un-stacking', () => {
     );
     await screen.findByTestId('home-view');
     expect(home.container.querySelector('.page-frame__header')).toBeNull();
-  });
-
-  test('passes an exact route session id to Sessions', async () => {
-    render(
-      <AppViewContent
-        {...baseProps}
-        currentView={{ type: 'activity', sessionId: 'thread-alpha' }}
-      />,
-    );
-    expect((await screen.findByTestId('sessions-view')).textContent).toContain(
-      'thread-alpha',
-    );
   });
 
   test('wraps every route in the shared entrance, split-pane routes included', async () => {

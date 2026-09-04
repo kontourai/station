@@ -41,11 +41,17 @@ describe('first-run tour anchors resolve to canonical routes', () => {
   test.each(FIRST_RUN_TOUR_STEPS)(
     'step $id derives a serializable canonical path',
     (step) => {
-      if ('surface' in step && step.surface) {
-        expect(tourStepPath(step)).toBeNull();
-      } else {
+      // A shell-owned surface step is revealed, not navigated to, and #928
+      // left Activity with no `NavigationView` to name at all — so a null
+      // path there is the contract, and a non-null one would mean the step
+      // had gone back to spelling a route.
+      if ('view' in step) {
+        expect('surface' in step).toBe(false);
         expect(tourStepPath(step)).toBe(getPathForView(step.view));
         expect(tourStepPath(step)).not.toBeNull();
+      } else {
+        expect('surface' in step && step.surface).toBeTruthy();
+        expect(tourStepPath(step)).toBeNull();
       }
     },
   );
@@ -65,7 +71,8 @@ describe('first-run tour anchors resolve to canonical routes', () => {
     'step $id round-trips back to the view it declared',
     (step) => {
       const path = tourStepPath(step);
-      if (path) expect(resolveViewFromPath(path)).toEqual(step.view);
+      if (path && 'view' in step)
+        expect(resolveViewFromPath(path)).toEqual(step.view);
     },
   );
 
@@ -126,7 +133,12 @@ describe('first-run tour anchors resolve to canonical routes', () => {
       //     table is a value, so the test asks it rather than its source text.
       const literal = `${FIRST_RUN_ANCHOR_ATTRIBUTE}="${step.anchor}"`;
       const propLiteral = `firstRunAnchor="${step.anchor}"`;
-      const framedAnchor = resolvePageFrame(step.view)?.firstRunAnchor;
+      // A shell-owned surface step has no route, so no frame can declare its
+      // anchor — only the two source-literal channels above are open to it.
+      const framedAnchor =
+        'view' in step
+          ? resolvePageFrame(step.view)?.firstRunAnchor
+          : undefined;
       expect(
         sources.includes(literal) ||
           sources.includes(propLiteral) ||

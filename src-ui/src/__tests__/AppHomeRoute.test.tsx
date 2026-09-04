@@ -39,6 +39,13 @@ interface LayoutFixture {
 
 interface SelectedLayoutFixture {
   type?: string;
+  config?: Record<string, unknown>;
+  catalogContribution?: {
+    id: string;
+    version: string;
+    sourceIdentity: { id: string; kind: 'builtin' | 'local' | 'remote' };
+    provenance: { origin: 'builtin' | 'plugin' | 'mcp'; pluginId?: string };
+  };
 }
 
 const {
@@ -197,17 +204,6 @@ vi.mock('../app-shell/AppViewContent', () => ({
       {(currentView as { type?: string }).type === 'layout' && (
         <ChatLayoutController />
       )}
-      <button
-        type="button"
-        onClick={() =>
-          onNavigate({ type: 'activity', sessionId: 'thread/alpha' })
-        }
-      >
-        Continue fixture
-      </button>
-      <button type="button" onClick={() => onNavigate({ type: 'activity' })}>
-        View activity fixture
-      </button>
       <button type="button" onClick={() => onNavigate({ type: 'schedule' })}>
         Go to Schedule
       </button>
@@ -476,26 +472,11 @@ describe('App home route resolution', () => {
     expect(screen.queryByText(/offline/i)).toBeNull();
   });
 
-  test('uses the query-aware navigation contract for an exact session', async () => {
-    render(<App />);
-    await act(async () => undefined);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Continue fixture' }));
-
-    expect(showSurface).toHaveBeenCalledWith('activity', {
-      session: 'thread/alpha',
-      focus: undefined,
-    });
-  });
-
-  test('reveals Activity without an intent for a session-less navigation', async () => {
-    render(<App />);
-    await act(async () => undefined);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'View activity fixture' }),
-    );
-    expect(showSurface).toHaveBeenCalledWith('activity', undefined);
-  });
+  // #928 slice C: App's `navigateToView` no longer intercepts an `activity`
+  // view — the union has no such member. The producers that used to mint it
+  // (Home's "View Activity", "Open Activity" and continue-work seams) call
+  // `showSurface` themselves, and `HomeView.test.tsx` asserts that directly
+  // against the real Home render rather than through a fixture button here.
 
   test('/?project=<name> pre-selects the matching project via setLayout, overriding lastProject, and strips the param', () => {
     // A persisted lastProject would normally win; the deep-link must override it.
@@ -596,6 +577,47 @@ describe('App home route resolution', () => {
     await act(async () => undefined);
 
     expect(registerRegionSurfaceHost).not.toHaveBeenCalled();
+  });
+
+  /**
+   * #1446. A plugin-contributed layout may carry `type: 'chat'` and still
+   * render its own declared tabs through `LayoutView`; only the layout that
+   * renders `ChatWorkspaceLayout` owns the whole viewport. The suppression
+   * above must not fire on the word alone, or every installed example layout
+   * loses its dock, Activity, and every region surface.
+   */
+  test('registers a region surface host for a plugin-contributed layout typed chat', async () => {
+    window.history.replaceState({}, '', '/projects/demo/layouts/minimal');
+    hooks.layout = {
+      data: {
+        type: 'chat',
+        config: {
+          tabs: [
+            {
+              id: 'workspace',
+              component: {
+                kind: 'plugin-component',
+                name: 'minimal-workspace',
+              },
+            },
+          ],
+        },
+        catalogContribution: {
+          id: 'plugin:minimal-layout:minimal',
+          version: '1.0.0',
+          sourceIdentity: { id: 'minimal-layout', kind: 'local' },
+          provenance: { origin: 'plugin', pluginId: 'minimal-layout' },
+        },
+      },
+      isLoading: false,
+    };
+    hooks.regionModel = regionModelStub();
+
+    render(<App />);
+    await act(async () => undefined);
+
+    expect(registerRegionSurfaceHost).toHaveBeenCalled();
+    expect(screen.getByTestId('ambient-chat-controller')).toBeTruthy();
   });
 });
 

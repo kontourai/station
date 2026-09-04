@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppViewContent } from './app-shell/AppViewContent';
 import { HomeRoutePendingSkeleton } from './app-shell/HomeRoutePendingSkeleton';
+import { rendersChatWorkspaceLayout } from './app-shell/project-layout-kind';
 import { RegionShells } from './app-shell/RegionShells';
 import { resolveHomeSurface } from './app-shell/resolve-home-surface';
 import {
@@ -41,7 +42,6 @@ import { useNavigation } from './contexts/NavigationContext';
 import { ProjectsProvider } from './contexts/ProjectsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
-import { useShowSurface } from './contexts/useShowSurface';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
 import { chatRegion } from './regions/region-model';
 import {
@@ -192,7 +192,6 @@ function App() {
     effective: effectiveDockSlotPlacement,
   } = useDockSlotPlacement(dockSlotPreference);
   const regionModel = useRegionModelOptional();
-  const showSurface = useShowSurface();
   const modelChatRegion = regionModel && chatRegion(regionModel.regions);
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -213,15 +212,6 @@ function App() {
   // Navigation functions (declared early so useEffect closures can reference them)
   const navigateToView = useCallback(
     (view: NavigationView) => {
-      if (view.type === 'activity') {
-        showSurface(
-          'activity',
-          view.sessionId
-            ? { session: view.sessionId, focus: view.focus }
-            : undefined,
-        );
-        return;
-      }
       setCurrentView(view);
       if (view.type === 'layout') {
         setLayout(view.projectSlug, view.layoutSlug);
@@ -232,7 +222,7 @@ function App() {
         navigate(path);
       }
     },
-    [navigate, setLayout, showSurface],
+    [navigate, setLayout],
   );
 
   const navigateHome = useCallback(() => {
@@ -408,7 +398,10 @@ function App() {
       : undefined;
   const { data: selectedLayout, isLoading: selectedLayoutLoading } =
     useProjectLayoutQuery(selectedLayoutProjectSlug, selectedLayoutSlug);
-  const isChatWorkspaceLayout = selectedLayout?.type === 'chat';
+  // Derived from the same facts `ProjectLayoutRenderer` dispatches on, not
+  // from the `type` word alone: a plugin-contributed layout typed 'chat'
+  // renders its own tabs and keeps the ambient regions (#1446).
+  const isChatWorkspaceLayout = rendersChatWorkspaceLayout(selectedLayout);
   // A layout route waits for its type before mounting the ambient controller.
   // This prevents even a loading frame from owning both the dock and the
   // full-screen Chat layout's event listeners/state machine.

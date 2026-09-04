@@ -40,7 +40,6 @@ import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { DOCK_REGION_IDS, foldedDockRegion } from '../../regions/region-model';
 import type { DockMode } from '../../types';
-import { ActivityView } from '../../views/ActivityView';
 import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
 
 vi.mock('../../components/chat-dock/ChatDock', async () => {
@@ -778,7 +777,14 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     );
   });
 
-  test('ActivityView shows its hidden region exclusively through the real coarse provider', async () => {
+  // #928 slice C retired Activity's standalone placement, so the route-side
+  // away state that used to drive this ("Activity is hidden from the bottom
+  // bar" + its Show action) is gone with it. The fold behaviour it was proving
+  // is the shell's, not the route's, so it is driven here through the region
+  // command every surviving surface offers — no matchMedia stub, so
+  // `availablePlacements` reads the real coarse provider, which is the half
+  // the old name was about.
+  test('re-showing a hidden Activity region folds Chat out through the real coarse provider', async () => {
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
       value: 390,
@@ -786,7 +792,6 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     seedPlacement('bottom', 'open');
     render(
       <Providers>
-        <ActivityView apiBase="http://test.local" />
         <RegionShells
           homeContinuation={null}
           onNavigate={vi.fn()}
@@ -798,21 +803,14 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       currentRegionModel().placeSurface('activity', 'right');
       currentRegionModel().setRegion('right', { visible: false });
     });
+    // Hidden: neither occupant renders a shell on a folded device.
     await waitFor(() =>
       expect(
-        screen.getByText('Activity is hidden from the bottom bar'),
-      ).toBeTruthy(),
+        document.querySelector('section[aria-label="Activity"]'),
+      ).toBeNull(),
     );
 
-    const awayState = screen
-      .getByText('Activity is hidden from the bottom bar')
-      .closest('.empty');
-    if (!awayState) throw new Error('Activity away state never rendered');
-    fireEvent.click(
-      within(awayState as HTMLElement).getByRole('button', {
-        name: 'Show Activity',
-      }),
-    );
+    selectRegionCommand('Show Activity');
 
     await waitFor(() =>
       expect(

@@ -453,15 +453,22 @@ describe('navigationStore Settings query history', () => {
 });
 
 describe('navigationStore legacy Activity canonicalization', () => {
-  test('rewrites a legacy /sessions deep link before deriving navigation state', () => {
-    window.history.replaceState({}, '', '/sessions?session=x&anything=y');
+  // #928: the store rewrites BEFORE deriving state, which is what keeps
+  // `useUrlSelection` from ever seeing a retired pathname. Both retired
+  // spellings now land on the surface's canonical deep link, so the derived
+  // pathname is `/` and the surface travels in the query.
+  test.each([
+    '/sessions?session=x&anything=y',
+    '/activity?session=x&anything=y',
+  ])('rewrites %s before deriving navigation state', (legacy) => {
+    window.history.replaceState({}, '', legacy);
 
     window.dispatchEvent(new PopStateEvent('popstate'));
 
     expect(window.location.pathname + window.location.search).toBe(
-      '/activity?session=x&anything=y',
+      '/?surface=activity&session=x',
     );
-    expect(navigationStore.getSnapshot().pathname).toBe('/activity');
+    expect(navigationStore.getSnapshot().pathname).toBe('/');
   });
 });
 
@@ -755,7 +762,7 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
     // Measured, three independent instances in one run:
     //   /settings?view=notifications  → /notifications?view=notifications
     //   /settings?view=knowledge      → /connections/knowledge?view=knowledge
-    //   /settings?view=developer-tools → ⌘K → /activity?view=developer-tools
+    //   /settings?view=developer-tools → ⌘K → a surface?view=developer-tools
     // Harmless only while the destination ignores what it inherited;
     // /notifications already reads ?category= from the URL.
     window.history.replaceState({}, '', '/settings?view=notifications');
@@ -765,15 +772,15 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
     );
 
     window.history.replaceState({}, '', '/settings?view=developer-tools');
-    navigationStore.navigate('/activity');
+    navigationStore.navigate('/agents');
     expect(window.location.search).toBe('');
   });
 
   test('keeps a param the caller supplies for the destination', () => {
     window.history.replaceState({}, '', '/settings?view=appearance');
-    navigationStore.navigate('/activity', { session: 'thread-1' });
+    navigationStore.navigate('/agents', { session: 'thread-1' });
     expect(window.location.pathname + window.location.search).toBe(
-      '/activity?session=thread-1',
+      '/agents?session=thread-1',
     );
   });
 

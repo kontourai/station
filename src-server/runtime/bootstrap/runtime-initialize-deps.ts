@@ -101,6 +101,7 @@ export interface RuntimeInitializationContext {
   agentTools: Map<string, unknown>;
   agentSpecs: Map<string, AgentSpec>;
   mcpConfigs: Map<string, unknown>;
+  mcpCustody: import('@kontourai/station-shared/mcp').MCPLocalConnectionCustody;
   mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>;
   integrationMetadata: RuntimeIntegrationMetadata;
   toolNameMapping: ToolNameMapping;
@@ -181,6 +182,7 @@ export function createRuntimeInitializationDeps(
     agentTools: context.agentTools,
     agentSpecs: context.agentSpecs,
     mcpConfigs: context.mcpConfigs,
+    mcpCustody: context.mcpCustody,
     mcpConnectionStatus: context.mcpConnectionStatus,
     integrationMetadata: context.integrationMetadata,
     toolNameMapping: context.toolNameMapping,

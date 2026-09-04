@@ -3974,7 +3974,10 @@ describe('SessionsView', () => {
     }
 
     beforeEach(() => {
-      window.history.replaceState({}, '', '/activity');
+      // #928: the surface is reached through its canonical deep link now.
+      // The URL matters here only because the assertions below prove a local
+      // activation does not touch it.
+      window.history.replaceState({}, '', '/?surface=activity');
     });
 
     afterEach(() => {
@@ -4086,16 +4089,15 @@ describe('SessionsView', () => {
         screen.getByRole('button', { name: 'Evidence for Completed work' }),
       );
 
-      expect(window.location.pathname).toBe('/activity');
-      expect(window.location.search).toBe('');
+      expect(window.location.pathname).toBe('/');
+      expect(window.location.search).toBe('?surface=activity');
 
       expect(screen.getByTestId('session-detail')).toBeTruthy();
       const region = screen.getByTestId('session-evidence-region');
       await waitFor(() => expect(document.activeElement).toBe(region));
-      // Consumed one-shot: the focus param is cleared after admission (the
-      // `openFilePreviewIntent` idiom), so a stale hint can never re-fire on
-      // the next same-path navigation.
-      expect(window.location.search).toBe('');
+      // A local activation is not a routed intent: the surface reports
+      // nothing upward and writes nothing to the URL.
+      expect(window.location.search).toBe('?surface=activity');
 
       // A later render with the routed props unchanged must not drag the
       // reader back to the region they have since left.
@@ -4187,7 +4189,9 @@ describe('SessionsView', () => {
           screen.getByTestId('session-evidence-region'),
         ),
       );
-      expect(window.location.search).toBe('');
+      // The activation is local: the URL this surface was reached by is left
+      // exactly as it was.
+      expect(window.location.search).toBe('?surface=activity');
     });
 
     // `armEvidenceReveal` reports the ROUTED focus consumed, so it must fire
@@ -4195,33 +4199,17 @@ describe('SessionsView', () => {
     // another row is that row's own reveal: reporting it would clear a routed
     // `focus=evidence` that was never delivered, and the intent's own session
     // would then land without its evidence region.
-    test('the standalone route keeps a routed focus another row did not consume', async () => {
-      sessions = [
-        flatSession({ threadId: 'other', displayTitle: 'Other work' }),
-      ];
-      window.history.replaceState(
-        {},
-        '',
-        '/activity?session=done&focus=evidence',
-      );
-      // No `onFocusConsumed`: the standalone route consumes the routed focus
-      // by clearing the URL param rather than reporting it upward.
-      renderView('done', 'evidence', 1);
-
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Evidence for Other work' }),
-      );
-
-      await waitFor(() =>
-        expect(document.activeElement).toBe(
-          screen.getByTestId('session-evidence-region'),
-        ),
-      );
-      expect(new URLSearchParams(window.location.search).get('focus')).toBe(
-        'evidence',
-      );
-    });
-
+    //
+    // #928 retired the sibling of this test ("the standalone route keeps a
+    // routed focus another row did not consume"). It drove the branch where
+    // no `onFocusConsumed` is supplied and the surface cleared `focus` from
+    // the URL itself — the standalone `/activity` placement's way of
+    // consuming its own routed param. No placement produces that shape now:
+    // the region shell always supplies the callback, and the Developer
+    // archive embed supplies no `sessionId`, so it returns before reaching
+    // it. The behaviour that mattered — a routed focus another row did not
+    // consume stays pending — is what the test below asserts, through the
+    // callback that a real placement actually passes.
     test('activating Evidence on another row does not report the routed focus consumed', async () => {
       sessions = [
         flatSession({ threadId: 'other', displayTitle: 'Other work' }),
@@ -4398,7 +4386,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
 
   test('reads the operator-only device inventory only while the origin axis is shown', () => {
     // /api/pairing/devices answers 401 to a paired device's own session, and
-    // the fresh-home walkthrough counts every refused request on /activity.
+    // the fresh-home walkthrough counts every refused request on Activity.
     // The inventory only names origin groups, so it must not be fetched on
     // the default task axis at all.
     pairedDevices = [{ id: 'phone-1', name: 'Idle phone' }];

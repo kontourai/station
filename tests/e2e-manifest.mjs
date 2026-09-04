@@ -297,6 +297,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'read-only against the isolated temp-home instance; the only writes are this browser context’s own ambient dock document in localStorage and a browser-local config/app route mock pinning the first-run fact',
   },
   parallelSafe: [
+    'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
@@ -664,7 +665,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "Epic station#4142 M3 (station#3193): /activity is the STANDALONE PLACEMENT of the Activity Workspace Pane — the sessions surface reached through the pane path, which is what puts a real 'Dock this pane' in the page header's actions slot. The journey docks Activity into the ambient slot (the dock-slot section labeled 'Activity dock'), proves the choice survives a reload through the persisted ambient document (localStorage carries pane:builtin:activity), and returns the slot to Chat from the dock-slot header, with Chat back as a direct shell child. Every assertion names an affordance that must exist, so the route silently ceasing to produce the pane occurrence fails by name. Desktop plus a 390x844 isMobile variant asserting no horizontal document scroll before and after docking and a 44px return-to-Chat target.",
+      "Epic station#4142 M3 (station#3193): /?surface=activity is the canonical DEEP LINK to the Activity Workspace Pane — the sessions surface reached through the pane path, which is what puts a real 'Dock this pane' in the page header's actions slot. station#928 retired the /activity route in favour of this link; the redirect that keeps stored links working is unit-covered, and this journey drives the destination. The journey docks Activity into the ambient slot (the dock-slot section labeled 'Activity dock'), proves the choice survives a reload through the persisted ambient document (localStorage carries pane:builtin:activity), and returns the slot to Chat from the dock-slot header, with Chat back as a direct shell child. Every assertion names an affordance that must exist, so the deep link silently ceasing to produce the pane occurrence fails by name. Desktop plus a 390x844 isMobile variant asserting no horizontal document scroll before and after docking and a 44px return-to-Chat target.",
     exceptions: [],
   },
   {
@@ -735,6 +736,22 @@ export const e2eManifest = [
     rationale:
       'Deterministic 320px/390px mobile task-switcher, visual-viewport, composer, scroll-anchor, model/session preservation, restore, and desktop parity lane.',
     exceptions: [],
+  },
+  {
+    path: 'tests/toolbar-reachability.spec.ts',
+    bucket: 'product',
+    surface: 'App toolbar',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Toolbar occlusion (#917, #1384) reproduces only at phone widths in a ' +
+      'news-carrying connection state. It declares its own Pixel 7 emulation ' +
+      'rather than living in tests/android/, whose lane a src-ui change never ' +
+      'triggers (build-android.yml is path-filtered to src-desktop and six ' +
+      'named scripts), so the guard would never have run where it is needed.',
+    // The 390/360 cases are skipped with #1401 named as the reason, not
+    // deleted: un-skipping them is the check that proves that fix.
+    exceptions: ['test.skip'],
   },
   {
     path: 'tests/mobile-dock-clearance.spec.ts',
