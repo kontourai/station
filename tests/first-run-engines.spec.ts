@@ -337,6 +337,9 @@ async function startFirstChat(page: Page) {
     page.getByRole('dialog', { name: 'New Chat', exact: true }),
   ).toBeVisible();
   await expect(
+    page.getByRole('dialog', { name: 'New Chat', exact: true }),
+  ).toHaveCSS('opacity', '1');
+  await expect(
     page.getByRole('button', { name: 'Skip the tour', exact: true }),
   ).toHaveCount(0);
 }
@@ -1106,6 +1109,7 @@ for (const viewport of [
       .scrollIntoViewIfNeeded();
     await page.screenshot({
       path: testInfo.outputPath(`first-chat-choice-${viewport.label}.png`),
+      animations: 'disabled',
     });
     await startFirstChat(page);
     await expect
@@ -1113,6 +1117,7 @@ for (const viewport of [
       .toEqual(['completed']);
     await page.screenshot({
       path: testInfo.outputPath(`first-chat-picker-${viewport.label}.png`),
+      animations: 'disabled',
     });
   });
 }
