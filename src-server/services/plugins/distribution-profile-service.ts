@@ -19,6 +19,7 @@ import {
   type DistributionProfile,
   type DistributionProfileSelection,
   type DistributionRegistrySource,
+  LAYOUT_CATALOG_ITEM_ID_PATTERN,
   type LayoutCatalogItem,
   MINIMAL_DISTRIBUTION_PROFILE,
   type ResolvedCatalogLayout,
@@ -30,7 +31,10 @@ import {
   BUILTIN_PROJECT_LAYOUTS,
   type LayoutCatalogContribution,
 } from '@kontourai/station-contracts/layout';
-import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import {
+  isCanonicalPluginId,
+  type PluginManifest,
+} from '@kontourai/station-contracts/plugin';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { parsePluginManifest } from './plugin-manifest-loader.js';
 
@@ -247,12 +251,14 @@ function assertSafeId(value: string, label: string): void {
   }
 }
 
+function assertPluginName(value: string): void {
+  if (!isCanonicalPluginId(value)) {
+    throw new Error('Plugin name must satisfy Agent Plugins identity rules');
+  }
+}
+
 function assertSafeCatalogId(value: string): void {
-  if (
-    !/^(builtin|plugin):[a-z0-9][a-z0-9-]{0,62}(?::[a-z0-9][a-z0-9-]{0,62})?$/.test(
-      value,
-    )
-  ) {
+  if (!LAYOUT_CATALOG_ITEM_ID_PATTERN.test(value)) {
     throw new Error(`Invalid layout catalog item id: ${value || '(empty)'}`);
   }
 }
@@ -382,7 +388,7 @@ export class DistributionProfileService {
     for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
       if (
         !entry.isDirectory() ||
-        !SAFE_ID.test(entry.name) ||
+        !isCanonicalPluginId(entry.name) ||
         !this.pluginIsAllowed(entry.name)
       ) {
         continue;
@@ -474,7 +480,7 @@ export class DistributionProfileService {
   }
 
   getPluginManifest(pluginName: string): PluginManifest | undefined {
-    assertSafeId(pluginName, 'Plugin name');
+    assertPluginName(pluginName);
     if (!this.pluginIsAllowed(pluginName)) return undefined;
     try {
       return readPluginManifestFile(this.projectHomeDir, pluginName).manifest;
@@ -565,7 +571,7 @@ export class DistributionProfileService {
     for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
       if (
         !entry.isDirectory() ||
-        !SAFE_ID.test(entry.name) ||
+        !isCanonicalPluginId(entry.name) ||
         !this.pluginIsAllowed(entry.name)
       ) {
         continue;
@@ -586,7 +592,7 @@ export class DistributionProfileService {
   }
 
   private readPluginLayout(pluginName: string): PluginLayoutEntry | null {
-    assertSafeId(pluginName, 'Plugin name');
+    assertPluginName(pluginName);
     let parsed: ParsedPluginLayout;
     try {
       parsed = readPluginLayoutFiles(this.projectHomeDir, pluginName);

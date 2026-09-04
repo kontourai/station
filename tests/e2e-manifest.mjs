@@ -376,6 +376,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // change under it.
     'tests/connection-lost-access-request.spec.ts',
     'tests/plugin-preview.spec.ts',
+    // Creates and repairs one invalid plugin directory in the runner-owned
+    // temporary home, then removes it and reloads before yielding the server.
+    'tests/plugin-rejection-visibility.spec.ts',
     'tests/plugin-system.spec.ts',
     'tests/survey-review-workbench.spec.ts',
     'tests/fieldwork-review.spec.ts',
@@ -440,7 +443,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'UX audit E2 (DESIGN §4 "Chat with a model"): with no ready model connection the Create button is disabled and the inline "Add model connection" repair is offered instead of shot 17\'s after-submit validation error; with a local model fixture provisioned as the only enabled LLM connection, the journey creates the agent and completes a genuine assistant turn through the composer. Live because the turn dispatches through POST /api/orchestration/chat into a real model server. Desktop plus a 390x844 variant running the same real turn.',
+      'UX audit E2 (DESIGN §4 "Run it on Station"): with no ready model connection the Create button is disabled and the inline "Add model connection" repair is offered instead of shot 17\'s after-submit validation error; with a local model fixture provisioned as the only enabled LLM connection, the journey creates the agent and completes a genuine assistant turn through the composer. Live because the turn dispatches through POST /api/orchestration/chat into a real model server. Desktop plus a 390x844 variant running the same real turn.',
     exceptions: [],
   },
   {
@@ -963,6 +966,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted plugin update lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/plugin-rejection-visibility.spec.ts',
+    bucket: 'product',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves the rejected-manifest row, exact recovery copy, and repair/reload transition in the real Plugins surface.',
     exceptions: [],
   },
   {

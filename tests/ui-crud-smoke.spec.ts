@@ -23,13 +23,13 @@ function slugify(value: string): string {
 /**
  * DESIGN.md §4's starting points replaced "start with a blank agent" and the
  * `#ae-engine` select. This journey wants Station's own engine, which is the
- * "Chat with a model" starting point — an UNCONDITIONAL step, not an optional
+ * "Run it on Station" starting point — an UNCONDITIONAL step, not an optional
  * one: the previous helper's `if (visible)` guards are what let this journey
  * drift a whole redesign behind the product while staying green (archive#3743).
  */
 async function chooseStationEngine(page: import('@playwright/test').Page) {
   await page
-    .getByRole('button', { name: /Chat with a model/i })
+    .getByRole('button', { name: /Run it on Station/i })
     .first()
     .click({ timeout: 15_000 });
   await expect(page.locator('#ae-name')).toBeVisible({ timeout: 15_000 });

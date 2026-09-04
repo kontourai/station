@@ -351,6 +351,20 @@ function asModelOptions(value: unknown): ModelOption[] {
         name: entry.name,
         originalId:
           typeof entry.originalId === 'string' ? entry.originalId : entry.id,
+        ...(typeof entry.resolvedModel === 'string'
+          ? { resolvedModel: entry.resolvedModel }
+          : {}),
+        // Server-decided identity must survive this projection or New Chat and
+        // the runtime catalog silently lose grouping (#1208 review).
+        ...(entry.canonicalModelIdentity &&
+        typeof entry.canonicalModelIdentity === 'object' &&
+        typeof entry.canonicalModelIdentity.canonicalId === 'string' &&
+        typeof entry.canonicalModelIdentity.verifiedAgainst === 'string'
+          ? {
+              canonicalModelIdentity:
+                entry.canonicalModelIdentity as ModelOption['canonicalModelIdentity'],
+            }
+          : {}),
         ...(entry.capabilities && typeof entry.capabilities === 'object'
           ? { capabilities: entry.capabilities as ModelOption['capabilities'] }
           : {}),

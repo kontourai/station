@@ -232,6 +232,32 @@ describe('plugin CLI API authority', () => {
     expect(listPlugins).toHaveBeenCalledWith('http://127.0.0.1:3141');
   });
 
+  test('prefers a validated plugin identity over a colliding rejected directory name', async () => {
+    listPlugins.mockResolvedValue([
+      {
+        status: 'rejected',
+        name: 'demo',
+        displayName: 'demo',
+        rejection: {
+          code: 'malformed-json',
+          reason: 'Plugin manifest is malformed.',
+          recovery: {
+            kind: 'repair-manifest',
+            instruction: 'Repair plugin.json and reload plugins.',
+          },
+        },
+      },
+      { name: 'demo', version: '1.0.0' },
+    ]);
+    const { info } = await import('../commands/install.js');
+
+    await info('demo', parsed);
+
+    expect(console.log).toHaveBeenCalledWith(
+      JSON.stringify({ name: 'demo', version: '1.0.0' }, null, 2),
+    );
+  });
+
   test('resolves a local source from the CLI invocation directory before sending it', async () => {
     authenticatedFetch
       .mockResolvedValueOnce(
@@ -304,6 +330,26 @@ describe('plugin CLI API authority', () => {
       'http://127.0.0.1:3141/api/plugins/demo',
       expect.objectContaining({ method: 'DELETE' }),
     );
+  });
+
+  test('does not report removal when Station refuses an alias and rejected-directory collision', async () => {
+    authenticatedFetch.mockResolvedValue(
+      Response.json(
+        {
+          success: false,
+          error:
+            "Registry plugin 'demo' resolves to installed plugin 'actual-plugin', but plugin 'demo' also exists",
+        },
+        { status: 400 },
+      ),
+    );
+    const { remove } = await import('../commands/install.js');
+    const logCountBefore = vi.mocked(console.log).mock.calls.length;
+
+    await expect(remove('demo', parsed)).rejects.toThrow(
+      "resolves to installed plugin 'actual-plugin'",
+    );
+    expect(vi.mocked(console.log).mock.calls).toHaveLength(logCountBefore);
   });
 
   test('does not fall back to direct filesystem mutation when Station is down', async () => {

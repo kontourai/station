@@ -65,9 +65,10 @@ function windowsCreationDateCommand(pid) {
 function windowsCreationDateProbe(
   pid,
   timeoutMs = PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+  command = 'powershell.exe',
 ) {
   return {
-    command: 'powershell.exe',
+    command,
     args: [
       '-NoProfile',
       '-NonInteractive',
@@ -89,8 +90,12 @@ function canonicalWindowsCreationDate(output) {
   return isWindowsRoundTripUtcIso(value) ? value : null;
 }
 
-function windowsCreationDateFingerprint(pid, exec, timeoutMs) {
-  const { command, args, options } = windowsCreationDateProbe(pid, timeoutMs);
+function windowsCreationDateFingerprint(pid, exec, timeoutMs, shell) {
+  const { command, args, options } = windowsCreationDateProbe(
+    pid,
+    timeoutMs,
+    shell,
+  );
   const output = exec(command, args, options);
   return canonicalWindowsCreationDate(output);
 }
@@ -162,7 +167,12 @@ export function lookupProcessBirthFingerprint(pid, dependencies = {}) {
   } = dependencies;
   try {
     if (platform === 'win32') {
-      return windowsCreationDateFingerprint(pid, exec, timeoutMs);
+      return windowsCreationDateFingerprint(
+        pid,
+        exec,
+        timeoutMs,
+        dependencies.windowsShell,
+      );
     }
     if (platform === 'linux') {
       const stat = readFile(`/proc/${pid}/stat`, 'utf8').trim();
@@ -392,6 +402,10 @@ export function resolveOwnProcessIdentity(pid, dependencies = {}) {
         : WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS);
     const probe = probeExactProcessIdentityOnce(pid, {
       ...dependencies,
+      // A legacy PowerShell startup failure should not consume both attempts
+      // on the same host. PowerShell 7 reads the identical direct handle and
+      // emits the same normalized timestamp within the existing deadline.
+      windowsShell: attempt === 0 ? 'powershell.exe' : 'pwsh.exe',
       timeoutMs: Math.min(scheduledTimeoutMs, remainingMs),
     });
     if (probe.state !== 'unavailable' || attempt === attempts - 1) {

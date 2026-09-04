@@ -402,6 +402,32 @@ describe('useDockShellChrome', () => {
       expect(result.current.activeProjectSlug).toBe('alpha');
     });
 
+    test('an Activity region shell never runs the Chat project-binding cleanup', async () => {
+      projectsForDockShellChrome = [{ slug: 'alpha' }];
+      const { useDockShellChrome, wrapper } =
+        await freshDockShellChromeInRegionModel();
+      const { useRegionModel } = await import('../contexts/RegionModelContext');
+      const { result, rerender } = renderHook(
+        () => ({
+          chrome: useDockShellChrome({
+            publishesDockSlotClearance: true,
+            registersDockShortcuts: false,
+            regionId: 'right',
+          }),
+          model: useRegionModel(),
+        }),
+        { wrapper },
+      );
+      act(() => result.current.model.placeSurface('activity', 'right'));
+      act(() => result.current.chrome.setActiveProjectSlug('alpha'));
+
+      projectsForDockShellChrome = [];
+      projectsConfirmedLoadedForDockShellChrome = true;
+      rerender();
+
+      expect(result.current.chrome.activeProjectSlug).toBe('alpha');
+    });
+
     test('nothing in this hook clears the binding merely because it mounted (no reset-on-mount)', async () => {
       projectsForDockShellChrome = [{ slug: 'alpha' }];
       const first = await freshUseDockShellChrome();

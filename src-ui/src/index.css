@@ -4796,11 +4796,11 @@ button.tool-call__line:hover {
   transition: opacity var(--motion-base) var(--ease-standard);
 }
 
-.chat-input button:hover:not(:disabled) {
+.chat-input button:hover:not(:disabled, [aria-disabled="true"]) {
   opacity: 0.8;
 }
 
-.chat-input button:disabled {
+.chat-input button:is(:disabled, [aria-disabled="true"]) {
   opacity: 0.5;
   cursor: not-allowed;
 }

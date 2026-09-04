@@ -3,12 +3,112 @@ import { minimatch } from 'minimatch';
 import { describe, expect, it } from 'vitest';
 
 import {
+  collectAudits,
+  dependencyAuditDecision,
   evaluateAuditPolicy,
   formatPolicyReport,
   parseAuditCommandResult,
+  withAuditRetries,
 } from '../dependency-advisory-policy.mjs';
 
 const NOW = new Date('2026-07-10T00:00:00.000Z');
+
+describe('dependency audit collection', () => {
+  it('skips a GitHub pull request whose exact range has no dependency inputs', () => {
+    const decision = dependencyAuditDecision({
+      env: {
+        GITHUB_ACTIONS: 'true',
+        GITHUB_EVENT_NAME: 'pull_request_target',
+        GITHUB_EVENT_PATH: '/event.json',
+      },
+      loadEvent: () => ({
+        pull_request: { base: { sha: 'a' }, head: { sha: 'b' } },
+      }),
+      classifyRange: ({ before, after }) => {
+        expect({ before, after }).toEqual({ before: 'a', after: 'b' });
+        return { dependencies: false, classification: 'runtime-or-workflow' };
+      },
+    });
+
+    expect(decision).toEqual({
+      required: false,
+      reason: 'runtime-or-workflow',
+    });
+  });
+
+  it('keeps scheduled and manual policy runs live', () => {
+    expect(
+      dependencyAuditDecision({
+        env: { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'schedule' },
+      }),
+    ).toEqual({ required: true, reason: 'schedule event' });
+  });
+
+  it('fails closed when GitHub range evidence is unavailable', () => {
+    expect(
+      dependencyAuditDecision({
+        env: {
+          GITHUB_ACTIONS: 'true',
+          GITHUB_EVENT_NAME: 'pull_request_target',
+        },
+      }),
+    ).toEqual({
+      required: true,
+      reason:
+        'range classification failed closed: GITHUB_EVENT_PATH is missing',
+    });
+  });
+
+  it('runs full and production audits for every scope concurrently', async () => {
+    const scopes = [
+      { scope: 'root', cwd: '/repo' },
+      { scope: 'sdk', cwd: '/repo/packages/sdk' },
+      { scope: 'shared', cwd: '/repo/packages/shared' },
+    ];
+    let active = 0;
+    let peak = 0;
+    const releases = new Map<string, () => void>();
+    const started: string[] = [];
+    const runner = (scope: string, _cwd: string, productionOnly: boolean) =>
+      new Promise<Record<string, unknown>>((resolve) => {
+        const key = `${scope}:${productionOnly ? 'production' : 'full'}`;
+        active += 1;
+        peak = Math.max(peak, active);
+        started.push(key);
+        releases.set(key, () => {
+          active -= 1;
+          resolve({ key });
+        });
+      });
+
+    const pending = collectAudits(scopes, runner, () => ({}));
+    await Promise.resolve();
+
+    expect(started).toEqual([
+      'root:full',
+      'root:production',
+      'sdk:full',
+      'sdk:production',
+      'shared:full',
+      'shared:production',
+    ]);
+    expect(peak).toBe(6);
+    for (const release of releases.values()) release();
+    await expect(pending).resolves.toHaveLength(6);
+  });
+
+  it('retries one operational audit failure within a fixed attempt bound', async () => {
+    let attempts = 0;
+    const result = await withAuditRetries('shared', async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('registry unavailable');
+      return 'audit-report';
+    });
+
+    expect(result).toBe('audit-report');
+    expect(attempts).toBe(2);
+  });
+});
 
 function auditWithHighAdvisory() {
   return {
@@ -585,5 +685,43 @@ describe('dependency advisory policy', { timeout: 20_000 }, () => {
         stderr: '',
       }),
     ).toEqual(auditWithHighAdvisory());
+  });
+
+  it('classifies a JSON error envelope as an operational response', () => {
+    expect(() =>
+      parseAuditCommandResult('shared', {
+        status: 1,
+        signal: null,
+        error: undefined,
+        stdout: JSON.stringify({
+          error: { code: 'E503', summary: 'registry unavailable' },
+        }),
+        stderr: '',
+      }),
+    ).toThrow(
+      'npm audit operational response for shared (exit 1): {"code":"E503","summary":"registry unavailable"}',
+    );
+  });
+
+  it('reports the registry reason npm puts outside its error envelope', () => {
+    // Captured verbatim from `npm audit --json --registry=http://127.0.0.1:9`
+    // (exit 1): the reason is a top-level `message` and the error envelope's
+    // own fields are empty strings, so quoting `error` alone reports
+    // `{"summary":"","detail":""}` and names nothing (#1403).
+    expect(() =>
+      parseAuditCommandResult('root', {
+        status: 1,
+        signal: null,
+        error: undefined,
+        stdout: JSON.stringify({
+          message:
+            'request to http://127.0.0.1:9/-/npm/v1/security/advisories/bulk failed, reason: connect ECONNREFUSED 127.0.0.1:9',
+          error: { summary: '', detail: '' },
+        }),
+        stderr: 'npm error audit endpoint returned an error',
+      }),
+    ).toThrow(
+      'npm audit operational response for root (exit 1): {"message":"request to http://127.0.0.1:9/-/npm/v1/security/advisories/bulk failed, reason: connect ECONNREFUSED 127.0.0.1:9","error":{"summary":"","detail":""}}',
+    );
   });
 });
