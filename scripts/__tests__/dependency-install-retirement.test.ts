@@ -296,7 +296,7 @@ test('metadata created after validation keeps the fixed guard pending', () => {
     run: () => seed(f.modules),
     moveEntry: (from, to) => {
       renameSync(from, to);
-      if (from.endsWith('receipt.json'))
+      if (String(from).endsWith('receipt.json'))
         writeFileSync(join(f.guard, '.DS_Store'), 'x'.repeat(65_537));
     },
   });
@@ -318,7 +318,7 @@ test('metadata grown between validation and publication is preserved without rel
       writeFileSync(join(f.guard, '.DS_Store'), 'small');
     },
     moveEntry: (from, to) => {
-      if (from.endsWith('.DS_Store')) {
+      if (String(from).endsWith('.DS_Store')) {
         rmSync(from);
         writeFileSync(from, 'x'.repeat(65_537));
       }
@@ -346,7 +346,7 @@ test('a receipt replacement during publication is preserved without releasing th
     warn,
     run: () => seed(f.modules),
     moveEntry: (from, to) => {
-      if (from.endsWith('receipt.json')) {
+      if (String(from).endsWith('receipt.json')) {
         renameSync(from, original);
         writeFileSync(from, 'replacement');
       }
@@ -525,11 +525,16 @@ function pipeline(f: ReturnType<typeof fixture>, failed?: string) {
   return { execution, npmCliPath, calls };
 }
 
+const installWithExecution = install as unknown as (
+  options: { developer?: boolean },
+  execution: ReturnType<typeof pipeline>['execution'],
+) => unknown;
+
 test('the production installer binds its selected driver and guards the actual phase order', () => {
   const f = fixture();
   seed(f.modules);
   const p = pipeline(f);
-  install({}, p.execution as any);
+  installWithExecution({}, p.execution);
   expect(p.calls).toEqual([
     'node',
     'policy',
@@ -560,7 +565,9 @@ test.each(['hooks', 'owned', 'verify'])(
     const f = fixture();
     seed(f.modules);
     const p = pipeline(f, failed);
-    expect(() => install({}, p.execution as any)).toThrow(/not verified/i);
+    expect(() => installWithExecution({}, p.execution)).toThrow(
+      /not verified/i,
+    );
     expect(p.execution.npmCommand).toHaveBeenCalledTimes(1);
     expect(p.calls.at(-1)).toBe(failed);
     expect(existsSync(f.previous)).toBe(false);
@@ -581,7 +588,7 @@ test.each(['node', 'npm'])(
     writeFileSync(inside, 'driver');
     if (kind === 'node') p.execution.nodePath = inside;
     else p.execution.resolveNpmCli = () => inside;
-    expect(() => install({}, p.execution as any)).toThrow(
+    expect(() => installWithExecution({}, p.execution)).toThrow(
       /outside root node_modules/,
     );
     expect(p.execution.command).not.toHaveBeenCalled();
@@ -597,7 +604,7 @@ test('an npm link inside the retired tree binds the external canonical driver be
   const p = pipeline(f);
   symlinkSync(join(f.root, 'tools'), join(f.modules, 'npm'), 'junction');
   p.execution.resolveNpmCli = () => join(f.modules, 'npm', 'npm-cli.js');
-  install({}, p.execution as any);
+  installWithExecution({}, p.execution);
   const drivers = prepareDependencyInstallDrivers({
     root: f.root,
     nodePath: process.execPath,
@@ -620,7 +627,7 @@ test('an external alias cannot hide a driver target inside the retirement tree',
   symlinkSync(f.modules, join(f.root, 'tools', 'local'), 'junction');
   p.execution.resolveNpmCli = () =>
     join(f.root, 'tools', 'local', 'npm-cli.js');
-  expect(() => install({}, p.execution as any)).toThrow(
+  expect(() => installWithExecution({}, p.execution)).toThrow(
     /outside root node_modules/,
   );
   expect(p.execution.command).not.toHaveBeenCalled();
