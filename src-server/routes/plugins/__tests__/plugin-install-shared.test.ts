@@ -455,9 +455,7 @@ describe('dependency approval from the real preview route', () => {
     });
     await expect(
       installPluginFromSource(parent, [], installDeps, { consent }),
-    ).rejects.toThrow(
-      'it needs providers.register, but the approval covered none',
-    );
+    ).rejects.toThrow('its files changed after it was reviewed');
     expect(installDeps.buildPlugin).not.toHaveBeenCalled();
   });
 
