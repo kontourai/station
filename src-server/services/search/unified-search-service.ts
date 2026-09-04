@@ -853,6 +853,13 @@ export class UnifiedSearchService {
       return { source: unavailableSource('continuation-invalid'), results: [] };
     }
     const controller = new AbortController();
+    const deadline =
+      performance.now() + UNIFIED_SEARCH_LIMITS.providerTimeoutMs;
+    const requireWithinDeadline = () => {
+      if (controller.signal.aborted || performance.now() >= deadline) {
+        throw new Error('search-aborted');
+      }
+    };
     const abort = () => controller.abort();
     outerSignal?.addEventListener('abort', abort, { once: true });
     const timer = setTimeout(abort, UNIFIED_SEARCH_LIMITS.providerTimeoutMs);
@@ -882,17 +889,18 @@ export class UnifiedSearchService {
       });
       const page = await Promise.race([
         Promise.resolve().then(() => {
-          if (controller.signal.aborted) throw new Error('search-aborted');
+          requireWithinDeadline();
           return provider.search(providerRequest, controller.signal);
         }),
         aborted,
       ]);
-      if (controller.signal.aborted) throw new Error('search-aborted');
+      requireWithinDeadline();
       const normalized = clonePage(
         page,
         provider.descriptor.owner,
         UNIFIED_SEARCH_LIMITS.resultsPerProvider,
       );
+      requireWithinDeadline();
       if (!normalized) {
         return {
           source: unavailableSource('provider-response-invalid'),
@@ -939,6 +947,7 @@ export class UnifiedSearchService {
         providerId: provider.descriptor.id,
         owner: provider.descriptor.owner,
       }));
+      requireWithinDeadline();
       return {
         source: {
           providerId: provider.descriptor.id,

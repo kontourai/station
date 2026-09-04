@@ -77,7 +77,13 @@ and a typed open intent that must be re-resolved by
 its owner before navigation.
 
 **Contract.** Query, provider, result, string, count, byte, continuation, and
-time budgets are fixed by the host. Provider output is cloned and validated;
+result-acceptance deadlines are fixed by the host. Elapsed monotonic checks
+reject late results even when synchronous work prevents the timer from firing.
+This in-process foundation cannot preempt synchronous provider/source work and
+does not establish a server responsiveness bound. Production composition is
+blocked on an isolated, cancellable execution/read-owner boundary; making a
+synchronous source method return a Promise is not that boundary.
+Provider output is cloned and validated;
 unknown shapes, duplicate identities, excessive pages, throwing accessors,
 timeouts, and exceptions become source-level unavailable state without error
 detail. Restricted sources return no results or resource counts. A partial,

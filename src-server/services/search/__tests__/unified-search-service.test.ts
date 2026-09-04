@@ -53,6 +53,44 @@ function provider(input: {
 describe('UnifiedSearchService', () => {
   afterEach(() => vi.useRealTimers());
 
+  test('rejects synchronous provider results completed after the elapsed deadline', async () => {
+    vi.useRealTimers();
+    let timerCouldRun = false;
+    let completedBeforeTimer = false;
+    const service = new UnifiedSearchService([
+      provider({
+        id: 'station.tasks',
+        search: async () => {
+          const until =
+            performance.now() + UNIFIED_SEARCH_LIMITS.providerTimeoutMs + 10;
+          setTimeout(() => {
+            timerCouldRun = true;
+          }, 0);
+          // Deliberately block this worker thread: a timer-only deadline cannot
+          // observe expiry before the fulfilled provider microtask wins.
+          while (performance.now() < until) {
+            /* synchronous source work */
+          }
+          completedBeforeTimer = !timerCouldRun;
+          return {
+            version: UNIFIED_SEARCH_V1,
+            state: 'available',
+            results: [task()],
+          };
+        },
+      }),
+    ]);
+    const outcome = await service.search({
+      version: UNIFIED_SEARCH_V1,
+      query: 'parser',
+    });
+    expect(completedBeforeTimer).toBe(true);
+    expect(outcome).toMatchObject({
+      results: [],
+      sources: [{ state: 'unavailable', reason: 'provider-timeout-or-error' }],
+    });
+  });
+
   test('never reads a provider callable own bind getter or invokes its replacement', async () => {
     const hijacked = vi.fn(async () => ({
       version: UNIFIED_SEARCH_V1,
