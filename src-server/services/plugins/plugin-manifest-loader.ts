@@ -73,17 +73,6 @@ export function parsePluginManifest(
     invalidManifest('invalid-manifest', 'Plugin manifest must be an object');
   }
   const candidate = value as Record<string, unknown>;
-  if (candidate.workspacePaneHost !== undefined) {
-    const contribution = parseWorkspacePaneHostContribution(
-      candidate.workspacePaneHost,
-    );
-    if (!contribution)
-      invalidManifest(
-        'invalid-manifest',
-        'Invalid Workspace Pane host contribution',
-      );
-    candidate.workspacePaneHost = contribution;
-  }
   if (typeof candidate.name !== 'string' || !candidate.name.trim()) {
     invalidManifest(
       'invalid-plugin-name',
@@ -124,6 +113,17 @@ export function parsePluginManifest(
       'missing-version',
       'Plugin manifest version must be a non-empty string',
     );
+  }
+  if (candidate.workspacePaneHost !== undefined) {
+    const contribution = parseWorkspacePaneHostContribution(
+      candidate.workspacePaneHost,
+    );
+    if (!contribution)
+      invalidManifest(
+        'invalid-manifest',
+        'Invalid Workspace Pane host contribution',
+      );
+    candidate.workspacePaneHost = contribution;
   }
   // archive#4307 review: a declared setting's `key` is a STORE KEY too — it is
   // written into `overrides[plugin].settings` by `PUT /:name/settings` and
