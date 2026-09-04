@@ -17,7 +17,9 @@ function interfaceFields(text: string, name: string): string[] {
     .filter(ts.isInterfaceDeclaration)
     .filter((declaration) => declaration.name.text === name);
   if (declarations.length !== 1)
-    throw new Error(`Expected one ${name} interface`);
+    throw new Error(
+      `Expected one ${name} interface${declarations.length === 0 ? ' (missing)' : ''}`,
+    );
   return declarations[0].members.map((member) => {
     if (
       !ts.isPropertySignature(member) ||
@@ -26,6 +28,10 @@ function interfaceFields(text: string, name: string): string[] {
       throw new Error(`Unsupported ${name} member`);
     return member.name.text;
   });
+}
+
+function manifestFields(contract: string): string[] {
+  return interfaceFields(contract, 'PluginManifest');
 }
 
 describe('documentation foundations', () => {
@@ -102,7 +108,7 @@ describe('documentation foundations', () => {
 
   it('keeps the plugin manifest field reference complete against the contract', () => {
     const contract = read('packages/contracts/src/plugin.ts');
-    const contractFields = interfaceFields(contract, 'PluginManifest');
+    const contractFields = manifestFields(contract);
 
     const guide = read('docs/guides/plugins.md');
     const fieldTable = guide.match(
@@ -146,6 +152,21 @@ describe('documentation foundations', () => {
         'PluginManifest',
       ),
     ).toThrow('Expected one');
+  });
+
+  it('extracts only direct manifest fields across nested types and adjacent interfaces', () => {
+    const contract = `
+      export interface PluginManifest {
+        name: string;
+        configuration?: { nested: string };
+      }
+      export interface PluginManifestRejection { code: string; name: string; }
+      export interface PluginOverrideConfig { status: string; }
+    `;
+    expect(manifestFields(contract)).toEqual(['name', 'configuration']);
+    expect(() => manifestFields('export interface Other {}')).toThrow(
+      'missing',
+    );
   });
 
   it('defers shared UI explorer, manifest, tokens, themes, and accessibility to Kontour UI', () => {
