@@ -148,7 +148,7 @@ export async function listPlugins(
       if (record.status === 'rejected') {
         return !isRejectedInstalledPlugin(record);
       }
-      if (Reflect.has(record, 'status')) return true;
+      if ('status' in record) return true;
       return (
         typeof record.name !== 'string' || typeof record.version !== 'string'
       );
