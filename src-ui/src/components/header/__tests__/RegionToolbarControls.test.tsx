@@ -218,6 +218,7 @@ describe('RegionToolbarControls', () => {
     const swapRule = chatCss.match(
       /\.app-toolbar__region-swap\s*\{([^}]*)\}/,
     )?.[1];
+    expect(swapRule).toMatch(/position:\s*static/);
     expect(swapRule).toMatch(/min-width:\s*24px/);
     expect(swapRule).toMatch(/min-height:\s*24px/);
     trigger.focus();

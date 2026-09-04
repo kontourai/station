@@ -343,7 +343,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await expect(composer).toBeVisible();
     await composer.fill('Confirm the live first-run path');
     await expect(composer).toHaveValue('Confirm the live first-run path');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
     await expect.poll(() => chatRequests.length).toBe(1);
     await expect(page.getByText(REPLY, { exact: true })).toBeVisible({
       timeout: 30_000,

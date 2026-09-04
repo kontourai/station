@@ -383,6 +383,42 @@ describe('orchestration transfer gate control flow', () => {
     );
   });
 
+  test('#512: an agent lane under .claude/worktrees gets a sibling baseline, not one nested inside the primary checkout', () => {
+    // The #1279 suggestion recognised a lane only by its parent directory
+    // being named `station-worktrees`. An agent worktree lives under
+    // `<primary>/.claude/worktrees/<lane>`, fails that shape test, and so was
+    // told to put its baseline at
+    // `<primary>/.claude/worktrees/station-worktrees/<baseline>` — a checkout
+    // nested inside the primary checkout's own working tree. Seven such
+    // baselines existed on the reference machine.
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), 'station-transfer-agent-lane-')),
+    );
+    roots.push(root);
+    const primary = join(root, 'station');
+    git(root, ['init', primary]);
+    git(primary, ['config', 'user.email', 'transfer-gate@example.test']);
+    git(primary, ['config', 'user.name', 'Transfer gate test']);
+    writeFileSync(join(primary, 'subject.txt'), 'baseline\n');
+    git(primary, ['add', 'subject.txt']);
+    git(primary, ['commit', '-m', 'baseline']);
+    const base = git(primary, ['rev-parse', 'HEAD']);
+
+    const lane = join(primary, '.claude', 'worktrees', 'agent-lane');
+    git(primary, ['worktree', 'add', '--detach', lane, base]);
+
+    const expected = resolve(
+      root,
+      'station-worktrees',
+      `4294-transfer-baseline-${base.slice(0, 12)}`,
+    );
+    // Every checkout of one repository agrees on where baselines belong.
+    expect(suggestedBaselineRoot(lane, base)).toBe(expected);
+    expect(suggestedBaselineRoot(primary, base)).toBe(expected);
+    // The specific regression: never inside a checkout's own working tree.
+    expect(suggestedBaselineRoot(lane, base)).not.toContain('.claude');
+  });
+
   test('captures baseline modules after the candidate removes a contracts export', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-transfer-resolution-'));
     roots.push(root);

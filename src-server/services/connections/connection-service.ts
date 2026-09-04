@@ -66,6 +66,10 @@ type CredentialProfileApplicationSettlement =
   | { kind: 'unknown' };
 
 import {
+  curatedModelIdentityFor,
+  modelRouteFamilyFor,
+} from '@kontourai/station-contracts/model-inventory';
+import {
   createEmbeddingProvider,
   createLLMProvider,
   createVectorDbProvider,
@@ -1069,11 +1073,23 @@ export class ConnectionService {
         epoch,
       );
       const models = catalog.models;
-      const modelOptions = models.map((model) => ({
-        id: model.id,
-        name: model.name,
-        originalId: model.id,
-      }));
+      // Identity is decided here, once, from the connection's own route
+      // family -- so every client path (catalog query, raw connection rows,
+      // New Chat) reads the same decoration instead of deriving or dropping
+      // it. Review round on #1208.
+      const family = modelRouteFamilyFor(connection);
+      const modelOptions = models.map((model) => {
+        const canonicalModelIdentity = curatedModelIdentityFor({
+          family,
+          providerModel: model.id,
+        });
+        return {
+          id: model.id,
+          name: model.name,
+          originalId: model.id,
+          ...(canonicalModelIdentity ? { canonicalModelIdentity } : {}),
+        };
+      });
       const projected = this.withReadinessEvidence(
         {
           ...base,
