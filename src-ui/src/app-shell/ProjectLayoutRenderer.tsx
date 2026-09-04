@@ -98,6 +98,7 @@ import { trackCodingEvidenceCompositionReceipt } from './codingEvidenceCompositi
 import { codingEvidenceUnavailableCopy } from './codingEvidenceUnavailableCopy';
 import { trackCodingFileCompositionReceipt } from './codingFileCompositionTelemetry';
 import { layoutTypeRegistry } from './layoutRegistry';
+import { resolveProjectLayoutRendererKind } from './project-layout-kind';
 
 const loadProjectBasisMcpWorkspacePane = () =>
   import('../workspace-panes/BasisMcpWorkspacePane').then(
@@ -1133,23 +1134,20 @@ export function ProjectLayoutRenderer({
   }
 
   const config = layoutConfig.config ?? {};
-  const declaredPlugin =
-    typeof config.plugin === 'string' && config.plugin.length > 0;
-  const contributionOrigin =
-    layoutConfig.catalogContribution?.provenance.origin;
-  const isContributedLayout =
-    contributionOrigin === 'plugin' || contributionOrigin === 'mcp';
-
   // A contributed layout's free-form `type` may intentionally match one of
   // Station's built-in layout types. Its declared tabs/components remain the
   // rendering authority. `config.plugin` covers persisted layouts created
   // before catalog attribution was stored. Layout tabs alone are not
   // attribution: Station-owned legacy chat layouts also declare them.
-  if (isContributedLayout || declaredPlugin) {
+  // The decision lives in `project-layout-kind.ts` so App's "does this layout
+  // own the whole viewport?" reads the same derivation (#1446).
+  const rendererKind = resolveProjectLayoutRendererKind(layoutConfig);
+
+  if (rendererKind === 'layout-view') {
     return <LayoutView projectSlug={projectSlug} layoutSlug={layoutSlug} />;
   }
 
-  if (layoutConfig.type === 'coding') {
+  if (rendererKind === 'coding') {
     const fileCompositionControl =
       config.workspaceCompositionFilePane === 'composition' ||
       config.workspaceCompositionFilePane === 'compare'
@@ -1177,18 +1175,12 @@ export function ProjectLayoutRenderer({
     );
   }
 
-  const Renderer = layoutConfig.type
-    ? layoutTypeRegistry[layoutConfig.type]
-    : undefined;
-  if (Renderer) {
-    return (
-      <Renderer
-        projectSlug={projectSlug}
-        layoutSlug={layoutSlug}
-        config={layoutConfig.config ?? {}}
-      />
-    );
-  }
-
-  return <LayoutView projectSlug={projectSlug} layoutSlug={layoutSlug} />;
+  const Renderer = layoutTypeRegistry[rendererKind];
+  return (
+    <Renderer
+      projectSlug={projectSlug}
+      layoutSlug={layoutSlug}
+      config={config}
+    />
+  );
 }

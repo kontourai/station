@@ -6,7 +6,10 @@
  */
 
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
-import type { MCPConnection } from '@kontourai/station-shared/mcp';
+import type {
+  MCPConnection,
+  MCPLocalConnectionCustody,
+} from '@kontourai/station-shared/mcp';
 import {
   Agent,
   type AgentHooks,
@@ -82,6 +85,7 @@ export interface CreateAgentOptions {
   memoryAdapter: FileMemoryAdapter;
   configLoader: ConfigLoader;
   mcpConfigs: Map<string, MCPConnection>;
+  mcpCustody: MCPLocalConnectionCustody;
   mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>;
   integrationMetadata: Map<
     string,
@@ -971,6 +975,7 @@ export class VoltAgentFramework {
       CreateAgentOptions,
       | 'configLoader'
       | 'mcpConfigs'
+      | 'mcpCustody'
       | 'mcpConnectionStatus'
       | 'integrationMetadata'
       | 'toolNameMapping'
@@ -994,6 +999,7 @@ export class VoltAgentFramework {
       opts.serverPort,
       opts.mcpToolProvenanceGeneration!,
       opts.integrationSecretResolver,
+      opts.mcpCustody,
     )) as ITool[];
     return [...loaded, createNativeOutputDeclarationTool() as ITool];
   }

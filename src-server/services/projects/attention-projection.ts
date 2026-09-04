@@ -17,6 +17,7 @@ import {
   foldedSessionLifecycleState,
   isSessionLifecycleStateStopped,
 } from '@kontourai/station-contracts/session-lifecycle';
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
@@ -1223,11 +1224,11 @@ export function buildSessionFailedItem(
  * Only this kind is redirected. The dock is the right target for
  * `needs_input`/`review_pending`, which ask the user to answer — that is what
  * the dock's composer is for. A failed session has nothing to answer, so it
- * goes to the same `/activity?session=` target project-less sessions already
+ * goes to the same Activity surface deep link project-less sessions already
  * use, where the reason renders in an `role="alert"` banner on arrival.
  */
 function failedSessionOpenHref(session: OrchestrationSessionSummary): string {
-  return `/activity?session=${encodeURIComponent(session.threadId)}`;
+  return activityDeepLink({ sessionId: session.threadId });
 }
 
 function sessionOpenHref(session: OrchestrationSessionSummary): string {
@@ -1236,10 +1237,11 @@ function sessionOpenHref(session: OrchestrationSessionSummary): string {
     // archive#1284 (AC4): `dock=open` so the deep link actually opens the
     // chat dock instead of landing on the project layout with the dock
     // still closed (navigation-store.ts's `isDockOpen` reads this param).
-    // `/activity?session=<id>` below is not a dock target and stays plain.
+    // The Activity surface deep link below is not a dock target and carries
+    // no `dock=open`.
     return `/projects/${encodeURIComponent(projectSlug)}?chat=${encodeURIComponent(session.threadId)}&dock=open`;
   }
-  return `/activity?session=${encodeURIComponent(session.threadId)}`;
+  return activityDeepLink({ sessionId: session.threadId });
 }
 
 function stringValue(value: unknown): string | undefined {

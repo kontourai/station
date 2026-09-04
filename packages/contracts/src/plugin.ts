@@ -207,6 +207,36 @@ export interface PluginManifest {
   settings?: PluginSettingField[];
 }
 
+export type PluginManifestRejectionCode =
+  | 'manifest-missing'
+  | 'manifest-unreadable'
+  | 'malformed-json'
+  | 'unsafe-manifest-content'
+  | 'invalid-plugin-name'
+  | 'reserved-plugin-name'
+  | 'missing-version'
+  | 'invalid-workspace-panes'
+  | 'invalid-manifest';
+
+export interface PluginManifestRejection {
+  code: PluginManifestRejectionCode;
+  /** Bounded, path-free reason safe for the authenticated Plugins surface. */
+  reason: string;
+  recovery: {
+    kind: 'repair-manifest' | 'restore-manifest' | 'reinstall-plugin';
+    instruction: string;
+  };
+}
+
+/** A directory is visible even when no trustworthy plugin identity can be read. */
+export interface RejectedInstalledPluginRecord {
+  status: 'rejected';
+  /** Directory entry, not a validated plugin identity. */
+  name: string;
+  displayName: string;
+  rejection: PluginManifestRejection;
+}
+
 export interface PluginOverrideConfig {
   disabled?: string[];
   settings?: Record<string, string | number | boolean>;

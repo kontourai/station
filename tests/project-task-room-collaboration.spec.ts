@@ -501,7 +501,7 @@ test.describe
             agentParticipant.getByRole('link', { name: 'View agent session' }),
           ).toHaveAttribute(
             'href',
-            `/activity?session=${encodeURIComponent(agentEdit.sessionId)}`,
+            `/?surface=activity&session=${encodeURIComponent(agentEdit.sessionId)}`,
           );
           await expect(
             agentParticipant.getByRole('link', { name: 'View agent run' }),
@@ -577,7 +577,7 @@ test.describe
           }),
         ).toHaveAttribute(
           'href',
-          `/activity?session=${encodeURIComponent(agentEdit.sessionId)}`,
+          `/?surface=activity&session=${encodeURIComponent(agentEdit.sessionId)}`,
         );
         await expect(
           restartedAgentParticipant.getByRole('link', {

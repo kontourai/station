@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppViewContent } from './app-shell/AppViewContent';
 import { HomeRoutePendingSkeleton } from './app-shell/HomeRoutePendingSkeleton';
+import { rendersChatWorkspaceLayout } from './app-shell/project-layout-kind';
 import { RegionShells } from './app-shell/RegionShells';
 import { resolveHomeSurface } from './app-shell/resolve-home-surface';
 import {
@@ -218,10 +219,6 @@ function App() {
       }
       const path = getPathForView(view);
       if (path) {
-        if (view.type === 'activity') {
-          navigate('/activity', { session: view.sessionId ?? null });
-          return;
-        }
         navigate(path);
       }
     },
@@ -401,7 +398,10 @@ function App() {
       : undefined;
   const { data: selectedLayout, isLoading: selectedLayoutLoading } =
     useProjectLayoutQuery(selectedLayoutProjectSlug, selectedLayoutSlug);
-  const isChatWorkspaceLayout = selectedLayout?.type === 'chat';
+  // Derived from the same facts `ProjectLayoutRenderer` dispatches on, not
+  // from the `type` word alone: a plugin-contributed layout typed 'chat'
+  // renders its own tabs and keeps the ambient regions (#1446).
+  const isChatWorkspaceLayout = rendersChatWorkspaceLayout(selectedLayout);
   // A layout route waits for its type before mounting the ambient controller.
   // This prevents even a loading frame from owning both the dock and the
   // full-screen Chat layout's event listeners/state machine.

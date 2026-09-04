@@ -58,8 +58,21 @@ import {
  * stays compact … dot only while healthy"), so `connected` is narrower than
  * every news-carrying state THERE by design. The desktop-width test is the
  * full reproduction (state text is always shown, so `connected` participates
- * too); the phone-width test instead pins that the states which DO show text
- * on mobile agree with each other.
+ * too).
+ *
+ * #1401 replaced the phone-width half. It used to pin that the states which
+ * DO show text on mobile agree with each other in width — which they did,
+ * via a 116px reservation, while agreeing on a position OUTSIDE the viewport:
+ * `.app-toolbar__actions` is `flex-shrink: 0` and the brand bottoms out, so
+ * the row's content width is viewport-independent and Settings sat at
+ * x=377..421 at every phone width. Clipped on a 412px Pixel 7; past its own
+ * centre, and so unreachable rather than merely clipped, below 399px. The two
+ * properties are not both attainable here — holding the states to a common
+ * width means reserving the longest (~102px natural), which still leaves the
+ * row wider than a 390 or 402px viewport — so the reservation is released at
+ * this breakpoint and the phone-width test now pins the property that was
+ * being traded away. The agreement property is unaffected at desktop widths,
+ * where the row has the room and the test above still enforces it.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -278,21 +291,26 @@ describe.skipIf(!chromiumAvailable)(
       ).toEqual(states.map(() => xs[0]));
     });
 
-    test('news-carrying states agree on width at a phone viewport', async () => {
-      // On mobile, `index.css`'s own breakpoint intentionally hides the state
-      // text while `connected`/`idle` (dot only — "the toolbar chip stays
-      // compact on mobile … `idle` stays dot-only too", chat.css) — that is a
-      // deliberate, documented product decision this fix does not touch, so
-      // `connected` is deliberately excluded from this comparison. What is
-      // NOT deliberate: DIFFERENT news-carrying states ("Reconnecting" vs
-      // "Can't connect" vs "Needs re-pairing" vs "Awaiting approval", all
-      // shown) rendering at different widths for no reason, which is what
-      // the reported flips (connected → reconnecting → …) look like once
-      // the phone genuinely has something to say twice in a row with
-      // different wording. `needs-repair`/`awaiting-approval` are the two
-      // that archive#4512 added, and the ones this guard did not reproduce
-      // before review widened it.
+    test('the connection chip fits the width a phone row can spare', async () => {
+      // #1401. NOT a position assertion: this fixture mounts `HeaderActions`
+      // alone, so the cluster starts at x=0 and the Settings control is
+      // always "inside the viewport" here no matter how wide the chip grows —
+      // an earlier version of this test asserted its right edge and passed
+      // with the defect restored, which is how that was found. The chip's own
+      // width is the thing this fixture can actually see, so pin that against
+      // the budget the real row leaves it.
+      //
+      // Budget at 390px, measured on a running app in the `error` state:
+      // the row's left side (hamburger, logo, brand at its floor, gaps) ends
+      // at x=126 and `.app-toolbar__actions` carries three further 44px
+      // controls plus three 4px gaps = 144. 390 - 126 - 144 leaves **120px**
+      // for the connection chip. With the 116px reservation it rendered at
+      // 151px and put Settings at x=377..421 — past a 390px viewport, past a
+      // 412px Pixel 7, and past its own centre (x≈399) below 399px, which is
+      // unreachable rather than merely clipped. Released, the chip renders at
+      // 114px in this state and the row ends at 384.
       const viewport = { width: 390, height: 200 };
+      const CHIP_BUDGET_PX = 120;
       const states: ChipState[] = [
         'connecting',
         'error',
@@ -300,11 +318,22 @@ describe.skipIf(!chromiumAvailable)(
         'needs-repair',
         'awaiting-approval',
       ];
-      const xs: number[] = [];
       for (const state of states) {
-        xs.push(await settingsX(await renderMarkupForState(state), viewport));
+        const page = await browser.newPage({ viewport });
+        try {
+          await page.setContent(
+            buildFixtureHtml(await renderMarkupForState(state)),
+          );
+          const box = await page.locator('.app-toolbar__conn').boundingBox();
+          expect(box, `connection chip not visible in ${state}`).not.toBe(null);
+          expect(
+            Math.round(box!.width),
+            `The connection chip is wider than the ${CHIP_BUDGET_PX}px a ${viewport.width}px row can spare in the ${state} state, which pushes the Settings control off the screen (#1401).`,
+          ).toBeLessThanOrEqual(CHIP_BUDGET_PX);
+        } finally {
+          await page.close();
+        }
       }
-      expect(xs).toEqual(states.map(() => xs[0]));
     });
   },
 );

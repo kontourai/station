@@ -18,6 +18,7 @@
  * means, what an un-bound legacy grant does, and why.
  */
 
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import type {
   PermissionTier,
@@ -687,6 +688,89 @@ export async function revokeGrants(
         contentDigest: record.contentDigest,
       });
     return grants;
+  });
+}
+
+/**
+ * Final provider publication authority. Call inside the installed-content
+ * lease, after module preparation. Grant writes (including revoke, rebind,
+ * approval and rollback) use the same cross-process store lock, so none can
+ * commit between this fresh grant read and provider publication.
+ */
+export async function withPluginProviderGrantPublication<T>(
+  projectHomeDir: string,
+  pluginName: string,
+  publish: () => Promise<T>,
+): Promise<{ kind: 'applied'; value: T } | { kind: 'superseded' }> {
+  return withPluginProviderGrantsPublication(
+    projectHomeDir,
+    [pluginName],
+    async (granted) => {
+      if (!granted.has(pluginName)) return { kind: 'superseded' };
+      return { kind: 'applied', value: await publish() };
+    },
+  );
+}
+
+export type PluginProviderGrantSnapshot = string & {
+  readonly __pluginProviderGrantSnapshot: unique symbol;
+};
+
+function providerGrantSnapshot(
+  projectHomeDir: string,
+  grants: GrantsFile,
+): PluginProviderGrantSnapshot {
+  return createHash('sha256')
+    .update(JSON.stringify([projectHomeDir, grants]))
+    .digest('hex') as PluginProviderGrantSnapshot;
+}
+
+/**
+ * Resolve candidates synchronously under the grant read lease, never import
+ * plugin code here. This captures state equivalence, not a monotonic revision
+ * or proof that no intermediate grant ABA transition occurred.
+ */
+export async function withPluginProviderGrantSnapshot<T>(
+  projectHomeDir: string,
+  resolve: () => T,
+): Promise<{ snapshot: PluginProviderGrantSnapshot; value: T }> {
+  return grantsStore(projectHomeDir).withReadLease(async (grants) => ({
+    snapshot: providerGrantSnapshot(projectHomeDir, grants),
+    value: resolve(),
+  }));
+}
+
+/** Same grant-store lease for an atomic multi-source reload publication. */
+export async function withPluginProviderGrantsPublication<T>(
+  projectHomeDir: string,
+  pluginNames: readonly string[],
+  publish: (granted: ReadonlySet<string>) => Promise<T>,
+  expectedSnapshot?: PluginProviderGrantSnapshot,
+): Promise<T> {
+  return grantsStore(projectHomeDir).withReadLease(async (grants) => {
+    if (
+      expectedSnapshot !== undefined &&
+      providerGrantSnapshot(projectHomeDir, grants) !== expectedSnapshot
+    )
+      throw new Error(
+        'Plugin provider grant snapshot was superseded before publication.',
+      );
+    const granted = new Set<string>();
+    for (const name of new Set(pluginNames)) {
+      const digest = refreshPluginContentDigest(
+        pluginsDirFor(projectHomeDir),
+        name,
+      );
+      if (
+        digest !== null &&
+        derivePluginGrantBinding(
+          toGrantRecord(grants[name]),
+          digest,
+        ).granted.includes('providers.register')
+      )
+        granted.add(name);
+    }
+    return publish(granted);
   });
 }
 

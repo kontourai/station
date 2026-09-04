@@ -105,6 +105,15 @@ export interface ConsentRequesterAttribution {
   readonly id: string;
 }
 
+/** Bounded, value-free projection of the domain effect committed by consent. */
+export interface ConsentEffectProjection {
+  readonly status: 'completed' | 'winding-down' | 'incomplete' | 'superseded';
+  readonly operationId: string;
+  readonly generation: number;
+  readonly effects?: readonly string[];
+  readonly failures?: readonly string[];
+}
+
 export interface ConsentAuditEvent {
   readonly at: number;
   readonly event:
@@ -156,7 +165,9 @@ export interface ConsentTransactionInit {
    */
   readonly revalidateTarget: () => Promise<ConsentTargetSnapshot | null>;
   /** Commits the approval's domain effect. Runs only after every check passed. */
-  readonly commitApproval: () => Promise<void>;
+  readonly commitApproval: () =>
+    | Promise<ConsentEffectProjection>
+    | Promise<void>;
   /**
    * Review HIGH 1: mutual exclusion between target revalidation → grant
    * commit and whatever can mutate the target's content (for plugins, the
@@ -185,10 +196,13 @@ interface ConsentTransactionRecord {
   decisionInFlight: boolean;
   decidedAt?: number;
   decidedVia?: ConsentDecisionAuthority;
+  effect?: ConsentEffectProjection;
   /** Transaction-bound decision-session secret (the `station-consent` cookie). */
   readonly decisionSessionSecret: string;
   readonly revalidateTarget: () => Promise<ConsentTargetSnapshot | null>;
-  readonly commitApproval: () => Promise<void>;
+  readonly commitApproval: () =>
+    | Promise<ConsentEffectProjection>
+    | Promise<void>;
   readonly guardDecision?: <T>(fn: () => Promise<T>) => Promise<T>;
   readonly audit: ConsentAuditEvent[];
 }
@@ -217,6 +231,7 @@ export interface ConsentTransactionView {
   readonly requester: ConsentRequesterAttribution;
   readonly createdAt: number;
   readonly expiresAt: number;
+  readonly effect?: ConsentEffectProjection;
 }
 
 export type ConsentCreateResult =
@@ -294,6 +309,7 @@ function viewOf(
     requester: record.requester,
     createdAt: record.createdAt,
     expiresAt: record.expiresAt,
+    ...(record.effect ? { effect: structuredClone(record.effect) } : {}),
   };
 }
 
@@ -584,7 +600,8 @@ export class ConsentTransactionStore {
           return { ok: true, status: 'denied' } as const;
         }
         try {
-          await record.commitApproval();
+          const effect = await record.commitApproval();
+          if (effect) record.effect = structuredClone(effect);
         } catch (error) {
           if (error instanceof ConsentCommitRefusedError) {
             return refuse('commit_refused', error.safeDetail);

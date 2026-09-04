@@ -104,6 +104,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real peer EventStores share one disposable SQLite home and survive owner death.
+  'src-server/services/plugins/__tests__/package-mcp-admission.test.ts',
   // fsync-backed AgentRegistry fixtures compose the runtime bootstrap path;
   // they own durable state but can share the bounded two-worker pool.
   'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts',
@@ -188,6 +190,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // its exit STATUS is asserted, not just its pure decision functions — a
   // rejection path that has never executed is unproven.
   'scripts/__tests__/prepush-ui-bundle.test.ts',
+  // #1459: runs the completion-gate summary reporter as a real child process
+  // so its EXIT STATUS and its stdout annotations are what the assertions
+  // read. Both are the contract — the reporter must never fail a job it only
+  // reports on — and neither is observable from an imported function.
+  'scripts/__tests__/verification-gate-summary.test.ts',
   // #3208: same shape one gate over — runs each static gate it lists as a real
   // child process, so the list cannot name a script that no longer resolves.
   'scripts/__tests__/prepush-static-gates.test.ts',
@@ -222,6 +229,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // functions. Bounded single-shot children per case.
   'scripts/__tests__/dialog-surface-class-guard.test.ts',
   'scripts/__tests__/dependency-advisory-policy.test.ts',
+  // Bounded disposable npm-shaped children; no registry/network calls.
+  'scripts/__tests__/dependency-audit-diagnostics.test.ts',
   // station#1085: builds throwaway git checkouts and drives `git` through
   // `execFileSync` to prove the manifest derives real revision/branch values
   // — same shape as `content-integrity-gate.test.ts` below.
@@ -443,6 +452,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/providers/__tests__/station-control-mcp-passthrough.integration.test.ts',
   'src-server/providers/auth/__tests__/cli-auth-login-path.test.ts',
   'src-server/routes/plugins/__tests__/plugins.routes.test.ts',
+  // One private Node child with exposed GC proves strong lease custody. No
+  // shared state or latency assertion; collection is explicitly requested.
+  'src-server/services/plugins/__tests__/plugin-composition-custody-gc.test.ts',
   'src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts',
   // station#2928: retains the durable ConfigLoader/registry adoption seam;
   // production's default CLI detection reaches child_process transitively.

@@ -13,6 +13,7 @@ describe('registered surface region boundary', () => {
     );
   });
   test('registered surface renderers never read region state directly', () => {
+    // Renderers must not read region state; the state-free useShowSurface command hook is permitted.
     for (const surface of REGION_SURFACE_REGISTRY.values()) {
       const source = readFileSync(
         resolve(process.cwd(), surface.sourceFile),

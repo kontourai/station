@@ -13,7 +13,8 @@
  * pin the fix: a failed fetch tears the just-created tab back down
  * (`removeChat`) and resolves `null` so `useChatDockActions`' `openConversation`
  * reports failure to the row-open policy, which then falls back to
- * `onOpenSession`/`/activity` instead of leaving an orphaned empty tab.
+ * `onOpenSession` (which reveals the Activity surface) instead of leaving an
+ * orphaned empty tab.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook } from '@testing-library/react';

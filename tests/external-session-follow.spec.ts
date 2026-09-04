@@ -248,10 +248,10 @@ test.describe
 
       // The project board is the Console work-item projection now; attached
       // runtime sessions live on the provider-neutral Sessions surface.
-      await page.goto(`/activity?session=${encodeURIComponent(THREAD_ID)}`);
-      await expect(page).toHaveURL(
-        new RegExp(`/activity\\?session=${encodeURIComponent(THREAD_ID)}$`),
+      await page.goto(
+        `/?surface=activity&session=${encodeURIComponent(THREAD_ID)}`,
       );
+      await expect(page).toHaveURL(/\/$/);
 
       const detail = page.getByTestId('session-detail');
       await expect(detail).toContainText(
@@ -339,7 +339,7 @@ test('adopts an attached session into a linked Flow child without reopening afte
   const fixture = await mockMobileAdoption(page);
 
   await page.goto(
-    `/activity?session=${encodeURIComponent(ATTACHED_MOBILE_THREAD_ID)}`,
+    `/?surface=activity&session=${encodeURIComponent(ATTACHED_MOBILE_THREAD_ID)}`,
   );
   const detail = page.getByTestId('session-detail');
   await expect(detail).toContainText('Following terminal session · Read only');

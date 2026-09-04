@@ -5,6 +5,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import {
@@ -955,6 +956,32 @@ describe('ExistingAgentSetupImportModule', () => {
         })),
       }),
     ).rejects.toThrow('PREVIEW_EXPIRED');
+  });
+
+  test('receipt transactions tolerate sibling lock files without accepting receipt replacement', async () => {
+    const { root } = await fixture();
+    const directory = join(root, 'receipts');
+    mkdirSync(directory);
+    const path = join(directory, 'setup-imports.json');
+    writeFileSync(path, JSON.stringify({ count: 0 }));
+    const store = new SetupImportReceiptStore(path, () => ({ count: 0 }), {
+      afterOpenForTest: () => {
+        writeFileSync(join(directory, 'contender-lock.tmp'), 'lock contender');
+        // Force a distinct timestamp even on coarse-resolution filesystems.
+        utimesSync(directory, new Date(0), new Date(10_000));
+      },
+    });
+    await expect(store.read()).resolves.toEqual({ count: 0 });
+    await expect(
+      store.mutate<{ count: number }>((value) => ({ count: value.count + 1 })),
+    ).resolves.toEqual({ count: 1 });
+    const hostile = new SetupImportReceiptStore(path, () => ({}), {
+      afterOpenForTest: () => {
+        renameSync(path, `${path}.original`);
+        writeFileSync(path, JSON.stringify({ count: 999 }));
+      },
+    });
+    await expect(hostile.read()).rejects.toThrow('changed after read');
   });
 
   test('serializes concurrent preview, apply, and rollback receipt transitions', async () => {
