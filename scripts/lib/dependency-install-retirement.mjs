@@ -6,6 +6,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   realpathSync,
   renameSync,
   rmdirSync,
@@ -67,10 +68,11 @@ function sameEntry(path, expected) {
 
 /**
  * Participating installers exclude one another; there is no PID/age reclaim.
- * CI retires only root node_modules, on the same filesystem, before npm runs.
+ * CI retires and clears only root node_modules before npm runs, matching ci's
+ * replacement semantics without retaining two complete dependency trees.
  * The caller must include ALL approved hooks and final verification in run().
- * Failed or interrupted installs leave their guard and previous tree for
- * explicit inspection. This is not rollback, a home archive, or protection
+ * Failed or interrupted installs leave their guard and any cleanup remnants
+ * or partial new tree for inspection. This is not rollback, an archive, or protection
  * against hostile same-user processes/uncoordinated dependency writers.
  */
 export function withDependencyInstallGuard({
@@ -139,7 +141,22 @@ export function withDependencyInstallGuard({
       renameSync(modules, previous);
       retiredIdentity = before;
       assertOwned();
+      record('retiring');
+      removeTree(previous, {
+        recursive: true,
+        force: false,
+        maxRetries: 2,
+        retryDelay: 100,
+      });
+      // Removal ends this ownership. Never delete a subsequently reused name.
+      retiredIdentity = undefined;
+      if (entry(previous))
+        throw new Error('Retired dependency pathname remains or was reused.');
     }
+    if (clean && entry(modules))
+      throw new Error(
+        'Dependency target name was reused before npm admission.',
+      );
     record('installing');
     result = run();
     if (result && typeof result.then === 'function')
@@ -169,24 +186,20 @@ export function withDependencyInstallGuard({
   }
   try {
     assertOwned();
-    if (retiredIdentity)
-      removeTree(previous, {
-        recursive: true,
-        force: false,
-        maxRetries: 2,
-        retryDelay: 100,
-      });
     // Never recursively remove the guard: unexpected children stay visible.
+    const children = readdirSync(guard);
     if (
       !sameEntry(guard, guardIdentity) ||
-      !sameEntry(receiptPath, receiptIdentity)
+      !sameEntry(receiptPath, receiptIdentity) ||
+      children.length !== 1 ||
+      children[0] !== 'receipt.json'
     )
       throw new Error('Dependency installer cleanup ownership changed.');
     unlinkSync(receiptPath);
     rmdirSync(guard);
   } catch {
     warn(
-      `[dependency-lifecycle] Dependencies verified; prior generated-tree cleanup is pending at ${JSON.stringify(guard)}. Inspect retained state before the next install.`,
+      `[dependency-lifecycle] Dependencies verified; installer guard cleanup is pending at ${JSON.stringify(guard)}. Inspect retained state before the next install.`,
     );
   }
   return result;

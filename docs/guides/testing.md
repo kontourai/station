@@ -392,11 +392,13 @@ installation: this guard does not coordinate raw npm, older runners, or other
 processes using the dependency tree.
 
 For `dependencies:ci`, an existing real root `node_modules` directory is renamed
-into the guard before npm starts, so npm begins with an absent root target.
-This avoids the observed reused-tree cleanup race with freshly-created
-`.DS_Store` entries without recursively changing permission modes. The previous
-root tree stays retained until **all** hooks and verification succeed; then
-only that owned generated tree is removed. `dependencies:install` remains
+into the guard and only that owned generated tree is cleared **before** npm
+starts. This gives npm an absent root target and avoids holding two complete
+dependency trees during installation. It preserves `npm ci` replacement
+semantics: the old generated dependencies are not a backup. Cleanup targets
+the retired identity with bounded filesystem retries, without recursively
+changing permission modes. If cleanup fails, npm does not start; the guard and
+any remaining cleanup data stay for inspection. `dependencies:install` remains
 incremental and does not retire its existing dependency tree.
 Node and npm CLI driver paths are selected before retirement. A clean install
 refuses a driver whose canonical target is within the tree it would move,
@@ -405,8 +407,8 @@ external driver is bound to that external canonical path and remains usable
 after the link moves. Selected paths are passed to npm rather than
 rediscovered after the move.
 
-An install/hook/verification failure leaves the guard, its phase receipt, and
-any previous root tree in place. New partial dependencies are not automatically
+An install/hook/verification failure leaves the guard and any partial new
+dependencies in place. They are not automatically
 restored, verified, or retried. Inspect the original npm error and the exact
 reported guard path; first establish that the owning installer and other
 dependency consumers have stopped. Preserve the guard and partial tree in a
@@ -415,7 +417,12 @@ delete a guard, infer ownership from a dead PID, or run gates against incomplete
 dependencies. A command-not-found error after interrupted provisioning is not
 an executed test failure.
 
-If verification succeeds but old-tree cleanup fails, the runner reports
+Leave disk headroom for npm extraction, staging, and cache work; this runner
+does not reserve disk space. An ENOSPC or abrupt interruption can prevent a
+phase-receipt update, so the last recorded phase is not proof that an installer
+is still alive or that an install completed.
+
+If verification succeeds but guard cleanup cannot finish, the runner reports
 **verified dependencies / cleanup pending** and leaves the guard blocking the
 next install until it is inspected. Unexpected guard children are never
 recursively deleted. This is cooperative install coordination and a recovery

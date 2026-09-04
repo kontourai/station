@@ -37,7 +37,7 @@ afterEach(() => {
     rmSync(path, { recursive: true, force: true });
 });
 
-test('a reused clean install sees an absent target while its exact old tree stays retained until verification', () => {
+test('a reused clean install clears its exact retired tree before npm without a second full-tree space requirement', () => {
   const f = fixture();
   seed(f.modules);
   const before = statSync(f.modules);
@@ -46,12 +46,17 @@ test('a reused clean install sees an absent target while its exact old tree stay
     withDependencyInstallGuard({
       root: f.root,
       clean: true,
-      run: () => {
+      removeTree: (path, options) => {
         expect(existsSync(f.modules)).toBe(false);
         expect(statSync(f.previous).ino).toBe(before.ino);
         expect(readFileSync(join(f.previous, '.DS_Store'), 'utf8')).toBe(
           'original',
         );
+        rmSync(path, options);
+      },
+      run: () => {
+        expect(existsSync(f.modules)).toBe(false);
+        expect(existsSync(f.previous)).toBe(false);
         seed(f.modules, 'verified');
         return result;
       },
@@ -62,7 +67,7 @@ test('a reused clean install sees an absent target while its exact old tree stay
 });
 
 test.each(['npm', 'approved hook', 'verification'])(
-  'a failed %s retains old and partial trees, and the next attempt cannot erase evidence',
+  'a failed %s retains the partial new tree and prevents the next attempt erasing evidence',
   (phase) => {
     const f = fixture();
     seed(f.modules);
@@ -76,9 +81,7 @@ test.each(['npm', 'approved hook', 'verification'])(
         },
       }),
     ).toThrow(/not verified/i);
-    expect(readFileSync(join(f.previous, '.DS_Store'), 'utf8')).toBe(
-      'original',
-    );
+    expect(existsSync(f.previous)).toBe(false);
     expect(readFileSync(join(f.modules, 'partial'), 'utf8')).toBe('original');
     expect(
       JSON.parse(readFileSync(join(f.guard, 'receipt.json'), 'utf8')).phase,
@@ -157,9 +160,9 @@ test('a reused guard name cannot make successful work delete a replacement owner
     }),
   ).toThrow(/not verified/i);
   expect(readFileSync(join(f.guard, 'new-owner'), 'utf8')).toBe('original');
-  expect(readFileSync(join(moved, 'node_modules', '.DS_Store'), 'utf8')).toBe(
-    'original',
-  );
+  expect(
+    JSON.parse(readFileSync(join(moved, 'receipt.json'), 'utf8')).phase,
+  ).toBe('failed');
 });
 
 test('a replaced retired tree cannot redirect cleanup', () => {
@@ -167,20 +170,25 @@ test('a replaced retired tree cannot redirect cleanup', () => {
   const outside = fixture();
   seed(f.modules);
   seed(outside.modules, 'sentinel');
+  const run = vi.fn();
   expect(() =>
     withDependencyInstallGuard({
       root: f.root,
       clean: true,
-      run: () => {
+      removeTree: () => {
         renameSync(f.previous, join(f.root, 'original-modules'));
         symlinkSync(outside.modules, f.previous, 'junction');
-        seed(f.modules, 'verified');
       },
+      run,
     }),
   ).toThrow(/not verified/i);
   expect(readFileSync(join(outside.modules, 'sentinel'), 'utf8')).toBe(
     'original',
   );
+  expect(run).not.toHaveBeenCalled();
+  expect(
+    readFileSync(join(f.root, 'original-modules', '.DS_Store'), 'utf8'),
+  ).toBe('original');
 });
 
 test('an asynchronous callback cannot release an unfinished install', () => {
@@ -195,7 +203,7 @@ test('an asynchronous callback cannot release an unfinished install', () => {
   expect(existsSync(f.guard)).toBe(true);
 });
 
-test('a cleanup failure preserves a verified installation and names retained cleanup without silently retrying npm', () => {
+test('a retired-tree cleanup failure stops before npm and retains remaining generated data', () => {
   const f = fixture();
   seed(f.modules);
   const warn = vi.fn();
@@ -206,7 +214,7 @@ test('a cleanup failure preserves a verified installation and names retained cle
   const removeTree = vi.fn(() => {
     throw new Error('ENOTEMPTY');
   });
-  expect(
+  expect(() =>
     withDependencyInstallGuard({
       root: f.root,
       clean: true,
@@ -214,17 +222,60 @@ test('a cleanup failure preserves a verified installation and names retained cle
       warn,
       removeTree,
     }),
-  ).toBe('verified');
-  expect(run).toHaveBeenCalledTimes(1);
+  ).toThrow(/not verified/i);
+  expect(run).not.toHaveBeenCalled();
   expect(removeTree).toHaveBeenCalledTimes(1);
+  expect(warn).not.toHaveBeenCalled();
+  expect(
+    JSON.parse(readFileSync(join(f.guard, 'receipt.json'), 'utf8')).phase,
+  ).toBe('failed');
+  expect(existsSync(join(f.previous, '.DS_Store'))).toBe(true);
+  expect(existsSync(f.modules)).toBe(false);
+});
+
+test('unexpected guard children remain visible after successful verification', () => {
+  const f = fixture();
+  seed(f.modules);
+  const warn = vi.fn();
+  expect(
+    withDependencyInstallGuard({
+      root: f.root,
+      warn,
+      run: () => {
+        seed(f.modules, 'verified');
+        writeFileSync(join(f.guard, 'unexpected'), 'keep');
+        return 'verified';
+      },
+    }),
+  ).toBe('verified');
   expect(warn).toHaveBeenCalledWith(
     expect.stringContaining('cleanup is pending'),
   );
+  expect(readFileSync(join(f.guard, 'unexpected'), 'utf8')).toBe('keep');
   expect(
     JSON.parse(readFileSync(join(f.guard, 'receipt.json'), 'utf8')).phase,
   ).toBe('verified');
-  expect(existsSync(join(f.previous, '.DS_Store'))).toBe(true);
-  expect(existsSync(join(f.modules, 'verified'))).toBe(true);
+});
+
+test('a root target recreated after retired cleanup is preserved and never handed to npm', () => {
+  const f = fixture();
+  seed(f.modules);
+  const run = vi.fn();
+  expect(() =>
+    withDependencyInstallGuard({
+      root: f.root,
+      removeTree: (path, options) => {
+        rmSync(path, options);
+        seed(f.modules, 'replacement-owner');
+      },
+      run,
+    }),
+  ).toThrow(/not verified/i);
+  expect(run).not.toHaveBeenCalled();
+  expect(readFileSync(join(f.modules, 'replacement-owner'), 'utf8')).toBe(
+    'original',
+  );
+  expect(existsSync(f.previous)).toBe(false);
 });
 
 test('a replacement receipt is not overwritten by the failed-operation record', () => {
@@ -322,7 +373,7 @@ function pipeline(f: ReturnType<typeof fixture>, failed?: string) {
     npmCommand: vi.fn(() => {
       phase('npm');
       expect(existsSync(f.modules)).toBe(false);
-      expect(existsSync(join(f.previous, '.DS_Store'))).toBe(true);
+      expect(existsSync(f.previous)).toBe(false);
       seed(f.modules, 'fresh');
     }),
     stageLifecyclePrebuilds: vi.fn(() => {
@@ -342,7 +393,7 @@ function pipeline(f: ReturnType<typeof fixture>, failed?: string) {
   return { execution, npmCliPath, calls };
 }
 
-test('the production installer binds its selected driver and retains old bytes through the actual phase order', () => {
+test('the production installer binds its selected driver and guards the actual phase order', () => {
   const f = fixture();
   seed(f.modules);
   const p = pipeline(f);
@@ -372,7 +423,7 @@ test('the production installer binds its selected driver and retains old bytes t
 });
 
 test.each(['hooks', 'owned', 'verify'])(
-  'the actual installer retains both trees after its %s phase fails',
+  'the actual installer retains the partial new tree after its %s phase fails',
   (failed) => {
     const f = fixture();
     seed(f.modules);
@@ -380,9 +431,7 @@ test.each(['hooks', 'owned', 'verify'])(
     expect(() => install({}, p.execution as any)).toThrow(/not verified/i);
     expect(p.execution.npmCommand).toHaveBeenCalledTimes(1);
     expect(p.calls.at(-1)).toBe(failed);
-    expect(readFileSync(join(f.previous, '.DS_Store'), 'utf8')).toBe(
-      'original',
-    );
+    expect(existsSync(f.previous)).toBe(false);
     expect(readFileSync(join(f.modules, 'fresh'), 'utf8')).toBe('original');
     expect(
       JSON.parse(readFileSync(join(f.guard, 'receipt.json'), 'utf8')).phase,
