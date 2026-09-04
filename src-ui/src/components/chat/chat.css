@@ -1921,7 +1921,16 @@
      larger text scale or a new state could grow. */
   .app-toolbar__conn-state {
     min-width: 0;
-    max-width: 120px;
+    /* Derived from the row, not chosen: at 390px the left side (hamburger,
+       logo, brand at its floor, gaps) ends at x=126 and this cluster carries
+       three further 44px controls plus three 4px gaps = 144, leaving 120px
+       for the whole chip. The chip's own furniture (button padding, the 7px
+       dot, its gap) measures 35px, so the label gets 85. "Can't connect"
+       (79px) still renders in full; the two longest — "Needs re-pairing" and
+       "Awaiting approval", which archive#4512 added and which are what the
+       120px ceiling below was actually sized for — ellipsize by a few
+       characters rather than pushing Settings off the screen. */
+    max-width: 85px;
     overflow: hidden;
     text-overflow: ellipsis;
   }

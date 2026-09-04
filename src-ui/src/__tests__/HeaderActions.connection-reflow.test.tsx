@@ -291,17 +291,26 @@ describe.skipIf(!chromiumAvailable)(
       ).toEqual(states.map(() => xs[0]));
     });
 
-    test('the Settings control stays inside a phone viewport in every news-carrying state', async () => {
-      // #1401. The width agreement above says the states agree with each
-      // other; it does not say where they leave the control, and they agreed
-      // on a position OUTSIDE the viewport. The chip reserved 116px for a
-      // label whose longest news copy renders at ~102px, in a row that is
-      // `flex-shrink: 0` — so Settings sat at x=377..421 at every phone width
-      // and was clipped by the viewport rather than reflowed by a sibling.
-      // This asserts the property the reservation was silently trading away:
-      // the last control in the cluster is wholly on screen. Fails on the
-      // pre-fix stylesheet (right edge 421 against a 390px viewport).
+    test('the connection chip fits the width a phone row can spare', async () => {
+      // #1401. NOT a position assertion: this fixture mounts `HeaderActions`
+      // alone, so the cluster starts at x=0 and the Settings control is
+      // always "inside the viewport" here no matter how wide the chip grows —
+      // an earlier version of this test asserted its right edge and passed
+      // with the defect restored, which is how that was found. The chip's own
+      // width is the thing this fixture can actually see, so pin that against
+      // the budget the real row leaves it.
+      //
+      // Budget at 390px, measured on a running app in the `error` state:
+      // the row's left side (hamburger, logo, brand at its floor, gaps) ends
+      // at x=126 and `.app-toolbar__actions` carries three further 44px
+      // controls plus three 4px gaps = 144. 390 - 126 - 144 leaves **120px**
+      // for the connection chip. With the 116px reservation it rendered at
+      // 151px and put Settings at x=377..421 — past a 390px viewport, past a
+      // 412px Pixel 7, and past its own centre (x≈399) below 399px, which is
+      // unreachable rather than merely clipped. Released, the chip renders at
+      // 114px in this state and the row ends at 384.
       const viewport = { width: 390, height: 200 };
+      const CHIP_BUDGET_PX = 120;
       const states: ChipState[] = [
         'connecting',
         'error',
@@ -315,16 +324,12 @@ describe.skipIf(!chromiumAvailable)(
           await page.setContent(
             buildFixtureHtml(await renderMarkupForState(state)),
           );
-          const box = await page
-            .locator('[aria-label="Open settings"]')
-            .boundingBox();
-          expect(box, `Open settings control not visible in ${state}`).not.toBe(
-            null,
-          );
+          const box = await page.locator('.app-toolbar__conn').boundingBox();
+          expect(box, `connection chip not visible in ${state}`).not.toBe(null);
           expect(
-            Math.round(box!.x + box!.width),
-            `Settings control extends past the ${viewport.width}px viewport in the ${state} state — the toolbar cannot reserve width it does not have.`,
-          ).toBeLessThanOrEqual(viewport.width);
+            Math.round(box!.width),
+            `The connection chip is wider than the ${CHIP_BUDGET_PX}px a ${viewport.width}px row can spare in the ${state} state, which pushes the Settings control off the screen (#1401).`,
+          ).toBeLessThanOrEqual(CHIP_BUDGET_PX);
         } finally {
           await page.close();
         }
