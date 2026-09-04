@@ -9,21 +9,51 @@ export type TranscriptReadRequest =
       query: string;
       ownerUserId: string;
       tenantId?: string;
+      projectId?: string;
       limit: number;
+    }
+  | {
+      type: 'message-open';
+      id: number;
+      threadId: string;
+      matchedEventId: string;
+      ownerUserId: string;
+      tenantId?: string;
+    }
+  | {
+      type: 'session-open';
+      id: number;
+      threadId: string;
+      ownerUserId: string;
+      tenantId?: string;
     }
   | { type: 'session-owner'; id: number; threadId: string };
 export interface TranscriptSearchMatch {
   conversationId: string;
   messageId: string;
+  /** Index row identity, distinct from the potentially shared navigation anchor. */
+  matchedEventId: string;
   role: 'user' | 'assistant';
   excerpt: string;
   projectSlug?: string;
   agentSlug?: string;
   engine?: string;
 }
+export interface TranscriptMessageOpenFact {
+  conversationId: string;
+  matchedEventId: string;
+  messageId: string;
+  projectSlug?: string;
+}
+export interface TranscriptSessionOpenFact {
+  conversationId: string;
+  projectSlug?: string;
+}
 export type TranscriptReadResult =
   | { state: 'available'; rows: TranscriptSearchMatch[] }
   | { state: 'available'; owner: string | null }
+  | { state: 'available'; target: TranscriptMessageOpenFact | null }
+  | { state: 'available'; session: TranscriptSessionOpenFact | null }
   | { state: 'unavailable' };
 
 function exact(
@@ -52,11 +82,38 @@ export function transcriptMessageRequest(
 ): TranscriptReadRequest | null {
   const fields = exact(
     input,
-    ['query', 'ownerUserId', 'tenantId', 'limit'],
+    ['query', 'ownerUserId', 'tenantId', 'projectId', 'limit'],
     ['query', 'ownerUserId', 'limit'],
   );
   return fields
     ? parseTranscriptReadRequest({ ...fields, type: 'message-search', id })
+    : null;
+}
+
+export function transcriptMessageOpenRequest(
+  input: unknown,
+  id: number,
+): TranscriptReadRequest | null {
+  const fields = exact(
+    input,
+    ['threadId', 'matchedEventId', 'ownerUserId', 'tenantId'],
+    ['threadId', 'matchedEventId', 'ownerUserId'],
+  );
+  return fields
+    ? parseTranscriptReadRequest({ ...fields, type: 'message-open', id })
+    : null;
+}
+export function transcriptSessionOpenRequest(
+  input: unknown,
+  id: number,
+): TranscriptReadRequest | null {
+  const fields = exact(
+    input,
+    ['threadId', 'ownerUserId', 'tenantId'],
+    ['threadId', 'ownerUserId'],
+  );
+  return fields
+    ? parseTranscriptReadRequest({ ...fields, type: 'session-open', id })
     : null;
 }
 
@@ -65,7 +122,17 @@ export function parseTranscriptReadRequest(
 ): TranscriptReadRequest | null {
   const request = exact(
     value,
-    ['type', 'id', 'query', 'ownerUserId', 'tenantId', 'limit', 'threadId'],
+    [
+      'type',
+      'id',
+      'query',
+      'ownerUserId',
+      'tenantId',
+      'projectId',
+      'limit',
+      'threadId',
+      'matchedEventId',
+    ],
     ['type', 'id'],
   );
   if (
@@ -80,13 +147,39 @@ export function parseTranscriptReadRequest(
       !boundedTaskText(request.threadId, 256)
     )
       return null;
+  } else if (request.type === 'session-open') {
+    if (
+      ['query', 'projectId', 'limit', 'matchedEventId'].some((key) =>
+        Object.hasOwn(request, key),
+      ) ||
+      !boundedTaskText(request.threadId, 256) ||
+      !boundedTaskText(request.ownerUserId, 256) ||
+      (request.tenantId !== undefined &&
+        !boundedTaskText(request.tenantId, 256))
+    )
+      return null;
+  } else if (request.type === 'message-open') {
+    if (
+      ['query', 'projectId', 'limit'].some((key) =>
+        Object.hasOwn(request, key),
+      ) ||
+      !boundedTaskText(request.threadId, 256) ||
+      !boundedTaskText(request.matchedEventId, 256) ||
+      !boundedTaskText(request.ownerUserId, 256) ||
+      (request.tenantId !== undefined &&
+        !boundedTaskText(request.tenantId, 256))
+    )
+      return null;
   } else if (request.type === 'message-search') {
     if (
       Object.hasOwn(request, 'threadId') ||
+      Object.hasOwn(request, 'matchedEventId') ||
       !boundedTaskText(request.query, 256) ||
       !boundedTaskText(request.ownerUserId, 256) ||
       (request.tenantId !== undefined &&
         !boundedTaskText(request.tenantId, 256)) ||
+      (request.projectId !== undefined &&
+        !boundedTaskText(request.projectId, 256)) ||
       !Number.isInteger(request.limit) ||
       (request.limit as number) < 1 ||
       (request.limit as number) > 20
@@ -99,7 +192,11 @@ export function parseTranscriptReadResult(
   value: unknown,
   request: TranscriptReadRequest,
 ): TranscriptReadResult | null {
-  const result = exact(value, ['state', 'rows', 'owner'], ['state']);
+  const result = exact(
+    value,
+    ['state', 'rows', 'owner', 'target', 'session'],
+    ['state'],
+  );
   if (!result) return null;
   if (result.state === 'unavailable')
     return Object.keys(result).length === 1 ? { state: 'unavailable' } : null;
@@ -108,6 +205,44 @@ export function parseTranscriptReadResult(
   if (request.type === 'session-owner') {
     return result.owner === null || boundedTaskText(result.owner, 256)
       ? { state: 'available', owner: result.owner }
+      : null;
+  }
+  if (request.type === 'message-open') {
+    if (result.target === null) return { state: 'available', target: null };
+    const target = exact(
+      result.target,
+      ['conversationId', 'matchedEventId', 'messageId', 'projectSlug'],
+      ['conversationId', 'matchedEventId', 'messageId'],
+    );
+    if (
+      !target ||
+      target.conversationId !== request.threadId ||
+      target.matchedEventId !== request.matchedEventId ||
+      !boundedTaskText(target.messageId, 512) ||
+      (target.projectSlug !== undefined &&
+        !boundedTaskText(target.projectSlug, 256))
+    )
+      return null;
+    return {
+      state: 'available',
+      target: target as unknown as TranscriptMessageOpenFact,
+    };
+  }
+  if (request.type === 'session-open') {
+    if (result.session === null) return { state: 'available', session: null };
+    const session = exact(
+      result.session,
+      ['conversationId', 'projectSlug'],
+      ['conversationId'],
+    );
+    return session &&
+      session.conversationId === request.threadId &&
+      (session.projectSlug === undefined ||
+        boundedTaskText(session.projectSlug, 256))
+      ? {
+          state: 'available',
+          session: session as unknown as TranscriptSessionOpenFact,
+        }
       : null;
   }
   if (
@@ -129,18 +264,22 @@ export function parseTranscriptReadResult(
       [
         'conversationId',
         'messageId',
+        'matchedEventId',
         'role',
         'excerpt',
         'projectSlug',
         'agentSlug',
         'engine',
       ],
-      ['conversationId', 'messageId', 'role', 'excerpt'],
+      ['conversationId', 'messageId', 'matchedEventId', 'role', 'excerpt'],
     );
     if (
       !row ||
       !boundedTaskText(row.conversationId, 256) ||
       !boundedTaskText(row.messageId, 512) ||
+      !boundedTaskText(row.matchedEventId, 256) ||
+      (request.projectId !== undefined &&
+        row.projectSlug !== request.projectId) ||
       (row.role !== 'user' && row.role !== 'assistant') ||
       typeof row.excerpt !== 'string' ||
       Buffer.byteLength(row.excerpt) > 1024 ||
@@ -149,7 +288,7 @@ export function parseTranscriptReadResult(
       )
     )
       return null;
-    const identity = JSON.stringify([row.conversationId, row.messageId]);
+    const identity = JSON.stringify([row.conversationId, row.matchedEventId]);
     if (identities.has(identity)) return null;
     identities.add(identity);
     rows.push(row as unknown as TranscriptSearchMatch);

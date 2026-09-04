@@ -11,6 +11,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Worker } from 'node:worker_threads';
 import {
+  parseHostedTenantRegistry,
+  sessionReadAuthorityFromRequest,
+  tenantId,
+} from '@kontourai/station-contracts/tenancy';
+import {
   UNIFIED_SEARCH_V1,
   type UnifiedSearchProviderRequest,
 } from '@kontourai/station-contracts/unified-search';
@@ -74,6 +79,94 @@ afterEach(async () => {
 });
 
 describe('owned isolated Task search', () => {
+  test('fresh personal point opens share the search reader and refuse moved/deleted Tasks', async () => {
+    const directory = root();
+    const graph = new TaskGraphService(directory, {
+      resolveProjectWorkspace: async () => '',
+    });
+    const task = await graph.createTask({
+      projectId: 'alpha',
+      title: 'Parser',
+      createdBy: 'user',
+    });
+    const owned = graph.createPersonalSearchReader('station-a');
+    readers.push(owned);
+    const input = {
+      taskId: task.id,
+      projectId: 'alpha',
+      authority: sessionReadAuthorityFromRequest('user', undefined, undefined),
+      current: () => true,
+    };
+    const synchronous = vi.spyOn(graph, 'readTask').mockImplementation(() => {
+      throw new Error('synchronous fallback');
+    });
+    expect(
+      await owned.provider.search(request, new AbortController().signal),
+    ).toMatchObject({ state: 'available' });
+    expect(await owned.open(input)).toEqual({
+      state: 'resolved',
+      target: { kind: 'task', taskId: task.id, projectId: 'alpha' },
+    });
+    const path = join(directory, 'task-graph.json');
+    const data = JSON.parse(readFileSync(path, 'utf8'));
+    data.tasks[0].projectId = 'beta';
+    writeFileSync(path, JSON.stringify(data));
+    expect(await owned.open(input)).toEqual({ state: 'not-found' });
+    expect(await owned.open({ ...input, projectId: 'beta' })).toMatchObject({
+      state: 'resolved',
+    });
+    data.tasks = [];
+    writeFileSync(path, JSON.stringify(data));
+    expect(await owned.open({ ...input, projectId: 'beta' })).toEqual({
+      state: 'not-found',
+    });
+    expect(synchronous).not.toHaveBeenCalled();
+    expect(owned.inspect().phase).toBe('idle');
+  });
+
+  test('hosted Task open refuses before constructing a worker and late principal loss publishes nothing', async () => {
+    const directory = root();
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [{ id: tenantId('alpha'), authority: 'alpha.test' }],
+    });
+    const authority = sessionReadAuthorityFromRequest(
+      'user',
+      { tenantId: tenantId('alpha') },
+      registry,
+    );
+    const marker = join(directory, 'worker-constructed');
+    const owned = reader(directory, {
+      workerSourceUrl: source(
+        `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'constructed'); throw new Error('must not launch');`,
+      ),
+    });
+    expect(
+      await owned.open({
+        taskId: 'task',
+        projectId: 'alpha',
+        authority,
+        current: () => true,
+      }),
+    ).toEqual({ state: 'not-found' });
+    expect(owned.inspect().phase).toBe('idle');
+    expect(existsSync(marker)).toBe(false);
+    const delayed = reader(directory, {
+      workerSourceUrl: source(
+        `import { parentPort } from 'node:worker_threads'; parentPort.on('message', wire => { const r=JSON.parse(wire); setTimeout(() => parentPort.postMessage(JSON.stringify({id:r.id,page:{state:'resolved',target:{kind:'task',projectId:r.projectId,taskId:r.taskId}}})), 20); });`,
+      ),
+    });
+    let current = true;
+    const opening = delayed.open({
+      taskId: 'task',
+      projectId: 'alpha',
+      authority: sessionReadAuthorityFromRequest('user', undefined, undefined),
+      current: () => current,
+    });
+    current = false;
+    expect(await opening).toEqual({ state: 'not-found' });
+  });
+
   test('real TaskGraph owner reads canonical files and projects through the search aggregate', async () => {
     const directory = root();
     const graph = new TaskGraphService(directory, {

@@ -143,6 +143,22 @@ The existing single SessionAuthorization applies the same personal/hosted/
 legacy policy with async cold owner lookups and positive-only caching. Its
 generation fence invalidates in-flight lookups on owner/tenant changes. Parent
 principal currentness and the generation are rechecked before publication.
+
+**Owner-backed exact open reads (#1363).** The same Task reader now supports a
+fresh personal-only Task/project point read, and the same transcript reader
+supports exact Session metadata and indexed-message event point reads. Hosted
+Task authority is rejected before worker admission. Transcript owner/tenant and
+optional project filtering happen in SQL before the search limit; parent
+SessionAuthorization, principal currentness, cancellation and runtime generation
+still gate returned facts. Indexed messages carry an exact `matchedEventId`
+separately from the legacy `messageId` navigation anchor, which multiple events
+in one turn may share. Unified hit identity uses the exact event when present;
+old providers' navigation-anchor API remains compatible. New message opens
+require an exact Session/event pair, verify the canonical event still exists,
+and never follow lineage to a newer child. Typed open locators are not cached
+authorization receipts. These methods reuse one reader slot and its retained
+cleanup, with no new worker per call or synchronous fallback. There is still no
+runtime route, SDK, or palette wiring in this additive read-contract slice.
 The complete query plus authorization sequence has one two-second acceptance
 deadline, one active query and no queue. Task and transcript workers share
 private termination custody, not a plugin execution framework. EventStore

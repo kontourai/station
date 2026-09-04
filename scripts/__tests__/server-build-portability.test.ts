@@ -185,9 +185,10 @@ async function buildDesktopResourceFixture(root: string) {
   // staged runtime dependencies. Presence alone would not prove resolution.
   const taskReaderProbe = join(serverOutput, 'task-search-reader-probe.mjs');
   await esbuild.build({
-    entryPoints: [
-      join(repoRoot, 'src-server/services/search/isolated-task-search.ts'),
-    ],
+    stdin: {
+      contents: `export { createIsolatedTaskSearch } from ${JSON.stringify(join(repoRoot, 'src-server/services/search/isolated-task-search.ts'))}; export { sessionReadAuthorityFromRequest } from ${JSON.stringify(join(repoRoot, 'packages/contracts/src/tenancy.ts'))};`,
+      resolveDir: repoRoot,
+    },
     outfile: taskReaderProbe,
     bundle: true,
     platform: 'node',
@@ -201,22 +202,26 @@ async function buildDesktopResourceFixture(root: string) {
       '-e',
       `
     import { pathToFileURL } from 'node:url';
-    const { createIsolatedTaskSearch } = await import(pathToFileURL(${JSON.stringify(taskReaderProbe)}));
+    const { createIsolatedTaskSearch, sessionReadAuthorityFromRequest } = await import(pathToFileURL(${JSON.stringify(taskReaderProbe)}));
     const reader = createIsolatedTaskSearch({
       storePath: ${JSON.stringify(join(root, 'uncreated-task-home', 'task-graph.json'))}, stationId:'packaged-station'
     });
     try {
       const reply = await reader.provider.search({version:'station.unified-search/v1',query:'parser',limit:8},new AbortController().signal);
-      process.stdout.write(JSON.stringify(reply));
+      const opened = await reader.open({taskId:'missing',projectId:'project',authority:sessionReadAuthorityFromRequest('user',undefined,undefined),current:()=>true});
+      process.stdout.write(JSON.stringify({reply,opened}));
     } finally { await reader.close(); }
   `,
     ],
     { cwd: root, encoding: 'utf8', timeout: 15_000, windowsHide: true },
   );
   expect(JSON.parse(taskProbe.stdout)).toEqual({
-    version: 'station.unified-search/v1',
-    state: 'available',
-    results: [],
+    reply: {
+      version: 'station.unified-search/v1',
+      state: 'available',
+      results: [],
+    },
+    opened: { state: 'not-found' },
   });
   const transcriptPath = join(root, 'canonical-transcript.sqlite');
   const transcriptStore = new EventStore(transcriptPath);
@@ -271,7 +276,9 @@ async function buildDesktopResourceFixture(root: string) {
     try {
       const rows = await reader.search({query:'cobalt',ownerUserId:'packaged-user',limit:20});
       const owner = await reader.readOwner('packaged-thread');
-      process.stdout.write(JSON.stringify({rows,owner}));
+      const opened = await reader.readMessage({threadId:'packaged-thread',matchedEventId:'packaged-turn',ownerUserId:'packaged-user'});
+      const session = await reader.readSession({threadId:'packaged-thread',ownerUserId:'packaged-user'});
+      process.stdout.write(JSON.stringify({rows,owner,opened,session}));
     } finally { await reader.close(); }
   `,
     ],
@@ -279,6 +286,12 @@ async function buildDesktopResourceFixture(root: string) {
   );
   expect(JSON.parse(transcriptProbe.stdout)).toMatchObject({
     owner: 'packaged-user',
+    opened: {
+      conversationId: 'packaged-thread',
+      matchedEventId: 'packaged-turn',
+      messageId: 'packaged-turn:user',
+    },
+    session: { conversationId: 'packaged-thread' },
     rows: [
       {
         conversationId: 'packaged-thread',

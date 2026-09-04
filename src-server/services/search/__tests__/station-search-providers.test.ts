@@ -25,6 +25,68 @@ function task(overrides: Partial<TaskRecord> = {}): TaskRecord {
 }
 
 describe('Station unified-search providers', () => {
+  test('awaits the authority-bound asynchronous message source and passes cancellation', async () => {
+    const source = vi.fn(async (_request: unknown, signal?: AbortSignal) => {
+      expect(signal).toBeInstanceOf(AbortSignal);
+      await Promise.resolve();
+      return [
+        {
+          conversationId: 'session',
+          messageId: 'anchor:user',
+          matchedEventId: 'exact',
+          role: 'user' as const,
+          excerpt: 'parser',
+        },
+      ];
+    });
+    const service = new UnifiedSearchService([
+      createStationMessageSearchProvider({
+        authority: { mode: 'personal', stationId: 's' },
+        source: { searchAuthorizedMessages: source },
+      }),
+    ]);
+    expect(
+      await service.search({ version: UNIFIED_SEARCH_V1, query: 'parser' }),
+    ).toMatchObject({
+      state: 'complete',
+      results: [{ id: '["session","exact"]' }],
+    });
+    source.mockRejectedValueOnce(new Error('unavailable'));
+    expect(
+      await service.search({ version: UNIFIED_SEARCH_V1, query: 'parser' }),
+    ).toMatchObject({ state: 'unavailable', results: [] });
+  });
+  test('exact indexed events sharing a navigation anchor produce distinct unified identities', async () => {
+    const service = new UnifiedSearchService([
+      createStationMessageSearchProvider({
+        authority: { mode: 'personal', stationId: 's' },
+        source: {
+          searchAuthorizedMessages: () =>
+            ['event-a', 'event-b'].map((matchedEventId) => ({
+              conversationId: 'session',
+              messageId: 'turn:assistant',
+              matchedEventId,
+              role: 'assistant' as const,
+              excerpt: 'parser',
+            })),
+        },
+      }),
+    ]);
+    const result = await service.search({
+      version: UNIFIED_SEARCH_V1,
+      query: 'parser',
+    });
+    if (result.state === 'invalid') throw new Error('invalid result');
+    expect(result.results.map((row) => row.id).sort()).toEqual([
+      '["session","event-a"]',
+      '["session","event-b"]',
+    ]);
+    expect(new Set(result.results.map((row) => row.key)).size).toBe(2);
+    expect(result.results[0].openIntent).toMatchObject({
+      messageId: 'turn:assistant',
+      matchedEventId: expect.any(String),
+    });
+  });
   test('normalizes multiline display text and keeps valid sibling results', async () => {
     const service = new UnifiedSearchService([
       createPersonalTaskSearchProvider({
@@ -91,10 +153,13 @@ describe('Station unified-search providers', () => {
       query: 'parser',
     });
 
-    expect(searchAuthorizedMessages).toHaveBeenCalledWith({
-      query: 'parser',
-      limit: 9,
-    });
+    expect(searchAuthorizedMessages).toHaveBeenCalledWith(
+      {
+        query: 'parser',
+        limit: 9,
+      },
+      expect.any(AbortSignal),
+    );
     if (result.state === 'invalid')
       throw new Error('unexpected invalid result');
     expect(result.results).toEqual([
@@ -140,11 +205,14 @@ describe('Station unified-search providers', () => {
       filters: { projectId: 'alpha' },
     });
 
-    expect(searchAuthorizedMessages).toHaveBeenCalledWith({
-      query: 'parser',
-      limit: 9,
-      projectId: 'alpha',
-    });
+    expect(searchAuthorizedMessages).toHaveBeenCalledWith(
+      {
+        query: 'parser',
+        limit: 9,
+        projectId: 'alpha',
+      },
+      expect.any(AbortSignal),
+    );
     if (result.state === 'invalid')
       throw new Error('unexpected invalid result');
     expect(result.state).toBe('partial');

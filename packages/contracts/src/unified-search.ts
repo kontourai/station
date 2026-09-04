@@ -50,7 +50,14 @@ export type UnifiedSearchMatchedField =
 /** Host-resolved intent. Cached search data never grants open authority. */
 export type UnifiedSearchOpenIntent =
   | { kind: 'task'; projectId: string; taskId: string }
-  | { kind: 'session-message'; sessionId: string; messageId: string }
+  | {
+      kind: 'session-message';
+      sessionId: string;
+      /** Transcript navigation anchor; several indexed events may share it. */
+      messageId: string;
+      /** Exact indexed event identity. Older providers may omit this field. */
+      matchedEventId?: string;
+    }
   | {
       kind: 'station-resource';
       resourceKind: Exclude<UnifiedSearchResultKind, 'task' | 'message'>;
@@ -184,3 +191,27 @@ export interface UnifiedSearchResponse {
 export type UnifiedSearchOutcome =
   | { state: 'invalid'; reason: string; version: typeof UNIFIED_SEARCH_V1 }
   | UnifiedSearchResponse;
+
+/** A locator is not authority. Owners must perform a fresh authorized point read. */
+export type UnifiedSearchOpenLocator =
+  | { kind: 'task'; projectId: string; taskId: string }
+  | { kind: 'session'; sessionId: string }
+  | { kind: 'session-message'; sessionId: string; matchedEventId: string };
+
+export type UnifiedSearchResolvedOpenTarget =
+  | { kind: 'task'; projectId: string; taskId: string }
+  | { kind: 'session'; sessionId: string; projectId?: string }
+  | {
+      kind: 'session-message';
+      sessionId: string;
+      matchedEventId: string;
+      /** Reveal this anchor only in the exact Session above, never its current child. */
+      navigationMessageId: string;
+      projectId?: string;
+    };
+
+export type UnifiedSearchOpenResolution =
+  | { state: 'resolved'; target: UnifiedSearchResolvedOpenTarget }
+  /** Deliberately indistinguishable from authorization denial. */
+  | { state: 'not-found' }
+  | { state: 'unavailable' };

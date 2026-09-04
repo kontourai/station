@@ -31,6 +31,7 @@ function truncateUtf8(value: string, maxBytes: number): string {
 export interface AuthorizedMessageSearchMatch {
   conversationId: string;
   messageId: string;
+  matchedEventId?: string;
   role: 'user' | 'assistant';
   excerpt: string;
   projectSlug?: string;
@@ -38,12 +39,18 @@ export interface AuthorizedMessageSearchMatch {
 }
 
 export interface StationMessageSearchSource {
-  /** Existing SessionTranscriptReads search with request authority already bound. */
-  searchAuthorizedMessages(request: {
-    query: string;
-    limit: number;
-    projectId?: string;
-  }): readonly AuthorizedMessageSearchMatch[];
+  /** Request-bound owner read. Runtime composition must select the isolated async reader;
+   * the synchronous arm preserves compatibility for existing inert/test adapters only. */
+  searchAuthorizedMessages(
+    request: {
+      query: string;
+      limit: number;
+      projectId?: string;
+    },
+    signal?: AbortSignal,
+  ):
+    | readonly AuthorizedMessageSearchMatch[]
+    | Promise<readonly AuthorizedMessageSearchMatch[]>;
 }
 
 export type StationMessageSearchAuthority =
@@ -192,7 +199,7 @@ export function createStationMessageSearchProvider(input: {
       owner,
       kinds: ['message'],
     },
-    async search(request): Promise<UnifiedSearchProviderPage> {
+    async search(request, signal): Promise<UnifiedSearchProviderPage> {
       if (request.continuation) {
         return {
           version: UNIFIED_SEARCH_V1,
@@ -206,13 +213,16 @@ export function createStationMessageSearchProvider(input: {
       if (request.filters?.taskId) {
         return { version: UNIFIED_SEARCH_V1, state: 'available', results: [] };
       }
-      const matches = input.source.searchAuthorizedMessages({
-        query: request.query,
-        limit: request.limit + 1,
-        ...(request.filters?.projectId
-          ? { projectId: request.filters.projectId }
-          : {}),
-      });
+      const matches = await input.source.searchAuthorizedMessages(
+        {
+          query: request.query,
+          limit: request.limit + 1,
+          ...(request.filters?.projectId
+            ? { projectId: request.filters.projectId }
+            : {}),
+        },
+        signal,
+      );
       if (
         request.filters?.projectId &&
         matches.some(
@@ -227,7 +237,10 @@ export function createStationMessageSearchProvider(input: {
       }
       const partial = matches.length > request.limit;
       const results = matches.slice(0, request.limit).map((match) => ({
-        id: JSON.stringify([match.conversationId, match.messageId]),
+        id: JSON.stringify([
+          match.conversationId,
+          match.matchedEventId ?? match.messageId,
+        ]),
         kind: 'message' as const,
         scope: {
           ...(match.projectSlug ? { projectId: match.projectSlug } : {}),
@@ -245,6 +258,9 @@ export function createStationMessageSearchProvider(input: {
           kind: 'session-message' as const,
           sessionId: match.conversationId,
           messageId: match.messageId,
+          ...(match.matchedEventId
+            ? { matchedEventId: match.matchedEventId }
+            : {}),
         },
       }));
       return {

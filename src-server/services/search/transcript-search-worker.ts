@@ -5,7 +5,9 @@ import { parentPort, workerData } from 'node:worker_threads';
 import {
   messageSearchExcerpt,
   querySessionOwner,
+  queryTranscriptMessage,
   queryTranscriptMessages,
+  queryTranscriptSession,
 } from '../orchestration/transcript-search-queries.js';
 import {
   parseTranscriptReadRequest,
@@ -40,23 +42,36 @@ port.on('message', (wire: unknown) => {
             state: 'available',
             owner: querySessionOwner(database, request.threadId, true) ?? null,
           }
-        : {
-            state: 'available',
-            rows: queryTranscriptMessages(database, request, true).map(
-              (row) => ({
-                conversationId: row.threadId,
-                messageId:
-                  row.role === 'assistant' && row.turnAnchorId
-                    ? `${row.turnAnchorId}:assistant`
-                    : `${row.eventId}:user`,
-                role: row.role,
-                excerpt: messageSearchExcerpt(row.content, request.query),
-                ...(row.projectSlug ? { projectSlug: row.projectSlug } : {}),
-                ...(row.agentSlug ? { agentSlug: row.agentSlug } : {}),
-                ...(row.engine ? { engine: row.engine } : {}),
-              }),
-            ),
-          };
+        : request.type === 'message-open'
+          ? {
+              state: 'available',
+              target: queryTranscriptMessage(database, request),
+            }
+          : request.type === 'session-open'
+            ? {
+                state: 'available',
+                session: queryTranscriptSession(database, request),
+              }
+            : {
+                state: 'available',
+                rows: queryTranscriptMessages(database, request, true).map(
+                  (row) => ({
+                    conversationId: row.threadId,
+                    matchedEventId: row.eventId,
+                    messageId:
+                      row.role === 'assistant' && row.turnAnchorId
+                        ? `${row.turnAnchorId}:assistant`
+                        : `${row.eventId}:user`,
+                    role: row.role,
+                    excerpt: messageSearchExcerpt(row.content, request.query),
+                    ...(row.projectSlug
+                      ? { projectSlug: row.projectSlug }
+                      : {}),
+                    ...(row.agentSlug ? { agentSlug: row.agentSlug } : {}),
+                    ...(row.engine ? { engine: row.engine } : {}),
+                  }),
+                ),
+              };
   } catch {
     /* Failure never becomes an authoritative empty/ownerless result. */
   }

@@ -1,6 +1,9 @@
 /** Private, data-only protocol for the fixed first-party Task read operation. */
 import { types } from 'node:util';
-import type { UnifiedSearchProviderRequest } from '@kontourai/station-contracts/unified-search';
+import type {
+  UnifiedSearchOpenResolution,
+  UnifiedSearchProviderRequest,
+} from '@kontourai/station-contracts/unified-search';
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { UNIFIED_SEARCH_LIMITS } from './unified-search-service.js';
 
@@ -13,7 +16,7 @@ export const TASK_SEARCH_LIMITS = Object.freeze({
   workerMemoryMb: 128,
 });
 
-export interface TaskReadRequest {
+export interface TaskSearchRequest {
   type: 'task-search';
   id: number;
   query: string;
@@ -22,6 +25,14 @@ export interface TaskReadRequest {
   projectId?: string;
   taskId?: string;
 }
+
+export interface TaskOpenRequest {
+  type: 'task-open';
+  id: number;
+  projectId: string;
+  taskId: string;
+}
+export type TaskReadRequest = TaskSearchRequest | TaskOpenRequest;
 
 function data(value: unknown, keys: readonly string[]) {
   if (!value || typeof value !== 'object' || types.isProxy(value)) return null;
@@ -56,7 +67,7 @@ export function boundedTaskText(
 export function taskReadRequest(
   request: UnifiedSearchProviderRequest,
   id: number,
-): TaskReadRequest | null {
+): TaskSearchRequest | null {
   const record = data(request, [
     'version',
     'query',
@@ -107,7 +118,7 @@ export function taskReadRequest(
     }
     includeTasks = values.includes('task');
   }
-  return parseTaskReadRequest({
+  const parsed = parseTaskReadRequest({
     type: 'task-search',
     id,
     query: record.query,
@@ -118,6 +129,7 @@ export function taskReadRequest(
       : { projectId: filters.projectId }),
     ...(filters.taskId === undefined ? {} : { taskId: filters.taskId }),
   });
+  return parsed?.type === 'task-search' ? parsed : null;
 }
 
 export function parseTaskReadRequest(value: unknown): TaskReadRequest | null {
@@ -130,6 +142,15 @@ export function parseTaskReadRequest(value: unknown): TaskReadRequest | null {
     'projectId',
     'taskId',
   ]);
+  if (record?.type === 'task-open') {
+    return Object.keys(record).length === 4 &&
+      Number.isSafeInteger(record.id) &&
+      (record.id as number) >= 1 &&
+      boundedTaskText(record.projectId, UNIFIED_SEARCH_LIMITS.idBytes) &&
+      boundedTaskText(record.taskId, UNIFIED_SEARCH_LIMITS.idBytes)
+      ? (record as unknown as TaskOpenRequest)
+      : null;
+  }
   if (
     record?.type !== 'task-search' ||
     !Number.isSafeInteger(record.id) ||
@@ -146,4 +167,31 @@ export function parseTaskReadRequest(value: unknown): TaskReadRequest | null {
   )
     return null;
   return record as unknown as TaskReadRequest;
+}
+
+export function parseTaskOpenResolution(
+  value: unknown,
+  request: TaskOpenRequest,
+): UnifiedSearchOpenResolution | null {
+  const result = data(value, ['state', 'target']);
+  if (!result) return null;
+  if (result.state === 'not-found' || result.state === 'unavailable')
+    return Object.keys(result).length === 1 ? { state: result.state } : null;
+  if (result.state !== 'resolved' || Object.keys(result).length !== 2)
+    return null;
+  const target = data(result.target, ['kind', 'projectId', 'taskId']);
+  return target &&
+    Object.keys(target).length === 3 &&
+    target.kind === 'task' &&
+    target.projectId === request.projectId &&
+    target.taskId === request.taskId
+    ? {
+        state: 'resolved',
+        target: {
+          kind: 'task',
+          projectId: request.projectId,
+          taskId: request.taskId,
+        },
+      }
+    : null;
 }

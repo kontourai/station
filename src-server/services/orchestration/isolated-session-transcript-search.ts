@@ -3,10 +3,18 @@ import {
   isSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
+import type { UnifiedSearchOpenResolution } from '@kontourai/station-contracts/unified-search';
 import type { IsolatedTranscriptReads } from '../search/isolated-transcript-search.js';
 import { boundedTaskText } from '../search/task-search-protocol.js';
 import type { TranscriptSearchMatch } from '../search/transcript-search-protocol.js';
 import type { SessionAuthorization } from './session-authorization.js';
+
+interface AuthorizedReadInput {
+  authority: SessionReadAuthority;
+  signal?: AbortSignal;
+  /** Parent-owned principal/credential currentness, never sent to the worker. */
+  current: () => boolean;
+}
 
 export function createIsolatedSessionTranscriptSearch(
   source: IsolatedTranscriptReads,
@@ -16,6 +24,57 @@ export function createIsolatedSessionTranscriptSearch(
   let closed = false;
   let busy = false;
   let active: AbortController | undefined;
+
+  async function readAuthorized<T>(
+    input: AuthorizedReadInput,
+    read: (current: () => boolean, signal: AbortSignal) => Promise<T>,
+  ): Promise<T | undefined> {
+    if (
+      closed ||
+      busy ||
+      input.signal?.aborted ||
+      !isSessionReadAuthority(input.authority) ||
+      (input.authority.mode === 'hosted' &&
+        !input.authority.tenantExecutionContext)
+    )
+      return;
+    const { signal, current: requestCurrent } = input;
+    busy = true;
+    const controller = new AbortController();
+    active = controller;
+    const deadline = performance.now() + 2000;
+    const sameGeneration = authorization.captureReadCurrentness();
+    const current = () => {
+      try {
+        return (
+          runtimeCurrent() === true &&
+          requestCurrent() === true &&
+          !closed &&
+          !controller.signal.aborted &&
+          performance.now() < deadline &&
+          sameGeneration()
+        );
+      } catch {
+        return false;
+      }
+    };
+    const abort = () => controller.abort();
+    const timer = setTimeout(abort, 2000);
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      if (signal?.aborted || !current()) return;
+      const result = await read(current, controller.signal);
+      return current() ? result : undefined;
+    } catch {
+      return undefined;
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      active = undefined;
+      busy = false;
+    }
+  }
+
   return {
     inspect: source.inspect,
     close() {
@@ -23,48 +82,27 @@ export function createIsolatedSessionTranscriptSearch(
       active?.abort();
       return source.close();
     },
-    async search(input: {
-      query: string;
-      authority: SessionReadAuthority;
-      limit?: number;
-      signal?: AbortSignal;
-      /** Parent-owned principal/credential currentness, never sent to the worker. */
-      current: () => boolean;
-    }): Promise<
+    async search(
+      input: AuthorizedReadInput & {
+        query: string;
+        projectId?: string;
+        limit?: number;
+      },
+    ): Promise<
       | { state: 'available'; matches: TranscriptSearchMatch[] }
       | { state: 'unavailable' }
     > {
-      if (closed || busy || input.signal?.aborted)
-        return { state: 'unavailable' };
-      const { authority, query, signal } = input;
-      const requestCurrent = input.current;
+      const { authority, query, projectId } = input;
       const limit = input.limit ?? 20;
       if (
-        !isSessionReadAuthority(authority) ||
-        (authority.mode === 'hosted' && !authority.tenantExecutionContext) ||
         !boundedTaskText(query, 256) ||
         !Number.isInteger(limit) ||
         limit < 1 ||
-        limit > 20
+        limit > 20 ||
+        (projectId !== undefined && !boundedTaskText(projectId, 256))
       )
         return { state: 'unavailable' };
-      busy = true;
-      const controller = new AbortController();
-      active = controller;
-      const deadline = performance.now() + 2000;
-      const sameGeneration = authorization.captureReadCurrentness();
-      const current = () =>
-        runtimeCurrent() === true &&
-        requestCurrent() === true &&
-        !closed &&
-        !controller.signal.aborted &&
-        performance.now() < deadline &&
-        sameGeneration();
-      const abort = () => controller.abort();
-      const timer = setTimeout(abort, 2000);
-      signal?.addEventListener('abort', abort, { once: true });
-      try {
-        if (signal?.aborted || !current()) return { state: 'unavailable' };
+      const matches = await readAuthorized(input, async (current, signal) => {
         const rows = await source.search(
           {
             query,
@@ -73,32 +111,121 @@ export function createIsolatedSessionTranscriptSearch(
             ...(authority.mode === 'hosted'
               ? { tenantId: authority.tenantExecutionContext!.tenantId }
               : {}),
+            ...(projectId !== undefined ? { projectId } : {}),
           },
-          controller.signal,
+          signal,
         );
-        if (!current()) return { state: 'unavailable' };
-        const matches: TranscriptSearchMatch[] = [];
+        const permitted: TranscriptSearchMatch[] = [];
         for (const row of rows) {
+          if (!current()) return;
           if (
             await authorization.canReadSessionAsync(
               row.conversationId,
               authority,
               current,
-              controller.signal,
+              signal,
             )
           )
-            matches.push(row);
-          if (!current()) return { state: 'unavailable' };
+            permitted.push(row);
+          if (!current()) return;
         }
-        return { state: 'available', matches };
-      } catch {
-        return { state: 'unavailable' };
-      } finally {
-        clearTimeout(timer);
-        signal?.removeEventListener('abort', abort);
-        active = undefined;
-        busy = false;
-      }
+        return permitted;
+      });
+      return matches
+        ? { state: 'available', matches }
+        : { state: 'unavailable' };
+    },
+    async openSession(
+      input: AuthorizedReadInput & { sessionId: string },
+    ): Promise<UnifiedSearchOpenResolution> {
+      const { authority, sessionId } = input;
+      if (!boundedTaskText(sessionId, 256)) return { state: 'not-found' };
+      const outcome = await readAuthorized<UnifiedSearchOpenResolution>(
+        input,
+        async (current, signal) => {
+          const target = await source.readSession(
+            {
+              threadId: sessionId,
+              ownerUserId: authority.userId,
+              ...(authority.mode === 'hosted'
+                ? { tenantId: authority.tenantExecutionContext!.tenantId }
+                : {}),
+            },
+            signal,
+          );
+          if (
+            !current() ||
+            !target ||
+            !(await authorization.canReadSessionAsync(
+              sessionId,
+              authority,
+              current,
+              signal,
+            ))
+          )
+            return { state: 'not-found' };
+          return {
+            state: 'resolved',
+            target: {
+              kind: 'session',
+              sessionId,
+              ...(target.projectSlug ? { projectId: target.projectSlug } : {}),
+            },
+          };
+        },
+      );
+      return outcome ?? { state: 'unavailable' };
+    },
+    async open(
+      input: AuthorizedReadInput & {
+        sessionId: string;
+        matchedEventId: string;
+      },
+    ): Promise<UnifiedSearchOpenResolution> {
+      const { authority, sessionId, matchedEventId } = input;
+      if (
+        !boundedTaskText(sessionId, 256) ||
+        !boundedTaskText(matchedEventId, 256)
+      )
+        return { state: 'not-found' };
+      const outcome = await readAuthorized<UnifiedSearchOpenResolution>(
+        input,
+        async (current, signal) => {
+          const target = await source.readMessage(
+            {
+              threadId: sessionId,
+              matchedEventId,
+              ownerUserId: authority.userId,
+              ...(authority.mode === 'hosted'
+                ? { tenantId: authority.tenantExecutionContext!.tenantId }
+                : {}),
+            },
+            signal,
+          );
+          if (
+            !current() ||
+            !target ||
+            !(await authorization.canReadSessionAsync(
+              sessionId,
+              authority,
+              current,
+              signal,
+            ))
+          )
+            return { state: 'not-found' };
+          return {
+            state: 'resolved',
+            target: {
+              kind: 'session-message',
+              sessionId,
+              matchedEventId,
+              navigationMessageId: target.messageId,
+              ...(target.projectSlug ? { projectId: target.projectSlug } : {}),
+            },
+          };
+        },
+      );
+      return outcome ?? { state: 'unavailable' };
     },
   };
 }

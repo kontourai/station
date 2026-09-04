@@ -45,22 +45,43 @@ port.on('message', async (wire: unknown) => {
   busy = true;
   let page: unknown = unavailable;
   try {
-    page = request.includeTasks
-      ? await provider.search(
-          {
-            version: UNIFIED_SEARCH_V1,
-            query: request.query,
-            limit: request.limit,
-            filters: {
-              ...(request.projectId ? { projectId: request.projectId } : {}),
-              ...(request.taskId ? { taskId: request.taskId } : {}),
+    if (request.type === 'task-open') {
+      const task = readTaskGraphForIsolatedSearch(
+        path,
+        TASK_SEARCH_LIMITS.fileBytes,
+      ).find(
+        (candidate) =>
+          candidate.id === request.taskId &&
+          candidate.projectId === request.projectId,
+      );
+      page = task
+        ? {
+            state: 'resolved',
+            target: {
+              kind: 'task',
+              taskId: task.id,
+              projectId: task.projectId,
             },
-          },
-          new AbortController().signal,
-        )
-      : { version: UNIFIED_SEARCH_V1, state: 'available', results: [] };
+          }
+        : { state: 'not-found' };
+    } else
+      page = request.includeTasks
+        ? await provider.search(
+            {
+              version: UNIFIED_SEARCH_V1,
+              query: request.query,
+              limit: request.limit,
+              filters: {
+                ...(request.projectId ? { projectId: request.projectId } : {}),
+                ...(request.taskId ? { taskId: request.taskId } : {}),
+              },
+            },
+            new AbortController().signal,
+          )
+        : { version: UNIFIED_SEARCH_V1, state: 'available', results: [] };
   } catch {
     // Corruption/oversize/I/O failure never become an authoritative empty list.
+    if (request.type === 'task-open') page = { state: 'unavailable' };
   }
   let reply = JSON.stringify({ id: request.id, page });
   if (Buffer.byteLength(reply) > TASK_SEARCH_LIMITS.responseBytes)

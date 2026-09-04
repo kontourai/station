@@ -6,9 +6,13 @@ import {
 import {
   parseTranscriptReadRequest,
   parseTranscriptReadResult,
+  type TranscriptMessageOpenFact,
   type TranscriptReadRequest,
   type TranscriptSearchMatch,
+  type TranscriptSessionOpenFact,
+  transcriptMessageOpenRequest,
   transcriptMessageRequest,
+  transcriptSessionOpenRequest,
 } from './transcript-search-protocol.js';
 
 /** Database owner only. Callers must still apply the live SessionAuthorization policy. */
@@ -19,10 +23,24 @@ export interface IsolatedTranscriptReads
       query: string;
       ownerUserId: string;
       tenantId?: string;
+      projectId?: string;
       limit: number;
     },
     signal?: AbortSignal,
   ): Promise<TranscriptSearchMatch[]>;
+  readMessage(
+    input: {
+      threadId: string;
+      matchedEventId: string;
+      ownerUserId: string;
+      tenantId?: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<TranscriptMessageOpenFact | null>;
+  readSession(
+    input: { threadId: string; ownerUserId: string; tenantId?: string },
+    signal?: AbortSignal,
+  ): Promise<TranscriptSessionOpenFact | null>;
   readOwner(
     threadId: string,
     signal?: AbortSignal,
@@ -72,6 +90,23 @@ export function createIsolatedTranscriptReads(
       );
       if (!('owner' in result)) throw new Error('Transcript read unavailable');
       return result.owner ?? undefined;
+    },
+    async readMessage(input, signal) {
+      const result = await execute(
+        (id) => transcriptMessageOpenRequest(input, id),
+        signal,
+      );
+      if (!('target' in result)) throw new Error('Transcript read unavailable');
+      return result.target;
+    },
+    async readSession(input, signal) {
+      const result = await execute(
+        (id) => transcriptSessionOpenRequest(input, id),
+        signal,
+      );
+      if (!('session' in result))
+        throw new Error('Transcript read unavailable');
+      return result.session;
     },
   };
 }

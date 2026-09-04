@@ -311,6 +311,7 @@ function cloneOpenIntent(
       'taskId',
       'sessionId',
       'messageId',
+      'matchedEventId',
       'resourceKind',
       'resourceId',
       'scope',
@@ -341,13 +342,22 @@ function cloneOpenIntent(
     safeText(intent.sessionId, UNIFIED_SEARCH_LIMITS.idBytes) &&
     safeText(intent.messageId, UNIFIED_SEARCH_LIMITS.idBytes) &&
     intent.sessionId === candidateScope?.sessionId &&
-    candidateId === JSON.stringify([intent.sessionId, intent.messageId]) &&
+    (intent.matchedEventId === undefined ||
+      safeText(intent.matchedEventId, UNIFIED_SEARCH_LIMITS.idBytes)) &&
+    candidateId ===
+      JSON.stringify([
+        intent.sessionId,
+        intent.matchedEventId ?? intent.messageId,
+      ]) &&
     owner.kind === 'station'
   ) {
     return {
       kind: 'session-message',
       sessionId: intent.sessionId,
       messageId: intent.messageId,
+      ...(typeof intent.matchedEventId === 'string'
+        ? { matchedEventId: intent.matchedEventId }
+        : {}),
     };
   }
   if (

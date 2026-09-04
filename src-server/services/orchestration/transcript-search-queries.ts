@@ -18,6 +18,7 @@ export function queryTranscriptMessages(
     query: string;
     ownerUserId: string;
     tenantId?: string;
+    projectId?: string;
     limit: number;
   },
   bounded = false,
@@ -85,6 +86,7 @@ export function queryTranscriptMessages(
           WHERE orchestration_message_search_v3 MATCH ?
             AND h.owner_user_id = ?
             AND (? IS NULL OR h.tenant_id = ?)
+            AND (? IS NULL OR h.project_slug = ?)
           ORDER BY bm25(orchestration_message_search_v3) +
                      ((julianday('now') - julianday(s.created_at)) * ?) ASC,
                    s.created_at DESC,
@@ -96,6 +98,8 @@ export function queryTranscriptMessages(
       options.ownerUserId,
       options.tenantId ?? null,
       options.tenantId ?? null,
+      options.projectId ?? null,
+      options.projectId ?? null,
       MESSAGE_SEARCH_RECENCY_SCORE_PER_DAY,
       options.limit,
     ) as Array<{
@@ -130,6 +134,104 @@ export function queryTranscriptMessages(
     ...(row.provider ? { engine: row.provider } : {}),
     ...(row.turn_anchor_id ? { turnAnchorId: row.turn_anchor_id } : {}),
   }));
+}
+
+/** Exact Session metadata under current owner/tenant scope; no lineage substitution. */
+export function queryTranscriptSession(
+  db: TranscriptQueryDatabase,
+  options: {
+    threadId: string;
+    ownerUserId: string;
+    tenantId?: string;
+  },
+): { conversationId: string; projectSlug?: string } | null {
+  const row = db
+    .prepare(`SELECT thread_id, CASE WHEN length(CAST(project_slug AS BLOB)) <= 256 THEN project_slug END AS project_slug,
+    coalesce(length(CAST(project_slug AS BLOB)), 0) > 256 AS oversized
+    FROM orchestration_conversation_history WHERE thread_id = ? AND owner_user_id = ?
+      AND (? IS NULL OR tenant_id = ?) LIMIT 1`)
+    .get(
+      options.threadId,
+      options.ownerUserId,
+      options.tenantId ?? null,
+      options.tenantId ?? null,
+    ) as
+    | { thread_id: string; project_slug: string | null; oversized: number }
+    | undefined;
+  if (!row) return null;
+  if (row.oversized)
+    throw new TranscriptReadLimitError('Session navigation is unavailable');
+  return {
+    conversationId: row.thread_id,
+    ...(row.project_slug ? { projectSlug: row.project_slug } : {}),
+  };
+}
+
+/** Exact indexed event in the supplied Session. Never follows a conversation lineage. */
+export function queryTranscriptMessage(
+  db: TranscriptQueryDatabase,
+  options: {
+    threadId: string;
+    matchedEventId: string;
+    ownerUserId: string;
+    tenantId?: string;
+  },
+): {
+  conversationId: string;
+  matchedEventId: string;
+  messageId: string;
+  projectSlug?: string;
+} | null {
+  const anchor = `(SELECT e.id FROM orchestration_events e WHERE e.thread_id = s.thread_id
+    AND e.turn_id = matched.turn_id AND e.method = 'turn.started' LIMIT 1)`;
+  const bounded = (name: string, max = 256) =>
+    `CASE WHEN length(CAST(${name} AS BLOB)) <= ${max} THEN ${name} END`;
+  const row = db
+    .prepare(`SELECT ${bounded('s.event_id')} AS event_id, ${bounded('s.thread_id')} AS thread_id,
+    ${bounded('s.role', 9)} AS role, ${bounded('h.project_slug')} AS project_slug, ${bounded(anchor)} AS anchor,
+    (coalesce(length(CAST(h.project_slug AS BLOB)), 0) > 256 OR coalesce(length(CAST(${anchor} AS BLOB)), 0) > 256) AS oversized
+    FROM orchestration_message_search_v3 s
+    INNER JOIN orchestration_conversation_history h ON h.thread_id = s.thread_id
+    INNER JOIN orchestration_events matched ON matched.thread_id = s.thread_id AND matched.id = s.event_id
+    WHERE s.thread_id = ? AND s.event_id = ? AND h.owner_user_id = ?
+      AND ((s.role = 'user' AND matched.method = 'turn.started') OR (s.role = 'assistant' AND matched.method = 'turn.completed'))
+      AND (? IS NULL OR h.tenant_id = ?) LIMIT 1`)
+    .get(
+      options.threadId,
+      options.matchedEventId,
+      options.ownerUserId,
+      options.tenantId ?? null,
+      options.tenantId ?? null,
+    ) as
+    | {
+        event_id: string;
+        thread_id: string;
+        role: string;
+        project_slug: string | null;
+        anchor: string | null;
+        oversized: number;
+      }
+    | undefined;
+  if (!row) return null;
+  if (
+    row.oversized ||
+    !row.event_id ||
+    !row.thread_id ||
+    !['user', 'assistant'].includes(row.role) ||
+    (row.role === 'assistant' && !row.anchor)
+  )
+    throw new TranscriptReadLimitError(
+      'Exact message navigation is unavailable',
+    );
+  return {
+    conversationId: row.thread_id,
+    matchedEventId: row.event_id,
+    messageId:
+      row.role === 'assistant'
+        ? `${row.anchor}:assistant`
+        : `${row.event_id}:user`,
+    ...(row.project_slug ? { projectSlug: row.project_slug } : {}),
+  };
 }
 
 export function querySessionOwner(

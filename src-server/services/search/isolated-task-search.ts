@@ -1,5 +1,10 @@
 import {
+  isSessionReadAuthority,
+  type SessionReadAuthority,
+} from '@kontourai/station-contracts/tenancy';
+import {
   UNIFIED_SEARCH_V1,
+  type UnifiedSearchOpenResolution,
   type UnifiedSearchProvider,
 } from '@kontourai/station-contracts/unified-search';
 import {
@@ -7,12 +12,26 @@ import {
   type OwnedSearchReadWorker,
   type OwnedSearchReadWorkerTestOptions,
 } from './owned-search-read-worker.js';
-import { boundedTaskText, taskReadRequest } from './task-search-protocol.js';
+import {
+  boundedTaskText,
+  parseTaskOpenResolution,
+  parseTaskReadRequest,
+  type TaskOpenRequest,
+  taskReadRequest,
+} from './task-search-protocol.js';
 import { parseUnifiedSearchProviderPage } from './unified-search-service.js';
 
 export interface IsolatedTaskSearch
   extends Pick<OwnedSearchReadWorker, 'inspect' | 'close'> {
   readonly provider: UnifiedSearchProvider;
+  /** Personal TaskGraph authority only; hosted requests never reach this worker. */
+  open(input: {
+    taskId: string;
+    projectId: string;
+    authority: SessionReadAuthority;
+    current: () => boolean;
+    signal?: AbortSignal;
+  }): Promise<UnifiedSearchOpenResolution>;
 }
 export type TaskSearchTestOptions = OwnedSearchReadWorkerTestOptions;
 
@@ -31,6 +50,41 @@ export function createIsolatedTaskSearch(
   return {
     inspect: worker.inspect,
     close: worker.close,
+    async open(input) {
+      const { authority, taskId, projectId, signal, current } = input;
+      const authorized = () => {
+        try {
+          return (
+            isSessionReadAuthority(authority) &&
+            authority.mode === 'personal' &&
+            !signal?.aborted &&
+            current() === true
+          );
+        } catch {
+          return false;
+        }
+      };
+      if (!authorized()) return { state: 'not-found' };
+      let captured: TaskOpenRequest | undefined;
+      const result = await worker.execute(
+        (id) => {
+          const request = parseTaskReadRequest({
+            type: 'task-open',
+            id,
+            taskId,
+            projectId,
+          });
+          if (request?.type !== 'task-open') return null;
+          captured = request;
+          return JSON.stringify(request);
+        },
+        (value) => (captured ? parseTaskOpenResolution(value, captured) : null),
+        signal,
+      );
+      return authorized()
+        ? (result ?? { state: 'unavailable' })
+        : { state: 'not-found' };
+    },
     provider: {
       descriptor: {
         id: 'station.tasks',

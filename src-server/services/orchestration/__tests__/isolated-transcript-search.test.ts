@@ -21,7 +21,9 @@ import { OrchestrationService } from '../orchestration-service.js';
 import { SessionAuthorization } from '../session-authorization.js';
 import { SessionTranscriptReads } from '../session-transcript-reads.js';
 import {
+  queryTranscriptMessage,
   queryTranscriptMessages,
+  queryTranscriptSession,
   TranscriptReadLimitError,
 } from '../transcript-search-queries.js';
 
@@ -45,6 +47,7 @@ function populate(
   owner = 'user-a',
   prompt = 'Find cobalt albatross 中文内容',
   tenant?: string,
+  projectSlug = 'project-a',
 ) {
   if (tenant)
     store.upsertSession({
@@ -62,7 +65,7 @@ function populate(
     createdAt: '2026-09-03T00:00:00.000Z',
     method: 'session.started',
     sessionId: threadId,
-    metadata: { userId: owner, agentSlug: 'claude', projectSlug: 'project-a' },
+    metadata: { userId: owner, agentSlug: 'claude', projectSlug },
   });
   store.appendEvent({
     eventId: `${threadId}:turn`,
@@ -122,6 +125,323 @@ afterEach(async () => {
 });
 
 describe('isolated transcript read owner and existing session policy', () => {
+  test('project filtering happens in canonical SQL before a smaller result limit', async () => {
+    const store = storeAt();
+    for (let index = 0; index < 12; index++)
+      populate(
+        store,
+        `a-foreign-${index}`,
+        'user-a',
+        'cobalt',
+        undefined,
+        'foreign',
+      );
+    populate(store, 'z-wanted', 'user-a', 'cobalt', undefined, 'wanted');
+    expect(
+      store.searchConversationMessages({
+        query: 'cobalt',
+        limit: 1,
+        projectId: 'wanted',
+        ownerUserId: 'user-a',
+      }),
+    ).toMatchObject([{ threadId: 'z-wanted', projectSlug: 'wanted' }]);
+    const source = store.createIsolatedTranscriptReads();
+    readers.push(source);
+    const isolated = createIsolatedSessionTranscriptSearch(
+      source,
+      new SessionAuthorization({
+        eventStore: store,
+        ownerlessSessionAccess: 'deny',
+      }),
+      () => true,
+    );
+    const result = await isolated.search({
+      query: 'cobalt',
+      limit: 1,
+      projectId: 'wanted',
+      authority: personal(),
+      current: () => true,
+    });
+    expect(result).toMatchObject({
+      state: 'available',
+      matches: [{ conversationId: 'z-wanted', projectSlug: 'wanted' }],
+    });
+    expect(
+      await isolated.search({
+        query: 'cobalt',
+        limit: 1,
+        projectId: 'missing',
+        authority: personal(),
+        current: () => true,
+      }),
+    ).toEqual({ state: 'available', matches: [] });
+  });
+
+  test('events sharing one assistant navigation anchor remain distinct and open only their exact Session/event', async () => {
+    const store = storeAt();
+    store.upsertSession({
+      provider: 'claude',
+      threadId: 'thread-a',
+      status: 'ready',
+      createdAt: '2026-09-03T00:00:00.000Z',
+      updatedAt: '2026-09-03T00:00:00.000Z',
+    });
+    populate(store);
+    store.reserveNextConversationSession({
+      conversationId: 'thread-a',
+      predecessorSessionId: 'thread-a',
+      proposedSessionId: 'new-child',
+      createdAt: '2026-09-03T00:00:04.000Z',
+    });
+    store.upsertSession({
+      provider: 'claude',
+      threadId: 'new-child',
+      status: 'ready',
+      createdAt: '2026-09-03T00:00:04.000Z',
+      updatedAt: '2026-09-03T00:00:04.000Z',
+    });
+    populate(store, 'new-child');
+    expect(store.conversationForSession('new-child')?.conversationId).toBe(
+      'thread-a',
+    );
+    store.appendEvent({
+      eventId: 'thread-a:end-two',
+      provider: 'claude',
+      threadId: 'thread-a',
+      turnId: 'thread-a:turn-id',
+      createdAt: '2026-09-03T00:00:03.000Z',
+      method: 'turn.completed',
+      outputText: 'Another cobalt response.',
+    });
+    const source = store.createIsolatedTranscriptReads();
+    readers.push(source);
+    const authz = new SessionAuthorization({
+      eventStore: store,
+      ownerlessSessionAccess: 'deny',
+    });
+    const isolated = createIsolatedSessionTranscriptSearch(
+      source,
+      authz,
+      () => true,
+    );
+    expect(
+      await isolated.openSession({
+        sessionId: 'thread-a',
+        authority: personal(),
+        current: () => true,
+      }),
+    ).toEqual({
+      state: 'resolved',
+      target: {
+        kind: 'session',
+        sessionId: 'thread-a',
+        projectId: 'project-a',
+      },
+    });
+    expect(
+      await isolated.openSession({
+        sessionId: 'thread-a',
+        authority: personal('other'),
+        current: () => true,
+      }),
+    ).toEqual({ state: 'not-found' });
+    const result = await isolated.search({
+      query: 'cobalt',
+      authority: personal(),
+      current: () => true,
+    });
+    if (result.state !== 'available') throw new Error('search unavailable');
+    const matches = result.matches.filter(
+      (row) => row.conversationId === 'thread-a' && row.role === 'assistant',
+    );
+    expect(matches.map((row) => row.matchedEventId).sort()).toEqual([
+      'thread-a:end',
+      'thread-a:end-two',
+    ]);
+    expect(new Set(matches.map((row) => row.messageId))).toEqual(
+      new Set(['thread-a:turn:assistant']),
+    );
+    for (const row of matches) {
+      expect(
+        await isolated.open({
+          sessionId: row.conversationId,
+          matchedEventId: row.matchedEventId,
+          authority: personal(),
+          current: () => true,
+        }),
+      ).toEqual({
+        state: 'resolved',
+        target: {
+          kind: 'session-message',
+          sessionId: 'thread-a',
+          matchedEventId: row.matchedEventId,
+          navigationMessageId: 'thread-a:turn:assistant',
+          projectId: 'project-a',
+        },
+      });
+    }
+    expect(
+      await isolated.open({
+        sessionId: 'new-child',
+        matchedEventId: 'thread-a:end',
+        authority: personal(),
+        current: () => true,
+      }),
+    ).toEqual({ state: 'not-found' });
+    expect(
+      await isolated.open({
+        sessionId: 'thread-a',
+        matchedEventId: 'thread-a:end',
+        authority: personal('other'),
+        current: () => true,
+      }),
+    ).toEqual({ state: 'not-found' });
+    expect(
+      await isolated.open({
+        sessionId: 'thread-a',
+        matchedEventId: 'missing',
+        authority: personal(),
+        current: () => true,
+      }),
+    ).toEqual({ state: 'not-found' });
+    const read = source.readMessage.bind(source);
+    let current = true;
+    vi.spyOn(source, 'readMessage').mockImplementation(async (...args) => {
+      const row = await read(...args);
+      current = false;
+      return row;
+    });
+    expect(
+      await isolated.open({
+        sessionId: 'thread-a',
+        matchedEventId: 'thread-a:end',
+        authority: personal(),
+        current: () => current,
+      }),
+    ).toEqual({ state: 'unavailable' });
+  });
+
+  test('exact message open rejects an orphan index row and malformed point replies', async () => {
+    const directory = root();
+    const store = storeAt(directory);
+    populate(store);
+    const owned = store.createIsolatedTranscriptReads();
+    readers.push(owned);
+    const path = join(directory, 'events.sqlite');
+    const writer = new DatabaseSync(path);
+    try {
+      writer
+        .prepare(
+          'UPDATE orchestration_message_search_v3 SET turn_id = ? WHERE event_id = ?',
+        )
+        .run('wrong-index-turn', 'thread-a:end');
+      expect(
+        await owned.readMessage({
+          threadId: 'thread-a',
+          matchedEventId: 'thread-a:end',
+          ownerUserId: 'user-a',
+        }),
+      ).toMatchObject({
+        matchedEventId: 'thread-a:end',
+        messageId: 'thread-a:turn:assistant',
+      });
+      writer
+        .prepare('DELETE FROM orchestration_events WHERE id = ?')
+        .run('thread-a:end');
+      expect(
+        writer
+          .prepare(
+            'SELECT event_id FROM orchestration_message_search_v3 WHERE event_id = ?',
+          )
+          .get('thread-a:end'),
+      ).toBeTruthy();
+      expect(
+        await owned.readMessage({
+          threadId: 'thread-a',
+          matchedEventId: 'thread-a:end',
+          ownerUserId: 'user-a',
+        }),
+      ).toBeNull();
+    } finally {
+      writer.close();
+    }
+    const hostile = createIsolatedTranscriptReads(
+      join(root(), 'unused.sqlite'),
+      {
+        workerSourceUrl: new URL(
+          `data:text/javascript,${encodeURIComponent(`import {parentPort} from 'node:worker_threads'; parentPort.on('message', wire => {const r=JSON.parse(wire); parentPort.postMessage(JSON.stringify({id:r.id,result:{state:'available',target:{conversationId:'other-session',matchedEventId:r.matchedEventId,messageId:'anchor:user'}}}));});`)}`,
+        ),
+      },
+    );
+    readers.push(hostile);
+    await expect(
+      hostile.readMessage({
+        threadId: 'thread-a',
+        matchedEventId: 'thread-a:end',
+        ownerUserId: 'user-a',
+      }),
+    ).rejects.toThrow('unavailable');
+    const accessor = vi.fn(() => 'thread-a');
+    await expect(
+      owned.readMessage({
+        get threadId() {
+          return accessor();
+        },
+        matchedEventId: 'event',
+        ownerUserId: 'user-a',
+      }),
+    ).rejects.toThrow('unavailable');
+    expect(accessor).not.toHaveBeenCalled();
+  });
+
+  test('both exact point reads bound optional text inside SQLite before JS materialization', () => {
+    const directory = root();
+    const store = storeAt(directory);
+    populate(store);
+    const database = new DatabaseSync(join(directory, 'events.sqlite'));
+    try {
+      database
+        .prepare(
+          'UPDATE orchestration_conversation_history SET project_slug = ? WHERE thread_id = ?',
+        )
+        .run('x'.repeat(1024 * 1024), 'thread-a');
+      const observed: unknown[] = [];
+      const boundary = {
+        prepare(sql: string) {
+          const statement = database.prepare(sql);
+          return {
+            get(...args: SQLInputValue[]) {
+              const result = statement.get(...args);
+              observed.push(result);
+              return result;
+            },
+            all: (...args: SQLInputValue[]) => statement.all(...args),
+          };
+        },
+      };
+      expect(() =>
+        queryTranscriptSession(boundary, {
+          threadId: 'thread-a',
+          ownerUserId: 'user-a',
+        }),
+      ).toThrow(TranscriptReadLimitError);
+      expect(() =>
+        queryTranscriptMessage(boundary, {
+          threadId: 'thread-a',
+          matchedEventId: 'thread-a:end',
+          ownerUserId: 'user-a',
+        }),
+      ).toThrow(TranscriptReadLimitError);
+      expect(observed).toHaveLength(2);
+      for (const row of observed) {
+        expect(row).toMatchObject({ project_slug: null, oversized: 1 });
+        expect(Buffer.byteLength(JSON.stringify(row))).toBeLessThan(1024);
+      }
+    } finally {
+      database.close();
+    }
+  });
+
   test('real indexed SQL, message identity, CJK and excerpts match the existing owner API', async () => {
     const store = storeAt();
     populate(store);
@@ -136,12 +456,20 @@ describe('isolated transcript read owner and existing session policy', () => {
     const isolated = reads.createIsolatedSearch(source, authz, () => true);
     for (const query of ['cobalt albatross', '中文', '!!!']) {
       const expected = reads.searchSessionMessages(query, personal());
+      const actual = await isolated.search({
+        query,
+        authority: personal(),
+        current: () => true,
+      });
       expect(
-        await isolated.search({
-          query,
-          authority: personal(),
-          current: () => true,
-        }),
+        actual.state === 'available'
+          ? {
+              ...actual,
+              matches: actual.matches.map(
+                ({ matchedEventId: _event, ...match }) => match,
+              ),
+            }
+          : actual,
       ).toEqual({ state: 'available', matches: expected });
     }
     expect(
@@ -203,6 +531,32 @@ describe('isolated transcript read owner and existing session policy', () => {
         expect.objectContaining({ conversationId: 'fresh-after-recovery' }),
         expect.objectContaining({ conversationId: 'fresh-after-recovery' }),
       ],
+    });
+    expect(syncFts).not.toHaveBeenCalled();
+    expect(syncOwner).not.toHaveBeenCalled();
+    expect(
+      await isolated.open({
+        sessionId: 'fresh-after-recovery',
+        matchedEventId: 'fresh-after-recovery:end',
+        authority: personal(),
+        current: () => true,
+      }),
+    ).toMatchObject({
+      state: 'resolved',
+      target: {
+        sessionId: 'fresh-after-recovery',
+        matchedEventId: 'fresh-after-recovery:end',
+      },
+    });
+    expect(
+      await isolated.openSession({
+        sessionId: 'fresh-after-recovery',
+        authority: personal(),
+        current: () => true,
+      }),
+    ).toMatchObject({
+      state: 'resolved',
+      target: { sessionId: 'fresh-after-recovery' },
     });
     expect(syncFts).not.toHaveBeenCalled();
     expect(syncOwner).not.toHaveBeenCalled();
@@ -375,6 +729,29 @@ describe('isolated transcript read owner and existing session policy', () => {
       ),
       current: () => true,
     });
+    const alphaAuthority = sessionReadAuthorityFromRequest(
+      'user-a',
+      { tenantId: tenantId('alpha') },
+      registry,
+    );
+    for (const sessionId of ['alpha-thread', 'beta-thread']) {
+      const expected = sessionId === 'alpha-thread' ? 'resolved' : 'not-found';
+      expect(
+        await search.openSession({
+          sessionId,
+          authority: alphaAuthority,
+          current: () => true,
+        }),
+      ).toMatchObject({ state: expected });
+      expect(
+        await search.open({
+          sessionId,
+          matchedEventId: `${sessionId}:end`,
+          authority: alphaAuthority,
+          current: () => true,
+        }),
+      ).toMatchObject({ state: expected });
+    }
     expect(result).toMatchObject({
       state: 'available',
       matches: [
@@ -395,9 +772,13 @@ describe('isolated transcript read owner and existing session policy', () => {
     ).toEqual({ state: 'unavailable' });
   });
 
-  test.each(['owner', 'tenant', 'principal'])(
-    '%s invalidation while a real cold owner read is withheld refuses publication and stale caching',
-    async (change) => {
+  test.each(
+    ['search', 'message-open', 'session-open'].flatMap((operation) =>
+      ['owner', 'tenant', 'principal'].map((change) => ({ change, operation })),
+    ),
+  )(
+    '$change invalidation during a real cold owner read refuses $operation publication and stale caching',
+    async ({ change, operation }) => {
       const store = storeAt();
       populate(store);
       const source = store.createIsolatedTranscriptReads();
@@ -420,11 +801,25 @@ describe('isolated transcript read owner and existing session policy', () => {
         authz,
         () => true,
       );
-      const pending = search.search({
-        query: 'cobalt',
-        authority: personal(),
-        current: () => principalCurrent,
-      });
+      const pending =
+        operation === 'message-open'
+          ? search.open({
+              sessionId: 'thread-a',
+              matchedEventId: 'thread-a:end',
+              authority: personal(),
+              current: () => principalCurrent,
+            })
+          : operation === 'session-open'
+            ? search.openSession({
+                sessionId: 'thread-a',
+                authority: personal(),
+                current: () => principalCurrent,
+              })
+            : search.search({
+                query: 'cobalt',
+                authority: personal(),
+                current: () => principalCurrent,
+              });
       await entered.promise;
       if (change === 'owner') authz.invalidateSessionOwner('thread-a');
       if (change === 'tenant') {
