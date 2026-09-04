@@ -251,8 +251,13 @@ test.describe('direct plugin Pane SDK context', () => {
 
   test('places the trusted plugin occurrence in WorkspacePaneHost with the same SDK context', async ({
     page,
+    baseURL,
   }) => {
-    await page.goto(`/projects/${projectSlug}/layouts/coding`);
+    const expectedHost = new URL(
+      `/projects/${projectSlug}/layouts/coding`,
+      baseURL,
+    );
+    await page.goto(expectedHost.href);
     // Coding is the initial catalog-issued tab; Files is the intended placement
     // origin, not an implicit fallback after invalid context records are lost.
     await expect(
@@ -282,6 +287,7 @@ test.describe('direct plugin Pane SDK context', () => {
     });
     await expect(page).toHaveURL(
       (url) =>
+        url.origin === expectedHost.origin &&
         url.pathname === `/projects/${projectSlug}/layouts/coding` &&
         url.searchParams.get('pane') === occurrenceIds.get(builder.id) &&
         url.searchParams.get('paneScope') ===
