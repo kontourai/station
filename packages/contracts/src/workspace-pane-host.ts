@@ -7,6 +7,7 @@ import {
   type WorkspacePaneInstanceId,
   type WorkspacePaneSuppliableContexts,
 } from './workspace-pane.js';
+import { structurallyEqual } from './workspace-pane-layout-adapter-helpers.js';
 import { MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH } from './workspace-pane-layout-adapter-types.js';
 
 /** Serial host state is intentionally separate from descriptor maturity and renderer lifecycle. */
@@ -522,8 +523,8 @@ export function createWorkspacePaneHostBaselineDocument(
   instances: readonly WorkspacePaneInstance[],
 ): WorkspacePaneHostDocumentV1 | null {
   const accepted = instances.flatMap((instance) => {
-    const parsed = parseBoundedWorkspacePaneInstance(instance);
-    return parsed ? [parsed] : [];
+    const canonical = canonicalKnownInstance(instance);
+    return canonical ? [canonical] : [];
   });
   const first = accepted[0];
   if (!isWorkspacePaneHostIdentitySegment(id) || !first) return null;
@@ -547,8 +548,8 @@ function knownInstanceMap(
 ): Map<string, WorkspacePaneInstance> {
   return new Map(
     instances.flatMap((instance) => {
-      const parsed = parseBoundedWorkspacePaneInstance(instance);
-      return parsed ? [[parsed.instanceId, parsed] as const] : [];
+      const canonical = canonicalKnownInstance(instance);
+      return canonical ? [[canonical.instanceId, canonical] as const] : [];
     }),
   );
 }
@@ -559,6 +560,23 @@ function parseBoundedWorkspacePaneInstance(
   if (!hasSafeDataGraph(value)) return null;
   const parsed = parseWorkspacePaneInstance(value);
   return parsed && isBoundedWorkspacePaneInstance(parsed) ? parsed : null;
+}
+
+/**
+ * Admits a catalog-supplied record, keeping the caller's own object whenever it
+ * already is its canonical form. The parse stays the admission gate — a record
+ * that is not already canonical is replaced by its canonical form — but the
+ * catalog's record is handed back by identity, not by copy: restoration and the
+ * baseline document must carry the same instance objects the catalog holds, or
+ * two hosts reading one catalog silently diverge and the catalog's own freeze
+ * stops applying to the pane a host renders.
+ */
+function canonicalKnownInstance(value: unknown): WorkspacePaneInstance | null {
+  const parsed = parseBoundedWorkspacePaneInstance(value);
+  if (!parsed) return null;
+  return structurallyEqual(value, parsed)
+    ? (value as WorkspacePaneInstance)
+    : parsed;
 }
 
 /** Receives the canonical parsed instance, including validated catalog provenance. */
@@ -575,6 +593,27 @@ function isBoundedWorkspacePaneInstance(
     ([key, value]) =>
       key === 'contribution' || isWorkspacePaneHostIdentitySegment(value),
   );
+}
+
+/**
+ * Re-seats a reconstructed document on the catalog's own records. Repair rebuilds
+ * the document through the canonical parser, which necessarily snapshots every
+ * instance; substituting afterwards keeps the catalog-identity contract uniform
+ * across the strict and repaired paths instead of holding on only one of them.
+ * Substitution is content-neutral: an instance reaches a rebuilt document only
+ * after matching its catalog record's descriptor and state key.
+ */
+function seatOnCatalog(
+  document: WorkspacePaneHostDocumentV1 | null,
+  catalog: ReadonlyMap<string, WorkspacePaneInstance>,
+): WorkspacePaneHostDocumentV1 | null {
+  if (!document || catalog.size === 0) return document;
+  return {
+    ...document,
+    instances: document.instances.map(
+      (item) => catalog.get(item.instanceId) ?? item,
+    ),
+  };
 }
 
 /**
@@ -682,9 +721,12 @@ export function restoreWorkspacePaneHostDocument(
       recoveryInstances,
     );
     return {
-      document: recoveryDocument
-        ? parseWorkspacePaneHostDocument(recoveryDocument)
-        : null,
+      document: seatOnCatalog(
+        recoveryDocument
+          ? parseWorkspacePaneHostDocument(recoveryDocument)
+          : null,
+        catalog,
+      ),
       failures,
     };
   }
@@ -822,7 +864,7 @@ export function restoreWorkspacePaneHostDocument(
     ...(maximized ? { maximizedInstanceId: maximized } : {}),
   });
   return {
-    document: recovered,
+    document: seatOnCatalog(recovered, catalog),
     failures: recovered
       ? failures
       : [...failures, { code: 'invalid-document' }],

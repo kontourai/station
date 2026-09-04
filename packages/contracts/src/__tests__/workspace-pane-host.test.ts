@@ -589,4 +589,47 @@ describe('Workspace Pane host document', () => {
       },
     });
   });
+
+  test('hands back the catalog record itself, not a copy that reads the same', () => {
+    const pane = fullyBoundInstance('plugin');
+    const catalog = [pane];
+    const persisted = JSON.parse(JSON.stringify(documentWith(pane))) as unknown;
+
+    // The strict catalog-match path.
+    const restored = restoreWorkspacePaneHostDocument(persisted, catalog);
+    expect(restored.document?.instances).toEqual([pane]);
+    expect(restored.document?.instances[0]).toBe(pane);
+
+    // The repair path: an invalid sibling forces per-candidate recovery, and
+    // the surviving pane must still be the catalog's own record.
+    const repaired = restoreWorkspacePaneHostDocument(
+      {
+        ...(persisted as Record<string, unknown>),
+        instances: [{ version: '1.0', instanceId: 'broken' }, pane],
+      },
+      catalog,
+    );
+    expect(repaired.document?.instances[0]).toBe(pane);
+
+    // The baseline document seeded straight from a catalog.
+    expect(
+      createWorkspacePaneHostBaselineDocument(
+        'host',
+        { kind: 'project', projectId: 'project', layoutId: 'layout' },
+        catalog,
+      )?.instances[0],
+    ).toBe(pane);
+  });
+
+  test('canonicalizes a supplied record that is not already its own canonical form', () => {
+    const pane = instance('one');
+    const widened = { ...pane, unexpected: 'not-a-contract-field' };
+    const restored = restoreWorkspacePaneHostDocument(documentWith(pane), [
+      widened,
+    ]);
+    const admitted = restored.document?.instances[0];
+    expect(admitted).toEqual(pane);
+    expect(admitted).not.toBe(widened);
+    expect(Object.keys(admitted!)).not.toContain('unexpected');
+  });
 });
