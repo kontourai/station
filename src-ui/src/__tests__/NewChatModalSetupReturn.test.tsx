@@ -180,6 +180,9 @@ function harness(props: Partial<Parameters<typeof NewChatModal>[0]> = {}) {
 async function openSetup() {
   fireEvent.click(screen.getByRole('button', { name: 'Connect Assistant' }));
   await screen.findByRole('button', { name: 'Return to New Chat' });
+  await waitFor(() =>
+    expect(navigationStore.getSnapshot().pathname).toMatch(/^\/connections/),
+  );
   expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
 }
 async function returnToChat() {
@@ -404,7 +407,7 @@ test('return waits for the owning setup form navigation guard', async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
     expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
     expect(navigationStore.getSnapshot().pathname).toMatch(/^\/connections/);
-    expect(continueNavigation).toBeTypeOf('function');
+    await waitFor(() => expect(continueNavigation).toBeTypeOf('function'));
     act(() => continueNavigation?.());
     await screen.findByRole('dialog', { name: 'New Chat' });
   } finally {
@@ -486,3 +489,64 @@ test('opening repair from the same Connections route stays in setup', async () =
   await returnToChat();
   expect(navigationStore.getSnapshot().pathname).toBe('/connections/models');
 });
+
+test('same-path query restoration honors a rejecting dirty-form guard', async () => {
+  act(() => navigationStore.navigate('/connections/models?selected=original'));
+  harness();
+  await openSetup();
+  act(() => navigationStore.updateParams({ selected: 'editing' }));
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol('dirty model form'),
+    (_proceed, reject) => reject?.(),
+  );
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
+    await act(async () => {});
+    expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+    expect(new URLSearchParams(window.location.search).get('selected')).toBe(
+      'editing',
+    );
+  } finally {
+    unregister();
+  }
+  await returnToChat();
+  expect(new URLSearchParams(window.location.search).get('selected')).toBe(
+    'original',
+  );
+});
+
+test.each(['cancel', 'authority loss'] as const)(
+  '%s revokes a delayed return before its route commit',
+  async (reason) => {
+    const view = harness();
+    await openSetup();
+    const repairLocation = navigationStore.captureLocation();
+    let approve: (() => void) | undefined;
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('dirty form'),
+      (proceed) => {
+        approve = proceed;
+      },
+    );
+    try {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Return to New Chat' }),
+      );
+      await waitFor(() => expect(approve).toBeTypeOf('function'));
+      if (reason === 'cancel')
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel return' }));
+      else {
+        authorityCurrent = false;
+        view.update({
+          requestAuthority: { ...authority, authorityKey: 'changed' },
+        });
+      }
+      await act(async () => approve?.());
+      expect(navigationStore.isCurrentLocation(repairLocation)).toBe(true);
+      expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+      expect(view.onClose).toHaveBeenCalledTimes(1);
+    } finally {
+      unregister();
+    }
+  },
+);

@@ -536,7 +536,10 @@ class NavigationStore {
     );
   }
 
-  restoreLocation(location: NavigationLocation): void {
+  restoreLocation(
+    location: NavigationLocation,
+    admission: Parameters<NavigationStore['navigateWithPrecommit']>[1],
+  ): Promise<boolean> {
     const captured = new URLSearchParams(location.search);
     const clear: Record<string, null> = {};
     for (const key of new URLSearchParams(window.location.search).keys()) {
@@ -544,7 +547,11 @@ class NavigationStore {
     }
     // Keep exact Pane paths, tabs, and query selections through the same
     // guarded navigation path. A Project-only projection cannot restore them.
-    this.navigate(`${location.pathname}${location.search}`, clear);
+    return this.navigateWithPrecommit(
+      `${location.pathname}${location.search}`,
+      admission,
+      clear,
+    );
   }
 
   /** Fixed destination, fresh admission after any dirty-state delay. No alternate router. */
@@ -555,8 +562,10 @@ class NavigationStore {
       prepare: () => Promise<boolean>;
       signal: AbortSignal;
     },
+    params?: Record<string, string | null>,
   ): Promise<boolean> {
     const captured = { ...admission };
+    const capturedParams = params ? { ...params } : undefined;
     const navigation = this.navigationGeneration;
     return import('./navigation-precommit')
       .then(({ runNavigationPrecommit }) => {
@@ -575,7 +584,7 @@ class NavigationStore {
             const previousBypass = this.navigationGuardBypass;
             this.navigationGuardBypass = true;
             try {
-              this.navigate(pathname);
+              this.navigate(pathname, capturedParams);
             } finally {
               this.navigationGuardBypass = previousBypass;
             }

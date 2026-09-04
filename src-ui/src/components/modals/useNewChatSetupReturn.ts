@@ -15,6 +15,7 @@ type SetupJourney = {
   target: string;
   authority: NonNullable<NewChatSetupAuthority>;
   entered: boolean;
+  controller: AbortController;
   revalidating?: boolean;
 };
 
@@ -44,7 +45,9 @@ export function useNewChatSetupReturn({
 
   const cancel = useCallback(() => {
     if (!current.current) return;
+    const pending = current.current;
     current.current = null;
+    pending.controller.abort();
     setJourney(null);
     bannerStore.dismiss(id, { reason: 'system' });
     callbacks.current.onCancel();
@@ -59,7 +62,17 @@ export function useNewChatSetupReturn({
         return;
       }
       if (restoreRoute && !navigationStore.isCurrentLocation(pending.origin)) {
-        navigationStore.restoreLocation(pending.origin);
+        void navigationStore
+          .restoreLocation(pending.origin, {
+            current: () =>
+              current.current === pending && pending.authority.isCurrent(),
+            prepare: async () => true,
+            signal: pending.controller.signal,
+          })
+          .then(() => {
+            if (current.current === pending && !pending.authority.isCurrent())
+              cancel();
+          });
         // A dirty setup form can defer the exact path/query restoration.
         return;
       }
@@ -111,6 +124,7 @@ export function useNewChatSetupReturn({
         target,
         authority,
         entered: false,
+        controller: new AbortController(),
       };
       // Synchronous ownership fences the old dialog's history cleanup before
       // React removes it. The route changes only after that dialog unmounts.
@@ -128,6 +142,7 @@ export function useNewChatSetupReturn({
       target: navigationStore.getSnapshot().pathname,
       authority,
       entered: true,
+      controller: new AbortController(),
     };
     current.current = next;
     setJourney(next);
@@ -170,8 +185,21 @@ export function useNewChatSetupReturn({
     if (!journey.entered) {
       // Ignore this initiating navigation, including setup opened from the
       // very same Connections page. Only a later Back can mean return.
-      navigationStore.navigate(journey.target);
-      journey.entered = true;
+      void navigationStore
+        .navigateWithPrecommit(journey.target, {
+          current: () =>
+            current.current === journey && journey.authority.isCurrent(),
+          prepare: async () => true,
+          signal: journey.controller.signal,
+        })
+        .then((committed) => {
+          if (current.current !== journey) return;
+          if (!journey.authority.isCurrent()) {
+            cancel();
+            return;
+          }
+          if (committed) journey.entered = true;
+        });
     }
   }, [authority, cancel, id, journey, resume]);
 
@@ -198,6 +226,7 @@ export function useNewChatSetupReturn({
 
   useEffect(
     () => () => {
+      current.current?.controller.abort();
       current.current = null;
       bannerStore.dismiss(id, { reason: 'system' });
     },
