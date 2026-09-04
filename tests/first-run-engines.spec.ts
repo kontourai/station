@@ -1081,6 +1081,11 @@ for (const viewport of [
     const writes = await pinFirstRun(page, { status: 'pending' });
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
+    // This fixture has no ready engine: explicitly leave the prerequisite
+    // launcher before the independent first-run chapter can open.
+    await page
+      .getByRole('button', { name: 'Continue Without Setup', exact: true })
+      .click();
     const engines = page.getByTestId('first-run-engines');
     await expect(engines).toBeVisible({ timeout: 20_000 });
     await engines
