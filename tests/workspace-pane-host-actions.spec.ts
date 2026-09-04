@@ -128,6 +128,8 @@ for (const width of [1280, 390]) {
     });
     for (const path of [`/projects/${slug}/layouts/coding`, directRoute]) {
       await page.goto(path);
+      if (!path.includes('/panes/'))
+        await page.getByRole('tab', { name: 'Files', exact: true }).click();
       const bar = page.getByRole('region', {
         name: 'Workspace actions',
         exact: true,
@@ -140,7 +142,9 @@ for (const width of [1280, 390]) {
       const combo = bar.getByRole('combobox', { name: 'Agent' });
       await expect(combo).toHaveValue('own-plugin-agent:assistant');
       await combo.focus();
-      await page.keyboard.press('ArrowDown');
+      // Native select popup navigation differs by OS. Typeahead is the
+      // browser's real keyboard selection path on macOS as well as Linux.
+      await page.keyboard.press('r');
       await page.keyboard.press('Enter');
       await expect(combo).toHaveValue('own-plugin-agent:reviewer');
       expect(
