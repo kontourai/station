@@ -28,8 +28,11 @@ describe('dependency audit collection', () => {
       loadEvent: () => ({
         pull_request: { base: { sha: 'a' }, head: { sha: 'b' } },
       }),
+      // #1430: the classified range starts at the merge base of the two, not
+      // at the base branch tip the event carries.
+      resolveMergeBase: () => 'mergebase',
       classifyRange: ({ before, after }) => {
-        expect({ before, after }).toEqual({ before: 'a', after: 'b' });
+        expect({ before, after }).toEqual({ before: 'mergebase', after: 'b' });
         return {
           dependencies: false,
           classification: 'runtime-or-workflow',
@@ -43,6 +46,70 @@ describe('dependency audit collection', () => {
       reason: 'runtime-or-workflow',
       scopes: [],
     });
+  });
+
+  it('classifies a pull request from its merge base, not the base branch tip', () => {
+    // #1430: GitHub's `pull_request.base.sha` is the base branch's CURRENT
+    // tip, so diffing it against the head attributes every dependency change
+    // that landed on main after the branch was cut to this pull request. The
+    // range handed to the classifier must start at the merge base.
+    const classified: { before: string; after: string }[] = [];
+    const decision = dependencyAuditDecision({
+      env: {
+        GITHUB_ACTIONS: 'true',
+        GITHUB_EVENT_NAME: 'pull_request',
+        GITHUB_EVENT_PATH: '/event.json',
+      },
+      loadEvent: () => ({
+        pull_request: { base: { sha: 'basetip' }, head: { sha: 'head' } },
+      }),
+      resolveMergeBase: ({ before, after }) => {
+        expect({ before, after }).toEqual({ before: 'basetip', after: 'head' });
+        return 'mergebase';
+      },
+      classifyRange: ({ before, after }) => {
+        classified.push({ before, after });
+        return {
+          dependencies: false,
+          classification: 'runtime-or-workflow',
+          dependencyScopes: [],
+        };
+      },
+    });
+
+    expect(classified).toEqual([{ before: 'mergebase', after: 'head' }]);
+    expect(decision).toEqual({
+      required: false,
+      reason: 'runtime-or-workflow',
+      scopes: [],
+    });
+  });
+
+  it('leaves a merge-queue candidate to its own base sha', () => {
+    // `merge_group.base_sha` already describes the candidate's own boundary,
+    // so resolving a merge base here would be wrong as well as unnecessary.
+    const classified: { before: string; after: string }[] = [];
+    dependencyAuditDecision({
+      env: {
+        GITHUB_ACTIONS: 'true',
+        GITHUB_EVENT_NAME: 'merge_group',
+        GITHUB_EVENT_PATH: '/event.json',
+      },
+      loadEvent: () => ({
+        merge_group: { base_sha: 'candidatebase', head_sha: 'candidatehead' },
+      }),
+      resolveMergeBase: () => {
+        throw new Error('merge base must not be resolved for merge_group');
+      },
+      classifyRange: ({ before, after }) => {
+        classified.push({ before, after });
+        return { dependencies: true, classification: 'dependencies' };
+      },
+    });
+
+    expect(classified).toEqual([
+      { before: 'candidatebase', after: 'candidatehead' },
+    ]);
   });
 
   it('keeps scheduled and manual policy runs live', () => {

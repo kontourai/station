@@ -1902,8 +1902,35 @@
      ceiling — this remains a bound on a string that a larger text scale, a
      translation, or a new state could grow, not a fix for an overflow that
      reproduces today. */
+  /* #1401: the 116px reservation above buys nothing HERE and costs the
+     Settings control. It exists (station#4474) so siblings hold still as the
+     chip flips state — but that contract is already defeated at this
+     breakpoint by the rule directly above: `connected`/`idle` hide the label
+     entirely, so a connect/disconnect shifts every sibling by ~31px whatever
+     this reserves. What it does buy is 37px of permanent width in a row that
+     does not have it. Measured on a real phone-width page in the
+     `error` state ("Can't connect", 79px natural): the toolbar's content is
+     viewport-independent (`.app-toolbar__actions` is `flex-shrink: 0` and the
+     brand has already bottomed out), so Settings sat at x=377..421 at EVERY
+     width — outside a 412px Pixel 7 by 9px, and outside its own centre on
+     anything narrower than 399px, which made it unreachable rather than
+     merely clipped. Releasing the reservation moves it to x=340..384: fully
+     inside 390, 402 and 412. Below ~386px it is still clipped — the row is
+     over-subscribed at those widths and that needs a control to leave it, not
+     a width tweak (#1401). The `max-width` below still bounds a label that a
+     larger text scale or a new state could grow. */
   .app-toolbar__conn-state {
-    max-width: 120px;
+    min-width: 0;
+    /* Derived from the row, not chosen: at 390px the left side (hamburger,
+       logo, brand at its floor, gaps) ends at x=126 and this cluster carries
+       three further 44px controls plus three 4px gaps = 144, leaving 120px
+       for the whole chip. The chip's own furniture (button padding, the 7px
+       dot, its gap) measures 35px, so the label gets 85. "Can't connect"
+       (79px) still renders in full; the two longest — "Needs re-pairing" and
+       "Awaiting approval", which archive#4512 added and which are what the
+       120px ceiling below was actually sized for — ellipsize by a few
+       characters rather than pushing Settings off the screen. */
+    max-width: 85px;
     overflow: hidden;
     text-overflow: ellipsis;
   }

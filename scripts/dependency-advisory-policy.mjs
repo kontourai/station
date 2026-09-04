@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -603,10 +603,32 @@ function readJson(file, label) {
 const AUDIT_TIMEOUT_MS = 4 * 60 * 1000;
 const AUDIT_ATTEMPTS = 2;
 
+/**
+ * #1430 — GitHub sets `pull_request.base.sha` to the base branch's CURRENT
+ * TIP, not the point the branch was cut from. Diffing that against the head
+ * therefore attributes every dependency change that landed on `main` after
+ * the branch started to this pull request, and drags a change with no
+ * dependency inputs of its own through a live registry scan. Those commits
+ * were audited on their own pull requests and again by `main`'s push run;
+ * this range must describe what the branch itself changed.
+ *
+ * Failing to resolve a merge base (a shallow clone, an unfetched base) is
+ * left to the caller's `catch`, which fails closed — the right answer when
+ * the range is unknown.
+ */
+function gitMergeBase({ before, after, cwd }) {
+  return execFileSync('git', ['merge-base', before, after], {
+    cwd,
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim();
+}
+
 export function dependencyAuditDecision({
   env = process.env,
   loadEvent = (eventPath) => JSON.parse(readFileSync(eventPath, 'utf8')),
   classifyRange = classifyGitRange,
+  resolveMergeBase = gitMergeBase,
   cwd = REPO_ROOT,
 } = {}) {
   if (env.GITHUB_ACTIONS !== 'true')
@@ -631,8 +653,15 @@ export function dependencyAuditDecision({
   try {
     if (!env.GITHUB_EVENT_PATH) throw new Error('GITHUB_EVENT_PATH is missing');
     const event = loadEvent(env.GITHUB_EVENT_PATH);
+    // `merge_group` and `push` already carry a genuine range boundary
+    // (`base_sha` is the candidate's own base, `before` the previous tip), so
+    // only the pull-request path needs the merge base — see `gitMergeBase`.
     const before = eventName.startsWith('pull_request')
-      ? event.pull_request?.base?.sha
+      ? resolveMergeBase({
+          before: event.pull_request?.base?.sha,
+          after: event.pull_request?.head?.sha,
+          cwd,
+        })
       : eventName === 'merge_group'
         ? event.merge_group?.base_sha
         : event.before;
