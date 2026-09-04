@@ -101,6 +101,7 @@ export type PluginCompositionInspectionReason =
   | 'activation-failed'
   | 'activation-aborted'
   | 'staged-resource-conflict'
+  | 'staged-resource-ambiguous'
   | 'rollback-failed'
   | 'disposer-failed'
   | 'disposer-timeout';
@@ -1210,14 +1211,15 @@ export function createPluginCompositionModule(options: {
         (debt) => debt.entries,
       ),
     );
-  // Distinct returned resources sharing an already-owned disposer cannot be
-  // safely cleaned by this module. Retain the actual handle/capability, not
+  // Disputed or unrecognizable object/function returns cannot be safely
+  // cleaned by this module. Retain the actual raw value/capability, not
   // merely a diagnostic, until a separate recovery authority can prove cleanup.
-  // At most one conflict is reached by a plan; it closes that scope's admission.
+  // At most one unclaimable return is reached per plan; it closes admission.
   const unclaimedResources = new Map<
     string,
     {
-      staged: NonNullable<ReturnType<typeof snapshotStagedHandle>>;
+      resource: object;
+      staged?: NonNullable<ReturnType<typeof snapshotStagedHandle>>;
       entry: PluginCompositionInspectionEntry;
     }
   >();
@@ -1393,23 +1395,30 @@ export function createPluginCompositionModule(options: {
         occurrence: PluginCompositionOccurrence;
         exact: boolean;
       }
-    | { kind: 'borrowed' | 'invalid' }
+    | { kind: 'borrowed' | 'no-resource' }
+    | { kind: 'ambiguous'; resource: object }
     | {
         kind: 'conflict';
         staged: NonNullable<ReturnType<typeof snapshotStagedHandle>>;
       } => {
     if (
-      rawHandle &&
-      typeof rawHandle === 'object' &&
-      claimedHandles.has(rawHandle)
+      rawHandle === null ||
+      (typeof rawHandle !== 'object' && typeof rawHandle !== 'function')
     ) {
+      leaseControl.fence();
+      return { kind: 'no-resource' };
+    }
+    if (claimedHandles.has(rawHandle)) {
       leaseControl.fence();
       return { kind: 'borrowed' };
     }
     const staged = snapshotStagedHandle(rawHandle);
     if (!staged) {
       leaseControl.fence();
-      return { kind: 'invalid' };
+      // An opaque object/function may be a resource despite lacking a safely
+      // recognizable disposer. Never invoke it or mistake validation failure
+      // for proof that nothing was returned.
+      return { kind: 'ambiguous', resource: rawHandle };
     }
     if (
       claimedDisposers.has(staged.disposer) ||
@@ -2018,19 +2027,21 @@ export function createPluginCompositionModule(options: {
       contribution: NormalizedContribution,
       binding: PluginCompositionInstalledContributionBinding,
       lease: PluginCompositionOccurrenceLease,
-      handle: NonNullable<ReturnType<typeof snapshotStagedHandle>>,
+      resource: object,
+      handle?: NonNullable<ReturnType<typeof snapshotStagedHandle>>,
     ) => {
       // Custody owns this exact handle even though it cannot own the shared
       // disposer. A later stage must not claim it after the original disposer
       // owner retires; exact returns of this resource are borrowed too.
-      claimedHandles.set(handle.identity, lease.occurrenceIdentity);
-      disputedDisposers.add(handle.disposer);
+      claimedHandles.set(resource, lease.occurrenceIdentity);
+      if (handle) disputedDisposers.add(handle.disposer);
       unclaimedResources.set(key, {
-        staged: handle,
+        resource,
+        ...(handle ? { staged: handle } : {}),
         entry: entry(
           contribution,
           'pending',
-          'staged-resource-conflict',
+          handle ? 'staged-resource-conflict' : 'staged-resource-ambiguous',
           nextGeneration,
           { binding, occurrence: lease },
         ),
@@ -2140,13 +2151,25 @@ export function createPluginCompositionModule(options: {
                   const claim = claimOccurrence(leaseControl, lateHandle);
                   // Exact borrowed identity acquired no new resource. Join any
                   // earlier B rollback, then release B's lease; never dispose A.
-                  if (claim.kind === 'borrowed') return 'disposed';
+                  // Primitive invalid results likewise return no handle. This
+                  // settles only this stage's obligation; earlier rollback and
+                  // actual authorization release still own their full join.
+                  if (claim.kind === 'borrowed' || claim.kind === 'no-resource')
+                    return 'disposed';
                   if (claim.kind === 'conflict')
                     retainUnclaimable(
                       contribution,
                       binding,
                       leaseControl.lease,
+                      claim.staged.identity,
                       claim.staged,
+                    );
+                  if (claim.kind === 'ambiguous')
+                    retainUnclaimable(
+                      contribution,
+                      binding,
+                      leaseControl.lease,
+                      claim.resource,
                     );
                   if (claim.kind !== 'claimed') return 'failed';
                   const occurrence = claim.occurrence;
@@ -2170,12 +2193,15 @@ export function createPluginCompositionModule(options: {
           }
           const rawHandle = stageOutcome.value;
           const claim = claimOccurrence(leaseControl, rawHandle);
-          if (claim.kind === 'conflict') {
+          if (claim.kind === 'conflict' || claim.kind === 'ambiguous') {
             retainUnclaimable(
               contribution,
               binding,
               leaseControl.lease,
-              claim.staged,
+              claim.kind === 'conflict'
+                ? claim.staged.identity
+                : claim.resource,
+              claim.kind === 'conflict' ? claim.staged : undefined,
             );
             // This is an unresolved owned resource, not a completed cleanup.
             // Keep whole-plan authorization custody through the common join.

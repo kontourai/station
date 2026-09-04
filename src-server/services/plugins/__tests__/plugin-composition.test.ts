@@ -140,6 +140,195 @@ function moduleWith(
 }
 
 describe('plugin composition profiles', () => {
+  test.each([
+    { name: 'null', value: null },
+    { name: 'undefined', value: undefined },
+    { name: 'false', value: false },
+    { name: 'zero', value: 0 },
+    { name: 'text', value: 'not a handle' },
+    { name: 'bigint', value: 1n },
+    { name: 'symbol', value: Symbol('not a handle') },
+  ])(
+    'a late $name result settles the no-resource obligation and frees scope capacity',
+    async ({ value }) => {
+      vi.useFakeTimers();
+      try {
+        let finish!: () => void;
+        const release = vi.fn();
+        const stage = vi.fn(
+          () =>
+            new Promise<never>((resolve) => {
+              finish = () => resolve(value as never);
+            }),
+        );
+        const module = moduleWith([['cache', { stage }]], {
+          disposerTimeoutMs: 5,
+          maxRetainedScopes: 1,
+          onRelease: release,
+        });
+        const applying = module.apply(
+          profile(projectA, [contribution('cache', 'workspace.cache')]),
+        );
+        await vi.advanceTimersByTimeAsync(10);
+        expect((await applying).kind).toBe('failed');
+        expect(release).not.toHaveBeenCalled();
+        expect((await module.retire(projectA)).kind).toBe('pending');
+        finish();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(release).toHaveBeenCalledOnce();
+        expect((await module.retire(projectA)).kind).toBe('retired');
+        expect((await module.apply(profile(projectB, []))).kind).toBe(
+          'activated',
+        );
+        expect(stage).toHaveBeenCalledOnce();
+        await module.retire(projectB);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  test.each(['resolve', 'reject'] as const)(
+    'late no-resource settlement still joins earlier rollback which will %s',
+    async (outcome) => {
+      vi.useFakeTimers();
+      try {
+        let finishPrior!: () => void;
+        let finishLate!: () => void;
+        const release = vi.fn();
+        const dispose = vi.fn(
+          () =>
+            new Promise<void>((resolve, reject) => {
+              finishPrior = () =>
+                outcome === 'resolve'
+                  ? resolve()
+                  : reject(new Error('rollback failed'));
+            }),
+        );
+        const module = moduleWith(
+          [
+            [
+              'a',
+              {
+                async stage() {
+                  return { dispose };
+                },
+              },
+            ],
+            [
+              'b',
+              {
+                stage: () =>
+                  new Promise<never>((resolve) => {
+                    finishLate = () => resolve(null as never);
+                  }),
+              },
+            ],
+          ],
+          { disposerTimeoutMs: 5, onRelease: release },
+        );
+        const applying = module.apply(
+          profile(projectA, [
+            contribution('a', 'workspace.a'),
+            contribution('b', 'workspace.b'),
+          ]),
+        );
+        await vi.advanceTimersByTimeAsync(20);
+        await applying;
+        finishLate();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(release).not.toHaveBeenCalled();
+        expect((await module.retire(projectA)).kind).toBe('pending');
+        finishPrior();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(dispose).toHaveBeenCalledOnce();
+        expect(release).toHaveBeenCalledTimes(outcome === 'resolve' ? 1 : 0);
+        expect((await module.retire(projectA)).kind).toBe(
+          outcome === 'resolve' ? 'retired' : 'pending',
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  test.each([false, true])(
+    'ambiguous raw handles retain visible custody and never invoke unknown cleanup capabilities (late=%s)',
+    async (late) => {
+      for (const kind of [
+        'object',
+        'array',
+        'function',
+        'accessor',
+        'proxy-function',
+      ] as const) {
+        vi.useFakeTimers();
+        try {
+          const invoked = vi.fn(() => {
+            throw new Error('unknown capability must not run');
+          });
+          const raw =
+            kind === 'array'
+              ? []
+              : kind === 'function'
+                ? invoked
+                : kind === 'accessor'
+                  ? Object.defineProperty({}, 'dispose', {
+                      enumerable: true,
+                      get: invoked,
+                    })
+                  : kind === 'proxy-function'
+                    ? new Proxy(() => {}, { apply: invoked })
+                    : {};
+          const release = vi.fn();
+          let finish!: () => void;
+          const module = moduleWith(
+            [
+              [
+                'cache',
+                {
+                  async stage() {
+                    if (late)
+                      await new Promise<void>((resolve) => {
+                        finish = resolve;
+                      });
+                    return raw as never;
+                  },
+                },
+              ],
+            ],
+            { disposerTimeoutMs: 5, onRelease: release },
+          );
+          const applying = module.apply(
+            profile(projectA, [contribution('cache', 'workspace.cache')]),
+          );
+          await vi.advanceTimersByTimeAsync(10);
+          await applying;
+          if (late) {
+            finish();
+            await vi.advanceTimersByTimeAsync(0);
+          }
+          expect(invoked).not.toHaveBeenCalled();
+          expect(release).not.toHaveBeenCalled();
+          expect(module.inspect(projectA).pending).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                reason: 'staged-resource-ambiguous',
+                generation: 1,
+              }),
+            ]),
+          );
+          expect((await module.retire(projectA)).kind).toBe('pending');
+          expect((await module.apply(profile(projectA, []))).kind).toBe(
+            'pending',
+          );
+        } finally {
+          vi.useRealTimers();
+        }
+      }
+    },
+  );
+
   test('captures the original authorizer and receiver before queued work can replace them', async () => {
     const events: string[] = [];
     let finishStage!: () => void;
