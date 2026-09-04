@@ -27,6 +27,8 @@ type ToastAction = {
   variant?: 'primary' | 'secondary' | 'danger';
 };
 
+type ToastTone = 'info' | 'success' | 'warning' | 'error';
+
 type Toast = {
   id: string;
   message: string;
@@ -42,7 +44,7 @@ type Toast = {
   // union regardless, because the rendering code already switches on it and
   // a real device-pairing notification producer is meant to opt into this
   // exact shape next, not invent a second one.
-  type?: 'info' | 'tool-approval' | 'tool-activity' | 'pairing-request';
+  type?: ToastTone | 'tool-approval' | 'tool-activity' | 'pairing-request';
   toolName?: string;
   agentName?: string;
   conversationTitle?: string;
@@ -96,16 +98,24 @@ class ToastStore {
     duration = 5000,
     actions?: ToastAction[],
     metadata?: Record<string, unknown>,
+    tone: ToastTone = 'info',
   ) {
     const clean = stripAnsi(message);
 
     // Collapse rapid duplicates (a provider error retried in a loop would
     // otherwise stack identical toasts until they cover the viewport). Refresh
     // the existing toast's auto-dismiss timer instead of adding another copy.
-    const existing = this.toasts.find(
-      (t) =>
-        t.type === 'info' && t.message === clean && t.sessionId === sessionId,
-    );
+    // Actions carry distinct caller-owned intent. Equal copy must not retain
+    // another Pane's callback or attach an old action to an actionless notice.
+    const existing =
+      !actions?.length &&
+      this.toasts.find(
+        (t) =>
+          !t.actions?.length &&
+          t.type === tone &&
+          t.message === clean &&
+          t.sessionId === sessionId,
+      );
     if (existing) {
       const prevTimeout = this.timeouts.get(existing.id);
       if (prevTimeout) clearTimeout(prevTimeout);
@@ -124,7 +134,7 @@ class ToastStore {
       message: clean,
       sessionId,
       duration,
-      type: 'info',
+      type: tone,
       actions,
       metadata,
     };
@@ -313,6 +323,7 @@ const ToastContext = createContext<{
     sessionId?: string,
     duration?: number,
     actions?: ToastAction[],
+    tone?: ToastTone,
   ) => string;
   showToolApproval: (options: {
     sessionId: string;
@@ -347,8 +358,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       sessionId?: string,
       duration?: number,
       actions?: ToastAction[],
+      tone: ToastTone = 'info',
     ) => {
-      return toastStore.show(message, sessionId, duration, actions);
+      return toastStore.show(
+        message,
+        sessionId,
+        duration,
+        actions,
+        undefined,
+        tone,
+      );
     },
     [],
   );

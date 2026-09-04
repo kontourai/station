@@ -17,6 +17,7 @@ const harness = vi.hoisted(() => ({
   setDockState: vi.fn(),
   setRegion: vi.fn(),
   placeSurface: vi.fn(),
+  showSurface: vi.fn(),
   bottomOnly: false,
   // The `⋯` overflow button only exists under the mobile media query, so a
   // coarse device is not automatically one whose commands can move there.
@@ -48,12 +49,14 @@ vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
       surfaces: REGION_SURFACE_REGISTRY,
       setRegion: vi.fn(),
       placeSurface: harness.placeSurface,
+      showSurface: harness.showSurface,
     }),
     useRegionModel: () => ({
       regions: harness.regions,
       surfaces: REGION_SURFACE_REGISTRY,
       setRegion: harness.setRegion,
       placeSurface: harness.placeSurface,
+      showSurface: harness.showSurface,
     }),
   };
 });
@@ -113,6 +116,7 @@ describe('RegionToolbarControls', () => {
     harness.setDockState.mockReset();
     harness.setRegion.mockReset();
     harness.placeSurface.mockReset();
+    harness.showSurface.mockReset();
     harness.bottomOnly = false;
     harness.isMobile = false;
     harness.shortcuts.clear();
@@ -139,7 +143,7 @@ describe('RegionToolbarControls', () => {
     expect(harness.regions.bottom.occupant).toBe('chat');
 
     harness.shortcuts.get('activity.toggle')?.handler();
-    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
+    expect(harness.showSurface).toHaveBeenCalledWith('activity');
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Hide Chat Bottom region' }),
@@ -149,7 +153,13 @@ describe('RegionToolbarControls', () => {
     });
   });
 
-  test('the Activity chord uses a free region instead of evicting Chat from its preferred region', () => {
+  test('the Activity chord asks the model to show an unplaced surface and computes no placement of its own (#1420)', () => {
+    // Chat sits in Activity's preferred region with a free region beside it:
+    // the fixture where the toolbar's own copy of the rules used to pick the
+    // free region so as not to evict Chat. That choice belongs to the model's
+    // `showSurface` (`revealSurface` in region-model.ts, tested there); the
+    // toolbar issues the command once and places nothing itself, so a change
+    // to the rules cannot leave it holding a stale copy.
     Object.assign(harness.regions.bottom, {
       visible: false,
       occupant: null,
@@ -159,7 +169,10 @@ describe('RegionToolbarControls', () => {
 
     harness.shortcuts.get('activity.toggle')?.handler();
 
-    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'bottom');
+    expect(harness.showSurface).toHaveBeenCalledTimes(1);
+    expect(harness.showSurface).toHaveBeenCalledWith('activity');
+    expect(harness.placeSurface).not.toHaveBeenCalled();
+    expect(harness.setRegion).not.toHaveBeenCalled();
   });
 
   test('the Activity chord toggles its existing region hidden and visible', () => {
@@ -340,14 +353,13 @@ describe('RegionToolbarControls', () => {
     });
 
     harness.setRegion.mockClear();
-    // ⌘⇧A: Activity is unplaced, and the coarse rule is to show it ALONE
-    // rather than open a second visible region beside Chat.
+    // ⌘⇧A: Activity is unplaced. The coarse rule — show it ALONE rather than
+    // open a second visible region beside Chat — is the model's `showSurface`
+    // (`showSurfaceAlone` in region-model.ts); the chord only issues it.
     harness.shortcuts.get('activity.toggle')?.handler();
-    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
-    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
-      visible: false,
-    });
-    expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: true });
+    expect(harness.showSurface).toHaveBeenCalledWith('activity');
+    expect(harness.placeSurface).not.toHaveBeenCalled();
+    expect(harness.setRegion).not.toHaveBeenCalled();
   });
 
   test('a coarse device too wide to be mobile keeps the folded Regions menu in the toolbar', () => {
@@ -394,11 +406,9 @@ describe('RegionToolbarControls', () => {
     fireEvent.click(
       screen.getByRole('menuitemcheckbox', { name: 'Show Activity' }),
     );
-    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
-    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
-      visible: false,
-    });
-    expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: true });
+    expect(harness.showSurface).toHaveBeenCalledWith('activity');
+    expect(harness.placeSurface).not.toHaveBeenCalled();
+    expect(harness.setRegion).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
     const backdrop = screen.getByRole('button', {

@@ -2378,6 +2378,14 @@ POST /plugins/preview
 
 Fetches a plugin from a git URL or local path, validates it, and returns manifest, components, conflicts, and dependencies — without installing.
 
+Dependencies with unsupported lifecycle features (including ordinary dependency
+permissions such as `network.fetch`) return HTTP 400 with
+`code: "unsupported-plugin-dependency"` and `valid: false`, without a digest or
+permission approval payload. Preview and install use the same support policy;
+preview does not grant or expand permissions. Registry-backed local dependencies
+resolve relative transitive sources from the registry source directory under the
+same allowed sibling-root containment rules as installation.
+
 **Request Body**:
 ```json
 {
@@ -2434,10 +2442,24 @@ Installs a plugin from a git URL or local path, including agents, layout config,
   "dependencies": [{ "id": "dep-plugin", "status": "installed" }],
   "permissions": {
     "autoGranted": ["network.fetch"],
-    "pendingConsent": []
+    "pendingConsent": [],
+    "dependencies": [{ "id": "dep-plugin", "pendingConsent": [] }]
   }
 }
 ```
+
+`permissions.dependencies` reports current missing permissions for the actual
+installed transitive dependency graph, after installation and grant binding.
+Unlike preview consent requirements, an already-granted permission is absent
+from this pending list. Older servers may omit it; clients must then report
+dependency approval status as unknown rather than infer it from preview.
+
+A parent or dependency content/permission approval mismatch returns HTTP 400
+with structured `consent.reason`, `consent.required`, and `consent.consented`.
+This does not claim that no earlier dependency effects occurred: completed
+compensation may precede the refusal. Failed compensation is not a simple
+consent refusal and may leave retained dependency state (HTTP 500 for cleanup
+failure, or the existing HTTP 409 for a diagnosed content-lock cycle).
 
 ---
 

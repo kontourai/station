@@ -37,6 +37,27 @@ describe('toastStore.show', () => {
     expect(toast?.message).toBe('boom');
   });
 
+  test.each(['success', 'warning', 'error'] as const)(
+    'retains the public SDK %s tone without using session attribution',
+    (tone) => {
+      toastStore.show(
+        'SDK notice',
+        undefined,
+        100_000,
+        undefined,
+        undefined,
+        tone,
+      );
+      expect(toastStore.getSnapshot()).toContainEqual(
+        expect.objectContaining({
+          message: 'SDK notice',
+          sessionId: undefined,
+          type: tone,
+        }),
+      );
+    },
+  );
+
   test('dismissAll removes every active toast at once', () => {
     toastStore.show('a', 's3', 100_000);
     toastStore.show('b', 's3', 100_000);

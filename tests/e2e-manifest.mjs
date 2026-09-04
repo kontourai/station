@@ -383,6 +383,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // Seeds exact historical/current-child events only in the managed temporary home.
     'tests/workspace-search-exact-message.spec.ts',
     'tests/plugin-system.spec.ts',
+    'tests/plugin-dependency-lifecycle.spec.ts',
     'tests/survey-review-workbench.spec.ts',
     'tests/fieldwork-review.spec.ts',
     'tests/plugin-dev-hot-reload.spec.ts',
@@ -719,6 +720,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/plugin-pane-sdk-context.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves a test-only plugin installed through real preview and consent receives a server-issued Project Pane occurrence and executes public Agent, navigation, and toast SDK hooks in direct and placed hosts, without migrating first-party examples.',
+    exceptions: [],
+  },
+  {
     path: 'tests/default-agent-workflow.spec.ts',
     bucket: 'product',
     surface: 'Agents',
@@ -1023,6 +1034,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted plugin system lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/plugin-dependency-lifecycle.spec.ts',
+    bucket: 'product',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Test-only managed API fixture proves preview-bound dependency consent, pending provider-permission/settings projection, and individual owned-plugin cleanup. It is not provider non-execution, Enterprise rendering, registry-alias retirement, or external-effect drain proof.',
     exceptions: [],
   },
   {

@@ -2,18 +2,26 @@ import {
   type AgentId,
   agentId,
 } from '@kontourai/station-contracts/agent-identity';
-import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
 
 let _apiBase = '';
-let _currentLayout: LayoutDefinition | undefined;
+
+export interface PluginApiIdentity {
+  readonly pluginName: string;
+  getHeaders(extraHeaders?: Record<string, string>): Record<string, string>;
+}
 
 export function _setApiBase(apiBase: string) {
   _apiBase = apiBase;
 }
 
-export function _setLayoutContext(layout: LayoutDefinition | undefined) {
-  _currentLayout = layout;
+export function _setLayoutContext(
+  _layout: LayoutDefinition | undefined,
+  _options: { owner?: object; pluginName?: string } = {},
+) {
+  // Compatibility-only no-op. A module global cannot identify simultaneous
+  // Pane owners; SDKProvider now supplies a boundary-local PluginApiIdentity.
+  return () => {};
 }
 
 export function _resolveAgent(agentSlug: string): AgentId {
@@ -21,7 +29,9 @@ export function _resolveAgent(agentSlug: string): AgentId {
 }
 
 export function _getPluginName(): string {
-  return _currentLayout?.slug || '';
+  // Legacy imperative callers remain deliberately unqualified rather than
+  // borrowing whichever plugin Pane happened to render most recently.
+  return '';
 }
 
 export async function _getApiBase(): Promise<string> {
@@ -37,13 +47,5 @@ export async function _getApiBase(): Promise<string> {
   return _apiBase;
 }
 
-export function getPluginHeaders(
-  extraHeaders?: Record<string, string>,
-): Record<string, string> {
-  return {
-    [STATION_PLUGIN_HEADER]: _getPluginName(),
-    ...extraHeaders,
-  };
-}
-
 export { apiErrorMessage } from './client/api-error-message';
+export { getPluginHeaders } from './client/plugin-headers';
