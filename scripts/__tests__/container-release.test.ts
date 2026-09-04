@@ -335,7 +335,7 @@ describe('container source contract', () => {
       'COPY schemas/dependency-lifecycle-allowlist.schema.json',
     );
     expect(dockerfile).toMatch(
-      /COPY scripts\/node-runtime-contract\.mjs scripts\/dependency-lifecycle\.mjs scripts\/\s+COPY scripts\/lib\/dependency-lifecycle-policy\.mjs scripts\/lib\/workspace-dependency-satisfaction\.mjs scripts\/lib\/pnpm-lockfile\.mjs scripts\/lib\/\s+RUN npm run dependencies:ci/,
+      /COPY scripts\/node-runtime-contract\.mjs scripts\/dependency-lifecycle\.mjs scripts\/\s+COPY scripts\/lib\/dependency-install-retirement\.mjs scripts\/lib\/dependency-lifecycle-policy\.mjs scripts\/lib\/workspace-dependency-satisfaction\.mjs scripts\/lib\/pnpm-lockfile\.mjs scripts\/lib\/\s+RUN npm run dependencies:ci/,
     );
     expect(runtimeStage).not.toContain('g++ make python3');
     // Runtime dependencies must come from the manifest-only install stage.

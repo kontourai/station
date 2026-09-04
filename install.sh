@@ -734,8 +734,54 @@ mkdir -p "$extract_root"
 tar -xzf "$archive" -C "$extract_root"
 candidate="$extract_root/station"
 [ -x "$candidate/station" ] || fail 'release archive is missing the Station launcher'
-[ -f "$candidate/pnpm-lock.yaml" ] || fail 'release archive is missing pnpm-lock.yaml'
-[ -f "$candidate/pnpm-workspace.yaml" ] || fail 'release archive is missing pnpm-workspace.yaml'
+# Select the dependency contract from the verified archive, not this installer's
+# revision. Older signed releases still own an npm-based lifecycle runner.
+[ -f "$candidate/package.json" ] || fail 'release archive is missing package.json'
+dependency_contract="$(node -e '
+  const fs = require("node:fs");
+  try {
+    const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    if (!manifest || typeof manifest !== "object" || Array.isArray(manifest))
+      throw new Error("release package.json must be an object");
+    let manager = manifest.packageManager;
+    const engineManager = manifest.devEngines?.packageManager;
+    if (engineManager !== undefined) {
+      if (!engineManager || typeof engineManager !== "object" ||
+          typeof engineManager.name !== "string" || typeof engineManager.version !== "string")
+        throw new Error("release has invalid package-manager metadata");
+      const enginePin = `${engineManager.name}@${engineManager.version}`;
+      if (manager !== undefined && manager !== enginePin)
+        throw new Error("release has conflicting package-manager declarations");
+      manager = enginePin;
+    }
+    if (typeof manifest.scripts?.["dependencies:ci"] !== "string" ||
+        !manifest.scripts["dependencies:ci"].trim())
+      throw new Error("release is missing its managed dependencies:ci runner");
+    if (manager === undefined || (typeof manager === "string" && /^npm@[0-9]+\.[0-9]+\.[0-9]+$/.test(manager))) {
+      process.stdout.write("npm");
+    } else if (typeof manager === "string" && /^pnpm@11\.[0-9]+\.[0-9]+$/.test(manager)) {
+      process.stdout.write("pnpm");
+    } else {
+      throw new Error("release packageManager must pin supported pnpm 11 or legacy npm");
+    }
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+' "$candidate/package.json")" || fail 'release archive has unsupported dependency metadata'
+case "$dependency_contract" in
+  pnpm)
+    [ -f "$candidate/pnpm-lock.yaml" ] || fail 'release archive is missing pnpm-lock.yaml'
+    [ -f "$candidate/pnpm-workspace.yaml" ] || fail 'release archive is missing pnpm-workspace.yaml'
+    [ ! -e "$candidate/package-lock.json" ] || fail 'release archive has ambiguous dependency lockfiles'
+    ;;
+  npm)
+    [ -f "$candidate/package-lock.json" ] || fail 'legacy release archive is missing package-lock.json'
+    [ ! -e "$candidate/pnpm-lock.yaml" ] && [ ! -e "$candidate/pnpm-workspace.yaml" ] ||
+      fail 'legacy release archive has undeclared pnpm dependency configuration'
+    ;;
+  *) fail 'release archive has unsupported dependency metadata' ;;
+esac
 [ -f "$candidate/.station-release.json" ] || fail 'release archive is missing provenance'
 candidate_identity="$(node -e '
   const fs = require("node:fs");
