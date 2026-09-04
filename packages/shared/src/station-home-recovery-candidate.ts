@@ -109,6 +109,17 @@ function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function wellFormedText(text: string): boolean {
+  for (let index = 0; index < text.length; index += 1) {
+    const unit = text.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = text.charCodeAt(++index);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) return false;
+  }
+  return true;
+}
+
 function selection(value: Record<string, unknown>, field: string) {
   if (!Object.hasOwn(value, field)) return 'absent' as const;
   if (value[field] === null) return 'null' as const;
@@ -239,17 +250,22 @@ export function prepareDetachedRecoveryCandidate(
   for (let index = 0; index < input.length; index += 1) {
     const entry = input[index];
     if (!record(entry)) throw new StationHomeRecoveryCandidateError();
-    const descriptors = Object.getOwnPropertyDescriptors(entry);
+    // Intrinsic own-key enumeration is not preemptible; do not amplify it by
+    // collecting descriptors or reading values for rejected keys.
+    const keys = Reflect.ownKeys(entry);
+    if (keys.length !== 2 || !keys.includes('store') || !keys.includes('json'))
+      throw new StationHomeRecoveryCandidateError();
+    const storeDescriptor = Object.getOwnPropertyDescriptor(entry, 'store');
+    const jsonDescriptor = Object.getOwnPropertyDescriptor(entry, 'json');
     if (
-      Object.keys(descriptors).length !== 2 ||
-      !descriptors.store ||
-      !descriptors.json ||
-      !('value' in descriptors.store) ||
-      !('value' in descriptors.json)
+      !storeDescriptor ||
+      !jsonDescriptor ||
+      !('value' in storeDescriptor) ||
+      !('value' in jsonDescriptor)
     )
       throw new StationHomeRecoveryCandidateError();
-    const { value: storeValue } = descriptors.store;
-    const { value: json } = descriptors.json;
+    const { value: storeValue } = storeDescriptor;
+    const { value: json } = jsonDescriptor;
     if (
       typeof storeValue !== 'string' ||
       storeValue.length > 64 ||
@@ -257,6 +273,7 @@ export function prepareDetachedRecoveryCandidate(
       json.length > MAX_RECORD_BYTES
     )
       throw new StationHomeRecoveryCandidateError();
+    if (!wellFormedText(json)) throw new StationHomeRecoveryCandidateError();
     const bytes = Buffer.byteLength(json);
     total += bytes;
     if (bytes > MAX_RECORD_BYTES || total > MAX_TOTAL_BYTES)

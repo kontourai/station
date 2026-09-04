@@ -151,6 +151,8 @@ export function stageStationHomeRecoveryCandidate(options: {
   outputDir: string;
   /** Private fault seam, not an import/publish authorization callback. */
   beforeStageCommit?: () => void;
+  /** Private post-rename fault seam; the old staging name is no longer owned. */
+  afterStageCommit?: () => void;
 }): StationHomeRecoveryCandidatePlan {
   const prepared = prepareDetachedRecoveryCandidate(
     options.records,
@@ -217,6 +219,8 @@ export function stageStationHomeRecoveryCandidate(options: {
     if (existsSync(outputDir))
       fail('detached recovery output changed during staging');
     renameSync(staging, outputDir);
+    staging = undefined;
+    options.afterStageCommit?.();
     fsyncDirectorySync(parent);
     return prepared.plan;
   } catch {

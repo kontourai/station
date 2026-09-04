@@ -317,6 +317,118 @@ describe('StationHomeArchive detached recovery candidate', () => {
     expect(readdirSync(f.root)).toEqual(['candidate']);
   });
 
+  it('relinquishes the old staging name after rename even if post-commit work fails', () => {
+    const f = fixture();
+    let oldStage = '';
+    expect(() =>
+      stageStationHomeRecoveryCandidate({
+        ...f,
+        declaredSourceSchemaVersion: 1,
+        records: [{ store: 'app', json: '{}' }],
+        beforeStageCommit: () => {
+          oldStage = join(
+            f.root,
+            readdirSync(f.root).find((name) =>
+              name.startsWith('.station-recovery-candidate-'),
+            )!,
+          );
+        },
+        afterStageCommit: () => {
+          mkdirSync(oldStage);
+          writeFileSync(join(oldStage, 'new-owner'), 'must-retain');
+          throw new Error('post-rename fixture fault');
+        },
+      }),
+    ).toThrow('inert output may remain');
+    expect(readFileSync(join(oldStage, 'new-owner'), 'utf8')).toBe(
+      'must-retain',
+    );
+    expect(
+      JSON.parse(
+        readFileSync(join(f.outputDir, 'recovery-candidate.json'), 'utf8'),
+      ).publishable,
+    ).toBe(false);
+  });
+
+  it('rejects extra keys before requesting descriptors and refuses symbols or accessors', () => {
+    const f = fixture();
+    let descriptorReads = 0;
+    const extra = new Proxy(
+      {
+        store: 'app',
+        json: '{}',
+        ...Object.fromEntries(
+          Array.from({ length: 1000 }, (_, index) => [`extra-${index}`, true]),
+        ),
+      },
+      {
+        getOwnPropertyDescriptor(target, key) {
+          descriptorReads += 1;
+          return Reflect.getOwnPropertyDescriptor(target, key);
+        },
+      },
+    );
+    expect(() =>
+      stageStationHomeRecoveryCandidate({
+        ...f,
+        declaredSourceSchemaVersion: 1,
+        records: [extra],
+      }),
+    ).toThrow('Detached recovery records');
+    expect(descriptorReads).toBe(0);
+    let getterReads = 0;
+    const accessor = {
+      store: 'app',
+      get json() {
+        getterReads += 1;
+        return '{}';
+      },
+    };
+    for (const entry of [
+      accessor,
+      { store: 'app', json: '{}', [Symbol('private')]: 'never-read' },
+    ]) {
+      expect(() =>
+        stageStationHomeRecoveryCandidate({
+          ...f,
+          declaredSourceSchemaVersion: 1,
+          records: [entry],
+        }),
+      ).toThrow('Detached recovery records');
+    }
+    expect(getterReads).toBe(0);
+    expect(readdirSync(f.root)).toEqual([]);
+  });
+
+  it.each([0xd800, 0xdbff, 0xdc00, 0xdfff])(
+    'rejects unpaired UTF-16 source text before lossy UTF-8 encoding: %i',
+    (unit) => {
+      const f = fixture();
+      const json = `{"value":"${String.fromCharCode(unit)}"}`;
+      expect(() =>
+        stageStationHomeRecoveryCandidate({
+          ...f,
+          declaredSourceSchemaVersion: 1,
+          records: [{ store: 'app', json }],
+        }),
+      ).toThrow('Detached recovery records');
+      expect(readdirSync(f.root)).toEqual([]);
+    },
+  );
+
+  it.each(['{"value":"\\ud800"}', '{"value":"\\udfff"}', '{"value":"😀"}'])(
+    'preserves ASCII JSON surrogate escapes and valid paired text byte-exactly',
+    (json) => {
+      const { outputDir, plan } = stage([{ store: 'app', json }]);
+      expect(
+        readFileSync(join(outputDir, 'inert-evidence', 'record-0001.payload')),
+      ).toEqual(Buffer.from(json));
+      expect(plan.records[0].sha256).toBe(
+        createHash('sha256').update(Buffer.from(json)).digest('hex'),
+      );
+    },
+  );
+
   it('refuses an existing destination or symlinked output parent', () => {
     const f = fixture();
     mkdirSync(f.outputDir);
