@@ -674,6 +674,56 @@ describe('loadStrandsTools', () => {
     );
   });
 
+  test('keeps an ordinary preconnect Error redacted rather than widening the escape (#1485)', async () => {
+    const canary = 'integration-config-loader-canary';
+    const mcpConnectionStatus = new Map();
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    await expect(
+      loadStrandsTools({
+        slug: 'agent-a',
+        spec: {
+          tools: { mcpServers: ['demoServer'], available: ['*'] },
+        } as any,
+        opts: {
+          mcpCustody: new MCPLocalConnectionCustody(),
+          configLoader: {
+            // Preconnect, but a plain Error is not a shape only Station's own
+            // code produces, so it keeps today's bounded message.
+            loadIntegration: vi
+              .fn()
+              .mockRejectedValue(new Error(`load failed ${canary}`)),
+          } as any,
+          mcpConnectionStatus,
+          integrationMetadata: new Map(),
+          toolNameMapping: new Map(),
+          toolNameReverseMapping: new Map(),
+          logger,
+        },
+        state: { mcpClients: new Map(), agentMcpClients: new Map() },
+      }),
+    ).resolves.toEqual([]);
+
+    expect(mcpConnectionStatus.get('demoServer')).toEqual({
+      connected: false,
+      error: 'Tool server connection failed',
+    });
+    expect(
+      JSON.stringify([
+        ...logger.debug.mock.calls,
+        ...logger.info.mock.calls,
+        ...logger.warn.mock.calls,
+        ...logger.error.mock.calls,
+        [...mcpConnectionStatus],
+      ]),
+    ).not.toContain(canary);
+  });
+
   test('keeps a genuine connect-path failure redacted, whatever its class (#1485)', async () => {
     const canary = 'remote-listtools-provider-canary';
     const mcpConnectionStatus = new Map();
