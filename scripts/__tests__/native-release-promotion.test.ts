@@ -61,7 +61,11 @@ describe('one-revision native promotion contract', () => {
     expect(source.run).toContain('test "$source_sha" = "$GITHUB_SHA"');
     expect(gate?.steps?.[0]?.with?.ref).toBe('$' + '{{ github.sha }}');
     expect(caller?.needs).toEqual(['test-gate', 'full-regression']);
-    expect(caller?.permissions).toEqual({ contents: 'write' });
+    expect(caller?.permissions).toEqual({
+      contents: 'write',
+      'id-token': 'write',
+      attestations: 'write',
+    });
     expect((caller as any)?.with?.source_sha).toBe(
       '$' + '{{ needs.test-gate.outputs.source_sha }}',
     );
