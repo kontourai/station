@@ -177,13 +177,14 @@ describe('docked is a derived capability, pinned to the shell surface registry',
         [...placeable].filter((id) => !declared.has(id)),
       ),
     }).toEqual({ declaredButNotPlaceable: [], placeableButNotDeclared: [] });
-    expect(sorted(declared)).toEqual(sorted(placeable));
   });
 
-  test('host-derived built-ins (layout-tab adaptations) never claim docked', () => {
+  test('the Coding pane, derived through the layout-tab adapter with no region context, does not claim docked', () => {
     // The Coding pane has no descriptor constant: `builtinWorkspacePaneCanonical`
     // derives it per layout through the adapter, so the barrel scan above
-    // cannot see it. Its placement comes from the adapter's default region.
+    // cannot see it. This pins the host's real call (no region context, so
+    // the adapter's default region applies); the adapter itself will carry
+    // `docked` if a context supplies it, and that path is not covered here.
     const adaptation = paneAdaptationFromLayoutTab(
       {
         id: 'coding',
