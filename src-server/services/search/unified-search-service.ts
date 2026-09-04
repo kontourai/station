@@ -220,8 +220,8 @@ function cloneOwner(value: unknown): UnifiedSearchOwner | null {
 
 function cloneScope(value: unknown): UnifiedSearchScope | null | undefined {
   if (value === undefined) return undefined;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const scope = value as Record<string, unknown>;
+  const scope = exactDataRecord(value, ['projectId', 'taskId', 'sessionId']);
+  if (!scope) return null;
   if (
     Object.keys(scope).some(
       (key) => !['projectId', 'taskId', 'sessionId'].includes(key),
@@ -260,8 +260,12 @@ function sameScope(
 }
 
 function cloneCurrentness(value: unknown): UnifiedSearchCurrentness | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const currentness = value as Record<string, unknown>;
+  const currentness = exactDataRecord(
+    value,
+    ['state', 'observedAt', 'reason', 'replacementId'],
+    ['state', 'observedAt'],
+  );
+  if (!currentness) return null;
   if (!safeTimestamp(currentness.observedAt)) return null;
   switch (currentness.state) {
     case 'current':
@@ -299,8 +303,22 @@ function cloneOpenIntent(
   candidateScope: UnifiedSearchScope | undefined,
   owner: UnifiedSearchOwner,
 ): UnifiedSearchOpenIntent | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const intent = value as Record<string, unknown>;
+  const intent = exactDataRecord(
+    value,
+    [
+      'kind',
+      'projectId',
+      'taskId',
+      'sessionId',
+      'messageId',
+      'resourceKind',
+      'resourceId',
+      'scope',
+      'projectionId',
+    ],
+    ['kind'],
+  );
+  if (!intent) return null;
   if (
     intent.kind === 'task' &&
     candidateKind === 'task' &&
@@ -371,9 +389,34 @@ function cloneCandidate(
   owner: UnifiedSearchOwner,
 ): UnifiedSearchCandidate | null {
   try {
-    if (!value || typeof value !== 'object' || Array.isArray(value))
-      return null;
-    const candidate = value as Record<string, unknown>;
+    const candidate = exactDataRecord(
+      value,
+      [
+        'id',
+        'kind',
+        'scope',
+        'title',
+        'snippet',
+        'matchedFields',
+        'currentness',
+        'relevance',
+        'openIntent',
+      ],
+      [
+        'id',
+        'kind',
+        'title',
+        'matchedFields',
+        'currentness',
+        'relevance',
+        'openIntent',
+      ],
+    );
+    if (!candidate) return null;
+    const matchedFields = denseDataArray(
+      candidate.matchedFields,
+      MATCHED_FIELDS.size,
+    );
     if (
       !safeText(candidate.id, UNIFIED_SEARCH_LIMITS.idBytes) ||
       typeof candidate.kind !== 'string' ||
@@ -385,15 +428,14 @@ function cloneCandidate(
       !Number.isFinite(candidate.relevance) ||
       candidate.relevance < 0 ||
       candidate.relevance > 1 ||
-      !Array.isArray(candidate.matchedFields) ||
-      candidate.matchedFields.length < 1 ||
-      candidate.matchedFields.length > MATCHED_FIELDS.size ||
-      !candidate.matchedFields.every(
+      !matchedFields ||
+      matchedFields.length < 1 ||
+      !matchedFields.every(
         (field) =>
           typeof field === 'string' &&
           MATCHED_FIELDS.has(field as UnifiedSearchMatchedField),
       ) ||
-      new Set(candidate.matchedFields).size !== candidate.matchedFields.length
+      new Set(matchedFields).size !== matchedFields.length
     ) {
       return null;
     }
@@ -417,9 +459,7 @@ function cloneCandidate(
       ...(typeof candidate.snippet === 'string'
         ? { snippet: candidate.snippet }
         : {}),
-      matchedFields: [
-        ...candidate.matchedFields,
-      ] as UnifiedSearchMatchedField[],
+      matchedFields: [...matchedFields] as UnifiedSearchMatchedField[],
       currentness,
       relevance: candidate.relevance,
       openIntent: intent,
@@ -452,9 +492,12 @@ function clonePage(
   limit: number,
 ): UnifiedSearchProviderPage | null {
   try {
-    if (!value || typeof value !== 'object' || Array.isArray(value))
-      return null;
-    const page = value as Record<string, unknown>;
+    const page = exactDataRecord(
+      value,
+      ['version', 'state', 'results', 'continuation', 'reason'],
+      ['version', 'state'],
+    );
+    if (!page) return null;
     if (page.version !== UNIFIED_SEARCH_V1) return null;
     if (page.state === 'restricted' || page.state === 'unavailable') {
       return typeof page.reason === 'string' &&
@@ -469,8 +512,8 @@ function clonePage(
     if (!['available', 'stale', 'partial'].includes(page.state as string)) {
       return null;
     }
-    if (!Array.isArray(page.results) || page.results.length > limit)
-      return null;
+    const candidates = denseDataArray(page.results, limit);
+    if (!candidates) return null;
     if (
       page.continuation !== undefined &&
       !safeText(
@@ -488,7 +531,7 @@ function clonePage(
       return null;
     }
     if (page.state === 'available' && page.reason !== undefined) return null;
-    const results = page.results.map((candidate) =>
+    const results = candidates.map((candidate) =>
       cloneCandidate(candidate, owner),
     );
     if (results.some((candidate) => candidate === null)) return null;
@@ -729,6 +772,19 @@ export class UnifiedSearchService {
       ),
     );
     const sources = settled.map((entry) => entry.source);
+    if (signal?.aborted) {
+      return {
+        version: UNIFIED_SEARCH_V1,
+        state: 'unavailable',
+        results: [],
+        sources: sources.map((source) => ({
+          providerId: source.providerId,
+          owner: source.owner,
+          state: 'unavailable',
+          reason: 'search-cancelled',
+        })),
+      };
+    }
     const results = settled
       .flatMap((entry) => entry.results)
       .sort((left, right) => right.relevance - left.relevance);
@@ -798,28 +854,38 @@ export class UnifiedSearchService {
     const abort = () => controller.abort();
     outerSignal?.addEventListener('abort', abort, { once: true });
     const timer = setTimeout(abort, UNIFIED_SEARCH_LIMITS.providerTimeoutMs);
+    let rejectAbort: () => void = () => {};
+    const aborted = new Promise<never>((_resolve, reject) => {
+      rejectAbort = () => reject(new Error('search-aborted'));
+      controller.signal.addEventListener('abort', rejectAbort, { once: true });
+      if (controller.signal.aborted) rejectAbort();
+    });
     try {
-      const page = await Promise.race([
-        provider.search(
-          {
-            version: UNIFIED_SEARCH_V1,
-            query,
-            limit: UNIFIED_SEARCH_LIMITS.resultsPerProvider,
-            ...(providerContinuation
-              ? { continuation: providerContinuation }
+      const providerFilters = filters
+        ? Object.freeze({
+            ...filters,
+            ...(filters.kinds
+              ? { kinds: Object.freeze([...filters.kinds]) }
               : {}),
-            ...(filters ? { filters } : {}),
-          },
-          controller.signal,
-        ),
-        new Promise<never>((_resolve, reject) => {
-          controller.signal.addEventListener(
-            'abort',
-            () => reject(new Error('search-aborted')),
-            { once: true },
-          );
+          })
+        : undefined;
+      const providerRequest = Object.freeze({
+        version: UNIFIED_SEARCH_V1,
+        query,
+        limit: UNIFIED_SEARCH_LIMITS.resultsPerProvider,
+        ...(providerContinuation ? { continuation: providerContinuation } : {}),
+        ...(providerFilters
+          ? { filters: providerFilters as UnifiedSearchFilters }
+          : {}),
+      });
+      const page = await Promise.race([
+        Promise.resolve().then(() => {
+          if (controller.signal.aborted) throw new Error('search-aborted');
+          return provider.search(providerRequest, controller.signal);
         }),
+        aborted,
       ]);
+      if (controller.signal.aborted) throw new Error('search-aborted');
       const normalized = clonePage(
         page,
         provider.descriptor.owner,
@@ -901,6 +967,7 @@ export class UnifiedSearchService {
       };
     } finally {
       clearTimeout(timer);
+      controller.signal.removeEventListener('abort', rejectAbort);
       outerSignal?.removeEventListener('abort', abort);
     }
   }

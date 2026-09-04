@@ -25,6 +25,48 @@ function task(overrides: Partial<TaskRecord> = {}): TaskRecord {
 }
 
 describe('Station unified-search providers', () => {
+  test('normalizes multiline display text and keeps valid sibling results', async () => {
+    const service = new UnifiedSearchService([
+      createPersonalTaskSearchProvider({
+        stationId: 's',
+        source: {
+          listAuthorizedTasks: () => [
+            task({ description: ' First line\r\nSecond\tline ' }),
+            task({ id: 't2', description: '\n\t' }),
+          ],
+        },
+      }),
+      createStationMessageSearchProvider({
+        authority: { mode: 'personal', stationId: 's' },
+        source: {
+          searchAuthorizedMessages: () => [
+            {
+              conversationId: 's1',
+              messageId: 'm1',
+              role: 'user',
+              excerpt: ' parser\nmessage\ttext ',
+            },
+          ],
+        },
+      }),
+    ]);
+    const result = await service.search({
+      version: UNIFIED_SEARCH_V1,
+      query: 'parser',
+    });
+    expect(result.state).toBe('complete');
+    if (result.state === 'invalid') throw new Error('invalid result');
+    expect(result.results).toHaveLength(3);
+    expect(
+      result.results.find((result) => result.id === 'task-1')?.snippet,
+    ).toBe('First line Second line');
+    expect(
+      result.results.find((result) => result.id === 't2')?.snippet,
+    ).toBeUndefined();
+    expect(
+      result.results.find((result) => result.kind === 'message')?.snippet,
+    ).toBe('parser message text');
+  });
   test('maps only authority-filtered message matches into typed open intents', async () => {
     const searchAuthorizedMessages = vi.fn(() => [
       {

@@ -53,6 +53,171 @@ function provider(input: {
 describe('UnifiedSearchService', () => {
   afterEach(() => vi.useRealTimers());
 
+  test('isolates provider filters from validation and sibling requests', async () => {
+    const sibling = vi.fn(async (request) => {
+      expect(request.filters).toEqual({ projectId: 'alpha', kinds: ['task'] });
+      return {
+        version: UNIFIED_SEARCH_V1,
+        state: 'available' as const,
+        results: [task()],
+      };
+    });
+    const service = new UnifiedSearchService([
+      provider({
+        id: 'mutator',
+        search: async (request) => {
+          try {
+            request.filters!.projectId = 'beta';
+          } catch {}
+          try {
+            request.filters!.kinds!.push('file');
+          } catch {}
+          const wrong = task();
+          wrong.scope!.projectId = 'beta';
+          wrong.openIntent = {
+            kind: 'task',
+            taskId: wrong.id,
+            projectId: 'beta',
+          };
+          return {
+            version: UNIFIED_SEARCH_V1,
+            state: 'available',
+            results: [wrong],
+          };
+        },
+      }),
+      provider({ id: 'sibling', search: sibling }),
+    ]);
+    const result = await service.search({
+      version: UNIFIED_SEARCH_V1,
+      query: 'parser',
+      filters: { projectId: 'alpha', kinds: ['task'] },
+    });
+    expect(result).toMatchObject({
+      state: 'partial',
+      results: [{ providerId: 'sibling', scope: { projectId: 'alpha' } }],
+    });
+  });
+
+  test('cancellation during invocation cannot publish accepted results', async () => {
+    const controller = new AbortController();
+    const service = new UnifiedSearchService([
+      provider({
+        id: 'station.tasks',
+        search: async () => {
+          controller.abort();
+          return {
+            version: UNIFIED_SEARCH_V1,
+            state: 'available',
+            results: [task()],
+          };
+        },
+      }),
+    ]);
+    await expect(
+      service.search(
+        { version: UNIFIED_SEARCH_V1, query: 'parser' },
+        controller.signal,
+      ),
+    ).resolves.toMatchObject({
+      state: 'unavailable',
+      results: [],
+      sources: [{ reason: 'search-cancelled' }],
+    });
+  });
+
+  test('cancelling fanout discards a source that already settled', async () => {
+    const controller = new AbortController();
+    let started!: () => void;
+    const startedSlow = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const service = new UnifiedSearchService([
+      provider({ id: 'fast' }),
+      provider({
+        id: 'slow',
+        search: async () => {
+          started();
+          return new Promise(() => {});
+        },
+      }),
+    ]);
+    const pending = service.search(
+      { version: UNIFIED_SEARCH_V1, query: 'parser' },
+      controller.signal,
+    );
+    await startedSlow;
+    await Promise.resolve();
+    controller.abort();
+    await expect(pending).resolves.toMatchObject({
+      state: 'unavailable',
+      results: [],
+      sources: [{ reason: 'search-cancelled' }, { reason: 'search-cancelled' }],
+    });
+  });
+
+  test('rejects a proxied provider result without running its traps', async () => {
+    const trap = vi.fn(() => {
+      throw new Error('proxy trap');
+    });
+    const candidate = new Proxy(task(), { get: trap, ownKeys: trap });
+    const service = new UnifiedSearchService([
+      provider({
+        id: 'station.tasks',
+        page: {
+          version: UNIFIED_SEARCH_V1,
+          state: 'available',
+          results: [candidate],
+        },
+      }),
+    ]);
+    await expect(
+      service.search({ version: UNIFIED_SEARCH_V1, query: 'parser' }),
+    ).resolves.toMatchObject({ state: 'unavailable', results: [] });
+    expect(trap).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    'page',
+    'candidate',
+    'scope',
+    'currentness',
+    'openIntent',
+    'matchedFields',
+  ] as const)('rejects %s accessors without invoking them', async (target) => {
+    const getter = vi.fn(() => 'parser');
+    const candidate = task();
+    const page = {
+      version: UNIFIED_SEARCH_V1,
+      state: 'available',
+      results: [candidate],
+    };
+    const [object, field] =
+      target === 'page'
+        ? [page, 'state']
+        : target === 'candidate'
+          ? [candidate, 'title']
+          : target === 'scope'
+            ? [candidate.scope!, 'projectId']
+            : target === 'currentness'
+              ? [candidate.currentness, 'observedAt']
+              : target === 'openIntent'
+                ? [candidate.openIntent, 'projectId']
+                : [candidate.matchedFields, '0'];
+    Object.defineProperty(object, field, { enumerable: true, get: getter });
+    const service = new UnifiedSearchService([
+      provider({ id: 'station.tasks', search: async () => page as never }),
+    ]);
+    await expect(
+      service.search({ version: UNIFIED_SEARCH_V1, query: 'parser' }),
+    ).resolves.toMatchObject({
+      state: 'unavailable',
+      results: [],
+      sources: [{ reason: 'provider-response-invalid' }],
+    });
+    expect(getter).not.toHaveBeenCalled();
+  });
+
   test('keeps identical resource ids collision-free across Station owners', async () => {
     const service = new UnifiedSearchService([
       provider({ id: 'station-a.tasks', stationId: 'station-a' }),

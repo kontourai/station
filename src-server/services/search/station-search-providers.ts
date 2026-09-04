@@ -13,6 +13,9 @@ import { UNIFIED_SEARCH_LIMITS } from './unified-search-service.js';
 const TASK_SCAN_LIMIT = 1_000;
 
 function truncateUtf8(value: string, maxBytes: number): string {
+  // Display excerpts are single-line projections, not source text. Normalize
+  // ordinary multiline documents before applying the public string budget.
+  value = value.replace(/\s+/gu, ' ').trim();
   if (Buffer.byteLength(value, 'utf8') <= maxBytes) return value;
   let result = '';
   let used = 0;
@@ -22,7 +25,7 @@ function truncateUtf8(value: string, maxBytes: number): string {
     result += character;
     used += size;
   }
-  return result;
+  return result.trimEnd();
 }
 
 export interface AuthorizedMessageSearchMatch {
@@ -103,19 +106,16 @@ function taskCandidate(
     : fields.includes('description')
       ? 0.7
       : 0.6;
+  const snippet = truncateUtf8(
+    task.description,
+    UNIFIED_SEARCH_LIMITS.snippetBytes,
+  );
   return {
     id: task.id,
     kind: 'task',
     scope: { projectId: task.projectId, taskId: task.id },
     title: truncateUtf8(task.title, UNIFIED_SEARCH_LIMITS.titleBytes),
-    ...(task.description
-      ? {
-          snippet: truncateUtf8(
-            task.description,
-            UNIFIED_SEARCH_LIMITS.snippetBytes,
-          ),
-        }
-      : {}),
+    ...(snippet ? { snippet } : {}),
     matchedFields: fields,
     currentness: current(now),
     relevance,
