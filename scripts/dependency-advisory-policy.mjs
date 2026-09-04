@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   ALL_DEPENDENCY_SCOPES,
   classifyGitRange,
+  DEPENDENCY_SCOPE_ROOTS,
 } from './classify-ci-change.mjs';
 
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
@@ -808,6 +809,41 @@ export function parseAuditCommandResult(scope, result) {
   return parsed;
 }
 
+/**
+ * The scopes an audit run covers, derived from the ONE map that also decides
+ * attribution. Keeping a second list here is what would let a scope be added
+ * to the audit, never appear in any classifier's widening, and be silently
+ * filtered out of every pull request -- unscanned, reported as a clean run.
+ */
+export const AUDIT_SCOPES = ALL_DEPENDENCY_SCOPES.map((scope) => ({
+  scope,
+  cwd: path.join(REPO_ROOT, DEPENDENCY_SCOPE_ROOTS[scope]),
+}));
+
+/**
+ * Each scope costs TWO concurrent `npm audit` processes (full and production),
+ * and `packages/sdk`/`packages/shared` have no installed tree -- the repo
+ * installs at the root -- so npm resolves theirs from the registry. Auditing
+ * all three ran six registry-bound processes against a four-minute per-call
+ * timeout that one of them exceeds on its own; #1417 has the measurements.
+ *
+ * A decision that names no scopes at all is treated as every scope, never as
+ * none. An empty selection is a bug, not a clean run, so it throws rather than
+ * reporting success having audited nothing.
+ */
+export function selectAuditScopes(decision, allScopes = AUDIT_SCOPES) {
+  const selected = new Set(
+    decision.scopes ?? allScopes.map((entry) => entry.scope),
+  );
+  const scopes = allScopes.filter((entry) => selected.has(entry.scope));
+  if (scopes.length === 0) {
+    throw new Error(
+      `dependency advisory scan selected no scopes (decision: ${decision.reason})`,
+    );
+  }
+  return scopes;
+}
+
 export async function runPolicyCli() {
   const decision = dependencyAuditDecision();
   if (!decision.required) {
@@ -816,26 +852,7 @@ export async function runPolicyCli() {
     );
     return 0;
   }
-  const allScopes = [
-    { scope: 'root', cwd: REPO_ROOT },
-    { scope: 'sdk', cwd: path.join(REPO_ROOT, 'packages', 'sdk') },
-    { scope: 'shared', cwd: path.join(REPO_ROOT, 'packages', 'shared') },
-  ];
-  // Each scope costs TWO concurrent `npm audit` processes (full and
-  // production), and `packages/sdk`/`packages/shared` have no installed tree
-  // -- the repo installs at the root -- so npm resolves theirs from the
-  // registry. Auditing all three ran six registry-bound processes against a
-  // four-minute per-call timeout that one of them exceeds on its own; #1417
-  // has the measurements. Scanning the scopes whose inputs changed is both
-  // cheaper and what `.github/workflows/dependency-advisory.yml` already
-  // documents this scan as doing.
-  const selected = new Set(decision.scopes ?? allScopes.map((s) => s.scope));
-  const scopes = allScopes.filter((entry) => selected.has(entry.scope));
-  if (scopes.length === 0) {
-    throw new Error(
-      `dependency advisory scan selected no scopes (decision: ${decision.reason})`,
-    );
-  }
+  const scopes = selectAuditScopes(decision);
   console.log(
     `Dependency advisory floor: scanning ${scopes.map((entry) => entry.scope).join(', ')} (${decision.reason})`,
   );

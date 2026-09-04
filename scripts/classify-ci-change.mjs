@@ -12,7 +12,7 @@ const ZERO_SHA = '0'.repeat(40);
  * Order is the scan order; `ALL_DEPENDENCY_SCOPES` is what an input we cannot
  * attribute falls back to.
  */
-const DEPENDENCY_SCOPE_ROOTS = {
+export const DEPENDENCY_SCOPE_ROOTS = {
   root: '',
   sdk: 'packages/sdk/',
   shared: 'packages/shared/',
@@ -42,9 +42,14 @@ function isDependencyInput(changedPath) {
  * scope. That is the case for a nested `.npmrc` (registry configuration can
  * change resolution anywhere beneath it), for the exceptions file (it changes
  * how every scope's findings are evaluated), and for any dependency input in a
- * package that is not itself audited -- a new audited scope, or a workspace
- * whose lockfile feeds one, must not silently go unscanned because this
- * mapping had not heard of it.
+ * package that is not itself audited -- a workspace whose lockfile feeds one
+ * must not silently go unscanned because this mapping had not heard of it.
+ *
+ * Note what this does NOT protect on its own: widening widens to the scopes
+ * named HERE, so a scope the audit runs but this map has never heard of would
+ * be filtered out of every selection, including the fail-closed ones. That is
+ * why `DEPENDENCY_SCOPE_ROOTS` is exported and the audit derives its scope
+ * list from it rather than keeping a second copy.
  */
 function scopesForDependencyInput(changedPath) {
   if (changedPath === 'scripts/dependency-advisory-exceptions.json')
@@ -64,11 +69,16 @@ export function classifyChangedPaths(paths) {
   const dependencyInputs = normalized.filter(isDependencyInput);
   const dependencies = dependencyInputs.length > 0;
 
-  // Scan the scopes whose inputs actually changed. A PR-time scan reads
-  // changed inputs; the scheduled `dependency-advisory` workflow is what
-  // catches an advisory newly disclosed against inputs nobody touched, which
-  // this could never do anyway -- it already skips entirely when no dependency
-  // input changed at all. Anything unattributable widens to every scope.
+  // Scan the scopes whose inputs actually changed, which is what the
+  // scheduled `dependency-advisory` workflow already documents this scan as
+  // doing. Anything unattributable widens to every scope.
+  //
+  // Be honest about what this gives up. Scanning all three meant a PR that
+  // touched ANY dependency input incidentally re-audited the other two, so an
+  // advisory disclosed hours earlier against an untouched scope could be
+  // caught by an unrelated PR. That opportunistic catch is what narrowing
+  // trades away, and the daily scan is what replaces it -- a bounded delay,
+  // not an equivalence.
   const selected = new Set();
   for (const changedPath of dependencyInputs) {
     const scopes = scopesForDependencyInput(changedPath);

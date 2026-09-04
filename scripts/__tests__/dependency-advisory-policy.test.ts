@@ -1,13 +1,15 @@
 import { execFileSync } from 'node:child_process';
 import { minimatch } from 'minimatch';
 import { describe, expect, it } from 'vitest';
-
+import { ALL_DEPENDENCY_SCOPES } from '../classify-ci-change.mjs';
 import {
+  AUDIT_SCOPES,
   collectAudits,
   dependencyAuditDecision,
   evaluateAuditPolicy,
   formatPolicyReport,
   parseAuditCommandResult,
+  selectAuditScopes,
   withAuditRetries,
 } from '../dependency-advisory-policy.mjs';
 
@@ -733,5 +735,64 @@ describe('dependency advisory policy', { timeout: 20_000 }, () => {
     ).toThrow(
       'npm audit operational response for root (exit 1): {"message":"request to http://127.0.0.1:9/-/npm/v1/security/advisories/bulk failed, reason: connect ECONNREFUSED 127.0.0.1:9","error":{"summary":"","detail":""}}',
     );
+  });
+});
+
+/**
+ * The selection is the ENFORCEMENT point of #1417's narrowing: the classifier
+ * only declares which scopes changed, and every test of that declaration
+ * passes just as well if this filter is inverted, dropped, or stripped of its
+ * empty-selection guard. Those are the mutations these tests exist to catch.
+ */
+describe('selectAuditScopes', () => {
+  const all = [
+    { scope: 'root', cwd: '/repo' },
+    { scope: 'sdk', cwd: '/repo/packages/sdk' },
+    { scope: 'shared', cwd: '/repo/packages/shared' },
+  ];
+
+  it('audits exactly the scopes the decision names', () => {
+    expect(selectAuditScopes({ scopes: ['root'], reason: 'x' }, all)).toEqual([
+      { scope: 'root', cwd: '/repo' },
+    ]);
+    expect(
+      selectAuditScopes({ scopes: ['sdk', 'shared'], reason: 'x' }, all).map(
+        (entry) => entry.scope,
+      ),
+    ).toEqual(['sdk', 'shared']);
+  });
+
+  it('audits every scope when the decision names none at all', () => {
+    // Not "audit nothing". A decision without scopes is an older or unknown
+    // caller, and the safe reading of silence is everything.
+    expect(
+      selectAuditScopes({ reason: 'no scopes' }, all).map(
+        (entry) => entry.scope,
+      ),
+    ).toEqual(['root', 'sdk', 'shared']);
+  });
+
+  it('refuses an empty selection rather than reporting a clean scan of nothing', () => {
+    expect(() => selectAuditScopes({ scopes: [], reason: 'why' }, all)).toThrow(
+      /selected no scopes \(decision: why\)/,
+    );
+  });
+
+  it('refuses when a decision names only scopes the audit does not run', () => {
+    // The drift direction that fails loudly: a classifier that knows a scope
+    // the audit does not must not silently audit the remainder.
+    expect(() =>
+      selectAuditScopes({ scopes: ['contracts'], reason: 'drift' }, all),
+    ).toThrow(/selected no scopes/);
+  });
+
+  it('derives its scopes from the classifier map, so neither list can drift', () => {
+    // The drift direction that would fail SILENTLY if these were two lists:
+    // a scope the audit runs but the classifier has never heard of is filtered
+    // out of every selection, including the fail-closed ones, and the run
+    // reports success having never scanned it.
+    expect(AUDIT_SCOPES.map((entry) => entry.scope)).toEqual([
+      ...ALL_DEPENDENCY_SCOPES,
+    ]);
   });
 });

@@ -29,8 +29,9 @@ not something inferred from Linux or macOS.
 npm run audit:policy
 ```
 
-The command runs full-graph and `npm audit --omit=dev --json` production checks
-in all three scopes. It fails for every
+The command runs full-graph and `npm audit --omit=dev --json` production checks.
+Run locally it covers all three scopes; in CI it covers the scopes whose
+dependency inputs the change touched (see below). It fails for every
 critical or high advisory that is not fixed or exactly matched by a current
 exception, and for every production moderate or low advisory that is not
 exactly matched by a current residual record. It also fails for malformed,
@@ -162,10 +163,21 @@ owner reviews the tracking issue and expiry date on every dependency PR. Extend
 an expiry only with fresh evidence in that issue. Remove the exception in the
 same change that fixes the advisory: unused entries deliberately fail CI.
 
-Dependabot and human pull requests run the identical `npm run audit:policy`
-step in the fast CI job. A Dependabot update is complete only after the same
-lock inspection, policy pass, and compatibility gates required for a manual
-update.
+Dependabot and human pull requests run the same `npm run audit:policy` step in
+the fast CI job. A Dependabot update is complete only after the same lock
+inspection, policy pass, and compatibility gates required for a manual update.
+
+That step audits the scopes whose dependency inputs the change touched, not all
+three every time (#1417). A change to the root lockfile audits `root`; a change
+to `packages/sdk/package.json` audits `sdk`; anything the mapping cannot
+attribute -- a workspace that is not itself an audited scope, any `.npmrc`, the
+exceptions file -- audits all three, as does any classification that fails
+closed. What this trades away is the incidental re-audit of untouched scopes
+that a dependency-touching PR used to perform: an advisory newly disclosed
+against a scope nobody edited is caught by the scheduled
+`dependency-advisory` workflow within a day rather than by the next unrelated
+pull request. It was never caught by a PR that touched no dependency input at
+all, because the step skips entirely in that case.
 
 ## 2026-07 critical/high disposition
 
