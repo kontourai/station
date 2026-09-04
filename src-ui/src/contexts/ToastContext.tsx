@@ -316,12 +316,7 @@ const ToastContext = createContext<{
     sessionId?: string,
     duration?: number,
     actions?: ToastAction[],
-  ) => string;
-  showSdkToast: (
-    message: string,
     tone?: ToastTone,
-    duration?: number,
-    actions?: ToastAction[],
   ) => string;
   showToolApproval: (options: {
     sessionId: string;
@@ -356,19 +351,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       sessionId?: string,
       duration?: number,
       actions?: ToastAction[],
-    ) => {
-      return toastStore.show(message, sessionId, duration, actions);
-    },
-    [],
-  );
-  const showSdkToast = useCallback(
-    (
-      message: string,
       tone: ToastTone = 'info',
-      duration?: number,
-      actions?: ToastAction[],
-    ) =>
-      toastStore.show(message, undefined, duration, actions, undefined, tone),
+    ) => {
+      return toastStore.show(
+        message,
+        sessionId,
+        duration,
+        actions,
+        undefined,
+        tone,
+      );
+    },
     [],
   );
 
@@ -426,7 +419,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       showToast,
-      showSdkToast,
       showToolApproval,
       showToolActivity,
       dismissToast,
@@ -436,7 +428,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }),
     [
       showToast,
-      showSdkToast,
       showToolApproval,
       showToolActivity,
       dismissToast,

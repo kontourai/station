@@ -2,7 +2,6 @@ import {
   type AgentId,
   agentId,
 } from '@kontourai/station-contracts/agent-identity';
-import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
 
 let _apiBase = '';
@@ -48,23 +47,5 @@ export async function _getApiBase(): Promise<string> {
   return _apiBase;
 }
 
-export function getPluginHeaders(
-  extraHeaders?: Record<string, string>,
-  pluginName = '',
-): Record<string, string> {
-  return {
-    ...extraHeaders,
-    [STATION_PLUGIN_HEADER]: pluginName,
-  };
-}
-
-export function createPluginApiIdentity(pluginName: string): PluginApiIdentity {
-  const stablePluginName = pluginName;
-  return Object.freeze({
-    pluginName: stablePluginName,
-    getHeaders: (extraHeaders?: Record<string, string>) =>
-      getPluginHeaders(extraHeaders, stablePluginName),
-  });
-}
-
 export { apiErrorMessage } from './client/api-error-message';
+export { getPluginHeaders } from './client/plugin-headers';

@@ -2,18 +2,19 @@ import { describe, expect, test } from 'vitest';
 import {
   _getPluginName,
   _setLayoutContext,
-  createPluginApiIdentity,
+  getPluginHeaders,
 } from '../api-core';
 
 describe('SDK layout compatibility identity', () => {
-  test('keeps boundary identities independent from occurrence-shaped layout slugs', () => {
-    const identity = createPluginApiIdentity('acme-plugin');
-    expect(identity.pluginName).toBe('acme-plugin');
-    expect(identity.getHeaders()['x-station-plugin']).toBe('acme-plugin');
+  test('the explicitly bound plugin header overrides extra headers', () => {
+    expect(getPluginHeaders(undefined, 'acme-plugin')['x-station-plugin']).toBe(
+      'acme-plugin',
+    );
     expect(
-      identity.getHeaders({ 'x-station-plugin': 'different-plugin' })[
-        'x-station-plugin'
-      ],
+      getPluginHeaders(
+        { 'x-station-plugin': 'different-plugin' },
+        'acme-plugin',
+      )['x-station-plugin'],
     ).toBe('acme-plugin');
   });
 

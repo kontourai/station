@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   setApiBase: vi.fn(),
   setProviderFunctions: vi.fn(),
   shellToast: vi.fn(),
-  shellSdkToast: vi.fn(),
 }));
 
 const ambientNavigation = {
@@ -44,7 +43,6 @@ vi.mock('../../contexts/NavigationContext', () => ({
 vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => ({
     showToast: mocks.shellToast,
-    showSdkToast: mocks.shellSdkToast,
   }),
 }));
 vi.mock('../../hooks/useActiveChatSessions', () => ({
@@ -180,17 +178,20 @@ test('normalizes the documented object-form plugin toast at the shell seam', () 
   );
 
   fireEvent.click(screen.getByRole('button', { name: 'Object toast' }));
-  expect(mocks.shellSdkToast).toHaveBeenCalledWith(
+  expect(mocks.shellToast).toHaveBeenCalledWith(
     'Bound toast',
-    'success',
+    undefined,
     123,
     undefined,
+    'success',
   );
   fireEvent.click(screen.getByRole('button', { name: 'String toast' }));
-  expect(mocks.shellSdkToast).toHaveBeenCalledWith(
+  expect(mocks.shellToast).toHaveBeenCalledWith(
     'String warning',
-    'warning',
+    undefined,
     321,
+    undefined,
+    'warning',
   );
 });
 

@@ -2,11 +2,11 @@ import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
 import {
   _setApiBase,
   _setProviderFunctions,
-  createPluginApiIdentity,
   SDKProvider,
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
+import { getPluginHeaders } from '@kontourai/station-sdk/client';
 import { type ReactNode, useEffect, useMemo } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { useAgents } from '../contexts/AgentsContext';
@@ -58,7 +58,13 @@ export function SDKAdapter({
   _setApiBase(apiBase);
   const pluginApiIdentity = useMemo(
     () =>
-      boundPluginName ? createPluginApiIdentity(boundPluginName) : undefined,
+      boundPluginName
+        ? Object.freeze({
+            pluginName: boundPluginName,
+            getHeaders: (extraHeaders?: Record<string, string>) =>
+              getPluginHeaders(extraHeaders, boundPluginName),
+          })
+        : undefined,
     [boundPluginName],
   );
 
@@ -125,12 +131,13 @@ export function SDKAdapter({
       duration?: number,
     ) =>
       typeof request === 'string'
-        ? toast.showSdkToast(request, type, duration)
-        : toast.showSdkToast(
+        ? toast.showToast(request, undefined, duration, undefined, type)
+        : toast.showToast(
             request.message,
-            request.type ?? 'info',
+            undefined,
             request.duration,
             request.action ? [request.action] : undefined,
+            request.type ?? 'info',
           ),
   };
   const sendMessage = useSendMessage(apiBase);
