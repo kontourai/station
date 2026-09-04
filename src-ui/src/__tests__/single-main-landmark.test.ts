@@ -61,14 +61,20 @@ function* sourceFiles(dir: string): Generator<string> {
  */
 const MAIN_LANDMARK = /<main[\s>/]|role=["'{]?["']?main["']/;
 
+function hasMainLandmark(source: string): boolean {
+  // This test deliberately sweeps source rather than mounting every lazy
+  // route, but commentary about the shell's landmark is not rendered markup.
+  const executableSource = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  return MAIN_LANDMARK.test(executableSource);
+}
+
 describe('single main landmark', () => {
   test('nothing rendered inside the shell declares its own main landmark', () => {
     const offenders: string[] = [];
     for (const file of sourceFiles(SRC)) {
       const relative = file.slice(SRC.length + 1);
       if (PRE_SHELL_MAIN_OWNERS.has(relative)) continue;
-      if (MAIN_LANDMARK.test(readFileSync(file, 'utf8')))
-        offenders.push(relative);
+      if (hasMainLandmark(readFileSync(file, 'utf8'))) offenders.push(relative);
     }
     expect(offenders).toEqual([]);
   });
@@ -84,6 +90,11 @@ describe('single main landmark', () => {
     expect(MAIN_LANDMARK.test('<div role={"main"}>')).toBe(true);
     expect(MAIN_LANDMARK.test('<mainNav>')).toBe(false);
     expect(MAIN_LANDMARK.test('role="maintenance"')).toBe(false);
+    expect(hasMainLandmark('// <main>\nconst shell = true;')).toBe(false);
+    expect(hasMainLandmark('/* role="main" */\n<div role="dialog" />')).toBe(
+      false,
+    );
+    expect(hasMainLandmark('// a comment\n<main />')).toBe(true);
   });
 
   test('the exception list still describes files that exist', () => {
