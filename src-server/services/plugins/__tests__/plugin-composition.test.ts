@@ -1156,6 +1156,80 @@ describe('plugin composition profiles', () => {
     await expect(replacing).resolves.toMatchObject({ kind: 'activated' });
   });
 
+  test('bounds a stalled authorizer and releases a late lease', async () => {
+    const implementation = new Map([factory('cache', [])]);
+    const release = vi.fn();
+    let finishAuthorization!: () => void;
+    let authorizationInput!: Parameters<
+      PluginCompositionAuthorizer['authorize']
+    >[0];
+    const module = moduleWith([], {
+      disposerTimeoutMs: 5,
+      authorizer: {
+        authorize(input) {
+          authorizationInput = input;
+          return new Promise<PluginCompositionAuthorization>((resolve) => {
+            finishAuthorization = () =>
+              resolve(
+                grantedPlanAuthorization(input, implementation, { release }),
+              );
+          });
+        },
+      },
+    });
+
+    await expect(
+      module.apply(
+        profile(projectA, [
+          contribution('cache', 'workspace.cache', {
+            implementationId: 'cache',
+          }),
+        ]),
+      ),
+    ).resolves.toMatchObject({ kind: 'pending' });
+    expect(authorizationInput.scope).toEqual(projectA);
+
+    finishAuthorization();
+    await vi.waitFor(() => expect(release).toHaveBeenCalledOnce());
+    await expect(module.retire(projectA)).resolves.toMatchObject({
+      kind: 'retired',
+    });
+  });
+
+  test('bounds stalled staging and disposes a late fenced handle', async () => {
+    const dispose = vi.fn();
+    let finishStage!: () => void;
+    let occurrenceCurrent: (() => boolean) | undefined;
+    const implementation: PluginCompositionFactory = {
+      stage(input) {
+        occurrenceCurrent = input.occurrence.isCurrent;
+        return new Promise((resolve) => {
+          finishStage = () => resolve({ dispose });
+        });
+      },
+    };
+    const module = moduleWith([['cache', implementation]], {
+      disposerTimeoutMs: 5,
+    });
+
+    await expect(
+      module.apply(
+        profile(projectA, [
+          contribution('cache', 'workspace.cache', {
+            implementationId: 'cache',
+          }),
+        ]),
+      ),
+    ).resolves.toMatchObject({ kind: 'failed' });
+    expect(occurrenceCurrent?.()).toBe(false);
+
+    finishStage();
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
+    await expect(module.retire(projectA)).resolves.toMatchObject({
+      kind: 'retired',
+    });
+  });
+
   test('holds one whole-plan authorization lease and rolls back when it becomes stale before publication', async () => {
     const events: string[] = [];
     let current = true;

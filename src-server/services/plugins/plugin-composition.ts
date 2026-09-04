@@ -896,6 +896,25 @@ async function settleBestEffortWithin(
   if (timer) clearTimeout(timer);
 }
 
+async function outcomeWithin<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+): Promise<
+  { kind: 'settled'; value: T } | { kind: 'rejected' } | { kind: 'timed-out' }
+> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const settled = operation.then(
+    (value) => ({ kind: 'settled' as const, value }),
+    () => ({ kind: 'rejected' as const }),
+  );
+  const timeout = new Promise<{ kind: 'timed-out' }>((resolve) => {
+    timer = setTimeout(() => resolve({ kind: 'timed-out' }), timeoutMs);
+  });
+  const outcome = await Promise.race([settled, timeout]);
+  if (timer) clearTimeout(timer);
+  return outcome;
+}
+
 async function releaseRecognizableInvalidAuthorization(
   value: unknown,
   timeoutMs: number,
@@ -1500,9 +1519,8 @@ export function createPluginCompositionModule(options: {
       entry(candidate, 'pending', 'staging'),
     );
     recordAttempt(profile.scope, [...pending, ...planned.plan.shadowed]);
-    let rawAuthorization: unknown;
-    try {
-      rawAuthorization = await options.authorizer.authorize({
+    const authorizationOperation = Promise.resolve().then(() =>
+      options.authorizer.authorize({
         profileId: profile.profileId,
         scope: structuredClone(profile.scope),
         contributions: planned.plan.selected.map((contribution) => ({
@@ -1510,9 +1528,27 @@ export function createPluginCompositionModule(options: {
           instanceIdentity: contribution.instanceIdentity,
           configurationDigest: contribution.configurationDigest,
         })),
-      });
-    } catch {
+      }),
+    );
+    const authorizationOutcome = await outcomeWithin(
+      authorizationOperation,
+      disposerTimeoutMs,
+    );
+    let rawAuthorization: unknown;
+    if (authorizationOutcome.kind === 'settled') {
+      rawAuthorization = authorizationOutcome.value;
+    } else {
       rawAuthorization = { kind: 'unavailable' };
+      if (authorizationOutcome.kind === 'timed-out') {
+        void authorizationOperation
+          .then((lateAuthorization) =>
+            releaseRecognizableInvalidAuthorization(
+              lateAuthorization,
+              disposerTimeoutMs,
+            ),
+          )
+          .catch(() => {});
+      }
     }
     const authorization = validatePlanAuthorization(
       rawAuthorization,
@@ -1623,15 +1659,41 @@ export function createPluginCompositionModule(options: {
               )!.instanceIdentity,
             }),
           );
-          const rawHandle = await binding.factory.stage({
-            profileId: profile.profileId,
-            scope: structuredClone(profile.scope),
-            contribution: structuredClone(contribution.declaration),
-            instanceIdentity: contribution.instanceIdentity,
-            configuration: structuredClone(contribution.configuration),
-            occurrence: leaseControl.lease,
-            dependencies,
-          });
+          const stageOperation = Promise.resolve().then(() =>
+            binding.factory.stage({
+              profileId: profile.profileId,
+              scope: structuredClone(profile.scope),
+              contribution: structuredClone(contribution.declaration),
+              instanceIdentity: contribution.instanceIdentity,
+              configuration: structuredClone(contribution.configuration),
+              occurrence: leaseControl.lease,
+              dependencies,
+            }),
+          );
+          const stageOutcome = await outcomeWithin(
+            stageOperation,
+            disposerTimeoutMs,
+          );
+          if (stageOutcome.kind === 'timed-out') {
+            void stageOperation
+              .then(async (lateHandle) => {
+                const stagedHandle = snapshotStagedHandle(lateHandle);
+                const occurrence = claimOccurrence(leaseControl, stagedHandle);
+                if (!occurrence) return;
+                await disposeOne(
+                  { ...contribution, binding, occurrence },
+                  key,
+                  nextGeneration,
+                  'rollback',
+                );
+              })
+              .catch(() => {});
+            throw new Error('plugin composition staging timed out');
+          }
+          if (stageOutcome.kind === 'rejected') {
+            throw new Error('plugin composition staging failed');
+          }
+          const rawHandle = stageOutcome.value;
           const stagedHandle = snapshotStagedHandle(rawHandle);
           const occurrence = claimOccurrence(leaseControl, stagedHandle);
           if (!occurrence) throw new Error('invalid staged contribution');
