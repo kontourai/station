@@ -441,6 +441,56 @@ describe('dependency approval from the real preview route', () => {
     ).rejects.toThrow('no preview-bound permission approval');
     expect(installDeps.buildPlugin).not.toHaveBeenCalled();
   });
+
+  test('refuses rebuilding an installed entrypoint whose permissions changed after preview', async () => {
+    const { root, parent, installDeps, consent } = await fixture(
+      'entrypoint',
+      true,
+    );
+    writePlugin(join(root, 'plugins', 'dependency'), {
+      name: 'dependency',
+      version: '1.0.0',
+      entrypoint: 'index.js',
+      permissions: ['providers.register'],
+    });
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).rejects.toThrow(
+      'it needs providers.register, but the approval covered none',
+    );
+    expect(installDeps.buildPlugin).not.toHaveBeenCalled();
+  });
+
+  test('read-only adoption never grants changed installed permissions from a stale preview', async () => {
+    const { root, parent, installDeps, consent } = await fixture(
+      'settings',
+      true,
+    );
+    writePlugin(join(root, 'plugins', 'dependency'), {
+      name: 'dependency',
+      version: '1.0.0',
+      settings: [{ key: 'label', label: 'Label', type: 'string' }],
+      permissions: ['providers.register'],
+    });
+    const installed = await installPluginFromSource(parent, [], installDeps, {
+      consent,
+    });
+    expect(installed.permissions.dependencies).toEqual([
+      {
+        id: 'dependency',
+        pendingConsent: [{ permission: 'providers.register', tier: 'trusted' }],
+      },
+    ]);
+    expect(getPluginGrants(root, 'dependency')).toEqual([]);
+    expect(installDeps.buildPlugin).not.toHaveBeenCalledWith(
+      join(root, 'plugins', 'dependency'),
+      'dependency',
+    );
+    expect(replacePluginProvidersForSource).not.toHaveBeenCalledWith(
+      'dependency',
+      expect.anything(),
+    );
+  });
 });
 
 describe('resolvePluginRegistrySource', () => {
