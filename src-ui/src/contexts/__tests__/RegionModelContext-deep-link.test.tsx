@@ -106,6 +106,40 @@ function deliveredSessionIds(): (string | undefined)[] {
   ];
 }
 
+/**
+ * Prove that the placement now mounted was handed no session, WITHOUT racing
+ * the delivery this must not see.
+ *
+ * Waiting for the sessions surface to appear and asserting no session is in
+ * hand yet cannot see a re-delivery. The pane's first render necessarily
+ * precedes the shell's own mount effect, so that assertion lands one render
+ * BEFORE a stale intent would arrive: measured against a shell that does not
+ * consume, `deliveredSessionIds()` reads `[undefined]` at the instant the
+ * surface appears and `[undefined, 's1']` a tick later. It passed either way.
+ *
+ * So drive a LATER intent through the same shell and wait for THAT. React runs
+ * the earlier effect first, so any re-delivery is already recorded by the time
+ * the probe session lands — the ordering does the waiting, not a timer.
+ */
+async function expectFreshSurfaceThenOnly(probeSessionId: string) {
+  act(() => revealSurface?.('activity', { session: probeSessionId }));
+  await waitFor(() =>
+    expect(sessionsProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionId: probeSessionId }),
+    ),
+  );
+  expect(deliveredSessionIds()).toEqual([undefined, probeSessionId]);
+}
+
+/** The shell's own landmark (`DockShell`), outside both lazy boundaries: this
+ * is present iff `ActivityRegionShell` itself is mounted, where
+ * `sessions-view` only reports the pane inside it. The shell holds the taken
+ * intent, so "the shell unmounted" is the precondition every remount test
+ * here rests on. */
+function activityShellLandmark(): HTMLElement | null {
+  return screen.queryByRole('region', { name: 'Activity' });
+}
+
 function setUrl(url: string) {
   window.history.replaceState({}, '', url);
   window.dispatchEvent(new PopStateEvent('popstate'));
@@ -230,9 +264,10 @@ describe('RegionModelProvider surface deep-link adoption', () => {
     // nothing was ever delivered to a consumer, so a record left standing here
     // would arrive as a first delivery, which is the whole hazard.
     sessionsProps.mockReset();
+    expect(activityShellLandmark()).toBeNull();
     rendered.rerender(<Harness host />);
-    await waitFor(() => expect(sessionsProps).toHaveBeenCalled());
-    expect(deliveredSessionIds()).toEqual([undefined]);
+    await waitFor(() => expect(activityShellLandmark()).not.toBeNull());
+    await expectFreshSurfaceThenOnly('s9');
   });
 
   test('preserves dock ordering on desktop and folds to Activity on bottom-only devices', async () => {
@@ -473,9 +508,8 @@ describe('a delivered surface intent is never delivered a second time', () => {
     // than on region state, because a still-mounted shell would make the rest
     // of this test vacuous.
     act(() => revealSurface?.('chat'));
-    await waitFor(() =>
-      expect(screen.queryByTestId('sessions-view')).toBeNull(),
-    );
+    await waitFor(() => expect(activityShellLandmark()).toBeNull());
+    expect(screen.queryByTestId('sessions-view')).toBeNull();
     expect(screen.getByTestId('chat-shell')).toBeTruthy();
 
     sessionsProps.mockReset();
@@ -483,10 +517,8 @@ describe('a delivered surface intent is never delivered a second time', () => {
     // Reveal Activity generically — the sidebar, the palette, ⌘⇧A and "All
     // activity" all land here, carrying no session.
     act(() => revealSurface?.('activity'));
-    await waitFor(() =>
-      expect(screen.queryByTestId('sessions-view')).not.toBeNull(),
-    );
-    expect(deliveredSessionIds()).toEqual([undefined]);
+    await waitFor(() => expect(activityShellLandmark()).not.toBeNull());
+    await expectFreshSurfaceThenOnly('s9');
   });
 
   test('leaving the region host and coming back re-opens no session, with no reveal in between', async () => {
@@ -508,13 +540,15 @@ describe('a delivered surface intent is never delivered a second time', () => {
     // clear-on-generic-reveal path the previous test drives.
     rendered.rerender(<Harness />);
     await waitFor(() => expect(model?.canRenderRegionSurfaces).toBe(false));
+    // The SHELL is gone, not merely the pane inside it: the shell is where the
+    // taken intent lives, so nothing below this line means anything unless the
+    // shell instance itself was destroyed.
+    expect(activityShellLandmark()).toBeNull();
     expect(screen.queryByTestId('sessions-view')).toBeNull();
 
     sessionsProps.mockReset();
     rendered.rerender(<Harness host />);
-    await waitFor(() =>
-      expect(screen.queryByTestId('sessions-view')).not.toBeNull(),
-    );
-    expect(deliveredSessionIds()).toEqual([undefined]);
+    await waitFor(() => expect(activityShellLandmark()).not.toBeNull());
+    await expectFreshSurfaceThenOnly('s9');
   });
 });
