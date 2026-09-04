@@ -3,7 +3,12 @@
   "version": "1.0.0",
   "description": "Disposable managed-browser host-action proof using Muse echo",
   "permissions": ["agents.invoke"],
-  "agents": [{ "slug": "host-action-echo", "source": "./agent.json" }],
+  "agents": [
+    {
+      "slug": "host-action-echo",
+      "source": "./agents/host-action-echo/agent.json"
+    }
+  ],
   "workspacePaneHost": {
     "version": "station.workspace-pane-host-contribution/v1",
     "agentSelection": {

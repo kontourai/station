@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { agentAvailableInProject } from '@kontourai/station-contracts/project-reference-integrity';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
@@ -30,6 +31,7 @@ import { createWorkspacePaneHostContribution } from './workspace-pane-host-contr
 export interface WorkspacePaneHostActionActor {
   principal: PrincipalRef;
   readAuthority: SessionReadAuthority;
+  clientOrigin?: ClientOrigin;
   /** Fresh request credential/currentness, supplied by verified ingress only. */
   isCurrent(): boolean;
 }

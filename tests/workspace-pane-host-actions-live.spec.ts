@@ -3,9 +3,9 @@
  * The smoke-live runner selects Muse's no-network echo provider only in its
  * attested disposable home. No route interception or live paid model is used.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
   authenticatedE2EFetch,
@@ -56,6 +56,16 @@ test('installed host default Agent action completes one real echo turn and expos
   );
   expect(result.success).toBe(true);
   installed = true;
+  const installedAgent = await authenticatedE2EFetch(
+    `${api}/api/agents/host-action-echo`,
+  );
+  expect(
+    installedAgent.ok,
+    'Installation must materialize the declared Agent',
+  ).toBe(true);
+  expect((await installedAgent.json()).data).toMatchObject({
+    execution: { agentConnectionId: 'muse' },
+  });
   workspace = mkdtempSync(join(tmpdir(), 'station-host-action-live-'));
   const project = await authenticatedE2EFetch(`${api}/api/projects`, {
     method: 'POST',
@@ -67,7 +77,7 @@ test('installed host default Agent action completes one real echo turn and expos
       agents: ['host-action-echo'],
     }),
   });
-  expect(project.status).toBe(201);
+  expect(project.status, await project.text()).toBe(201);
   created = true;
   const layout = await authenticatedE2EFetch(
     `${api}/api/projects/${slug}/layouts/apply`,
@@ -130,6 +140,12 @@ test('installed host default Agent action completes one real echo turn and expos
         event.method === 'turn.started' && event.turnId === execution.turnId,
     ),
   ).toHaveLength(1);
+  const source = evidence.events.find(
+    (event: any) => event.method === 'session.started',
+  )?.metadata?.workspacePaneHostAction;
+  expect(source).toMatchObject({ pluginId: plugin, actionId: 'echo-proof' });
+  expect(typeof source.installationGeneration).toBe('string');
+  expect(source.installationGeneration.length).toBeGreaterThan(0);
   await bar
     .getByRole('button', { name: 'Open conversation', exact: true })
     .click();
@@ -142,18 +158,30 @@ test('installed host default Agent action completes one real echo turn and expos
       { timeout: 20_000 },
     )
     .toMatch(/echo:[\s\S]*HOST_ACTION_BROWSER_1372/);
-  await testInfo.attach('connected-host-action-receipt', {
-    body: Buffer.from(
-      JSON.stringify({
-        ...execution,
-        agentId: 'host-action-echo',
-        completed: true,
-      }),
+  const evidenceRoot = join(
+    process.cwd(),
+    '.kontourai',
+    'pane-host-actions-browser',
+    basename(process.env.STATION_E2E_OUTPUT_DIR ?? 'manual'),
+  );
+  mkdirSync(evidenceRoot, { recursive: true });
+  const receiptPath = join(evidenceRoot, 'connected-host-action.json');
+  writeFileSync(
+    receiptPath,
+    JSON.stringify(
+      { ...execution, source, agentId: 'host-action-echo', completed: true },
+      null,
+      2,
     ),
+  );
+  const imagePath = join(evidenceRoot, 'connected-host-action.png');
+  await page.screenshot({ path: imagePath });
+  await testInfo.attach('connected-host-action-receipt', {
+    path: receiptPath,
     contentType: 'application/json',
   });
   await testInfo.attach('connected-host-action-browser', {
-    body: await page.screenshot(),
+    path: imagePath,
     contentType: 'image/png',
   });
 });

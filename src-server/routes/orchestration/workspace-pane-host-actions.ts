@@ -11,8 +11,8 @@ const cleanId = z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/);
 const prepareSchema = z
   .object({
     pluginId: cleanId,
-    installationGeneration: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-    actionKey: z.string().regex(/^plugin-host-action:[a-f0-9]{64}$/),
+    installationGeneration: z.string().min(1).max(256),
+    actionKey: z.string().min(1).max(256),
     selectedAgent: z
       .object({
         kind: z.enum(['own-plugin-agent', 'station-agent']),

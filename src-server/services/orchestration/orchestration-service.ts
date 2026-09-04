@@ -60,6 +60,7 @@ import {
   stripReservedOrchestrationMetadata,
   unsupportedModelOptionError,
   unsupportedModelOptionKeys,
+  WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type {
   CanonicalRuntimeEvent,
@@ -2254,6 +2255,13 @@ export class OrchestrationService {
         ...resolved,
         metadata: {
           ...resolved.metadata,
+          ...(admission?.source
+            ? {
+                [WORKSPACE_PANE_HOST_ACTION_METADATA_KEY]: {
+                  ...admission.source,
+                },
+              }
+            : {}),
           [SESSION_AGENT_DISPLAY_NAME_METADATA_KEY]: captured.spec.name.slice(
             0,
             SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,

@@ -220,6 +220,7 @@ import {
   type RuntimeCallerRequest,
   type RuntimeDeviceActivityClassifierContext,
   type RuntimeSecurityAuditRecord,
+  resolveClientOriginForRequest,
 } from '../../security/runtime-request-security.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
@@ -2470,6 +2471,7 @@ export function configureRuntimeRoutes(
         return {
           principal,
           readAuthority: readAuthorityForExecution(principal.id),
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
           isCurrent: () => isRequestPrincipalCurrent(c.req.raw),
         };
       },

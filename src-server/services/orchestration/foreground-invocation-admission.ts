@@ -1,6 +1,7 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import type { WorkspacePaneHostActionProvenance } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 
 /**
  * Server-only capability. Public command JSON cannot supply it. Its owner
@@ -12,6 +13,7 @@ export interface ForegroundInvocationAdmission {
   readonly agentSpec: AgentSpec;
   readonly project: ProjectConfig;
   readonly message: string;
+  readonly source?: WorkspacePaneHostActionProvenance;
   invoke<R>(
     phase: 'start' | 'turn' | 'native-relay',
     actual: {

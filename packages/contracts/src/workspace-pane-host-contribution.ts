@@ -45,6 +45,12 @@ export interface WorkspacePaneHostContributionOwner {
   readonly installationGeneration: string;
 }
 
+/** Server-stamped invocation provenance retained with the canonical Session. */
+export interface WorkspacePaneHostActionProvenance
+  extends WorkspacePaneHostContributionOwner {
+  readonly actionId: string;
+}
+
 export type WorkspacePaneHostBoundAgent =
   | {
       readonly kind: 'plugin-agent';

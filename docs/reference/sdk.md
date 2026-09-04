@@ -1799,3 +1799,9 @@ Host actions require the package's current `agents.invoke` permission. They use
 captured Project and Agent authority at provider invocation and cannot substitute
 an ambient Agent, override a fixed action, or revive a retired installation.
 This slice supports native Station Agents and externally connected Agents in shared Project workspaces. Native execution preserves the existing configured Agent and model; a private relay capability verifies its runtime generation and repeats admission immediately before the native model call. Worktree provisioning remains explicitly unavailable.
+
+A host-created Session retains server-stamped `workspacePaneHostAction` metadata:
+package id, action id, and opaque installation generation. These coordinates
+survive completion and package removal alongside the existing Session command
+receipts. Public metadata/options cannot forge this reserved field; callers
+receive the existing client-origin and principal attribution as well.

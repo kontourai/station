@@ -549,6 +549,7 @@ describe('Workspace Pane host invocation admission', () => {
     return {
       streamText,
       ctx,
+      provenance: { ...projection.owner, actionId: 'registered' },
       execute: async () =>
         (
           await readJson(
@@ -593,6 +594,33 @@ describe('Workspace Pane host invocation admission', () => {
         .toBe(true);
       expect((await proof.execute()).state).toBe('indeterminate');
       expect(proof.streamText).toHaveBeenCalledOnce();
+      await service.sessionLifecycles.transition({
+        threadId: result.sessionId,
+        authority: INTERNAL_SESSION_READ_SCOPE,
+        to: 'completed',
+      });
+      rmSync(pluginDir, { recursive: true, force: true });
+      const archived = await service.readSession(
+        result.sessionId,
+        INTERNAL_SESSION_READ_SCOPE,
+      );
+      expect(archived?.session.lifecycleState).toBe('completed');
+      expect(
+        archived?.events.find((event) => event.method === 'session.started')
+          ?.metadata?.workspacePaneHostAction,
+      ).toEqual(proof.provenance);
+      expect(store.listCommandReceipts(result.sessionId)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            commandType: 'startSession',
+            status: 'accepted',
+          }),
+          expect.objectContaining({
+            commandType: 'sendTurn',
+            status: 'accepted',
+          }),
+        ]),
+      );
     } finally {
       settled.resolve();
     }

@@ -33,6 +33,7 @@ export function createRuntimeWorkspacePaneHostActions(input: {
           message: admission.message,
           userId: actor.principal.id,
           principal: actor.principal,
+          clientOrigin: actor.clientOrigin,
           readAuthority: actor.readAuthority,
         },
         input.orchestration,

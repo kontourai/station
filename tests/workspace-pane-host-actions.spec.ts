@@ -4,9 +4,9 @@
  * effects. Real HTTP→foreground→provider execution is covered by the server
  * controlled-provider seam test, not claimed from this interception.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
@@ -154,10 +154,20 @@ for (const width of [1280, 390]) {
       ).toBe(true);
       const box = await combo.boundingBox();
       expect(box?.height).toBeGreaterThanOrEqual(44);
-      await testInfo.attach(
-        `host-actions-${width}-${path.includes('/panes/') ? 'direct' : 'placed'}`,
-        { body: await bar.screenshot(), contentType: 'image/png' },
+      const evidenceRoot = join(
+        process.cwd(),
+        '.kontourai',
+        'pane-host-actions-browser',
+        basename(process.env.STATION_E2E_OUTPUT_DIR ?? 'manual'),
       );
+      mkdirSync(evidenceRoot, { recursive: true });
+      const evidenceName = `host-actions-${width}-${path.includes('/panes/') ? 'direct' : 'placed'}`;
+      const imagePath = join(evidenceRoot, `${evidenceName}.png`);
+      await bar.screenshot({ path: imagePath });
+      await testInfo.attach(evidenceName, {
+        path: imagePath,
+        contentType: 'image/png',
+      });
     }
     const action = page.getByRole('button', {
       name: 'Daily overview',

@@ -166,6 +166,11 @@ export function createWorkspacePaneHostAdmission(input: {
         let nativeRelayInvoked = false;
         const admission: ForegroundInvocationAdmission = Object.freeze({
           agentId: agent.agentId,
+          source: Object.freeze({
+            pluginId,
+            installationGeneration: digest,
+            actionId: action.id,
+          }),
           get agentSpec() {
             return structuredClone(agentSpec);
           },
