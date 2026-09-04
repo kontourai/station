@@ -776,7 +776,14 @@ export function parseAuditCommandResult(scope, result) {
     parsed?.auditReportVersion !== 2 &&
     Object.hasOwn(parsed ?? {}, 'error')
   ) {
-    const detail = JSON.stringify(parsed.error).slice(0, 500);
+    // A registry failure puts its reason in a top-level `message` and leaves
+    // `error.summary`/`error.detail` empty strings, so quoting `error` alone
+    // reports an operational failure with no reason in it (#1403).
+    const reason =
+      typeof parsed.message === 'string' && parsed.message.trim() !== ''
+        ? { message: parsed.message, error: parsed.error }
+        : parsed.error;
+    const detail = JSON.stringify(reason).slice(0, 500);
     throw new Error(
       `npm audit operational response for ${scope} (exit ${result.status}): ${detail}`,
     );

@@ -1,9 +1,20 @@
-import type { Plugin } from './types';
+import { isRejectedPlugin, type Plugin } from './types';
+
+export function pluginSelectionId(plugin: Plugin) {
+  return isRejectedPlugin(plugin) ? `rejected:${plugin.name}` : plugin.name;
+}
 
 export function filterPlugins(plugins: Plugin[], search: string) {
   const query = search.toLowerCase();
   return plugins.filter((plugin) => {
     if (!query) return true;
+    if (isRejectedPlugin(plugin)) {
+      return (
+        plugin.displayName.toLowerCase().includes(query) ||
+        plugin.rejection.reason.toLowerCase().includes(query) ||
+        plugin.rejection.recovery.instruction.toLowerCase().includes(query)
+      );
+    }
     return (
       (plugin.displayName || plugin.name).toLowerCase().includes(query) ||
       plugin.description?.toLowerCase().includes(query)
@@ -12,11 +23,19 @@ export function filterPlugins(plugins: Plugin[], search: string) {
 }
 
 export function buildPluginListItems(plugins: Plugin[]) {
-  return plugins.map((plugin) => ({
-    id: plugin.name,
-    name: plugin.displayName || plugin.name,
-    subtitle: `v${plugin.version}${plugin.description ? ` · ${plugin.description}` : ''}`,
-  }));
+  return plugins.map((plugin) =>
+    isRejectedPlugin(plugin)
+      ? {
+          id: pluginSelectionId(plugin),
+          name: plugin.displayName,
+          subtitle: `Rejected · ${plugin.rejection.reason}`,
+        }
+      : {
+          id: pluginSelectionId(plugin),
+          name: plugin.displayName || plugin.name,
+          subtitle: `v${plugin.version}${plugin.description ? ` · ${plugin.description}` : ''}`,
+        },
+  );
 }
 
 export function slugifyProjectName(name: string) {

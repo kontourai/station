@@ -376,6 +376,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // change under it.
     'tests/connection-lost-access-request.spec.ts',
     'tests/plugin-preview.spec.ts',
+    // Creates and repairs one invalid plugin directory in the runner-owned
+    // temporary home, then removes it and reloads before yielding the server.
+    'tests/plugin-rejection-visibility.spec.ts',
     'tests/plugin-system.spec.ts',
     'tests/survey-review-workbench.spec.ts',
     'tests/fieldwork-review.spec.ts',
@@ -963,6 +966,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted plugin update lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/plugin-rejection-visibility.spec.ts',
+    bucket: 'product',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves the rejected-manifest row, exact recovery copy, and repair/reload transition in the real Plugins surface.',
     exceptions: [],
   },
   {
