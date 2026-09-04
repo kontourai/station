@@ -100,6 +100,7 @@ export type PluginCompositionInspectionReason =
   | 'implementation-unavailable'
   | 'activation-failed'
   | 'activation-aborted'
+  | 'staged-resource-conflict'
   | 'rollback-failed'
   | 'disposer-failed'
   | 'disposer-timeout';
@@ -268,10 +269,68 @@ function sameScope(
   return scopeKey(left) === scopeKey(right);
 }
 
+interface ConfigurationBudget {
+  nodes: number;
+  bytes: number;
+  exceededBytes: boolean;
+}
+
+function consumeConfigurationBytes(
+  budget: ConfigurationBudget,
+  bytes: number,
+): boolean {
+  if (bytes > MAX_CONFIGURATION_BYTES - budget.bytes) {
+    budget.exceededBytes = true;
+    return false;
+  }
+  budget.bytes += bytes;
+  return true;
+}
+
+/** Exact well-formed JSON string bytes, without allocating its escaped form. */
+function consumeConfigurationString(
+  value: string,
+  budget: ConfigurationBudget,
+): boolean {
+  // UTF-16 length is a lower bound on escaped UTF-8 bytes. Reject huge inputs
+  // in constant work before scanning, sorting keys, or serializing anything.
+  if (value.length > MAX_CONFIGURATION_BYTES - budget.bytes - 2) {
+    budget.exceededBytes = true;
+    return false;
+  }
+  if (!consumeConfigurationBytes(budget, 2)) return false;
+  for (let index = 0; index < value.length; index++) {
+    const unit = value.charCodeAt(index);
+    let bytes: number;
+    if (
+      unit === 34 ||
+      unit === 92 ||
+      unit === 8 ||
+      unit === 9 ||
+      unit === 10 ||
+      unit === 12 ||
+      unit === 13
+    )
+      bytes = 2;
+    else if (unit < 32) bytes = 6;
+    else if (unit < 128) bytes = 1;
+    else if (unit < 2048) bytes = 2;
+    else if (unit >= 0xd800 && unit <= 0xdfff) {
+      const next = value.charCodeAt(index + 1);
+      if (unit <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) {
+        bytes = 4;
+        index++;
+      } else bytes = 6; // JSON.stringify escapes lone surrogates.
+    } else bytes = 3;
+    if (!consumeConfigurationBytes(budget, bytes)) return false;
+  }
+  return true;
+}
+
 function canonicalConfiguration(
   value: unknown,
   depth = 0,
-  budget = { nodes: 0 },
+  budget: ConfigurationBudget = { nodes: 0, bytes: 0, exceededBytes: false },
 ): PluginCompositionJson | undefined {
   if (
     depth > MAX_CONFIGURATION_DEPTH ||
@@ -279,37 +338,50 @@ function canonicalConfiguration(
   ) {
     return undefined;
   }
-  if (
-    value === null ||
-    typeof value === 'boolean' ||
-    typeof value === 'string'
-  ) {
-    return value;
-  }
+  if (value === null)
+    return consumeConfigurationBytes(budget, 4) ? value : undefined;
+  if (typeof value === 'boolean')
+    return consumeConfigurationBytes(budget, value ? 4 : 5) ? value : undefined;
+  if (typeof value === 'string')
+    return consumeConfigurationString(value, budget) ? value : undefined;
   if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : undefined;
+    return Number.isFinite(value) &&
+      consumeConfigurationBytes(budget, String(value).length)
+      ? value
+      : undefined;
   }
   if (Array.isArray(value)) {
     try {
+      const length = value.length;
       if (
-        value.length > MAX_CONFIGURATION_NODES - budget.nodes ||
-        Reflect.ownKeys(value).length >
-          MAX_CONFIGURATION_NODES - budget.nodes + 1 ||
-        Object.getOwnPropertySymbols(value).length > 0
+        !Number.isSafeInteger(length) ||
+        length < 0 ||
+        length > MAX_CONFIGURATION_NODES - budget.nodes
+      )
+        return undefined;
+      const ownKeys = Reflect.ownKeys(value);
+      if (
+        ownKeys.length > MAX_CONFIGURATION_NODES - budget.nodes + 1 ||
+        ownKeys.some((key) => typeof key !== 'string')
       ) {
         return undefined;
       }
-      const descriptors = Object.getOwnPropertyDescriptors(value);
-      const keys = Object.keys(descriptors).filter((key) => key !== 'length');
+      const keys = ownKeys.filter((key) => key !== 'length');
       if (
-        keys.length !== value.length ||
-        keys.some((key, index) => key !== String(index))
+        keys.length !== length ||
+        keys.some(
+          (key, index) =>
+            typeof key !== 'string' ||
+            key.length !== String(index).length ||
+            key !== String(index),
+        ) ||
+        !consumeConfigurationBytes(budget, 2 + Math.max(0, length - 1))
       ) {
         return undefined;
       }
       const output: PluginCompositionJson[] = [];
-      for (const key of keys) {
-        const descriptor = descriptors[key];
+      for (const key of keys as string[]) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (
           !descriptor ||
           !('value' in descriptor) ||
@@ -338,6 +410,17 @@ function canonicalConfiguration(
     if (names.length > MAX_CONFIGURATION_NODES - budget.nodes) return undefined;
     if (names.some((key) => typeof key !== 'string')) return undefined;
     const keys = names as string[];
+    if (!consumeConfigurationBytes(budget, 2 + Math.max(0, keys.length - 1)))
+      return undefined;
+    // Account for every key before sorting. A tiny object can still carry an
+    // enormous key, and a bounded number of long keys can exceed the total.
+    for (const key of keys) {
+      if (
+        !consumeConfigurationString(key, budget) ||
+        !consumeConfigurationBytes(budget, 1)
+      )
+        return undefined;
+    }
     const output: Record<string, PluginCompositionJson> = Object.create(null);
     for (const key of keys.sort()) {
       if (key === '__proto__' || key === 'prototype' || key === 'constructor') {
@@ -452,6 +535,10 @@ const PROFILE_KEYS = new Set([
   'contributions',
   'selections',
 ]);
+// Invalid config must not be retained/copied, but its safe declaration still
+// belongs in whole-plan refusal diagnostics alongside independent selections.
+const invalidConfigurationSnapshots =
+  new WeakSet<PluginCompositionContribution>();
 
 function snapshotScope(value: unknown): PluginCompositionScope | undefined {
   const initial = dataRecord(value);
@@ -528,24 +615,35 @@ function snapshotContribution(
   ) {
     return;
   }
-  const configuration = canonicalConfiguration(record.configuration);
+  const configurationBudget = { nodes: 0, bytes: 0, exceededBytes: false };
+  const configuration = canonicalConfiguration(
+    record.configuration,
+    0,
+    configurationBudget,
+  );
   const requires = dataArray(
     record.requires,
     MAX_REQUIREMENTS,
     snapshotRequirement,
   );
-  if (configuration === undefined || !requires) return;
-  return {
+  if (
+    !requires ||
+    (configuration === undefined && !configurationBudget.exceededBytes)
+  )
+    return;
+  const snapshot: PluginCompositionContribution = {
     instanceId: record.instanceId as string,
     pluginId: record.pluginId as string,
     contributionId: record.contributionId as string,
     implementationId: record.implementationId as string,
     capability: record.capability as string,
     version: record.version as string,
-    configuration,
+    configuration: configuration ?? null,
     isolation: record.isolation as 'profile',
     requires,
   };
+  if (configuration === undefined) invalidConfigurationSnapshots.add(snapshot);
+  return snapshot;
 }
 
 function snapshotProfile(value: unknown): PluginCompositionProfile | undefined {
@@ -591,6 +689,7 @@ function normalizeContribution(
   profile: PluginCompositionProfile,
   contribution: PluginCompositionContribution,
 ): NormalizedContribution | undefined {
+  if (invalidConfigurationSnapshots.has(contribution)) return undefined;
   if (
     typeof contribution.instanceId !== 'string' ||
     typeof contribution.pluginId !== 'string' ||
@@ -1001,6 +1100,37 @@ function snapshotStagedHandle(value: unknown):
   }
 }
 
+function captureAuthorizer(options: {
+  readonly authorizer: PluginCompositionAuthorizer;
+}): PluginCompositionAuthorizer['authorize'] {
+  try {
+    const slot = Object.getOwnPropertyDescriptor(options, 'authorizer');
+    const receiver = slot && 'value' in slot ? slot.value : undefined;
+    if (
+      receiver &&
+      (typeof receiver === 'object' || typeof receiver === 'function')
+    ) {
+      // Prototype methods retain their original receiver (including private
+      // state). Never execute an accessor or enumerate unrelated host fields.
+      let owner = receiver;
+      for (let depth = 0; owner && depth < 24; depth++) {
+        const method = Object.getOwnPropertyDescriptor(owner, 'authorize');
+        if (method) {
+          if ('value' in method && typeof method.value === 'function') {
+            const callable = method.value;
+            return (input) => Reflect.apply(callable, receiver, [input]);
+          }
+          break;
+        }
+        owner = Object.getPrototypeOf(owner);
+      }
+    }
+  } catch {
+    /* Invalid host capability; no authority is admitted. */
+  }
+  throw new Error('Invalid plugin composition authorizer');
+}
+
 export function createPluginCompositionModule(options: {
   readonly authorizer: PluginCompositionAuthorizer;
   readonly disposerTimeoutMs?: number;
@@ -1020,6 +1150,7 @@ export function createPluginCompositionModule(options: {
   ) {
     throw new Error('Invalid plugin composition limits');
   }
+  const authorize = captureAuthorizer(options);
   const active = new Map<string, ActiveGeneration>();
   const attempts = new Map<string, PluginCompositionInspectionEntry[]>();
   const applyChains = new Map<string, Promise<void>>();
@@ -1064,8 +1195,25 @@ export function createPluginCompositionModule(options: {
         (debt) => debt.entries,
       ),
     );
+  // Distinct returned resources sharing an already-owned disposer cannot be
+  // safely cleaned by this module. Retain the actual handle/capability, not
+  // merely a diagnostic, until a separate recovery authority can prove cleanup.
+  // At most one conflict is reached by a plan; it closes that scope's admission.
+  const unclaimedResources = new Map<
+    string,
+    {
+      staged: NonNullable<ReturnType<typeof snapshotStagedHandle>>;
+      entry: PluginCompositionInspectionEntry;
+    }
+  >();
+  const unclaimedEntries = (key: string) => {
+    const resource = unclaimedResources.get(key);
+    return resource ? [structuredClone(resource.entry)] : [];
+  };
   const hasLifecycleDebt = (key: string) =>
-    pendingLifecycle.has(key) || releaseDebts.has(key);
+    pendingLifecycle.has(key) ||
+    releaseDebts.has(key) ||
+    unclaimedResources.has(key);
   const disposalFences = new Map<
     string,
     Map<string, PluginCompositionDisposalFence>
@@ -1088,6 +1236,7 @@ export function createPluginCompositionModule(options: {
       ...disposalFences.keys(),
       ...pendingLifecycle.keys(),
       ...releaseDebts.keys(),
+      ...unclaimedResources.keys(),
     ]);
   const ownAuthorizationRelease = (
     key: string,
@@ -1218,15 +1367,34 @@ export function createPluginCompositionModule(options: {
 
   const claimOccurrence = (
     leaseControl: ReturnType<typeof createOccurrenceLease>,
-    staged: ReturnType<typeof snapshotStagedHandle>,
-  ): PluginCompositionOccurrence | undefined => {
+    rawHandle: unknown,
+  ):
+    | {
+        kind: 'claimed';
+        occurrence: PluginCompositionOccurrence;
+        exact: boolean;
+      }
+    | { kind: 'borrowed' | 'invalid' }
+    | {
+        kind: 'conflict';
+        staged: NonNullable<ReturnType<typeof snapshotStagedHandle>>;
+      } => {
     if (
-      !staged ||
-      claimedHandles.has(staged.identity) ||
-      claimedDisposers.has(staged.disposer)
+      rawHandle &&
+      typeof rawHandle === 'object' &&
+      claimedHandles.has(rawHandle)
     ) {
       leaseControl.fence();
-      return;
+      return { kind: 'borrowed' };
+    }
+    const staged = snapshotStagedHandle(rawHandle);
+    if (!staged) {
+      leaseControl.fence();
+      return { kind: 'invalid' };
+    }
+    if (claimedDisposers.has(staged.disposer)) {
+      leaseControl.fence();
+      return { kind: 'conflict', staged };
     }
     claimedHandles.set(staged.identity, leaseControl.lease.occurrenceIdentity);
     claimedDisposers.set(
@@ -1234,7 +1402,7 @@ export function createPluginCompositionModule(options: {
       leaseControl.lease.occurrenceIdentity,
     );
     let disposed = false;
-    return {
+    const occurrence: PluginCompositionOccurrence = {
       lease: leaseControl.lease,
       fence: leaseControl.fence,
       dispose: () => {
@@ -1257,6 +1425,7 @@ export function createPluginCompositionModule(options: {
         }
       },
     };
+    return { kind: 'claimed', occurrence, exact: staged.exact };
   };
 
   const fenceAll = (contributions: readonly ActiveContribution[]) => {
@@ -1283,6 +1452,7 @@ export function createPluginCompositionModule(options: {
     for (const pending of [
       ...(pendingLifecycle.get(key)?.entries ?? []),
       ...releaseEntries(key),
+      ...unclaimedEntries(key),
     ]) {
       if (
         !latest.some(
@@ -1683,7 +1853,7 @@ export function createPluginCompositionModule(options: {
     );
     recordAttempt(profile.scope, [...pending, ...planned.plan.shadowed]);
     const authorizationOperation = Promise.resolve().then(() =>
-      options.authorizer.authorize({
+      authorize({
         profileId: profile.profileId,
         scope: structuredClone(profile.scope),
         contributions: planned.plan.selected.map((contribution) => ({
@@ -1822,6 +1992,27 @@ export function createPluginCompositionModule(options: {
 
     const sequence = nextActivationSequence();
     const staged: ActiveContribution[] = [];
+    const retainUnclaimable = (
+      contribution: NormalizedContribution,
+      binding: PluginCompositionInstalledContributionBinding,
+      lease: PluginCompositionOccurrenceLease,
+      handle: NonNullable<ReturnType<typeof snapshotStagedHandle>>,
+    ) => {
+      // Custody owns this exact handle even though it cannot own the shared
+      // disposer. A later stage must not claim it after the original disposer
+      // owner retires; exact returns of this resource are borrowed too.
+      claimedHandles.set(handle.identity, lease.occurrenceIdentity);
+      unclaimedResources.set(key, {
+        staged: handle,
+        entry: entry(
+          contribution,
+          'pending',
+          'staged-resource-conflict',
+          nextGeneration,
+          { binding, occurrence: lease },
+        ),
+      });
+    };
     let rollbackSettlement: Promise<void> | undefined;
     const settleRollbackOwnership = async () => {
       if (!rollbackOwner.late && rollbackOwner.prior.length === 0) return;
@@ -1923,12 +2114,19 @@ export function createPluginCompositionModule(options: {
             rollbackOwner.late = stageOperation
               .then<'disposed' | 'failed', 'disposed' | 'failed'>(
                 async (lateHandle) => {
-                  const stagedHandle = snapshotStagedHandle(lateHandle);
-                  const occurrence = claimOccurrence(
-                    leaseControl,
-                    stagedHandle,
-                  );
-                  if (!occurrence) return 'failed';
+                  const claim = claimOccurrence(leaseControl, lateHandle);
+                  // Exact borrowed identity acquired no new resource. Join any
+                  // earlier B rollback, then release B's lease; never dispose A.
+                  if (claim.kind === 'borrowed') return 'disposed';
+                  if (claim.kind === 'conflict')
+                    retainUnclaimable(
+                      contribution,
+                      binding,
+                      leaseControl.lease,
+                      claim.staged,
+                    );
+                  if (claim.kind !== 'claimed') return 'failed';
+                  const occurrence = claim.occurrence;
                   const settlements: Promise<'disposed' | 'failed'>[] = [];
                   await disposeOne(
                     { ...contribution, binding, occurrence },
@@ -1948,15 +2146,27 @@ export function createPluginCompositionModule(options: {
             throw new Error('plugin composition staging failed');
           }
           const rawHandle = stageOutcome.value;
-          const stagedHandle = snapshotStagedHandle(rawHandle);
-          const occurrence = claimOccurrence(leaseControl, stagedHandle);
-          if (!occurrence) throw new Error('invalid staged contribution');
+          const claim = claimOccurrence(leaseControl, rawHandle);
+          if (claim.kind === 'conflict') {
+            retainUnclaimable(
+              contribution,
+              binding,
+              leaseControl.lease,
+              claim.staged,
+            );
+            // This is an unresolved owned resource, not a completed cleanup.
+            // Keep whole-plan authorization custody through the common join.
+            rollbackOwner.prior.push(Promise.resolve('failed'));
+          }
+          if (claim.kind !== 'claimed')
+            throw new Error('invalid staged contribution');
+          const occurrence = claim.occurrence;
           staged.push({ ...contribution, binding, occurrence });
           // A recognizable disposer is still rollback authority even when the
           // surrounding result is malformed. Claim it before refusing so this
           // occurrence is fenced and disposed without touching an already-
           // claimed handle or disposer from another scope.
-          if (!stagedHandle?.exact) {
+          if (!claim.exact) {
             throw new Error('malformed staged contribution');
           }
         } catch {
@@ -2158,6 +2368,7 @@ export function createPluginCompositionModule(options: {
         const pending = [
           ...(pendingLifecycle.get(key)?.entries ?? []),
           ...releaseEntries(key),
+          ...unclaimedEntries(key),
         ];
         return {
           kind:

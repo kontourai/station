@@ -140,6 +140,357 @@ function moduleWith(
 }
 
 describe('plugin composition profiles', () => {
+  test('captures the original authorizer and receiver before queued work can replace them', async () => {
+    const events: string[] = [];
+    let finishStage!: () => void;
+    let beganStage!: () => void;
+    const staging = new Promise<void>((resolve) => {
+      beganStage = resolve;
+    });
+    const implementations = new Map<string, PluginCompositionFactory>([
+      [
+        'cache',
+        {
+          async stage() {
+            beganStage();
+            await new Promise<void>((resolve) => {
+              finishStage = resolve;
+            });
+            return { dispose() {} };
+          },
+        },
+      ],
+      factory('index', events),
+    ]);
+    const receivers: unknown[] = [];
+    const original: PluginCompositionAuthorizer = {
+      authorize(input) {
+        receivers.push(this);
+        return grantedPlanAuthorization(input, implementations);
+      },
+    };
+    const unrelated = vi.fn(() => {
+      throw new Error('unrelated accessor');
+    });
+    Object.defineProperty(original, 'unrelated', { get: unrelated });
+    const options = { authorizer: original };
+    const module = createPluginCompositionModule(options);
+    const first = module.apply(
+      profile(projectA, [contribution('cache', 'workspace.cache')]),
+    );
+    await staging;
+    const queued = module.apply(
+      profile(projectA, [contribution('index', 'workspace.index')]),
+    );
+    const replacement = vi.fn(() => ({ kind: 'denied' as const }));
+    original.authorize = replacement;
+    options.authorizer = { authorize: replacement };
+    finishStage();
+    expect((await first).kind).toBe('activated');
+    expect((await queued).kind).toBe('activated');
+    expect(receivers).toEqual([original, original]);
+    expect(replacement).not.toHaveBeenCalled();
+    expect(unrelated).not.toHaveBeenCalled();
+    await module.retire(projectA);
+  });
+
+  test('captures a receiver-bound prototype authorizer without invoking accessor capabilities', async () => {
+    const seen: unknown[] = [];
+    class Authority {
+      authorize(): PluginCompositionAuthorization {
+        seen.push(this);
+        return { kind: 'denied' };
+      }
+    }
+    const authorizer = new Authority();
+    const module = createPluginCompositionModule({ authorizer });
+    const old = Authority.prototype.authorize;
+    try {
+      Authority.prototype.authorize = () => ({ kind: 'unavailable' });
+      expect((await module.apply(profile(projectA, []))).kind).toBe('failed');
+      expect(seen).toEqual([authorizer]);
+    } finally {
+      Authority.prototype.authorize = old;
+    }
+    const getter = vi.fn(() => old);
+    expect(() =>
+      createPluginCompositionModule({
+        authorizer: Object.defineProperty({}, 'authorize', {
+          get: getter,
+        }) as PluginCompositionAuthorizer,
+      }),
+    ).toThrow('authorizer');
+    expect(getter).not.toHaveBeenCalled();
+  });
+
+  test.each(['scalar', 'key', 'escaped', 'aggregate'] as const)(
+    'rejects oversized %s configuration before whole serialization and key sorting',
+    async (shape) => {
+      const large =
+        shape === 'escaped' ? '\u0000'.repeat(20_000) : 'x'.repeat(70_000);
+      const configuration =
+        shape === 'key'
+          ? { [large]: null }
+          : shape === 'aggregate'
+            ? { left: 'a'.repeat(40_000), right: 'b'.repeat(40_000) }
+            : large;
+      const originalStringify = JSON.stringify;
+      const originalSort = Array.prototype.sort;
+      let oversizedSerializations = 0;
+      let oversizedKeySorts = 0;
+      const stringify = vi
+        .spyOn(JSON, 'stringify')
+        .mockImplementation((value, ...rest) => {
+          if (
+            value === large ||
+            (value &&
+              typeof value === 'object' &&
+              (Object.hasOwn(value, large) ||
+                (value.left?.length === 40_000 &&
+                  value.right?.length === 40_000)))
+          )
+            oversizedSerializations++;
+          return Reflect.apply(originalStringify, JSON, [value, ...rest]);
+        });
+      const sorting = vi
+        .spyOn(Array.prototype, 'sort')
+        .mockImplementation(function (this: unknown[], compare) {
+          if (this.some((value) => value === large)) oversizedKeySorts++;
+          return Reflect.apply(originalSort, this, [compare]);
+        });
+      const authorize = vi.fn(() => ({ kind: 'denied' as const }));
+      try {
+        const module = moduleWith([], { authorizer: { authorize } });
+        const result = await module.apply(
+          profile(projectA, [
+            contribution('bad', 'workspace.bad', { configuration }),
+            contribution('good', 'workspace.good'),
+          ]),
+        );
+        expect(result.kind).toBe('refused');
+        expect(result.inspection.failed.map((row) => row.instanceId)).toContain(
+          'bad',
+        );
+        expect(
+          result.inspection.pending.map((row) => row.instanceId),
+        ).toContain('good');
+        expect(oversizedSerializations).toBe(0);
+        expect(oversizedKeySorts).toBe(0);
+        expect(authorize).not.toHaveBeenCalled();
+      } finally {
+        stringify.mockRestore();
+        sorting.mockRestore();
+      }
+    },
+  );
+
+  test.each([
+    ['ascii', 'x'.repeat(65_534), 'x'.repeat(65_535)],
+    ['quotes', '"'.repeat(32_767), '"'.repeat(32_768)],
+    ['controls', '\u0000'.repeat(10_922), '\u0000'.repeat(10_923)],
+    ['surrogates', '\ud800'.repeat(10_922), '\ud800'.repeat(10_923)],
+    ['utf8', '😀'.repeat(16_383), '😀'.repeat(16_384)],
+  ])(
+    'counts exact JSON encoded %s bytes without rejecting in-budget values',
+    async (_kind, within, beyond) => {
+      const module = moduleWith([factory('cache', [])]);
+      expect(
+        (
+          await module.apply(
+            profile(projectA, [
+              contribution('cache', 'workspace.cache', {
+                configuration: within,
+              }),
+            ]),
+          )
+        ).kind,
+      ).toBe('activated');
+      expect(
+        (
+          await module.apply(
+            profile(projectB, [
+              contribution('cache', 'workspace.cache', {
+                configuration: beyond,
+              }),
+            ]),
+          )
+        ).kind,
+      ).toBe('refused');
+      await module.retire(projectA);
+    },
+  );
+
+  test('a timed-out stage returning an exact borrowed handle releases only its own authorization after settlement', async () => {
+    vi.useFakeTimers();
+    try {
+      const dispose = vi.fn();
+      const shared = { dispose };
+      let finishB!: () => void;
+      const leases: Array<{ isCurrent(): boolean }> = [];
+      const releaseA = vi.fn();
+      const releaseB = vi.fn();
+      const implementations = new Map<string, PluginCompositionFactory>([
+        [
+          'cache',
+          {
+            async stage(input) {
+              leases.push(input.occurrence);
+              if (
+                input.scope.kind === 'project' &&
+                input.scope.projectId === projectB.projectId
+              )
+                await new Promise<void>((resolve) => {
+                  finishB = resolve;
+                });
+              return shared;
+            },
+          },
+        ],
+      ]);
+      const module = moduleWith([], {
+        disposerTimeoutMs: 5,
+        authorizer: {
+          authorize(input) {
+            return grantedPlanAuthorization(input, implementations, {
+              release:
+                input.scope.kind === 'project' &&
+                input.scope.projectId === projectA.projectId
+                  ? releaseA
+                  : releaseB,
+            });
+          },
+        },
+      });
+      await module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      );
+      const pending = module.apply(
+        profile(projectB, [contribution('cache', 'workspace.cache')]),
+      );
+      await vi.advanceTimersByTimeAsync(10);
+      await pending;
+      expect(releaseB).not.toHaveBeenCalled();
+      expect((await module.retire(projectB)).kind).toBe('pending');
+      finishB();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(releaseB).toHaveBeenCalledOnce();
+      expect(releaseA).toHaveBeenCalledOnce();
+      expect((await module.retire(projectB)).kind).toBe('retired');
+      expect(module.inspect(projectA).active).toHaveLength(1);
+      expect(leases.map((lease) => lease.isCurrent())).toEqual([true, false]);
+      expect(dispose).not.toHaveBeenCalled();
+      await module.retire(projectA);
+      expect(dispose).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test.each([false, true])(
+    'retains a distinct shared-disposer resource and its lease without destroying the active owner (late=%s)',
+    async (late) => {
+      vi.useFakeTimers();
+      try {
+        const disposed: unknown[] = [];
+        function dispose(this: unknown) {
+          disposed.push(this);
+        }
+        const firstHandle = { dispose };
+        const secondHandle = { dispose };
+        let finishB!: () => void;
+        const occurrences: Array<{ isCurrent(): boolean }> = [];
+        const releaseB = vi.fn();
+        const implementations = new Map<string, PluginCompositionFactory>([
+          [
+            'cache',
+            {
+              async stage(input) {
+                occurrences.push(input.occurrence);
+                if (
+                  input.scope.kind === 'project' &&
+                  input.scope.projectId === projectA.projectId
+                )
+                  return firstHandle;
+                if (late)
+                  await new Promise<void>((resolve) => {
+                    finishB = resolve;
+                  });
+                return secondHandle;
+              },
+            },
+          ],
+        ]);
+        const module = moduleWith([], {
+          disposerTimeoutMs: 5,
+          maxRetainedScopes: 2,
+          authorizer: {
+            authorize(input) {
+              return grantedPlanAuthorization(input, implementations, {
+                release:
+                  input.scope.kind === 'project' &&
+                  input.scope.projectId === projectB.projectId
+                    ? releaseB
+                    : undefined,
+              });
+            },
+          },
+        });
+        await module.apply(
+          profile(projectA, [contribution('cache', 'workspace.cache')]),
+        );
+        const applyingB = module.apply(
+          profile(projectB, [contribution('cache', 'workspace.cache')]),
+        );
+        await vi.advanceTimersByTimeAsync(10);
+        await applyingB;
+        if (late) {
+          finishB();
+          await vi.advanceTimersByTimeAsync(0);
+        }
+        expect(module.inspect(projectB).pending).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              reason: 'staged-resource-conflict',
+              generation: 1,
+            }),
+          ]),
+        );
+        expect(releaseB).not.toHaveBeenCalled();
+        expect((await module.retire(projectB)).kind).toBe('pending');
+        expect(occurrences.map((lease) => lease.isCurrent())).toEqual([
+          true,
+          false,
+        ]);
+        expect(disposed).toEqual([]);
+        expect(
+          (
+            await module.apply(
+              profile({ kind: 'project', projectId: 'third' }, []),
+            )
+          ).kind,
+        ).toBe('refused');
+        await module.retire(projectA);
+        expect(disposed).toEqual([firstHandle]);
+        expect((await module.retire(projectB)).kind).toBe('pending');
+        expect(releaseB).not.toHaveBeenCalled();
+        const third = { kind: 'project', projectId: 'third' } as const;
+        const attemptedReuse = module.apply(
+          profile(third, [contribution('cache', 'workspace.cache')]),
+        );
+        if (late) {
+          await vi.advanceTimersByTimeAsync(0);
+          finishB();
+        }
+        expect((await attemptedReuse).kind).toBe('failed');
+        expect((await module.retire(third)).kind).toBe('retired');
+        expect(disposed).toEqual([firstHandle]);
+        expect((await module.retire(projectB)).kind).toBe('pending');
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   test.each(['reject', 'hang'] as const)(
     'an empty replacement exposes scope-level %s release debt after retiring the prior generation',
     async (behavior) => {
