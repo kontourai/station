@@ -43,8 +43,7 @@ function runnerOwnedHome(): string {
     record.instanceId !== instance ||
     realpathSync(record.cwd) !== realpathSync(process.cwd()) ||
     realpathSync(record.baseDir) !== realpathSync(home) ||
-    record.serverPort !==
-      Number(new URL(process.env.PW_API_BASE_URL ?? '').port)
+    record.uiPort !== Number(new URL(process.env.PW_BASE_URL ?? '').port)
   )
     throw new Error(
       'Exact search proof refused a home not attested by this runner launch.',
