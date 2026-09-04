@@ -76,6 +76,7 @@ import {
   doctor,
   doctorJson,
   homeBackup,
+  homeRecoveryPlan,
   homeReset,
   homeRestore,
   homeVerify,
@@ -1082,9 +1083,50 @@ function buildProgram(
 
   register('home', (args) => {
     const [homeAction, ...homeArgs] = args;
+    if (homeAction === 'recovery-plan') {
+      // This branch must precede lifecycle argument parsing: --temp-home
+      // resolution creates directories. The recovery observer writes nothing.
+      const selectors = homeArgs.filter(
+        (arg) => arg.startsWith('--base=') || arg.startsWith('--home='),
+      );
+      if (
+        selectors.length !== 1 ||
+        homeArgs.some((arg) => arg !== '--json' && !selectors.includes(arg)) ||
+        !selectors[0].slice(selectors[0].indexOf('=') + 1).trim()
+      ) {
+        throw new Error(
+          'Usage: station home recovery-plan --base=<existing-home> [--json] (or --home=<existing-home>); no mutation options are accepted.',
+        );
+      }
+      const result = homeRecoveryPlan(
+        selectors[0].slice(selectors[0].indexOf('=') + 1),
+      );
+      if (homeArgs.includes('--json')) console.log(JSON.stringify(result));
+      else {
+        console.log(
+          `Recovery inspection: ${result.inspection}; source schema: ${result.sourceSchemaVersion ?? 'unknown'}.`,
+        );
+        console.log(
+          'Observation only. Migration is not implemented; no apply is authorized. Owner exclusion is NOT PROVEN.',
+        );
+        for (const row of result.stores) {
+          if (row.entries)
+            console.log(
+              `${row.store}: ${row.entries} entries, ${row.inspectedRecords} selected-field records inspected — ${row.disposition}`,
+            );
+        }
+        console.log(
+          `Limits and unknowns: ${result.codes.join(', ') || 'no selected-field findings'}. Snapshot is non-atomic; unopened payloads are not validated.`,
+        );
+        for (const decision of result.requiredDecisions)
+          console.log(`Review: ${decision}`);
+      }
+      if (result.inspection !== 'observed') process.exitCode = 2;
+      return;
+    }
     if (!['backup', 'reset', 'restore', 'verify'].includes(homeAction ?? '')) {
       throw new Error(
-        'Usage: station home <backup|restore|reset|verify> [options]',
+        'Usage: station home <backup|restore|reset|verify|recovery-plan> [options]',
       );
     }
     const lifecycleArgs = parseLifecycleArgs(homeArgs);
@@ -1407,6 +1449,7 @@ export async function runCli(
   dependencies: CliDependencies = {},
 ): Promise<void> {
   const [command, ...args] = argv;
+  const recoveryObservation = command === 'home' && args[0] === 'recovery-plan';
   const interactive =
     dependencies.isInteractive ?? Boolean(process.stdin.isTTY);
 
@@ -1483,7 +1526,7 @@ export async function runCli(
 
   // Every Station request gets a deadline from here on, so a listening-but-
   // silent server fails loudly instead of hanging with no output.
-  configureRequestTimeout();
+  if (!recoveryObservation) configureRequestTimeout();
 
   // Manual unknown-command arm: an unrecognized verb never reaches Commander,
   // so Commander's own "unknown command" handling can never override the pinned
@@ -1496,7 +1539,9 @@ export async function runCli(
   // Help, version, default/contributor/host refusals, and unknown input must
   // not construct or query the platform keyring. The executable provides this
   // adapter lazily only for a dispatchable client command.
-  await dependencies.configureProfileCredentialStore?.();
+  if (!recoveryObservation) {
+    await dependencies.configureProfileCredentialStore?.();
+  }
 
   // Recognized verb: route through Commander. The raw post-verb args are passed
   // as operands after `--` so Commander parses none of them as options, leaving

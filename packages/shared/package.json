@@ -60,6 +60,7 @@
     "./process-identity": "./src/process-identity.mjs",
     "./launch-path": "./src/launch-path.ts",
     "./station-home-schema": "./src/station-home-schema.ts",
+    "./station-home-recovery-preflight": "./src/station-home-recovery-preflight.ts",
     "./station-home-archive": "./src/station-home-archive.ts",
     "./station-home-lifecycle": "./src/station-home-lifecycle.ts",
     "./sqlite-integrity": "./src/sqlite-integrity.ts",

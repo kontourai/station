@@ -104,6 +104,12 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // The shared observer fixture also creates real POSIX FIFOs and runs two
+  // bounded Node children to prove the exact open-boundary blocking race.
+  'packages/shared/src/__tests__/station-home-recovery-preflight.test.ts',
+  // The CLI fixture imports child_process only to forbid every launch while
+  // patching builtin exports around the real read-only dispatch seam.
+  'packages/cli/src/__tests__/home-recovery-plan.test.ts',
   // fsync-backed AgentRegistry fixtures compose the runtime bootstrap path;
   // they own durable state but can share the bounded two-worker pool.
   'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts',
