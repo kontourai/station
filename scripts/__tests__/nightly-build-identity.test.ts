@@ -440,6 +440,9 @@ describe('the desktop tauri config overlay (station#575)', () => {
       identifier: 'io.kontourai.station.nightly',
       bundle: {
         createUpdaterArtifacts: 'v1Compatible',
+        // The notarization script builds the DMG and updater archive itself;
+        // Tauri must bundle only the .app it consumes (#1479).
+        targets: ['app'],
         macOS: { bundleVersion: '241203' },
       },
       plugins: {
@@ -533,6 +536,9 @@ describe('the desktop tauri config overlay (station#575)', () => {
     expect(config.version).toBe('0.1.2-nightly.2412.3');
     expect(config.identifier).toBe('io.kontourai.station.nightly');
     expect(config.bundle.macOS.bundleVersion).toBe('241203');
+    // The written overlay, not only the in-memory object, restricts bundling:
+    // an overlay array replaces tauri.conf.json's `targets: "all"`.
+    expect(config.bundle.targets).toEqual(['app']);
   });
 });
 
