@@ -248,6 +248,9 @@ test.describe('direct plugin Pane SDK context', () => {
     await expect(
       page.getByText('Chat dock: open', { exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole('region', { name: 'Chat dock', exact: true }),
+    ).toBeVisible();
   });
 
   test('places the trusted plugin occurrence in WorkspacePaneHost with the same SDK context', async ({

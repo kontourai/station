@@ -20,7 +20,7 @@ function PaneSDKContextProof({ layout }: LayoutComponentProps) {
       <p>Project: {navigation.selectedProject ?? 'unbound'}</p>
       <p>Occurrence: {layout?.slug ?? 'unbound'}</p>
       <p>Discovered Agents: {agents.length}</p>
-      <p>Chat dock: {navigation.dockState ? 'open' : 'closed'}</p>
+      <p>Chat dock: {navigation.isDockOpen ? 'open' : 'closed'}</p>
       <button
         type="button"
         onClick={() => {
