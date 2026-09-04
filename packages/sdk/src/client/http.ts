@@ -1490,8 +1490,9 @@ export function fetchSSE(
           response,
           controller.signal,
           (message) => {
-            attemptMessages++;
-            return opts.onMessage(message);
+            const accepted = opts.onMessage(message) !== false;
+            if (accepted) attemptMessages++;
+            return accepted;
           },
           (checkpoint) => {
             if (checkpoint.id !== undefined) {

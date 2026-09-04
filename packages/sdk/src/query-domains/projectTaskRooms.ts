@@ -221,7 +221,12 @@ export async function refetchAuthoritativeProjectTaskRoomDocument(
   taskId: string,
 ) {
   const queryKey = projectTaskRoomQueries.document(taskId).queryKey;
+  const observed = client.getQueryData(queryKey);
   await cancelProjectTaskRoomDocumentQuery(client, taskId);
+  const current = client.getQueryData(queryKey);
+  // A newer accepted stream document can arrive during cancellation. It is
+  // already authoritative; do not start an older recovery after its fence.
+  if (current !== observed && isDocumentSnapshot(current)) return current;
   return client.fetchQuery({
     queryKey,
     staleTime: 0,
@@ -286,6 +291,23 @@ export function useProjectTaskRoomStream(
       if (!isCurrentStream()) return;
       notifyProjectTaskRoomCallback(callback);
     };
+    const recoverDocument = (
+      gap: { kind: 'gap'; floor: string } | { kind: 'unavailable' } = {
+        kind: 'unavailable',
+      },
+    ) => {
+      if (!isCurrentStream()) return;
+      // Fetching retains the last successful React Query data. Publish lost
+      // authority before starting recovery so displayed text cannot still
+      // authorize ordinary editing while the no-cache request is pending.
+      client.setQueryData(
+        projectTaskRoomQueries.document(taskId).queryKey,
+        gap,
+      );
+      void refetchAuthoritativeProjectTaskRoomDocument(client, taskId).catch(
+        () => {},
+      );
+    };
     void _getApiBase().then((base) => {
       if (!isCurrentStream()) return;
       connection = subscribeProjectTaskRoomEvents(base, taskId, {
@@ -296,10 +318,7 @@ export function useProjectTaskRoomStream(
           ) {
             return;
           }
-          void refetchAuthoritativeProjectTaskRoomDocument(
-            client,
-            taskId,
-          ).catch(() => {});
+          recoverDocument();
         },
         onCheckpoint: (id) =>
           notifyCurrent(() => callbackRef.current?.onCheckpoint?.(id)),
@@ -317,11 +336,7 @@ export function useProjectTaskRoomStream(
                 callbackRef.current?.onAuthoritativeDocument?.(document),
               );
             if (!isCurrentStream()) return;
-            if (document?.kind === 'gap')
-              void refetchAuthoritativeProjectTaskRoomDocument(
-                client,
-                taskId,
-              ).catch(() => {});
+            if (document?.kind === 'gap') recoverDocument(document);
             else if (
               document?.kind === 'snapshot' ||
               document?.kind === 'delta'
@@ -333,11 +348,7 @@ export function useProjectTaskRoomStream(
                 projectTaskRoomQueries.document(taskId).queryKey,
                 document,
               );
-            } else
-              void refetchAuthoritativeProjectTaskRoomDocument(
-                client,
-                taskId,
-              ).catch(() => {});
+            } else recoverDocument();
           } else if (event.kind === 'room') {
             const live = parseProjectTaskRoomBrowserLiveSnapshot(event.value);
             if (live?.scope.taskId === taskId)
@@ -394,7 +405,7 @@ export function useProjectTaskRoomStream(
                 document,
               );
             } else
-              void refetchAuthoritativeProjectTaskRoomDocument(client, taskId);
+              recoverDocument(document?.kind === 'gap' ? document : undefined);
           } else notifyCurrent(() => callbackRef.current?.onTerminal?.());
         },
       });

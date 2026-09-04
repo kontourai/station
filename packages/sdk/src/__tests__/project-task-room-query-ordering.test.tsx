@@ -222,6 +222,9 @@ test('a transport protocol error recovers through the authoritative no-cache rea
     ),
   );
   await waitFor(() => expect(documentRequests).toHaveLength(2));
+  expect(
+    client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
+  ).toEqual({ kind: 'unavailable' });
   expect(documentRequests[1]?.init.headers).toEqual({
     'Cache-Control': 'no-cache',
   });
@@ -750,7 +753,46 @@ test('committed SSE cancels a deferred older GET and duplicate cannot regress ca
   await Promise.resolve();
   expect(
     client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
-  ).toEqual({ kind: 'snapshot', revision: 'rev3', text: 'three' });
+  ).toEqual({ kind: 'unavailable' });
+  await waitFor(() => expect(documentRequests).toHaveLength(1));
+  documentRequests[0].resolve({
+    kind: 'snapshot',
+    revision: 'rev3',
+    text: 'three',
+  });
+  await waitFor(() =>
+    expect(
+      client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
+    ).toEqual({ kind: 'snapshot', revision: 'rev3', text: 'three' }),
+  );
+});
+
+test('a gap revokes cached authority before its recovery GET settles', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const key = projectTaskRoomQueries.document('task-1').queryKey;
+  client.setQueryData(key, { kind: 'snapshot', revision: 'old', text: 'old' });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  renderHook(() => useProjectTaskRoomStream('task-1'), { wrapper });
+  await waitFor(() => expect(callbacks).toBeDefined());
+  callbacks!.onEvent({
+    kind: 'document',
+    value: { kind: 'gap', floor: 'floor' },
+  });
+  expect(client.getQueryData(key)).toEqual({ kind: 'gap', floor: 'floor' });
+  await waitFor(() => expect(documentRequests).toHaveLength(1));
+  expect(client.getQueryData(key)).toEqual({ kind: 'gap', floor: 'floor' });
+  documentRequests[0].resolve({
+    kind: 'snapshot',
+    revision: 'new',
+    text: 'new',
+  });
+  await waitFor(() =>
+    expect(client.getQueryData(key)).toMatchObject({ revision: 'new' }),
+  );
 });
 
 test('a gap recovery GET cannot overwrite a later committed SSE', async () => {

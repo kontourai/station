@@ -69,6 +69,7 @@ export function TaskRoomEditorPane({
   const id = useId().replaceAll(':', '');
   const operationGeneration = useRef(0);
   const authorizationRef = useRef(true);
+  const documentAuthorityRef = useRef(true);
   const displayedTaskId = useRef(taskId);
   const sharedStreamPresentRef = useRef(shared !== undefined);
   const queryApplicationInitialized = useRef(false);
@@ -206,6 +207,10 @@ export function TaskRoomEditorPane({
     !document.isError &&
     document.data?.kind !== 'gap' &&
     document.data?.kind !== 'unavailable';
+  if (documentAuthorityRef.current !== documentAuthorityCurrent) {
+    documentAuthorityRef.current = documentAuthorityCurrent;
+    operationGeneration.current += 1;
+  }
   useLayoutEffect(() => {
     if (
       import.meta.env.MODE !== 'test' &&

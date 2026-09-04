@@ -311,6 +311,27 @@ describe('fetchSSE', () => {
     stream.close();
   });
 
+  it('exhausts capped retries when every delivered frame is rejected', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () =>
+      failingSseResponse('id: rejected\ndata: malformed\n\n'),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const stream = fetchSSE('https://station.example.test/events', {
+      maxRetries: 2,
+      retryDelayMs: 1,
+      maxRetryDelayMs: 1,
+      onMessage: () => false,
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    try {
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+
   it('exhausts capped retries for repeated post-open stream errors', async () => {
     vi.useFakeTimers();
     const onError = vi.fn();

@@ -305,6 +305,30 @@ describe('TaskRoomEditorPane', () => {
     },
   );
 
+  test('does not submit an in-flight edit plan after document authority becomes a gap', async () => {
+    let finishPlan!: (value: ReturnType<typeof planned>) => void;
+    mocks.plan.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishPlan = resolve;
+        }),
+    );
+    const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+    changeDraft('pending gap draft');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save shared document' }),
+    );
+    await waitFor(() => expect(mocks.plan).toHaveBeenCalledOnce());
+    mocks.document.data = { kind: 'gap', floor: 'floor' } as never;
+    rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+    await act(async () => {
+      finishPlan(planned());
+    });
+    expect(mocks.batch).not.toHaveBeenCalled();
+    expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
+    expect((editor() as HTMLTextAreaElement).value).toBe('pending gap draft');
+  });
+
   test('guards browser Back and keeps the draft on cancel before replaying on confirm', async () => {
     navigationStore.navigate('/guard-back-origin');
     navigationStore.navigate('/guard-back-editor');
