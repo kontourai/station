@@ -104,6 +104,7 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
   // Owns real CPU-blocking worker_threads and canonical TaskGraph file fixtures.
   'src-server/services/search/__tests__/isolated-task-search.test.ts',
   // fsync-backed AgentRegistry fixtures compose the runtime bootstrap path;

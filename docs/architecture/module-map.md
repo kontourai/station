@@ -115,7 +115,8 @@ unbounded fan-out, or a second command-palette registry.
 binds one explicit-lifecycle reader to that owner's canonical file. Its fixed
 worker operation reuses TaskGraph validation, ordering, and JsonFileStore's
 missing-primary `.previous` recovery; corrupt primary data never falls back.
-The worker reads at most 8 MiB (oversize is unavailable, not empty), scans the
+The worker accepts files up to 8 MiB (with a bounded one-byte overflow probe;
+oversize is unavailable, not empty), scans the
 existing bounded Task window, and transfers only a bounded provider page.
 One request may execute; there is no queue. The two-second deadline includes
 worker startup. Deadline/cancellation fences result acceptance and retains the
@@ -125,10 +126,33 @@ cleanup occupies the slot; `inspect()` reports retiring/incomplete and bounded
 and retries only settled rejection. The owner must close the reader. This is
 trusted first-party CPU isolation, not a hostile-plugin security sandbox, and
 is not a host-wide pool or a new authorization authority. Do not allocate one
-reader per request. No runtime caller is wired; transcript reads, their cold
-authorization-cache reads, and supported-platform responsiveness qualification
-remain open. Existing arbitrary Provider callbacks remain in-process and do
+reader per request. No runtime caller is wired; supported-platform
+responsiveness qualification remains open. Existing arbitrary Provider callbacks remain in-process and do
 not acquire an isolation guarantee from this Task-only slice.
+
+**Transcript read/auth isolation (#1413).** `OrchestrationService.createIsolatedTranscriptSearch()`
+is an additive explicit-lifecycle composition seam, not an HTTP/UI caller.
+Runtime initialization/recovery must precede query admission; it is not hidden
+inside the request deadline. Canonical FTS ranking/scope terms and owner SQL
+live in `transcript-search-queries.ts`, reused by EventStore and a read-only
+worker. The worker never constructs EventStore, migrates a database, or receives
+a branded SessionReadAuthority. Missing databases/schema and oversized read
+facts are unavailable, never empty/ownerless success. Candidate content is
+bounded before leaving SQLite; only excerpts/identities cross the worker port.
+The existing single SessionAuthorization applies the same personal/hosted/
+legacy policy with async cold owner lookups and positive-only caching. Its
+generation fence invalidates in-flight lookups on owner/tenant changes. Parent
+principal currentness and the generation are rechecked before publication.
+The complete query plus authorization sequence has one two-second acceptance
+deadline, one active query and no queue. Task and transcript workers share
+private termination custody, not a plugin execution framework. EventStore
+close reports pending/unavailable while its read worker remains outstanding;
+Orchestration shutdown also fences and settles its reader. Native SQLite work
+may defer thread termination until its native call returns; uncertain cleanup
+retains the occupied slot and is never reported complete. This is CPU isolation
+for fixed first-party reads, not a sandbox or a hard-real-time/preemption claim.
+Runtime search routes, provider composition, open-time authorization/UI wiring,
+and supported-platform responsiveness qualification remain deferred.
 
 ## DesktopStartupReadiness
 

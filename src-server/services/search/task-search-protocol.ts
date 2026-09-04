@@ -43,6 +43,7 @@ export function boundedTaskText(
 ): value is string {
   return (
     typeof value === 'string' &&
+    value.length <= maximum &&
     value.trim().length > 0 &&
     Buffer.byteLength(value) <= maximum &&
     [...value].every(

@@ -1060,6 +1060,11 @@ export class OrchestrationService {
   private readonly turnProgress: TurnProgressTracker;
   /** Transcript read/search/usage projections (epic archive#4024, archive#4144). */
   private readonly transcriptReads: SessionTranscriptReads;
+  private readonly transcriptReadEventStore: EventStore | undefined;
+  private isolatedTranscriptSearch?: ReturnType<
+    SessionTranscriptReads['createIsolatedSearch']
+  >;
+  private transcriptSearchStopped = false;
   /** Event paging & stream replay (epic archive#4024, archive#4155). */
   private readonly sessionEventReads: SessionEventReads;
   /** Tenancy & owner authorization (epic archive#4024, archive#4166). */
@@ -1196,8 +1201,11 @@ export class OrchestrationService {
     // Constructed FIRST: SessionAuthorization holds only raw option values
     // and no back-references, so building it before every other collaborator
     // means no later closure can capture an undefined authz seam.
+    this.transcriptReadEventStore = options.eventStore;
     this.sessionAuthz = new SessionAuthorization({
-      ...(options.eventStore ? { eventStore: options.eventStore } : {}),
+      ...(this.transcriptReadEventStore
+        ? { eventStore: this.transcriptReadEventStore }
+        : {}),
       ...(options.requireTenantExecutionContext !== undefined
         ? {
             requireTenantExecutionContext:
@@ -2373,6 +2381,8 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
+    this.transcriptSearchStopped = true;
+    const transcriptRetirement = this.isolatedTranscriptSearch?.close();
     // Revoke private native-output scopes before any provider cleanup. A
     // stop/retirement rejection must not leave a callback capable of
     // admitting output while this service is already shutting down.
@@ -2409,6 +2419,16 @@ export class OrchestrationService {
     // double-stops. Pinned by a source invariant.
     const retiringAdapters = this.adapterRetirement.retiringAdapters();
     const cleanupResults = await Promise.allSettled([
+      ...(transcriptRetirement
+        ? [
+            transcriptRetirement.then(() => {
+              if (this.isolatedTranscriptSearch?.inspect().phase !== 'closed')
+                throw new Error(
+                  'Transcript reader retirement is still pending',
+                );
+            }),
+          ]
+        : []),
       ...this.adapterRetirement.shutdownRetirementTasks(),
       ...currentAdapters
         .filter((adapter) => !retiringAdapters.has(adapter))
@@ -3280,6 +3300,28 @@ export class OrchestrationService {
   ): ReturnType<SessionTranscriptReads['searchSessionMessages']> {
     this.initialize();
     return this.transcriptReads.searchSessionMessages(query, authority, limit);
+  }
+
+  /**
+   * Compose once after runtime initialization, never as request-time bootstrap.
+   * No HTTP/UI caller is wired. Branded authority remains with this same
+   * SessionAuthorization instance; EventStore owns worker shutdown custody.
+   */
+  createIsolatedTranscriptSearch() {
+    if (
+      !this.started ||
+      this.transcriptSearchStopped ||
+      !this.transcriptReadEventStore
+    )
+      throw new Error(
+        'Initialize an EventStore-backed runtime before composing transcript reads',
+      );
+    this.isolatedTranscriptSearch ??= this.transcriptReads.createIsolatedSearch(
+      this.transcriptReadEventStore.createIsolatedTranscriptReads(),
+      this.sessionAuthz,
+      () => !this.transcriptSearchStopped && this.sessionAttachmentSettled,
+    );
+    return this.isolatedTranscriptSearch;
   }
 
   /**

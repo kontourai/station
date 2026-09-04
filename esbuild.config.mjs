@@ -118,6 +118,11 @@ await Promise.all([
     entryPoints: ['./src-server/services/search/task-search-worker.ts'],
     outfile: `${serverDir}/task-search-worker.js`,
   }),
+  esbuild.build({
+    ...shared,
+    entryPoints: ['./src-server/services/search/transcript-search-worker.ts'],
+    outfile: `${serverDir}/transcript-search-worker.js`,
+  }),
   // The private document worker is loaded via import.meta.url at runtime too.
   // Ship it beside the history worker: source-only availability passes dev
   // tests while a packaged server otherwise fails its first room request.

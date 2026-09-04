@@ -74,6 +74,8 @@ export class SessionAuthorization {
    */
   private readonly sessionOwnerCache = new Map<string, string>();
   private readonly sessionOwnerCacheMaxEntries: number;
+  /** Process-local currentness fence, not a second authorization/owner store. */
+  private readGeneration = {};
 
   constructor(private readonly deps: SessionAuthorizationDeps) {
     this.sessionOwnerCacheMaxEntries =
@@ -93,11 +95,13 @@ export class SessionAuthorization {
 
   /** C7 `trackSession` and C12's start hook bind a validated context. */
   bindTenantContext(threadId: string, context: TenantExecutionContext): void {
+    this.readGeneration = {};
     this.tenantContexts.set(threadId, context);
   }
 
   /** The slice-2 teardown seam's unconditional core delete. */
   forgetTenantContext(threadId: string): void {
+    this.readGeneration = {};
     this.tenantContexts.delete(threadId);
   }
 
@@ -107,7 +111,51 @@ export class SessionAuthorization {
    * boolean — C2's telemetry gates on whether the delete removed anything.
    */
   invalidateSessionOwner(threadId: string): boolean {
+    this.readGeneration = {};
     return this.sessionOwnerCache.delete(threadId);
+  }
+
+  captureReadCurrentness(): () => boolean {
+    const generation = this.readGeneration;
+    return () => generation === this.readGeneration;
+  }
+
+  /** Same policy and positive cache; only a cold durable lookup crosses the async seam. */
+  async canReadSessionAsync(
+    threadId: string,
+    scope: SessionReadScope,
+    current: () => boolean,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    const sameGeneration = this.captureReadCurrentness();
+    if (!current()) return false;
+    let needsOwner = false;
+    const preflight = this.canReadWithOwner(threadId, scope, () => {
+      needsOwner = true;
+      return undefined;
+    });
+    if (!needsOwner) return preflight;
+    const cached = this.sessionOwnerCache.get(threadId);
+    sessionOwnerCacheOps.add(1, {
+      outcome: cached === undefined ? 'miss' : 'hit',
+    });
+    // A failure rejects, never becoming the policy's ownerless compatibility case.
+    const owner = cached ?? (await this.readOwnerAsync(threadId, signal));
+    if (!current() || !sameGeneration()) return false;
+    const allowed = this.canReadWithOwner(threadId, scope, () => owner);
+    if (!current() || !sameGeneration()) return false;
+    if (owner !== undefined) this.cacheSessionOwner(threadId, owner);
+    return allowed;
+  }
+
+  private async readOwnerAsync(threadId: string, signal?: AbortSignal) {
+    // Source authority is constructor-bound, exactly like the synchronous path;
+    // a per-call caller cannot substitute a function that invents owner facts.
+    if (!this.deps.eventStore)
+      throw new Error('Session owner read unavailable');
+    return this.deps.eventStore
+      .createIsolatedTranscriptReads()
+      .readOwner(threadId, signal);
   }
 
   /**
@@ -212,6 +260,16 @@ export class SessionAuthorization {
    * registry-backed validator; it never reaches a public projection.
    */
   canReadSession(threadId: string, scope: SessionReadScope): boolean {
+    return this.canReadWithOwner(threadId, scope, () =>
+      this.sessionOwnerUserId(threadId),
+    );
+  }
+
+  private canReadWithOwner(
+    threadId: string,
+    scope: SessionReadScope,
+    readOwner: () => string | undefined,
+  ): boolean {
     const runtimeScope: unknown = scope;
     if (runtimeScope === INTERNAL_SESSION_READ_SCOPE) return true;
 
@@ -232,7 +290,7 @@ export class SessionAuthorization {
       ) {
         return false;
       }
-      const ownerUserId = this.sessionOwnerUserId(threadId);
+      const ownerUserId = readOwner();
       return ownerUserId !== undefined && ownerUserId === authority.userId;
     }
 
@@ -240,7 +298,7 @@ export class SessionAuthorization {
     if (authority && authority.mode !== 'personal') return false;
     if (!authority) return false;
     const userId = authority.userId;
-    const ownerUserId = this.sessionOwnerUserId(threadId);
+    const ownerUserId = readOwner();
     if (ownerUserId === undefined) {
       return this.deps.ownerlessSessionAccess === 'single-user-compat';
     }
@@ -292,6 +350,7 @@ export class SessionAuthorization {
    * owner cache, rather than performing a `readSessions().find()` per event.
    */
   hydratePersistedTenantContexts(sessions: readonly ProviderSession[]): void {
+    this.readGeneration = {};
     for (const session of sessions) {
       if (session.tenantExecutionContext) {
         this.tenantContexts.set(
