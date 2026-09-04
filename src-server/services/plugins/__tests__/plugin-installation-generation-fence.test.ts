@@ -2,10 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
-import { publishPluginProviderGeneration } from '../../../providers/plugin-provider-loader.js';
+import {
+  capturePluginProviderGeneration,
+  publishPluginProviderGeneration,
+} from '../../../providers/plugin-provider-loader.js';
 import {
   getProvider,
-  pluginProviderRegistryGeneration,
   pluginProviderSourceGeneration,
   registerProvider,
   registerProviderAdapter,
@@ -32,11 +34,72 @@ import {
 
 const cleanup: string[] = [];
 
+test('an empty whole reload cannot erase a source granted after its candidate snapshot', async () => {
+  const name = 'new-grant-empty-reload';
+  const root = grantFixture(name);
+  const old = { retained: true };
+  await replacePluginProvidersForSource(name, [
+    { type: 'settings', source: name, provider: old },
+  ]);
+  const { basis } = await capturePluginProviderGeneration(
+    root,
+    () => undefined,
+  );
+  const generation = pluginProviderSourceGeneration(name);
+  try {
+    await grantPermissions(root, name, ['providers.register']);
+    await expect(publishPluginProviderGeneration(basis, [])).rejects.toThrow(
+      'grant snapshot was superseded',
+    );
+    expect(pluginProviderSourceGeneration(name)).toBe(generation);
+    expect(getProvider('settings')).toBe(old);
+  } finally {
+    await replacePluginProvidersForSource(name, []);
+  }
+});
+
+test('a full reload grant snapshot cannot be replayed for a different home', async () => {
+  const root = grantFixture('first-home');
+  const other = grantFixture('second-home');
+  const { basis } = await capturePluginProviderGeneration(
+    root,
+    () => undefined,
+  );
+  await expect(
+    publishPluginProviderGeneration({ ...basis, projectHomeDir: other }, []),
+  ).rejects.toThrow('grant snapshot was superseded');
+});
+
+test('a missing whole-reload grant snapshot refuses and disposes staged adapters', async () => {
+  const root = grantFixture('missing-basis');
+  const { basis } = await capturePluginProviderGeneration(
+    root,
+    () => undefined,
+  );
+  const stopAll = vi.fn(async () => {});
+  await expect(
+    publishPluginProviderGeneration(
+      { ...basis, grantSnapshot: undefined } as any,
+      [
+        {
+          type: 'providerAdapter',
+          source: 'missing-basis',
+          provider: { provider: 'probe', stopAll },
+        },
+      ],
+    ),
+  ).rejects.toThrow('requires a captured grant snapshot');
+  expect(stopAll).toHaveBeenCalledOnce();
+});
+
 test('a stale full reload cannot overwrite a newer provider publication', async () => {
   const name = 'full-reload-generation';
   const root = grantFixture(name);
   await grantPermissions(root, name, ['providers.register']);
-  const expected = pluginProviderRegistryGeneration();
+  const { basis: expected } = await capturePluginProviderGeneration(
+    root,
+    () => undefined,
+  );
   const newer = { current: true };
   await replacePluginProvidersForSource(name, [
     { type: 'settings', source: name, provider: newer },
@@ -44,7 +107,7 @@ test('a stale full reload cannot overwrite a newer provider publication', async 
   const stopAll = vi.fn(async () => undefined);
   try {
     await expect(
-      publishPluginProviderGeneration(root, expected, [
+      publishPluginProviderGeneration(expected, [
         {
           type: 'providerAdapter',
           source: name,
@@ -65,7 +128,10 @@ test.each(['provider', 'adapter'] as const)(
     const name = `direct-${kind}-generation`;
     const root = grantFixture(name);
     await grantPermissions(root, name, ['providers.register']);
-    const expected = pluginProviderRegistryGeneration();
+    const { basis: expected } = await capturePluginProviderGeneration(
+      root,
+      () => undefined,
+    );
     const expectedSource = pluginProviderSourceGeneration(name);
     if (kind === 'provider') {
       registerProvider('settings', {}, { plugin: true, source: name });
@@ -76,7 +142,7 @@ test.each(['provider', 'adapter'] as const)(
     const stopAll = vi.fn(async () => undefined);
     try {
       await expect(
-        publishPluginProviderGeneration(root, expected, [
+        publishPluginProviderGeneration(expected, [
           {
             type: 'providerAdapter',
             source: name,
@@ -97,15 +163,15 @@ test('refusing one source does not dispose an adapter shared by an accepted sour
   await grantPermissions(root, name, ['providers.register']);
   const stopAll = vi.fn(async () => undefined);
   const provider = { provider: 'shared', stopAll };
+  const { basis } = await capturePluginProviderGeneration(
+    root,
+    () => undefined,
+  );
   try {
-    const published = await publishPluginProviderGeneration(
-      root,
-      pluginProviderRegistryGeneration(),
-      [
-        { type: 'providerAdapter', source: name, provider },
-        { type: 'providerAdapter', source: 'ungranted', provider },
-      ],
-    );
+    const published = await publishPluginProviderGeneration(basis, [
+      { type: 'providerAdapter', source: name, provider },
+      { type: 'providerAdapter', source: 'ungranted', provider },
+    ]);
     expect(published).toEqual([
       { type: 'providerAdapter', source: name, provider },
     ]);

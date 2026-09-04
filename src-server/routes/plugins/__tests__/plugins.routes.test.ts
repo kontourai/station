@@ -50,11 +50,13 @@ const pluginRegistryProviderEntries = vi.hoisted<
   Array<{ provider: any; source: string }>
 >(() => []);
 vi.mock('../../../providers/registries/registry.js', () => ({
+  disposePreparedPluginProviders: vi.fn(async () => {}),
   clearPluginProviders,
   replacePluginProviders,
   replacePluginProvidersForSource,
   replacePluginProvidersForSourceGeneration,
   pluginProviderSourceGeneration,
+  pluginProviderRegistryGeneration: vi.fn(() => 1),
   retirePluginProvidersForSourceGeneration,
   withPluginProviderSourceGeneration,
   getAgentRegistryProvider: vi.fn().mockReturnValue(agentRegistryProvider),
@@ -112,6 +114,19 @@ const snapshotPluginGrantEntry = vi.hoisted(() =>
 );
 const restorePluginGrantEntry = vi.hoisted(() => vi.fn());
 vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
+  withPluginProviderGrantSnapshot: vi.fn(
+    async (_home: string, resolve: () => unknown) => ({
+      snapshot: 'fixture-grant-snapshot',
+      value: resolve(),
+    }),
+  ),
+  withPluginProviderGrantsPublication: vi.fn(
+    async (
+      _home: string,
+      names: string[],
+      publish: (granted: Set<string>) => unknown,
+    ) => publish(new Set(names)),
+  ),
   getPermissionTier: vi.fn().mockReturnValue('standard'),
   getPluginGrants: vi.fn().mockReturnValue(['network']),
   grantPermissions: vi.fn(),
@@ -353,7 +368,10 @@ describe('Plugin Routes', () => {
     const body = await json(await app.request('/reload', { method: 'POST' }));
 
     expect(body).toEqual({ success: true, loaded: 0 });
-    expect(replacePluginProviders).toHaveBeenCalledWith([]);
+    expect(replacePluginProviders).toHaveBeenCalledWith(
+      [],
+      expect.any(Function),
+    );
   });
 
   test('rejects a plugin identity change and restores the prior provider source', async () => {

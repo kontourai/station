@@ -3,7 +3,11 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { publishGrantedPluginProviderGeneration } from '../services/plugins/plugin-installation-generation-fence.js';
-import { withPluginProviderGrantsPublication } from '../services/plugins/plugin-permissions.js';
+import {
+  type PluginProviderGrantSnapshot,
+  withPluginProviderGrantSnapshot,
+  withPluginProviderGrantsPublication,
+} from '../services/plugins/plugin-permissions.js';
 import type { Logger } from '../utils/logger.js';
 import { assertExistingPathInside } from '../utils/path-containment.js';
 import { isProviderAdapterShape } from './adapter-shape.js';
@@ -55,22 +59,47 @@ export async function loadPluginProviders(
   return outcome === 'activated' ? prepared.length : 0;
 }
 
+export interface PluginProviderGenerationBasis {
+  readonly projectHomeDir: string;
+  readonly expectedGeneration: number;
+  readonly grantSnapshot: PluginProviderGrantSnapshot;
+}
+
+/** Bind the complete grant state, registry epoch, and candidate resolution. */
+export async function capturePluginProviderGeneration<T>(
+  projectHomeDir: string,
+  resolveCandidates: () => T,
+): Promise<{ basis: PluginProviderGenerationBasis; candidates: T }> {
+  const captured = await withPluginProviderGrantSnapshot(
+    projectHomeDir,
+    () => ({
+      expectedGeneration: pluginProviderRegistryGeneration(),
+      candidates: resolveCandidates(),
+    }),
+  );
+  return {
+    basis: Object.freeze({
+      projectHomeDir,
+      expectedGeneration: captured.value.expectedGeneration,
+      grantSnapshot: captured.snapshot,
+    }),
+    candidates: captured.value.candidates,
+  };
+}
+
 /** Publishes a prepared reload through the same durable grant authority. */
 export async function publishPluginProviderGeneration(
-  projectHomeDir: string,
-  expectedGeneration: number,
+  basis: PluginProviderGenerationBasis,
   prepared: PreparedPluginProviderRegistration[],
 ): Promise<PreparedPluginProviderRegistration[]> {
-  if (prepared.length === 0) {
-    await replacePluginProviders(
-      [],
-      () => pluginProviderRegistryGeneration() === expectedGeneration,
-    );
-    return [];
-  }
   let registryOwnsPrepared = false;
   let unowned = prepared;
   try {
+    const { projectHomeDir, expectedGeneration, grantSnapshot } = basis;
+    if (typeof grantSnapshot !== 'string')
+      throw new Error(
+        'Plugin provider publication requires a captured grant snapshot.',
+      );
     return await withPluginProviderGrantsPublication(
       projectHomeDir,
       prepared.map((entry) => entry.source),
@@ -94,6 +123,7 @@ export async function publishPluginProviderGeneration(
         );
         return accepted;
       },
+      grantSnapshot,
     );
   } catch (error) {
     if (!registryOwnsPrepared) await disposePreparedPluginProviders(unowned);
