@@ -626,6 +626,88 @@ describe('verification reporter', () => {
     expect(summary.failingStep).toBe('proof:app-builds');
   });
 
+  // #1459. The stdout below is the shape a GREEN hosted full-regression run
+  // actually produces: this repo's lint gate tolerates warnings, so every
+  // passing run carries warning-tier diagnostics, and the warnings-only
+  // fallback (which exists so a FAILED warnings-only capture still names a
+  // cause) stamped one onto runs that had no cause at all. Run 33886817593
+  // passed and reported `literal-swap-gate.mjs:58:11
+  // lint/suspicious/noAssignInExpressions` as its `firstCausalExcerpt`.
+  test('reports no causal excerpt for a run that PASSED with tolerated lint warnings (#1459)', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 full:regression',
+        '> npm run proof:repo-governance && npm run test:full:raw',
+        '',
+        '> @kontourai/station-core@0.0.0 lint:check',
+        '> biome check .',
+        '',
+        'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
+        '  ! This assignment is in an expression.',
+        'Checked 1913 files. Found 374 warnings.',
+        '',
+        '> @kontourai/station-core@0.0.0 test:full:raw',
+        '> node scripts/run-vitest-corpus.mjs',
+        '',
+        'Tests 4213 passed | 12 skipped',
+      ].join('\n'),
+      terminal: { status: 'completed', exitCode: 0, truncated: false },
+      counts: {
+        executed: 4225,
+        passed: 4213,
+        failed: 0,
+        infrastructureErrors: 0,
+      },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 4096,
+    });
+    expect(summary.firstCausalExcerpt).toBeUndefined();
+    expect(summary.causalExcerpts).toBeUndefined();
+    expect(JSON.stringify(summary)).not.toContain('noAssignInExpressions');
+    // The rest of the summary is untouched: this withdraws the cause, not the
+    // measured record around it.
+    expect(summary.finalTally).toContain('Tests 4213 passed');
+  });
+
+  // The withdrawal above is scoped to the WARNING tier and to a pass. An
+  // error-tier diagnostic on a run that claims success is a contradiction a
+  // reader needs to see, not noise to suppress.
+  test('still reports an error-tier diagnostic present on a run that claims success (#1459)', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 typecheck:scripts',
+        '> tsc -p tsconfig.scripts.json --noEmit',
+        '',
+        "scripts/probe.ts(9,3): error TS2322: Type 'string' is not assignable to type 'number'.",
+      ].join('\n'),
+      terminal: { status: 'completed', exitCode: 0, truncated: false },
+      ...measured,
+      maxBytes: 2048,
+    });
+    expect(summary.firstCausalExcerpt).toContain('error TS2322');
+  });
+
+  // The failed-run fallback is exactly what #1459 must not have disturbed:
+  // the same warnings-only capture still names its warning when the run failed.
+  test('keeps the warnings-only fallback for a run that FAILED (#1459 changes nothing here)', () => {
+    const stdout = [
+      '> @kontourai/station-core@0.0.0 lint:check',
+      '> biome check .',
+      'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
+      '  ! This assignment is in an expression.',
+      'Found 1 warning.',
+    ].join('\n');
+    const failed = summarizeVerificationOutput({
+      stdout,
+      terminal: { status: 'failed', exitCode: 1, truncated: false },
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(failed.firstCausalExcerpt).toContain('noAssignInExpressions');
+    expect(failed.causalExcerpts).toEqual([failed.firstCausalExcerpt]);
+  });
+
   // station#4249: `causalExcerpts` is the plural companion that lets a run
   // report every distinct failure it actually observed, not only the first.
   describe('causalExcerpts (station#4249)', () => {

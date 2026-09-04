@@ -188,6 +188,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // its exit STATUS is asserted, not just its pure decision functions — a
   // rejection path that has never executed is unproven.
   'scripts/__tests__/prepush-ui-bundle.test.ts',
+  // #1459: runs the completion-gate summary reporter as a real child process
+  // so its EXIT STATUS and its stdout annotations are what the assertions
+  // read. Both are the contract — the reporter must never fail a job it only
+  // reports on — and neither is observable from an imported function.
+  'scripts/__tests__/verification-gate-summary.test.ts',
   // #3208: same shape one gate over — runs each static gate it lists as a real
   // child process, so the list cannot name a script that no longer resolves.
   'scripts/__tests__/prepush-static-gates.test.ts',
