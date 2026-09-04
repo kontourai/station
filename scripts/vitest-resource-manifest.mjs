@@ -104,6 +104,11 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Recovery observers import child_process only to forbid every launch and
+  // patch builtin exports while exercising real filesystem/CLI seams. Keep
+  // these explicit importers in the bounded pool; no child is actually started.
+  'packages/shared/src/__tests__/station-home-recovery-preflight.test.ts',
+  'packages/cli/src/__tests__/home-recovery-plan.test.ts',
   // fsync-backed AgentRegistry fixtures compose the runtime bootstrap path;
   // they own durable state but can share the bounded two-worker pool.
   'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts',
