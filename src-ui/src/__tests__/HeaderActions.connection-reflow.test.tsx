@@ -58,8 +58,21 @@ import {
  * stays compact … dot only while healthy"), so `connected` is narrower than
  * every news-carrying state THERE by design. The desktop-width test is the
  * full reproduction (state text is always shown, so `connected` participates
- * too); the phone-width test instead pins that the states which DO show text
- * on mobile agree with each other.
+ * too).
+ *
+ * #1401 replaced the phone-width half. It used to pin that the states which
+ * DO show text on mobile agree with each other in width — which they did,
+ * via a 116px reservation, while agreeing on a position OUTSIDE the viewport:
+ * `.app-toolbar__actions` is `flex-shrink: 0` and the brand bottoms out, so
+ * the row's content width is viewport-independent and Settings sat at
+ * x=377..421 at every phone width. Clipped on a 412px Pixel 7; past its own
+ * centre, and so unreachable rather than merely clipped, below 399px. The two
+ * properties are not both attainable here — holding the states to a common
+ * width means reserving the longest (~102px natural), which still leaves the
+ * row wider than a 390 or 402px viewport — so the reservation is released at
+ * this breakpoint and the phone-width test now pins the property that was
+ * being traded away. The agreement property is unaffected at desktop widths,
+ * where the row has the room and the test above still enforces it.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -278,20 +291,16 @@ describe.skipIf(!chromiumAvailable)(
       ).toEqual(states.map(() => xs[0]));
     });
 
-    test('news-carrying states agree on width at a phone viewport', async () => {
-      // On mobile, `index.css`'s own breakpoint intentionally hides the state
-      // text while `connected`/`idle` (dot only — "the toolbar chip stays
-      // compact on mobile … `idle` stays dot-only too", chat.css) — that is a
-      // deliberate, documented product decision this fix does not touch, so
-      // `connected` is deliberately excluded from this comparison. What is
-      // NOT deliberate: DIFFERENT news-carrying states ("Reconnecting" vs
-      // "Can't connect" vs "Needs re-pairing" vs "Awaiting approval", all
-      // shown) rendering at different widths for no reason, which is what
-      // the reported flips (connected → reconnecting → …) look like once
-      // the phone genuinely has something to say twice in a row with
-      // different wording. `needs-repair`/`awaiting-approval` are the two
-      // that archive#4512 added, and the ones this guard did not reproduce
-      // before review widened it.
+    test('the Settings control stays inside a phone viewport in every news-carrying state', async () => {
+      // #1401. The width agreement above says the states agree with each
+      // other; it does not say where they leave the control, and they agreed
+      // on a position OUTSIDE the viewport. The chip reserved 116px for a
+      // label whose longest news copy renders at ~102px, in a row that is
+      // `flex-shrink: 0` — so Settings sat at x=377..421 at every phone width
+      // and was clipped by the viewport rather than reflowed by a sibling.
+      // This asserts the property the reservation was silently trading away:
+      // the last control in the cluster is wholly on screen. Fails on the
+      // pre-fix stylesheet (right edge 421 against a 390px viewport).
       const viewport = { width: 390, height: 200 };
       const states: ChipState[] = [
         'connecting',
@@ -300,11 +309,26 @@ describe.skipIf(!chromiumAvailable)(
         'needs-repair',
         'awaiting-approval',
       ];
-      const xs: number[] = [];
       for (const state of states) {
-        xs.push(await settingsX(await renderMarkupForState(state), viewport));
+        const page = await browser.newPage({ viewport });
+        try {
+          await page.setContent(
+            buildFixtureHtml(await renderMarkupForState(state)),
+          );
+          const box = await page
+            .locator('[aria-label="Open settings"]')
+            .boundingBox();
+          expect(box, `Open settings control not visible in ${state}`).not.toBe(
+            null,
+          );
+          expect(
+            Math.round(box!.x + box!.width),
+            `Settings control extends past the ${viewport.width}px viewport in the ${state} state — the toolbar cannot reserve width it does not have.`,
+          ).toBeLessThanOrEqual(viewport.width);
+        } finally {
+          await page.close();
+        }
       }
-      expect(xs).toEqual(states.map(() => xs[0]));
     });
   },
 );
