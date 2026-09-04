@@ -3,9 +3,9 @@ import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, StatementSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { EventStore } from '../../orchestration/event-store.js';
 import type {
   PackageMcpAdmissionJournal,
@@ -61,6 +61,7 @@ function reserve(
   return result.claim;
 }
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const child of children.splice(0)) {
     if (child.exitCode === null && child.signalCode === null) {
       const exited = once(child, 'exit');
@@ -252,6 +253,77 @@ describe('package MCP shared admission evidence (no destructive authority)', {
         mutationAllowed: false,
       });
       expect(claim.releaseNotStarted()).toEqual({ state: 'blocked' });
+    } finally {
+      raw.close();
+    }
+  });
+
+  test.each(['reserved', 'effect-possible', 'local-settled'])(
+    'persisted array-coerced %s state refuses new admission without rewriting',
+    (stateName) => {
+      const { journal, path } = open();
+      const installed = record(journal);
+      reserve(journal, installed);
+      const raw = new DatabaseSync(path);
+      try {
+        const row = raw
+          .prepare('SELECT state_json FROM package_mcp_admission_journal')
+          .get() as { state_json: string };
+        const state = JSON.parse(row.state_json);
+        state.generations[0].claims[0].state = [stateName];
+        const malformed = JSON.stringify(state);
+        raw
+          .prepare('UPDATE package_mcp_admission_journal SET state_json = ?')
+          .run(malformed);
+        expect(journal.reserve(installed, 'probe')).toEqual({
+          state: 'unavailable',
+        });
+        expect(journal.inspect(installed)).toEqual({
+          state: 'unavailable',
+          mutationAllowed: false,
+        });
+        expect(
+          raw
+            .prepare('SELECT state_json FROM package_mcp_admission_journal')
+            .get(),
+        ).toEqual({ state_json: malformed });
+      } finally {
+        raw.close();
+      }
+    },
+  );
+
+  test('oversized journal identity is rejected inside SQLite before the native row reaches JavaScript', () => {
+    const { journal, path } = open();
+    const installed = record(journal);
+    const raw = new DatabaseSync(path);
+    try {
+      raw
+        .prepare('UPDATE package_mcp_admission_journal SET journal_id = ?')
+        .run('x'.repeat(1024 * 1024));
+      const original = StatementSync.prototype.get;
+      const projected: unknown[] = [];
+      vi.spyOn(StatementSync.prototype, 'get').mockImplementation(function (
+        this: StatementSync,
+        ...parameters
+      ) {
+        const row = Reflect.apply(original, this, parameters);
+        if (row && Object.hasOwn(row, 'journal_id'))
+          projected.push(row.journal_id);
+        return row;
+      });
+      expect(journal.inspect(installed)).toEqual({
+        state: 'unavailable',
+        mutationAllowed: false,
+      });
+      expect(projected).toHaveLength(1);
+      expect(
+        typeof projected[0] === 'string' ? Buffer.byteLength(projected[0]) : 0,
+      ).toBe(0);
+      expect(projected[0]).toBeNull();
+      expect(journal.reserve(installed, 'app')).toEqual({
+        state: 'unavailable',
+      });
     } finally {
       raw.close();
     }

@@ -192,9 +192,8 @@ function validJournal(value: unknown): value is Journal {
         claims.has(claim.id) ||
         !owner(claim.owner) ||
         !PURPOSES.includes(claim.purpose as PackageMcpPurpose) ||
-        !['reserved', 'effect-possible', 'local-settled'].includes(
-          String(claim.state),
-        )
+        typeof claim.state !== 'string' ||
+        !['reserved', 'effect-possible', 'local-settled'].includes(claim.state)
       )
         return false;
       claims.add(claim.id);
@@ -254,7 +253,9 @@ export function createPackageMcpAdmissionJournal(
     try {
       const row = db
         .prepare(
-          `SELECT journal_id, CASE WHEN length(CAST(state_json AS BLOB)) <= ${MAX_BYTES} THEN state_json END AS body FROM package_mcp_admission_journal WHERE singleton = 1`,
+          `SELECT CASE WHEN typeof(journal_id) = 'text' AND length(CAST(journal_id AS BLOB)) = 36 THEN journal_id END AS journal_id,
+            CASE WHEN length(CAST(state_json AS BLOB)) <= ${MAX_BYTES} THEN state_json END AS body
+            FROM package_mcp_admission_journal WHERE singleton = 1`,
         )
         .get() as { journal_id?: unknown; body?: unknown } | undefined;
       if (
