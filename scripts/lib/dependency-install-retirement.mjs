@@ -228,7 +228,12 @@ export function withDependencyInstallGuard({
         throw new Error(
           'Dependency installer metadata changed before publication.',
         );
-      const archivedMetadata = join(recordDirectory, '.DS_Store');
+      // A fresh record directory may acquire its own .DS_Store concurrently;
+      // publish the captured source under a name Finder does not own.
+      const archivedMetadata = join(
+        recordDirectory,
+        'macos-directory-metadata',
+      );
       moveEntry(metadataPath, archivedMetadata);
       const published = entry(archivedMetadata);
       metadataPublished =

@@ -424,7 +424,8 @@ is still alive or that an install completed.
 
 After successful verification, the exact owned receipt and any regular
 `.DS_Store` metadata up to64KiB are moved individually into a private
-`.station-dependency-record-*/` directory. Their identities and the metadata
+`.station-dependency-record-*/` directory (the metadata uses a non-Finder
+destination name). Their identities and the metadata
 size are rechecked after each move; `rmdir` is the atomic final empty check. A
 new, replaced, linked, or larger entry keeps the fixed guard pending and is not
 deleted. The completed record is a small ignored generated worktree artifact,

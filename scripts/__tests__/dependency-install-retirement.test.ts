@@ -277,7 +277,9 @@ test('successful guard state and ordinary macOS metadata are preserved while the
   );
   expect(records).toHaveLength(1);
   const state = join(f.root, records[0]);
-  expect(readFileSync(join(state, '.DS_Store'), 'utf8')).toBe('metadata');
+  expect(readFileSync(join(state, 'macos-directory-metadata'), 'utf8')).toBe(
+    'metadata',
+  );
   expect(
     JSON.parse(readFileSync(join(state, 'receipt.json'), 'utf8')).phase,
   ).toBe('verified');
@@ -327,7 +329,9 @@ test('metadata grown between validation and publication is preserved without rel
   const record = readdirSync(f.root).find((name) =>
     name.startsWith(DEPENDENCY_INSTALL_RECORD_PREFIX),
   )!;
-  expect(statSync(join(f.root, record, '.DS_Store')).size).toBe(65_537);
+  expect(statSync(join(f.root, record, 'macos-directory-metadata')).size).toBe(
+    65_537,
+  );
   expect(warn).toHaveBeenCalledWith(
     expect.stringContaining('cleanup is pending'),
   );
