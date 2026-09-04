@@ -53,6 +53,11 @@ import { markTrustedNativeStationControlTool } from '../tools/tool-provenance.js
 import { createBuiltinVendedTool } from '../tools/vended-tool-compat.js';
 import { isMCPAppsToolVisibleTo } from './mcp-apps-metadata.js';
 import { sameMCPConnectionDefinition } from './mcp-definition-currentness.js';
+import {
+  describeLoaderFailure,
+  isLoaderProgrammingFailure,
+  loaderErrorClass,
+} from './tool-load-failure.js';
 
 /**
  * Create MCP server configuration from tool definition
@@ -427,6 +432,50 @@ function matchesToolPattern(
 }
 
 /**
+ * How far a per-tool load got before it threw.
+ *
+ * `connect` is the phase that may have spoken to a tool server, so only
+ * `connect` can be carrying remote text. The flip is deliberately EARLY — it
+ * happens before `createMCPTools`, which still does Station-owned work (secret
+ * binding resolution, child environment assembly, client construction) before
+ * it reaches the wire, and it stays set through the post-`listTools` wrapping —
+ * so Station-owned failures in those stretches still report as connection
+ * failures. This distinction narrows the mislabelled population to the paths
+ * that never reach a server at all (built-in vended tools, custody acquisition,
+ * config loading, the kind dispatch); it does not close the class. Tightening
+ * it needs a phase the callee can advance, not a moved assignment.
+ */
+type AgentToolLoadPhase = 'preconnect' | 'connect';
+
+/**
+ * Write a failure status for an integration whose load threw (#1486).
+ *
+ * Before this, the per-tool catch wrote nothing, so `GET /agents/:slug/health`
+ * kept serving whatever the previous load left behind — a success from an
+ * earlier reload, or nothing at all. Every failed iteration now leaves a
+ * `{ connected: false }` entry.
+ *
+ * The one status this does NOT overwrite is a failure THIS iteration already
+ * recorded: `createMCPTools` classifies at the connect seam, where it still has
+ * the original error and can say "did not respond in time" rather than the
+ * generic reachability line the catch would recompose from the wrapped
+ * `ToolServerOperationError`. Identity against the entry observed at the top of
+ * the iteration is what separates that from a stale entry.
+ */
+function recordFailedToolLoadStatus(
+  mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>,
+  toolId: string,
+  statusAtEntry: { connected: boolean; error?: string } | undefined,
+  status: { connected: boolean; error?: string },
+): void {
+  const recorded = mcpConnectionStatus.get(toolId);
+  const recordedThisIteration =
+    recorded !== statusAtEntry && recorded?.connected === false;
+  if (recordedThisIteration) return;
+  mcpConnectionStatus.set(toolId, status);
+}
+
+/**
  * Load tools for an agent (regular tools + MCP tools)
  */
 export async function loadAgentTools(
@@ -457,6 +506,15 @@ export async function loadAgentTools(
   for (const entry of spec.tools.mcpServers) {
     let claim: MCPLocalClaim | undefined;
     let retained = false;
+    // #1486: everything up to the `createMCPTools` call is Station's own code
+    // and configuration. The built-in vended-tool branch never leaves this
+    // phase, so a throw from it cannot be a connection outcome.
+    let phase: AgentToolLoadPhase = 'preconnect';
+    // Identity of the entry as this iteration began. `createMCPTools` records
+    // its own, more specific failure status at the connect seam; comparing
+    // identity is how the catch tells that apart from a status left over by an
+    // EARLIER load, which is the staleness this fix exists to end.
+    const statusAtEntry = mcpConnectionStatus.get(entry);
     try {
       const toolId = entry;
       claim = custody.acquire(toolId, 'managed');
@@ -469,6 +527,10 @@ export async function loadAgentTools(
       }
 
       if (toolDef.kind === 'mcp') {
+        // From here on this iteration may talk to a tool server, and every
+        // value it handles may be derived from that server's response.
+        // Whatever throws below keeps the redacted connection vocabulary.
+        phase = 'connect';
         const mcpTools = await createMCPTools(
           agentSlug,
           toolId,
@@ -514,13 +576,39 @@ export async function loadAgentTools(
         }
       }
     } catch (error) {
-      const errorClass = classifyMCPError(error);
-      logger.error('Failed to load tool', {
-        agent: agentSlug,
-        toolId: entry,
-        errorClass,
-        error: publicMCPConnectionError(entry, errorClass),
-      });
+      if (phase === 'preconnect' && isLoaderProgrammingFailure(error)) {
+        // Never connected, and the shape is one only Station's own code or
+        // configuration produces: report the real class, do not assert a
+        // connection outcome that was never observed (#1486).
+        const { detail, messageWithheld } = describeLoaderFailure(error);
+        logger.error('Failed to load agent tool before any connection', {
+          agent: agentSlug,
+          toolId: entry,
+          failure: 'loader',
+          errorClass: loaderErrorClass(error),
+          messageWithheld,
+          // Withheld means withheld: `error.stack` opens with the message, so
+          // the object itself cannot ride into the log store either.
+          ...(messageWithheld ? {} : { error }),
+        });
+        recordFailedToolLoadStatus(mcpConnectionStatus, entry, statusAtEntry, {
+          connected: false,
+          error: detail,
+        });
+      } else {
+        const errorClass = classifyMCPError(error);
+        const publicError = publicMCPConnectionError(entry, errorClass);
+        logger.error('Failed to load tool', {
+          agent: agentSlug,
+          toolId: entry,
+          errorClass,
+          error: publicError,
+        });
+        recordFailedToolLoadStatus(mcpConnectionStatus, entry, statusAtEntry, {
+          connected: false,
+          error: publicError,
+        });
+      }
     } finally {
       if (claim && !retained) await custody.release(claim);
     }
