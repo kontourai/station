@@ -26,7 +26,7 @@ COPY patches ./patches
 # staging read this whether or not the manifest pins artifacts.
 COPY packaging/node-pty-prebuilds packaging/node-pty-prebuilds
 COPY scripts/node-runtime-contract.mjs scripts/dependency-lifecycle.mjs scripts/
-COPY scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/workspace-dependency-satisfaction.mjs scripts/lib/pnpm-lockfile.mjs scripts/lib/
+COPY scripts/lib/dependency-install-retirement.mjs scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/workspace-dependency-satisfaction.mjs scripts/lib/pnpm-lockfile.mjs scripts/lib/
 RUN npm run dependencies:ci
 
 FROM dependencies AS build

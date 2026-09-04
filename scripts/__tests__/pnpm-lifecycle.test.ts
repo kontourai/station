@@ -77,6 +77,29 @@ function fixture() {
 }
 
 describe('pnpm lifecycle boundary', () => {
+  it('refuses a package-manager driver inside node_modules before probing its version', () => {
+    const { root } = fixture();
+    const manager = join(root, 'node_modules/pnpm/bin');
+    mkdirSync(manager, { recursive: true });
+    const cli = join(manager, 'pnpm.cjs');
+    writeFileSync(cli, 'throw new Error("must never execute");');
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ packageManager: 'pnpm@11.25.0' }),
+    );
+    let probed = false;
+    expect(() =>
+      pnpmInvocation({
+        cwd: root,
+        env: { npm_execpath: cli },
+        exec: () => {
+          probed = true;
+          return '11.25.0';
+        },
+      }),
+    ).toThrow('outside root node_modules');
+    expect(probed).toBe(false);
+  });
   it('bootstraps an uncached Corepack pin without allowing network access during discovery', () => {
     const { root } = fixture();
     const corepack = join(root, 'corepack');

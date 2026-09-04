@@ -22,7 +22,11 @@ export function pnpmInvocation(options?: {
     },
   ) => string;
 }): { command: string; args: string[] };
-export function pnpmCommand(args: string[], cwd?: string): void;
+export function pnpmCommand(
+  args: string[],
+  cwd?: string,
+  invocation?: { command: string; args: string[] },
+): void;
 export function refreshLock(options?: { cwd?: string }): void;
 export function preflightInstalledLifecycle(
   allowlist: unknown,

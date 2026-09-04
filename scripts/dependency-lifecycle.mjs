@@ -11,6 +11,10 @@ import { createRequire } from 'node:module';
 import { delimiter, dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  prepareDependencyInstallDrivers,
+  withDependencyInstallGuard,
+} from './lib/dependency-install-retirement.mjs';
+import {
   assertNodePtyPrebuildConsistency,
   confinedPackageTarget,
   degradableLifecycleCapability,
@@ -175,6 +179,15 @@ export function pnpmInvocation({
     const invocation = /\.[cm]?js$/.test(cli)
       ? { command: node, args: [cli] }
       : { command: cli, args: [] };
+    // A package manager may replace its own tree during install. Reject any
+    // driver inside it before even invoking that driver's version probe.
+    prepareDependencyInstallDrivers({
+      root: cwd,
+      nodePath: node,
+      commandPath: invocation.command,
+      scriptPath: invocation.args[0],
+      clean: true,
+    });
     const ownerPath = resolve(dirname(cli), '../package.json');
     let corepackShim = false;
     if (/\.[cm]?js$/.test(cli) && existsSync(ownerPath)) {
@@ -225,8 +238,11 @@ export function pnpmInvocation({
   };
 }
 
-export function pnpmCommand(args, cwd = root) {
-  const invocation = pnpmInvocation({ cwd });
+export function pnpmCommand(
+  args,
+  cwd = root,
+  invocation = pnpmInvocation({ cwd }),
+) {
   command(invocation.command, [...invocation.args, ...args], {
     cwd,
     timeout: inertInstallTimeout(),
@@ -477,15 +493,15 @@ function stationOwnedHooks() {
     );
 }
 
-function inertInstall(developer) {
-  pnpmCommand([
+function inertInstallArgs(developer) {
+  return [
     'install',
     '--ignore-scripts',
     '--config.node-linker=hoisted',
     '--config.enable-global-virtual-store=false',
     '--package-import-method=clone-or-copy',
     developer ? '--no-frozen-lockfile' : '--frozen-lockfile',
-  ]);
+  ];
 }
 
 /**
@@ -508,16 +524,69 @@ export function stageLifecyclePrebuilds(allowlist, { cwd = root } = {}) {
   }
 }
 
-export function install({ developer = false } = {}) {
-  // Node is a trust boundary for every following command. Check it before npm.
-  command(process.execPath, ['scripts/node-runtime-contract.mjs']);
-  const allowlist = check({ bootstrap: true });
-  inertInstall(developer);
-  check();
-  stageLifecyclePrebuilds(allowlist);
-  runApprovedHooks(allowlist);
-  stationOwnedHooks();
-  return verify();
+/** Inject only execution, preserving the actual guarded production phase order. */
+export function install(
+  { developer = false } = {},
+  execution = {
+    root,
+    nodePath: process.execPath,
+    pnpmInvocation,
+    command,
+    check,
+    pnpmCommand,
+    stageLifecyclePrebuilds,
+    runApprovedHooks,
+    stationOwnedHooks,
+    verify,
+  },
+) {
+  const nodeDriver = prepareDependencyInstallDrivers({
+    root: execution.root,
+    nodePath: execution.nodePath,
+    clean: true,
+  });
+  execution.command(
+    nodeDriver.nodePath,
+    ['scripts/node-runtime-contract.mjs'],
+    { cwd: execution.root },
+  );
+  const invocation = execution.pnpmInvocation({
+    cwd: execution.root,
+    node: nodeDriver.nodePath,
+  });
+  const drivers = prepareDependencyInstallDrivers({
+    root: execution.root,
+    nodePath: nodeDriver.nodePath,
+    commandPath: invocation.command,
+    scriptPath: isAbsolute(invocation.args[0] ?? '')
+      ? invocation.args[0]
+      : undefined,
+    clean: true,
+  });
+  const boundInvocation = {
+    command: drivers.commandPath,
+    args: drivers.scriptPath
+      ? [drivers.scriptPath, ...invocation.args.slice(1)]
+      : [...invocation.args],
+  };
+  const allowlist = execution.check({ cwd: execution.root, bootstrap: true });
+  return withDependencyInstallGuard({
+    root: execution.root,
+    clean: false,
+    retireLegacy: true,
+    run: () => {
+      execution.pnpmCommand(
+        inertInstallArgs(developer),
+        execution.root,
+        boundInvocation,
+      );
+      execution.check({ cwd: execution.root });
+      execution.stageLifecyclePrebuilds(allowlist, { cwd: execution.root });
+      execution.runApprovedHooks(allowlist, { cwd: execution.root });
+      execution.stationOwnedHooks();
+      return execution.verify({ cwd: execution.root });
+    },
+  });
 }
 
 export function propose({ cwd = root } = {}) {

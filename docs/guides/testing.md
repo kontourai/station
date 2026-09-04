@@ -379,8 +379,68 @@ Fresh linked worktrees get the pinned dependency set through
 `npm run dependencies:ci`, so drift
 should not occur there. The shared main checkout is the drift-prone surface:
 pulling a package pin does not update its existing `node_modules`. Run
-`npm run dependencies:install` there after a pull when the dependency-drift gate or
+`npm run dependencies:ci` there after a pull when the dependency-drift gate or
 `station doctor` reports a pinned-versus-installed mismatch.
+
+#### Interrupted dependency installation
+
+The dependency lifecycle runner holds an exclusive `.station-dependency-install/`
+directory across pnpm, approved hooks, and final verification. A second
+participating installer refuses that existing guard; a PID or elapsed time is
+not permission to reclaim it. Stop other builds and dependency writers before
+installation: this guard does not coordinate raw package-manager commands, older runners, or other
+processes using the dependency tree.
+
+Both modes reuse an established pnpm installation. Under the acquired guard,
+a legacy npm tree, a hybrid tree with npm's hidden lock, or an unidentified
+tree is retired and cleared before pnpm installs. This one-time conversion
+prevents obsolete npm contents remaining beside the new graph without holding
+two complete trees. Redirected or non-directory roots refuse before inspection.
+`dependencies:ci` requires the frozen lock; `dependencies:install` permits
+intentional resolution changes. pnpm clones or copies package contents from its
+shared store, while the worktree keeps its own writable installation. The
+cooperative guard spans installation, exact-hook checks, approved hooks, and
+artifact verification; incremental reuse does not skip those checks.
+
+Node and the exact pinned pnpm executable or JavaScript bootstrap driver are
+selected and canonicalized before the guard. Drivers must remain outside the
+worktree's `node_modules`; redirected root dependency directories still refuse.
+The selected command is passed through the guarded operation, not rediscovered
+mid-install.
+
+An install/hook/verification failure leaves the guard and any partial new
+dependencies in place. They are not automatically
+restored, verified, or retried. Inspect the original install error and the exact
+reported guard path; first establish that the owning installer and other
+dependency consumers have stopped. Preserve the guard and partial tree in a
+separate recovery location before an intentional fresh install. Do not blindly
+delete a guard, infer ownership from a dead PID, or run gates against incomplete
+dependencies. A command-not-found error after interrupted provisioning is not
+an executed test failure.
+
+Leave disk headroom for npm extraction, staging, and cache work; this runner
+does not reserve disk space. An ENOSPC or abrupt interruption can prevent a
+phase-receipt update, so the last recorded phase is not proof that an installer
+is still alive or that an install completed.
+
+After successful verification, the exact owned receipt and any regular
+`.DS_Store` metadata up to64KiB are moved individually into a private
+`.station-dependency-record-*/` directory (the metadata uses a non-Finder
+destination name). Their identities and the metadata
+size are rechecked after each move; `rmdir` is the atomic final empty check. A
+new, replaced, linked, or larger entry keeps the fixed guard pending and is not
+deleted. The completed record is a small ignored generated worktree artifact,
+not authority to perform recovery. Records are not reclaimed by PID or age;
+normal completed-worktree cleanup removes them after relevant evidence has been
+preserved, avoiding an unattended pruning policy.
+
+If verification succeeds but guard finalization cannot finish, the runner reports
+**verified dependencies / cleanup pending** and leaves the guard blocking the
+next install until it is inspected. Unexpected guard children are never
+recursively deleted. This is cooperative install coordination and a recovery
+aid for generated dependencies, not a rollback transaction or user-data backup:
+workspace-local dependency trees and lockfiles remain npm-owned, and no
+hostile same-user/path-swap or power-loss archive guarantee is made.
 
 `npm run dependencies:ci` does **not** provision Playwright browsers. The
 runner applies Station's approved patch step explicitly; it does not trust a
