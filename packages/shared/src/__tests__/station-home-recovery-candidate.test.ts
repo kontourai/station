@@ -40,6 +40,33 @@ function stage(records: Array<{ store: string; json: string }>) {
 }
 
 describe('StationHomeArchive detached recovery candidate', () => {
+  it('never exposes caller reflection errors through the public staging boundary', () => {
+    const f = fixture();
+    const secret = 'synthetic-private-reflection-payload';
+    const entry = new Proxy(
+      { store: 'app', json: '{}' },
+      {
+        ownKeys() {
+          throw new Error(secret);
+        },
+      },
+    );
+    let caught: unknown;
+    try {
+      stageStationHomeRecoveryCandidate({
+        ...f,
+        declaredSourceSchemaVersion: 1,
+        records: [entry],
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({ code: 'STATION_HOME_ARCHIVE_UNAVAILABLE' });
+    expect(String(caught)).not.toContain(secret);
+    expect((caught as Error).cause).toBeUndefined();
+    expect(readdirSync(f.root)).toEqual([]);
+  });
+
   it('preserves the entire ambiguous Agent privately and cannot boot as an active home', () => {
     const original =
       '{ "id":"private-agent", "prompt":"private instructions", "execution": {"agentConnectionId":"ambiguous-runtime", "credentialProfileRef":"private-account", "runtimeOptions":{"secret":"private-value"}} }\n';
@@ -374,7 +401,7 @@ describe('StationHomeArchive detached recovery candidate', () => {
         declaredSourceSchemaVersion: 1,
         records: [extra],
       }),
-    ).toThrow('Detached recovery records');
+    ).toThrow('detached recovery staging is unavailable');
     expect(descriptorReads).toBe(0);
     let getterReads = 0;
     const accessor = {
@@ -394,7 +421,7 @@ describe('StationHomeArchive detached recovery candidate', () => {
           declaredSourceSchemaVersion: 1,
           records: [entry],
         }),
-      ).toThrow('Detached recovery records');
+      ).toThrow('detached recovery staging is unavailable');
     }
     expect(getterReads).toBe(0);
     expect(readdirSync(f.root)).toEqual([]);
@@ -411,7 +438,7 @@ describe('StationHomeArchive detached recovery candidate', () => {
           declaredSourceSchemaVersion: 1,
           records: [{ store: 'app', json }],
         }),
-      ).toThrow('Detached recovery records');
+      ).toThrow('detached recovery staging is unavailable');
       expect(readdirSync(f.root)).toEqual([]);
     },
   );
@@ -473,7 +500,7 @@ describe('StationHomeArchive detached recovery candidate', () => {
           declaredSourceSchemaVersion: 1,
           records,
         }),
-      ).toThrow('Detached recovery records');
+      ).toThrow('detached recovery staging is unavailable');
       expect(readdirSync(f.root)).toEqual([]);
     }
     expect(() =>

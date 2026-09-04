@@ -154,14 +154,14 @@ export function stageStationHomeRecoveryCandidate(options: {
   /** Private post-rename fault seam; the old staging name is no longer owned. */
   afterStageCommit?: () => void;
 }): StationHomeRecoveryCandidatePlan {
-  const prepared = prepareDetachedRecoveryCandidate(
-    options.records,
-    options.declaredSourceSchemaVersion,
-  );
-  const outputDir = resolve(options.outputDir);
-  const parent = dirname(outputDir);
   let staging: string | undefined;
   try {
+    const prepared = prepareDetachedRecoveryCandidate(
+      options.records,
+      options.declaredSourceSchemaVersion,
+    );
+    const outputDir = resolve(options.outputDir);
+    const parent = dirname(outputDir);
     if (existsSync(outputDir)) fail('detached recovery output already exists');
     const parentInfo = lstatSync(parent);
     if (!parentInfo.isDirectory() || parentInfo.isSymbolicLink())
