@@ -1,7 +1,10 @@
 /** @vitest-environment jsdom */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { createEvent, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+const chatCss = readFileSync('src-ui/src/components/chat/chat.css', 'utf8');
 
 const harness = vi.hoisted(() => ({
   regions: {
@@ -14,13 +17,17 @@ const harness = vi.hoisted(() => ({
   setDockState: vi.fn(),
   setRegion: vi.fn(),
   placeSurface: vi.fn(),
-  shortcut: null as null | {
-    id: string;
-    key: string;
-    modifiers: string[];
-    description: string;
-    handler: () => void;
-  },
+  bottomOnly: false,
+  shortcuts: new Map<
+    string,
+    {
+      id: string;
+      key: string;
+      modifiers: string[];
+      description: string;
+      handler: () => void;
+    }
+  >(),
 }));
 
 vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
@@ -60,8 +67,12 @@ vi.mock('../../../contexts/NavigationContext', () => ({
 
 vi.mock('../../../hooks/useIsMobile', () => ({
   useIsMobile: () => false,
-  useDockSlotDevice: () => ({ viewportWidth: 1024, coarsePointer: false }),
-  availablePlacements: () => ['left', 'right', 'bottom'],
+  useDockSlotDevice: () => ({
+    viewportWidth: harness.bottomOnly ? 390 : 1024,
+    coarsePointer: harness.bottomOnly,
+  }),
+  availablePlacements: () =>
+    harness.bottomOnly ? ['bottom'] : ['left', 'right', 'bottom'],
 }));
 
 vi.mock('../../../hooks/useKeyboardShortcut', () => ({
@@ -72,7 +83,7 @@ vi.mock('../../../hooks/useKeyboardShortcut', () => ({
     description: string,
     handler: () => void,
   ) => {
-    harness.shortcut = { id, key, modifiers, description, handler };
+    harness.shortcuts.set(id, { id, key, modifiers, description, handler });
   },
 }));
 
@@ -80,27 +91,51 @@ import { RegionToolbarControls } from '../RegionToolbarControls';
 
 describe('RegionToolbarControls', () => {
   beforeEach(() => {
+    Object.assign(harness.regions.left, {
+      visible: false,
+      size: 400,
+      occupant: null,
+    });
+    Object.assign(harness.regions.right, {
+      visible: false,
+      size: 400,
+      occupant: null,
+    });
+    Object.assign(harness.regions.bottom, {
+      visible: true,
+      size: 320,
+      occupant: 'chat',
+    });
     harness.setDockMode.mockReset();
     harness.setDockState.mockReset();
     harness.setRegion.mockReset();
     harness.placeSurface.mockReset();
-    harness.shortcut = null;
+    harness.bottomOnly = false;
+    harness.shortcuts.clear();
   });
 
-  test('registers the surface shortcut in shell chrome and toggles visibility without replacing its occupant', () => {
+  test('registers both surface shortcuts and toggles or places from their metadata', () => {
     render(<RegionToolbarControls />);
 
-    expect(harness.shortcut).toMatchObject({
+    expect(harness.shortcuts.get('dock.toggle')).toMatchObject({
       id: 'dock.toggle',
       key: 'd',
       modifiers: ['cmd'],
       description: 'Toggle Chat region',
     });
-    harness.shortcut?.handler();
+    expect(harness.shortcuts.get('activity.toggle')).toMatchObject({
+      key: 'a',
+      modifiers: ['cmd', 'shift'],
+      description: 'Toggle Activity region',
+    });
+    harness.shortcuts.get('dock.toggle')?.handler();
     expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
       visible: false,
     });
     expect(harness.regions.bottom.occupant).toBe('chat');
+
+    harness.shortcuts.get('activity.toggle')?.handler();
+    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Hide Chat Bottom region' }),
@@ -110,15 +145,129 @@ describe('RegionToolbarControls', () => {
     });
   });
 
-  test('offers the registered surface in each empty available region', () => {
+  test('the Activity chord uses a free region instead of evicting Chat from its preferred region', () => {
+    Object.assign(harness.regions.bottom, {
+      visible: false,
+      occupant: null,
+    });
+    Object.assign(harness.regions.right, { visible: true, occupant: 'chat' });
     render(<RegionToolbarControls />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Place Chat in Left region' }),
-    );
-    expect(harness.placeSurface).toHaveBeenCalledWith('chat', 'left');
+    harness.shortcuts.get('activity.toggle')?.handler();
+
+    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'bottom');
+  });
+
+  test('the Activity chord toggles its existing region hidden and visible', () => {
+    Object.assign(harness.regions.right, {
+      visible: true,
+      occupant: 'activity',
+    });
+    render(<RegionToolbarControls />);
+
+    harness.shortcuts.get('activity.toggle')?.handler();
+    expect(harness.setRegion).toHaveBeenLastCalledWith('right', {
+      visible: false,
+    });
+    harness.regions.right.visible = false;
+    harness.shortcuts.get('activity.toggle')?.handler();
+    expect(harness.setRegion).toHaveBeenLastCalledWith('right', {
+      visible: true,
+    });
+  });
+
+  test('an empty region opens a portalled menu and places either registered surface', () => {
+    const { container } = render(<RegionToolbarControls />);
+
+    const trigger = screen.getByRole('button', {
+      name: 'Choose a surface for Left region',
+    });
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(trigger.hasAttribute('aria-pressed')).toBe(false);
+    vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
+      right: 760,
+    } as DOMRect);
+    fireEvent.click(trigger);
+    const menu = screen.getByRole('menu', { name: 'Left region surfaces' });
+    expect(menu.parentElement).toBe(document.body);
+    expect(container.contains(menu)).toBe(false);
+    expect(menu.style.right).toBe(`${window.innerWidth - 760}px`);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
     expect(
-      screen.getByRole('button', { name: 'Place Chat in Right region' }),
+      screen.getByRole('menuitem', { name: 'Place Chat here' }),
     ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Place Activity here' }),
+    );
+    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'left');
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  test('an occupied region exposes a keyboard-reachable swap menu that dismisses on Escape and a backdrop click, not on pointerdown', () => {
+    render(<RegionToolbarControls />);
+
+    const trigger = screen.getByRole('button', {
+      name: 'Change Bottom region surface',
+    });
+    expect(trigger.classList.contains('app-toolbar__region-swap')).toBe(true);
+    const swapRule = chatCss.match(
+      /\.app-toolbar__region-swap\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(swapRule).toMatch(/min-width:\s*24px/);
+    expect(swapRule).toMatch(/min-height:\s*24px/);
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(
+      screen.getByRole('menuitem', { name: 'Swap in Activity' }),
+    ).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    fireEvent.click(trigger);
+    const backdrop = screen.getByRole('button', {
+      name: 'Close Bottom region menu',
+    });
+    const pointerDown = createEvent.pointerDown(backdrop);
+    fireEvent(backdrop, pointerDown);
+    expect(pointerDown.defaultPrevented).toBe(true);
+    expect(screen.queryByRole('menu')).not.toBeNull();
+    fireEvent.click(backdrop);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  test('a bottom-only device renders one control per surface and makes either surface the sole visible region', () => {
+    harness.bottomOnly = true;
+    const { rerender } = render(<RegionToolbarControls />);
+
+    expect(
+      screen.getByRole('group', { name: 'Regions' }).querySelectorAll('button'),
+    ).toHaveLength(2);
+    const chat = screen.getByRole('button', { name: 'Hide Chat' });
+    expect(chat.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(chat);
+    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
+      visible: false,
+    });
+
+    harness.setRegion.mockClear();
+    harness.regions.bottom.visible = false;
+    rerender(<RegionToolbarControls />);
+    expect(
+      screen
+        .getByRole('button', { name: 'Show Chat' })
+        .getAttribute('aria-pressed'),
+    ).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
+    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
+    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
+      visible: false,
+    });
+    expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: true });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show Chat' }));
+    expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: false });
+    expect(harness.setRegion).toHaveBeenCalledWith('bottom', { visible: true });
   });
 });
