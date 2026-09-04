@@ -299,10 +299,15 @@ function OverflowMenuHost() {
   );
 }
 
-/** Show/Hide a surface the way a phone user does: `⋯`, then the row. */
+/**
+ * Show/Hide a surface the way a phone user does: `⋯`, then the row. Scoped to
+ * the menu's own region group — a shell header can carry the same label.
+ */
 function selectRegionCommand(name: string) {
   fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
-  fireEvent.click(screen.getByRole('menuitemcheckbox', { name }));
+  const group = document.querySelector('.app-toolbar__overflow-regions');
+  if (!group) throw new Error('the overflow menu rendered no region rows');
+  fireEvent.click(within(group as HTMLElement).getByRole('button', { name }));
 }
 
 function Providers({ children }: { children: React.ReactNode }) {

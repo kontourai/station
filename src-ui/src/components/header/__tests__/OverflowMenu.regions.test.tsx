@@ -114,18 +114,18 @@ describe('OverflowMenu region section (#917)', () => {
     renderMenu();
 
     const group = screen.getByRole('group', { name: 'Regions' });
-    // The verb is the only state a sighted user sees; `aria-checked` is what
+    // The verb is the only state a sighted user sees; `aria-pressed` is what
     // an assistive technology reads, and it must agree with the model rather
     // than with the word in the label.
-    const hideChat = screen.getByRole('menuitemcheckbox', {
+    const hideChat = screen.getByRole('button', {
       name: 'Hide Chat',
     });
-    expect(hideChat.getAttribute('aria-checked')).toBe('true');
+    expect(hideChat.getAttribute('aria-pressed')).toBe('true');
     expect(group.contains(hideChat)).toBe(true);
-    const showActivity = screen.getByRole('menuitemcheckbox', {
+    const showActivity = screen.getByRole('button', {
       name: 'Show Activity',
     });
-    expect(showActivity.getAttribute('aria-checked')).toBe('false');
+    expect(showActivity.getAttribute('aria-pressed')).toBe('false');
     expect(group.contains(showActivity)).toBe(true);
   });
 
@@ -155,7 +155,9 @@ describe('OverflowMenu region section (#917)', () => {
     renderMenu();
 
     expect(screen.queryByRole('group', { name: 'Regions' })).toBeNull();
-    expect(screen.queryAllByRole('menuitemcheckbox')).toHaveLength(0);
+    expect(
+      document.querySelectorAll('.app-toolbar__overflow-regions button'),
+    ).toHaveLength(0);
     // The rest of the menu is untouched.
     expect(screen.getByRole('button', { name: 'Connections' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Profile' })).toBeTruthy();
@@ -170,23 +172,25 @@ describe('OverflowMenu region section (#917)', () => {
     renderMenu();
 
     expect(screen.queryByRole('group', { name: 'Regions' })).toBeNull();
-    expect(screen.queryAllByRole('menuitemcheckbox')).toHaveLength(0);
+    expect(
+      document.querySelectorAll('.app-toolbar__overflow-regions button'),
+    ).toHaveLength(0);
   });
 
   test('rendered outside a region model it offers no region rows and does not throw', () => {
     harness.hasRegionModel = false;
     renderMenu();
 
-    expect(screen.queryAllByRole('menuitemcheckbox')).toHaveLength(0);
+    expect(
+      document.querySelectorAll('.app-toolbar__overflow-regions button'),
+    ).toHaveLength(0);
     expect(screen.getByRole('button', { name: 'Connections' })).toBeTruthy();
   });
 
   test('selecting a visible surface hides its region and closes the menu', () => {
     renderMenu();
 
-    fireEvent.click(
-      screen.getByRole('menuitemcheckbox', { name: 'Hide Chat' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Chat' }));
 
     expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
       visible: false,
@@ -197,9 +201,7 @@ describe('OverflowMenu region section (#917)', () => {
   test('selecting an unplaced surface shows it alone, the coarse fold rule', () => {
     renderMenu();
 
-    fireEvent.click(
-      screen.getByRole('menuitemcheckbox', { name: 'Show Activity' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
 
     // Placed in its default region, and every other region closed: a coarse
     // device shows exactly one dock surface at a time.
@@ -215,10 +217,10 @@ describe('OverflowMenu region section (#917)', () => {
     harness.regions.bottom.visible = false;
     renderMenu();
 
-    const showChat = screen.getByRole('menuitemcheckbox', {
+    const showChat = screen.getByRole('button', {
       name: 'Show Chat',
     });
-    expect(showChat.getAttribute('aria-checked')).toBe('false');
+    expect(showChat.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(showChat);
     expect(harness.setRegion).toHaveBeenCalledWith('bottom', { visible: true });
   });

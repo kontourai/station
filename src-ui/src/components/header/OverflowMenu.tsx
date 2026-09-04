@@ -21,10 +21,12 @@ type ConnectionStatus = ComponentProps<typeof ConnectionStatusDot>['status'];
  * called where a `RegionModelProvider` is known to be above it — the overflow
  * menu itself is rendered in tests and stories without one.
  *
- * A `fieldset` with a clipped `legend`, the same grouping the toolbar's own
- * region controls use: its implicit `group` role is the ancestor ARIA requires
- * for `menuitemcheckbox`, and the legend is what names the section. The rest
- * of this menu is plain buttons and stays that way.
+ * Toggle buttons, not `menuitemcheckbox`: that role must be owned by a `menu`,
+ * and this container has never been one — its other rows are plain buttons. The
+ * toolbar's own region menu IS a `role="menu"` and keeps `menuitemcheckbox`
+ * there. `aria-pressed` carries the same state without claiming a menu
+ * structure that does not exist. The `fieldset`/clipped `legend` names the
+ * section.
  */
 function RegionMenuSection({ onClose }: { onClose: () => void }) {
   const { commandsInOverflowMenu, menuItems } = useRegionSurfaceMenu();
@@ -36,8 +38,7 @@ function RegionMenuSection({ onClose }: { onClose: () => void }) {
         <button
           key={item.key}
           type="button"
-          role="menuitemcheckbox"
-          aria-checked={item.checked}
+          aria-pressed={item.checked}
           onClick={() => {
             onClose();
             item.onSelect();
