@@ -637,6 +637,7 @@ export function dependencyAuditDecision({
       required: true,
       reason: 'non-github execution',
       scopes: [...ALL_DEPENDENCY_SCOPES],
+      range: null,
     };
 
   const eventName = env.GITHUB_EVENT_NAME;
@@ -649,6 +650,11 @@ export function dependencyAuditDecision({
       required: true,
       reason: `${eventName ?? 'unknown'} event`,
       scopes: [...ALL_DEPENDENCY_SCOPES],
+      // These events carry no range at all -- they are periodic or operator
+      // driven -- so there is nothing to report. `null` rather than a
+      // plausible placeholder: a log line that invents a range is the defect
+      // this field exists to prevent (#1442).
+      range: null,
     };
 
   try {
@@ -680,12 +686,20 @@ export function dependencyAuditDecision({
       scopes: Array.isArray(classification.dependencyScopes)
         ? classification.dependencyScopes
         : [...ALL_DEPENDENCY_SCOPES],
+      // The range this decision was actually made from, so the log reports
+      // the evidence rather than re-deriving it. #1430 -- every pull request
+      // reaching the registry because this range started at the base branch
+      // tip -- stayed invisible for a day because no message named it.
+      range: { before, after },
     };
   } catch (error) {
     return {
       required: true,
       reason: `range classification failed closed: ${error.message}`,
       scopes: [...ALL_DEPENDENCY_SCOPES],
+      // The failure may be the range resolution itself, so there is no range
+      // this decision can honestly claim to have classified.
+      range: null,
     };
   }
 }
@@ -921,19 +935,42 @@ export function selectAuditScopes(decision, allScopes = AUDIT_SCOPES) {
   return scopes;
 }
 
-export async function runPolicyCli() {
-  const decision = dependencyAuditDecision();
+/**
+ * The range a decision was made from, in a form a reader can paste into
+ * `git diff`. Decisions that have no range say so rather than print
+ * something that looks like one (#1442).
+ */
+function describeRange(range) {
+  if (!range?.before || !range?.after) return 'no range (event carries none)';
+  return `${range.before.slice(0, 8)}..${range.after.slice(0, 8)}`;
+}
+
+/**
+ * `decide` and `runAudits` are injected so BOTH log lines can be exercised by
+ * a test. The scanning message is the one this change exists to fix, and
+ * without an injection point it is only reachable by contacting the live npm
+ * registry -- which is to say, unreachable from a test, which is how a
+ * message that explained nothing survived (#1442).
+ */
+export async function runPolicyCli({
+  decide = dependencyAuditDecision,
+  runAudits = collectAudits,
+} = {}) {
+  const decision = decide();
   if (!decision.required) {
     console.log(
-      `Dependency advisory floor: skipped live registry scan (${decision.reason}; no dependency inputs changed)`,
+      `Dependency advisory floor: skipped live registry scan — no dependency inputs in ${describeRange(decision.range)} (${decision.reason})`,
     );
     return 0;
   }
   const scopes = selectAuditScopes(decision);
+  // Name the range on this path too. `reason` is a docs-vs-runtime
+  // classification, orthogonal to whether dependencies changed, so on its own
+  // it cannot explain why the registry is being contacted.
   console.log(
-    `Dependency advisory floor: scanning ${scopes.map((entry) => entry.scope).join(', ')} (${decision.reason})`,
+    `Dependency advisory floor: scanning ${scopes.map((entry) => entry.scope).join(', ')} — dependency inputs changed in ${describeRange(decision.range)} (${decision.reason})`,
   );
-  const audits = await collectAudits(scopes);
+  const audits = await runAudits(scopes);
   const exceptions = readJson(
     path.join(SCRIPT_DIR, 'dependency-advisory-exceptions.json'),
     'exception config',

@@ -21,6 +21,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | --- | --- | --- |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [InstalledPluginInventory](#installedplugininventory) | Keep valid and rejected installed plugin directories visible from one filesystem-backed inventory. | `src-server/services/plugins/installed-plugin-inventory.ts` |
+| [PackageMcpAdmissionJournal](#packagemcpadmissionjournal) | Retain package-incarnation admission evidence without inventing destructive retirement authority. | `src-server/services/plugins/package-mcp-admission.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
@@ -68,6 +69,34 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate exact-route owners, duplicate view owners, and duplicate sidebar or palette order slots. It never invokes a label or badge while composing or filtering; locale, branding, and attention state remain render-time inputs. A preview surface stays registered and routable while `getAdvertised` hides it until its named flag is enabled. `hiddenFromNav` removes only the sidebar affordance; route, palette, badge, and header callers remain independent projections. Parameterized Project, layout, task, Agent, connection, and Workspace Pane routes retain their domain parsers. Dynamic Workspace Panes retain their typed availability catalog and join the command palette after static registry projection rather than becoming unvalidated root-route contributions.
 
 **Seam, Implementation, callers, and tests.** The UI shell composes built-in descriptors. `routing.ts` consumes exact routes and semantic management ownership; `ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their ordered projections. Icons are a presentation Adapter keyed by the registry's finite icon vocabulary. Future trusted plugin surface contributions must enter at registry composition and pass the same validation; there is no mutable global `register()` operation or renderer callback in persisted plugin data. Contract coverage is `src-ui/src/app-shell/__tests__/destination-registry.test.ts` plus sidebar, palette, routing, and header suites. **Do not reintroduce:** component-local static destination arrays, route-to-sidebar switch statements, hard-coded badge copy outside the registry, mutable post-construction registration, or treating a contributed renderer declaration as navigation authority.
+
+## PackageMcpAdmissionJournal
+
+**Intent and Interface.** EventStore composes one journal on its existing SQLite
+handle. Host installation observations mint exact incarnation identities;
+`reserve` retains a pre-effect claim, `enterEffectBoundary` is one-way, and
+`requestRetirement` fences new admission for that package. The returned claim
+alone may release a proved never-started reservation. SDK settlement retains
+possible effects, and foreign, crashed or PID-reused owners are never pruned.
+
+**Contract.** State, generations and claims are bounded; corrupt or oversized
+metadata and uncertain commit acknowledgement fail closed. No filesystem path,
+integration definition or secret is duplicated. `inspectMutationImpact` reports
+positive recorded history or unclassified/unavailable, never a negative safety
+proof. Every inspection says `mutationAllowed: false`: compatibility and
+native/descendant/remote terminal proofs are absent. No destructive permit API
+exists. This is shared control-plane evidence, not a supervisor or sandbox.
+
+**Seam and tests.** EventStore owns schema/open/transaction lifetime and exposes
+the memoized journal before later runtime service composition. The MCP and
+Agent-Plugins mutation entry-point wiring remains a subsequent tranche. Two
+real EventStore processes in `package-mcp-admission.test.ts` cover concurrent
+reservation/fencing, owner crash, exact no-effect release, same-content
+incarnation ABA, commit uncertainty and fixed-capacity refusal. See
+[MCP UI host](../design/mcp-ui-host.md#shared-package-admission-evidence-control-plane-prerequisite).
+**Do not reintroduce:** new database opens, bare SDK-close drain receipts,
+dead-parent/TTL release, declaration absence as historical proof, or a mutable
+caller flag that upgrades this evidence into package deletion authority.
 
 ## InstalledPluginInventory
 
@@ -250,6 +279,12 @@ ownership, or an implicit change to completed-session behavior.
 **Contract.** `StationHomeLifecycle` admits every runtime before its first home read through an exact PID-birth lease and gives backup/restore exclusive maintenance ownership through the same cross-process mutation lock. Multiple runtimes may coexist, dead owners are reclaimed, an unverifiable owner remains fenced, and a late runtime start waits behind maintenance instead of racing the final inactivity snapshot. Backup and restore additionally re-check caller-supplied lifecycle observations for actionable CLI diagnostics. Traversal is sorted, bounded by file count/per-file/total bytes, rejects symlinks and non-regular entries, represents paths as segment arrays so POSIX backslashes never become separators, excludes only declared volatile roots/files, checkpoints and quick-checks SQLite before copy, re-hashes every copied file, syncs staged bytes, and publishes by same-parent rename. The manifest binds exact observed schema version, creation time, file segments, modes, sizes, hashes, and total bytes; backup is read-only with respect to schema state so it remains the escape hatch before migration. Restore strictly validates the manifest and every archived byte before staging, requires explicit confirmation, swaps the selected home atomically, rolls back a failed swap/schema gate, and retains the replaced home rather than deleting it. EventStore and SchedulerLedger independently use the same `checkSqliteIntegrity` policy before any migration/schema write: only a completed non-OK quick-check or explicit SQLite corruption evidence is `corrupt`; lock, I/O, open, permission, and unknown Adapter faults are `unavailable`. Corrupt bytes remain untouched and the error names the validated restore command.
 
 **Seam, Implementation, callers, and tests.** `@kontourai/station-shared/station-home-lifecycle` owns runtime/maintenance exclusion; `station-home-archive` owns the portable archive format and filesystem/SQLite mechanics. `StationRuntime` retains its opaque lease until clean persistence shutdown. The CLI's `station home backup|restore` wrappers reuse the existing instance observation for user-facing offline diagnostics; reset shares the same DRY refusal helper. Shared real-process tests force a runtime attempt behind held maintenance; runtime composition proves construction-through-shutdown ownership; real-SQLite tests cover round-trip, tampering, corruption, symlinks, bounds, confirmation, publication faults, and startup I/O classification. **Do not reintroduce:** snapshot-only inactivity checks, runtime/home mutations outside the lifecycle authority, raw recursive home copies, live-home backup, SQLite WAL/shm copying, automatic reset on corruption, unchecked archive paths, restore that deletes the prior home, or a second backup format in server code.
+
+### Detached recovery candidate (fixture-first)
+
+`StationHomeArchive.stageStationHomeRecoveryCandidate()` accepts already-detached, bounded UTF-8 JSON records and an absent output directory. Its private classifier observes selected v1 fields only; the declared version is not proof of source schema or capture consistency. The archive owner stages exact original records as mode-0600 `.payload` files in a mode-0700 `inert-evidence` directory, verifies the intended file set and hashes, and returns a content-free plan. No Station-home marker, `config`, `agents`, database or active runtime store is emitted. Original ambiguous Agent records remain whole: removing an external Engine binding would otherwise change absence into Station-engine execution. Explicit credential payload records are excluded from copied evidence; credential references and sensitive original records never enter public plans or errors. All candidates remain `publishable:false`, with capture/owner exclusion, destination, identity/account mapping and import review still required. Unknown and malformed records are inert evidence, not validated or executable input.
+
+This is not a live-home backup, immutable forensic snapshot, migration, restore, owner-exclusion capability, or hostile-filesystem containment proof. It reuses the archive owner's private staging/sync/cleanup mechanics, never invokes SQLite checkpointing, ordinary store constructors, enrollment or runtime startup, and has no CLI/apply caller. Failed staging is cleaned where possible; interrupted or post-rename failures may retain an inert artifact, never a bootable home. Later consumption must revalidate exact staged bytes and acquire its own real authorization; this plan grants none. Disposable directory tests in `station-home-recovery-candidate.test.ts` exercise the actual archive entry point, unchanged payloads, privacy/bounds, non-bootability, destination conflicts, and injected staging faults. #1391/#1388 physical recovery remain open.
 
 ## ProjectFileTransactions
 

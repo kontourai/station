@@ -21,6 +21,7 @@ const harness = vi.hoisted(() => ({
   },
   setRegion: vi.fn(),
   placeSurface: vi.fn(),
+  showSurface: vi.fn(),
   bottomOnly: true,
   isMobile: true,
   hasRegionModel: true,
@@ -40,6 +41,7 @@ vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
     surfaces: REGION_SURFACE_REGISTRY,
     setRegion: harness.setRegion,
     placeSurface: harness.placeSurface,
+    showSurface: harness.showSurface,
   });
   return {
     ...actual,
@@ -104,6 +106,7 @@ describe('OverflowMenu region section (#917)', () => {
     });
     harness.setRegion.mockReset();
     harness.placeSurface.mockReset();
+    harness.showSurface.mockReset();
     harness.bottomOnly = true;
     harness.isMobile = true;
     harness.hasRegionModel = true;
@@ -198,18 +201,19 @@ describe('OverflowMenu region section (#917)', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  test('selecting an unplaced surface shows it alone, the coarse fold rule', () => {
+  test('selecting an unplaced surface asks the model to show it; the coarse fold rule is the model\u2019s', () => {
     renderMenu();
 
     fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
 
-    // Placed in its default region, and every other region closed: a coarse
-    // device shows exactly one dock surface at a time.
-    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
-    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
-      visible: false,
-    });
-    expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: true });
+    // Placing it in its default region and closing every other region — a
+    // coarse device shows exactly one dock surface at a time — is the model's
+    // `showSurface` (`showSurfaceAlone` in region-model.ts). The row issues
+    // that one command and places nothing itself (#1420).
+    expect(harness.showSurface).toHaveBeenCalledTimes(1);
+    expect(harness.showSurface).toHaveBeenCalledWith('activity');
+    expect(harness.placeSurface).not.toHaveBeenCalled();
+    expect(harness.setRegion).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -222,6 +226,8 @@ describe('OverflowMenu region section (#917)', () => {
     });
     expect(showChat.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(showChat);
-    expect(harness.setRegion).toHaveBeenCalledWith('bottom', { visible: true });
+    // Placed but not the folded region: shown, via the model, not hidden.
+    expect(harness.showSurface).toHaveBeenCalledWith('chat');
+    expect(harness.setRegion).not.toHaveBeenCalled();
   });
 });

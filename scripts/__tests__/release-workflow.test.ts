@@ -46,8 +46,9 @@ const android = readFileSync(
   resolve(root, '.github/workflows/build-android.yml'),
   'utf8',
 );
+// Staged Tauri builds live in the staging phase of the native cohort (#1453).
 const nativeCohort = readFileSync(
-  resolve(root, '.github/workflows/nightly-native-cohort.yml'),
+  resolve(root, '.github/workflows/nightly-native-stage.yml'),
   'utf8',
 );
 const testFlightDelivery = readFileSync(
@@ -273,6 +274,13 @@ describe('frozen stable client-build provenance', () => {
     );
     expect(initialize.run).toContain('station_iOS/Info.plist');
     expect(initialize.run).toContain('gen/apple/station_iOS/Info.plist');
+    // The signing template is derived from this spec, and Tauri re-renders
+    // that template on the second init before the preserved manifest exists
+    // again, so the resource must NOT be registered here (Nightly
+    // 33904147780: xcodegen failed on the missing path).
+    expect(initialize.run).not.toContain(
+      'ensure-ios-privacy-manifest-resource.mjs',
+    );
     const regenerate = namedStep(
       delivery,
       'Regenerate the Xcode project with the manual signing template',
@@ -290,6 +298,10 @@ describe('frozen stable client-build provenance', () => {
     );
     expect(run).toContain('station_iOS/Info.plist');
     expect(run).toContain('gen/apple/station_iOS/Info.plist');
+    const ensure =
+      'node ../scripts/ensure-ios-privacy-manifest-resource.mjs gen/apple/project.yml';
+    const regen =
+      'xcodegen generate --spec gen/apple/project.yml --project gen/apple';
     // The regeneration deletes gen/apple, so the gitignored provenance
     // resource must be staged again afterwards or IPA verification fails.
     const restage =
@@ -299,6 +311,24 @@ describe('frozen stable client-build provenance', () => {
       run.indexOf('rm -rf gen/apple'),
     );
     expect(run).toContain('test -s gen/apple/assets/station-build.json');
+    // The manifest is registered only after the preserved file is restored,
+    // and the Xcode project is regenerated from the amended spec only after
+    // every directory the spec names exists (init ran xcodegen without the
+    // resource, and `tauri ios build` reuses the generated project).
+    const secondInit = run.indexOf('npx tauri ios init');
+    const restore = run.indexOf('ditto "$preserved/$item" "gen/apple/$item"');
+    expect(restore).toBeGreaterThan(secondInit);
+    expect(run.indexOf(ensure)).toBeGreaterThan(restore);
+    expect(run.indexOf(regen)).toBeGreaterThan(run.indexOf(restage));
+    expect(run.indexOf(regen)).toBeGreaterThan(run.indexOf(ensure));
+    expect(run).toContain(
+      "grep -Fq 'PrivacyInfo.xcprivacy' gen/apple/station.xcodeproj/project.pbxproj",
+    );
+    expect(
+      run.indexOf(
+        "grep -Fq 'PrivacyInfo.xcprivacy' gen/apple/station.xcodeproj",
+      ),
+    ).toBeGreaterThan(run.indexOf(regen));
   });
 
   it('records the stable desktop timestamp as a verified common manifest, not an architecture-specific proxy', () => {
@@ -990,6 +1020,10 @@ describe('native release workflow topology', () => {
     expect(seal.run).toContain(
       `--deadline-epoch "\${{ steps.macos_release_deadline.outputs.epoch }}"`,
     );
+    // Preview and stable keep the serial staple-then-package order, so an
+    // application copied out of the disk image carries its own local ticket.
+    // Only the Nightly cohort opts into the overlapped notarization waits.
+    expect(seal.run).not.toContain('--overlap-notarization');
     expect(seal.env).toMatchObject({
       APPLE_API_KEY_ID: `\${{ secrets.APPLE_API_KEY_ID }}`,
       APPLE_API_ISSUER_ID: `\${{ secrets.APPLE_API_ISSUER_ID }}`,
@@ -1021,7 +1055,7 @@ describe('native release workflow topology', () => {
     );
     expect(embeddedSealing).toBeLessThan(
       macosArtifacts.indexOf(
-        'await submit(command, zip, key, keyId, issuer, logger);',
+        'appNotarization = submit(command, zip, key, keyId, issuer, logger);',
       ),
     );
     expect(macosArtifacts).toContain("receipt.status !== 'Accepted'");
