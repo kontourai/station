@@ -9,7 +9,7 @@ import { boundedTaskText } from '../search/task-search-protocol.js';
 import type { TranscriptSearchMatch } from '../search/transcript-search-protocol.js';
 import type { SessionAuthorization } from './session-authorization.js';
 
-interface AuthorizedReadInput {
+export interface IsolatedSessionReadInput {
   authority: SessionReadAuthority;
   signal?: AbortSignal;
   /** Parent-owned principal/credential currentness, never sent to the worker. */
@@ -26,7 +26,7 @@ export function createIsolatedSessionTranscriptSearch(
   let active: AbortController | undefined;
 
   async function readAuthorized<T>(
-    input: AuthorizedReadInput,
+    input: IsolatedSessionReadInput,
     read: (current: () => boolean, signal: AbortSignal) => Promise<T>,
   ): Promise<T | undefined> {
     if (
@@ -83,7 +83,7 @@ export function createIsolatedSessionTranscriptSearch(
       return source.close();
     },
     async search(
-      input: AuthorizedReadInput & {
+      input: IsolatedSessionReadInput & {
         query: string;
         projectId?: string;
         limit?: number;
@@ -136,7 +136,7 @@ export function createIsolatedSessionTranscriptSearch(
         : { state: 'unavailable' };
     },
     async openSession(
-      input: AuthorizedReadInput & { sessionId: string },
+      input: IsolatedSessionReadInput & { sessionId: string },
     ): Promise<UnifiedSearchOpenResolution> {
       const { authority, sessionId } = input;
       if (!boundedTaskText(sessionId, 256)) return { state: 'not-found' };
@@ -177,7 +177,7 @@ export function createIsolatedSessionTranscriptSearch(
       return outcome ?? { state: 'unavailable' };
     },
     async open(
-      input: AuthorizedReadInput & {
+      input: IsolatedSessionReadInput & {
         sessionId: string;
         matchedEventId: string;
       },
