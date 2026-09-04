@@ -38,6 +38,9 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // The complete 1,200-thread seed/read/equivalence case owns its original
+  // 10-second product-law bound in a fresh file/process lifecycle.
+  'src-server/services/orchestration/__tests__/event-store-batched-projection.large.test.ts',
   // EventStore owns a high-cardinality SQLite fixture whose large replay and
   // backfill assertions are scheduler-sensitive under the two-worker pool.
   'src-server/services/orchestration/__tests__/event-store.test.ts',

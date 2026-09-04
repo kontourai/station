@@ -757,9 +757,11 @@ Use these terms consistently when adding connected-agents coverage:
 
 Focused automation:
 
-The connected-agent macro runs the same six provider/service/route suites
+The connected-agent macro runs the same provider/service/route coverage
 through the existing focused runner, with one worker, no file parallelism,
-and the original 10-second test bound. EventStore is explicitly process-exclusive
+and the original 10-second test bound. The high-cardinality EventStore case is
+the first of seven test files and owns a fresh process-exclusive test-file lifecycle.
+EventStore is explicitly process-exclusive
 in the resource manifest; calling raw Vitest would bypass that constraint and
 run its high-cardinality SQLite fixture alongside other suites. This routing
 change neither removes a suite nor increases its timer. The fixed macro accepts

@@ -13,6 +13,7 @@ import { PROCESS_EXCLUSIVE_VITEST_FILES } from '../vitest-resource-manifest.mjs'
 
 const root = path.resolve(import.meta.dirname, '../..');
 const files = [
+  'src-server/services/orchestration/__tests__/event-store-batched-projection.large.test.ts',
   'src-server/providers/llm/__tests__/bedrock-adapter.test.ts',
   'src-server/providers/__tests__/claude-adapter.test.ts',
   'src-server/providers/__tests__/codex-adapter.test.ts',
