@@ -35,6 +35,7 @@ export default function WorkspaceSearchPalette({
   const [active, setActive] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<{
     locator: Extract<UnifiedSearchOpenLocator, { kind: 'session-message' }>;
     scope: NonNullable<typeof scope>;
@@ -171,6 +172,7 @@ export default function WorkspaceSearchPalette({
   return (
     <Dialog
       title="Workspace search (this Station)"
+      initialFocusRef={inputRef}
       closeLabel="Close workspace search"
       onClose={onClose}
       size="lg"
@@ -188,6 +190,7 @@ export default function WorkspaceSearchPalette({
       }
     >
       <input
+        ref={inputRef}
         type="text"
         aria-label="Search this Station's work"
         placeholder="Search Tasks and messages…"

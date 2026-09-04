@@ -2,10 +2,18 @@
  * @vitest-environment jsdom
  */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { useLayoutEffect, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test, vi } from 'vitest';
+import { DIALOG_HISTORY_KEY } from '../components/dialog-history';
+import { navigationStore } from '../contexts/navigation-store';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 
 function Harness({ cancelled }: { cancelled?: () => void } = {}) {
@@ -38,6 +46,53 @@ test('explicit guard cancellation settles an awaiting navigation admission', () 
   fireEvent.click(screen.getByRole('button', { name: 'Trigger Guard' }));
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(cancelled).toHaveBeenCalledOnce();
+});
+
+test('a real Discard dialog closes without falsely superseding its own prepared navigation', async () => {
+  navigationStore.navigate('/guard-origin');
+  let settle!: (allowed: boolean) => void;
+  let pending: Promise<boolean> | undefined;
+  function GuardedNavigation() {
+    const [dirty, setDirty] = useState(true);
+    const { DiscardModal } = useUnsavedGuard(dirty);
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => {
+            pending = navigationStore.navigateWithPrecommit('/tasks/guarded', {
+              current: () => true,
+              signal: new AbortController().signal,
+              prepare: () => {
+                setDirty(false);
+                return new Promise<boolean>((resolve) => {
+                  settle = resolve;
+                });
+              },
+            });
+          }}
+        >
+          Open exact Task
+        </button>
+        <span data-testid="reactive-dirty">{String(dirty)}</span>
+        <DiscardModal />
+      </>
+    );
+  }
+  render(<GuardedNavigation />);
+  fireEvent.click(screen.getByRole('button', { name: 'Open exact Task' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+  await waitFor(() =>
+    expect(screen.getByTestId('reactive-dirty').textContent).toBe('false'),
+  );
+  await waitFor(() =>
+    expect(window.history.state?.[DIALOG_HISTORY_KEY]).toBeUndefined(),
+  );
+  await act(async () => {
+    settle(true);
+    expect(await pending).toBe(true);
+  });
+  expect(window.location.pathname).toBe('/tasks/guarded');
 });
 
 function CleanTransitionProbe({ observations }: { observations: boolean[] }) {

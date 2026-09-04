@@ -309,9 +309,18 @@ test('a denied exact open keeps the palette and does not read another message', 
 
 test('a new query never inherits completed source or empty verdicts during debounce', async () => {
   let finish!: (response: Response) => void;
+  const complete = {
+    ...search(),
+    state: 'complete',
+    sources: search().sources.map(({ providerId, owner }) => ({
+      providerId,
+      owner,
+      state: 'available',
+    })),
+  };
   const fetch = vi
     .fn()
-    .mockResolvedValueOnce(reply({ ...search(), state: 'complete' }))
+    .mockResolvedValueOnce(reply(complete))
     .mockImplementation(
       () =>
         new Promise<Response>((resolve) => {
@@ -321,17 +330,17 @@ test('a new query never inherits completed source or empty verdicts during debou
   vi.stubGlobal('fetch', fetch);
   mount();
   await screen.findByRole('option');
-  expect(screen.getByText('Tasks: unavailable')).toBeTruthy();
+  expect(screen.getByText('Tasks: available')).toBeTruthy();
   fireEvent.change(screen.getByRole('combobox'), {
     target: { value: 'new query' },
   });
   expect(screen.queryByRole('option')).toBeNull();
-  expect(screen.queryByText('Tasks: unavailable')).toBeNull();
+  expect(screen.queryByText('Tasks: available')).toBeNull();
   expect(screen.queryByText('No matching work on this Station')).toBeNull();
   await waitFor(() => expect(finish).toBeTypeOf('function'));
   expect(screen.queryByText('No matching work on this Station')).toBeNull();
   await act(async () => {
-    finish(reply({ ...search(), state: 'complete', results: [] }));
+    finish(reply({ ...complete, results: [] }));
   });
   expect(
     await screen.findByText('No matching work on this Station'),

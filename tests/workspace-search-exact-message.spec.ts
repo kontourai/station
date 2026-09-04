@@ -154,6 +154,7 @@ test('keyboard search reveals historical A canonical event despite current child
     const input = page.getByRole('combobox', {
       name: "Search this Station's work",
     });
+    await expect(input).toBeFocused();
     await input.fill(needle);
     const historical = page
       .getByRole('option')
