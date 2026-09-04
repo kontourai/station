@@ -189,6 +189,12 @@ until a fresh successful read. Real owner+Hono tests live in
 same-origin epoch replacement. CommandPalette/UI, additional source kinds, and
 supported-platform responsiveness qualification remain deferred.
 
+The SDK root publishes hooks/query keys only; direct operations stay on the
+existing React-free `/client` entry. Hooks load that client lazily after
+capturing request/scope, recheck cancellation, and use the existing live
+credential-authority guard. This avoids introducing a shared search chunk
+into the first-paint dependency table while retaining the full typed API.
+
 Search routes bind the same exact ingress principal and home-possession fact
 as conversation reads, not the server's OS display alias. A streaming bounded
 validator preserves the authenticated Request object and its WeakMap bindings.

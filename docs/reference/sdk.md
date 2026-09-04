@@ -392,6 +392,12 @@ read-only. Both require a host-captured scope matching `apiBase`, rejecting abse
 or mismatched scopes before transport. Older servers return `UnifiedSearchRequestError.kind: 'unsupported'`
 on 404/405, never fabricated empty results.
 
+Import `searchStation`, `resolveSearchOpen`, and `UnifiedSearchRequestError`
+from `@kontourai/station-sdk/client`. The root `@kontourai/station-sdk` entry
+exports `useUnifiedSearchQuery` and `unifiedSearchQueries`; its hook loads the
+existing client entry on demand, preserving captured request scope and abort
+signal across that asynchronous boundary.
+
 `useUnifiedSearchQuery(request, { requestScope, enabled? })` is the protected
 React wrapper. A host-captured `ApiRequestScope` is required: no scope means no
 request and no data. Query keys include exact API base and authority epoch;

@@ -3,19 +3,12 @@ import type {
   UnifiedSearchResponse,
 } from '@kontourai/station-contracts/unified-search';
 import { useQueryClient } from '@tanstack/react-query';
-import { searchStation } from './client/unified-search';
 import {
   type ApiRequestScope,
   isApiRequestScope,
   type QueryConfig,
   useApiQuery,
 } from './query-core';
-
-export {
-  resolveSearchOpen,
-  searchStation,
-  UnifiedSearchRequestError,
-} from './client/unified-search';
 
 export const unifiedSearchQueries = {
   search(request: UnifiedSearchRequest, scope: ApiRequestScope) {
@@ -48,8 +41,18 @@ export function useUnifiedSearchQuery(
       const ownedQuery = client.getQueryCache().find({ queryKey, exact: true });
       const ownedRequest = ownedQuery?.promise;
       try {
-        return await searchStation(scope.apiBase, request, {
-          requestScope: scope,
+        // Root hooks share the existing lazy client entry instead of making
+        // the search client a second shared chunk on the cold-load graph.
+        // Capture caller intent/authority before that import can yield.
+        const requestScope = {
+          apiBase: scope.apiBase,
+          authorityKey: scope.authorityKey,
+        };
+        const capturedRequest: UnifiedSearchRequest = structuredClone(request);
+        const { searchStation } = await import('./client/index');
+        if (signal?.aborted) throw new Error('Search request cancelled');
+        return await searchStation(requestScope.apiBase, capturedRequest, {
+          requestScope,
           signal,
         });
       } catch (error) {

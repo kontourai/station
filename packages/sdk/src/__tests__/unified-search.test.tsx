@@ -5,12 +5,8 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { setClientCredentialResolver } from '../client/http';
-import {
-  resolveSearchOpen,
-  searchStation,
-  unifiedSearchQueries,
-  useUnifiedSearchQuery,
-} from '../unified-search';
+import { resolveSearchOpen, searchStation } from '../client/index';
+import { unifiedSearchQueries, useUnifiedSearchQuery } from '../unified-search';
 
 vi.mock('../api', () => ({
   _getApiBase: vi.fn().mockResolvedValue('http://ambient.test'),
@@ -82,6 +78,49 @@ test('missing host scope disables search instead of choosing ambient cache or de
   const hook = renderHook(() => useUnifiedSearchQuery(request), { wrapper });
   await act(async () => {
     await Promise.resolve();
+  });
+  expect(fetch).not.toHaveBeenCalled();
+  expect(hook.result.current.data).toBeUndefined();
+  hook.unmount();
+  client.clear();
+});
+test('authority replacement during the lazy client boundary rejects before transport', async () => {
+  let active = scopeA;
+  setClientCredentialResolver(() => {
+    const captured = active;
+    return {
+      origin: captured.apiBase,
+      requestAuthority: { ...captured, isCurrent: () => active === captured },
+    };
+  });
+  const fetch = vi.fn();
+  vi.stubGlobal('fetch', fetch);
+  const { client, wrapper } = harness();
+  const hook = renderHook(
+    () => useUnifiedSearchQuery(request, { requestScope: scopeA }),
+    { wrapper },
+  );
+  active = scopeB;
+  await waitFor(() => expect(hook.result.current.error).not.toBeNull());
+  expect(fetch).not.toHaveBeenCalled();
+  expect(hook.result.current.data).toBeUndefined();
+  hook.unmount();
+  client.clear();
+});
+test('cancellation during the lazy client boundary prevents dispatch', async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal('fetch', fetch);
+  const { client, wrapper } = harness();
+  const hook = renderHook(
+    () => useUnifiedSearchQuery(request, { requestScope: scopeA }),
+    { wrapper },
+  );
+  expect(hook.result.current.isFetching).toBe(true);
+  await act(async () => {
+    await client.cancelQueries({
+      queryKey: unifiedSearchQueries.search(request, scopeA).queryKey,
+      exact: true,
+    });
   });
   expect(fetch).not.toHaveBeenCalled();
   expect(hook.result.current.data).toBeUndefined();
