@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ALL_DEPENDENCY_SCOPES } from '../classify-ci-change.mjs';
 import {
   AUDIT_SCOPES,
@@ -11,6 +11,7 @@ import {
   evaluateAuditPolicy,
   formatPolicyReport,
   parseAuditCommandResult,
+  runPolicyCli,
   selectAuditScopes,
   withAuditRetries,
 } from '../dependency-advisory-policy.mjs';
@@ -28,8 +29,11 @@ describe('dependency audit collection', () => {
       loadEvent: () => ({
         pull_request: { base: { sha: 'a' }, head: { sha: 'b' } },
       }),
+      // #1430: the classified range starts at the merge base of the two, not
+      // at the base branch tip the event carries.
+      resolveMergeBase: () => 'mergebase',
       classifyRange: ({ before, after }) => {
-        expect({ before, after }).toEqual({ before: 'a', after: 'b' });
+        expect({ before, after }).toEqual({ before: 'mergebase', after: 'b' });
         return {
           dependencies: false,
           classification: 'runtime-or-workflow',
@@ -42,7 +46,73 @@ describe('dependency audit collection', () => {
       required: false,
       reason: 'runtime-or-workflow',
       scopes: [],
+      range: { before: 'mergebase', after: 'b' },
     });
+  });
+
+  it('classifies a pull request from its merge base, not the base branch tip', () => {
+    // #1430: GitHub's `pull_request.base.sha` is the base branch's CURRENT
+    // tip, so diffing it against the head attributes every dependency change
+    // that landed on main after the branch was cut to this pull request. The
+    // range handed to the classifier must start at the merge base.
+    const classified: { before: string; after: string }[] = [];
+    const decision = dependencyAuditDecision({
+      env: {
+        GITHUB_ACTIONS: 'true',
+        GITHUB_EVENT_NAME: 'pull_request',
+        GITHUB_EVENT_PATH: '/event.json',
+      },
+      loadEvent: () => ({
+        pull_request: { base: { sha: 'basetip' }, head: { sha: 'head' } },
+      }),
+      resolveMergeBase: ({ before, after }) => {
+        expect({ before, after }).toEqual({ before: 'basetip', after: 'head' });
+        return 'mergebase';
+      },
+      classifyRange: ({ before, after }) => {
+        classified.push({ before, after });
+        return {
+          dependencies: false,
+          classification: 'runtime-or-workflow',
+          dependencyScopes: [],
+        };
+      },
+    });
+
+    expect(classified).toEqual([{ before: 'mergebase', after: 'head' }]);
+    expect(decision).toEqual({
+      required: false,
+      reason: 'runtime-or-workflow',
+      scopes: [],
+      range: { before: 'mergebase', after: 'head' },
+    });
+  });
+
+  it('leaves a merge-queue candidate to its own base sha', () => {
+    // `merge_group.base_sha` already describes the candidate's own boundary,
+    // so resolving a merge base here would be wrong as well as unnecessary.
+    const classified: { before: string; after: string }[] = [];
+    dependencyAuditDecision({
+      env: {
+        GITHUB_ACTIONS: 'true',
+        GITHUB_EVENT_NAME: 'merge_group',
+        GITHUB_EVENT_PATH: '/event.json',
+      },
+      loadEvent: () => ({
+        merge_group: { base_sha: 'candidatebase', head_sha: 'candidatehead' },
+      }),
+      resolveMergeBase: () => {
+        throw new Error('merge base must not be resolved for merge_group');
+      },
+      classifyRange: ({ before, after }) => {
+        classified.push({ before, after });
+        return { dependencies: true, classification: 'dependencies' };
+      },
+    });
+
+    expect(classified).toEqual([
+      { before: 'candidatebase', after: 'candidatehead' },
+    ]);
   });
 
   it('keeps scheduled and manual policy runs live', () => {
@@ -54,6 +124,7 @@ describe('dependency audit collection', () => {
       required: true,
       reason: 'schedule event',
       scopes: ['root', 'sdk', 'shared'],
+      range: null,
     });
   });
 
@@ -70,6 +141,7 @@ describe('dependency audit collection', () => {
       reason:
         'range classification failed closed: GITHUB_EVENT_PATH is missing',
       scopes: ['root', 'sdk', 'shared'],
+      range: null,
     });
   });
 
@@ -818,5 +890,93 @@ describe('selectAuditScopes', () => {
       expect(cwd).not.toContain('..');
       expect(existsSync(path.join(cwd, 'package-lock.json'))).toBe(true);
     }
+  });
+});
+
+describe('runPolicyCli reports the range it decided from (#1442)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function captureLog() {
+    const lines: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      lines.push(args.map(String).join(' '));
+    });
+    return lines;
+  }
+
+  it('names the range on the skip path', async () => {
+    const lines = captureLog();
+    const code = await runPolicyCli({
+      decide: () => ({
+        required: false,
+        reason: 'runtime-or-workflow',
+        scopes: [],
+        range: { before: 'aaaaaaaa1111', after: 'bbbbbbbb2222' },
+      }),
+      runAudits: () => {
+        throw new Error('must not audit when the decision skips');
+      },
+    });
+
+    expect(code).toBe(0);
+    // The shas, not merely the word "skipped": #1430 was invisible because
+    // the conclusion was logged and the evidence for it was not.
+    expect(lines.join('\n')).toContain('aaaaaaaa..bbbbbbbb');
+  });
+
+  it('names the range on the scanning path, which is the one that explained nothing', async () => {
+    const lines = captureLog();
+    const code = await runPolicyCli({
+      decide: () => ({
+        required: true,
+        reason: 'runtime-or-workflow',
+        scopes: ['root'],
+        range: { before: 'cccccccc3333', after: 'dddddddd4444' },
+      }),
+      runAudits: async () => {
+        const clean = auditWithHighAdvisory();
+        clean.vulnerabilities = {};
+        clean.metadata.vulnerabilities = {
+          info: 0,
+          low: 0,
+          moderate: 0,
+          high: 0,
+          critical: 0,
+          total: 0,
+        };
+        return [{ scope: 'root', audit: clean }];
+      },
+    });
+
+    // Deliberately not asserting the exit code here. This test's subject is
+    // the message, and the verdict it returns depends on the repo's real
+    // exception/residual config, which other tests in this file own. Pinning
+    // it here would make an unrelated config edit fail a logging test.
+    expect(typeof code).toBe('number');
+    const scanLine = lines.find((line) => line.includes('scanning'));
+    expect(scanLine).toBeDefined();
+    expect(scanLine).toContain('cccccccc..dddddddd');
+  });
+
+  it('says a decision has no range rather than inventing one', async () => {
+    const lines = captureLog();
+    await runPolicyCli({
+      decide: () => ({
+        required: false,
+        reason: 'runtime-or-workflow',
+        scopes: [],
+        range: null,
+      }),
+      runAudits: () => {
+        throw new Error('must not audit when the decision skips');
+      },
+    });
+
+    const text = lines.join('\n');
+    expect(text).toContain('no range');
+    // A placeholder that reads like a range is the failure mode this guards.
+    expect(text).not.toMatch(/[0-9a-f]{8}\.\.[0-9a-f]{8}/);
   });
 });

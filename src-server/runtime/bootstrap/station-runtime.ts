@@ -24,7 +24,10 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
-import type { MCPConnection } from '@kontourai/station-shared/mcp';
+import {
+  type MCPConnection,
+  MCPLocalConnectionCustody,
+} from '@kontourai/station-shared/mcp';
 import {
   orchestrationStoreQuarantineNotice,
   quarantineOrchestrationStore,
@@ -388,6 +391,7 @@ export class StationRuntime {
   >;
   private voltAgent?: VoltAgent;
   private mcpConfigs: Map<string, MCPConnection> = new Map();
+  private readonly mcpCustody = new MCPLocalConnectionCustody();
   private mcpConnectionStatus: Map<
     string,
     { connected: boolean; error?: string }
@@ -1031,6 +1035,7 @@ export class StationRuntime {
         agentTools: this.agentTools,
         agentHooks: this.agentHooksMap,
         mcpConfigs: this.mcpConfigs,
+        mcpCustody: this.mcpCustody,
         mcpConnectionStatus: this.mcpConnectionStatus,
         integrationMetadata: this.integrationMetadata,
         toolNameMapping: this.toolNameMapping,
@@ -2592,6 +2597,7 @@ export class StationRuntime {
           this.port,
           provenanceGeneration!,
           this.secretBindingAdministration,
+          this.mcpCustody,
         )),
         // The built-in default bypasses persisted-agent framework loading.
         // Add only the private native tool here, never through MCP/public
@@ -2793,6 +2799,7 @@ export class StationRuntime {
           agentTools: this.agentTools,
           agentSpecs: this.agentSpecs,
           mcpConfigs: this.mcpConfigs,
+          mcpCustody: this.mcpCustody,
           mcpConnectionStatus: this.mcpConnectionStatus,
           integrationMetadata: this.integrationMetadata,
           toolNameMapping: this.toolNameMapping,
@@ -3477,6 +3484,7 @@ export class StationRuntime {
       logger: this.logger,
       serverPort: this.port,
       integrationSecretResolver: this.secretBindingAdministration,
+      mcpCustody: this.mcpCustody,
       modelCatalog: this.modelCatalog,
       usageAggregator: this.usageAggregator,
       listProviderConnections: () =>
@@ -3800,6 +3808,7 @@ export class StationRuntime {
         voltAgent: this.voltAgent,
         mcpConfigs: this.mcpConfigs,
         retiredMcpConfigs: this.retiredMcpConfigs,
+        mcpCustody: this.mcpCustody,
         activeAgents: this.activeAgents,
         acpBridge: this.acpBridge,
         connectionService: this.connectionService,
@@ -3838,8 +3847,8 @@ export class StationRuntime {
     }
     try {
       await Promise.all([
-        MCPManager.releaseAllNativeStationControlConnections(),
-        releaseAllNativeStationControlClients(),
+        MCPManager.releaseAllNativeStationControlConnections(this.mcpCustody),
+        releaseAllNativeStationControlClients(this.mcpCustody),
       ]);
     } catch (error) {
       failures.push(error);

@@ -120,6 +120,11 @@ import {
 import { createSqliteOperationalEventDeliveryCoordinator } from '../operational-events/sqlite-operational-event-delivery.js';
 import { createSqliteOperationalEventCoordinator } from '../operational-events/sqlite-operational-event-outbox.js';
 import {
+  createPackageMcpAdmissionJournal as composePackageMcpAdmissionJournal,
+  PACKAGE_MCP_ADMISSION_SCHEMA,
+  type PackageMcpAdmissionJournal,
+} from '../plugins/package-mcp-admission.js';
+import {
   createIsolatedTranscriptReads,
   type IsolatedTranscriptReads,
 } from '../search/isolated-transcript-search.js';
@@ -1493,6 +1498,7 @@ export class EventStore {
   private isolatedTranscriptReads?: IsolatedTranscriptReads;
   private transcriptReadClose?: Promise<unknown>;
   private storeClosed = false;
+  private packageMcpAdmissionJournal?: PackageMcpAdmissionJournal;
 
   constructor(
     dbPath: string,
@@ -1510,6 +1516,8 @@ export class EventStore {
     private readonly sessionWorkItemAdmissionFault?: () => void,
     /** Private fault seam proving no admission is taken before SAVEPOINT opens. */
     private readonly sessionWorkItemSavepointOpenFault?: () => void,
+    /** Private fault seam for unknown package-admission commit acknowledgement. */
+    private readonly packageMcpCommitFault?: () => void,
   ) {
     this.databasePath = dbPath;
     this.turnDedupMaxEntries = turnDedupMaxEntries;
@@ -1625,6 +1633,12 @@ export class EventStore {
     applyWalJournalMode(this.db, { store: 'orchestration event store' });
     try {
       this.db.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      this.db.exec(PACKAGE_MCP_ADMISSION_SCHEMA);
+      this.db
+        .prepare(
+          'INSERT OR IGNORE INTO package_mcp_admission_journal(singleton, journal_id, state_json) VALUES (1, ?, ?)',
+        )
+        .run(randomUUID(), JSON.stringify({ version: 1, generations: [] }));
       this.ensureObservedAtColumn();
       this.ensureUsageReceiptIndex();
       this.db.exec(CONVERSATION_SESSION_LINEAGE_MIGRATION);
@@ -7652,6 +7666,18 @@ export class EventStore {
     return createAdoptionLedger({ coordinator });
   }
 
+  /** Same already-open home store; package callers never open another SQLite path. */
+  createPackageMcpAdmissionJournal(): PackageMcpAdmissionJournal {
+    if (this.messageSearchBackfillClosed)
+      throw new Error('Package MCP journal owner is closing');
+    this.packageMcpAdmissionJournal ??= composePackageMcpAdmissionJournal(
+      this.db,
+      this.recoveryLedgerOwner,
+      this.packageMcpCommitFault,
+    );
+    return this.packageMcpAdmissionJournal;
+  }
+
   /** Builds the one private direct-invocation authority for this EventStore. */
   private composeNativeInvocationRuns(): ReturnType<
     typeof createNativeInvocationRuns
@@ -10582,6 +10608,7 @@ export class EventStore {
   }
 
   close(): OperationalEventSubscriptionCloseOutcome {
+    this.packageMcpAdmissionJournal?.closeAdmission();
     this.messageSearchBackfillClosed = true;
     if (this.storeClosed) return { kind: 'closed' };
     if (

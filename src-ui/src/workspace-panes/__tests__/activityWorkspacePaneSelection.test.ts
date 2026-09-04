@@ -17,11 +17,19 @@ import { selectClientWorkspacePaneRenderer } from '../workspacePaneRendererSelec
 
 describe('Activity is a Workspace Pane like any other', () => {
   test('the builtin registry resolves the canonical Activity descriptor', () => {
-    // ActivityView mounts `ActivityWorkspacePane` directly rather than
-    // through this lookup, to keep the registry's component table off the
-    // route chunk (Home's reasoning). This only proves that the registry
-    // resolves Activity's canonical descriptor; route-to-component
-    // attribution is covered at the route.
+    // `ActivityRegionShell` mounts `ActivityWorkspacePane` directly rather
+    // than through this lookup, to keep the registry's component table off
+    // the eager chunk (Home's reasoning). This proves the registry resolves
+    // Activity's canonical descriptor and nothing more.
+    //
+    // Say the gap plainly: NO Activity placement consults
+    // `selectClientWorkspacePaneRenderer`. The retired `/activity` route was
+    // the only one that did, and it refused to mount when selection declined.
+    // Both surviving placements — this shell and the Developer archive embed
+    // — mount the builtin unconditionally, so a plugin that overrode the
+    // Activity descriptor would be ignored rather than honoured or refused.
+    // Home keeps its equivalent gate (`HomeViewPaneSelection.test.tsx`);
+    // Activity has none. Restoring it belongs at the placement, not here.
     expect(
       getBuiltinWorkspacePaneRenderer(WORKSPACE_ACTIVITY_PANE_DESCRIPTOR),
     ).not.toBeNull();

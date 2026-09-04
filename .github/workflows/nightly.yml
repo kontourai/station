@@ -1,7 +1,9 @@
 name: Nightly
 
-# Cadence and test authority stay here. Native publishing is intentionally a
-# separate reusable cohort; the CLI remains an independent npm publication.
+# Cadence and test authority stay here. Native work is two reusable phases:
+# staging (needs only the source gate) and the publishing cohort (needs the
+# exact-SHA full-regression receipt); the CLI remains an independent npm
+# publication.
 on:
   schedule:
     - cron: '0 9 * * *'
@@ -15,6 +17,7 @@ concurrency: { group: nightly, cancel-in-progress: false }
 
 jobs:
   fleet-staging:
+    name: 3 · Stage portable fleet evidence
     needs: [test-gate, full-regression]
     if: ${{ github.ref == 'refs/heads/main' && needs.test-gate.outputs.source_sha == github.sha && needs.full-regression.result == 'success' }}
     permissions: { contents: read, attestations: write, id-token: write }
@@ -23,6 +26,7 @@ jobs:
       source_sha: ${{ needs.test-gate.outputs.source_sha }}
 
   test-gate:
+    name: 1 · Source gate (lint, typecheck, browser smoke)
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
     timeout-minutes: 45
@@ -48,7 +52,7 @@ jobs:
           test "$source_sha" = "$GITHUB_SHA"
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc }
+        with: { node-version-file: .nvmrc, cache: npm }
       - run: npm run dependencies:ci
       - name: Lint
         run: npm run lint:check
@@ -87,26 +91,47 @@ jobs:
           retention-days: 14
 
   full-regression:
-    name: Nightly exact-SHA full regression
+    name: 2 · Full regression gate
     needs: [test-gate]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
     uses: ./.github/workflows/full-regression.yml
     with:
       source_sha: ${{ needs.test-gate.outputs.source_sha }}
 
-  native-cohort:
-    needs: [test-gate, full-regression]
-    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha }}
-    # Reusable workflows can only reduce the caller's token. The cohort writes
-    # immutable version reservations, recovery locks, and promotion fences.
+  # Staging (build, sign, notarize, stage receipts) publishes nothing, so it
+  # needs only the source gate and runs alongside the full-regression receipt
+  # instead of behind it (#1453). Promotion below still requires that receipt.
+  native-stage:
+    name: 2 · Stage native builds
+    needs: [test-gate]
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs['test-gate'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha }}
+    # Reusable workflows can only reduce the caller's token. Staging writes the
+    # immutable version reservation tag and attests the staged artifacts.
     permissions: { contents: write, id-token: write, attestations: write }
-    uses: ./.github/workflows/nightly-native-cohort.yml
+    uses: ./.github/workflows/nightly-native-stage.yml
     with:
       source_sha: ${{ needs.test-gate.outputs.source_sha }}
       rebuild_index: ${{ inputs.rebuild_index }}
     secrets: inherit
 
+  native-cohort:
+    name: 3 · Publish native cohort
+    needs: [test-gate, full-regression, native-stage]
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' && needs['native-stage'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha }}
+    # Reusable workflows can only reduce the caller's token. The cohort writes
+    # recovery locks and promotion fences and attests the final receipt.
+    permissions: { contents: write, id-token: write, attestations: write }
+    uses: ./.github/workflows/nightly-native-cohort.yml
+    with:
+      source_sha: ${{ needs.test-gate.outputs.source_sha }}
+      build: ${{ needs.native-stage.outputs.build }}
+      marketing_version: ${{ needs.native-stage.outputs.marketing_version }}
+      bundle_version: ${{ needs.native-stage.outputs.bundle_version }}
+      reservation_tag: ${{ needs.native-stage.outputs.reservation_tag }}
+    secrets: inherit
+
   nightly-cli:
+    name: 3 · Publish CLI to npm nightly
     needs: [test-gate, full-regression]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-22.04
@@ -118,7 +143,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc }
+        with: { node-version-file: .nvmrc, cache: npm }
       - id: cli_source_decide
         name: Skip CLI publication when nightly already names this source
         env:
@@ -162,7 +187,10 @@ jobs:
           test -n "$jwt"
           exchange=$(mktemp)
           status=$(curl -sS --max-time 30 -o "$exchange" -w '%{http_code}' -X POST -H 'Accept: application/json' -H "Authorization: Bearer $jwt" 'https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/@kontourai%2fstation-cli')
-          if [ "$status" != 200 ]; then skip "No confirmed npm trusted publisher for @kontourai/station-cli (HTTP $status)."; fi
+          case "$status" in
+            2[0-9][0-9]) ;;
+            *) skip "No confirmed npm trusted publisher for @kontourai/station-cli (HTTP $status)." ;;
+          esac
           node -e 'const x=JSON.parse(require("node:fs").readFileSync(process.argv[1]));if(typeof x.token!=="string"||!x.token)process.exit(1)' "$exchange"
           echo 'trusted_publisher=true' >> "$GITHUB_OUTPUT"
       - id: npm_idempotency

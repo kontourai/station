@@ -780,10 +780,17 @@ describe('CommandPalette', () => {
     fireEvent.change(screen.getByRole('combobox'), {
       target: { value: 'activity' },
     });
+    // #928: `/activity` is not the only wrong destination any more — the
+    // registry's `route` field now holds the surface's deep link, so a
+    // palette entry that fell through to `navigate(surface.route)` would
+    // reach a real URL and look like it worked. Count the calls across the
+    // click instead of naming one absent path. (Mocks are not auto-cleared
+    // in this suite, so the baseline is read rather than assumed to be 0.)
+    const navigationsBefore = navigateMock.mock.calls.length;
     fireEvent.click(screen.getByRole('option', { name: /^Activity/ }));
 
     expect(showSurfaceMock).toHaveBeenCalledWith('activity');
-    expect(navigateMock).not.toHaveBeenCalledWith('/activity');
+    expect(navigateMock.mock.calls.length).toBe(navigationsBefore);
   });
 
   test('IME Enter does not run the highlighted command, then plain Enter does', async () => {

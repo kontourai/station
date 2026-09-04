@@ -48,7 +48,7 @@ const certificate = {
   certificateIssuer: 'CN=Fulcio',
   issuer: 'https://token.actions.githubusercontent.com',
   subjectAlternativeName:
-    'https://github.com/kontourai/station/.github/workflows/nightly-native-cohort.yml@refs/heads/main',
+    'https://github.com/kontourai/station/.github/workflows/nightly-native-stage.yml@refs/heads/main',
   runInvocationURI:
     'https://github.com/kontourai/station/actions/runs/112061/attempts/1',
 };
@@ -83,7 +83,7 @@ describe('protected release cohort verifier parsers', () => {
       '--source-digest',
       sourceSha,
       '--cert-identity',
-      'https://github.com/kontourai/station/.github/workflows/nightly-native-cohort.yml@refs/heads/main',
+      'https://github.com/kontourai/station/.github/workflows/nightly-native-stage.yml@refs/heads/main',
       '--cert-oidc-issuer',
       'https://token.actions.githubusercontent.com',
       '--deny-self-hosted-runners',
@@ -113,6 +113,8 @@ describe('protected release cohort verifier parsers', () => {
       ),
     ).toMatchObject({
       subjectDigest: `sha256:${record.sha256}`,
+      signerWorkflow:
+        'kontourai/station/.github/workflows/nightly-native-stage.yml',
       authenticatedWorkflowRunId: '112061',
       verifiedTimestampDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     });

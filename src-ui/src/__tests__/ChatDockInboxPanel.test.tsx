@@ -418,7 +418,7 @@ describe('ChatDockInboxPanel', () => {
     expect(onOpenSession).not.toHaveBeenCalled();
   });
 
-  it('navigates to /activity for a session Station cannot rehydrate (read-only-attached)', () => {
+  it('reveals the Activity surface for a session Station cannot rehydrate (read-only-attached)', () => {
     const onOpenConversation = vi.fn();
     const onOpenSession = vi.fn();
     const readOnlyItem: HomeWorkItem = {
@@ -461,7 +461,7 @@ describe('ChatDockInboxPanel', () => {
   // `useOpenConversation.test.tsx` for the tab-teardown proof at that
   // deeper layer) both resolve `false` here, so this one component-level
   // test covers the `onOpenSession` fallback for both causes.
-  it('falls back to /activity when rehydrating fails (agent no longer exists)', async () => {
+  it('falls back to the Activity surface when rehydrating fails (agent no longer exists)', async () => {
     const onOpenConversation = vi.fn().mockResolvedValue(false);
     const onOpenSession = vi.fn();
     const orphanedItem: HomeWorkItem = {

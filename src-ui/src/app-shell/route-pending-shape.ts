@@ -76,9 +76,7 @@ function baseShape(
  * pane opens on a detail without changing its identity belongs here and not
  * there. Deliberately a switch and not a truthiness test over unknown fields:
  * `plugins`, `review-queue`, `connections-models`, `connections-engines`,
- * `connections-tools` and bare `agents` name no record and open on their list,
- * and Activity without an id is the "all sessions" list rather than one
- * session.
+ * `connections-tools` and bare `agents` name no record and open on their list.
  */
 export function routeOpensDetailPane(view: NavigationView): boolean {
   switch (view.type) {
@@ -88,8 +86,6 @@ export function routeOpensDetailPane(view: NavigationView): boolean {
     case 'connections-engine-edit':
     case 'connections-tool-edit':
       return true;
-    case 'activity':
-      return view.sessionId !== undefined;
     // `/guidance/new` selects `__new__` in the tab's own pane, so any selected
     // id — including the literal `new` — opens the detail.
     case 'guidance':

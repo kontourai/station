@@ -303,12 +303,12 @@ export function DelegationLauncher({
   };
 
   // #1180: mounted from both `ChatDock` (a sibling of `<main>`, never inside
-  // a `PageFrame`) and `SessionsView`'s `/activity` route (a plain sibling of
+  // a `PageFrame`) and `SessionsView`'s Activity placement (a plain sibling of
   // `SplitPaneLayout`, inside the frame `PageFrame` marks `inert` while that
   // layout's mobile detail sheet is open — PageFrame.tsx:155). This is a
   // hand-rolled overlay, not a `ResponsiveDialogSurface` consumer, so unlike
   // the other sites in this class it never had a shared portal to inherit;
-  // rendered in place on `/activity` it fell inside the inert subtree, visible
+  // rendered in place on the Activity surface it fell inside the inert subtree, visible
   // but with `.focus()` a no-op and every control unclickable. `createPortal`
   // to `document.body` — the same escape `ConfirmModal` and `PluginModalStack`
   // (#1131) already use — is unconditional, so the ChatDock mount is
