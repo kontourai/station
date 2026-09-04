@@ -101,6 +101,25 @@ describe('resolveProjectLayoutRendererKind', () => {
     ).toBe('layout-view');
   });
 
+  test('a contributed layout typed coding renders its declared tabs, not the Coding host', () => {
+    // Review round 1 (LOW-2): the contributed check must precede the coding
+    // branch. A plugin's free-form `type` may intentionally match a built-in
+    // type; its declared tabs remain the rendering authority.
+    expect(
+      resolveProjectLayoutRendererKind({
+        type: 'coding',
+        config: {},
+        catalogContribution: contributed('plugin'),
+      }),
+    ).toBe('layout-view');
+    expect(
+      resolveProjectLayoutRendererKind({
+        type: 'coding',
+        config: { plugin: 'fixture' },
+      }),
+    ).toBe('layout-view');
+  });
+
   test('only the Station-owned chat layout renders the Chat workspace placement', () => {
     expect(rendersChatWorkspaceLayout({ type: 'chat', config: {} })).toBe(true);
     expect(rendersChatWorkspaceLayout({ type: 'chat' })).toBe(true);
@@ -108,5 +127,16 @@ describe('resolveProjectLayoutRendererKind', () => {
       false,
     );
     expect(rendersChatWorkspaceLayout(undefined)).toBe(false);
+    // Review round 1 (LOW-3): the other registry entries own their view too,
+    // but they do not suspend the ambient regions. Only `chat` does.
+    expect(rendersChatWorkspaceLayout({ type: 'tasks', config: {} })).toBe(
+      false,
+    );
+    expect(
+      rendersChatWorkspaceLayout({ type: 'session-board', config: {} }),
+    ).toBe(false);
+    expect(rendersChatWorkspaceLayout({ type: 'coding', config: {} })).toBe(
+      false,
+    );
   });
 });
