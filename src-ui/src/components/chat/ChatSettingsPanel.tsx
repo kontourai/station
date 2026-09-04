@@ -7,8 +7,6 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
-import type { DockMode } from '../../types';
-import { DockPlacementChoices } from '../chat-dock/DockPlacementControl';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { Toggle } from '../Toggle';
 
@@ -22,19 +20,6 @@ interface ChatSettingsPanelProps {
   setShowReasoning: (show: boolean) => void;
   showToolDetails: boolean;
   setShowToolDetails: (show: boolean) => void;
-  /** The placement in EFFECT on this device — what the picker marks active. */
-  dockMode: DockMode;
-  /**
-   * The placement this device has STORED, which on a narrow screen is not the
-   * one in effect (archive#3928). They are different facts and the panel needs
-   * both: one to say what is happening, the other to say what is being kept.
-   * Conflating them made the "remembered" sentence unreachable — it compared
-   * the effective placement against the only available one, which are equal by
-   * construction, so the reassurance never rendered in the case it exists for.
-   */
-  storedDockSlotPlacement: DockMode;
-  availableDockSlotPlacements: readonly DockMode[];
-  onDockModeChange: (mode: DockMode) => void;
   autoHideEnabled: boolean;
   setAutoHideEnabled: (v: boolean) => void;
   /**
@@ -53,17 +38,6 @@ interface ChatSettingsPanelProps {
   };
 }
 
-const DOCK_MODE_OPTIONS: { value: DockMode; label: string; desc: string }[] = [
-  { value: 'left', label: 'Left', desc: 'Side-by-side' },
-  { value: 'bottom', label: 'Bottom', desc: 'Inline below content' },
-  { value: 'right', label: 'Right', desc: 'Side-by-side' },
-];
-
-/** One label map, so the buttons and the stated placement cannot disagree. */
-function dockModeLabel(mode: DockMode): string {
-  return DOCK_MODE_OPTIONS.find((opt) => opt.value === mode)?.label ?? 'Bottom';
-}
-
 export function ChatSettingsPanel({
   isOpen,
   onClose,
@@ -74,10 +48,6 @@ export function ChatSettingsPanel({
   setShowReasoning,
   showToolDetails,
   setShowToolDetails,
-  dockMode,
-  storedDockSlotPlacement,
-  availableDockSlotPlacements,
-  onDockModeChange,
   autoHideEnabled,
   setAutoHideEnabled,
   sessionSummary,
@@ -109,48 +79,6 @@ export function ChatSettingsPanel({
       <p className="chat-settings-modal__caption">
         Saved to this device only — never sent to the server.
       </p>
-
-      {/*
-        One placement available — a phone — is answered, not offered, and not
-        hidden (station#3928).
-
-        Not offered: three buttons where two cannot apply is a control that
-        lies, and a DISABLED button is worse still (skipped in the tab order,
-        explaining nothing). Not hidden either: an absent affordance is
-        indistinguishable from one Station never had, so someone who chose
-        Right on their desktop would open their phone, find the chat at the
-        bottom, and have nothing on screen to tell them the choice survived —
-        the likely reading being that it was lost.
-
-        So it states the derivation instead: what this screen uses, why, and
-        what is being remembered for the screen that can use it.
-*/}
-      <fieldset className="chat-settings-modal__section">
-        <legend className="chat-settings-modal__label">Dock Position</legend>
-        {availableDockSlotPlacements.length > 1 ? (
-          <>
-            <div className="chat-settings-modal__control" role="menu">
-              <DockPlacementChoices
-                availablePlacements={availableDockSlotPlacements}
-                effectivePlacement={dockMode}
-                onSelect={onDockModeChange}
-              />
-            </div>
-            <p className="chat-settings-modal__hint">
-              Position the chat panel · ⌘⇧M to cycle
-            </p>
-          </>
-        ) : (
-          <p className="chat-settings-modal__hint">
-            {dockModeLabel(availableDockSlotPlacements[0] ?? 'bottom')} — the
-            only position this screen can use.
-            {storedDockSlotPlacement !==
-            (availableDockSlotPlacements[0] ?? 'bottom')
-              ? ` Your ${dockModeLabel(storedDockSlotPlacement).toLowerCase()} preference is remembered for a wider screen.`
-              : ''}
-          </p>
-        )}
-      </fieldset>
 
       <fieldset className="chat-settings-modal__section">
         <legend className="chat-settings-modal__label">Font Size</legend>

@@ -28,10 +28,6 @@
  */
 
 import {
-  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-  WORKSPACE_ACTIVITY_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-activity-pane';
-import {
   createWorkspaceChatPaneInstance,
   WORKSPACE_CHAT_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-chat-pane';
@@ -228,39 +224,41 @@ describe('the dock project binding survives an occupant switch (station#4525 Pha
     ).toBe('alpha');
   });
 
-  test('bind alpha, hop Home -> Activity -> Chat (via undockOccupant) — binding intact through multiple switches', async () => {
+  test('bind alpha, repeat Home to Chat switches through both restore paths — binding remains intact', async () => {
     const action = await dockedAction();
     await act(async () => screen.getByText('Bind alpha').click());
-    expect(boundSlug()).toBe('alpha');
 
-    act(() => {
+    act(() =>
       action.dockPane(
         WORKSPACE_HOME_PANE_DESCRIPTOR,
         WORKSPACE_HOME_PANE_INSTANCE,
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
-    });
-
-    act(() => {
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
+    );
+    act(() => action.undockOccupant());
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+    );
+    act(() =>
       action.dockPane(
-        WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-        WORKSPACE_ACTIVITY_PANE_INSTANCE,
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-activity-occupant')).not.toBeNull();
-    });
-
-    // `undockOccupant` is the host's own "remove from the dock" restore path
-    // production's other route back to a fresh Chat occupant.
-    act(() => {
-      action.undockOccupant();
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
-    });
+        WORKSPACE_HOME_PANE_DESCRIPTOR,
+        WORKSPACE_HOME_PANE_INSTANCE,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
+    );
+    act(() =>
+      action.dockPane(
+        WORKSPACE_CHAT_PANE_DESCRIPTOR,
+        createWorkspaceChatPaneInstance()!,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+    );
 
     expect(boundSlug()).toBe('alpha');
   });

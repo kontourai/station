@@ -315,6 +315,89 @@ describe('model picker persistence projection', () => {
     expect(JSON.stringify(result)).not.toContain('token');
   });
 
+  // #1208 review: identity is decided server-side from the route family. The
+  // client must carry a well-formed reference through and must NOT mint one
+  // itself -- a route whose id happens to be curated but arrived undecorated
+  // stays undecorated, because the server is the only party that knows which
+  // family issued that id.
+  it('carries server-decided identity through and never derives its own', async () => {
+    const identity = {
+      canonicalId: 'anthropic:claude-sonnet-4-5',
+      verifiedAgainst: 'reviewed 2026-08-31',
+    };
+    const responses = [
+      {
+        success: true,
+        data: [
+          {
+            id: 'claude',
+            kind: 'agent',
+            type: 'claude',
+            name: 'Claude Code',
+            enabled: true,
+            capabilities: ['agent-runtime'],
+            status: 'ready',
+            prerequisites: [],
+            config: { engineId: 'claude' },
+            setup: { state: 'ready', detected: true, configured: true },
+            runtimeCatalog: {
+              source: 'live',
+              fetchedAt: '2026-08-14T00:00:00.000Z',
+              reason: null,
+              models: [
+                {
+                  id: 'sonnet',
+                  name: 'Sonnet',
+                  originalId: 'sonnet',
+                  canonicalModelIdentity: identity,
+                },
+                {
+                  id: 'claude-sonnet-4-5',
+                  name: 'Undecorated',
+                  originalId: 'claude-sonnet-4-5',
+                },
+                {
+                  id: 'bad',
+                  name: 'Bad',
+                  originalId: 'bad',
+                  canonicalModelIdentity: 'anthropic:x',
+                },
+              ],
+              builtInModels: [],
+            },
+          },
+        ],
+      },
+      { success: true, data: [] },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => ({
+        json: async () => responses.shift(),
+      })),
+    );
+    reactQueryMocks.useQuery.mockImplementation((options) => options);
+    const { result: queryResult } = renderHook(() =>
+      useModelPickerCatalogQuery(),
+    );
+    const query = queryResult.current as unknown as {
+      queryFn: (context: { signal: AbortSignal }) => Promise<{
+        agentConnections: Array<{
+          runtimeCatalog: { models: Array<Record<string, unknown>> };
+        }>;
+      }>;
+    };
+    const result = await query.queryFn({
+      signal: new AbortController().signal,
+    });
+    const models = result.agentConnections[0]!.runtimeCatalog.models;
+    expect(models.map((m) => [m.id, m.canonicalModelIdentity])).toEqual([
+      ['sonnet', identity],
+      ['claude-sonnet-4-5', undefined],
+      ['bad', undefined],
+    ]);
+  });
+
   /**
    * station#3390. `connection.setup.state` was read without a guard, so ONE
    * record missing `setup` threw out of the map and BOTH lists came back empty

@@ -60,6 +60,8 @@ let registeredShortcutIdentity = {
   modifiers: ['cmd'] as ('cmd' | 'ctrl' | 'shift' | 'alt')[],
   description: 'Run registered command',
 };
+let additionalRegisteredShortcutIdentities: (typeof registeredShortcutIdentity)[] =
+  [];
 let shortcutWhenEnabled = true;
 
 // Counts index rebuilds. `rankCommands` runs inside the palette's `useMemo`
@@ -152,6 +154,11 @@ vi.mock('../contexts/KeyboardShortcutsContext', () => ({
         handler: registeredCommand,
         ...registeredShortcutAvailability,
       },
+      ...additionalRegisteredShortcutIdentities.map((identity) => ({
+        ...identity,
+        handler: registeredCommand,
+        ...registeredShortcutAvailability,
+      })),
       // The real registry always carries these nine, whatever the session
       // count is — that is exactly SHELL-19's defect, so the harness has to
       // reproduce it or the assertion below proves nothing.
@@ -216,6 +223,7 @@ afterEach(() => {
     modifiers: ['cmd'],
     description: 'Run registered command',
   };
+  additionalRegisteredShortcutIdentities = [];
   shortcutWhenEnabled = true;
   commandFrecencyStorage.reset();
 });
@@ -963,21 +971,35 @@ describe('CommandPalette', () => {
     }
   });
 
-  test('projects the registered region toggle into the command palette', async () => {
+  test('projects both registered region toggles into the command palette', async () => {
     const chat = REGION_SURFACE_REGISTRY.get('chat');
+    const activity = REGION_SURFACE_REGISTRY.get('activity');
     expect(chat).toBeTruthy();
+    expect(activity).toBeTruthy();
     registeredShortcutIdentity = {
       id: chat!.shortcut.id,
       key: chat!.shortcut.key,
       modifiers: [...chat!.shortcut.modifiers],
       description: `Toggle ${chat!.title} region`,
     };
+    additionalRegisteredShortcutIdentities = [
+      {
+        id: activity!.shortcut.id,
+        key: activity!.shortcut.key,
+        modifiers: [...activity!.shortcut.modifiers],
+        description: `Toggle ${activity!.title} region`,
+      },
+    ];
 
     await renderCommandPalette();
     open();
 
     fireEvent.click(screen.getByRole('option', { name: /Toggle Chat region/ }));
-    expect(registeredCommand).toHaveBeenCalledTimes(1);
+    open();
+    fireEvent.click(
+      screen.getByRole('option', { name: /Toggle Activity region/ }),
+    );
+    expect(registeredCommand).toHaveBeenCalledTimes(2);
   });
 
   // #766 item 4: the Report-a-problem entry point is a palette action that
