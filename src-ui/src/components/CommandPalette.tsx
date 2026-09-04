@@ -246,12 +246,18 @@ export function CommandPalette() {
   const { data: projects = [] } = useProjectsQuery();
   const { data: skills = [] } = useSkillsQuery();
   const pluginsQuery = usePluginsQuery();
+  type CommandPlugin = Extract<
+    NonNullable<typeof pluginsQuery.data>[number],
+    { version: string }
+  >;
   // Rejected inventory rows carry no executable plugin identity.
   const plugins = useMemo(
     () =>
       pluginsQuery.isError
         ? []
-        : (pluginsQuery.data ?? []).filter((plugin) => !('status' in plugin)),
+        : (pluginsQuery.data ?? []).filter(
+            (plugin): plugin is CommandPlugin => !('status' in plugin),
+          ),
     [pluginsQuery.isError, pluginsQuery.data],
   );
   const pluginsRef = useRef(plugins);
