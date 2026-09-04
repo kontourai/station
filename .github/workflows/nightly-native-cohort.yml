@@ -15,9 +15,11 @@ on:
         description: The staging phase's exact `build` output; anything but 'true' skips every job.
         required: true
         type: string
-      marketing_version: { required: true, type: string }
-      bundle_version: { required: true, type: string }
-      reservation_tag: { required: true, type: string }
+      # Empty on a no-op night (build != 'true'): the staging phase skips the
+      # reservation, so these are optional and every job gates on `build`.
+      marketing_version: { required: false, type: string }
+      bundle_version: { required: false, type: string }
+      reservation_tag: { required: false, type: string }
 
 permissions:
   contents: read
@@ -485,7 +487,7 @@ jobs:
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
           JOB_RESULTS: >-
-            {"promotion-fence":"${{ needs.create-promotion-fence.result }}","promote-android":"${{ needs.promote-android.result }}","promote-macos":"${{ needs.promote-macos.result }}","deliver-ios":"${{ needs.deliver-ios.result }}","protected-finalize":"${{ needs.protected-finalize.result }}","record-native-completion":"${{ needs.record-native-completion.result }}","final-attestation":"${{ needs.record-native-completion.outputs.final_attestation }}","app-token":"${{ needs.record-native-completion.outputs.app_token }}","ledger":"${{ needs.record-native-completion.outputs.ledger }}","tag":"${{ needs.record-native-completion.outputs.tag }}","promotion-fence-clear":"${{ needs.record-native-completion.outputs.promotion_fence }}"}
+            {"stage":"${{ inputs.build }}","promotion-fence":"${{ needs.create-promotion-fence.result }}","promote-android":"${{ needs.promote-android.result }}","promote-macos":"${{ needs.promote-macos.result }}","deliver-ios":"${{ needs.deliver-ios.result }}","protected-finalize":"${{ needs.protected-finalize.result }}","record-native-completion":"${{ needs.record-native-completion.result }}","final-attestation":"${{ needs.record-native-completion.outputs.final_attestation }}","app-token":"${{ needs.record-native-completion.outputs.app_token }}","ledger":"${{ needs.record-native-completion.outputs.ledger }}","tag":"${{ needs.record-native-completion.outputs.tag }}","promotion-fence-clear":"${{ needs.record-native-completion.outputs.promotion_fence }}"}
         run: |
           printf '%s\n' "$JOB_RESULTS" > recovery-job-results.json
           node scripts/release-cohort-workflow.mjs recovery-receipt native-cohort-recovery.json "$SOURCE_SHA" "$GITHUB_RUN_ID" cohort/cohort-plan.json recovery-job-results.json cohort/cohort-admission.json cohort/verification-candidate.json cohort/play-observation.json cohort/github-release-observation.json

@@ -217,10 +217,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        # Nightly ships arm64-v8a only (#1456): Play requires 64-bit and the
-        # retained APK targets the same devices, so the other three ABIs were
-        # only compile time. Quoted because a flow-map comma list is parsed as
-        # separate keys and the action then installs one target while warning.
+        # Nightly ships arm64-v8a only (#1456). The trade: 32-bit ARM devices
+        # and x86_64 emulators can no longer install the Nightly channel; every
+        # Nightly tester device is arm64, and the four-ABI build cost nine
+        # cargo rounds per night. Quoted because a flow-map comma list is
+        # parsed as separate keys and the action then installs one target.
         with: { targets: 'aarch64-linux-android' }
       - uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
         with:
@@ -289,6 +290,10 @@ jobs:
           node scripts/verify-android-aab-signature.mjs cohort-android/station-nightly-universal.aab "$ANDROID_UPLOAD_CERT_SHA256"
           node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"
           node scripts/check-android-16kb-alignment.mjs "$apk"
+          # Prove the AAB carries exactly the ABI this build claims: an empty
+          # or drifted ABI set would otherwise reach Play unnoticed.
+          abis=$(unzip -Z1 cohort-android/station-nightly-universal.aab | grep '^base/lib/' | cut -d/ -f3 | sort -u | tr '\n' ' ')
+          test "$abis" = 'arm64-v8a '
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |

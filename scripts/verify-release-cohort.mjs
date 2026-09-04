@@ -151,7 +151,12 @@ export function parseVerifiedAttestation(
   const entry = matching[0];
   return {
     repository: REPOSITORY,
-    signerWorkflow: NIGHTLY_STAGE_WORKFLOW,
+    // Read from the verified certificate rather than restated from the
+    // constant the match above was made against.
+    signerWorkflow:
+      entry.verificationResult.signature.certificate.subjectAlternativeName
+        .replace(/^https:\/\/github\.com\//, '')
+        .replace(/@refs\/heads\/main$/, ''),
     sourceRef: NIGHTLY_SOURCE_REF,
     sourceSha,
     oidcIssuer: OIDC_ISSUER,

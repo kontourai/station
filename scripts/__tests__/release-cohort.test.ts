@@ -196,6 +196,10 @@ describe('release cohort content-bound state machine', () => {
       (v: any) => (v.runId = '99'),
       (v: any) =>
         (v.workflowRef = `.github/workflows/nightly-native-stage.yml@${'b'.repeat(40)}`),
+      // The right source at the wrong (publishing) workflow: staged bytes are
+      // attested by the staging phase only.
+      (v: any) =>
+        (v.workflowRef = `.github/workflows/nightly-native-cohort.yml@${sourceSha}`),
       (v: any) => (v.subjectDigest = `sha256:${'0'.repeat(64)}`),
       (v: any) => (v.verificationReference = ''),
     ]) {

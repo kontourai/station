@@ -99,9 +99,13 @@ jobs:
         run: |
           [[ "$STATION_RELEASE_LABEL" =~ ^[A-Za-z0-9._-]+$ ]]
           test "$(git rev-parse HEAD)" = '${{ inputs.source_sha }}'
+          # Written inside the workspace so the staged artifact keeps one flat
+          # root: upload-artifact roots a multi-path upload at the paths'
+          # common ancestor, and $RUNNER_TEMP sits outside the workspace.
+          mkdir -p staged-identity
           source_date=$(node -e 'process.stdout.write(new Date(process.argv[1]).toISOString())' "$(git show -s --format=%cI HEAD)")
           short_sha=$(git rev-parse --short=12 HEAD)
-          printf '{"schemaVersion":1,"kind":"testflight-source-identity","sourceSha":"%s","shortSha":"%s","sourceDateUtc":"%s","channel":"%s","marketingVersion":"%s","bundleVersion":"%s"}\n' '${{ inputs.source_sha }}' "$short_sha" "$source_date" '${{ inputs.channel }}' '${{ inputs.marketing_version }}' '${{ inputs.bundle_version }}' > "$RUNNER_TEMP/source-identity.json"
+          printf '{"schemaVersion":1,"kind":"testflight-source-identity","sourceSha":"%s","shortSha":"%s","sourceDateUtc":"%s","channel":"%s","marketingVersion":"%s","bundleVersion":"%s"}\n' '${{ inputs.source_sha }}' "$short_sha" "$source_date" '${{ inputs.channel }}' '${{ inputs.marketing_version }}' '${{ inputs.bundle_version }}' > staged-identity/source-identity.json
           source_ref='${{ inputs.source_ref }}'
           [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[1-9][0-9]*)?|nightly-version-code/[0-9]+|ios-testflight/(stable|beta|nightly)/v[0-9]+\.[0-9]+\.[0-9]+/[0-9]+)$ ]]
           git fetch --no-tags origin "$source_ref:$source_ref"
@@ -302,7 +306,7 @@ jobs:
             release-assets
             provider-receipts
             src-desktop/station-client-build.json
-            ${{ runner.temp }}/source-identity.json
+            staged-identity/source-identity.json
           if-no-files-found: error
           retention-days: 14
       - name: Retain the built IPA when package verification fails
@@ -379,10 +383,11 @@ jobs:
           test "$ipa" = 'staged/release-assets/station-${{ inputs.release_label }}-ios-device.ipa'
           test -s staged/src-desktop/station-client-build.json
           test -s staged/provider-receipts/channel-icon-receipt.json
-          node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.kind!=="testflight-source-identity"||value.sourceSha!==process.argv[2]||value.channel!==process.argv[3]||value.bundleVersion!==process.argv[4]) process.exit(1)' staged/source-identity.json '${{ inputs.source_sha }}' '${{ inputs.channel }}' '${{ inputs.bundle_version }}'
-          mkdir -p release-assets provider-receipts
+          node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.kind!=="testflight-source-identity"||value.sourceSha!==process.argv[2]||value.channel!==process.argv[3]||value.bundleVersion!==process.argv[4]) process.exit(1)' staged/staged-identity/source-identity.json '${{ inputs.source_sha }}' '${{ inputs.channel }}' '${{ inputs.bundle_version }}'
+          mkdir -p release-assets provider-receipts staged-identity
           cp "$ipa" release-assets/
           cp staged/provider-receipts/*.json provider-receipts/
+          cp staged/staged-identity/source-identity.json staged-identity/source-identity.json
           echo "ipa=release-assets/station-${{ inputs.release_label }}-ios-device.ipa" >> "$GITHUB_OUTPUT"
       - name: Regenerate the exact channel identity overlay
         run: node scripts/ios-testflight-channel.mjs --channel '${{ inputs.channel }}' --marketing-version '${{ inputs.marketing_version }}' --bundle-version '${{ inputs.bundle_version }}' --output "$RUNNER_TEMP/tauri.ios.channel.json"
@@ -391,7 +396,9 @@ jobs:
         run: |
           bundle_id=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP + "/tauri.ios.channel.json", "utf8")).identifier')
           expected_name=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).appStoreName);' '${{ inputs.channel }}')
-          node scripts/app-store-connect-receipt.mjs app-preflight --bundle-id "$bundle_id" --expected-name "$expected_name" --output provider-receipts/app-store-connect-app-preflight.json --github-output "$GITHUB_OUTPUT"
+          # A second, upload-time preflight; the build-time one stays in the
+          # staged receipts under its own name.
+          node scripts/app-store-connect-receipt.mjs app-preflight --bundle-id "$bundle_id" --expected-name "$expected_name" --output provider-receipts/app-store-connect-app-preflight-upload.json --github-output "$GITHUB_OUTPUT"
           echo "bundle_id=$bundle_id" >> "$GITHUB_OUTPUT"
           # The staged bytes were audited in full when they were built; re-read
           # only the identity that decides which App Store Connect app they go to.
@@ -454,6 +461,6 @@ jobs:
           path: |
             release-assets
             provider-receipts
-            ${{ runner.temp }}/source-identity.json
+            staged-identity/source-identity.json
           if-no-files-found: warn
           retention-days: 30

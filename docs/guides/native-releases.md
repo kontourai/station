@@ -123,7 +123,8 @@ Android first, then the existing rolling macOS prerelease, uploads the
 already-audited iOS package to TestFlight from the same run's staged bytes
 (`testflight-delivery.yml` in `delivery: upload` mode, which never rebuilds),
 and performs a protected provider/attestation verification before either
-rolling Android marker or deploy-ledger entry advances. Immediately after admission, an annotated,
+rolling Android marker or deploy-ledger entry advances.
+Immediately after admission, an annotated,
 content-bound `refs/tags/nightly-promotion-fence` is created from the exact
 plan and admission; it remains through both provider promotions and is removed
 only as the final successful durable-completion step after final attestation,

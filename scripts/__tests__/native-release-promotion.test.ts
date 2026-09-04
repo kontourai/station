@@ -105,14 +105,20 @@ describe('one-revision native promotion contract', () => {
       reservation_tag: '$' + '{{ needs.native-stage.outputs.reservation_tag }}',
     });
     expect((caller as any)?.secrets).toBe('inherit');
+    for (const input of ['source_sha', 'build']) {
+      expect(cohort.on?.workflow_call?.inputs?.[input]?.required).toBe(true);
+    }
+    // Empty on a no-op night, so declared but optional; every cohort job
+    // gates on `build` before reading them.
     for (const input of [
-      'source_sha',
-      'build',
       'marketing_version',
       'bundle_version',
       'reservation_tag',
     ]) {
-      expect(cohort.on?.workflow_call?.inputs?.[input]?.required).toBe(true);
+      expect(cohort.on?.workflow_call?.inputs?.[input]).toMatchObject({
+        required: false,
+        type: 'string',
+      });
     }
     expect(stage.on?.workflow_call?.outputs).toMatchObject({
       build: { value: '$' + '{{ jobs.plan-cohort.outputs.build }}' },

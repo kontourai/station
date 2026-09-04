@@ -13,6 +13,11 @@ import { ghAttestationArgs } from '../verify-release-cohort.mjs';
  * full-regression receipt. Adding a Play upload to the staging phase, or
  * dropping the regression dependency from a publisher, fails here without
  * anyone having to remember to update a job list.
+ *
+ * The effect vocabulary below is hand-maintained: a new way of publishing
+ * (say `gh release create`, or a raw POST to a registry) must be added to it,
+ * and the anchor assertion on the known publishers exists so that a stale
+ * vocabulary cannot silently make the rule vacuous.
  */
 
 type Step = {
@@ -151,7 +156,11 @@ function effectsOfCaller(job: Job): string[] {
     ...Object.entries(called.jobs ?? {})
       .filter(([, calledJob]) => !unreachableFor(calledJob, job.with ?? {}))
       .flatMap(([id, calledJob]) =>
-        effectsOf(calledJob).map((effect) => `${job.uses}#${id}: ${effect}`),
+        // Recurse so a call two levels down (nightly → staging → delivery)
+        // is seen from the top-level caller too.
+        effectsOfCaller(calledJob).map(
+          (effect) => `${job.uses}#${id}: ${effect}`,
+        ),
       ),
   ];
 }
@@ -281,6 +290,37 @@ describe('two-phase native Nightly', () => {
     expect(guard).not.toMatch(
       /needs\.deliver\.result != 'failure'|always\(\)\s*}}/,
     );
+  });
+
+  test('a run artifact handed between jobs keeps one workspace-relative root', () => {
+    // upload-artifact roots a multi-path upload at the paths' least common
+    // ancestor; a single path outside the workspace (for example under
+    // runner.temp) silently nests everything under the runner's work dir and
+    // the consuming job's relative reads then find nothing.
+    const handoffs: string[] = [];
+    for (const name of [
+      'testflight-delivery.yml',
+      'nightly-native-stage.yml',
+      'nightly-native-cohort.yml',
+    ]) {
+      for (const [id, job] of Object.entries(workflow(name).jobs ?? {})) {
+        for (const step of job.steps ?? []) {
+          if (!step.uses?.startsWith('actions/upload-artifact@')) continue;
+          const paths = String(step.with?.path ?? '')
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean);
+          handoffs.push(`${name}#${id}`);
+          for (const path of paths) {
+            expect(path, `${name}#${id} uploads ${path}`).not.toMatch(
+              /runner\.temp|RUNNER_TEMP|^\//,
+            );
+          }
+        }
+      }
+    }
+    expect(handoffs).toContain('testflight-delivery.yml#deliver');
+    expect(handoffs).toContain('testflight-delivery.yml#upload');
   });
 
   test('the protected verifier checks staged bytes against the workflow that actually attests them', () => {
