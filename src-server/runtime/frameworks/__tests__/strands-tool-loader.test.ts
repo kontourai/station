@@ -674,6 +674,46 @@ describe('loadStrandsTools', () => {
     );
   });
 
+  test('bounds a surfaced loader message and says it truncated (#1485)', async () => {
+    const mcpConnectionStatus = new Map();
+    const long = 'x'.repeat(500);
+
+    await expect(
+      loadStrandsTools({
+        slug: 'agent-a',
+        spec: {
+          tools: { mcpServers: ['broken-builtin'], available: ['*'] },
+        } as any,
+        opts: {
+          mcpCustody: custodyBrokenFor('broken-builtin', () => {
+            throw new RangeError(long);
+          }),
+          configLoader: {
+            loadIntegration: vi
+              .fn()
+              .mockResolvedValue(createBuiltinVendedToolDef('notebook')),
+          } as any,
+          mcpConnectionStatus,
+          integrationMetadata: new Map(),
+          toolNameMapping: new Map(),
+          toolNameReverseMapping: new Map(),
+          logger: {
+            debug: vi.fn(),
+            info: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+          },
+        },
+        state: { mcpClients: new Map(), agentMcpClients: new Map() },
+      }),
+    ).resolves.toEqual([]);
+
+    const surfaced = mcpConnectionStatus.get('broken-builtin').error as string;
+    expect(surfaced.startsWith('RangeError: xxx')).toBe(true);
+    expect(surfaced.endsWith('… (truncated)')).toBe(true);
+    expect(surfaced.length).toBeLessThan(long.length);
+  });
+
   test('keeps an ordinary preconnect Error redacted rather than widening the escape (#1485)', async () => {
     const canary = 'integration-config-loader-canary';
     const mcpConnectionStatus = new Map();
