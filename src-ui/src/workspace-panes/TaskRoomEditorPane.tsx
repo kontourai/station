@@ -2,6 +2,7 @@ import type { WorkspacePaneInstanceId } from '@kontourai/station-contracts/works
 import {
   adoptCommittedProjectTaskRoomDocument,
   type ProjectTaskRoomDocument,
+  projectTaskRoomQueries,
   refetchAuthoritativeProjectTaskRoomDocument,
   usePlanProjectTaskRoomEditMutation,
   useProjectTaskRoomDiscoveryQuery,
@@ -423,12 +424,28 @@ export function TaskRoomEditorPane({
       batch.isPending
     )
       return;
-    const observedDocument = displayedDocument;
+    // Immediate stream application owns display, not the cache CAS token.
+    // React Query structural sharing may copy that object on publication;
+    // capture its exact canonical identity before planning the save instead.
+    const observedDocument = queryClient.getQueryData<ProjectTaskRoomDocument>(
+      projectTaskRoomQueries.document(taskId).queryKey,
+    );
     if (
       observedDocument?.kind !== 'snapshot' &&
       observedDocument?.kind !== 'delta'
     )
       return;
+    // A newer cache publication that the pane has not displayed yet is not
+    // authority to save an older draft against that unseen document. Keep the
+    // draft and wait for the ordinary query/stream display to catch up.
+    if (
+      observedDocument.kind !== displayedDocument?.kind ||
+      observedDocument.revision !== displayedDocument.revision ||
+      observedDocument.text !== displayedDocument.text
+    ) {
+      setRejection('The shared document changed. Review it before retrying.');
+      return;
+    }
     const saveTaskId = taskId;
     const generation = operationGeneration.current;
     if (!isCurrentOperation(generation)) return;

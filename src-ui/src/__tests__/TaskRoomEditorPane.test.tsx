@@ -29,7 +29,11 @@ const mocks = vi.hoisted(() => ({
   batch: vi.fn(),
   adoptCommitted: vi.fn(),
   refetchAuthoritative: vi.fn(),
-  queryClient: { setQueryData: vi.fn(), fetchQuery: vi.fn() },
+  queryClient: {
+    setQueryData: vi.fn(),
+    fetchQuery: vi.fn(),
+    getQueryData: vi.fn(),
+  },
   command: vi.fn(),
   stream: 'live' as 'live' | 'terminal',
   documentListener: undefined as
@@ -43,6 +47,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   adoptCommittedProjectTaskRoomDocument: mocks.adoptCommitted,
+  projectTaskRoomQueries: {
+    document: (taskId: string) => ({
+      queryKey: ['task-room-document', taskId],
+    }),
+  },
   refetchAuthoritativeProjectTaskRoomDocument: mocks.refetchAuthoritative,
   useProjectTaskRoomDiscoveryQuery: () => mocks.discovery,
   useProjectTaskRoomDocumentQuery: () => mocks.document,
@@ -119,6 +128,9 @@ beforeEach(() => {
   mocks.document.isLoading = false;
   mocks.document.isFetching = false;
   mocks.document.isError = false;
+  mocks.queryClient.getQueryData
+    .mockReset()
+    .mockImplementation(() => mocks.document.data);
   mocks.document.refetch.mockReset();
   mocks.document.refetch.mockResolvedValue({ data: undefined });
   mocks.plan.mockReset();
