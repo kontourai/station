@@ -1971,11 +1971,37 @@ for (const requiredHelper of [
   'export function applyStrandsAvailableToolFilter',
   'export async function loadStrandsTools',
   'export async function destroyStrandsAgentTools',
-  'new McpClient({',
-  'new StdioClientTransport({',
+  // #1428 moved MCP client construction behind the local-connection custody
+  // owner so a client cannot exist without a current custody claim. The
+  // loader must obtain every client through that owner, never construct one.
+  "from './strands-mcp-custody.js'",
+  'createCustodiedStrandsClient(',
 ]) {
   if (!strandsToolLoader.includes(requiredHelper)) {
     errors.push(`strands-tool-loader.ts must include ${requiredHelper}.`);
+  }
+}
+for (const retiredLoaderSnippet of [
+  'new McpClient({',
+  'new StdioClientTransport(',
+]) {
+  if (strandsToolLoader.includes(retiredLoaderSnippet)) {
+    errors.push(
+      `strands-tool-loader.ts must not construct MCP clients directly (${retiredLoaderSnippet}); the custody owner does.`,
+    );
+  }
+}
+
+const strandsMcpCustody = readRequiredSource(
+  '../src-server/runtime/frameworks/strands-mcp-custody.ts',
+);
+for (const requiredHelper of [
+  'export function createCustodiedStrandsClient',
+  'new StdioClientTransport(',
+  'new McpClient({',
+]) {
+  if (!strandsMcpCustody.includes(requiredHelper)) {
+    errors.push(`strands-mcp-custody.ts must include ${requiredHelper}.`);
   }
 }
 
