@@ -24,7 +24,8 @@ const showSurface = vi.fn();
 vi.mock('../../../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate }),
 }));
-vi.mock('../../../contexts/RegionModelContext', () => ({
+vi.mock('../../../contexts/RegionModelContext', () => ({}));
+vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
 }));
 

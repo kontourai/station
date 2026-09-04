@@ -24,6 +24,7 @@ const loadActivityWorkspacePane = () =>
 export function ActivityRegionShell({ regionId }: { regionId: DockRegionId }) {
   const { apiBase } = useApiBase();
   const model = useRegionModel();
+  const { clearSurfaceIntentFocus } = model;
   const intent = model.surfaceIntents.activity;
   const binding = useMemo(
     () => ({
@@ -31,9 +32,9 @@ export function ActivityRegionShell({ regionId }: { regionId: DockRegionId }) {
       sessionId: intent?.session,
       focusHint: intent?.focus,
       intentToken: intent?.token,
-      onFocusConsumed: () => model.clearSurfaceIntentFocus('activity'),
+      onFocusConsumed: () => clearSurfaceIntentFocus('activity'),
     }),
-    [apiBase, intent, model],
+    [apiBase, intent, clearSurfaceIntentFocus],
   );
   return (
     <DockShell

@@ -37,7 +37,8 @@ vi.mock('../contexts/AgentsContext', () => ({
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: mocks.navigate }),
 }));
-vi.mock('../contexts/RegionModelContext', () => ({
+vi.mock('../contexts/RegionModelContext', () => ({}));
+vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => mocks.showSurface,
 }));
 vi.mock('../contexts/open-chats-store', () => ({

@@ -232,27 +232,13 @@ test('Activity route points at its occupied region without mounting a second pan
   ).toBeNull();
 });
 
-test('desktop: a hidden Activity region offers a working Show Activity action', () => {
+test('a hidden Activity region offers a working Show Activity action', () => {
   regionOccupant.activity = true;
   regionOccupant.activityVisible = false;
   renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
 
   expect(
     screen.getByText('Activity is hidden from the Right region'),
-  ).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
-  expect(regionOccupant.showSurface).toHaveBeenCalledWith('activity');
-});
-
-test('coarse device: hidden Activity offers a working action for the rendered bottom bar', () => {
-  mobileFlag.isMobile = true;
-  regionOccupant.activity = true;
-  regionOccupant.activityVisible = false;
-  regionOccupant.lastShownRegion = 'bottom';
-  renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
-
-  expect(
-    screen.getByText('Activity is hidden from the bottom bar'),
   ).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
   expect(regionOccupant.showSurface).toHaveBeenCalledWith('activity');

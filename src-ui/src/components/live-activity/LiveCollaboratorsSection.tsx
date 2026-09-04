@@ -3,7 +3,7 @@ import {
   useLiveActivityQuery,
 } from '@kontourai/station-sdk/live-activity';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { useShowSurface } from '../../contexts/RegionModelContext';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { relativeTimeAgo } from '../../utils/relativeTime';
 
 function actorKind(kind: LiveActivityParticipant['actor']['kind']): string {

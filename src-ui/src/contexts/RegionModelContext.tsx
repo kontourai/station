@@ -1,8 +1,4 @@
 import {
-  activityDeepLink,
-  clearSurfaceDeepLinkParams,
-} from '@kontourai/station-contracts/surface-deep-link';
-import {
   createContext,
   type ReactNode,
   useCallback,
@@ -33,7 +29,7 @@ import {
   useDeviceSettingsActions,
 } from './DeviceSettingsContext';
 import { useNavigation } from './NavigationContext';
-import { navigationStore } from './navigation-store';
+import { clearSurfaceDeepLinkParams } from './surface-deep-link';
 
 export interface SurfaceIntent {
   session?: string;
@@ -81,6 +77,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     Partial<Record<string, SurfaceIntentRecord>>
   >({});
   const surfaceIntentTokenRef = useRef(0);
+  const adoptedIntentKeyRef = useRef<string | null>(null);
   const regionsRef = useRef(regions);
   const mirroredRegionsRef = useRef(regions);
   regionsRef.current = regions;
@@ -118,11 +115,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
           return {
             ...current,
             [surfaceId]: {
-              ...(previous?.session ? { session: previous.session } : {}),
               ...intent,
-              ...(intent.session === undefined && previous?.session
-                ? { session: previous.session }
-                : {}),
+              session: intent.session ?? previous?.session,
               token,
             },
           };
@@ -145,8 +139,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     const diff = dockMirrorDiff(previous, regions);
     const placement = diff.placement;
     if (placement) setDockMode(placement);
-    if (diff.visible !== undefined)
-      setDockState(diff.visible, diff.visible ? isDockMaximized : false);
+    if (diff.visible !== undefined) setDockState(diff.visible, isDockMaximized);
     if (diff.size !== undefined)
       for (const id of DOCK_REGION_IDS) {
         const size = diff.size[id];
@@ -192,7 +185,12 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: the stable string key prevents replaceState reparses from adopting the same intent twice.
   useEffect(() => {
-    if (!intentKey || !surfaceIntent) return;
+    if (!intentKey || !surfaceIntent) {
+      adoptedIntentKeyRef.current = null;
+      return;
+    }
+    if (adoptedIntentKeyRef.current === intentKey) return;
+    adoptedIntentKeyRef.current = intentKey;
     if (REGION_SURFACE_REGISTRY.has(surfaceIntent.surfaceId)) {
       showSurface(surfaceIntent.surfaceId, {
         session: surfaceIntent.sessionId,
@@ -227,22 +225,6 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     <RegionModelContext.Provider value={value}>
       {children}
     </RegionModelContext.Provider>
-  );
-}
-
-export function useShowSurface(): RegionModelValue['showSurface'] {
-  const model = useRegionModelOptional();
-  return useCallback(
-    (surfaceId: string, intent?: SurfaceIntent) => {
-      if (model) {
-        model.showSurface(surfaceId, intent);
-        return;
-      }
-      navigationStore.navigate(
-        activityDeepLink({ sessionId: intent?.session, focus: intent?.focus }),
-      );
-    },
-    [model],
   );
 }
 

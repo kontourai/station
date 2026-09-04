@@ -38,7 +38,7 @@ import {
 } from '@kontourai/station-shared/return-focus';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { useShowSurface } from '../../contexts/RegionModelContext';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { Coachmark } from './Coachmark';
 import {
   firstRunStore,

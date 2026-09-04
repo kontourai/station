@@ -6,10 +6,8 @@ import {
   type SurfaceSection,
 } from '../../app-shell/surface-registry';
 import { usePendingRouteSurfaceId } from '../../app-shell/useRoutePending';
-import {
-  useRegionModelOptional,
-  useShowSurface,
-} from '../../contexts/RegionModelContext';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { occupiedDockRegion } from '../../regions/region-model';
 import { PROJECT_SIDEBAR_NAV_GROUPS, surfaceIcon } from './nav-items';

@@ -5,7 +5,7 @@ import { type ReactNode, useMemo } from 'react';
 import { AgentIcon } from '../../components/icons/AgentIcon';
 import { useAgents } from '../../contexts/AgentsContext';
 import { openChatsStore } from '../../contexts/open-chats-store';
-import { useShowSurface } from '../../contexts/RegionModelContext';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { relativeTimeAgo } from '../../utils/relativeTime';
 import { sessionStatusWord } from '../../utils/session-state';
 import {

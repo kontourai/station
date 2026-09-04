@@ -111,7 +111,8 @@ vi.mock('../contexts/NavigationContext', () => ({
     selectedProjectLayout: selectedProjectLayoutMock,
   }),
 }));
-vi.mock('../contexts/RegionModelContext', () => ({
+vi.mock('../contexts/RegionModelContext', () => ({}));
+vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceMock,
 }));
 

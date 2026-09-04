@@ -641,6 +641,30 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
     expect(params.get('view')).toBeNull();
   });
 
+  test('strips a surface intent fragment without its surface on route changes', () => {
+    window.history.replaceState({}, '', '/settings?session=x&focus=evidence');
+    navigationStore.navigate('/projects');
+    expect(window.location.pathname + window.location.search).toBe('/projects');
+  });
+
+  test('carries a complete surface intent on route changes', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/settings?surface=activity&session=x&focus=evidence',
+    );
+    navigationStore.navigate('/projects');
+    expect(window.location.pathname + window.location.search).toBe(
+      '/projects?surface=activity&session=x&focus=evidence',
+    );
+  });
+
+  test('does not retain a surface intent fragment when the caller clears its surface', () => {
+    window.history.replaceState({}, '', '/projects?surface=activity&session=x');
+    navigationStore.navigate('/settings', { surface: null });
+    expect(window.location.pathname + window.location.search).toBe('/settings');
+  });
+
   test('leaves the query alone when only params change on the same route', () => {
     window.history.replaceState({}, '', '/settings?view=appearance');
     navigationStore.navigate('/settings', { highlight: 'theme' });

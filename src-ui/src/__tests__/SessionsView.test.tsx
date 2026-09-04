@@ -4192,6 +4192,8 @@ describe('SessionsView', () => {
       );
       await waitFor(() => expect(document.activeElement).toBe(evidenceRegion));
       expect(onFocusConsumed).toHaveBeenCalledTimes(1);
+      // the region host clears the consumed focus (`clearSurfaceIntentFocus`)
+      view.rerenderSession('done', undefined, 1, onFocusConsumed);
 
       screen
         .getByRole('button', { name: 'Evidence for Completed work' })

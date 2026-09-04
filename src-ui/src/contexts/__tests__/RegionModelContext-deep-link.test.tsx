@@ -8,11 +8,8 @@ import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
 import { navigationStore } from '../navigation-store';
-import {
-  RegionModelProvider,
-  useRegionModel,
-  useShowSurface,
-} from '../RegionModelContext';
+import { RegionModelProvider, useRegionModel } from '../RegionModelContext';
+import { useShowSurface } from '../useShowSurface';
 
 const sessionsProps = vi.hoisted(() => vi.fn());
 
@@ -155,7 +152,6 @@ describe('RegionModelProvider surface deep-link adoption', () => {
     expect(window.history.length).toBe(historyLength);
     expect(model?.surfaceIntents.activity?.token).toBe(1);
 
-    const token = model?.surfaceIntents.activity?.token;
     rendered.unmount();
     render(<Harness />);
     await act(async () => undefined);
@@ -163,7 +159,18 @@ describe('RegionModelProvider surface deep-link adoption', () => {
 
     window.dispatchEvent(new PopStateEvent('popstate'));
     await act(async () => undefined);
-    expect(model?.surfaceIntents.activity?.token).not.toBe(token);
+    expect(model?.surfaceIntents.activity).toBeUndefined();
+  });
+
+  test('adopts the same link again after its one-shot was consumed', async () => {
+    setUrl('/?surface=activity&session=s1');
+    render(<Harness />);
+    await waitFor(() => expect(window.location.search).toBe(''));
+    expect(model?.surfaceIntents.activity?.token).toBe(1);
+
+    setUrl('/?surface=activity&session=s1');
+    await waitFor(() => expect(window.location.search).toBe(''));
+    expect(model?.surfaceIntents.activity?.token).toBe(2);
   });
 
   test('preserves dock ordering on desktop and folds to Activity on bottom-only devices', async () => {
@@ -195,6 +202,36 @@ describe('RegionModelProvider surface deep-link adoption', () => {
     expect(model?.regions.bottom.visible).toBe(false);
     expect(model?.lastShownRegion).toBe('right');
     expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+  });
+
+  test('folding a maximized Chat away on a bottom-only device keeps lastDockMaximized', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 390,
+    });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('pointer: coarse'),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    setUrl('/?dock=open&maximize=true');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+
+    act(() => model?.showSurface('activity'));
+
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(false),
+    );
+    expect(model?.regions.bottom.visible).toBe(false);
+    expect(
+      new URLSearchParams(window.location.search).get('maximize'),
+    ).toBeNull();
+    // archive#945: a close forwards the live maximize state so the next
+    // `setDockState(true, lastDockMaximized)` restores it.
+    expect(navigationStore.lastDockMaximized).toBe(true);
   });
 
   test('clears an unknown surface without changing the layout', async () => {

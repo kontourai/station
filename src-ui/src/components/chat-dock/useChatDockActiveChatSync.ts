@@ -6,12 +6,6 @@ import { type ChatSession } from '../../types';
 interface UseChatDockActiveChatSyncArgs {
   activeChat: string | null;
   agentCatalogKey: string;
-  /**
-   * station#1284 (D2c): the cold-path fallback when resolution definitively
-   * fails — reveals the Activity region with the unresolved session instead
-   * of silently clearing the pointer with `setActiveChat(null)`.
-   */
-  navigate: (pathname: string, params?: Record<string, string | null>) => void;
   updateParams: (params: Record<string, string | null>) => void;
   showSurface: (
     surfaceId: string,
@@ -123,20 +117,11 @@ export function useChatDockActiveChatSync({
     // station#1284 (D2c): the definitive-miss fallback — never a silent
     // setActiveChat(null). Mirrors the working pattern ChatDock's own inbox
     // panel already uses (an Activity-region session intent),
-    // plus explicitly clearing the `chat` param in the SAME navigate call —
+    // plus explicitly clearing the `chat` param before revealing Activity —
     // leaving it would re-seed `activeChat` from the URL on the very next
     // render (parseUrl() reads `chat` regardless of pathname) and loop this
     // effect right back into the dead conversation it just gave up on.
-    // Also explicitly clears `dock` (review finding 3, MED): navigate()
-    // preserves every unlisted param, and a dock-targeting deep link
-    // (station#1284 AC4) already stamps `dock=open` on the URL this pointer
-    // came from — without this, the fallback would land on
-    // a stale open dock alongside Activity with no conversation to show.
-    // Reads `navigateRef`/the closed-over `activeChat` rather than being
-    // listed as an effect dependency, matching this file's existing pattern
-    // for callback stability (openConversationRef, sessionsRef, ...) — a
-    // fresh function identity every render must never force this attempt-
-    // budget effect to re-run.
+    // Clearing `dock` prevents a stale open Chat dock alongside Activity.
     const fallbackToActivityRoute = () => {
       updateParamsRef.current({ chat: null, dock: null });
       showSurfaceRef.current('activity', { session: activeChat });

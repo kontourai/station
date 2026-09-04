@@ -1,5 +1,5 @@
 import {
-  parseSurfaceDeepLink,
+  SURFACE_DEEP_LINK_QUERY_KEYS,
   type SurfaceDeepLinkIntent,
 } from '@kontourai/station-contracts/surface-deep-link';
 import { MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
@@ -15,6 +15,7 @@ import {
   parseOpenFilePreviewIntent,
   serializeOpenFilePreviewIntent,
 } from '../workspace-panes/openFilePreviewIntent';
+import { parseSurfaceDeepLink } from './surface-deep-link';
 
 export type NavigationState = {
   pathname: string;
@@ -117,8 +118,6 @@ const SHELL_SCOPED_QUERY_PARAMS = new Set([
   'fontSize',
   'maximize',
   'surface',
-  'session',
-  'focus',
 ]);
 
 /**
@@ -531,8 +530,20 @@ class NavigationStore {
       // reads `?category=` from the URL, so the next query-backed surface
       // inherits a real bug. Only the shell-scoped params below outlive a
       // route change — everything else describes the route being left.
+      // `session`/`focus` are fragments of a surface deep link
+      // (`surfaceDeepLink`): they travel with `surface` and fall away with it,
+      // including when the caller clears the surface on this navigation.
+      const surfaceSurvives =
+        url.searchParams.has(SURFACE_DEEP_LINK_QUERY_KEYS.surface) &&
+        params?.[SURFACE_DEEP_LINK_QUERY_KEYS.surface] !== null;
       for (const key of [...url.searchParams.keys()]) {
         if (SHELL_SCOPED_QUERY_PARAMS.has(key)) continue;
+        if (
+          surfaceSurvives &&
+          (key === SURFACE_DEEP_LINK_QUERY_KEYS.session ||
+            key === SURFACE_DEEP_LINK_QUERY_KEYS.focus)
+        )
+          continue;
         if (params && key in params) continue;
         url.searchParams.delete(key);
       }

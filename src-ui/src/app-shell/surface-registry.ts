@@ -75,7 +75,7 @@ export interface SurfaceDefinition {
   icon?: SurfaceIconId;
   previewFlag?: string;
   hiddenFromNav?: boolean;
-  /** Shell-owned region surface revealed instead of changing the route. */
+  /** When set, the palette calls `showSurface(regionSurface)` and `params` are not applied. */
   regionSurface?: string;
   sidebar?: { section: SurfaceSection; order: number };
   palette?: { order: number; params?: Readonly<Record<string, string | null>> };

@@ -18,7 +18,6 @@ vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () => flagsState.flags,
 }));
 vi.mock('../contexts/RegionModelContext', () => ({
-  useShowSurface: () => regionState.showSurface,
   useRegionModelOptional: () => ({
     regions: {
       main: { visible: true, size: 0, occupant: null },
@@ -31,6 +30,9 @@ vi.mock('../contexts/RegionModelContext', () => ({
       bottom: { visible: true, size: 320, occupant: 'chat' },
     },
   }),
+}));
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => regionState.showSurface,
 }));
 
 import { routeTransitionStore } from '../app-shell/route-transition-store';

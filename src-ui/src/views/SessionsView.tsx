@@ -459,10 +459,10 @@ export function SessionsView({
     (threadId: string) => {
       evidenceRevealTokenRef.current += 1;
       setEvidenceReveal({ threadId, token: evidenceRevealTokenRef.current });
-      if (onFocusConsumed) onFocusConsumed();
-      else updateParams({ focus: null });
+      if (!onFocusConsumed) updateParams({ focus: null });
+      else if (threadId === sessionId) onFocusConsumed();
     },
-    [onFocusConsumed, updateParams],
+    [onFocusConsumed, sessionId, updateParams],
   );
 
   useEffect(() => {

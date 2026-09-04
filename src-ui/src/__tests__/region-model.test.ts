@@ -139,6 +139,17 @@ describe('region model', () => {
     expect(shown.layout.left.occupant).toBe('activity');
   });
 
+  test('revealSurface puts Activity in bottom when Chat occupies right', () => {
+    const shown = revealSurface(
+      placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'chat', 'right'),
+      'activity',
+      'right',
+    );
+
+    expect(shown.region).toBe('bottom');
+    expect(shown.layout.bottom.occupant).toBe('activity');
+  });
+
   test('showSurfaceAlone leaves the revealed surface as the only visible dock region', () => {
     const visible = updateRegion(
       placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'fixture', 'left'),

@@ -5,7 +5,7 @@ import {
 } from '@kontourai/station-sdk/action-operations';
 import { useEffect, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { useShowSurface } from '../../contexts/RegionModelContext';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { relativeTimeAgo } from '../../utils/relativeTime';
 import { SkeletonList } from '../state';
 import './ActionOperationsSection.css';

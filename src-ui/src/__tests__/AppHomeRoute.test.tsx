@@ -199,6 +199,9 @@ vi.mock('../app-shell/AppViewContent', () => ({
       >
         Continue fixture
       </button>
+      <button type="button" onClick={() => onNavigate({ type: 'activity' })}>
+        View activity fixture
+      </button>
       <button type="button" onClick={() => onNavigate({ type: 'schedule' })}>
         Go to Schedule
       </button>
@@ -299,6 +302,8 @@ vi.mock('../contexts/ProjectsContext', () => ({
 }));
 vi.mock('../contexts/RegionModelContext', () => ({
   useRegionModelOptional: () => null,
+}));
+vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
 }));
 vi.mock('../contexts/ToastContext', () => ({
@@ -473,6 +478,15 @@ describe('App home route resolution', () => {
       session: 'thread/alpha',
       focus: undefined,
     });
+  });
+
+  test('reveals Activity without an intent for a session-less navigation', async () => {
+    render(<App />);
+    await act(async () => undefined);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View activity fixture' }),
+    );
+    expect(showSurface).toHaveBeenCalledWith('activity', undefined);
   });
 
   test('/?project=<name> pre-selects the matching project via setLayout, overriding lastProject, and strips the param', () => {

@@ -1989,7 +1989,8 @@ describe('AttentionProjectionService', () => {
     // AC4: "Open session" must actually open the dock. `dock=open` is what
     // navigation-store.ts's `isDockOpen` reads; without it the deep link
     // lands on the project layout with the dock still shut — defect 1 in
-    // the issue. `/activity` is not a dock target and must stay plain.
+    // the issue. The surface deep link carries its own reveal; it must not
+    // also stamp `dock=open`.
     test('sessionOpenHref stamps dock=open on the project-scoped href only', async () => {
       const service = makeService({
         sessions: [

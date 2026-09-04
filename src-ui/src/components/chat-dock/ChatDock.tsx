@@ -1753,7 +1753,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessions,
     openConversation: openColdConversationInScopedPane,
     setActiveSessionId,
-    navigate,
     updateParams,
     showSurface,
   });

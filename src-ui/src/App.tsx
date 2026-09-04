@@ -39,11 +39,9 @@ import { useConfig } from './contexts/ConfigContext';
 import { useModels } from './contexts/ModelsContext';
 import { useNavigation } from './contexts/NavigationContext';
 import { ProjectsProvider } from './contexts/ProjectsContext';
-import {
-  useRegionModelOptional,
-  useShowSurface,
-} from './contexts/RegionModelContext';
+import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
+import { useShowSurface } from './contexts/useShowSurface';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
 import { chatRegion } from './regions/region-model';
 import {
@@ -216,10 +214,12 @@ function App() {
   const navigateToView = useCallback(
     (view: NavigationView) => {
       if (view.type === 'activity') {
-        showSurface('activity', {
-          session: view.sessionId,
-          focus: view.focus,
-        });
+        showSurface(
+          'activity',
+          view.sessionId
+            ? { session: view.sessionId, focus: view.focus }
+            : undefined,
+        );
         return;
       }
       setCurrentView(view);
