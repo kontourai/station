@@ -2,6 +2,21 @@ import { readFileSync } from 'node:fs';
 import { posix, resolve } from 'node:path';
 import { readPnpmLockfile } from './pnpm-lockfile.mjs';
 
+// Lockfile paths are portable POSIX spellings even when consumed on Windows.
+function portableRelativePath(value) {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    !value.includes('\\') &&
+    !posix.isAbsolute(value) &&
+    !/^[A-Za-z]:/.test(value)
+  );
+}
+
+function validImporter(value) {
+  return portableRelativePath(value) && !value.split('/').includes('..');
+}
+
 /** Resolve the locked graph, independently of the installed/hoisted layout. */
 export function pnpmDependencyGraph(lock) {
   if (!lock?.importers || !lock?.packages || !lock?.snapshots)
@@ -25,8 +40,7 @@ export function pnpmDependencyGraph(lock) {
     });
   }
   for (const [key, snapshot] of Object.entries(lock.importers)) {
-    if (key !== '.' && (posix.isAbsolute(key) || key.split('/').includes('..')))
-      throw new Error(`Invalid pnpm importer: ${key}`);
+    if (!validImporter(key)) throw new Error(`Invalid pnpm importer: ${key}`);
     nodes.set(`importer:${key}`, {
       id: `importer:${key}`,
       path: key,
@@ -42,12 +56,11 @@ export function pnpmDependencyGraph(lock) {
     if (version.startsWith('link:')) {
       if (!parent.importer)
         throw new Error(`Unexpected linked package in ${parent.id}`);
-      const linked = posix.normalize(posix.join(parent.path, version.slice(5)));
-      if (
-        linked === '..' ||
-        linked.startsWith('../') ||
-        posix.isAbsolute(linked)
-      )
+      const relativeLink = version.slice(5);
+      if (!portableRelativePath(relativeLink))
+        throw new Error(`Escaping workspace link: ${parent.id}:${name}`);
+      const linked = posix.normalize(posix.join(parent.path, relativeLink));
+      if (!validImporter(linked))
         throw new Error(`Escaping workspace link: ${parent.id}:${name}`);
       id = `importer:${linked}`;
     } else {
@@ -101,10 +114,7 @@ export function readPnpmDependencyGraph(root) {
 }
 
 export function pnpmImporterManifest(root, importer) {
-  if (
-    importer !== '.' &&
-    (posix.isAbsolute(importer) || importer.split('/').includes('..'))
-  )
+  if (!validImporter(importer))
     throw new Error(`Invalid importer path: ${importer}`);
   return JSON.parse(
     readFileSync(resolve(root, importer, 'package.json'), 'utf8'),

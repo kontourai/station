@@ -27,7 +27,7 @@ export function normalizePnpmAudit(raw, graph, importer, productionOnly) {
     if (!candidates.has(key)) candidates.set(key, []);
     candidates.get(key).push(id);
   }
-  const vulnerabilities = {};
+  const vulnerabilities = Object.create(null);
   const resolvedVersions = {};
   for (const advisory of Object.values(raw.advisories)) {
     if (
@@ -130,7 +130,8 @@ export async function collectPnpmAudits(
 ) {
   if (!scopes.length) throw new Error('No pnpm audit scopes selected');
   for (const { scope } of scopes)
-    if (!IMPORTERS[scope]) throw new Error(`Unknown audit scope ${scope}`);
+    if (!Object.hasOwn(IMPORTERS, scope))
+      throw new Error(`Unknown audit scope ${scope}`);
   const raw = await run(root);
   return scopes.flatMap(({ scope }) =>
     ['full', 'production'].map((reachability) => ({

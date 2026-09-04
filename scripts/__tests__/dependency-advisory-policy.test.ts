@@ -19,7 +19,10 @@ import {
   collectPnpmAudits,
   normalizePnpmAudit,
 } from '../lib/pnpm-advisory.mjs';
-import { pnpmDependencyGraph } from '../lib/pnpm-dependency-graph.mjs';
+import {
+  pnpmDependencyGraph,
+  pnpmImporterManifest,
+} from '../lib/pnpm-dependency-graph.mjs';
 
 const NOW = new Date('2026-07-10T00:00:00.000Z');
 
@@ -1169,4 +1172,69 @@ describe('pnpm workspace-wide root audit coverage', () => {
         .high,
     ).toBe(1);
   });
+});
+
+describe('portable pnpm importer paths', () => {
+  it.each([
+    'C:\\outside',
+    'packages\\..\\..\\outside',
+    '//server/share',
+    'D:outside',
+  ])(
+    'refuses native absolute or traversal spelling %s before filesystem reads',
+    (importer) => {
+      expect(() =>
+        pnpmDependencyGraph({
+          importers: { [importer]: {} },
+          packages: {},
+          snapshots: {},
+        }),
+      ).toThrow(/Invalid pnpm importer/);
+      expect(() => pnpmImporterManifest('/fixture', importer)).toThrow(
+        /Invalid importer path/,
+      );
+    },
+  );
+});
+
+it('rejects an absolute link before POSIX join can disguise it as a nested relative path', () => {
+  const graph = pnpmDependencyGraph({
+    importers: {
+      '.': {},
+      'packages/cli': {
+        dependencies: { outside: { version: 'link:/outside' } },
+      },
+      'packages/cli/outside': {},
+    },
+    packages: {},
+    snapshots: {},
+  });
+  expect(() => graph.closure('packages/cli')).toThrow(
+    /Escaping workspace link/,
+  );
+});
+
+it('treats a package named constructor as data in advisory projection', () => {
+  const graph = pnpmDependencyGraph({
+    importers: { '.': { dependencies: { constructor: { version: '1.0.0' } } } },
+    packages: { 'constructor@1.0.0': {} },
+    snapshots: { 'constructor@1.0.0': {} },
+  });
+  const raw = {
+    advisories: {
+      one: {
+        module_name: 'constructor',
+        severity: 'high',
+        github_advisory_id: 'GHSA-abcd-1234-5678',
+        findings: [{ version: '1.0.0', paths: ['.>constructor'] }],
+      },
+    },
+    metadata: {
+      vulnerabilities: { info: 0, low: 0, moderate: 0, high: 1, critical: 0 },
+    },
+  };
+  expect(
+    normalizePnpmAudit(raw, graph, '.', true).audit.metadata.vulnerabilities
+      .high,
+  ).toBe(1);
 });
