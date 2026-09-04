@@ -26,13 +26,18 @@ describe('dependency audit collection', () => {
       }),
       classifyRange: ({ before, after }) => {
         expect({ before, after }).toEqual({ before: 'a', after: 'b' });
-        return { dependencies: false, classification: 'runtime-or-workflow' };
+        return {
+          dependencies: false,
+          classification: 'runtime-or-workflow',
+          dependencyScopes: [],
+        };
       },
     });
 
     expect(decision).toEqual({
       required: false,
       reason: 'runtime-or-workflow',
+      scopes: [],
     });
   });
 
@@ -41,7 +46,11 @@ describe('dependency audit collection', () => {
       dependencyAuditDecision({
         env: { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'schedule' },
       }),
-    ).toEqual({ required: true, reason: 'schedule event' });
+    ).toEqual({
+      required: true,
+      reason: 'schedule event',
+      scopes: ['root', 'sdk', 'shared'],
+    });
   });
 
   it('fails closed when GitHub range evidence is unavailable', () => {
@@ -56,6 +65,7 @@ describe('dependency audit collection', () => {
       required: true,
       reason:
         'range classification failed closed: GITHUB_EVENT_PATH is missing',
+      scopes: ['root', 'sdk', 'shared'],
     });
   });
 

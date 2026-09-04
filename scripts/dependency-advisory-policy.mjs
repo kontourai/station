@@ -4,7 +4,10 @@ import { execFile } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { classifyGitRange } from './classify-ci-change.mjs';
+import {
+  ALL_DEPENDENCY_SCOPES,
+  classifyGitRange,
+} from './classify-ci-change.mjs';
 
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 const RESIDUAL_SEVERITIES = new Set(['moderate', 'low']);
@@ -606,7 +609,11 @@ export function dependencyAuditDecision({
   cwd = REPO_ROOT,
 } = {}) {
   if (env.GITHUB_ACTIONS !== 'true')
-    return { required: true, reason: 'non-github execution' };
+    return {
+      required: true,
+      reason: 'non-github execution',
+      scopes: [...ALL_DEPENDENCY_SCOPES],
+    };
 
   const eventName = env.GITHUB_EVENT_NAME;
   if (
@@ -614,7 +621,11 @@ export function dependencyAuditDecision({
       eventName,
     )
   )
-    return { required: true, reason: `${eventName ?? 'unknown'} event` };
+    return {
+      required: true,
+      reason: `${eventName ?? 'unknown'} event`,
+      scopes: [...ALL_DEPENDENCY_SCOPES],
+    };
 
   try {
     if (!env.GITHUB_EVENT_PATH) throw new Error('GITHUB_EVENT_PATH is missing');
@@ -633,11 +644,17 @@ export function dependencyAuditDecision({
     return {
       required: classification.dependencies,
       reason: classification.classification,
+      // A classifier that does not name scopes is not a classifier that means
+      // "none": anything short of an explicit list scans everything.
+      scopes: Array.isArray(classification.dependencyScopes)
+        ? classification.dependencyScopes
+        : [...ALL_DEPENDENCY_SCOPES],
     };
   } catch (error) {
     return {
       required: true,
       reason: `range classification failed closed: ${error.message}`,
+      scopes: [...ALL_DEPENDENCY_SCOPES],
     };
   }
 }
@@ -799,11 +816,29 @@ export async function runPolicyCli() {
     );
     return 0;
   }
-  const scopes = [
+  const allScopes = [
     { scope: 'root', cwd: REPO_ROOT },
     { scope: 'sdk', cwd: path.join(REPO_ROOT, 'packages', 'sdk') },
     { scope: 'shared', cwd: path.join(REPO_ROOT, 'packages', 'shared') },
   ];
+  // Each scope costs TWO concurrent `npm audit` processes (full and
+  // production), and `packages/sdk`/`packages/shared` have no installed tree
+  // -- the repo installs at the root -- so npm resolves theirs from the
+  // registry. Auditing all three ran six registry-bound processes against a
+  // four-minute per-call timeout that one of them exceeds on its own; #1417
+  // has the measurements. Scanning the scopes whose inputs changed is both
+  // cheaper and what `.github/workflows/dependency-advisory.yml` already
+  // documents this scan as doing.
+  const selected = new Set(decision.scopes ?? allScopes.map((s) => s.scope));
+  const scopes = allScopes.filter((entry) => selected.has(entry.scope));
+  if (scopes.length === 0) {
+    throw new Error(
+      `dependency advisory scan selected no scopes (decision: ${decision.reason})`,
+    );
+  }
+  console.log(
+    `Dependency advisory floor: scanning ${scopes.map((entry) => entry.scope).join(', ')} (${decision.reason})`,
+  );
   const audits = await collectAudits(scopes);
   const exceptions = readJson(
     path.join(SCRIPT_DIR, 'dependency-advisory-exceptions.json'),
