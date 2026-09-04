@@ -7,7 +7,10 @@ import {
 } from '../workspace-chat-pane';
 
 describe('Chat Workspace Pane contract', () => {
-  test('declares the dock, primary and standalone placements with no Project requirement', () => {
+  test('declares the docked capability plus primary and standalone placements, with no Project requirement', () => {
+    // `docked` is a capability claim: chat is a registered shell surface
+    // (`REGION_SURFACE_REGISTRY`) and an ambient-dock occupant, and
+    // docked-capability-derivation.test.ts pins the claim to both tables.
     expect(WORKSPACE_CHAT_PANE_DESCRIPTOR).toMatchObject({
       id: 'pane:builtin:chat',
       renderer: { kind: 'builtin-component', name: 'workspace-chat' },
