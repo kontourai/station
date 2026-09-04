@@ -166,10 +166,27 @@ function isNonPassingResult(result) {
 }
 
 /**
+ * Per-render memo for `capturedStream`. Reading a stream artifact opens it,
+ * stats it twice and re-hashes up to 3 MiB to prove the digest; the tail and
+ * the failing-file scan both want the same bytes, so without this a single
+ * `renderBounded` paid that three times.
+ */
+const capturedStreams = new WeakMap();
+
+/**
  * The verified, already-redacted capture of one of the run's own streams, or
  * undefined when the receipt does not carry it.
  */
 function capturedStream(result, kind) {
+  const memo = capturedStreams.get(result) ?? new Map();
+  capturedStreams.set(result, memo);
+  if (memo.has(kind)) return memo.get(kind);
+  const value = readCapturedStream(result, kind);
+  memo.set(kind, value);
+  return value;
+}
+
+function readCapturedStream(result, kind) {
   const requestKey = result?.receipt?.request?.key;
   const reference = new RegExp(
     `^\\.kontourai/verification-output/([0-9a-f]{64})/${kind}-[0-9a-f]{64}\\.txt$`,
@@ -181,9 +198,11 @@ function capturedStream(result, kind) {
   if (!artifact || typeof result.receipt.request?.worktree !== 'string')
     return undefined;
   try {
-    // The artifact has already passed the redaction boundary at :281: raw
+    // The artifact has already passed the redaction boundary:
+    // `persistVerificationOutput` (verification-reporter.mjs) redacts the
+    // complete bounded source before choosing the persisted prefix, so raw
     // child output lives only in digest-addressed redacted artifacts, never
-    // stdout. Reading this verified artifact is therefore safe to surface.
+    // here. Reading this verified artifact is therefore safe to surface.
     return String(
       readVerifiedVerificationArtifact({
         root: result.receipt.request.worktree,
@@ -323,7 +342,16 @@ function tailFallback(bounded, stdoutTail) {
       // capture (station#1471). It is a single bounded line — the summary's
       // own byte budget already capped it — so it costs the tail very little.
       ...(withExcerpt && typeof bounded.summary?.firstCausalExcerpt === 'string'
-        ? { firstCausalExcerpt: bounded.summary.firstCausalExcerpt }
+        ? {
+            firstCausalExcerpt: bounded.summary.firstCausalExcerpt,
+            // The caveat travels with the excerpt or not at all: carrying the
+            // excerpt while dropping the note that says it was picked off an
+            // unattributed stream would state a stronger claim than the run
+            // supports, exactly the trade the reporter refuses at its own cap.
+            ...(bounded.summary?.causeStream
+              ? { causeStream: bounded.summary.causeStream }
+              : {}),
+          }
         : {}),
       // Carried through truncation: a capped list of file names is small, and
       // it is the field that says where to look. Dropping it here would

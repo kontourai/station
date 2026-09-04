@@ -33,6 +33,17 @@ function boundedSummaryEnvelope(summary) {
     ...(summary?.firstCausalExcerpt
       ? { firstCausalExcerpt: boundedText(summary.firstCausalExcerpt, 512) }
       : {}),
+    // station#1471 review: this allow-list silently dropped `causeStream`, so
+    // the caveat the reporter computes -- "that excerpt was chosen by severity
+    // and position on an unattributed stream, not scoped to the failing step"
+    // -- reached no receipt and no rendering, while the reporter's own comment
+    // and docs/strategy/multi-agent-delivery-protocol.md both said the receipt
+    // carries it. An absent caveat reads as the STRONGER claim, so omitting it
+    // did not lose information: it manufactured confidence. One short enum,
+    // bounded like everything else here.
+    ...(summary?.causeStream
+      ? { causeStream: boundedText(summary.causeStream, 16) }
+      : {}),
     // station#4249 review: present ONLY when reportExecution's own reporting
     // pipeline failed (the reconcile-note catch branches below) -- this is
     // the field a reader checks to tell that case apart from an ordinary

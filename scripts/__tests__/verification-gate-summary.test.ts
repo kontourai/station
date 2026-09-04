@@ -154,6 +154,13 @@ const failingLog = [
   'Tests 2 failed | 4211 passed',
 ].join('\n');
 
+/** The terminal escape byte, spelled rather than embedded in source. */
+const ESC = String.fromCharCode(27);
+
+const INNOCENT_ECHOED_TEST_FILE = 'src-ui/src/__tests__/EchoesABanner.test.tsx';
+/** Coloured exactly as vitest writes it on a runner. */
+const ECHOED_FAIL_LINE = `${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m ${INNOCENT_ECHOED_TEST_FILE}${ESC}[2m > ${ESC}[22mechoes a captured banner`;
+
 describe('verification gate summary', () => {
   test('writes a passing summary and emits no annotations for a green run', () => {
     const root = workspace();
@@ -261,6 +268,10 @@ describe('verification gate summary', () => {
     // real phase capture, folded the way the completion collector folds a
     // phase's output into the parent's.
     const phase = `\n[completion:${ORDINARY_SHARD_PHASE_ID}]\n`;
+    // An earlier PASSING phase region that echoes a FAIL banner of its own.
+    // The parent capture folds every phase into one stream, so this region is
+    // upstream of the failing one and a plain first-match reaches it first.
+    const earlierPhase = '\n[completion:test-full-ordinary-1-of-8]\n';
     const root = workspace();
     const capture = join(root, 'full-regression.stdout.log');
     writeFileSync(
@@ -268,8 +279,8 @@ describe('verification gate summary', () => {
       capturedStdout(
         failingLog,
         verdictDocument({
-          stdout: `${phase}${ORDINARY_SHARD_STDOUT}`,
-          stderr: `${phase}${ORDINARY_SHARD_STDERR}`,
+          stdout: `${earlierPhase}an earlier phase that passed${phase}${ORDINARY_SHARD_STDOUT}`,
+          stderr: `${earlierPhase}${ECHOED_FAIL_LINE}${phase}${ORDINARY_SHARD_STDERR}`,
           status: 'failed',
           exitCode: 1,
           counts: {
@@ -294,19 +305,26 @@ describe('verification gate summary', () => {
     expect(annotations[0].startsWith('::error title=full-regression::')).toBe(
       true,
     );
+    // The failing FILE and the failing TEST NAME, which together are what let
+    // a reader act without downloading the artifact.
     expect(annotations[0]).toContain(
       'scripts/__tests__/android-channel-release-generation.test.ts',
     );
-    // The generic "no causal excerpt" fallback is what this run used to get.
-    expect(annotations[0]).not.toContain('no causal excerpt');
-    // One line, and no terminal control bytes reach the annotations rail.
-    expect(annotations[0]).not.toContain('\r');
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: proving the escape bytes are gone is the assertion.
-    expect(annotations[0]).not.toMatch(/\u001B\[/);
+    expect(annotations[0]).toContain(
+      'uploads signed nightly artifacts before strict AAB signature verification',
+    );
+    // The earlier PASSING phase's banner is in the same folded stream and must
+    // not be what the rail names.
+    expect(annotations[0]).not.toContain(INNOCENT_ECHOED_TEST_FILE);
+    expect(summary).not.toContain(INNOCENT_ECHOED_TEST_FILE);
     expect(summary).toContain('### Causal excerpts');
     expect(summary).toContain(
       'scripts/__tests__/android-channel-release-generation.test.ts',
     );
+    // station#1471 review: the excerpt came off a stream carrying no step
+    // marker for the failing step, and the rendering says so rather than
+    // letting silence imply the stronger, scoped claim.
+    expect(summary).toContain('Chosen from stderr, unscoped');
   });
 
   test('states what it could not parse for garbage input rather than failing or staying silent', () => {

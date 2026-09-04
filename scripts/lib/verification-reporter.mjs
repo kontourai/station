@@ -17,6 +17,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import receiptSchema from '../../schemas/verification-receipt.schema.json' with {
   type: 'json',
 };
+import { withoutAnsi } from './ansi-escape.mjs';
 import { writeReceiptSecurely } from './test-reliability.mjs';
 import {
   releaseVerificationArtifactMutation,
@@ -363,7 +364,11 @@ function diagnosticSeverity(lines, index) {
  */
 function findCausalDiagnostic(
   lines,
-  { preferLast = false, allowWarningFallback = true } = {},
+  {
+    preferLast = false,
+    allowWarningFallback = true,
+    allowFailShaped = true,
+  } = {},
 ) {
   // `preferLast` is for STDERR, which carries no step markers. The chain
   // short-circuits, so the failing step's output is the tail; scanning from
@@ -374,7 +379,7 @@ function findCausalDiagnostic(
   const order = preferLast ? [...lines.keys()].reverse() : [...lines.keys()];
   let fallback;
   for (const i of order) {
-    if (!isCausalDiagnostic(lines[i])) continue;
+    if (!isCausalDiagnostic(lines[i], { allowFailShaped })) continue;
     if (fallback === undefined) fallback = lines[i];
     if (diagnosticSeverity(lines, i) !== 'warning') return lines[i];
   }
@@ -384,24 +389,59 @@ function findCausalDiagnostic(
 const FAIL_LINE = /^\s*(?:❯\s*)?FAIL\s+\S+/;
 
 /**
- * ANSI SGR/CSI sequences, which sit BEFORE the first visible character of a
- * coloured line and therefore defeat every `^`-anchored matcher here.
- *
- * station#1471: vitest colours its failure banner
- * (`ESC[41m ESC[1m FAIL ESC[22m ESC[49m <file> > <test>`) whenever it
- * writes to a terminal, and GitHub Actions is one. A hosted nightly's failing
- * shard therefore produced a perfectly well-formed `FAIL` line that
- * `FAIL_LINE` could not see, so the run reported an ambient log line from a
- * PASSING test as its cause and the annotation rail said no causal excerpt
- * existed at all. The bytes are kept as captured -- the excerpt stays
- * byte-faithful to the artifact beside it -- and only the MATCH is taken
- * against the stripped text.
+ * The marker `createCompletionOutputCollector` writes in front of each phase's
+ * captured output when it folds a completion lane's phases into ONE parent
+ * capture (verification-completion-phases.mjs).
  */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching the terminal escape byte is exactly the job.
-const ANSI_SEQUENCE = /\u001B\[[0-9;?]*[ -/]*[@-~]/g;
+const COMPLETION_PHASE_MARKER = /^\[completion:[^\]]+\]$/;
 
-function withoutAnsi(line) {
-  return String(line).replace(ANSI_SEQUENCE, '');
+/**
+ * The last phase region of a folded completion capture, or the whole capture
+ * when it is not one.
+ *
+ * `runCompletionPhaseSequence` returns at the FIRST non-passing phase, so in a
+ * parent capture the failing phase is always the LAST region: every region
+ * before it belongs to a phase that passed. Without this scope, a `FAIL`-shaped
+ * line a PASSING phase happened to echo is found first and reported as the
+ * cause -- the same wrong-phase attribution the npm step boundary already
+ * prevents on stdout.
+ */
+function lastCompletionPhaseRegion(lines) {
+  const index = lines.findLastIndex((line) =>
+    COMPLETION_PHASE_MARKER.test(line),
+  );
+  return index >= 0
+    ? { lines: lines.slice(index), scoped: true }
+    : { lines, scoped: false };
+}
+
+/**
+ * The `FAIL` line a stderr capture attributes to the failing work, or
+ * undefined.
+ *
+ * Two regimes, because stderr has two shapes. A folded completion capture DOES
+ * carry step markers, so the failing phase is identified and first-match
+ * within it is the first failure that phase reported. Everything else carries
+ * none, so position is the only signal there is: the chain short-circuits on
+ * `&&`, making the tail the failing step -- the same `preferLast` bias the
+ * stderr diagnostic scan already applies.
+ */
+function stderrFailLine(stderrLines) {
+  const { lines, scoped } = lastCompletionPhaseRegion(stderrLines);
+  return scoped ? lines.find(isFailLine) : lines.findLast(isFailLine);
+}
+
+/**
+ * Every `FAIL` line in the same scope `stderrFailLine` chose from, with that
+ * winner at index 0 -- the ordering discipline `findAllCausalDiagnostics`
+ * already uses, so `causalExcerpts[0]` and `firstCausalExcerpt` can never
+ * disagree.
+ */
+function stderrFailLines(stderrLines) {
+  const winner = stderrFailLine(stderrLines);
+  if (winner === undefined) return [];
+  const { lines } = lastCompletionPhaseRegion(stderrLines);
+  return [winner, ...allFailLines(lines).filter((line) => line !== winner)];
 }
 
 function isFailLine(line) {
@@ -446,12 +486,22 @@ const FAIL_LINE_TEST_FILE =
  * Deliberately no per-file count: a capture is a bounded prefix and a
  * persisted stream can be a tail, so a count derived from it would be a
  * number nothing guarantees. The names are what end the investigation.
+ *
+ * Scoped to the last completion phase region for the same reason
+ * `stderrFailLine` is: naming a file a PASSING phase merely mentioned sends a
+ * reader to innocent code, which is the defect `failedCheckTestFiles` exists
+ * to prevent, not one it may commit.
  */
 export function failedTestFilesFromCapture(text) {
   const seen = new Set();
   const files = [];
-  for (const line of String(text ?? '').split(/\r?\n/)) {
-    const match = FAIL_LINE_TEST_FILE.exec(withoutAnsi(line));
+  const { lines } = lastCompletionPhaseRegion(
+    String(text ?? '')
+      .split(/\r?\n/)
+      .map(withoutAnsi),
+  );
+  for (const line of lines) {
+    const match = FAIL_LINE_TEST_FILE.exec(line);
     if (!match || seen.has(match[1])) continue;
     seen.add(match[1]);
     files.push(match[1]);
@@ -471,11 +521,16 @@ export function failedTestFilesFromCapture(text) {
  */
 function findAllCausalDiagnostics(
   lines,
-  { preferLast = false, allowWarningFallback = true } = {},
+  {
+    preferLast = false,
+    allowWarningFallback = true,
+    allowFailShaped = true,
+  } = {},
 ) {
   const winner = findCausalDiagnostic(lines, {
     preferLast,
     allowWarningFallback,
+    allowFailShaped,
   });
   // Withdrawing the warning fallback above is enough for this function too:
   // with no winner there is no tier, and when a winner exists under
@@ -484,12 +539,12 @@ function findAllCausalDiagnostics(
   if (winner === undefined) return [];
   const hasNonWarning = lines.some(
     (line, index) =>
-      isCausalDiagnostic(line) &&
+      isCausalDiagnostic(line, { allowFailShaped }) &&
       diagnosticSeverity(lines, index) !== 'warning',
   );
   const tier = [];
   for (let index = 0; index < lines.length; index += 1) {
-    if (!isCausalDiagnostic(lines[index])) continue;
+    if (!isCausalDiagnostic(lines[index], { allowFailShaped })) continue;
     const severity = diagnosticSeverity(lines, index);
     const inTier = hasNonWarning
       ? severity !== 'warning'
@@ -529,35 +584,55 @@ function allCausalExcerpts({
   terminal,
   lines,
   allowWarningFallback = true,
+  reportsCause = true,
 }) {
-  const scopedFailLines = allFailLines(scopedStdout);
+  // Both FAIL tiers are gated by `reportsCause` for the same reason the
+  // warning fallback is: a run this function's inputs all say passed has no
+  // cause to report, and a coloured FAIL line is the ordinary CI shape, so a
+  // passing test that prints one would otherwise become a cause.
+  const scopedFailLines = reportsCause ? allFailLines(scopedStdout) : [];
   if (scopedFailLines.length) return scopedFailLines;
   // Mirrors the singular chain's station#1471 ordering: a runner's own FAIL
   // lines, on whichever stream carried them, before any generic diagnostic.
-  const stderrFailLines = allFailLines(stderrLines);
-  if (stderrFailLines.length) return stderrFailLines;
+  const stderrFails = reportsCause ? stderrFailLines(stderrLines) : [];
+  if (stderrFails.length) return stderrFails;
   if (failureSection >= 0) {
     const scoped = findAllCausalDiagnostics(
       scopedStdout.slice(failureSection + 1),
-      { allowWarningFallback },
+      { allowWarningFallback, allowFailShaped: reportsCause },
     );
     if (scoped.length) return scoped;
   }
   const unscoped = findAllCausalDiagnostics(scopedStdout, {
     allowWarningFallback,
+    allowFailShaped: reportsCause,
   });
   if (unscoped.length) return unscoped;
   const stderrDiagnostics = findAllCausalDiagnostics(stderrLines, {
     preferLast: true,
     allowWarningFallback,
+    allowFailShaped: reportsCause,
   });
   if (stderrDiagnostics.length) return stderrDiagnostics;
   if (lines.length === 1 && /parser/i.test(terminal.status)) return [lines[0]];
   return [];
 }
 
-function isCausalDiagnostic(line) {
+/**
+ * The `FAIL`-shaped alternative, split out of the interrupted-run shapes below
+ * it so a clean pass can withdraw it alone (station#1471 review).
+ *
+ * It is the one shape in `isCausalDiagnostic` that a PASSING run legitimately
+ * produces: a passing test that prints a FAIL banner of its own. The siblings
+ * it used to share an alternation with (`Process … SIGTERM`, `cleanup failed`,
+ * `No test files`) contradict a clean pass rather than accompanying one, so
+ * they are never withdrawn.
+ */
+const FAIL_SHAPED_DIAGNOSTIC = /^\s*FAIL\b/i;
+
+function isCausalDiagnostic(line, { allowFailShaped = true } = {}) {
   return (
+    (allowFailShaped && FAIL_SHAPED_DIAGNOSTIC.test(line)) ||
     /\b(?:AssertionError|TypeError|ReferenceError|SyntaxError|RangeError|TimeoutError)\b/.test(
       line,
     ) ||
@@ -571,7 +646,7 @@ function isCausalDiagnostic(line) {
     // reported a `noUselessFragments` WARNING from an untouched file as the
     // cause. Same defect as the FIXABLE blind spot, a different header shape.
     /^\S+\s+format\s+━/.test(line) ||
-    /^\s*(?:FAIL\b|Process\b.*\bSIGTERM\b|cleanup failed\b|No test files\b)/i.test(
+    /^\s*(?:Process\b.*\bSIGTERM\b|cleanup failed\b|No test files\b)/i.test(
       line,
     ) ||
     /^\s*\d+\)\s+\[[^\]]+\]\s+›\s+\S+\.spec\.[jt]s\b/.test(line)
@@ -648,10 +723,28 @@ export function summarizeVerificationOutput({
   // TypeError logged by a PASSING test could be reported as the cause of a
   // failure in a later step while `failingStep` correctly named that later
   // step. Two fields contradicting each other, with nothing to reconcile them.
-  const stdoutLines = redactVerificationOutput(String(stdout))
+  //
+  // station#1471: the terminal escape bytes come off BEFORE the redaction
+  // boundary, and for two independent reasons.
+  //
+  //  - Every `^`-anchored matcher below reads these lines: the `FAIL <file>`
+  //    banner, biome's `path:line:col rule ━` header and the `×`/`!` severity
+  //    markers under it, tsc's `(l,c): error TSxxxx`. CI colours all of them,
+  //    so an escape sequence sits in front of the first visible character and
+  //    the anchor never matches — silently, and only on hosted runs, because
+  //    every fixture here is plain text.
+  //  - A secret SPLIT by an escape sequence (`ghp_` + 20 chars, `ESC[0m`, 20
+  //    more) is not a token the redactor can recognise while the escape is in
+  //    the middle of it. Stripping AFTER redaction would reconstitute exactly
+  //    that secret into the excerpt. Stripping first means the redactor sees
+  //    the same text the matchers do.
+  //
+  // The persisted artifacts are untouched: `persistVerificationOutput` redacts
+  // and stores the capture as it arrived, colour and all.
+  const stdoutLines = redactVerificationOutput(withoutAnsi(String(stdout)))
     .split(/\r?\n/)
     .filter(Boolean);
-  const stderrLines = redactVerificationOutput(String(stderr))
+  const stderrLines = redactVerificationOutput(withoutAnsi(String(stderr)))
     .split(/\r?\n/)
     .filter(Boolean);
   const lines = [...stdoutLines, ...stderrLines];
@@ -661,11 +754,19 @@ export function summarizeVerificationOutput({
   const scopedStdout = stepBoundary
     ? stdoutLines.slice(stepBoundary.index)
     : stdoutLines;
-  // STDERR cannot be attributed the same way -- it carries no step markers at
-  // all. What IS structurally true is the ORDER: the chain short-circuits on
-  // `&&`, so the failing step's stderr is the TAIL. Among equally-ranked
-  // candidates the last one is therefore the one most likely to belong to the
-  // step that failed, which is why stderr is searched from the end.
+  // STDERR usually cannot be attributed the same way: npm writes its `> pkg
+  // script` headers to stdout only, so a chained `a && b` capture carries no
+  // step markers on stderr at all. What IS structurally true there is the
+  // ORDER: the chain short-circuits on `&&`, so the failing step's stderr is
+  // the TAIL. Among equally-ranked candidates the last one is therefore the
+  // one most likely to belong to the step that failed, which is why stderr is
+  // searched from the end.
+  //
+  // station#1471 corrects that as a blanket claim. A COMPLETION lane's parent
+  // capture is folded by `createCompletionOutputCollector`, which writes a
+  // `[completion:<phase-id>]` marker in front of each phase's stderr — so that
+  // shape is attributable after all, and `lastCompletionPhaseRegion` uses it.
+  // The position heuristic remains the rule for every other capture.
   const failureSection = scopedStdout.findLastIndex((line) =>
     /(?:Failed Tests|Test Failures|Failures\s+\d+)/i.test(line),
   );
@@ -711,6 +812,19 @@ export function summarizeVerificationOutput({
     (cleanupStatus === 'passed' || cleanupStatus === 'not_required') &&
     (cleanup.survivingOwnedChildren ?? 0) === 0;
   const allowWarningFallback = !observedClean;
+  // The SAME observation as `allowWarningFallback`, named for the other job it
+  // does. station#1471 review: the FAIL tiers below bypassed the pass check
+  // entirely, and a coloured FAIL line is the ordinary CI shape — so once FAIL
+  // matching stopped being defeated by colour, a GREEN run containing a
+  // passing test that PRINTS a FAIL-shaped line would have reported a cause
+  // and rendered a "Causal excerpts" block for it. A passing run reports no
+  // cause, on either stream.
+  //
+  // Withdrawn here for the FAIL tiers only. `findCausalDiagnostic`'s
+  // error-tier behaviour on a claimed pass is deliberately untouched: an
+  // error-tier diagnostic on a run that claims success is a contradiction a
+  // reader needs to see, and a test pins it (station#1459).
+  const reportsCause = !observedClean;
   // Attributable evidence outranks unattributable evidence. A candidate from
   // the scoped stdout provably came from the failing step; a stderr candidate
   // only probably did.
@@ -724,48 +838,40 @@ export function summarizeVerificationOutput({
   // reported an ambient `SyntaxError` log line emitted by a PASSING test in
   // the same shard as the cause. Attributability still orders everything
   // else; it does not outrank a runner's own verdict.
-  const causalCandidate =
-    failLineIn(scopedStdout) ??
-    failLineIn(stderrLines) ??
+  const firstCausalExcerpt =
+    (reportsCause ? failLineIn(scopedStdout) : undefined) ??
+    (reportsCause ? stderrFailLine(stderrLines) : undefined) ??
     (failureSection >= 0
       ? findCausalDiagnostic(scopedStdout.slice(failureSection + 1), {
           allowWarningFallback,
+          allowFailShaped: reportsCause,
         })
       : null) ??
-    findCausalDiagnostic(scopedStdout, { allowWarningFallback }) ??
+    findCausalDiagnostic(scopedStdout, {
+      allowWarningFallback,
+      allowFailShaped: reportsCause,
+    }) ??
     findCausalDiagnostic(stderrLines, {
       preferLast: true,
       allowWarningFallback,
+      allowFailShaped: reportsCause,
     }) ??
     (lines.length === 1 && /parser/i.test(terminal.status) ? lines[0] : null);
-  // station#1471: the EXCERPT is rendered for a reader, so the terminal colour
-  // bytes come off here — after selection (which needs the captured line) and
-  // after `causeStream` below (which identifies the source stream by looking
-  // the captured line up in `scopedStdout`). Leaving them in spent summary
-  // budget on escape sequences and put an unprintable prefix in front of the
-  // file name in the one field that says what broke. The artifact beside it
-  // still holds the bytes exactly as captured.
-  const normalizeExcerpt = (value) =>
-    typeof value === 'string' ? withoutAnsi(value) : value;
-  const firstCausalExcerpt = normalizeExcerpt(causalCandidate);
   // station#4249: the plural companion, derived from the SAME branch that won
   // above (see `allCausalExcerpts`'s doc comment for why the two can never
   // disagree about their head element). Computed unconditionally -- it is
   // cheap pure text scanning -- but only ever rendered into the summary when
   // `firstCausalExcerpt` itself made the byte budget (below), so its presence
   // never outruns the field it extends.
-  const causalExcerptsObserved = [
-    ...new Set(
-      allCausalExcerpts({
-        scopedStdout,
-        stderrLines,
-        failureSection,
-        terminal,
-        lines,
-        allowWarningFallback,
-      }).map(normalizeExcerpt),
-    ),
-  ];
+  const causalExcerptsObserved = allCausalExcerpts({
+    scopedStdout,
+    stderrLines,
+    failureSection,
+    terminal,
+    lines,
+    allowWarningFallback,
+    reportsCause,
+  });
   // Emitted ONLY when the excerpt came from stderr, which is the case a reader
   // needs warning about: stderr carries no step markers, so that excerpt was
   // chosen by severity and position rather than attributed to the failing
@@ -777,7 +883,7 @@ export function summarizeVerificationOutput({
   // where carrying it cost the run its `finalTally`: a caveat that displaces
   // measured truth is a bad trade.
   const causeStream =
-    causalCandidate && !scopedStdout.includes(causalCandidate)
+    firstCausalExcerpt && !scopedStdout.includes(firstCausalExcerpt)
       ? 'stderr'
       : null;
   // What this computes, stated as narrowly as it is true: the last npm step

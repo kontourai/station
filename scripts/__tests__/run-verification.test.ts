@@ -30,6 +30,19 @@ import {
 } from './fixtures/full-regression-shard-capture.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
+/** The terminal escape byte, spelled rather than embedded in source. */
+const ESC = String.fromCharCode(27);
+
+const EARLIER_PASSING_PHASE_ID = 'test-full-ordinary-1-of-8';
+const INNOCENT_PASSING_PHASE_TEST_FILE =
+  'src-ui/src/__tests__/EchoesABanner.test.tsx';
+/**
+ * A PASSING phase whose own output happens to contain a vitest FAIL banner --
+ * a test that prints one, or a runner echoing a captured tail. Coloured
+ * exactly as a runner writes it.
+ */
+const PASSING_PHASE_ECHOED_FAIL_STDERR = `${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m ${INNOCENT_PASSING_PHASE_TEST_FILE}${ESC}[2m > ${ESC}[22mechoes a captured banner`;
+
 describe('verification status projection', () => {
   test('overrides a forged owner marker for a normal nested ci-fast exit 80 through lifecycle and receipt reporting', async () => {
     const worktree = mkdtempSync(join(tmpdir(), 'station-ci-fast-exit-'));
@@ -109,6 +122,11 @@ describe('verification status projection', () => {
     mkdirSync(worktree);
     const phaseCalls: string[] = [];
     try {
+      // station#1471 review: an EARLIER, PASSING phase that echoes a FAIL
+      // banner of its own. `runCompletionPhaseSequence` stops at the first
+      // non-passing phase, so this region is always upstream of the failing
+      // one in the folded capture -- and a plain `.find` over the parent's
+      // stderr reaches it first and attributes the run to an innocent file.
       const result = await coordinateVerification({
         laneId: 'full-regression',
         root,
@@ -141,27 +159,50 @@ describe('verification status projection', () => {
           }),
         phaseRunner: async ({ phase }: { phase: { id: string } }) => {
           phaseCalls.push(phase.id);
-          return phase.id === ORDINARY_SHARD_PHASE_ID
-            ? {
-                status: 1,
-                output: {
-                  stdout: { text: ORDINARY_SHARD_STDOUT },
-                  stderr: { text: ORDINARY_SHARD_STDERR },
-                },
-              }
-            : { status: 0 };
+          if (phase.id === ORDINARY_SHARD_PHASE_ID)
+            return {
+              status: 1,
+              output: {
+                stdout: { text: ORDINARY_SHARD_STDOUT },
+                stderr: { text: ORDINARY_SHARD_STDERR },
+              },
+            };
+          if (phase.id === EARLIER_PASSING_PHASE_ID)
+            return {
+              status: 0,
+              output: { stderr: { text: PASSING_PHASE_ECHOED_FAIL_STDERR } },
+            };
+          return { status: 0 };
         },
-      } as never);
-      expect(phaseCalls).toContain(ORDINARY_SHARD_PHASE_ID);
+      });
+      // Both regions really are in the parent capture, in this order.
+      expect(
+        phaseCalls.indexOf(EARLIER_PASSING_PHASE_ID),
+      ).toBeGreaterThanOrEqual(0);
+      expect(phaseCalls.indexOf(EARLIER_PASSING_PHASE_ID)).toBeLessThan(
+        phaseCalls.indexOf(ORDINARY_SHARD_PHASE_ID),
+      );
       expect(result.receipt.terminal.passed).toBe(false);
 
       const document = JSON.parse(renderBounded(result));
       expect(document.summary.firstCausalExcerpt).toMatch(
         /FAIL\s+scripts\/__tests__\/android-channel-release-generation\.test\.ts/,
       );
+      // The passing phase's banner is upstream in the same stream and must
+      // reach neither field: naming it sends a reader to innocent code.
+      expect(document.summary.firstCausalExcerpt).not.toContain(
+        INNOCENT_PASSING_PHASE_TEST_FILE,
+      );
       expect(document.summary.failedCheckTestFiles).toContain(
         ORDINARY_SHARD_FAILING_TEST_FILE,
       );
+      expect(document.summary.failedCheckTestFiles).not.toContain(
+        INNOCENT_PASSING_PHASE_TEST_FILE,
+      );
+      // station#1471 review: the excerpt was picked off a stream with no step
+      // marker attributing it to the failing step, and the document has to say
+      // so -- an absent caveat reads as the stronger claim.
+      expect(document.summary.causeStream).toBe('stderr');
       // Why the stderr fold is load-bearing rather than a nicety: the stdout
       // tail, which is all the document carried before, never held the block.
       expect(document.summary.failedCheckRedactedStdoutTail).not.toMatch(
@@ -236,6 +277,10 @@ describe('verification status projection', () => {
       expect(document.summary.failedCheckTestFiles).toContain(
         ORDINARY_SHARD_FAILING_TEST_FILE,
       );
+      // The caveat is carried by the over-cap envelope too. Carrying the
+      // excerpt while dropping the note that it came off an unattributed
+      // stream would make the truncated document claim MORE than the full one.
+      expect(document.summary.causeStream).toBe('stderr');
     } finally {
       rmSync(worktree, { recursive: true, force: true });
     }
