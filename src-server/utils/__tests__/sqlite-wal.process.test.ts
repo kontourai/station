@@ -441,6 +441,86 @@ describe('applyWalJournalMode reports, and fails closed where asked (#3661 revie
   });
 });
 
+describe('fixture-only synchronous relaxation', () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'sqlite-wal-fixture-sync-'));
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+  const synchronousOf = (db: { prepare(sql: string): { get(): unknown } }) =>
+    (db.prepare('PRAGMA synchronous').get() as { synchronous: number })
+      .synchronous;
+
+  test('an unset variable leaves SQLite at its own default (FULL under WAL)', () => {
+    const db = new DatabaseSync(join(root, 'default.sqlite'));
+    try {
+      const result = applyWalJournalMode(db, { store: 'fixture', env: {} });
+      expect(result.enabled).toBe(true);
+      expect(synchronousOf(db)).toBe(2);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("only the literal value 'off' relaxes the connection", () => {
+    const db = new DatabaseSync(join(root, 'other.sqlite'));
+    try {
+      applyWalJournalMode(db, {
+        store: 'fixture',
+        env: { STATION_SQLITE_FIXTURE_SYNCHRONOUS: 'OFF' },
+      });
+      expect(synchronousOf(db)).toBe(2);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("'off' drops the connection to synchronous=OFF after WAL is enabled", () => {
+    const db = new DatabaseSync(join(root, 'off.sqlite'));
+    try {
+      const result = applyWalJournalMode(db, {
+        store: 'fixture',
+        env: { STATION_SQLITE_FIXTURE_SYNCHRONOUS: 'off' },
+      });
+      expect(result.enabled).toBe(true);
+      expect(synchronousOf(db)).toBe(0);
+      expect(
+        (db.prepare('PRAGMA journal_mode').get() as { journal_mode: string })
+          .journal_mode,
+      ).toBe('wal');
+    } finally {
+      db.close();
+    }
+  });
+
+  test('a connection that could not enter WAL is never relaxed', () => {
+    let execs: string[] = [];
+    const db = {
+      exec(sql: string) {
+        execs.push(sql);
+        if (sql.startsWith('PRAGMA journal_mode =')) {
+          const error = new Error('disk I/O error') as Error & {
+            errcode?: number;
+          };
+          error.errcode = 10;
+          throw error;
+        }
+      },
+      prepare() {
+        return { get: () => ({ journal_mode: 'delete' }) };
+      },
+    };
+    applyWalJournalMode(db, {
+      store: 'fixture',
+      env: { STATION_SQLITE_FIXTURE_SYNCHRONOUS: 'off' },
+    });
+    expect(execs.some((sql) => /synchronous/i.test(sql))).toBe(false);
+    execs = [];
+  });
+});
+
 describe('two processes first-opening a never-WAL database (#3661)', () => {
   let dir: string;
   let databasePath: string;

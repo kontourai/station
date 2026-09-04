@@ -32,6 +32,10 @@ mkdirSync(runRoot, { recursive: true });
 // a runtime override and must never route a test to the owner's profiles.
 const testRootDir = mkdtempSync(join(runRoot, 'root-'));
 process.env.STATION_ROOT = testRootDir;
+// Fixture stores skip per-commit fsync (see `applyFixtureSynchronousMode` in
+// src-server/utils/sqlite-wal.ts). Only set when the caller has not chosen,
+// so a lane that wants production durability can export the variable itself.
+process.env.STATION_SQLITE_FIXTURE_SYNCHRONOUS ??= 'off';
 
 if (!process.env.STATION_HOME) {
   const testHomeDir = join(testRootDir, 'instances', 'test');
