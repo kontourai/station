@@ -123,19 +123,10 @@ test.describe
       );
 
       const rendered = page.getByRole('heading', { name: 'Quick Actions' });
-      const knownHostBlocker = page.getByRole('heading', {
-        name: 'Dashboard could not open',
-      });
-      await expect(rendered.or(knownHostBlocker)).toBeVisible({
-        timeout: 20_000,
-      });
-      if (await knownHostBlocker.isVisible()) {
-        test.info().annotations.push({
-          type: 'NOT_VERIFIED',
-          description:
-            'Dashboard output remains blocked by #1371 canonical plugin Pane SDK context composition.',
-        });
-      }
+      // This is the product journey, not a host-error diagnostic. Until the
+      // canonical Pane composition supports it (#1371), this proof is pending;
+      // a visible failure must never count as a rendered Enterprise Dashboard.
+      await expect(rendered).toBeVisible({ timeout: 20_000 });
 
       const removed = await authenticatedRequest.delete(
         `${API}/api/plugins/enterprise-layout`,
@@ -143,12 +134,25 @@ test.describe
       expect(removed.status()).toBe(200);
       const afterRemoval = await authenticatedRequest.get(`${API}/api/plugins`);
       expect(afterRemoval.status()).toBe(200);
-      expect(
-        ((await afterRemoval.json()).plugins as Array<{ name: string }>).map(
-          (plugin) => plugin.name,
-        ),
-      ).not.toEqual(
-        expect.arrayContaining(['enterprise-layout', 'shared-providers']),
-      );
+      const remainingNames = (
+        (await afterRemoval.json()).plugins as Array<{ name: string }>
+      ).map((plugin) => plugin.name);
+      for (const name of ['enterprise-layout', 'shared-providers']) {
+        // Negating arrayContaining([parent, dependency]) also passes when one
+        // survives. Verify each before afterAll's defensive fixture cleanup.
+        expect(remainingNames).not.toContain(name);
+        const settings = await authenticatedRequest.get(
+          `${API}/api/plugins/${name}/settings`,
+        );
+        expect(settings.status()).toBe(404);
+        const providers = await authenticatedRequest.get(
+          `${API}/api/plugins/${name}/providers`,
+        );
+        expect(providers.status()).toBe(404);
+      }
+      // This source install creates no registry alias, and the dependency's
+      // providers.register permission stays pending above. Active-provider and
+      // alias retirement are separately exercised by the registry-backed
+      // install/remove integration test, not inferred from manifest absence.
     });
   });
