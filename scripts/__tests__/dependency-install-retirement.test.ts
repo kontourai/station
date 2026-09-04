@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -15,6 +16,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { install } from '../dependency-lifecycle.mjs';
 import {
   DEPENDENCY_INSTALL_GUARD,
+  DEPENDENCY_INSTALL_RECORD_PREFIX,
   prepareDependencyInstallDrivers,
   withDependencyInstallGuard,
 } from '../lib/dependency-install-retirement.mjs';
@@ -256,6 +258,55 @@ test('unexpected guard children remain visible after successful verification', (
     JSON.parse(readFileSync(join(f.guard, 'receipt.json'), 'utf8')).phase,
   ).toBe('verified');
 });
+
+test('successful guard state and ordinary macOS metadata are preserved while the fixed name is released', () => {
+  const f = fixture();
+  const warn = vi.fn();
+  withDependencyInstallGuard({
+    root: f.root,
+    warn,
+    run: () => {
+      seed(f.modules, 'verified');
+      writeFileSync(join(f.guard, '.DS_Store'), 'metadata');
+    },
+  });
+  expect(warn).not.toHaveBeenCalled();
+  expect(existsSync(f.guard)).toBe(false);
+  const records = readdirSync(f.root).filter((name) =>
+    name.startsWith(DEPENDENCY_INSTALL_RECORD_PREFIX),
+  );
+  expect(records).toHaveLength(1);
+  const state = join(f.root, records[0], 'state');
+  expect(readFileSync(join(state, '.DS_Store'), 'utf8')).toBe('metadata');
+  expect(
+    JSON.parse(readFileSync(join(state, 'receipt.json'), 'utf8')).phase,
+  ).toBe('verified');
+  withDependencyInstallGuard({ root: f.root, clean: false, run: () => {} });
+  expect(existsSync(f.guard)).toBe(false);
+});
+
+test.each(['large', 'directory', 'link'])(
+  'unexpected %s macOS metadata cannot silently release the guard',
+  (kind) => {
+    const f = fixture();
+    const outside = fixture();
+    const warn = vi.fn();
+    withDependencyInstallGuard({
+      root: f.root,
+      warn,
+      run: () => {
+        const path = join(f.guard, '.DS_Store');
+        if (kind === 'large') writeFileSync(path, 'x'.repeat(65_537));
+        else if (kind === 'directory') mkdirSync(path);
+        else symlinkSync(outside.root, path, 'junction');
+      },
+    });
+    expect(existsSync(f.guard)).toBe(true);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('cleanup is pending'),
+    );
+  },
+);
 
 test('a root target recreated after retired cleanup is preserved and never handed to npm', () => {
   const f = fixture();

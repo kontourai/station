@@ -422,7 +422,14 @@ does not reserve disk space. An ENOSPC or abrupt interruption can prevent a
 phase-receipt update, so the last recorded phase is not proof that an installer
 is still alive or that an install completed.
 
-If verification succeeds but guard cleanup cannot finish, the runner reports
+After successful verification, the guard is atomically moved into a private
+`.station-dependency-record-*/state` directory, retaining its small operational
+receipt and any regular `.DS_Store` metadata up to64KiB. The fixed guard name is
+then free for the next install; completed records are ignored generated worktree
+artifacts, not authority to perform recovery. Unknown children, links, or larger
+metadata are not silently accepted or deleted.
+
+If verification succeeds but guard finalization cannot finish, the runner reports
 **verified dependencies / cleanup pending** and leaves the guard blocking the
 next install until it is inspected. Unexpected guard children are never
 recursively deleted. This is cooperative install coordination and a recovery

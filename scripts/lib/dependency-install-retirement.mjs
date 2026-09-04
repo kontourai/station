@@ -5,19 +5,19 @@ import {
   ftruncateSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   openSync,
   readdirSync,
   realpathSync,
   renameSync,
-  rmdirSync,
   rmSync,
-  unlinkSync,
   writeSync,
 } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 /** Install coordination and generated-tree retirement; not a user-data archive. */
 export const DEPENDENCY_INSTALL_GUARD = '.station-dependency-install';
+export const DEPENDENCY_INSTALL_RECORD_PREFIX = '.station-dependency-record-';
 
 /** Freeze the selected tool paths before CI can move their former directory. */
 export function prepareDependencyInstallDrivers({
@@ -186,17 +186,31 @@ export function withDependencyInstallGuard({
   }
   try {
     assertOwned();
-    // Never recursively remove the guard: unexpected children stay visible.
+    // Keep successful state (and small ordinary macOS directory metadata)
+    // rather than racing a .DS_Store writer during rmdir of the fixed guard.
     const children = readdirSync(guard);
+    const metadata = entry(join(guard, '.DS_Store'));
+    const ordinaryMetadata =
+      metadata?.isFile() &&
+      !metadata.isSymbolicLink() &&
+      metadata.size <= 65_536;
     if (
       !sameEntry(guard, guardIdentity) ||
       !sameEntry(receiptPath, receiptIdentity) ||
-      children.length !== 1 ||
-      children[0] !== 'receipt.json'
+      children.some(
+        (name) =>
+          name !== 'receipt.json' &&
+          !(name === '.DS_Store' && ordinaryMetadata),
+      )
     )
       throw new Error('Dependency installer cleanup ownership changed.');
-    unlinkSync(receiptPath);
-    rmdirSync(guard);
+    const recordDirectory = mkdtempSync(
+      join(canonicalRoot, DEPENDENCY_INSTALL_RECORD_PREFIX),
+    );
+    renameSync(guard, join(recordDirectory, 'state'));
+    // Publication ends ownership of the fixed name. A later installer may
+    // acquire it immediately; never touch that name after this rename.
+    return result;
   } catch {
     warn(
       `[dependency-lifecycle] Dependencies verified; installer guard cleanup is pending at ${JSON.stringify(guard)}. Inspect retained state before the next install.`,
