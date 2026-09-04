@@ -1072,6 +1072,12 @@ export function createPluginCompositionModule(options: {
       release: () => void | Promise<void>;
       operation?: Promise<void>;
     } = { entries: [], release };
+    // Acquisition owns the lease even if rollback disposal fails before
+    // release can start. Keep the actual capability strongly reachable now;
+    // staging/rollback markers describe the visible phase until start().
+    const acquired = releaseDebts.get(key) ?? new Map();
+    acquired.set(token, debt);
+    releaseDebts.set(key, acquired);
     const project = (failed: boolean) => {
       const debts = releaseDebts.get(key) ?? new Map();
       debt.entries = selected.map((candidate) =>
