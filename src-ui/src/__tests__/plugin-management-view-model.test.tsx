@@ -259,6 +259,41 @@ describe('usePluginManagementViewModel', () => {
     expect(mocks.deselectPlugin).not.toHaveBeenCalled();
   });
 
+  test('keeps a still-rejected plugin selected and reports that reload did not repair it', async () => {
+    const rejected = {
+      status: 'rejected',
+      name: 'repairable',
+      displayName: 'Repairable plugin',
+      rejection: {
+        code: 'malformed-json',
+        reason: 'plugin.json contains malformed JSON.',
+        recovery: {
+          kind: 'repair-manifest',
+          instruction: 'Repair plugin.json, then choose Reload plugins.',
+        },
+      },
+    };
+    mocks.selectedId = 'rejected:repairable';
+    mocks.pluginsData = [rejected];
+    mocks.refetchPlugins.mockResolvedValueOnce({
+      data: [rejected],
+      isError: false,
+      error: null,
+    });
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+
+    expect(mocks.selectPlugin).not.toHaveBeenCalled();
+    expect(mocks.deselectPlugin).not.toHaveBeenCalled();
+    expect(result.current.message).toEqual({
+      type: 'error',
+      text: 'Repairable plugin is still rejected. plugin.json contains malformed JSON.',
+    });
+  });
+
   test('keeps a client-registry reload failure visible and does not refresh the collection', async () => {
     mocks.reloadClientRegistry.mockRejectedValueOnce(
       new Error('registry is still unavailable'),

@@ -10,6 +10,7 @@ import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { Hono } from 'hono';
 import { preparePluginProviderGeneration } from '../../providers/plugin-provider-loader.js';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
+import { readRegistryInstallAliases } from '../../providers/registries/registry-install-aliases.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
@@ -218,6 +219,62 @@ async function findOwningPluginRegistryProvider(
     success: false,
     message: `No plugin registry provider owns installed plugin '${name}'`,
   };
+}
+
+function resolvePluginRemovalTarget(
+  name: string,
+  projectHomeDir: string,
+  directPluginExists: boolean,
+):
+  | { success: true; installedName: string }
+  | {
+      success: false;
+      reason:
+        | 'alias-collision'
+        | 'conflicting-targets'
+        | 'not-found'
+        | 'ownership-unavailable';
+      installedName?: string;
+    } {
+  let aliases: ReturnType<typeof readRegistryInstallAliases>;
+  try {
+    // Removal needs the host-owned install record, not a fresh network answer.
+    // A direct local plugin must remain removable while an unrelated registry
+    // is offline, and the durable aliases are already the collision authority
+    // written by registry installation.
+    aliases = readRegistryInstallAliases(projectHomeDir);
+  } catch {
+    return {
+      success: false,
+      reason: 'ownership-unavailable',
+    };
+  }
+
+  const matchingTargets = new Set(
+    Object.entries(aliases)
+      .filter(
+        ([registryId, alias]) =>
+          registryId === name || alias.pluginName === name,
+      )
+      .map(([, alias]) => alias.pluginName),
+  );
+  if (matchingTargets.size > 1) {
+    return {
+      success: false,
+      reason: 'conflicting-targets',
+    };
+  }
+  const [aliasTarget] = matchingTargets;
+  if (directPluginExists && aliasTarget && aliasTarget !== name) {
+    return {
+      success: false,
+      reason: 'alias-collision',
+      installedName: aliasTarget,
+    };
+  }
+  if (aliasTarget) return { success: true, installedName: aliasTarget };
+  if (directPluginExists) return { success: true, installedName: name };
+  return { success: false, reason: 'not-found' };
 }
 
 async function updatePluginFromRegistry(name: string, projectHomeDir: string) {
@@ -686,43 +743,36 @@ export function registerPluginLifecycleRoutes(
     }
 
     const directPluginExists = existsSync(pluginDir);
-    const registryOwner = await findOwningPluginRegistryProvider(
+    const removalTarget = resolvePluginRemovalTarget(
       name,
       projectHomeDir,
+      directPluginExists,
     );
-    if (!registryOwner.success && registryOwner.message.includes('multiple')) {
+    if (!removalTarget.success) {
+      const error =
+        removalTarget.reason === 'alias-collision'
+          ? `Registry plugin '${name}' resolves to installed plugin '${removalTarget.installedName}', but plugin '${name}' also exists`
+          : removalTarget.reason === 'conflicting-targets'
+            ? `Plugin '${name}' has conflicting registry install targets`
+            : removalTarget.reason === 'ownership-unavailable'
+              ? 'Plugin registry ownership is unavailable. Repair config/registry-installs.json before retrying removal.'
+              : 'Plugin not found';
       return c.json(
         {
           success: false,
-          error: 'Plugin is installed by multiple plugin registry providers',
+          error,
         },
-        400,
+        removalTarget.reason === 'not-found' ? 404 : 400,
       );
     }
-    if (registryOwner.success) {
-      // Keep remove's identity resolution identical to update's. A rejected
-      // directory can share the requested registry id, but it must never win
-      // over (or be silently confused with) the validated installed target.
-      if (directPluginExists && registryOwner.installedName !== name) {
-        return c.json(
-          {
-            success: false,
-            error: `Registry plugin '${name}' resolves to installed plugin '${registryOwner.installedName}', but plugin '${name}' also exists`,
-          },
-          400,
-        );
-      }
-      installedPluginName = registryOwner.installedName;
-      pluginDir = join(pluginsDir, installedPluginName);
-      try {
-        assertPathInside(pluginsDir, pluginDir, 'Plugin removal target');
-      } catch (error) {
-        return c.json({ success: false, error: errorMessage(error) }, 400);
-      }
-      if (!existsSync(pluginDir)) {
-        return c.json({ success: false, error: 'Plugin not found' }, 404);
-      }
-    } else if (!directPluginExists) {
+    installedPluginName = removalTarget.installedName;
+    pluginDir = join(pluginsDir, installedPluginName);
+    try {
+      assertPathInside(pluginsDir, pluginDir, 'Plugin removal target');
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+    if (!existsSync(pluginDir)) {
       return c.json({ success: false, error: 'Plugin not found' }, 404);
     }
 

@@ -15,12 +15,30 @@ import {
 
 const PUBLIC_REASON_MAX = 512;
 
+function isUnsafePublicCharacter(character: string): boolean {
+  const code = character.codePointAt(0) ?? 0;
+  return (
+    code <= 0x1f ||
+    (code >= 0x7f && code <= 0x9f) ||
+    (code >= 0x202a && code <= 0x202e) ||
+    (code >= 0x2066 && code <= 0x2069)
+  );
+}
+
+function safePublicText(value: string, maximum: number): string {
+  return Array.from(sanitizeFreeText(value, maximum), (character) =>
+    isUnsafePublicCharacter(character) ? '\uFFFD' : character,
+  )
+    .join('')
+    .trim();
+}
+
 function rejection(
   code: PluginManifestRejection['code'],
   reason: string,
   recovery: PluginManifestRejection['recovery'],
 ): PluginManifestRejection {
-  const publicReason = sanitizeFreeText(reason, PUBLIC_REASON_MAX).trim();
+  const publicReason = safePublicText(reason, PUBLIC_REASON_MAX);
   return {
     code,
     reason: publicReason || 'Plugin manifest is invalid.',
@@ -31,7 +49,6 @@ function rejection(
 export function describePluginManifestRejection(
   error: unknown,
 ): PluginManifestRejection {
-  const message = error instanceof Error ? error.message : String(error);
   // Filesystem diagnostics commonly include the `plugin.json` path. Classify
   // their stable error code before looking for JSON-related words in the
   // message, or an EACCES/EPERM read failure becomes a malformed-JSON claim.
@@ -73,35 +90,55 @@ export function describePluginManifestRejection(
   if (error instanceof PluginManifestValidationError) {
     switch (error.code) {
       case 'invalid-plugin-name':
-        return rejection(error.code, message, {
-          kind: 'repair-manifest',
-          instruction:
-            'Use 1–64 lowercase letters, digits, hyphens, or periods with alphanumeric endpoints and no repeated hyphens or periods, then choose Reload plugins.',
-        });
+        return rejection(
+          error.code,
+          'plugin.json declares a name that is not a canonical plugin id under Agent Plugins 1.0.',
+          {
+            kind: 'repair-manifest',
+            instruction:
+              'Use 1–64 lowercase letters, digits, hyphens, or periods with alphanumeric endpoints and no repeated hyphens or periods, then choose Reload plugins.',
+          },
+        );
       case 'reserved-plugin-name':
-        return rejection(error.code, message, {
-          kind: 'repair-manifest',
-          instruction:
-            'Choose a non-reserved plugin name in plugin.json, then choose Reload plugins.',
-        });
+        return rejection(
+          error.code,
+          'plugin.json declares a reserved plugin name.',
+          {
+            kind: 'repair-manifest',
+            instruction:
+              'Choose a non-reserved plugin name in plugin.json, then choose Reload plugins.',
+          },
+        );
       case 'missing-version':
-        return rejection(error.code, message, {
-          kind: 'repair-manifest',
-          instruction:
-            'Add a non-empty version to plugin.json, then choose Reload plugins.',
-        });
+        return rejection(
+          error.code,
+          'plugin.json does not declare a non-empty version.',
+          {
+            kind: 'repair-manifest',
+            instruction:
+              'Add a non-empty version to plugin.json, then choose Reload plugins.',
+          },
+        );
       case 'invalid-workspace-panes':
-        return rejection(error.code, message, {
-          kind: 'repair-manifest',
-          instruction:
-            'Repair the named workspacePanes declaration, then choose Reload plugins.',
-        });
+        return rejection(
+          error.code,
+          'plugin.json contains an invalid workspacePanes declaration.',
+          {
+            kind: 'repair-manifest',
+            instruction:
+              'Repair the named workspacePanes declaration, then choose Reload plugins.',
+          },
+        );
       case 'invalid-manifest':
-        return rejection(error.code, message, {
-          kind: 'reinstall-plugin',
-          instruction:
-            'Repair plugin.json if you maintain this plugin; otherwise remove its folder and reinstall a compatible version, then choose Reload plugins.',
-        });
+        return rejection(
+          error.code,
+          "plugin.json does not satisfy Station's plugin manifest contract.",
+          {
+            kind: 'reinstall-plugin',
+            instruction:
+              'Repair plugin.json if you maintain this plugin; otherwise remove its folder and reinstall a compatible version, then choose Reload plugins.',
+          },
+        );
       default: {
         const neverCode: never = error.code;
         return neverCode;
@@ -110,7 +147,7 @@ export function describePluginManifestRejection(
   }
   return rejection(
     'invalid-manifest',
-    message || 'Plugin manifest is invalid.',
+    'plugin.json could not be validated as a Station plugin manifest.',
     {
       kind: 'reinstall-plugin',
       instruction:
@@ -134,7 +171,7 @@ export type InstalledPluginInventoryEntry =
 export function rejectedInstalledPluginRecord(
   entry: Extract<InstalledPluginInventoryEntry, { state: 'rejected' }>,
 ): RejectedInstalledPluginRecord {
-  const displayName = sanitizeFreeText(entry.directoryName, 255).trim();
+  const displayName = safePublicText(entry.directoryName, 255);
   return {
     status: 'rejected',
     name: entry.directoryName,

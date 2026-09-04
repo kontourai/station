@@ -141,12 +141,21 @@ const mockManifest = vi.hoisted(() => ({
   agents: [],
   links: null,
 }));
+const mockRegistryInstallAliases = vi.hoisted<
+  Record<string, { pluginName: string; registryKey: string }>
+>(() => ({}));
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
   return {
     ...actual,
     existsSync: vi.fn((p: string) => {
+      if (
+        typeof p === 'string' &&
+        p.endsWith('/config/registry-installs.json')
+      ) {
+        return Object.keys(mockRegistryInstallAliases).length > 0;
+      }
       if (typeof p === 'string' && p.includes('nonexistent')) return false;
       if (typeof p === 'string' && p.includes('plugins')) return true;
       if (typeof p === 'string' && p.includes('dist/bundle')) return true;
@@ -164,6 +173,12 @@ vi.mock('node:fs', async (importOriginal) => {
     readFileSync: vi.fn((p: unknown, enc?: unknown) => {
       if (typeof p === 'string' && p.includes('.schema.json')) {
         return actual.readFileSync(p, enc as any);
+      }
+      if (
+        typeof p === 'string' &&
+        p.endsWith('/config/registry-installs.json')
+      ) {
+        return JSON.stringify(mockRegistryInstallAliases);
       }
       return JSON.stringify(mockManifest);
     }),
@@ -285,6 +300,12 @@ describe('Plugin Routes', () => {
     vi.mocked(cpSync).mockClear();
     vi.mocked(rmSync).mockClear();
     vi.mocked(existsSync).mockImplementation((p) => {
+      if (
+        typeof p === 'string' &&
+        p.endsWith('/config/registry-installs.json')
+      ) {
+        return Object.keys(mockRegistryInstallAliases).length > 0;
+      }
       if (typeof p === 'string' && p.includes('nonexistent')) return false;
       if (typeof p === 'string' && p.includes('plugins')) return true;
       if (typeof p === 'string' && p.includes('dist/bundle')) return true;
@@ -296,6 +317,9 @@ describe('Plugin Routes', () => {
     vi.mocked(readFile).mockResolvedValue(JSON.stringify(mockManifest));
     for (const key of Object.keys(mockOverrides)) {
       delete mockOverrides[key];
+    }
+    for (const key of Object.keys(mockRegistryInstallAliases)) {
+      delete mockRegistryInstallAliases[key];
     }
   });
 
@@ -1166,9 +1190,33 @@ describe('Plugin Routes', () => {
     expect(settleProviderAdapterRetirements).toHaveBeenCalledOnce();
   });
 
+  test('removes a direct local plugin without consulting an unavailable registry', async () => {
+    pluginRegistryProvider.listInstalled.mockRejectedValue(
+      new Error('unrelated registry is offline'),
+    );
+    const app = setup({
+      applyConfigurationMutation: vi.fn(async (operation) =>
+        operation(vi.fn(), { status: 'applied' }),
+      ),
+      settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
+    });
+
+    let response: Response;
+    try {
+      response = await app.request('/test-plugin', { method: 'DELETE' });
+    } finally {
+      pluginRegistryProvider.listInstalled.mockResolvedValue([]);
+    }
+
+    expect(response.status).toBe(200);
+    await expect(json(response)).resolves.toMatchObject({ success: true });
+    expect(pluginRegistryProvider.listInstalled).not.toHaveBeenCalled();
+  });
+
   test('removes an aliased registry plugin by its validated installed target', async () => {
     vi.mocked(existsSync).mockImplementation((path) => {
       if (typeof path !== 'string') return false;
+      if (path.endsWith('/config/registry-installs.json')) return true;
       if (path.includes('/plugins/demo')) return false;
       if (path.includes('/plugins/actual-plugin')) return true;
       if (path.includes('plugins')) return true;
@@ -1182,6 +1230,10 @@ describe('Plugin Routes', () => {
         installed: true,
       },
     ]);
+    mockRegistryInstallAliases.demo = {
+      pluginName: 'actual-plugin',
+      registryKey: 'test-plugin-registry',
+    };
     const app = setup({
       applyConfigurationMutation: vi.fn(async (operation) =>
         operation(vi.fn(), { status: 'applied' }),
@@ -1205,6 +1257,7 @@ describe('Plugin Routes', () => {
   test('refuses an alias collision without deleting the rejected directory', async () => {
     vi.mocked(existsSync).mockImplementation((path) => {
       if (typeof path !== 'string') return false;
+      if (path.endsWith('/config/registry-installs.json')) return true;
       if (path.includes('/plugins/demo')) return true;
       if (path.includes('/plugins/actual-plugin')) return true;
       if (path.includes('plugins')) return true;
@@ -1218,6 +1271,10 @@ describe('Plugin Routes', () => {
         installed: true,
       },
     ]);
+    mockRegistryInstallAliases.demo = {
+      pluginName: 'actual-plugin',
+      registryKey: 'test-plugin-registry',
+    };
     const applyConfigurationMutation = vi.fn();
     const app = setup({
       applyConfigurationMutation,

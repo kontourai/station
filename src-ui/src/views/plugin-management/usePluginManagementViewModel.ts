@@ -242,8 +242,18 @@ export function usePluginManagementViewModel() {
             !isRejectedPlugin(plugin) &&
             plugin.name === rejectedDirectoryAtStart,
         );
+        const stillRejected = refreshed.data?.find(
+          (plugin): plugin is Extract<Plugin, { status: 'rejected' }> =>
+            isRejectedPlugin(plugin) &&
+            pluginSelectionId(plugin) === selectionAtStart,
+        );
         if (repaired) selectPlugin(pluginSelectionId(repaired));
-        else deselectPlugin();
+        else if (stillRejected) {
+          setMessage({
+            type: 'error',
+            text: `${stillRejected.displayName} is still rejected. ${stillRejected.rejection.reason}`,
+          });
+        } else deselectPlugin();
       }
     } catch (error) {
       setMessage({

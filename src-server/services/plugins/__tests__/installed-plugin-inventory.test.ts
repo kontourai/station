@@ -147,6 +147,7 @@ describe('installed plugin inventory', () => {
     'unsafe\nJSON_Plugin',
     'JSON\runsafe_Plugin',
     'control\u0001unsafe_Plugin',
+    'bidi\u202Eunsafe_Plugin',
   ])(
     'does not let validation value %s choose its rejection category',
     (name) => {
@@ -157,8 +158,26 @@ describe('installed plugin inventory', () => {
 
       expect(entry).toMatchObject({
         state: 'rejected',
-        rejection: { code: 'invalid-plugin-name' },
+        rejection: {
+          code: 'invalid-plugin-name',
+          reason:
+            'plugin.json declares a name that is not a canonical plugin id under Agent Plugins 1.0.',
+        },
       });
+      if (entry?.state === 'rejected') {
+        expect(entry.rejection.reason).not.toContain(name);
+        expect(
+          Array.from(entry.rejection.reason).some((character) => {
+            const code = character.codePointAt(0) ?? 0;
+            return (
+              code <= 0x1f ||
+              (code >= 0x7f && code <= 0x9f) ||
+              (code >= 0x202a && code <= 0x202e) ||
+              (code >= 0x2066 && code <= 0x2069)
+            );
+          }),
+        ).toBe(false);
+      }
     },
   );
 

@@ -19,6 +19,15 @@ const REJECTION_CODES = new Set([
   'invalid-workspace-panes',
   'invalid-manifest',
 ]);
+function isUnsafePublicCharacter(character: string): boolean {
+  const code = character.codePointAt(0) ?? 0;
+  return (
+    code <= 0x1f ||
+    (code >= 0x7f && code <= 0x9f) ||
+    (code >= 0x202a && code <= 0x202e) ||
+    (code >= 0x2066 && code <= 0x2069)
+  );
+}
 
 function exactFields(value: Record<string, unknown>, fields: string[]) {
   const actual = Object.keys(value).sort();
@@ -34,7 +43,8 @@ function boundedText(value: unknown, maximum: number): value is string {
     typeof value === 'string' &&
     value.length > 0 &&
     value.length <= maximum &&
-    value === value.trim()
+    value === value.trim() &&
+    !Array.from(value).some(isUnsafePublicCharacter)
   );
 }
 
@@ -69,8 +79,9 @@ function isRejectedInstalledPlugin(value: Record<string, unknown>): boolean {
   const recovery = rejection.recovery as Record<string, unknown>;
   return (
     exactFields(recovery, ['kind', 'instruction']) &&
+    typeof recovery.kind === 'string' &&
     ['repair-manifest', 'restore-manifest', 'reinstall-plugin'].includes(
-      String(recovery.kind),
+      recovery.kind,
     ) &&
     boundedText(recovery.instruction, 512)
   );

@@ -92,6 +92,36 @@ describe('client plugin collection', () => {
     await expect(listPlugins('https://station.example')).rejects.toThrow(
       'Plugin collection response is malformed',
     );
+
+    for (const malformed of [
+      {
+        ...rejected,
+        rejection: {
+          ...rejected.rejection,
+          recovery: {
+            ...rejected.rejection.recovery,
+            kind: ['repair-manifest'],
+          },
+        },
+      },
+      {
+        ...rejected,
+        rejection: {
+          ...rejected.rejection,
+          reason: 'Invalid\u202Eplugin',
+        },
+      },
+    ]) {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(Response.json({ plugins: [malformed] })),
+      );
+      await expect(listPlugins('https://station.example')).rejects.toThrow(
+        'Plugin collection response is malformed',
+      );
+    }
   });
 
   test('preserves a stable grants-unavailable failure envelope', async () => {
