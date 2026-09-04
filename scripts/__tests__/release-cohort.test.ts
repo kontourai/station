@@ -19,7 +19,7 @@ const sourceSha = 'a'.repeat(40);
 const attestation = (records: any[]) => ({
   authority: 'github-artifact-attestation',
   repository: 'kontourai/station',
-  workflowRef: `.github/workflows/nightly-native-cohort.yml@${sourceSha}`,
+  workflowRef: `.github/workflows/nightly-native-stage.yml@${sourceSha}`,
   runId: '112061',
   subjectDigest: `sha256:${createHash('sha256').update(canonicalJson(records)).digest('hex')}`,
   verificationReference: 'github:attestation:immutable:1',
@@ -195,7 +195,7 @@ describe('release cohort content-bound state machine', () => {
       (v: any) => (v.repository = 'other/repo'),
       (v: any) => (v.runId = '99'),
       (v: any) =>
-        (v.workflowRef = `.github/workflows/nightly-native-cohort.yml@${'b'.repeat(40)}`),
+        (v.workflowRef = `.github/workflows/nightly-native-stage.yml@${'b'.repeat(40)}`),
       (v: any) => (v.subjectDigest = `sha256:${'0'.repeat(64)}`),
       (v: any) => (v.verificationReference = ''),
     ]) {

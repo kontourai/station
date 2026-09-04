@@ -61,6 +61,7 @@ jobs:
         timeout-minutes: 5
         with:
           node-version-file: .nvmrc
+          cache: npm
 
       # `full:regression` runs `gate:workflows`, and `actionlint-gate.mjs` is
       # fail-closed: with no `actionlint` on PATH it exits 2 rather than

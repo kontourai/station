@@ -13,9 +13,16 @@ import {
 } from './release-cohort.mjs';
 
 const REPOSITORY = 'kontourai/station';
+/** The publishing phase: runs this verifier and signs the final receipt. */
 const NIGHTLY_WORKFLOW = `${REPOSITORY}/.github/workflows/nightly-native-cohort.yml`;
+/**
+ * The staging phase (#1453): builds and attests every staged artifact byte
+ * before the full-regression receipt exists, so staged-bytes provenance is
+ * signed by this workflow identity, never by the publishing phase.
+ */
+const NIGHTLY_STAGE_WORKFLOW = `${REPOSITORY}/.github/workflows/nightly-native-stage.yml`;
 const NIGHTLY_SOURCE_REF = 'refs/heads/main';
-const NIGHTLY_CERT_IDENTITY = `https://github.com/${NIGHTLY_WORKFLOW}@${NIGHTLY_SOURCE_REF}`;
+const NIGHTLY_CERT_IDENTITY = `https://github.com/${NIGHTLY_STAGE_WORKFLOW}@${NIGHTLY_SOURCE_REF}`;
 const OIDC_ISSUER = 'https://token.actions.githubusercontent.com';
 const SHA256 = /^[a-f0-9]{64}$/;
 const PLAY_ADAPTER = resolve(
@@ -144,7 +151,7 @@ export function parseVerifiedAttestation(
   const entry = matching[0];
   return {
     repository: REPOSITORY,
-    signerWorkflow: NIGHTLY_WORKFLOW,
+    signerWorkflow: NIGHTLY_STAGE_WORKFLOW,
     sourceRef: NIGHTLY_SOURCE_REF,
     sourceSha,
     oidcIssuer: OIDC_ISSUER,

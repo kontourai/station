@@ -240,13 +240,26 @@ describe('promotion full-regression workflow', () => {
         (step) => step.name === 'Bind every Nightly leg to one main revision',
       ),
     ).toBe(true);
+    // Staging publishes nothing, so it may run beside the gate (#1453); the
+    // publishing cohort must not start until the receipt AND staging succeeded.
+    const staging = nightly.jobs?.['native-stage'] ?? {};
+    expect(staging.needs).toEqual(['test-gate']);
+    expect(staging.if).not.toContain('full-regression');
+    expect(staging.uses).toBe('./.github/workflows/nightly-native-stage.yml');
     for (const id of ['native-cohort', 'nightly-cli']) {
       const producer = nightly.jobs?.[id] ?? {};
-      expect(producer.needs).toEqual(['test-gate', 'full-regression']);
       expect(producer.if).toContain(
         "needs['full-regression'].result == 'success'",
       );
       if (id === 'native-cohort') {
+        expect(producer.needs).toEqual([
+          'test-gate',
+          'full-regression',
+          'native-stage',
+        ]);
+        expect(producer.if).toContain(
+          "needs['native-stage'].result == 'success'",
+        );
         expect(producer.uses).toBe(
           './.github/workflows/nightly-native-cohort.yml',
         );
@@ -255,6 +268,7 @@ describe('promotion full-regression workflow', () => {
         );
         expect(producer.secrets).toBe('inherit');
       } else {
+        expect(producer.needs).toEqual(['test-gate', 'full-regression']);
         const checkout = producer.steps?.find((step) =>
           step.uses?.startsWith('actions/checkout@'),
         );

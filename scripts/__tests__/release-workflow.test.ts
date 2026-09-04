@@ -46,8 +46,9 @@ const android = readFileSync(
   resolve(root, '.github/workflows/build-android.yml'),
   'utf8',
 );
+// Staged Tauri builds live in the staging phase of the native cohort (#1453).
 const nativeCohort = readFileSync(
-  resolve(root, '.github/workflows/nightly-native-cohort.yml'),
+  resolve(root, '.github/workflows/nightly-native-stage.yml'),
   'utf8',
 );
 const testFlightDelivery = readFileSync(

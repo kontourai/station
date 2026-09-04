@@ -100,14 +100,30 @@ SemVer as well as the shared `day * 100 + build` numeric code.
 
 ## Native Nightly cohort
 
-`nightly.yml` keeps the source gate and canonical full-regression receipt, then
-calls `nightly-native-cohort.yml` only on `refs/heads/main` when the gated SHA
-is the workflow event SHA. The reusable workflow stages a signed Android AAB
-and the four notarized macOS updater assets without publishing, admits their
-downloaded bytes against provenance-bearing stage receipts, promotes Android
-first, then the existing rolling macOS prerelease, and performs a protected
-provider/attestation verification before either rolling Android marker or
-deploy-ledger entry advances. Immediately after admission, an annotated,
+`nightly.yml` keeps the source gate and canonical full-regression receipt and
+runs the native work as two reusable phases, both only on `refs/heads/main`
+when the gated SHA is the workflow event SHA.
+
+Phase one, `nightly-native-stage.yml`, needs only the source gate and runs in
+parallel with the full-regression receipt (#1453): it reserves the cohort
+identity, then stages a signed Android AAB (arm64-v8a only, #1456), the four
+notarized macOS updater assets, and the signed, audited iOS package (#1454)
+as run artifacts with content-bound stage receipts. It publishes nothing: no
+Play upload, no release asset, no tag move, no TestFlight upload, no ledger
+write. A failed night therefore costs one reserved version code and nothing
+else. Every staged artifact is attested under this workflow's identity, which
+is what the protected verifier checks staged bytes against. Rust dependency
+compilation is cached per platform (`Swatinem/rust-cache`, restored on every
+ref, saved only from `main`, #1455).
+
+Phase two, `nightly-native-cohort.yml`, needs the source gate, the exact-SHA
+full-regression receipt, and phase one, and receives the reserved identity as
+inputs. It admits the staged bytes against their stage receipts, promotes
+Android first, then the existing rolling macOS prerelease, uploads the
+already-audited iOS package to TestFlight from the same run's staged bytes
+(`testflight-delivery.yml` in `delivery: upload` mode, which never rebuilds),
+and performs a protected provider/attestation verification before either
+rolling Android marker or deploy-ledger entry advances. Immediately after admission, an annotated,
 content-bound `refs/tags/nightly-promotion-fence` is created from the exact
 plan and admission; it remains through both provider promotions and is removed
 only as the final successful durable-completion step after final attestation,

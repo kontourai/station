@@ -88,7 +88,8 @@ function stageInput([destination, planPath, platform, ...entries]) {
     artifactAttestationClaim: {
       authority: 'github-artifact-attestation',
       repository: 'kontourai/station',
-      workflowRef: `.github/workflows/nightly-native-cohort.yml@${plan.sourceSha}`,
+      // Staged artifacts are attested by the staging phase (#1453).
+      workflowRef: `.github/workflows/nightly-native-stage.yml@${plan.sourceSha}`,
       runId: plan.workflowRunId,
       subjectDigest: `sha256:${sha256(Buffer.from(canonicalJson(records)))}`,
       verificationReference: `github:attestation:${platform}:${plan.workflowRunId}`,
