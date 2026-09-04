@@ -960,6 +960,44 @@ describe('runPolicyCli reports the range it decided from (#1442)', () => {
     expect(scanLine).toContain('cccccccc..dddddddd');
   });
 
+  it('does not claim dependency inputs changed on a scan that never saw a range', async () => {
+    // #1465. The fourth cell of the matrix, and the one the first version of
+    // this feature got wrong: scanning WITHOUT a range. A scheduled or
+    // dispatched run audits everything because it is periodic, not because
+    // anything changed, and it never resolves a range -- so the shipped
+    // message read "dependency inputs changed in no range (event carries
+    // none)", asserting a fact nothing computed. The three tests written
+    // alongside it covered the other three cells.
+    const lines = captureLog();
+    await runPolicyCli({
+      decide: () => ({
+        required: true,
+        reason: 'schedule event',
+        scopes: ['root'],
+        range: null,
+      }),
+      runAudits: async () => {
+        const clean = auditWithHighAdvisory();
+        clean.vulnerabilities = {};
+        clean.metadata.vulnerabilities = {
+          info: 0,
+          low: 0,
+          moderate: 0,
+          high: 0,
+          critical: 0,
+          total: 0,
+        };
+        return [{ scope: 'root', audit: clean }];
+      },
+    });
+
+    const scanLine = lines.find((line) => line.includes('scanning'));
+    expect(scanLine).toBeDefined();
+    expect(scanLine).not.toContain('dependency inputs changed');
+    expect(scanLine).toContain('full scan');
+    expect(scanLine).toContain('schedule event');
+  });
+
   it('says a decision has no range rather than inventing one', async () => {
     const lines = captureLog();
     await runPolicyCli({
