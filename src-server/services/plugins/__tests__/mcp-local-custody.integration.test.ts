@@ -17,6 +17,7 @@ import { loadAgentTools } from '../../../runtime/mcp/mcp-manager.js';
 import { createMCPToolProvenanceGeneration } from '../../orchestration/mcp-tool-provenance.js';
 import { SecretBindingIntegrationService } from '../../secrets/secret-binding-administration.js';
 import { MCPService } from '../mcp-service.js';
+import { ToolServerCredentialStore } from '../tool-server-credential-store.js';
 import { StationToolServerOAuthProvider } from '../tool-server-oauth.js';
 
 function deferred<T>() {
@@ -102,6 +103,120 @@ test('real probe/reset refuses late discovery publication and keeps cleanup visi
   expect((await service.resetRuntimeState()).localCleanup.state).toBe(
     'settled',
   );
+});
+
+test('a failed probe cannot return its old projection after a completed replacement in the post-write return gap', async () => {
+  vi.mocked(Client.prototype.listTools).mockRejectedValue(
+    new Error('fixture discovery failure'),
+  );
+  const written = deferred<void>(),
+    release = deferred<void>();
+  const update = loader.updateIntegration.bind(loader);
+  vi.spyOn(loader, 'updateIntegration').mockImplementation(
+    async (id, derive) => {
+      const result = await update(id, derive); // Actual fixture file write committed.
+      written.resolve();
+      await release.promise;
+      return result;
+    },
+  );
+  const probe = service.probeIntegration('fixture');
+  const refusal = expect(probe).rejects.toMatchObject({ state: 'stale' });
+  try {
+    await written.promise;
+    const current = await loader.loadIntegration('fixture');
+    await service.saveIntegration({ ...current, args: ['new-definition'] });
+    expect((await loader.loadIntegration('fixture')).args).toEqual([
+      'new-definition',
+    ]);
+    release.resolve();
+    await refusal;
+  } finally {
+    release.resolve();
+    await probe.catch(() => undefined);
+    await refusal.catch(() => undefined);
+  }
+});
+
+test('the real synthetic OAuth state removal remains owned across reset and blocks replacement/new admission', async () => {
+  const endpoint = 'https://fixture.invalid/mcp';
+  const redirect = 'http://127.0.0.1:43141/integrations/fixture/oauth/callback';
+  await loader.saveIntegration('fixture', {
+    id: 'fixture',
+    kind: 'mcp',
+    transport: 'streamable-http',
+    endpoint,
+  });
+  const store = new ToolServerCredentialStore(home);
+  const provider = new StationToolServerOAuthProvider(
+    store,
+    'fixture',
+    endpoint,
+    redirect,
+  );
+  const state = await provider.state();
+  vi.mocked(Client.prototype.connect).mockRejectedValue(
+    new Error('consent required'),
+  );
+  vi.spyOn(
+    StationToolServerOAuthProvider.prototype,
+    'takeAuthorizationUrl',
+  ).mockReturnValue(new URL('https://fixture.invalid/authorize'));
+  vi.spyOn(
+    StreamableHTTPClientTransport.prototype,
+    'finishAuth',
+  ).mockResolvedValue(undefined);
+  await service.startOAuth('fixture', 'remote');
+  const entered = deferred<void>(),
+    release = deferred<void>();
+  const remove = ToolServerCredentialStore.prototype.remove;
+  let blocked = false;
+  vi.spyOn(ToolServerCredentialStore.prototype, 'remove').mockImplementation(
+    async function (this: ToolServerCredentialStore, id, key) {
+      if (key === 'oauth.state' && !blocked) {
+        blocked = true;
+        entered.resolve();
+        await release.promise;
+      }
+      return Reflect.apply(remove, this, [id, key]);
+    },
+  );
+  const exchange = service.finishOAuth(
+    'fixture',
+    `${redirect}?code=fixture&state=${state}`,
+  );
+  const refusal = expect(exchange).rejects.toThrow();
+  try {
+    await entered.promise;
+    expect((await service.resetRuntimeState()).localCleanup).toMatchObject({
+      state: 'pending',
+      retained: 1,
+    });
+    await expect(
+      service.saveIntegration({
+        id: 'fixture',
+        kind: 'mcp',
+        transport: 'streamable-http',
+        endpoint: 'https://replacement.invalid/mcp',
+      }),
+    ).rejects.toMatchObject({ state: 'pending' });
+    await expect(service.startOAuth('fixture', 'remote')).rejects.toMatchObject(
+      { state: 'pending' },
+    );
+    expect(await provider.expectedState()).toBe(state);
+    release.resolve();
+    await refusal;
+    expect((await service.resetRuntimeState()).localCleanup.state).toBe(
+      'settled',
+    );
+    const next = await provider.state();
+    await service.startOAuth('fixture', 'remote');
+    expect(await provider.expectedState()).toBe(next);
+  } finally {
+    release.resolve();
+    await exchange.catch(() => undefined);
+    await refusal.catch(() => undefined);
+  }
 });
 test('config replacement refuses before durable write until old discovery actually settles', async () => {
   const entered = deferred<void>(),

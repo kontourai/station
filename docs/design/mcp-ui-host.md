@@ -72,6 +72,10 @@ OAuth consent is an explicit full-handle handoff: an initial authorization
 response does not close the transport needed by `finishAuth`. Exchange remains
 under custody, and replacement cannot commit while its old local work remains
 outstanding. Stale callbacks cannot return an authorized current projection.
+The claim retains the whole completion scope, including bound-state reads and
+state removal before SDK `finishAuth`. A closed SDK handle is not sufficient
+to prune a pending credential operation. Cleanup runs outside the owned scope
+to avoid waiting on itself; local inspection counts these retained operations.
 
 This is only the first local tranche of #1409. SDK close fulfillment does **not**
 prove that a stdio process, SDK-internal negotiation child, descendant process,

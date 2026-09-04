@@ -448,7 +448,7 @@ export class MCPService {
         try {
           requireHttpAuthorizationUrl(authorizationUrl);
         } catch (unsafeUrlError) {
-          await provider.clearCredentials();
+          await claim.run(() => provider.clearCredentials());
           throw unsafeUrlError;
         }
         const resourceIdentity = toolServerOAuthResourceIdentity(def);
@@ -499,78 +499,87 @@ export class MCPService {
     if (!flow) {
       throw new Error('No OAuth consent flow is awaiting completion');
     }
-    const expectedState = await flow.provider.expectedState();
-    if (!expectedState) {
-      throw new Error('OAuth flow state is missing or expired');
-    }
-    const validated = validateOAuthCallbackUrl(
-      callbackUrl,
-      expectedState,
-      String(flow.provider.redirectUrl),
-    );
-    if (!validated.ok) {
-      throw new Error(validated.reason);
-    }
-
-    // Validation above proves the state matches. Claim the exact map entry
-    // synchronously, before any await, so no second callback can capture this
-    // flow and race a health write against the winner.
-    if (this.oauthFlows.get(id) !== flow || !this.oauthFlows.delete(id)) {
-      throw new Error('No OAuth consent flow is awaiting completion');
-    }
+    let claimed = false;
+    let failed = false;
     try {
-      if (!flow.claim.isCurrent()) throw new MCPLocalCustodyError('stale');
-      await flow.provider.consumeState();
-
-      const beforeExchange = await this.getIntegration(id);
-      if (
-        toolServerOAuthResourceIdentity(beforeExchange) !==
-        flow.resourceIdentity
-      ) {
-        throw new Error('OAuth tool server endpoint changed during consent');
-      }
-
-      let exchangeFailed = false;
-      let exchangeFailure: unknown;
-      try {
-        await flow.claim.finishAuth(validated.params);
-      } catch (error) {
-        exchangeFailed = true;
-        exchangeFailure = error;
-        captureToolServerOperationFailure(
-          error,
-          'oauth-exchange',
-          id,
-          this.logger,
+      return await flow.claim.run(async () => {
+        const expectedState = await flow.provider.expectedState();
+        if (!expectedState) {
+          throw new Error('OAuth flow state is missing or expired');
+        }
+        const validated = validateOAuthCallbackUrl(
+          callbackUrl,
+          expectedState,
+          String(flow.provider.redirectUrl),
         );
-      }
+        if (!validated.ok) {
+          throw new Error(validated.reason);
+        }
 
-      if (exchangeFailed) {
-        const reason = formatToolServerFailure(
-          classifyOAuthFailure(exchangeFailure),
-        );
-        await this.saveAuthorizationHealth(
+        // Validation above proves the state matches. Claim the exact map entry
+        // synchronously, before any await, so no second callback can capture this
+        // flow and race a health write against the winner.
+        if (this.oauthFlows.get(id) !== flow || !this.oauthFlows.delete(id)) {
+          throw new Error('No OAuth consent flow is awaiting completion');
+        }
+        claimed = true;
+        if (!flow.claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+        await flow.provider.consumeState();
+        if (!flow.claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+
+        const beforeExchange = await this.getIntegration(id);
+        if (
+          toolServerOAuthResourceIdentity(beforeExchange) !==
+          flow.resourceIdentity
+        ) {
+          throw new Error('OAuth tool server endpoint changed during consent');
+        }
+
+        let exchangeFailed = false;
+        let exchangeFailure: unknown;
+        try {
+          await flow.claim.finishAuth(validated.params);
+        } catch (error) {
+          exchangeFailed = true;
+          exchangeFailure = error;
+          captureToolServerOperationFailure(
+            error,
+            'oauth-exchange',
+            id,
+            this.logger,
+          );
+        }
+
+        if (exchangeFailed) {
+          const reason = formatToolServerFailure(
+            classifyOAuthFailure(exchangeFailure),
+          );
+          await this.saveAuthorizationHealth(
+            id,
+            flow.resourceIdentity,
+            'authorization-failed',
+            reason,
+            flow.claim,
+          );
+          throw new Error('OAuth authorization failed');
+        }
+
+        toolServerOAuth.add(1, { outcome: 'consent-completed' });
+        const health = await this.saveAuthorizationHealth(
           id,
           flow.resourceIdentity,
-          'authorization-failed',
-          reason,
+          'authorized',
+          undefined,
           flow.claim,
         );
-        throw new Error('OAuth authorization failed');
-      }
-
-      toolServerOAuth.add(1, { outcome: 'consent-completed' });
-      const health = await this.saveAuthorizationHealth(
-        id,
-        flow.resourceIdentity,
-        'authorized',
-        undefined,
-        flow.claim,
-      );
-      if (!flow.claim.isCurrent()) throw new MCPLocalCustodyError('stale');
-      return health;
+        if (!flow.claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+        return health;
+      });
+    } catch (error) {
+      failed = true;
+      throw error;
     } finally {
-      await this.mcpCustody.release(flow.claim);
+      if (claimed) await this.releaseAfterOperation(flow.claim, failed);
     }
   }
 
@@ -750,13 +759,14 @@ export class MCPService {
               })(),
             claim,
           });
+          const tokens = await claim.run(() => oauthProvider.tokens());
           const health = await this.saveAuthorizationHealth(
             id,
             toolServerOAuthResourceIdentity(existing) as string,
-            (await oauthProvider.tokens())?.refresh_token
+            tokens?.refresh_token
               ? 'token-expired-refresh-failed'
               : 'awaiting-operator-consent',
-            (await oauthProvider.tokens())?.refresh_token
+            tokens?.refresh_token
               ? 'Stored refresh token was rejected; operator consent is required'
               : undefined,
             claim,
@@ -780,6 +790,7 @@ export class MCPService {
           return { ...current, probe };
         });
         toolServerProbes.add(1, { outcome: 'failure' });
+        if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
         this.logger.warn('Tool server probe failed', {
           toolId: id,
           error: message,

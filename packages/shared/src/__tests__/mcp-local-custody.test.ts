@@ -60,6 +60,67 @@ afterEach(async () => {
 });
 
 describe('actual prepared SDK handle custody', () => {
+  test.each(['resolve', 'reject'] as const)(
+    'a %s-ing owned continuation survives SDK closure and repeated inspection until it settles',
+    async (outcome) => {
+      const custody = owner();
+      const claim = custody.acquire(def.id, 'oauth');
+      await claim.connect(def);
+      const entered = deferred<void>(),
+        blocked = deferred<void>();
+      const work = claim.run(async () => {
+        entered.resolve();
+        await blocked.promise;
+      });
+      const refusal = expect(work).rejects.toThrow();
+      await entered.promise;
+      try {
+        expect((await custody.reset()).state).toBe('pending');
+        expect(custody.inspect()).toMatchObject({
+          retained: 1,
+          phases: { closing: 1 },
+          pendingOperations: 1,
+        });
+        expect((await custody.reset()).state).toBe('pending');
+        expect(Client.prototype.close).toHaveBeenCalledTimes(1);
+        if (outcome === 'resolve') blocked.resolve();
+        else blocked.reject(new Error('continuation failed'));
+        await refusal;
+        expect((await custody.reset()).state).toBe('settled');
+      } finally {
+        blocked.resolve();
+        await work.catch(() => undefined);
+        await refusal.catch(() => undefined);
+      }
+    },
+  );
+  test('an owned pre-resource operation cannot be pruned or replaced during reset', async () => {
+    const custody = owner();
+    const claim = custody.acquire(def.id, 'oauth');
+    const entered = deferred<void>(),
+      blocked = deferred<void>();
+    const work = claim.run(async () => {
+      entered.resolve();
+      await blocked.promise;
+    });
+    const refusal = expect(work).rejects.toThrow();
+    await entered.promise;
+    try {
+      expect((await custody.reset()).state).toBe('pending');
+      expect(custody.inspect()).toMatchObject({
+        retained: 1,
+        phases: { closing: 1 },
+      });
+      expect(() => custody.acquire(def.id, 'oauth')).toThrow();
+      blocked.resolve();
+      await refusal;
+      expect((await custody.reset()).state).toBe('settled');
+    } finally {
+      blocked.resolve();
+      await work.catch(() => undefined);
+      await refusal.catch(() => undefined);
+    }
+  });
   test('a claim cannot replace an attached alternate-harness resource', async () => {
     const custody = owner();
     const claim = custody.acquire(def.id, 'managed');

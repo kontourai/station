@@ -28,6 +28,8 @@ export class MCPLocalCustodyError extends Error {
 }
 export interface MCPLocalClaim {
   isCurrent(): boolean;
+  /** Own first-party continuation effects; release the claim outside this scope. */
+  run<T>(operation: () => Promise<T>): Promise<T>;
   connect(def: ToolDef, options?: MCPManagerOptions): Promise<MCPConnection>;
   retainForOAuth(): void;
   finishAuth(params: URLSearchParams): Promise<void>;
@@ -39,6 +41,7 @@ type RecordEntry = {
   id: string;
   purpose: MCPLocalPurpose;
   current: boolean;
+  pending: Set<Promise<unknown>>;
   resource?: Pick<MCPPreparedConnection, 'close' | 'inspect'>;
   claim: MCPLocalClaim;
 };
@@ -62,7 +65,10 @@ export class MCPLocalConnectionCustody {
   }
   private prune() {
     for (const record of this.records) {
-      if (record.resource?.inspect().phase === 'closed')
+      if (
+        record.resource?.inspect().phase === 'closed' &&
+        record.pending.size === 0
+      )
         this.records.delete(record);
     }
   }
@@ -76,7 +82,12 @@ export class MCPLocalConnectionCustody {
       throw new MCPLocalCustodyError('capacity');
     let connection: Promise<MCPConnection> | undefined;
     let prepared: MCPPreparedConnection | undefined;
-    const record = { id, purpose, current: true } as RecordEntry;
+    const record = {
+      id,
+      purpose,
+      current: true,
+      pending: new Set<Promise<unknown>>(),
+    } as RecordEntry;
     const isCurrent = () =>
       record.current &&
       this.accepting &&
@@ -87,6 +98,26 @@ export class MCPLocalConnectionCustody {
     };
     const claim: MCPLocalClaim = {
       isCurrent,
+      run: <T>(operation: () => Promise<T>): Promise<T> => {
+        assertCurrent();
+        // Reserve and retain the actual promise before invoking any caller
+        // effect. SDK closure alone cannot settle a credential continuation.
+        const running = Promise.resolve()
+          .then(() => {
+            assertCurrent();
+            return operation();
+          })
+          .then((value) => {
+            assertCurrent();
+            return value;
+          })
+          .finally(() => {
+            record.pending.delete(running);
+          });
+        record.pending.add(running);
+        void running.catch(() => undefined); // Original rejection still reaches the caller.
+        return running;
+      },
       connect: (def, options) => {
         assertCurrent();
         if (connection) return connection;
@@ -119,6 +150,8 @@ export class MCPLocalConnectionCustody {
       close: async () => {
         record.current = false; // Fence before waiting, even without a client yet.
         if (record.resource) await record.resource.close();
+        while (record.pending.size)
+          await Promise.allSettled([...record.pending]);
         this.records.delete(record);
       },
       attach: (resource) => {
@@ -135,14 +168,24 @@ export class MCPLocalConnectionCustody {
   inspect() {
     this.prune();
     const phases: Record<string, number> = {};
+    let pendingOperations = 0;
     for (const record of this.records) {
-      const phase = record.resource?.inspect().phase ?? 'reserved';
+      const resource = record.resource?.inspect();
+      const phase =
+        record.pending.size > 0 &&
+        (!resource || resource.phase === 'closed') &&
+        !record.current
+          ? 'closing'
+          : (resource?.phase ?? 'reserved');
       phases[phase] = (phases[phase] ?? 0) + 1;
+      pendingOperations +=
+        record.pending.size + (resource?.pendingOperations ?? 0);
     }
     return {
       scope: 'local-sdk-handles' as const,
       accepting: this.accepting,
       retained: this.records.size,
+      pendingOperations,
       phases,
     };
   }

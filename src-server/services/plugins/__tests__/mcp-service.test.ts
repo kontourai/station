@@ -1280,7 +1280,14 @@ describe('MCPService', () => {
           'mcp-1',
           `http://127.0.0.1:4130/integrations/mcp-1/oauth/callback?code=one&state=${issuedState}`,
         ),
-      ).rejects.toThrow('MCP local connection custody is stale');
+      ).rejects.toThrow('MCP local connection custody is pending');
+      // The awaited reentrant write cannot outlive the tracked continuation.
+      // It is refused before mutation; retry succeeds after that scope settles.
+      expect((await loader.loadIntegration('mcp-1')).endpoint).toBe(endpointA);
+      await svc.saveIntegration({
+        ...(await loader.loadIntegration('mcp-1')),
+        endpoint: endpointB,
+      });
       expect((await loader.loadIntegration('mcp-1')).endpoint).toBe(endpointB);
       expect((await loader.loadIntegration('mcp-1')).probe).toMatchObject({
         authorization: { state: 'never-authorized' },
