@@ -247,13 +247,16 @@ export function usePluginManagementViewModel() {
             isRejectedPlugin(plugin) &&
             pluginSelectionId(plugin) === selectionAtStart,
         );
-        if (repaired) selectPlugin(pluginSelectionId(repaired));
-        else if (stillRejected) {
+        // A valid manifest in another directory can use this directory's
+        // name. The exact rejected selection remains authoritative until its
+        // row disappears; a same-name valid row alone does not prove repair.
+        if (stillRejected) {
           setMessage({
             type: 'error',
             text: `${stillRejected.displayName} is still rejected. ${stillRejected.rejection.reason}`,
           });
-        } else deselectPlugin();
+        } else if (repaired) selectPlugin(pluginSelectionId(repaired));
+        else deselectPlugin();
       }
     } catch (error) {
       setMessage({

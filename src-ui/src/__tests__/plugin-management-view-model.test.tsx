@@ -294,6 +294,42 @@ describe('usePluginManagementViewModel', () => {
     });
   });
 
+  test('preserves the rejected directory when an unrelated valid manifest has the same name', async () => {
+    const rejected = {
+      status: 'rejected',
+      name: 'repairable',
+      displayName: 'Repairable folder',
+      rejection: {
+        code: 'malformed-json',
+        reason: 'plugin.json contains malformed JSON.',
+        recovery: {
+          kind: 'repair-manifest',
+          instruction: 'Repair plugin.json, then choose Reload plugins.',
+        },
+      },
+    };
+    const unrelated = { name: 'repairable', version: '1.0.0' };
+    mocks.selectedId = 'rejected:repairable';
+    mocks.pluginsData = [rejected, unrelated];
+    mocks.refetchPlugins.mockResolvedValueOnce({
+      data: [unrelated, rejected],
+      isError: false,
+      error: null,
+    });
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+
+    expect(mocks.selectPlugin).not.toHaveBeenCalled();
+    expect(mocks.deselectPlugin).not.toHaveBeenCalled();
+    expect(result.current.message).toEqual({
+      type: 'error',
+      text: 'Repairable folder is still rejected. plugin.json contains malformed JSON.',
+    });
+  });
+
   test('keeps a client-registry reload failure visible and does not refresh the collection', async () => {
     mocks.reloadClientRegistry.mockRejectedValueOnce(
       new Error('registry is still unavailable'),
