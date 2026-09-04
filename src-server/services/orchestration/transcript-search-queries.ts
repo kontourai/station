@@ -63,19 +63,20 @@ export function queryTranscriptMessages(
     bounded
       ? `CASE WHEN length(CAST(${name} AS BLOB)) <= ${limit} THEN ${name} END`
       : name;
+  const turnAnchor = `(SELECT e.id FROM orchestration_events e
+                  WHERE e.thread_id = s.thread_id AND e.turn_id = s.turn_id
+                    AND e.method = 'turn.started' LIMIT 1)`;
   const overflow = bounded
-    ? `(${['s.thread_id', 's.event_id', 's.turn_id', 'h.agent_slug', 'h.project_slug', 'p.provider'].map((name) => `coalesce(length(CAST(${name} AS BLOB)), 0) > 256`).join(' OR ')} OR length(CAST(s.content AS BLOB)) > 131072)`
+    ? `(${['s.thread_id', 's.event_id', 's.turn_id', 's.created_at', 'h.agent_slug', 'h.project_slug', 'p.provider', turnAnchor].map((name) => `coalesce(length(CAST(${name} AS BLOB)), 0) > 256`).join(' OR ')} OR length(CAST(s.role AS BLOB)) > 9 OR length(CAST(s.content AS BLOB)) > 131072)`
     : '0';
   const rows = db
     .prepare(
       `SELECT ${column('s.thread_id')} AS thread_id, ${column('s.event_id')} AS event_id,
-                ${column('s.turn_id')} AS turn_id, s.role, ${column('s.content', 131072)} AS content,
-                s.created_at, ${column('h.agent_slug')} AS agent_slug,
+                ${column('s.turn_id')} AS turn_id, ${column('s.role', 9)} AS role, ${column('s.content', 131072)} AS content,
+                ${column('s.created_at')} AS created_at, ${column('h.agent_slug')} AS agent_slug,
                 ${column('h.project_slug')} AS project_slug, ${column('p.provider')} AS provider,
                 ${overflow} AS oversized,
-                (SELECT e.id FROM orchestration_events e
-                  WHERE e.thread_id = s.thread_id AND e.turn_id = s.turn_id
-                    AND e.method = 'turn.started' LIMIT 1) AS turn_anchor_id
+                ${column(turnAnchor)} AS turn_anchor_id
            FROM orchestration_message_search_v3 s
            INNER JOIN orchestration_conversation_history h
              ON h.thread_id = s.thread_id

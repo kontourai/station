@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import type { Worker } from 'node:worker_threads';
 import {
   parseHostedTenantRegistry,
@@ -20,6 +20,10 @@ import { createIsolatedSessionTranscriptSearch } from '../isolated-session-trans
 import { OrchestrationService } from '../orchestration-service.js';
 import { SessionAuthorization } from '../session-authorization.js';
 import { SessionTranscriptReads } from '../session-transcript-reads.js';
+import {
+  queryTranscriptMessages,
+  TranscriptReadLimitError,
+} from '../transcript-search-queries.js';
 
 const roots: string[] = [];
 const stores: EventStore[] = [];
@@ -515,6 +519,82 @@ describe('isolated transcript read owner and existing session policy', () => {
     await expect.poll(() => store.close().kind).toBe('closed');
     expect(source.inspect()).toEqual({ phase: 'closed' });
   });
+
+  test.each(['created_at', 'turn_anchor_id', 'role'] as const)(
+    'bounds %s in SQLite before JavaScript materialization without rewriting identity',
+    async (field) => {
+      const directory = root();
+      const store = storeAt(directory);
+      // Only the assistant row matches; an oversized anchor cannot be caught
+      // accidentally by the separate user-row event_id bound.
+      populate(store, 'projection', 'user-a', 'unrelated user request');
+      const database = new DatabaseSync(join(directory, 'events.sqlite'));
+      const oversized = 'x'.repeat(512 * 1024);
+      try {
+        // Historical/corrupt metadata fixture, beyond current ingress limits.
+        database.exec('PRAGMA foreign_keys = OFF');
+        if (field === 'turn_anchor_id') {
+          database
+            .prepare('UPDATE orchestration_events SET id = ? WHERE id = ?')
+            .run(oversized, 'projection:turn');
+        } else {
+          database
+            .prepare(
+              `UPDATE orchestration_message_search_v3 SET ${field} = ? WHERE event_id = ?`,
+            )
+            .run(oversized, 'projection:end');
+        }
+        const input = { query: 'cobalt', ownerUserId: 'user-a', limit: 20 };
+        const unbounded = queryTranscriptMessages(database, input);
+        const projectedField =
+          field === 'created_at'
+            ? 'createdAt'
+            : field === 'turn_anchor_id'
+              ? 'turnAnchorId'
+              : 'role';
+        expect(unbounded).toHaveLength(1);
+        expect(unbounded[0][projectedField]).toBe(oversized);
+
+        let materialized: Record<string, unknown>[] = [];
+        const observedDatabase = {
+          prepare(sql: string) {
+            const statement = database.prepare(sql);
+            return {
+              get: (...parameters: SQLInputValue[]) =>
+                statement.get(...parameters),
+              all: (...parameters: SQLInputValue[]) => {
+                materialized = statement.all(...parameters);
+                return materialized;
+              },
+            };
+          },
+        };
+        let refusal: unknown;
+        try {
+          queryTranscriptMessages(observedDatabase, input, true);
+        } catch (error) {
+          refusal = error;
+        }
+        // This observes the actual native SQLite->JS boundary, not a later
+        // parent response validator or a substring check over generated SQL.
+        expect(materialized).toHaveLength(1);
+        expect(
+          materialized.some(
+            (row) =>
+              typeof row[field] === 'string' &&
+              Buffer.byteLength(row[field]) > 256,
+          ),
+        ).toBe(false);
+        expect(materialized[0][field]).toBeNull();
+        expect(refusal).toBeInstanceOf(TranscriptReadLimitError);
+        const source = store.createIsolatedTranscriptReads();
+        readers.push(source);
+        await expect(source.search(input)).rejects.toThrow('unavailable');
+      } finally {
+        database.close();
+      }
+    },
+  );
 
   test('locked SQLite cold reads leave parent heartbeat responsive and retain cancellation until actual worker exit', async () => {
     const directory = root();
