@@ -10,6 +10,7 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
+import { WORKSPACE_PANE_HOST_ACTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { Hono } from 'hono';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { resolveMaxSteps } from '../../constants.js';
@@ -157,6 +158,8 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         options: rawOptions,
         ambientContext,
       });
+      const optionsForPreparation = { ...rawOptions };
+      delete optionsForPreparation[WORKSPACE_PANE_HOST_ACTION_METADATA_KEY];
       const configurationLease = captureRuntimeConfigurationLease(ctx);
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       const nativeOutputGrant = nativeOutputRelay?.issueForRuntimeConfiguration(
@@ -174,7 +177,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         ctx,
         slug,
         input,
-        options: rawOptions,
+        options: optionsForPreparation,
         projectSlug,
         capturedProject: nativeForeground?.project,
       });

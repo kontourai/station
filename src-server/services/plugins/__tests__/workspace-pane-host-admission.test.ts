@@ -594,11 +594,6 @@ describe('Workspace Pane host invocation admission', () => {
         .toBe(true);
       expect((await proof.execute()).state).toBe('indeterminate');
       expect(proof.streamText).toHaveBeenCalledOnce();
-      await service.sessionLifecycles.transition({
-        threadId: result.sessionId,
-        authority: INTERNAL_SESSION_READ_SCOPE,
-        to: 'completed',
-      });
       rmSync(pluginDir, { recursive: true, force: true });
       const archived = await service.readSession(
         result.sessionId,
