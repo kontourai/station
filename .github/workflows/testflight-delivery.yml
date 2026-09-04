@@ -158,6 +158,8 @@ jobs:
           for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             ditto "$preserved/$item" "gen/apple/$item"
           done
+          node ../scripts/ensure-ios-privacy-manifest-resource.mjs gen/apple/project.yml
+          grep -Fq 'path: PrivacyInfo.xcprivacy' gen/apple/project.yml
           git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
       - name: Verify App Store Connect app authority before signing
         id: app_store
@@ -228,6 +230,8 @@ jobs:
           for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             ditto "$preserved/$item" "gen/apple/$item"
           done
+          node ../scripts/ensure-ios-privacy-manifest-resource.mjs gen/apple/project.yml
+          grep -Fq 'path: PrivacyInfo.xcprivacy' gen/apple/project.yml
           git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
           grep -Fq 'CODE_SIGN_STYLE: Manual' gen/apple/project.yml
           grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' gen/apple/project.yml
