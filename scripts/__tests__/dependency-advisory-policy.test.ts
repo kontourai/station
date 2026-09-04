@@ -1,13 +1,17 @@
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { minimatch } from 'minimatch';
 import { describe, expect, it } from 'vitest';
-
+import { ALL_DEPENDENCY_SCOPES } from '../classify-ci-change.mjs';
 import {
+  AUDIT_SCOPES,
   collectAudits,
   dependencyAuditDecision,
   evaluateAuditPolicy,
   formatPolicyReport,
   parseAuditCommandResult,
+  selectAuditScopes,
   withAuditRetries,
 } from '../dependency-advisory-policy.mjs';
 
@@ -29,13 +33,18 @@ describe('dependency audit collection', () => {
       resolveMergeBase: () => 'mergebase',
       classifyRange: ({ before, after }) => {
         expect({ before, after }).toEqual({ before: 'mergebase', after: 'b' });
-        return { dependencies: false, classification: 'runtime-or-workflow' };
+        return {
+          dependencies: false,
+          classification: 'runtime-or-workflow',
+          dependencyScopes: [],
+        };
       },
     });
 
     expect(decision).toEqual({
       required: false,
       reason: 'runtime-or-workflow',
+      scopes: [],
     });
   });
 
@@ -60,7 +69,11 @@ describe('dependency audit collection', () => {
       },
       classifyRange: ({ before, after }) => {
         classified.push({ before, after });
-        return { dependencies: false, classification: 'runtime-or-workflow' };
+        return {
+          dependencies: false,
+          classification: 'runtime-or-workflow',
+          dependencyScopes: [],
+        };
       },
     });
 
@@ -68,6 +81,7 @@ describe('dependency audit collection', () => {
     expect(decision).toEqual({
       required: false,
       reason: 'runtime-or-workflow',
+      scopes: [],
     });
   });
 
@@ -103,7 +117,11 @@ describe('dependency audit collection', () => {
       dependencyAuditDecision({
         env: { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'schedule' },
       }),
-    ).toEqual({ required: true, reason: 'schedule event' });
+    ).toEqual({
+      required: true,
+      reason: 'schedule event',
+      scopes: ['root', 'sdk', 'shared'],
+    });
   });
 
   it('fails closed when GitHub range evidence is unavailable', () => {
@@ -118,6 +136,7 @@ describe('dependency audit collection', () => {
       required: true,
       reason:
         'range classification failed closed: GITHUB_EVENT_PATH is missing',
+      scopes: ['root', 'sdk', 'shared'],
     });
   });
 
@@ -785,5 +804,86 @@ describe('dependency advisory policy', { timeout: 20_000 }, () => {
     ).toThrow(
       'npm audit operational response for root (exit 1): {"message":"request to http://127.0.0.1:9/-/npm/v1/security/advisories/bulk failed, reason: connect ECONNREFUSED 127.0.0.1:9","error":{"summary":"","detail":""}}',
     );
+  });
+});
+
+/**
+ * The selection is the ENFORCEMENT point of #1417's narrowing: the classifier
+ * only declares which scopes changed, and every test of that declaration
+ * passes just as well if this filter is inverted, dropped, or stripped of its
+ * empty-selection guard. Those are the mutations these tests exist to catch.
+ */
+describe('selectAuditScopes', () => {
+  const all = [
+    { scope: 'root', cwd: '/repo' },
+    { scope: 'sdk', cwd: '/repo/packages/sdk' },
+    { scope: 'shared', cwd: '/repo/packages/shared' },
+  ];
+
+  it('audits exactly the scopes the decision names', () => {
+    expect(selectAuditScopes({ scopes: ['root'], reason: 'x' }, all)).toEqual([
+      { scope: 'root', cwd: '/repo' },
+    ]);
+    expect(
+      selectAuditScopes({ scopes: ['sdk', 'shared'], reason: 'x' }, all).map(
+        (entry) => entry.scope,
+      ),
+    ).toEqual(['sdk', 'shared']);
+  });
+
+  it('audits every scope when the decision names none at all', () => {
+    // Not "audit nothing". A decision without scopes is an older or unknown
+    // caller, and the safe reading of silence is everything.
+    expect(
+      selectAuditScopes({ reason: 'no scopes' }, all).map(
+        (entry) => entry.scope,
+      ),
+    ).toEqual(['root', 'sdk', 'shared']);
+  });
+
+  it('refuses an empty selection rather than reporting a clean scan of nothing', () => {
+    expect(() => selectAuditScopes({ scopes: [], reason: 'why' }, all)).toThrow(
+      /selected no scopes \(decision: why\)/,
+    );
+  });
+
+  it('refuses when a decision names only scopes the audit does not run', () => {
+    // The drift direction that fails loudly: a classifier that knows a scope
+    // the audit does not must not silently audit the remainder.
+    expect(() =>
+      selectAuditScopes({ scopes: ['contracts'], reason: 'drift' }, all),
+    ).toThrow(/selected no scopes/);
+  });
+
+  it('audits exactly the scopes the classifier can attribute, and no others', () => {
+    // The drift direction that would fail SILENTLY if these were two lists:
+    // a scope the audit runs but the classifier has never heard of is filtered
+    // out of every selection, including the fail-closed ones, and the run
+    // reports success having never scanned it.
+    //
+    // This pins the VALUES agreeing, which is what catches that drift once it
+    // is real. It cannot observe that one is derived from the other -- a
+    // hardcoded list that happens to match still passes -- so the derivation
+    // is a code property, not something this asserts.
+    expect(AUDIT_SCOPES.map((entry) => entry.scope)).toEqual([
+      ...ALL_DEPENDENCY_SCOPES,
+    ]);
+  });
+
+  it('resolves each scope to its own package directory', () => {
+    // The cwd is what `npm audit` actually runs in and what the lockfile is
+    // read from, and nothing else asserts it: a scope root edited to an
+    // absolute path, a typo, or a `..` would keep every other test green and
+    // surface only as a live "committed lockfile is missing" in CI.
+    const byScope = Object.fromEntries(
+      AUDIT_SCOPES.map((entry) => [entry.scope, entry.cwd]),
+    );
+    expect(byScope.sdk).toBe(path.join(byScope.root, 'packages', 'sdk'));
+    expect(byScope.shared).toBe(path.join(byScope.root, 'packages', 'shared'));
+    for (const cwd of Object.values(byScope)) {
+      expect(path.isAbsolute(cwd)).toBe(true);
+      expect(cwd).not.toContain('..');
+      expect(existsSync(path.join(cwd, 'package-lock.json'))).toBe(true);
+    }
   });
 });

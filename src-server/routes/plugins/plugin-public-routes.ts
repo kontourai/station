@@ -7,6 +7,10 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import {
+  type PluginGrantReconciliationService,
+  pluginPermissionsNeedRuntimeReconciliation,
+} from '../../services/plugins/plugin-grant-reconciliation.js';
 import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   assertGrantablePermissions,
@@ -51,6 +55,7 @@ interface PluginPublicRouteDeps {
   projectHomeDir: string;
   logger: Logger;
   eventBus?: EventBus;
+  grantReconciliation?: PluginGrantReconciliationService;
 }
 
 export function registerPluginPublicRoutes(
@@ -193,6 +198,19 @@ export function registerPluginPublicRoutes(
       deps.eventBus?.emit(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
         name,
       });
+      const reconciliation = pluginPermissionsNeedRuntimeReconciliation(
+        outcome.withdrawn,
+      )
+        ? deps.grantReconciliation
+          ? await deps.grantReconciliation.reconcile({
+              pluginName: name,
+              permissions: outcome.withdrawn,
+            })
+          : {
+              status: 'incomplete' as const,
+              failures: ['runtime-unavailable'],
+            }
+        : undefined;
       // Derived, never the request echoed back (archive#4288, delta review
       // MEDIUM 2). Granting one permission against a `changed` binding
       // withdraws every OTHER recorded permission — `trusted` ones included,
@@ -201,11 +219,15 @@ export function registerPluginPublicRoutes(
       // loss as a success carrying exactly what was asked for. `DELETE
       // /:name/grant` already answers with derived state; this makes the two
       // verbs agree.
-      return c.json({
-        success: true,
-        granted: outcome.granted,
-        withdrawn: outcome.withdrawn,
-      });
+      return c.json(
+        {
+          success: true,
+          granted: outcome.granted,
+          withdrawn: outcome.withdrawn,
+          ...(reconciliation ? { reconciliation } : {}),
+        },
+        reconciliation?.status === 'winding-down' ? 202 : 200,
+      );
     } catch (error: unknown) {
       if (isContextSafetyError(error)) {
         return c.json(manifestSafetyFailure(name, randomUUID(), error), 400);
@@ -274,11 +296,31 @@ export function registerPluginPublicRoutes(
       deps.eventBus?.emit(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
         name,
       });
-      return c.json({
-        success: true,
-        revoked: permissions,
-        granted: getPluginGrants(projectHomeDir, name),
-      });
+      const reconciliation = pluginPermissionsNeedRuntimeReconciliation(
+        permissions,
+      )
+        ? deps.grantReconciliation
+          ? await deps.grantReconciliation.reconcile({
+              pluginName: name,
+              permissions,
+            })
+          : {
+              status: 'incomplete' as const,
+              failures: ['runtime-unavailable'],
+            }
+        : {
+            status: 'completed' as const,
+            effects: [] as const,
+          };
+      return c.json(
+        {
+          success: true,
+          revoked: permissions,
+          granted: getPluginGrants(projectHomeDir, name),
+          reconciliation,
+        },
+        reconciliation.status === 'winding-down' ? 202 : 200,
+      );
     } catch (error: unknown) {
       if (error instanceof PluginGrantsUnavailableError) {
         // Nothing was withdrawn; say why rather than reporting success for a
