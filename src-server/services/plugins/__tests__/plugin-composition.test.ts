@@ -417,11 +417,16 @@ describe('plugin composition profiles', () => {
       vi.useFakeTimers();
       try {
         const disposed: unknown[] = [];
+        let secondResourceDisposed = false;
         function dispose(this: unknown) {
           disposed.push(this);
+          // A fresh adopter of this disputed cleanup function could affect B.
+          // A's legitimate cleanup is deliberately independent of that effect.
+          if (this === freshHandle) secondResourceDisposed = true;
         }
         const firstHandle = { dispose };
         const secondHandle = { dispose };
+        const freshHandle = { dispose };
         let finishB!: () => void;
         const occurrences: Array<{ isCurrent(): boolean }> = [];
         const releaseB = vi.fn();
@@ -440,7 +445,10 @@ describe('plugin composition profiles', () => {
                   await new Promise<void>((resolve) => {
                     finishB = resolve;
                   });
-                return secondHandle;
+                return input.scope.kind === 'project' &&
+                  input.scope.projectId === 'fresh'
+                  ? freshHandle
+                  : secondHandle;
               },
             },
           ],
@@ -510,6 +518,21 @@ describe('plugin composition profiles', () => {
         expect((await module.retire(third)).kind).toBe('retired');
         expect(disposed).toEqual([firstHandle]);
         expect((await module.retire(projectB)).kind).toBe('pending');
+        const fresh = { kind: 'project', projectId: 'fresh' } as const;
+        const attemptedFresh = module.apply(
+          profile(fresh, [contribution('cache', 'workspace.cache')]),
+        );
+        if (late) {
+          await vi.advanceTimersByTimeAsync(0);
+          finishB();
+        }
+        const freshResult = await attemptedFresh;
+        const freshRetirement = await module.retire(fresh);
+        expect(secondResourceDisposed).toBe(false);
+        expect(freshResult.kind).toBe('failed');
+        expect(freshRetirement.kind).toBe('pending');
+        expect(disposed).toEqual([firstHandle]);
+        expect(releaseB).not.toHaveBeenCalled();
       } finally {
         vi.useRealTimers();
       }

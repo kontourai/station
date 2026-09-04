@@ -1236,6 +1236,10 @@ export function createPluginCompositionModule(options: {
   let activationSequence = 0;
   const claimedHandles = new WeakMap<object, string>();
   const claimedDisposers = new WeakMap<object, string>();
+  // A's active claim may retire while B still owns a disputed resource using
+  // the same function. This reservation belongs to B's unresolved custody,
+  // not to A, and prevents fresh handles from adopting that cleanup authority.
+  const disputedDisposers = new WeakSet<object>();
 
   const fenceKey = (generation: number, instanceIdentity: string) =>
     `${generation}:${instanceIdentity}`;
@@ -1407,7 +1411,10 @@ export function createPluginCompositionModule(options: {
       leaseControl.fence();
       return { kind: 'invalid' };
     }
-    if (claimedDisposers.has(staged.disposer)) {
+    if (
+      claimedDisposers.has(staged.disposer) ||
+      disputedDisposers.has(staged.disposer)
+    ) {
       leaseControl.fence();
       return { kind: 'conflict', staged };
     }
@@ -2017,6 +2024,7 @@ export function createPluginCompositionModule(options: {
       // disposer. A later stage must not claim it after the original disposer
       // owner retires; exact returns of this resource are borrowed too.
       claimedHandles.set(handle.identity, lease.occurrenceIdentity);
+      disputedDisposers.add(handle.disposer);
       unclaimedResources.set(key, {
         staged: handle,
         entry: entry(
