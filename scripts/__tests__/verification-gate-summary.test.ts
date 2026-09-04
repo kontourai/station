@@ -31,6 +31,7 @@ const cleanup = { status: 'passed', survivingOwnedChildren: 0 };
 /** The envelope `run-verification.mjs` prints, produced by its own renderer. */
 function verdictDocument({
   stdout,
+  stderr = '',
   status,
   exitCode,
   counts,
@@ -38,6 +39,7 @@ function verdictDocument({
   extraSummary = {},
 }: {
   stdout: string;
+  stderr?: string;
   status: string;
   exitCode: number;
   counts: Record<string, number>;
@@ -46,6 +48,7 @@ function verdictDocument({
 }): string {
   const summary = summarizeVerificationOutput({
     stdout,
+    stderr,
     terminal: { status, exitCode, truncated: false },
     counts,
     cleanup,
@@ -108,19 +111,27 @@ function errorAnnotations(stdout: string): string[] {
   return stdout.split('\n').filter((line) => line.startsWith('::error'));
 }
 
-// The lint gate this repo runs tolerates warnings, so this line is on the
-// stdout of every GREEN hosted run (run 33886817593 reported exactly it as the
-// cause of a run that passed).
-const passingLog = [
+const passingStdout = [
   '> @kontourai/station-core@0.0.0 lint:check',
   '> biome check .',
-  'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
-  '  ! This assignment is in an expression.',
-  'Checked 1913 files. Found 374 warnings.',
   '',
   '> @kontourai/station-core@0.0.0 test:full:raw',
   'Tests 4213 passed | 12 skipped',
 ].join('\n');
+
+// `lint:check` tolerates warnings (it exits 0 with three of them today) and
+// Biome writes diagnostics to STDERR, which carries no npm step headers. Every
+// GREEN hosted run therefore ends with these lines eligible as a "cause": run
+// 33886817593 passed and reported exactly this one.
+const passingStderr = [
+  'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
+  '  ! The assignment should not be in an expression.',
+  'Checked 5565 files. Found 3 warnings.',
+].join('\n');
+
+// The runner interleaves both streams into one step log, which is what the
+// summary script actually reads.
+const passingLog = [passingStdout, passingStderr].join('\n');
 
 const failingLog = [
   '> @kontourai/station-core@0.0.0 test:full:raw',
@@ -140,7 +151,8 @@ describe('verification gate summary', () => {
       capturedStdout(
         passingLog,
         verdictDocument({
-          stdout: capturedStdout(passingLog, ''),
+          stdout: capturedStdout(passingStdout, ''),
+          stderr: passingStderr,
           status: 'completed',
           exitCode: 0,
           counts: {

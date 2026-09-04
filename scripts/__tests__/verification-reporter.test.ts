@@ -626,13 +626,15 @@ describe('verification reporter', () => {
     expect(summary.failingStep).toBe('proof:app-builds');
   });
 
-  // #1459. The stdout below is the shape a GREEN hosted full-regression run
-  // actually produces: this repo's lint gate tolerates warnings, so every
-  // passing run carries warning-tier diagnostics, and the warnings-only
-  // fallback (which exists so a FAILED warnings-only capture still names a
-  // cause) stamped one onto runs that had no cause at all. Run 33886817593
-  // passed and reported `literal-swap-gate.mjs:58:11
-  // lint/suspicious/noAssignInExpressions` as its `firstCausalExcerpt`.
+  // #1459. The capture below is the shape a GREEN hosted full-regression run
+  // actually produces. This repo's `lint:check` tolerates warnings (it exits 0
+  // with three of them today), and Biome writes its diagnostics to STDERR,
+  // which carries no npm step headers and so is never scoped to a failing
+  // step. The warnings-only fallback -- which exists so a FAILED warnings-only
+  // capture still names a cause -- therefore reached them on runs that had no
+  // cause at all: run 33886817593 passed and reported
+  // `literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions` as its
+  // `firstCausalExcerpt`.
   test('reports no causal excerpt for a run that PASSED with tolerated lint warnings (#1459)', () => {
     const summary = summarizeVerificationOutput({
       stdout: [
@@ -642,14 +644,15 @@ describe('verification reporter', () => {
         '> @kontourai/station-core@0.0.0 lint:check',
         '> biome check .',
         '',
-        'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
-        '  ! This assignment is in an expression.',
-        'Checked 1913 files. Found 374 warnings.',
-        '',
         '> @kontourai/station-core@0.0.0 test:full:raw',
         '> node scripts/run-vitest-corpus.mjs',
         '',
         'Tests 4213 passed | 12 skipped',
+      ].join('\n'),
+      stderr: [
+        'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
+        '  ! The assignment should not be in an expression.',
+        'Checked 5565 files. Found 3 warnings.',
       ].join('\n'),
       terminal: { status: 'completed', exitCode: 0, truncated: false },
       counts: {
@@ -688,17 +691,19 @@ describe('verification reporter', () => {
   });
 
   // The failed-run fallback is exactly what #1459 must not have disturbed:
-  // the same warnings-only capture still names its warning when the run failed.
+  // the SAME capture -- byte-identical to the passing case above -- still
+  // names its warning when the run failed. Only the terminal differs.
   test('keeps the warnings-only fallback for a run that FAILED (#1459 changes nothing here)', () => {
-    const stdout = [
-      '> @kontourai/station-core@0.0.0 lint:check',
-      '> biome check .',
-      'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
-      '  ! This assignment is in an expression.',
-      'Found 1 warning.',
-    ].join('\n');
     const failed = summarizeVerificationOutput({
-      stdout,
+      stdout: [
+        '> @kontourai/station-core@0.0.0 lint:check',
+        '> biome check .',
+      ].join('\n'),
+      stderr: [
+        'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
+        '  ! The assignment should not be in an expression.',
+        'Checked 5565 files. Found 3 warnings.',
+      ].join('\n'),
       terminal: { status: 'failed', exitCode: 1, truncated: false },
       counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
       cleanup: { status: 'passed', survivingOwnedChildren: 0 },
