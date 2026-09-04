@@ -6,7 +6,10 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
-import { createRuntimeDocsIntegration } from '../../../runtime/agents/runtime-default-agent.js';
+import {
+  createRuntimeDocsIntegration,
+  createRuntimeSelfIntegration,
+} from '../../../runtime/agents/runtime-default-agent.js';
 import {
   builtinStationControlServerPath,
   stationDocsRuntimeIdentity,
@@ -251,6 +254,50 @@ describe('createSessionAgentResolver', () => {
       });
     },
   );
+
+  test('keeps the Station role capabilities when a materialized record omits tools', async () => {
+    const { selfIntegration } = createRuntimeSelfIntegration();
+    const { docsIntegration } = createRuntimeDocsIntegration();
+    const resolver = createSessionAgentResolver({
+      // This is the exact shape a fresh home produced in the live regression:
+      // the reserved record existed, so the old nullish fallback never used
+      // builtinStationAgentSpec and silently requested no MCP servers.
+      loadAgentSpec: async () => ({ name: 'Station', prompt: '' }),
+      resolveToolServer: async (id) =>
+        id === 'station-control'
+          ? ({
+              ...selfIntegration,
+              command: 'node',
+              args: [builtinStationControlServerPath()],
+              env: { STATION_PORT: '7777' },
+            } as ToolDef)
+          : id === 'station-docs'
+            ? ({
+                ...docsIntegration,
+                command: 'node',
+                args: [stationDocsRuntimeIdentity().args?.[0]],
+              } as ToolDef)
+            : null,
+      resolveSkillDir: async () => null,
+    });
+
+    const result = await resolver(
+      baseInput({ provider: 'codex', metadata: { agentSlug: 'station' } }),
+    );
+
+    expect(result.agent?.toolServers?.map(({ id }) => id)).toEqual([
+      'station-control',
+      'station-docs',
+    ]);
+    expect(
+      result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY],
+    ).toMatchObject({
+      toolServers: {
+        requested: ['station-control', 'station-docs'],
+        undelivered: [],
+      },
+    });
+  });
 
   test.each(['claude', 'codex', 'acp'] as const)(
     'station#1547: the built-in Station identity delivers station-docs on %s with NO on-disk spec',
