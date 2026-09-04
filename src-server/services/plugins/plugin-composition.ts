@@ -881,8 +881,24 @@ function validatePlanAuthorization(
   };
 }
 
+async function settleBestEffortWithin(
+  effect: () => void | Promise<void>,
+  timeoutMs: number,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const operation = Promise.resolve()
+    .then(effect)
+    .catch(() => undefined);
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  await Promise.race([operation, timeout]);
+  if (timer) clearTimeout(timer);
+}
+
 async function releaseRecognizableInvalidAuthorization(
   value: unknown,
+  timeoutMs: number,
 ): Promise<void> {
   try {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return;
@@ -913,7 +929,10 @@ async function releaseRecognizableInvalidAuthorization(
       typeof release.value !== 'function'
     )
       return;
-    await Reflect.apply(release.value, rawLease, []);
+    await settleBestEffortWithin(
+      () => Reflect.apply(release.value, rawLease, []),
+      timeoutMs,
+    );
   } catch {
     // Invalid authority output is unavailable regardless of release behavior.
   }
@@ -1501,7 +1520,10 @@ export function createPluginCompositionModule(options: {
     );
     if (authorization?.kind !== 'granted') {
       if (!authorization) {
-        await releaseRecognizableInvalidAuthorization(rawAuthorization);
+        await releaseRecognizableInvalidAuthorization(
+          rawAuthorization,
+          disposerTimeoutMs,
+        );
       }
       const unavailable =
         !authorization || authorization.kind === 'unavailable';
@@ -1525,13 +1547,10 @@ export function createPluginCompositionModule(options: {
     const releaseAuthorization = async () => {
       if (released) return;
       released = true;
-      try {
-        await authorization.lease.release();
-      } catch {
-        // A host authority must not turn a completed rollback/publication into
-        // an unhandled rejection. Its currentness was already consumed while
-        // the lease was held; release remains exactly-once best effort.
-      }
+      await settleBestEffortWithin(
+        () => authorization.lease.release(),
+        disposerTimeoutMs,
+      );
     };
     const authorizationCurrent = () => {
       try {
@@ -1673,6 +1692,14 @@ export function createPluginCompositionModule(options: {
         scope: structuredClone(profile.scope),
         contributions: staged,
       });
+      const publishedShadowed = planned.plan.shadowed.map((candidate) => ({
+        ...candidate,
+        generation,
+      }));
+      // Publication ends staging immediately. Previous-generation retirement
+      // and bounded lease release must not make the live generation appear
+      // both active and pending.
+      recordAttempt(profile.scope, publishedShadowed);
       await releaseAuthorization();
       const retirementFailures = previous
         ? await disposeReverse(
@@ -1683,10 +1710,7 @@ export function createPluginCompositionModule(options: {
           )
         : [];
       recordAttempt(profile.scope, [
-        ...planned.plan.shadowed.map((candidate) => ({
-          ...candidate,
-          generation,
-        })),
+        ...publishedShadowed,
         ...retirementFailures,
       ]);
       return {
@@ -1745,6 +1769,13 @@ export function createPluginCompositionModule(options: {
         });
       }
       const key = scopeKey(safeScope);
+      if (!retainedScopeKeys().has(key)) {
+        return Promise.resolve({
+          kind: 'retired' as const,
+          liveFences: [],
+          inspection: inspect(safeScope),
+        });
+      }
       return enqueueScope(key, async () => {
         const current = active.get(key);
         if (current) fenceAll(current.contributions);

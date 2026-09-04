@@ -71,7 +71,7 @@ function grantedPlanAuthorization(
   factories: ReadonlyMap<string, PluginCompositionFactory>,
   options: {
     isCurrent?: () => boolean;
-    release?: () => void;
+    release?: () => void | Promise<void>;
     mutateBinding?: (
       binding: Record<string, unknown>,
       index: number,
@@ -110,7 +110,7 @@ function moduleWith(
       | 'unavailable'
       | Promise<'granted' | 'denied' | 'unavailable'>;
     isCurrent?: () => boolean;
-    onRelease?: () => void;
+    onRelease?: () => void | Promise<void>;
     authorizer?: PluginCompositionAuthorizer;
     disposerTimeoutMs?: number;
     maxRetainedScopes?: number;
@@ -1065,6 +1065,97 @@ describe('plugin composition profiles', () => {
     expect(release).toHaveBeenCalledOnce();
   });
 
+  test('bounds a never-settling release and continues prior-generation retirement', async () => {
+    const events: string[] = [];
+    let releaseCount = 0;
+    const module = moduleWith([factory('cache', events)], {
+      disposerTimeoutMs: 5,
+      authorizer: {
+        authorize(input) {
+          return grantedPlanAuthorization(
+            input,
+            new Map([factory('cache', events)]),
+            {
+              release: () => {
+                releaseCount += 1;
+                return releaseCount === 2
+                  ? new Promise<void>(() => {})
+                  : Promise.resolve();
+              },
+            },
+          );
+        },
+      },
+    });
+    await module.apply(
+      profile(projectA, [
+        contribution('first', 'workspace.cache', {
+          implementationId: 'cache',
+        }),
+      ]),
+    );
+
+    await expect(
+      module.apply(
+        profile(projectA, [
+          contribution('second', 'workspace.cache', {
+            implementationId: 'cache',
+          }),
+        ]),
+      ),
+    ).resolves.toMatchObject({ kind: 'activated', generation: 2 });
+    expect(events).toContain('dispose:first');
+    await expect(module.retire(projectA)).resolves.toMatchObject({
+      kind: 'retired',
+    });
+  });
+
+  test('published generation no longer appears as staging during prior retirement', async () => {
+    const events: string[] = [];
+    let finishRetirement!: () => void;
+    const retirement = new Promise<void>((resolve) => {
+      finishRetirement = resolve;
+    });
+    const implementation: PluginCompositionFactory = {
+      async stage(input) {
+        events.push(`stage:${input.contribution.instanceId}`);
+        return {
+          dispose: () => {
+            events.push(`dispose:${input.contribution.instanceId}`);
+            return input.contribution.instanceId === 'first'
+              ? retirement
+              : undefined;
+          },
+        };
+      },
+    };
+    const module = moduleWith([['cache', implementation]], {
+      disposerTimeoutMs: 1_000,
+    });
+    await module.apply(
+      profile(projectA, [
+        contribution('first', 'workspace.cache', {
+          implementationId: 'cache',
+        }),
+      ]),
+    );
+    const replacing = module.apply(
+      profile(projectA, [
+        contribution('second', 'workspace.cache', {
+          implementationId: 'cache',
+        }),
+      ]),
+    );
+    await vi.waitFor(() => expect(events).toContain('dispose:first'));
+
+    expect(module.inspect(projectA)).toMatchObject({
+      active: [expect.objectContaining({ instanceId: 'second' })],
+      pending: [],
+    });
+    finishRetirement();
+    await expect(replacing).resolves.toMatchObject({ kind: 'activated' });
+  });
+
   test('holds one whole-plan authorization lease and rolls back when it becomes stale before publication', async () => {
     const events: string[] = [];
     let current = true;
@@ -1463,6 +1554,20 @@ describe('plugin composition profiles', () => {
         profile(projectB, [contribution('cache', 'workspace.cache')]),
       ),
     ).resolves.toMatchObject({ kind: 'activated' });
+  });
+
+  test('unknown retirement does not consume retained-scope capacity', async () => {
+    const module = moduleWith([factory('cache', [])], {
+      maxRetainedScopes: 1,
+    });
+
+    const unknownRetirement = module.retire(projectA);
+    await expect(
+      module.apply(
+        profile(projectB, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({ kind: 'activated' });
+    await expect(unknownRetirement).resolves.toMatchObject({ kind: 'retired' });
   });
 
   test('refuses malformed profiles without invoking accessors or leaking identity', async () => {
