@@ -445,9 +445,19 @@ function parseWorkspacePaneRendererRef(
  * copy of it, and `WorkspacePaneRegion` is derived from it — so a region can
  * only be added in one place and no consumer can be left checking a stale set.
  *
- * `docked` is the shell's single-occupant slot: one pane, always present,
- * outside any Project layout. A descriptor supporting it is stating that it
- * renders usefully with no tabs and no split geometry around it.
+ * What each word means, and who reads it:
+ *
+ * - `primary` / `secondary`: a position inside a pane host's composition.
+ *   Read by `instantiateWorkspaceComposition`, which refuses a composition
+ *   pane whose descriptor does not support the region it is placed in.
+ * - `standalone`: the pane may be a route of its own. Read by the Home-role
+ *   eligibility gate (`workspace-home-role.ts`).
+ * - `docked`: the pane may occupy a shell region as a registered surface.
+ *   Placement itself — which region, visibility, size — is decided by the
+ *   shell's region registry (`src-ui/src/regions/region-model.ts`), not by
+ *   this declaration. The word is a capability claim, and a test pins it to
+ *   that registry in both directions: every registered or ambient-dockable
+ *   built-in declares it, and no other built-in does (station#928).
  */
 export const WORKSPACE_PANE_REGIONS = [
   'primary',

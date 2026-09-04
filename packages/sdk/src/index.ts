@@ -33,6 +33,7 @@ export type {
   WorkspacePaneContractVersion,
   WorkspacePaneDescriptor,
   WorkspacePaneDescriptorId,
+  WorkspacePaneHostRegion,
   WorkspacePaneInstance,
   WorkspacePaneInstanceId,
   WorkspacePaneLayoutAdapterContext,
