@@ -261,10 +261,31 @@ export function describeConnectionInventoryFailures(
 export interface RoutePricingReference {
   source: 'openrouter';
   attributionUrl: string;
-  /** USD per 1,000,000 prompt tokens, or null when the source stated none. */
+  /**
+   * USD per 1,000,000 prompt tokens at the source's BASE rate, or null when
+   * the source stated none. Rounded to six decimal places, which is finer
+   * than any figure the source quotes. See `tieredAbovePromptTokens`: this is
+   * the whole price only when that field is null.
+   */
   promptUsdPerMillionTokens: number | null;
-  /** USD per 1,000,000 completion tokens, or null when the source stated none. */
+  /**
+   * USD per 1,000,000 completion tokens at the source's BASE rate, or null
+   * when the source stated none. Same rounding and same tiering caveat as
+   * `promptUsdPerMillionTokens`.
+   */
   completionUsdPerMillionTokens: number | null;
+  /**
+   * The prompt-token count at or above which the source quotes a HIGHER rate
+   * for this route, or null when its schedule is flat.
+   *
+   * A tiered schedule published as a single figure is this type's own defect
+   * class one level up: not a sibling route's price, but one tier of a
+   * schedule presented as the whole schedule. The route Station prices today
+   * doubles its prompt rate above 200,000 tokens, so a surface that renders
+   * the base figure unqualified is wrong for a routine long-context turn.
+   * Surfaces must qualify the figures whenever this is non-null.
+   */
+  tieredAbovePromptTokens: number | null;
   /** When the source was read; the reference is only as current as this. */
   observedAt: string;
   /** After this instant the figure must not be shown; null when unbounded. */

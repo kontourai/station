@@ -7,10 +7,7 @@ import type {
 } from './connection-recovery';
 import type { ControlPlaneObservation } from './engine-capability-matrix';
 import type { ModelInventoryExecutionIdentity } from './model-inventory';
-import type {
-  CanonicalModelIdentityReference,
-  RoutePricingReference,
-} from './model-inventory.js';
+import type { CanonicalModelIdentityReference } from './model-inventory.js';
 
 /**
  * Filesystem-safety-only guard for a tool-server/integration id (repo
@@ -256,12 +253,6 @@ export interface ModelOption {
    * than match it to another by name (#943).
    */
   canonicalModelIdentity?: CanonicalModelIdentityReference;
-  /**
-   * A price sourced for this route from the service that quotes it, with its
-   * provenance (#1127). Only routes with a citable source carry one; absent
-   * means unpriced and must render as nothing, never as a sibling's figure.
-   */
-  routePricing?: RoutePricingReference;
   capabilities?: ModelOptionCapabilities;
 }
 
