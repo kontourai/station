@@ -1,3 +1,4 @@
+import { Button } from '../../components/Button';
 import { Empty } from '../../components/state';
 import type { Plugin, PluginMessage, PluginUpdateSummary } from './types';
 
@@ -30,7 +31,12 @@ export function PluginEmptyState({
       )}
       {message && (
         <div className={`plugins__message plugins__message--${message.type}`}>
-          {message.text}
+          <span>{message.text}</span>
+          {message.action && (
+            <Button onClick={message.action.invoke}>
+              {message.action.label}
+            </Button>
+          )}
         </div>
       )}
       {/*

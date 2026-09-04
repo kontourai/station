@@ -1,9 +1,15 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  ALL_DEPENDENCY_SCOPES,
+  classifyGitRange,
+  DEPENDENCY_SCOPE_ROOTS,
+} from './classify-ci-change.mjs';
+import { createAuditAttemptDiagnostics } from './lib/dependency-audit-diagnostics.mjs';
 
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 const RESIDUAL_SEVERITIES = new Set(['moderate', 'low']);
@@ -595,6 +601,212 @@ function readJson(file, label) {
   }
 }
 
+const AUDIT_TIMEOUT_MS = 4 * 60 * 1000;
+const AUDIT_ATTEMPTS = 2;
+
+/**
+ * #1430 — GitHub sets `pull_request.base.sha` to the base branch's CURRENT
+ * TIP, not the point the branch was cut from. Diffing that against the head
+ * therefore attributes every dependency change that landed on `main` after
+ * the branch started to this pull request, and drags a change with no
+ * dependency inputs of its own through a live registry scan. Those commits
+ * were audited on their own pull requests and again by `main`'s push run;
+ * this range must describe what the branch itself changed.
+ *
+ * Failing to resolve a merge base (a shallow clone, an unfetched base) is
+ * left to the caller's `catch`, which fails closed — the right answer when
+ * the range is unknown.
+ */
+function gitMergeBase({ before, after, cwd }) {
+  return execFileSync('git', ['merge-base', before, after], {
+    cwd,
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim();
+}
+
+export function dependencyAuditDecision({
+  env = process.env,
+  loadEvent = (eventPath) => JSON.parse(readFileSync(eventPath, 'utf8')),
+  classifyRange = classifyGitRange,
+  resolveMergeBase = gitMergeBase,
+  cwd = REPO_ROOT,
+} = {}) {
+  if (env.GITHUB_ACTIONS !== 'true')
+    return {
+      required: true,
+      reason: 'non-github execution',
+      scopes: [...ALL_DEPENDENCY_SCOPES],
+      range: null,
+    };
+
+  const eventName = env.GITHUB_EVENT_NAME;
+  if (
+    !['pull_request', 'pull_request_target', 'merge_group', 'push'].includes(
+      eventName,
+    )
+  )
+    return {
+      required: true,
+      reason: `${eventName ?? 'unknown'} event`,
+      scopes: [...ALL_DEPENDENCY_SCOPES],
+      // These events carry no range at all -- they are periodic or operator
+      // driven -- so there is nothing to report. `null` rather than a
+      // plausible placeholder: a log line that invents a range is the defect
+      // this field exists to prevent (#1442).
+      range: null,
+    };
+
+  try {
+    if (!env.GITHUB_EVENT_PATH) throw new Error('GITHUB_EVENT_PATH is missing');
+    const event = loadEvent(env.GITHUB_EVENT_PATH);
+    // `merge_group` and `push` already carry a genuine range boundary
+    // (`base_sha` is the candidate's own base, `before` the previous tip), so
+    // only the pull-request path needs the merge base — see `gitMergeBase`.
+    const before = eventName.startsWith('pull_request')
+      ? resolveMergeBase({
+          before: event.pull_request?.base?.sha,
+          after: event.pull_request?.head?.sha,
+          cwd,
+        })
+      : eventName === 'merge_group'
+        ? event.merge_group?.base_sha
+        : event.before;
+    const after = eventName.startsWith('pull_request')
+      ? event.pull_request?.head?.sha
+      : eventName === 'merge_group'
+        ? event.merge_group?.head_sha
+        : (event.after ?? env.GITHUB_SHA);
+    const classification = classifyRange({ before, after, cwd });
+    return {
+      required: classification.dependencies,
+      reason: classification.classification,
+      // A classifier that does not name scopes is not a classifier that means
+      // "none": anything short of an explicit list scans everything.
+      scopes: Array.isArray(classification.dependencyScopes)
+        ? classification.dependencyScopes
+        : [...ALL_DEPENDENCY_SCOPES],
+      // The range this decision was actually made from, so the log reports
+      // the evidence rather than re-deriving it. #1430 -- every pull request
+      // reaching the registry because this range started at the base branch
+      // tip -- stayed invisible for a day because no message named it.
+      range: { before, after },
+    };
+  } catch (error) {
+    return {
+      required: true,
+      reason: `range classification failed closed: ${error.message}`,
+      scopes: [...ALL_DEPENDENCY_SCOPES],
+      // The failure may be the range resolution itself, so there is no range
+      // this decision can honestly claim to have classified.
+      range: null,
+    };
+  }
+}
+
+/** @type {(command: string, args: string[], options: import('node:child_process').ExecFileOptionsWithStringEncoding, callback: (error: import('node:child_process').ExecFileException | null, stdout: string, stderr: string) => void) => import('node:child_process').ChildProcess} */
+const executeAuditFile = execFile;
+
+export function runAuditAttempt(
+  scope,
+  cwd,
+  productionOnly,
+  {
+    attempt = 1,
+    execute = executeAuditFile,
+    diagnosticsRoot = path.join(
+      REPO_ROOT,
+      '.kontourai/verification-output/dependency-audit',
+    ),
+  } = {},
+) {
+  const args = ['audit', '--json'];
+  if (productionOnly) args.push('--omit=dev');
+  if (scope !== 'root') args.push('--workspaces=false');
+  const diagnostics = createAuditAttemptDiagnostics({
+    scope,
+    reachability: productionOnly ? 'production' : 'full',
+    attempt,
+    outputRoot: diagnosticsRoot,
+    timeoutMs: AUDIT_TIMEOUT_MS,
+  });
+  args.push(...diagnostics.args);
+  return new Promise((resolveAudit, rejectAudit) => {
+    diagnostics.startChild();
+    let child;
+    try {
+      child = execute(
+        'npm',
+        args,
+        {
+          cwd,
+          encoding: 'utf8',
+          maxBuffer: 50 * 1024 * 1024,
+          timeout: AUDIT_TIMEOUT_MS,
+          windowsHide: true,
+        },
+        (error, stdout, stderr) => {
+          const status = error
+            ? typeof error.code === 'number'
+              ? error.code
+              : null
+            : 0;
+          diagnostics.settle({
+            status,
+            signal: error?.signal ?? null,
+            operationalCode: error?.code,
+          });
+          try {
+            resolveAudit(
+              parseAuditCommandResult(scope, {
+                error:
+                  error && status === null && !error.signal ? error : undefined,
+                status,
+                signal: error?.signal ?? null,
+                stdout,
+                stderr,
+              }),
+            );
+          } catch (parseError) {
+            rejectAudit(parseError);
+          }
+        },
+      );
+    } catch (error) {
+      diagnostics.settle({
+        status: null,
+        signal: null,
+        operationalCode: error?.code,
+      });
+      rejectAudit(error);
+      return;
+    }
+    child.stderr?.on('data', (chunk) => diagnostics.consume(chunk));
+  });
+}
+
+export async function withAuditRetries(
+  scope,
+  operation,
+  attempts = AUDIT_ATTEMPTS,
+) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation(attempt);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts)
+        console.warn(
+          `npm audit operational attempt ${attempt}/${attempts} failed for ${scope}; retrying: ${error.message}`,
+        );
+    }
+  }
+  throw new Error(
+    `npm audit failed for ${scope} after ${attempts} attempts: ${lastError?.message ?? 'unknown error'}`,
+  );
+}
+
 function runAudit(scope, cwd, productionOnly = false) {
   const lockfile = path.join(cwd, 'package-lock.json');
   try {
@@ -602,15 +814,28 @@ function runAudit(scope, cwd, productionOnly = false) {
   } catch {
     throw new Error(`committed lockfile is missing for ${scope}: ${lockfile}`);
   }
-  const args = ['audit', '--json'];
-  if (productionOnly) args.push('--omit=dev');
-  if (scope !== 'root') args.push('--workspaces=false');
-  const result = spawnSync('npm', args, {
-    cwd,
-    encoding: 'utf8',
-    maxBuffer: 50 * 1024 * 1024,
-  });
-  return parseAuditCommandResult(scope, result);
+  return withAuditRetries(scope, (attempt) =>
+    runAuditAttempt(scope, cwd, productionOnly, { attempt }),
+  );
+}
+
+export function collectAudits(
+  scopes,
+  auditRunner = runAudit,
+  versionResolver = resolvedVersions,
+) {
+  const requests = scopes.flatMap(({ scope, cwd }) => [
+    { scope, cwd, reachability: 'full', productionOnly: false },
+    { scope, cwd, reachability: 'production', productionOnly: true },
+  ]);
+  return Promise.all(
+    requests.map(async ({ scope, cwd, reachability, productionOnly }) => ({
+      scope,
+      reachability,
+      audit: await auditRunner(scope, cwd, productionOnly),
+      ...(productionOnly ? { resolvedVersions: versionResolver(cwd) } : {}),
+    })),
+  );
 }
 
 function resolvedVersions(cwd) {
@@ -640,8 +865,9 @@ export function parseAuditCommandResult(scope, result) {
       `npm audit operational failure for ${scope}: status=${String(result.status)} signal=${String(result.signal ?? 'none')}`,
     );
   }
+  let parsed;
   try {
-    return JSON.parse(result.stdout);
+    parsed = JSON.parse(result.stdout);
   } catch {
     const detail = String(result.stderr || result.stdout || 'no output')
       .trim()
@@ -650,27 +876,101 @@ export function parseAuditCommandResult(scope, result) {
       `npm audit did not provide parseable JSON for ${scope} (exit ${result.status}): ${detail}`,
     );
   }
+  if (
+    parsed?.auditReportVersion !== 2 &&
+    Object.hasOwn(parsed ?? {}, 'error')
+  ) {
+    // A registry failure puts its reason in a top-level `message` and leaves
+    // `error.summary`/`error.detail` empty strings, so quoting `error` alone
+    // reports an operational failure with no reason in it (#1403).
+    const reason =
+      typeof parsed.message === 'string' && parsed.message.trim() !== ''
+        ? { message: parsed.message, error: parsed.error }
+        : parsed.error;
+    const detail = JSON.stringify(reason).slice(0, 500);
+    throw new Error(
+      `npm audit operational response for ${scope} (exit ${result.status}): ${detail}`,
+    );
+  }
+  return parsed;
 }
 
-export function runPolicyCli() {
-  const scopes = [
-    { scope: 'root', cwd: REPO_ROOT },
-    { scope: 'sdk', cwd: path.join(REPO_ROOT, 'packages', 'sdk') },
-    { scope: 'shared', cwd: path.join(REPO_ROOT, 'packages', 'shared') },
-  ];
-  const audits = scopes.map(({ scope, cwd }) => ({
-    scope,
-    reachability: 'full',
-    audit: runAudit(scope, cwd),
-  }));
-  for (const { scope, cwd } of scopes) {
-    audits.push({
-      scope,
-      reachability: 'production',
-      audit: runAudit(scope, cwd, true),
-      resolvedVersions: resolvedVersions(cwd),
-    });
+/**
+ * The scopes an audit run covers, derived from the ONE map that also decides
+ * attribution. Keeping a second list here is what would let a scope be added
+ * to the audit, never appear in any classifier's widening, and be silently
+ * filtered out of every pull request -- unscanned, reported as a clean run.
+ */
+export const AUDIT_SCOPES = ALL_DEPENDENCY_SCOPES.map((scope) => ({
+  scope,
+  // `resolve`, not `join`: the scope roots are slash-terminated prefixes
+  // because attribution compares them against a path's directory, and joining
+  // one would carry that trailing slash into the audit's cwd. Nothing
+  // downstream breaks on it -- every consumer re-joins -- but it makes the
+  // value differ from the hardcoded path it replaced for no reason.
+  cwd: path.resolve(REPO_ROOT, DEPENDENCY_SCOPE_ROOTS[scope]),
+}));
+
+/**
+ * Each scope costs TWO concurrent `npm audit` processes (full and production),
+ * and `packages/sdk`/`packages/shared` have no installed tree -- the repo
+ * installs at the root -- so npm resolves theirs from the registry. Auditing
+ * all three ran six registry-bound processes against a four-minute per-call
+ * timeout that one of them exceeds on its own; #1417 has the measurements.
+ *
+ * A decision that names no scopes at all is treated as every scope, never as
+ * none. An empty selection is a bug, not a clean run, so it throws rather than
+ * reporting success having audited nothing.
+ */
+export function selectAuditScopes(decision, allScopes = AUDIT_SCOPES) {
+  const selected = new Set(
+    decision.scopes ?? allScopes.map((entry) => entry.scope),
+  );
+  const scopes = allScopes.filter((entry) => selected.has(entry.scope));
+  if (scopes.length === 0) {
+    throw new Error(
+      `dependency advisory scan selected no scopes (decision: ${decision.reason})`,
+    );
   }
+  return scopes;
+}
+
+/**
+ * The range a decision was made from, in a form a reader can paste into
+ * `git diff`. Decisions that have no range say so rather than print
+ * something that looks like one (#1442).
+ */
+function describeRange(range) {
+  if (!range?.before || !range?.after) return 'no range (event carries none)';
+  return `${range.before.slice(0, 8)}..${range.after.slice(0, 8)}`;
+}
+
+/**
+ * `decide` and `runAudits` are injected so BOTH log lines can be exercised by
+ * a test. The scanning message is the one this change exists to fix, and
+ * without an injection point it is only reachable by contacting the live npm
+ * registry -- which is to say, unreachable from a test, which is how a
+ * message that explained nothing survived (#1442).
+ */
+export async function runPolicyCli({
+  decide = dependencyAuditDecision,
+  runAudits = collectAudits,
+} = {}) {
+  const decision = decide();
+  if (!decision.required) {
+    console.log(
+      `Dependency advisory floor: skipped live registry scan — no dependency inputs in ${describeRange(decision.range)} (${decision.reason})`,
+    );
+    return 0;
+  }
+  const scopes = selectAuditScopes(decision);
+  // Name the range on this path too. `reason` is a docs-vs-runtime
+  // classification, orthogonal to whether dependencies changed, so on its own
+  // it cannot explain why the registry is being contacted.
+  console.log(
+    `Dependency advisory floor: scanning ${scopes.map((entry) => entry.scope).join(', ')} — dependency inputs changed in ${describeRange(decision.range)} (${decision.reason})`,
+  );
+  const audits = await runAudits(scopes);
   const exceptions = readJson(
     path.join(SCRIPT_DIR, 'dependency-advisory-exceptions.json'),
     'exception config',
@@ -685,7 +985,7 @@ if (
   import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
 ) {
   try {
-    process.exitCode = runPolicyCli();
+    process.exitCode = await runPolicyCli();
   } catch (error) {
     console.error(`Dependency advisory policy error: ${error.message}`);
     process.exitCode = 1;

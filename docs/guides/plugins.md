@@ -251,6 +251,12 @@ one renders Station's explicit unavailable-component recovery state rather than
 silently substituting another layout. Reinstall the same registry item, refresh
 the project, and open the preserved layout again.
 
+If installed files remain but `plugin.json` is missing or rejected, Plugins
+keeps the folder visible with a **Rejected** badge, the validation reason, and
+specific repair guidance. Fix or restore the manifest, then choose **Reload
+plugins**. Station does not invent a version or expose normal settings, update,
+permission, or removal controls until the manifest validates again.
+
 ## layout.json
 
 ```json
@@ -894,6 +900,37 @@ GET /api/plugins/check-updates
 10. Passive permissions are auto-granted; active/trusted permissions are returned as `pendingConsent`
 
 Install, update, reload, and removal publish one runtime configuration generation. Replacement removes agent directories no longer declared by the plugin, and update rejects a changed manifest name. Station waits for displaced provider adapters to stop before reporting activation complete; an accepted file mutation that still needs runtime reconciliation returns HTTP `202` with a `configurationActivation` receipt.
+
+### Registry supply-chain policy tracer
+
+Station now has a server-side policy and record seam for registry package
+signatures, exact source/version/content pins, and byte-identical
+last-known-good snapshots. It is deliberately not active in the Registry UI or
+installer yet: no configured registry currently supplies a package claim, and
+Station has no configured trusted signing-key source or explicit pin-update
+action. Enforcing a required-signature policy without those trust anchors would
+make every current Registry item uninstallable while claiming stronger safety.
+
+The seam binds the canonical Agent Plugins 1.0.0 manifest schema target,
+`https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`, not legacy
+Station-only manifest contribution fields. That target identifies the published
+schema the registry claim says its root `plugin.json` uses; this tracer does not
+yet validate the manifest against that schema. Trust anchors
+come from local policy and never from the registry document being verified.
+The signature binds registry identity, registry source, package identity,
+version, source, and complete source-tree digest. A source/version change is
+refused under exact pinning unless a separately authorized pin update is
+present; an accepted provenance change explicitly requires the existing
+installer to invalidate/rebind grants before loading replacement code.
+
+`RegistryLastKnownGoodStore` writes no live plugin tree. It archives one prior
+tree under the Station home, verifies the copy's complete tree digest, and can
+produce a second verified staging tree. Runtime rollback must feed that staging
+tree back through `installPluginFromSource` so the existing content lock,
+agents, integrations, grants, providers, configuration generation, and rollback
+receipts remain the only installation transaction. Until that integration is
+landed, signed installation, explicit pin updates, and user-triggered rollback
+are **NOT_AVAILABLE**.
 
 ## Build System
 

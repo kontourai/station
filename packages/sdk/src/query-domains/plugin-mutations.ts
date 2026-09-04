@@ -202,38 +202,17 @@ export function usePluginProviderToggleMutation() {
  */
 export function useRevokePluginPermissionMutation(
   options?: MutationOptions<
-    { granted: string[] },
+    PluginPermissionRevocationResult,
     { name: string; permissions: string[] }
   >,
 ) {
   const queryClient = useQueryClient();
   return useMutation<
-    { granted: string[] },
+    PluginPermissionRevocationResult,
     Error,
     { name: string; permissions: string[] }
   >({
-    mutationFn: async ({ name, permissions }) => {
-      const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(
-        `${apiBase}/api/plugins/${encodeURIComponent(name)}/grant`,
-        {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ permissions }),
-        },
-      );
-      const result = (await response.json()) as {
-        success: boolean;
-        granted?: string[];
-        error?: string;
-      };
-      if (!response.ok || !result.success) {
-        throw new Error(
-          apiErrorMessage(result, 'Could not remove the permission'),
-        );
-      }
-      return { granted: result.granted ?? [] };
-    },
+    mutationFn: revokePluginPermissions,
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] });
       options?.onSuccess?.(data, variables);
@@ -242,6 +221,59 @@ export function useRevokePluginPermissionMutation(
       options?.onError?.(error, variables);
     },
   });
+}
+
+export interface PluginPermissionRevocationResult {
+  granted: string[];
+  reconciliation:
+    | {
+        status: 'completed';
+        operationId?: string;
+        generation?: number;
+        effects: readonly string[];
+      }
+    | {
+        status: 'winding-down' | 'superseded';
+        operationId: string;
+        generation: number;
+      }
+    | {
+        status: 'incomplete';
+        operationId?: string;
+        generation?: number;
+        failures: readonly string[];
+      };
+}
+
+export async function revokePluginPermissions(input: {
+  name: string;
+  permissions: string[];
+}): Promise<PluginPermissionRevocationResult> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/api/plugins/${encodeURIComponent(input.name)}/grant`,
+    {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ permissions: input.permissions }),
+    },
+  );
+  const result = (await response.json()) as {
+    success: boolean;
+    granted?: string[];
+    reconciliation?: PluginPermissionRevocationResult['reconciliation'];
+    error?: string;
+  };
+  if (!response.ok || !result.success) {
+    throw new Error(apiErrorMessage(result, 'Could not remove the permission'));
+  }
+  return {
+    granted: result.granted ?? [],
+    reconciliation: result.reconciliation ?? {
+      status: 'incomplete',
+      failures: ['runtime-unavailable'],
+    },
+  };
 }
 
 export function usePluginSettingsMutation(

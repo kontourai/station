@@ -13,8 +13,18 @@ import {
 } from 'vitest';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { writeSnooze } from '../utils/activity-snooze-store';
-import { HomeView } from '../views/HomeView';
 import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
+
+// #928: Activity has no route left, so every Home affordance that used to
+// navigate to `{ type: 'activity' }` now reveals the region surface instead.
+// `useShowSurface` reaches the region model through a provider this file does
+// not mount, so the double is both the stand-in and what the assertions read.
+const showSurface = vi.hoisted(() => vi.fn());
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurface,
+}));
+
+import { HomeView } from '../views/HomeView';
 
 function renderHomeView(props: ComponentProps<typeof HomeView>) {
   return render(<HomeView {...props} />);
@@ -247,6 +257,7 @@ describe('HomeView', () => {
   });
 
   beforeEach(() => {
+    showSurface.mockClear();
     fixtures.sessions = [];
     fixtures.tasks = [];
     fixtures.chats = {};
@@ -419,10 +430,10 @@ describe('HomeView', () => {
     fireEvent.click(
       screen.getByRole('button', { name: /Continue most recent work/i }),
     );
-    expect(onNavigate).toHaveBeenCalledWith({
-      type: 'activity',
-      sessionId: 'unmapped-thread',
+    expect(showSurface).toHaveBeenCalledWith('activity', {
+      session: 'unmapped-thread',
     });
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   // archive#1297: an orchestration row Station CAN rehydrate (a real
@@ -499,10 +510,10 @@ describe('HomeView', () => {
       screen.getByRole('button', { name: /Continue most recent work/i }),
     );
 
-    expect(onNavigate).toHaveBeenCalledWith({
-      type: 'activity',
-      sessionId: 'attached-thread',
+    expect(showSurface).toHaveBeenCalledWith('activity', {
+      session: 'attached-thread',
     });
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   test('does not show a false empty state while orchestration sessions load and Tasks are empty', () => {
@@ -610,7 +621,8 @@ describe('HomeView', () => {
     expect(container.querySelector('.home-view__empty')).toBeNull();
     expect(screen.getByRole('alert')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open Activity' }));
-    expect(onNavigate).toHaveBeenCalledWith({ type: 'activity' });
+    expect(showSurface).toHaveBeenCalledWith('activity');
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   test('renders available durable work when sessions are unavailable', () => {
@@ -638,7 +650,8 @@ describe('HomeView', () => {
       screen.getAllByText(/Agent unavailable · Model unavailable/).length,
     ).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'View Activity' }));
-    expect(onNavigate).toHaveBeenCalledWith({ type: 'activity' });
+    expect(showSurface).toHaveBeenCalledWith('activity');
+    expect(onNavigate).not.toHaveBeenCalled();
     onNavigate.mockClear();
     fireEvent.click(
       screen.getByRole('button', { name: /Continue most recent work/i }),
@@ -900,6 +913,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
   };
 
   beforeEach(() => {
+    showSurface.mockClear();
     fixtures.sessions = [];
     fixtures.tasks = [];
     fixtures.chats = {};
@@ -964,9 +978,8 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     });
     expect(continueButton.textContent).toContain(CODEX_SESSION_TITLE);
     fireEvent.click(continueButton);
-    expect(onNavigate).toHaveBeenCalledWith({
-      type: 'activity',
-      sessionId: 'local-thread',
+    expect(showSurface).toHaveBeenCalledWith('activity', {
+      session: 'local-thread',
     });
   });
 

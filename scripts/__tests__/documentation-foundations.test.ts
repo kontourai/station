@@ -1,7 +1,32 @@
 import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const read = (file: string) => readFileSync(file, 'utf8');
+
+function manifestFields(contract: string): string[] {
+  const source = ts.createSourceFile(
+    'plugin.ts',
+    contract,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const manifest = source.statements.find(
+    (statement): statement is ts.InterfaceDeclaration =>
+      ts.isInterfaceDeclaration(statement) &&
+      statement.name.text === 'PluginManifest',
+  );
+  if (!manifest) throw new Error('PluginManifest interface is missing');
+  return manifest.members.map((member) => {
+    if (
+      !ts.isPropertySignature(member) ||
+      !member.name ||
+      !ts.isIdentifier(member.name)
+    )
+      throw new Error('Unsupported PluginManifest member');
+    return member.name.text;
+  });
+}
 
 describe('documentation foundations', () => {
   it('binds getting-started channel facts, Starters, and review route to their current source owners', () => {
@@ -77,13 +102,7 @@ describe('documentation foundations', () => {
 
   it('keeps the plugin manifest field reference complete against the contract', () => {
     const contract = read('packages/contracts/src/plugin.ts');
-    const manifest = contract.match(
-      /export interface PluginManifest \{([\s\S]*?)\n\}\n\nexport interface PluginOverrideConfig/,
-    )?.[1];
-    expect(manifest).toBeTruthy();
-    const contractFields = [
-      ...(manifest ?? '').matchAll(/^ {2}([A-Za-z][A-Za-z0-9]*)\??:/gm),
-    ].map((match) => match[1]);
+    const contractFields = manifestFields(contract);
 
     const guide = read('docs/guides/plugins.md');
     const fieldTable = guide.match(
@@ -97,6 +116,21 @@ describe('documentation foundations', () => {
     );
 
     expect([...documentedFields].sort()).toEqual(contractFields.sort());
+  });
+
+  it('extracts only direct manifest fields across nested types and adjacent interfaces', () => {
+    const contract = `
+      export interface PluginManifest {
+        name: string;
+        configuration?: { nested: string };
+      }
+      export interface PluginManifestRejection { code: string; name: string; }
+      export interface PluginOverrideConfig { status: string; }
+    `;
+    expect(manifestFields(contract)).toEqual(['name', 'configuration']);
+    expect(() => manifestFields('export interface Other {}')).toThrow(
+      'missing',
+    );
   });
 
   it('defers shared UI explorer, manifest, tokens, themes, and accessibility to Kontour UI', () => {

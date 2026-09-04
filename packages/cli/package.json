@@ -43,7 +43,7 @@
     "@kontourai/station-shared": "^0.7.0",
     "commander": "^11.1.0",
     "esbuild": "^0.28.1",
-    "tsx": "^4.23.12"
+    "tsx": "^4.23.13"
   },
   "dependencies": {
     "@napi-rs/keyring": "1.3.0",

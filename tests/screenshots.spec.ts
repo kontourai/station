@@ -1309,7 +1309,7 @@ const SCREENS: Screen[] = [
   {
     name: 'sessions',
     title: 'Activity',
-    path: '/activity',
+    path: '/?surface=activity',
     viewport: DESKTOP,
   },
   { name: 'plugins', title: 'Plugins', path: '/plugins', viewport: DESKTOP },
@@ -1433,7 +1433,7 @@ const SCREENS: Screen[] = [
   {
     name: 'sessions-filtered-empty',
     title: 'Activity — filtered empty',
-    path: '/activity',
+    path: '/?surface=activity',
     viewport: DESKTOP,
     // archive#4501 ("the honest FilteredEmpty derivation"): `SplitPaneLayout`
     // gained `collectionEmpty` so a typed search over a collection that was

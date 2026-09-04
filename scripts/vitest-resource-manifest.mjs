@@ -110,6 +110,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Builds two tiny real repositories to prove CLI artifact provenance ignores
   // hostile inherited Git routing and sees a staged dirty index.
   'packages/cli/src/__tests__/build-metadata.test.ts',
+  // Builds throwaway Git repositories and runs the gate as a child process, so
+  // the real exit status is what the assertions read; process ownership is the
+  // behavior under test, not a helper.
+  'scripts/__tests__/literal-swap-gate.test.ts',
   // Both fixtures repeatedly invoke real Git and create detached worktrees;
   // their process ownership is the behavior under test, not a test helper.
   'src-server/services/evidence/__tests__/git-review-workspace-source.test.ts',
@@ -218,6 +222,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // functions. Bounded single-shot children per case.
   'scripts/__tests__/dialog-surface-class-guard.test.ts',
   'scripts/__tests__/dependency-advisory-policy.test.ts',
+  // Bounded disposable npm-shaped children; no registry/network calls.
+  'scripts/__tests__/dependency-audit-diagnostics.test.ts',
   // station#1085: builds throwaway git checkouts and drives `git` through
   // `execFileSync` to prove the manifest derives real revision/branch values
   // — same shape as `content-integrity-gate.test.ts` below.
@@ -270,9 +276,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',
-  // Drives the merge driver's executable entry point with a hermetic build
-  // command so both measured success and fail-without-writing are real exits.
+  // Drives the merge driver's executable entry point as a child process so
+  // the provisional resolution and decline-without-writing are real exits.
   'scripts/__tests__/ui-bundle-budget.test.ts',
+  // #1153: spawns the starved-PR reporter without GITHUB_REPOSITORY to prove
+  // its refusal path exits non-zero and names the remedy.
+  'scripts/__tests__/starved-pr-report.test.ts',
   // #1120: spawns the backlog gate without GITHUB_REPOSITORY to prove its
   // refusal path exits non-zero and names the remedy.
   'scripts/__tests__/backlog-priority-policy.test.ts',
@@ -436,6 +445,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/providers/__tests__/station-control-mcp-passthrough.integration.test.ts',
   'src-server/providers/auth/__tests__/cli-auth-login-path.test.ts',
   'src-server/routes/plugins/__tests__/plugins.routes.test.ts',
+  // One private Node child with exposed GC proves strong lease custody. No
+  // shared state or latency assertion; collection is explicitly requested.
+  'src-server/services/plugins/__tests__/plugin-composition-custody-gc.test.ts',
   'src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts',
   // station#2928: retains the durable ConfigLoader/registry adoption seam;
   // production's default CLI detection reaches child_process transitively.

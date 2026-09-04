@@ -36,7 +36,7 @@ function failed(
     title: id,
     createdAt: AT,
     updatedAt: AT,
-    openHref: `/activity?session=${id}`,
+    openHref: `/?surface=activity&session=${id}`,
     source: { threadId: id },
     ...overrides,
   } as AttentionItem;
@@ -52,7 +52,7 @@ function approval(
     title: id,
     createdAt: AT,
     updatedAt: AT,
-    openHref: `/activity?session=${id}`,
+    openHref: `/?surface=activity&session=${id}`,
     source: { notificationId: id, notificationSource: 'approval-inbox' },
     actions: [],
     ...overrides,

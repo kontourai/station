@@ -53,6 +53,31 @@ describe('plugin management utils', () => {
     expect(slugifyProjectName('***')).toBe('default');
   });
 
+  it('keeps rejected plugin rows searchable by reason and visually distinct', () => {
+    const rejected = {
+      status: 'rejected' as const,
+      name: 'Legacy_Plugin',
+      displayName: 'Legacy_Plugin',
+      rejection: {
+        code: 'invalid-plugin-name' as const,
+        reason: 'Plugin name is not canonical.',
+        recovery: {
+          kind: 'repair-manifest' as const,
+          instruction: 'Use a lowercase name, then reload plugins.',
+        },
+      },
+    };
+    expect(filterPlugins([rejected], 'canonical')).toEqual([rejected]);
+    expect(filterPlugins([rejected], 'lowercase')).toEqual([rejected]);
+    expect(buildPluginListItems([rejected])).toEqual([
+      {
+        id: 'rejected:Legacy_Plugin',
+        name: 'Legacy_Plugin',
+        subtitle: 'Rejected · Plugin name is not canonical.',
+      },
+    ]);
+  });
+
   it('toggles set values immutably', () => {
     const original = new Set(['alpha']);
 
