@@ -210,6 +210,22 @@ storage. Retry constructs a fresh Orchestration reader; old wrappers and old
 async authorizers remain stopped and cannot borrow its worker. No broad provider
 shutdown or source replacement is inferred from a failed search cleanup.
 
+**Exact-message inspector (#1436).** The palette has an explicit local
+Workspace-search mode, separate from existing command/remote-message search;
+the inactive search mode sends no queries. A lazy read-only inspector consumes
+`POST /api/search/read-message` through the public SDK with captured authority.
+The same isolated transcript owner selects prompt/output text from the exact
+canonical event, bounded in SQL before JavaScript materialization. Search-index
+text is never a displayed-message authority. Content-bound pages preserve the
+Session/event and reject mutation, deletion and authority loss. An optional
+assigned Agent identity is projected only from recorded owner metadata. No
+ChatDock current-conversation resolution, default Agent, second index or worker
+is introduced. Task navigation passes existing unsaved guards, then performs a
+fresh exact-open read and a final synchronous currentness check before the
+canonical route commit. The managed-browser exact-message proof and focused
+owner/SDK/UI tests qualify this tracer; broader source and platform qualification
+remains separate.
+
 ## InstalledPluginInventory
 
 **Intent and Interface.** `scanInstalledPluginInventory()` performs one fresh deterministic scan of the existing installed-plugin directory. A readable valid manifest returns its parsed manifest; a missing, unreadable, unsafe, malformed, or invalid manifest returns a rejected entry naming only the directory plus a bounded path-free reason and recovery instruction. Rejections are not persisted in a second registry.

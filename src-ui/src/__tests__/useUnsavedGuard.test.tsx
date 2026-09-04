@@ -8,14 +8,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test, vi } from 'vitest';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 
-function Harness() {
+function Harness({ cancelled }: { cancelled?: () => void } = {}) {
   const [dirty, setDirty] = useState(true);
   const [tick, setTick] = useState(0);
   const { guard, DiscardModal } = useUnsavedGuard(dirty);
 
   return (
     <>
-      <button type="button" onClick={() => guard(() => undefined)}>
+      <button type="button" onClick={() => guard(() => undefined, cancelled)}>
         Trigger Guard
       </button>
       <button type="button" onClick={() => setDirty(false)}>
@@ -31,6 +31,14 @@ function Harness() {
     </>
   );
 }
+
+test('explicit guard cancellation settles an awaiting navigation admission', () => {
+  const cancelled = vi.fn();
+  render(<Harness cancelled={cancelled} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Trigger Guard' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(cancelled).toHaveBeenCalledOnce();
+});
 
 function CleanTransitionProbe({ observations }: { observations: boolean[] }) {
   const [dirty, setDirty] = useState(true);

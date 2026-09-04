@@ -40,7 +40,9 @@ import {
   workspacePaneDirectRoute,
   workspacePaneRequiresLayoutIdentity,
 } from '../workspace-panes/workspacePaneDirectRoute';
+import { Button } from './Button';
 import { requestFirstRunTour } from './first-run/first-run-store';
+import { LazyBoundary } from './LazyBoundary';
 import { Empty, SkeletonBlock } from './state';
 import './CommandPalette.css';
 import type {
@@ -58,6 +60,22 @@ import {
 
 /** `dock.session1` … `dock.session9` — the ⌘1–⌘9 chat-switch bindings. */
 const SESSION_SWITCH_SHORTCUT = /^dock\.session[1-9]$/;
+const loadWorkspaceSearch = () => import('./search/WorkspaceSearchPalette');
+type LegacySearchData = ReturnType<typeof useMessageSearchQuery>['data'];
+/** Unmounting the owning observer cancels its consumed AbortSignal on mode switch. */
+function LegacyMessageSearch({
+  query,
+  onData,
+}: {
+  query: string;
+  onData: (data: LegacySearchData) => void;
+}) {
+  const { data } = useMessageSearchQuery(query);
+  useEffect(() => {
+    onData(data);
+  }, [data, onData]);
+  return null;
+}
 
 function settingsScopeDetail(
   scope: SettingsPaletteCommand['scope'],
@@ -112,6 +130,8 @@ const SearchIcon = (
 export function CommandPalette() {
   const showSurface = useShowSurface();
   const [open, setOpen] = useState(false);
+  const [workspaceSearch, setWorkspaceSearch] = useState(false);
+  const [messageSearch, setMessageSearch] = useState<LegacySearchData>();
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [debouncedMessageQuery, setDebouncedMessageQuery] = useState('');
@@ -239,7 +259,6 @@ export function CommandPalette() {
     const timer = window.setTimeout(() => setDebouncedMessageQuery(query), 200);
     return () => window.clearTimeout(timer);
   }, [query]);
-  const { data: messageSearch } = useMessageSearchQuery(debouncedMessageQuery);
   const messageMatches = messageSearch?.matches ?? [];
   const remoteSearchStates =
     messageSearch?.instances.filter(
@@ -275,6 +294,7 @@ export function CommandPalette() {
 
   const close = useCallback(() => {
     setOpen(false);
+    setWorkspaceSearch(false);
     setQuery('');
     setActiveIndex(0);
     setPaneNotice(null);
@@ -698,6 +718,19 @@ export function CommandPalette() {
   );
 
   if (!open) return null;
+  if (workspaceSearch)
+    return (
+      <LazyBoundary
+        load={loadWorkspaceSearch}
+        componentProps={{
+          query,
+          onQueryChange: setQuery,
+          onClose: close,
+          onCommands: () => setWorkspaceSearch(false),
+        }}
+        pending={<SkeletonBlock count={1} label="Opening workspace search" />}
+      />
+    );
 
   // Flat index across groups for aria-selected / highlight tracking.
   let flatIndex = -1;
@@ -715,6 +748,10 @@ export function CommandPalette() {
         if (e.target === e.currentTarget) close();
       }}
     >
+      <LegacyMessageSearch
+        query={debouncedMessageQuery}
+        onData={setMessageSearch}
+      />
       <div
         className="command-palette"
         role="dialog"
@@ -723,6 +760,9 @@ export function CommandPalette() {
         onKeyDown={onKeyDown}
       >
         <div className="command-palette__input-row">
+          <Button variant="secondary" onClick={() => setWorkspaceSearch(true)}>
+            Workspace search (this Station)
+          </Button>
           {SearchIcon}
           <input
             ref={inputRef}

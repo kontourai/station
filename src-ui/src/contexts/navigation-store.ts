@@ -144,7 +144,7 @@ class NavigationStore {
   private pendingPopDelta: number | undefined;
   private readonly navigationGuards = new Map<
     symbol,
-    (continueNavigation: () => void) => void
+    (continueNavigation: () => void, cancelNavigation?: () => void) => void
   >();
   lastProject: string | null;
   lastProjectLayout: string | null;
@@ -468,18 +468,24 @@ class NavigationStore {
 
   registerNavigationGuard(
     identity: symbol,
-    guard: (continueNavigation: () => void) => void,
+    guard: (
+      continueNavigation: () => void,
+      cancelNavigation?: () => void,
+    ) => void,
   ): () => void {
     this.navigationGuards.set(identity, guard);
     return () => this.navigationGuards.delete(identity);
   }
 
-  private runNavigationGuards(continuation: () => void): void {
+  private runNavigationGuards(
+    continuation: () => void,
+    cancelled?: () => void,
+  ): void {
     const guards = [...this.navigationGuards.values()];
     const continueAt = (index: number): void => {
       const guard = guards[index];
       if (guard) {
-        guard(() => continueAt(index + 1));
+        guard(() => continueAt(index + 1), cancelled);
         return;
       }
       continuation();
@@ -490,6 +496,71 @@ class NavigationStore {
   private notify = () => {
     this.listeners.forEach((listener) => listener());
   };
+
+  /** Fixed destination, fresh admission after any dirty-state delay. No alternate router. */
+  navigateWithPrecommit(
+    pathname: string,
+    admission: {
+      current: () => boolean;
+      prepare: () => Promise<boolean>;
+      signal: AbortSignal;
+    },
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (committed: boolean) => {
+        if (settled) return;
+        settled = true;
+        admission.signal.removeEventListener('abort', abort);
+        resolve(committed);
+      };
+      const abort = () => finish(false);
+      const current = () => {
+        try {
+          return (
+            !settled &&
+            !admission.signal.aborted &&
+            admission.current() === true
+          );
+        } catch {
+          return false;
+        }
+      };
+      admission.signal.addEventListener('abort', abort, { once: true });
+      if (!current()) return finish(false);
+      let started = false;
+      this.runNavigationGuards(
+        () => {
+          if (started || !current()) {
+            if (!started) finish(false);
+            return;
+          }
+          started = true;
+          void (async () => {
+            try {
+              if (
+                !(await admission.prepare()) ||
+                !current() ||
+                this.isNavigating
+              )
+                return finish(false);
+              const previousBypass = this.navigationGuardBypass;
+              this.navigationGuardBypass = true;
+              try {
+                this.navigate(pathname);
+              } finally {
+                this.navigationGuardBypass = previousBypass;
+              }
+              finish(true);
+            } catch {
+              finish(false);
+            }
+          })();
+        },
+        () => finish(false),
+      );
+    });
+  }
 
   navigate(pathname: string, params?: Record<string, string | null>) {
     const target = parseNavigationTarget(pathname, window.location.href);

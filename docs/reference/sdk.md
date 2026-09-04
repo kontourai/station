@@ -398,14 +398,28 @@ exports `useUnifiedSearchQuery` and `unifiedSearchQueries`; its hook loads the
 existing client entry on demand, preserving captured request scope and abort
 signal across that asynchronous boundary.
 
+`readSearchMessage(apiBase, { sessionId, matchedEventId, continuation? },
+{ requestScope, signal? })`, from `@kontourai/station-sdk/client`, reads a page
+of the exact canonical event's prompt or completed output. Every page is
+reauthorized; text is never read from the search index. Pages contain at most
+4,096 Unicode code points, with an existing 128 KiB source allowance and the
+same isolated reader deadline. The opaque continuation binds Session/event,
+content and recorded metadata; changed content refuses continuation instead of
+splicing revisions. Missing Agent identity is optional, never a default Agent.
+The read-only inspector does not adopt, resume, fork, or send to a Session.
+
+The palette's explicit **Workspace search (this Station)** mode consumes local
+Task/message results and this exact inspector. Command/legacy remote search is
+preserved as a separate mode; only the selected mode dispatches search queries.
+This is a local tracer, not completion of the broader multi-source search issue.
+
 `useUnifiedSearchQuery(request, { requestScope, enabled? })` is the protected
 React wrapper. A host-captured `ApiRequestScope` is required: no scope means no
 request and no data. Query keys include exact API base and authority epoch;
 authority changes fence delayed responses through the existing credential
 resolver. Cached snippets are hidden until a fresh successful read, and while
 refetching or after failure; they never authorize opening. `unifiedSearchQueries`
-exposes the same scoped key for explicit invalidation. No CommandPalette/UI is
-wired in this slice. Only personal Tasks and authorized indexed messages are
+exposes the same scoped key for explicit invalidation. Only personal Tasks and authorized indexed messages are
 searched; hosted Task reads are restricted until a tenant-owned Task store is
 composed. Files, receipts, external projections and arbitrary plugin sources
 are not supported by this initial runtime composition.

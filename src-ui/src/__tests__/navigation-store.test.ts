@@ -20,6 +20,97 @@ import { deviceSettingsStore } from '../lib/device-settings-store';
 import { normalizeDockMode } from '../types';
 
 describe('parseProjectSelectionFromPath', () => {
+  test('precommit navigation waits for guards and rejects an obsolete authority', async () => {
+    window.history.replaceState({}, '', '/');
+    let continueNavigation!: () => void;
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('search-test'),
+      (next) => {
+        continueNavigation = next;
+      },
+    );
+    let current = true;
+    const prepare = vi.fn().mockResolvedValue(true);
+    const controller = new AbortController();
+    try {
+      const pending = navigationStore.navigateWithPrecommit('/tasks/exact', {
+        current: () => current,
+        prepare,
+        signal: controller.signal,
+      });
+      expect(prepare).not.toHaveBeenCalled();
+      current = false;
+      continueNavigation();
+      expect(await pending).toBe(false);
+      expect(prepare).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/');
+    } finally {
+      unregister();
+      controller.abort();
+    }
+  });
+  test.each(['denied', 'superseded', 'cancelled', 'accepted'] as const)(
+    'precommit navigation handles %s after the guard',
+    async (outcome) => {
+      window.history.replaceState({}, '', '/');
+      let continueNavigation!: () => void;
+      const unregister = navigationStore.registerNavigationGuard(
+        Symbol('search-test'),
+        (next) => {
+          continueNavigation = next;
+        },
+      );
+      let settle!: (allowed: boolean) => void;
+      let current = true;
+      const prepare = vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            settle = resolve;
+          }),
+      );
+      const controller = new AbortController();
+      try {
+        const pending = navigationStore.navigateWithPrecommit('/tasks/exact', {
+          current: () => current,
+          prepare,
+          signal: controller.signal,
+        });
+        continueNavigation();
+        continueNavigation();
+        expect(prepare).toHaveBeenCalledOnce();
+        if (outcome === 'superseded') current = false;
+        if (outcome === 'cancelled') controller.abort();
+        settle(outcome !== 'denied');
+        expect(await pending).toBe(outcome === 'accepted');
+        expect(window.location.pathname).toBe(
+          outcome === 'accepted' ? '/tasks/exact' : '/',
+        );
+      } finally {
+        unregister();
+        controller.abort();
+      }
+    },
+  );
+  test('an explicit dirty-guard cancel settles without invoking admission', async () => {
+    window.history.replaceState({}, '', '/');
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('search-cancel'),
+      (_next, cancel) => cancel?.(),
+    );
+    const prepare = vi.fn().mockResolvedValue(true);
+    try {
+      expect(
+        await navigationStore.navigateWithPrecommit('/tasks/exact', {
+          current: () => true,
+          prepare,
+          signal: new AbortController().signal,
+        }),
+      ).toBe(false);
+      expect(prepare).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
   test('keeps the new-project route outside project context', () => {
     expect(parseProjectSelectionFromPath('/projects/new')).toEqual({
       selectedProject: null,
