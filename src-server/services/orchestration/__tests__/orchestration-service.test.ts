@@ -12864,13 +12864,16 @@ describe('OrchestrationService', () => {
   // Deliberately writes a 5k-event delta (see the assertions below: the
   // point is that facts at the START of a very large transcript survive,
   // which a bounded recent-tail read would lose). 5,000 is chosen against
-  // the largest bounded tail the store exposes today (`LIMIT 1001` on the
-  // recent-by-thread read, 250 on the paged read) with a 5x margin, so a
-  // tail-shaped regression still loses the head facts; the previous 50k
-  // proved nothing more and cost ~30s of synchronous appends alone (~125s
-  // under corpus load), making this single test the critical path of its
-  // ordinary shard. Budget the fixture explicitly rather than relying on the
-  // 30s default.
+  // the numeric tails on the reads this path could plausibly be rewritten
+  // to use (`LIMIT 1001` on the recent-by-thread read, 250 on the paged
+  // read, 1,000 recent events / 100 records in conversation history) with a
+  // 5x margin, so a tail-shaped regression still loses the head facts. The
+  // reads the fold actually uses are bounded by projection cardinality, not
+  // by a row cap -- which is what the `< 60` guard below pins directly and
+  // at any fixture size. The previous 50k proved nothing more and cost ~30s
+  // of synchronous appends alone (~125s under corpus load), making this one
+  // test the critical path of its ordinary shard. Budget the fixture
+  // explicitly rather than relying on the 30s default.
   test('listSessionReadModel uses a complete targeted projection and accurate total count (station#1867)', {
     timeout: 60_000,
   }, async () => {

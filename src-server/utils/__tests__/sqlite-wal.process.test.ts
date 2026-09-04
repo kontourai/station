@@ -7,8 +7,11 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   applyWalJournalMode,
+  enableFixtureSqliteSynchronousOffForTest,
   enableWalJournalMode,
+  fixtureSqliteSynchronousOffForTest,
   isSqliteContentionError,
+  resetFixtureSqliteSynchronousForTest,
   WalJournalModeUnavailableError,
 } from '../sqlite-wal.js';
 
@@ -441,22 +444,35 @@ describe('applyWalJournalMode reports, and fails closed where asked (#3661 revie
   });
 });
 
+// Captured at import, before any case resets the switch: this is the
+// position `vitest.setup.ts` left it in for this worker.
+const switchPositionAtImport = fixtureSqliteSynchronousOffForTest();
+
 describe('fixture-only synchronous relaxation', () => {
   let root: string;
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'sqlite-wal-fixture-sync-'));
+    // vitest.setup.ts enables the relaxation for every worker; each case
+    // below states the switch position it needs and restores the worker's
+    // default afterwards so the rest of this file sees what setup chose.
+    resetFixtureSqliteSynchronousForTest();
   });
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+    enableFixtureSqliteSynchronousOffForTest();
   });
   const synchronousOf = (db: { prepare(sql: string): { get(): unknown } }) =>
     (db.prepare('PRAGMA synchronous').get() as { synchronous: number })
       .synchronous;
 
-  test('an unset variable leaves SQLite at its own default (FULL under WAL)', () => {
+  test('vitest.setup.ts switches every worker on before the first test runs', () => {
+    expect(switchPositionAtImport).toBe(true);
+  });
+
+  test('with the switch off, SQLite keeps its own default (FULL under WAL)', () => {
     const db = new DatabaseSync(join(root, 'default.sqlite'));
     try {
-      const result = applyWalJournalMode(db, { store: 'fixture', env: {} });
+      const result = applyWalJournalMode(db, { store: 'fixture' });
       expect(result.enabled).toBe(true);
       expect(synchronousOf(db)).toBe(2);
     } finally {
@@ -464,26 +480,11 @@ describe('fixture-only synchronous relaxation', () => {
     }
   });
 
-  test("only the literal value 'off' relaxes the connection", () => {
-    const db = new DatabaseSync(join(root, 'other.sqlite'));
-    try {
-      applyWalJournalMode(db, {
-        store: 'fixture',
-        env: { STATION_SQLITE_FIXTURE_SYNCHRONOUS: 'OFF' },
-      });
-      expect(synchronousOf(db)).toBe(2);
-    } finally {
-      db.close();
-    }
-  });
-
-  test("'off' drops the connection to synchronous=OFF after WAL is enabled", () => {
+  test('with the switch on, a new connection drops to synchronous=OFF after WAL is enabled', () => {
+    enableFixtureSqliteSynchronousOffForTest();
     const db = new DatabaseSync(join(root, 'off.sqlite'));
     try {
-      const result = applyWalJournalMode(db, {
-        store: 'fixture',
-        env: { STATION_SQLITE_FIXTURE_SYNCHRONOUS: 'off' },
-      });
+      const result = applyWalJournalMode(db, { store: 'fixture' });
       expect(result.enabled).toBe(true);
       expect(synchronousOf(db)).toBe(0);
       expect(
@@ -495,8 +496,27 @@ describe('fixture-only synchronous relaxation', () => {
     }
   });
 
+  test('the switch does not cross a process boundary', () => {
+    enableFixtureSqliteSynchronousOffForTest();
+    const script = `
+      const { createRequire } = require('node:module');
+      const { DatabaseSync } = require('node:sqlite');
+      const db = new DatabaseSync(process.argv[1]);
+      db.exec('PRAGMA journal_mode = WAL');
+      process.stdout.write(String(db.prepare('PRAGMA synchronous').get().synchronous));
+      db.close();
+    `;
+    const observed = execFileSync(
+      process.execPath,
+      ['-e', script, join(root, 'child.sqlite')],
+      { encoding: 'utf8', env: { ...process.env } },
+    );
+    expect(observed).toBe('2');
+  });
+
   test('a connection that could not enter WAL is never relaxed', () => {
-    let execs: string[] = [];
+    enableFixtureSqliteSynchronousOffForTest();
+    const execs: string[] = [];
     const db = {
       exec(sql: string) {
         execs.push(sql);
@@ -512,12 +532,8 @@ describe('fixture-only synchronous relaxation', () => {
         return { get: () => ({ journal_mode: 'delete' }) };
       },
     };
-    applyWalJournalMode(db, {
-      store: 'fixture',
-      env: { STATION_SQLITE_FIXTURE_SYNCHRONOUS: 'off' },
-    });
+    applyWalJournalMode(db, { store: 'fixture' });
     expect(execs.some((sql) => /synchronous/i.test(sql))).toBe(false);
-    execs = [];
   });
 });
 
