@@ -417,6 +417,9 @@ export class StrandsFramework {
       CreateAgentOptions,
       | 'configLoader'
       | 'mcpConfigs'
+      | 'mcpCustody'
+      | 'integrationSecretResolver'
+      | 'mcpToolProvenanceGeneration'
       | 'mcpConnectionStatus'
       | 'integrationMetadata'
       | 'toolNameMapping'

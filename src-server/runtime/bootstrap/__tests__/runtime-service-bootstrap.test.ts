@@ -2,6 +2,7 @@ import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   pairingScopePresetString,
 } from '@kontourai/station-contracts';
+import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { describe, expect, test, vi } from 'vitest';
 import { registerEngineConnection } from '../../../domain/agent-registry.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
@@ -54,6 +55,7 @@ describe('createRuntimeServiceBundle', () => {
         agentSpecs: new Map(),
         agentTools: new Map(),
         agentHooks: new Map(),
+        mcpCustody: new MCPLocalConnectionCustody(),
         mcpConfigs: new Map(),
         mcpConnectionStatus: new Map(),
         integrationMetadata: new Map(),
@@ -158,6 +160,7 @@ describe('createRuntimeServiceBundle', () => {
       agentSpecs: new Map(),
       agentTools: new Map(),
       agentHooks: new Map(),
+      mcpCustody: new MCPLocalConnectionCustody(),
       mcpConfigs: new Map(),
       mcpConnectionStatus: new Map(),
       integrationMetadata: new Map(),
@@ -236,6 +239,7 @@ describe('createRuntimeServiceBundle', () => {
         agentSpecs: new Map(),
         agentTools: new Map(),
         agentHooks: new Map(),
+        mcpCustody: new MCPLocalConnectionCustody(),
         mcpConfigs: new Map(),
         mcpConnectionStatus: new Map(),
         integrationMetadata: new Map(),
@@ -304,6 +308,7 @@ describe('createRuntimeServiceBundle', () => {
         agentSpecs: new Map(),
         agentTools: new Map(),
         agentHooks: new Map(),
+        mcpCustody: new MCPLocalConnectionCustody(),
         mcpConfigs: new Map(),
         mcpConnectionStatus: new Map(),
         integrationMetadata: new Map(),
@@ -360,6 +365,7 @@ describe('terminal WebSocket scope gating (station#1098)', () => {
       agentSpecs: new Map(),
       agentTools: new Map(),
       agentHooks: new Map(),
+      mcpCustody: new MCPLocalConnectionCustody(),
       mcpConfigs: new Map(),
       mcpConnectionStatus: new Map(),
       integrationMetadata: new Map(),

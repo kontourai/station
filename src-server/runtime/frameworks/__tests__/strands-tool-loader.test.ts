@@ -1,4 +1,5 @@
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { withTenantExecutionContext } from '../../bootstrap/runtime-tenant-context.js';
 import { builtinStationControlServerPath } from '../../bootstrap/station-control-runtime-env.js';
@@ -46,15 +47,14 @@ vi.mock('@strands-agents/sdk', () => ({
       const ordinal = strandsMcpClients.length;
       this.callTool = vi.fn().mockResolvedValue(ordinal);
       strandsMcpClients.push(this);
+    }
+
+    async connect() {
       if (strandsMcpTestState.deferNextClient) {
         strandsMcpTestState.deferNextClient = false;
-        // biome-ignore lint/suspicious/noThenProperty: force the native creation promise to remain in flight for cleanup-race coverage.
-        (this as any).then = (resolve: (value: unknown) => void) => {
-          strandsMcpTestState.resolveDeferredClient = () => {
-            delete (this as any).then;
-            resolve(this);
-          };
-        };
+        await new Promise<void>((resolve) => {
+          strandsMcpTestState.resolveDeferredClient = resolve;
+        });
       }
     }
 
@@ -87,13 +87,16 @@ afterEach(async () => {
   delete process.env.STATION_HOSTED_TENANT_REGISTRY_FILE;
 });
 
-async function loadBuiltinStationControlTools() {
+async function loadBuiltinStationControlTools(
+  custody = new MCPLocalConnectionCustody(),
+) {
   return loadStrandsTools({
     slug: 'agent-a',
     spec: {
       tools: { mcpServers: ['station-control'], available: ['*'] },
     } as any,
     opts: {
+      mcpCustody: custody,
       configLoader: {
         loadIntegration: vi.fn().mockResolvedValue({
           id: 'station-control',
@@ -271,6 +274,36 @@ describe('destroyStrandsAgentTools', () => {
 });
 
 describe('loadStrandsTools', () => {
+  test('tenant-native publication is owner-qualified and old catalog facades cannot reconnect after reset', async () => {
+    const firstOwner = new MCPLocalConnectionCustody();
+    const secondOwner = new MCPLocalConnectionCustody();
+    try {
+      const [first] = await loadBuiltinStationControlTools(firstOwner);
+      const [second] = await loadBuiltinStationControlTools(secondOwner);
+      const context = {
+        tenantId: 'same-tenant' as any,
+        source: 'request' as const,
+      };
+      expect(
+        await withTenantExecutionContext(context, () => first!.execute!({})),
+      ).toBe(2);
+      expect(
+        await withTenantExecutionContext(context, () => second!.execute!({})),
+      ).toBe(3);
+      expect(strandsMcpClients).toHaveLength(4);
+      expect((await firstOwner.reset()).state).toBe('settled');
+      await expect(
+        withTenantExecutionContext(context, () => first!.execute!({})),
+      ).rejects.toMatchObject({ state: 'stale' });
+      expect(
+        await withTenantExecutionContext(context, () => second!.execute!({})),
+      ).toBe(3);
+      expect(strandsMcpClients).toHaveLength(4);
+    } finally {
+      await firstOwner.shutdown();
+      await secondOwner.shutdown();
+    }
+  });
   test('settles a first listTools failure once and does not cache the failed child', async () => {
     const settlement = { settle: vi.fn() };
     const state = { mcpClients: new Map(), agentMcpClients: new Map() };
@@ -282,6 +315,7 @@ describe('loadStrandsTools', () => {
           tools: { mcpServers: ['demoServer'], available: ['*'] },
         } as any,
         opts: {
+          mcpCustody: new MCPLocalConnectionCustody(),
           configLoader: {
             loadIntegration: vi.fn().mockResolvedValue({
               id: 'demoServer',
@@ -328,6 +362,7 @@ describe('loadStrandsTools', () => {
       slug: 'agent-a',
       spec: { tools: { mcpServers: ['demoServer'], available: ['*'] } } as any,
       opts: {
+        mcpCustody: new MCPLocalConnectionCustody(),
         configLoader: {
           loadIntegration: vi.fn().mockResolvedValue({
             id: 'demoServer',
@@ -432,7 +467,9 @@ describe('loadStrandsTools', () => {
       'released while creation was pending',
     );
     const staleClient = strandsMcpClients[3]!;
-    expect(staleClient.disconnect).toHaveBeenCalledOnce();
+    // A close while connect is outstanding is followed by a final close after
+    // actual late settlement; the second call does not overlap the first.
+    expect(staleClient.disconnect).toHaveBeenCalledTimes(2);
 
     await expect(
       withTenantExecutionContext(alpha, () => raceTool!.execute!({})),
@@ -457,13 +494,8 @@ describe('loadStrandsTools', () => {
     );
     const failedCleanup = releaseAllNativeStationControlClients();
     strandsMcpTestState.resolveDeferredClient!();
-    await expect(failedCleanup).rejects.toSatisfy(
-      (error) =>
-        error instanceof AggregateError &&
-        error.errors.some(
-          (failure: unknown) =>
-            failure instanceof Error && failure.message === 'stale disconnect',
-        ),
+    await expect(failedCleanup).rejects.toThrow(
+      'Native station-control cleanup failed.',
     );
     await failedPendingExpectation;
     expect(failedStaleClient.disconnect).toHaveBeenCalledOnce();
@@ -481,6 +513,7 @@ describe('loadStrandsTools', () => {
       slug: 'agent-a',
       spec: { tools: { mcpServers: ['demoServer'], available: ['*'] } } as any,
       opts: {
+        mcpCustody: new MCPLocalConnectionCustody(),
         configLoader: {
           loadIntegration: vi.fn().mockResolvedValue({
             id: 'demoServer',
