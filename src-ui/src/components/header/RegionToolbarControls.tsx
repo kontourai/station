@@ -73,6 +73,8 @@ function ToolbarMenu({
   items: readonly {
     key: string;
     label: string;
+    /** Present for a menu of toggles; absent for a menu of one-shot commands. */
+    checked?: boolean;
     onSelect: () => void;
   }[];
 }) {
@@ -119,7 +121,12 @@ function ToolbarMenu({
           <button
             key={item.key}
             type="button"
-            role="menuitem"
+            {...(item.checked === undefined
+              ? { role: 'menuitem' as const }
+              : {
+                  role: 'menuitemcheckbox' as const,
+                  'aria-checked': item.checked,
+                })}
             onClick={() => {
               item.onSelect();
               onClose();
@@ -232,10 +239,10 @@ function ConnectedRegionToolbarControls() {
           aria-label="Regions"
           title="Regions"
           aria-haspopup="menu"
-          aria-expanded={menuRegion === 'bottom'}
+          aria-expanded={menuRegion !== null}
           onClick={(event) => openMenu('bottom', event.currentTarget)}
         >
-          <RegionGlyph id={foldedRegion ?? 'bottom'} />
+          <RegionGlyph id="bottom" />
         </button>
       ) : (
         availableRegions.map((id) => {
@@ -299,6 +306,7 @@ function ConnectedRegionToolbarControls() {
             return {
               key: surface.id,
               label: `${pressed ? 'Hide' : 'Show'} ${surface.title}`,
+              checked: pressed,
               onSelect: () => toggleSurface(surface),
             };
           })}

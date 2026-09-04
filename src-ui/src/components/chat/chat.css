@@ -90,8 +90,9 @@
   align-items: center;
   gap: 2px;
   /* Fixed-size controls: the fieldset must not pack below their sum, or the
-     last control lands under the first connection action (#917). The brand
-     label is the toolbar's shrinking member. */
+     last control lands under the first connection action (#917). At the coarse
+     widths where that happened, `.app-toolbar__brand` is the shrinking member
+     (index.css `.app-toolbar__brand`). */
   flex-shrink: 0;
   margin: 0;
   padding: 0;

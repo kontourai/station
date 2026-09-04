@@ -237,6 +237,37 @@ describe('RegionToolbarControls', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  test('the region fieldset holds its controls\u2019 width (#917)', () => {
+    const regionsRule = chatCss.match(
+      /\.app-toolbar__regions\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(regionsRule).toMatch(/flex-shrink:\s*0/);
+    // `min-width: 0` here is what let the fieldset pack below its controls and
+    // put the last one under the first connection action.
+    expect(regionsRule).not.toMatch(/min-width:\s*0/);
+  });
+
+  test('a menu still open when the window narrows into the coarse layout is reported as expanded', () => {
+    const { rerender } = render(<RegionToolbarControls />);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Choose a surface for Left region' }),
+    );
+    expect(screen.queryByRole('menu')).not.toBeNull();
+
+    // `useDockSlotDevice` re-reads on resize, so the coarse branch can take
+    // over with a menu already open and portalled.
+    harness.bottomOnly = true;
+    rerender(<RegionToolbarControls />);
+
+    expect(screen.queryByRole('menu')).not.toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Regions' })
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+  });
+
   test('a bottom-only device offers all surfaces through one Regions menu and makes either surface the sole visible region', () => {
     harness.bottomOnly = true;
     const { rerender } = render(<RegionToolbarControls />);
@@ -245,9 +276,25 @@ describe('RegionToolbarControls', () => {
     expect(group.querySelectorAll('button')).toHaveLength(1);
     const trigger = screen.getByRole('button', { name: 'Regions' });
     expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(trigger);
     expect(screen.getByRole('menu', { name: 'Region surfaces' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Hide Chat' }));
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    // The verb is the only visible state; the checked state is what an
+    // assistive technology reads.
+    expect(
+      screen
+        .getByRole('menuitemcheckbox', { name: 'Hide Chat' })
+        .getAttribute('aria-checked'),
+    ).toBe('true');
+    expect(
+      screen
+        .getByRole('menuitemcheckbox', { name: 'Show Activity' })
+        .getAttribute('aria-checked'),
+    ).toBe('false');
+    fireEvent.click(
+      screen.getByRole('menuitemcheckbox', { name: 'Hide Chat' }),
+    );
     expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
       visible: false,
     });
@@ -257,11 +304,15 @@ describe('RegionToolbarControls', () => {
     harness.regions.bottom.visible = false;
     rerender(<RegionToolbarControls />);
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
-    expect(screen.getByRole('menuitem', { name: 'Show Chat' })).toBeTruthy();
     expect(
-      screen.getByRole('menuitem', { name: 'Show Activity' }),
+      screen.getByRole('menuitemcheckbox', { name: 'Show Chat' }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Show Activity' }));
+    expect(
+      screen.getByRole('menuitemcheckbox', { name: 'Show Activity' }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('menuitemcheckbox', { name: 'Show Activity' }),
+    );
     expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
     expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
       visible: false,
@@ -269,7 +320,9 @@ describe('RegionToolbarControls', () => {
     expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: true });
 
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Show Chat' }));
+    fireEvent.click(
+      screen.getByRole('menuitemcheckbox', { name: 'Show Chat' }),
+    );
     expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: false });
     expect(harness.setRegion).toHaveBeenCalledWith('bottom', { visible: true });
 
