@@ -1,23 +1,41 @@
 import { createInMemorySnapshotStore } from '@kontourai/forage';
 import { describe, expect, test, vi } from 'vitest';
 import { OpenRouterRoutePricing } from '../openrouter-route-pricing.js';
+import REAL_ROW from './fixtures/openrouter-row.json' with { type: 'json' };
 
 const ROW = 'anthropic/claude-sonnet-4.5';
 
-/** An OpenRouter /api/v1/models body with the rows the test wants. */
+/**
+ * An OpenRouter /api/v1/models body with the rows the test wants.
+ *
+ * Rows are built from a REAL catalogue row captured from the live API
+ * (`fixtures/openrouter-row.json`), not invented. Bearing validates the
+ * envelope ("must contain exactly: data, links, total_count") AND every row
+ * ("missing required fields: canonical_slug, architecture, top_provider,
+ * supported_parameters, ..."). A hand-written row parses nowhere near the real
+ * service, so every assertion here would have been meaningless against it --
+ * which is exactly what happened before this fixture existed.
+ */
 function catalogue(
   rows: Array<{ id: string; prompt?: string; completion?: string }>,
 ) {
   return JSON.stringify({
     data: rows.map((row) => ({
+      ...REAL_ROW,
       id: row.id,
+      canonical_slug: row.id,
       name: row.id,
-      context_length: 200_000,
+      // `prompt` and `completion` are REQUIRED keys; OpenRouter expresses an
+      // unavailable price with the sentinel "-1", which bearing maps to null.
+      // Omitting the key is not a shape the source ever produces.
       pricing: {
+        ...REAL_ROW.pricing,
         ...(row.prompt !== undefined ? { prompt: row.prompt } : {}),
         ...(row.completion !== undefined ? { completion: row.completion } : {}),
       },
     })),
+    links: { next: null },
+    total_count: rows.length,
   });
 }
 
@@ -76,9 +94,14 @@ describe('OpenRouterRoutePricing', () => {
     });
   });
 
-  test('a stated-absent price is null, not zero', async () => {
+  // "-1" is OpenRouter's unavailable sentinel, not a price of zero. A route
+  // whose completion price the source declines to state must read as null;
+  // rendering it as 0 would claim the model's output is free.
+  test('an unavailable price reads as null, not zero', async () => {
     const { service } = pricing({
-      fetch: fakeFetch(catalogue([{ id: ROW, prompt: '0.000003' }])),
+      fetch: fakeFetch(
+        catalogue([{ id: ROW, prompt: '0.000003', completion: '-1' }]),
+      ),
     });
     await service.refresh();
     expect(service.priceFor(ROW)?.completionUsdPerMillionTokens).toBeNull();

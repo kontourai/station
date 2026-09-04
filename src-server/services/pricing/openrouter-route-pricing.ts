@@ -201,23 +201,51 @@ export class OpenRouterRoutePricing {
     for (const diagnostic of imported.diagnostics) {
       this.logger.warn('OpenRouter route pricing diagnostic', diagnostic);
     }
-    const rows = new Map<string, PricedRow>();
+    // Bearing emits ONE OBSERVATION PER MEASUREMENT -- a single row yields two
+    // dozen, of which exactly two carry price. Collecting per observation and
+    // keying by model id let the last observation overwrite the priced ones,
+    // so every price read back as null. Scan every observation for the model
+    // and take the price measurements wherever they appear.
+    const collected = new Map<
+      string,
+      {
+        prompt: number | null;
+        completion: number | null;
+        observedAt: string;
+        validUntil: string | null;
+      }
+    >();
     for (const observation of imported.observations) {
-      const price = (key: string): number | null => {
-        const found = observation.measurements.find(
-          (measurement) =>
-            measurement.key === key && typeof measurement.value === 'number',
-        );
-        return found ? (found.value as number) * TOKENS_PER_MILLION : null;
+      const id = observation.model.id;
+      const entry = collected.get(id) ?? {
+        prompt: null,
+        completion: null,
+        observedAt: observation.freshness.observedAt,
+        validUntil: observation.freshness.validUntil,
       };
-      rows.set(observation.model.id, {
+      for (const measurement of observation.measurements) {
+        if (typeof measurement.value !== 'number') continue;
+        if (measurement.key === PRICE_KEYS.prompt) {
+          entry.prompt = measurement.value * TOKENS_PER_MILLION;
+        } else if (measurement.key === PRICE_KEYS.completion) {
+          entry.completion = measurement.value * TOKENS_PER_MILLION;
+        }
+      }
+      collected.set(id, entry);
+    }
+    const rows = new Map<string, PricedRow>();
+    for (const [id, entry] of collected) {
+      // A row bearing reported with neither price is not a priced route; it
+      // must read as unpriced rather than as a reference with two nulls.
+      if (entry.prompt === null && entry.completion === null) continue;
+      rows.set(id, {
         reference: {
           source: 'openrouter',
           attributionUrl: OPENROUTER_MODELS_SOURCE.attributionUrl,
-          promptUsdPerMillionTokens: price(PRICE_KEYS.prompt),
-          completionUsdPerMillionTokens: price(PRICE_KEYS.completion),
-          observedAt: observation.freshness.observedAt,
-          validUntil: observation.freshness.validUntil,
+          promptUsdPerMillionTokens: entry.prompt,
+          completionUsdPerMillionTokens: entry.completion,
+          observedAt: entry.observedAt,
+          validUntil: entry.validUntil,
         },
       });
     }
