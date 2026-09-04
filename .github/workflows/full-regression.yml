@@ -28,10 +28,11 @@ jobs:
     # network-free bash checks: source-SHA validation 2m, checkout 10m,
     # checkout-matches proof 2m, setup-node 5m, actionlint 5m (mirrored in
     # ci.yml's fast-checks copy so the two stay identical), dependencies:ci
-    # 15m, the 5-minute zsh step, the 20-minute Chromium step, the receipt
-    # upload 10m = 74m bounded setup. 340 keeps real margin over that
-    # 325-minute bounded worst case rather than interrupting a valid final
-    # phase slice or a completed gate's receipt upload.
+    # 15m, the 5-minute zsh step, the 20-minute Chromium step, the verdict
+    # report 2m, the receipt upload 10m = 76m bounded setup and publication.
+    # 340 keeps real margin over that 327-minute bounded worst case rather
+    # than interrupting a valid final phase slice or a completed gate's
+    # receipt upload.
     timeout-minutes: 340
     steps:
       - name: Validate immutable source identity
@@ -116,7 +117,28 @@ jobs:
         # the complete profiled Vitest corpus. `test:connected-agents` is a
         # focused subset of that corpus; the former manual CI follow-up was
         # duplicate diagnostic evidence, not an additional promotion gate.
-        run: npm run full:regression
+        #
+        # `tee` keeps the gate's output streaming into the live job log while
+        # retaining a copy for the summary step below. `set -o pipefail` is
+        # what makes that safe and is NOT the default for a GitHub `run` block
+        # (`bash -e {0}`): without it the pipeline would report `tee`'s status
+        # and a red gate would pass the job. It is stated here, in the step, so
+        # a reader can see the exit status is still the gate's own.
+        run: |
+          set -o pipefail
+          npm run full:regression | tee "$RUNNER_TEMP/full-regression.stdout.log"
+
+      # The gate already prints one bounded JSON verdict document naming the
+      # terminal status, counts and causal excerpts. Until now nothing consumed
+      # it, so `gh run view --log-failed` and the Summary tab showed only
+      # "Process completed with exit code 1" and the excerpt lived only inside
+      # the artifact uploaded below (#1459). This step renders it into the run
+      # summary and the annotations rail. It always exits 0 and never decides
+      # the verdict -- the gate step above already did that.
+      - name: Report the completion gate verdict
+        if: always()
+        timeout-minutes: 2
+        run: node scripts/verification-gate-summary.mjs --stdout-file "$RUNNER_TEMP/full-regression.stdout.log"
 
       - name: Retain exact-SHA completion receipts
         if: always()

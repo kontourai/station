@@ -121,7 +121,12 @@ describe('Station trust-reconcile manifest', () => {
     );
     expect(ci).toContain('uses: ./.github/workflows/full-regression.yml');
     expect(ci).not.toContain('run: npm run full:regression');
-    expect(completion.match(/run: npm run full:regression/g)).toHaveLength(1);
+    // #1459 moved the completion step to a block scalar so the gate can be
+    // piped through `tee` (under `set -o pipefail`) for the verdict report.
+    // The property this pin exists for is unchanged and is what it still
+    // asserts: the manifest command is invoked exactly once in the completion
+    // workflow, and nowhere in ci.yml.
+    expect(completion.match(/npm run full:regression/g)).toHaveLength(1);
     expect(completion).toContain('workflow_call:');
     expect(ci).toContain('id: fast_ci');
   });

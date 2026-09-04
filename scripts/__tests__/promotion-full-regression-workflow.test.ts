@@ -116,9 +116,37 @@ describe('promotion full-regression workflow', () => {
       namedStep(gate, 'Install Chromium for full-corpus browser assertions')
         .run,
     ).toContain('npx playwright install chromium');
-    expect(namedStep(gate, 'Run canonical completion gate').run).toBe(
-      'npm run full:regression',
+    // #1459 changed this step's shape deliberately: it now pipes the gate
+    // through `tee` so the verdict report below can read the captured stdout.
+    // The pins that matter are unchanged and are asserted individually rather
+    // than through one `toBe` on the whole script: the canonical command is
+    // still what runs, and the job's failure signal is still the gate's own
+    // exit status. `set -o pipefail` is the second of those — without it the
+    // pipeline reports `tee`'s status and a red gate would pass the job.
+    const completionRun = namedStep(gate, 'Run canonical completion gate').run;
+    expect(completionRun).toContain('npm run full:regression');
+    expect(completionRun).toContain('set -o pipefail');
+    expect(completionRun?.indexOf('set -o pipefail')).toBeLessThan(
+      completionRun?.indexOf('| tee') as number,
     );
+    expect(namedStep(gate, 'Run canonical completion gate')).not.toHaveProperty(
+      'continue-on-error',
+    );
+    const verdictReport = namedStep(gate, 'Report the completion gate verdict');
+    expect(verdictReport.if).toBe('always()');
+    expect(verdictReport['timeout-minutes']).toBe(2);
+    expect(verdictReport.run).toContain(
+      'node scripts/verification-gate-summary.mjs',
+    );
+    // Both steps must name the SAME capture file, or the report renders an
+    // empty summary for a run whose verdict was captured elsewhere.
+    expect(completionRun).toContain(
+      '"$RUNNER_TEMP/full-regression.stdout.log"',
+    );
+    expect(verdictReport.run).toContain(
+      '"$RUNNER_TEMP/full-regression.stdout.log"',
+    );
+    expect(gateSteps.indexOf(verdictReport)).toBeGreaterThan(completionIndex);
     // The job's own deadline is the last-resort backstop once every phase
     // has its own; this proves it actually covers the bounded worst case
     // rather than merely stating a number, so drift here fails loudly
@@ -144,6 +172,7 @@ describe('promotion full-regression workflow', () => {
       zsh,
       chromium,
       proveCheckout,
+      verdictReport,
       receipts,
     ];
     for (const step of boundedSteps) {
