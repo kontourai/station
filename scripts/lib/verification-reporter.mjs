@@ -351,8 +351,20 @@ function diagnosticSeverity(lines, index) {
  * station#1871, where a `suppressions/unused` warning on line 41 was reported
  * as the cause of a failure a genuine error further down had produced. Falls
  * back to first-match so a capture containing only warnings still reports one.
+ *
+ * `allowWarningFallback: false` withdraws exactly that fallback, and nothing
+ * else. A PASSING run has no cause -- yet a repo whose lint gate tolerates
+ * warnings emits warning-shaped diagnostics on every green run, so the
+ * fallback that rescues a failed warnings-only capture also stamped a
+ * `firstCausalExcerpt` onto passes (station#1459: a green hosted run reported
+ * `scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions`
+ * as its cause). The caller withdraws it only for a run that passed, so the
+ * failed-run behaviour every other test pins is byte-identical.
  */
-function findCausalDiagnostic(lines, { preferLast = false } = {}) {
+function findCausalDiagnostic(
+  lines,
+  { preferLast = false, allowWarningFallback = true } = {},
+) {
   // `preferLast` is for STDERR, which carries no step markers. The chain
   // short-circuits, so the failing step's output is the tail; scanning from
   // the end is what keeps an earlier PASSING step's diagnostic-shaped noise
@@ -366,7 +378,7 @@ function findCausalDiagnostic(lines, { preferLast = false } = {}) {
     if (fallback === undefined) fallback = lines[i];
     if (diagnosticSeverity(lines, i) !== 'warning') return lines[i];
   }
-  return fallback;
+  return allowWarningFallback ? fallback : undefined;
 }
 
 const FAIL_LINE = /^\s*(?:❯\s*)?FAIL\s+\S+/;
@@ -401,8 +413,18 @@ function allFailLines(lines) {
  * itself to `findCausalDiagnostic` rather than reimplementing it, so the two
  * can never disagree about which excerpt is "first".
  */
-function findAllCausalDiagnostics(lines, { preferLast = false } = {}) {
-  const winner = findCausalDiagnostic(lines, { preferLast });
+function findAllCausalDiagnostics(
+  lines,
+  { preferLast = false, allowWarningFallback = true } = {},
+) {
+  const winner = findCausalDiagnostic(lines, {
+    preferLast,
+    allowWarningFallback,
+  });
+  // Withdrawing the warning fallback above is enough for this function too:
+  // with no winner there is no tier, and when a winner exists under
+  // `allowWarningFallback: false` it is non-warning by construction, so
+  // `hasNonWarning` is true and the tier below excludes warnings anyway.
   if (winner === undefined) return [];
   const hasNonWarning = lines.some(
     (line, index) =>
@@ -450,21 +472,26 @@ function allCausalExcerpts({
   failureSection,
   terminal,
   lines,
+  allowWarningFallback = true,
 }) {
   const scopedFailLines = allFailLines(scopedStdout);
   if (scopedFailLines.length) return scopedFailLines;
   if (failureSection >= 0) {
     const scoped = findAllCausalDiagnostics(
       scopedStdout.slice(failureSection + 1),
+      { allowWarningFallback },
     );
     if (scoped.length) return scoped;
   }
-  const unscoped = findAllCausalDiagnostics(scopedStdout);
+  const unscoped = findAllCausalDiagnostics(scopedStdout, {
+    allowWarningFallback,
+  });
   if (unscoped.length) return unscoped;
   const stderrFailLines = allFailLines(stderrLines);
   if (stderrFailLines.length) return stderrFailLines;
   const stderrDiagnostics = findAllCausalDiagnostics(stderrLines, {
     preferLast: true,
+    allowWarningFallback,
   });
   if (stderrDiagnostics.length) return stderrDiagnostics;
   if (lines.length === 1 && /parser/i.test(terminal.status)) return [lines[0]];
@@ -521,6 +548,22 @@ export function captureBoundedOutput(
   };
 }
 
+/**
+ * @param {{
+ *   stdout?: string,
+ *   stderr?: string,
+ *   terminal: { status: string, exitCode?: number | null, truncated?: boolean },
+ *   counts: Record<string, number>,
+ *   cleanup: { status: string, survivingOwnedChildren?: number },
+ *   maxBytes?: number,
+ * }} options
+ *   `terminal`, `counts` and `cleanup` are required at runtime (the function
+ *   throws without each of them). This annotation exists for the same reason
+ *   `persistVerificationOutput`'s does: tsconfig.scripts.json runs with
+ *   checkJs:false, where tsc otherwise infers the parameter type from
+ *   initialized properties only, so a .ts importer sees a shape missing every
+ *   required field (TS2353 on every correct call site).
+ */
 export function summarizeVerificationOutput({
   stdout = '',
   stderr = '',
@@ -574,17 +617,59 @@ export function summarizeVerificationOutput({
   // (station#2591).
   const failLineIn = (candidates) =>
     candidates.find((line) => FAIL_LINE.test(line));
+  // Hoisted above the causal scan (it also gates `failingStep` further down,
+  // where it was originally computed) because a PASSING run must not report a
+  // cause at all. It is one conjunct of `observedClean` below; `failingStep`
+  // reads it alone. The two fields can therefore disagree, by design, in
+  // exactly the under-approximated cases: a run that `completed` with exit 0
+  // but failed cleanup or counts names no failing step yet still reports its
+  // causal excerpt.
+  const exitedNonZero =
+    typeof terminal.exitCode === 'number' && terminal.exitCode !== 0;
+  // station#1459: the fallback that rescues a FAILED warnings-only capture is
+  // withdrawn on a pass, and only there. Station's lint gate tolerates
+  // warnings, so a green hosted run emits warning-shaped diagnostics every
+  // time; the fallback turned one of them into `firstCausalExcerpt` on runs
+  // that had no cause to report. An ERROR-tier diagnostic is still reported
+  // if one is somehow present on a pass -- that is a genuine contradiction
+  // worth surfacing, not noise to suppress.
+  //
+  // What follows is NOT the receipt's verdict and must not be read as one.
+  // `classifyTerminal` (verification-receipt.mjs) additionally requires stable
+  // provenance and the full counts identity (`executed > 0`, `passed ===
+  // executed`), neither of which this function is given. It is deliberately a
+  // conservative UNDER-approximation of that pass predicate: every input it
+  // can see must be clean before the fallback is withdrawn, so anything it
+  // cannot see can only leave the fallback in place. A run this thinks is
+  // clean but the receipt fails therefore still reports its warning; a run
+  // with a failed count, a failed cleanup, or a surviving owned child keeps
+  // its cause even though the status says `completed`.
+  const cleanupStatus =
+    typeof cleanup.status === 'string' ? cleanup.status : null;
+  const observedClean =
+    terminal.status === 'completed' &&
+    !exitedNonZero &&
+    counts.failed === 0 &&
+    counts.infrastructureErrors === 0 &&
+    (cleanupStatus === 'passed' || cleanupStatus === 'not_required') &&
+    (cleanup.survivingOwnedChildren ?? 0) === 0;
+  const allowWarningFallback = !observedClean;
   // Attributable evidence outranks unattributable evidence. A candidate from
   // the scoped stdout provably came from the failing step; a stderr candidate
   // only probably did.
   const firstCausalExcerpt =
     failLineIn(scopedStdout) ??
     (failureSection >= 0
-      ? findCausalDiagnostic(scopedStdout.slice(failureSection + 1))
+      ? findCausalDiagnostic(scopedStdout.slice(failureSection + 1), {
+          allowWarningFallback,
+        })
       : null) ??
-    findCausalDiagnostic(scopedStdout) ??
+    findCausalDiagnostic(scopedStdout, { allowWarningFallback }) ??
     failLineIn(stderrLines) ??
-    findCausalDiagnostic(stderrLines, { preferLast: true }) ??
+    findCausalDiagnostic(stderrLines, {
+      preferLast: true,
+      allowWarningFallback,
+    }) ??
     (lines.length === 1 && /parser/i.test(terminal.status) ? lines[0] : null);
   // station#4249: the plural companion, derived from the SAME branch that won
   // above (see `allCausalExcerpts`'s doc comment for why the two can never
@@ -598,6 +683,7 @@ export function summarizeVerificationOutput({
     failureSection,
     terminal,
     lines,
+    allowWarningFallback,
   });
   // Emitted ONLY when the excerpt came from stderr, which is the case a reader
   // needs warning about: stderr carries no step markers, so that excerpt was
@@ -632,8 +718,10 @@ export function summarizeVerificationOutput({
   //  - A terminal status of `completed` carrying a non-zero exit code. That
   //    is a real non-pass, and testing `status !== 'completed'` alone would
   //    stay silent on exactly the run a reader needs the field for.
-  const exitedNonZero =
-    typeof terminal.exitCode === 'number' && terminal.exitCode !== 0;
+  //
+  // `exitedNonZero` is computed once, above the causal scan, where
+  // station#1459 folds it into the strictly stronger `observedClean`; this is
+  // its second reader, not a second definition.
   // The step is reported under a name that matches what the status actually
   // claims. Under `timed_out` or `canceled` nothing failed -- the note above
   // says as much, and asked the reader not to read `failingStep` as blame.

@@ -7,8 +7,10 @@ import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import {
-  connectMCP,
   type MCPConnection,
+  type MCPLocalClaim,
+  type MCPLocalConnectionCustody,
+  MCPLocalCustodyError,
   type MCPToolInfo,
 } from '@kontourai/station-shared/mcp';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
@@ -50,6 +52,7 @@ import {
 import { markTrustedNativeStationControlTool } from '../tools/tool-provenance.js';
 import { createBuiltinVendedTool } from '../tools/vended-tool-compat.js';
 import { isMCPAppsToolVisibleTo } from './mcp-apps-metadata.js';
+import { sameMCPConnectionDefinition } from './mcp-definition-currentness.js';
 
 /**
  * Create MCP server configuration from tool definition
@@ -81,167 +84,116 @@ function withResolvedMCPEnvironment(
   return child;
 }
 
-// The catalog connection is context-free and used only to obtain schemas.
-// Actual built-in station-control calls always route through this tenant-bound
-// map; ordinary and third-party MCP clients keep their existing shared map.
-const nativeStationControlConnections = new Map<string, MCPConnection>();
-const nativeStationControlCreations = new Map<string, Promise<MCPConnection>>();
-const nativeStationControlDeferredDisposals = new Map<
-  string,
-  MCPConnection[]
->();
-let nativeStationControlConnectionGeneration = 0;
-
+// Tenant pools are runtime-owner-qualified publication projections. Actual
+// handles (including unpublished/failed ones) remain in that runtime's custody.
+type NativeConnectionEntry = {
+  current: boolean;
+  claim: MCPLocalClaim;
+  connection?: MCPConnection;
+  creation?: Promise<MCPConnection>;
+};
 class NativeStationControlReleasedDuringCreationError extends Error {
-  constructor(
-    message: string,
-    readonly cleanupFailure?: unknown,
-  ) {
-    super(message);
-  }
-}
-
-function retainNativeStationControlConnection(
-  tenantId: string,
-  connection: MCPConnection,
-): void {
-  const retained = nativeStationControlDeferredDisposals.get(tenantId) ?? [];
-  retained.push(connection);
-  nativeStationControlDeferredDisposals.set(tenantId, retained);
-}
-
-async function disconnectNativeStationControlConnections(
-  connections: Array<[string, MCPConnection]>,
-): Promise<void> {
-  const failures: unknown[] = [];
-  await Promise.all(
-    connections.map(async ([tenantId, connection]) => {
-      try {
-        await connection.disconnect();
-      } catch (error) {
-        retainNativeStationControlConnection(tenantId, connection);
-        failures.push(error);
-      }
-    }),
-  );
-  if (failures.length) {
-    throw new AggregateError(
-      failures,
-      'Native station-control cleanup failed.',
+  constructor() {
+    super(
+      'Tenant station-control connection was released while creation was pending.',
     );
   }
+}
+const nativeStationControlPools = new Map<
+  MCPLocalConnectionCustody,
+  Map<string, NativeConnectionEntry>
+>();
+
+async function retireNativeStationControlPools(
+  owner?: MCPLocalConnectionCustody,
+  tenantId?: string,
+): Promise<void> {
+  const settlements: Promise<unknown>[] = [];
+  for (const [custody, pool] of nativeStationControlPools) {
+    if (owner && custody !== owner) continue;
+    const claims: MCPLocalClaim[] = [];
+    const selected: Array<[string, NativeConnectionEntry]> = [];
+    for (const [id, entry] of pool) {
+      if (tenantId !== undefined && id !== tenantId) continue;
+      entry.current = false; // Before cleanup or any await.
+      claims.push(entry.claim);
+      selected.push([id, entry]);
+    }
+    // Keep this owner reachable until its selected cleanup really settles.
+    settlements.push(
+      custody.releaseClaims(claims).then((cleanup) => {
+        if (cleanup.state !== 'settled')
+          throw new MCPLocalCustodyError(cleanup.state);
+        for (const [id, entry] of selected)
+          if (pool.get(id) === entry) pool.delete(id);
+        if (!pool.size) nativeStationControlPools.delete(custody);
+      }),
+    );
+  }
+  const results = await Promise.allSettled(settlements);
+  if (results.some((result) => result.status === 'rejected'))
+    throw new Error('Native station-control cleanup failed.');
 }
 
 export async function releaseNativeStationControlContext(
   context: TenantExecutionContext | undefined,
 ): Promise<void> {
-  if (!context) return;
-  const connections = [
-    ...(nativeStationControlConnections.has(context.tenantId)
-      ? [
-          [
-            context.tenantId,
-            nativeStationControlConnections.get(context.tenantId)!,
-          ] as [string, MCPConnection],
-        ]
-      : []),
-    ...(nativeStationControlDeferredDisposals.get(context.tenantId) ?? []).map(
-      (connection) => [context.tenantId, connection] as [string, MCPConnection],
-    ),
-  ];
-  if (!connections.length) return;
-  nativeStationControlConnections.delete(context.tenantId);
-  nativeStationControlDeferredDisposals.delete(context.tenantId);
-  await disconnectNativeStationControlConnections(connections);
+  if (context)
+    await retireNativeStationControlPools(undefined, context.tenantId);
 }
 
-/** Process shutdown cleanup for the tenant-keyed native station-control pool. */
-export async function releaseAllNativeStationControlConnections(): Promise<void> {
-  // Invalidate first. A creation that resolves after this point must dispose
-  // its child instead of repopulating a pool the runtime has released.
-  nativeStationControlConnectionGeneration += 1;
-  const connections = [
-    ...nativeStationControlConnections.entries(),
-    ...[...nativeStationControlDeferredDisposals.entries()].flatMap(
-      ([tenantId, retained]) =>
-        retained.map(
-          (connection) => [tenantId, connection] as [string, MCPConnection],
-        ),
-    ),
-  ];
-  const creations = [...nativeStationControlCreations.values()];
-  nativeStationControlConnections.clear();
-  nativeStationControlDeferredDisposals.clear();
-  nativeStationControlCreations.clear();
-  const results = await Promise.allSettled([
-    disconnectNativeStationControlConnections(connections),
-    ...creations,
-  ]);
-  const failures = results.flatMap((result) => {
-    if (result.status !== 'rejected') return [];
-    if (
-      result.reason instanceof NativeStationControlReleasedDuringCreationError
-    ) {
-      return result.reason.cleanupFailure ? [result.reason.cleanupFailure] : [];
-    }
-    return [result.reason];
-  });
-  if (failures.length) {
-    throw new AggregateError(
-      failures,
-      'Native station-control cleanup failed.',
-    );
-  }
+/** Bounded local-handle retirement; not a process/descendant drain receipt. */
+export async function releaseAllNativeStationControlConnections(
+  owner?: MCPLocalConnectionCustody,
+): Promise<void> {
+  await retireNativeStationControlPools(owner);
 }
 
 async function nativeStationControlConnection(
   toolId: string,
   toolDef: ToolDef,
   resolvedEnv: Record<string, string> | undefined,
+  custody: MCPLocalConnectionCustody,
 ): Promise<MCPConnection> {
   const context = currentTenantExecutionContext();
   if (!context) {
-    if (!isHostedTenantExecutionRequired()) {
+    if (!isHostedTenantExecutionRequired())
       throw new Error('No tenant-bound station-control connection is active.');
-    }
     throw new Error(
       'Tenant execution context is required for station-control.',
     );
   }
-  const existing = nativeStationControlConnections.get(context.tenantId);
-  if (existing) return existing;
-  const creating = nativeStationControlCreations.get(context.tenantId);
-  if (creating) return creating;
-  const generation = nativeStationControlConnectionGeneration;
-  const creation = (async () => {
-    const connection = await connectMCP(
-      withResolvedMCPEnvironment(toolId, toolDef, resolvedEnv, context),
-    );
-    if (generation !== nativeStationControlConnectionGeneration) {
-      try {
-        await connection.disconnect();
-      } catch (error) {
-        retainNativeStationControlConnection(context.tenantId, connection);
-        throw new NativeStationControlReleasedDuringCreationError(
-          'Tenant station-control connection was released while creation was pending.',
-          error,
-        );
-      }
-      throw new NativeStationControlReleasedDuringCreationError(
-        'Tenant station-control connection was released while creation was pending.',
-      );
-    }
-    nativeStationControlConnections.set(context.tenantId, connection);
-    return connection;
-  })();
-  nativeStationControlCreations.set(context.tenantId, creation);
-  try {
-    return await creation;
-  } finally {
-    if (nativeStationControlCreations.get(context.tenantId) === creation) {
-      nativeStationControlCreations.delete(context.tenantId);
-    }
+  let pool = nativeStationControlPools.get(custody);
+  if (!pool) {
+    pool = new Map();
+    nativeStationControlPools.set(custody, pool);
   }
+  const existing = pool.get(context.tenantId);
+  if (existing?.current && existing.claim.isCurrent()) {
+    if (existing.connection) return existing.connection;
+    if (existing.creation) return existing.creation;
+  }
+  const claim = custody.acquire(toolId, 'native-control');
+  const entry: NativeConnectionEntry = { current: true, claim };
+  pool.set(context.tenantId, entry);
+  entry.creation = Promise.resolve().then(async () => {
+    try {
+      const connection = await claim.connect(
+        withResolvedMCPEnvironment(toolId, toolDef, resolvedEnv, context),
+      );
+      if (!entry.current || !claim.isCurrent())
+        throw new NativeStationControlReleasedDuringCreationError();
+      entry.connection = connection;
+      return connection;
+    } catch (error) {
+      if (!entry.current)
+        throw new NativeStationControlReleasedDuringCreationError();
+      entry.current = false;
+      await custody.release(claim);
+      throw error;
+    }
+  });
+  return entry.creation;
 }
 
 /**
@@ -263,7 +215,10 @@ async function createMCPTools(
   logger: any,
   configLoader: ConfigLoader,
   serverPort: number,
-  integrationSecretResolver?: IntegrationSecretResolver,
+  integrationSecretResolver: IntegrationSecretResolver | undefined,
+  custody: MCPLocalConnectionCustody,
+  claim: MCPLocalClaim,
+  retain: () => void,
 ): Promise<Tool<any>[]> {
   const mcpKey = toolId;
 
@@ -273,6 +228,8 @@ async function createMCPTools(
   // Check if MCP config already exists
   if (mcpConfigs.has(mcpKey)) {
     mcpConfig = mcpConfigs.get(mcpKey)!;
+    if (mcpConfig.isUsable?.() === false)
+      throw new MCPLocalCustodyError('stale');
   } else {
     const startedAt = performance.now();
     const reconnecting = mcpConnectionStatus.has(mcpKey);
@@ -285,7 +242,7 @@ async function createMCPTools(
           isBuiltinStationControl: isBuiltinStationControl(toolId, toolDef),
         },
         (resolvedSecrets) =>
-          connectMCP(
+          claim.connect(
             withResolvedMCPEnvironment(
               toolId,
               toolDef,
@@ -302,7 +259,24 @@ async function createMCPTools(
             },
           ),
       );
-      mcpConfigs.set(mcpKey, mcpConfig);
+      const currentDefinition = await configLoader.loadIntegration(toolId);
+      if (
+        !claim.isCurrent() ||
+        !sameMCPConnectionDefinition(toolDef, currentDefinition)
+      )
+        throw new MCPLocalCustodyError('stale');
+      const concurrent = mcpConfigs.get(mcpKey);
+      if (concurrent && concurrent !== mcpConfig) {
+        const cleanup = await custody.release(claim);
+        if (cleanup.state !== 'settled' || concurrent.isUsable?.() === false)
+          throw new MCPLocalCustodyError(
+            cleanup.state === 'failed' ? 'failed' : 'stale',
+          );
+        mcpConfig = concurrent;
+      } else {
+        mcpConfigs.set(mcpKey, mcpConfig);
+        retain();
+      }
       isNewConfig = true;
 
       const { negotiation } = mcpConfig;
@@ -366,17 +340,21 @@ async function createMCPTools(
         isNativeStationControl,
         isNativeStationControl
           ? async (args) => {
+              if (mcpConfig.isUsable?.() === false)
+                throw new MCPLocalCustodyError('stale');
               const connection = currentTenantExecutionContext()
                 ? await nativeStationControlConnection(
                     toolId,
                     toolDef,
                     undefined,
+                    custody,
                   )
                 : isHostedTenantExecutionRequired()
                   ? await nativeStationControlConnection(
                       toolId,
                       toolDef,
                       undefined,
+                      custody,
                     )
                   : mcpConfig;
               return connection.client.callTool({
@@ -466,7 +444,8 @@ export async function loadAgentTools(
   logger: any,
   serverPort: number = DEFAULT_SERVER_PORT,
   provenanceGeneration: MCPToolProvenanceGeneration,
-  integrationSecretResolver?: IntegrationSecretResolver,
+  integrationSecretResolver: IntegrationSecretResolver | undefined,
+  custody: MCPLocalConnectionCustody,
 ): Promise<Tool<any>[]> {
   const tools: Tool<any>[] = [];
 
@@ -476,9 +455,13 @@ export async function loadAgentTools(
 
   // Load each MCP server from catalog
   for (const entry of spec.tools.mcpServers) {
+    let claim: MCPLocalClaim | undefined;
+    let retained = false;
     try {
       const toolId = entry;
+      claim = custody.acquire(toolId, 'managed');
       const toolDef = await configLoader.loadIntegration(entry);
+      if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
 
       if (toolDef.enabled === false) {
         mcpConnectionStatus.set(toolId, { connected: false });
@@ -500,6 +483,11 @@ export async function loadAgentTools(
           configLoader,
           serverPort,
           integrationSecretResolver,
+          custody,
+          claim,
+          () => {
+            retained = true;
+          },
         );
         const enabledTools = mcpTools.filter(
           (tool) => !toolDef.disabledTools?.includes(tool.name),
@@ -533,6 +521,8 @@ export async function loadAgentTools(
         errorClass,
         error: publicMCPConnectionError(entry, errorClass),
       });
+    } finally {
+      if (claim && !retained) await custody.release(claim);
     }
   }
 

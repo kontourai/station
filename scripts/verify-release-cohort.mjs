@@ -13,9 +13,16 @@ import {
 } from './release-cohort.mjs';
 
 const REPOSITORY = 'kontourai/station';
+/** The publishing phase: runs this verifier and signs the final receipt. */
 const NIGHTLY_WORKFLOW = `${REPOSITORY}/.github/workflows/nightly-native-cohort.yml`;
+/**
+ * The staging phase (#1453): builds and attests every staged artifact byte
+ * before the full-regression receipt exists, so staged-bytes provenance is
+ * signed by this workflow identity, never by the publishing phase.
+ */
+const NIGHTLY_STAGE_WORKFLOW = `${REPOSITORY}/.github/workflows/nightly-native-stage.yml`;
 const NIGHTLY_SOURCE_REF = 'refs/heads/main';
-const NIGHTLY_CERT_IDENTITY = `https://github.com/${NIGHTLY_WORKFLOW}@${NIGHTLY_SOURCE_REF}`;
+const NIGHTLY_CERT_IDENTITY = `https://github.com/${NIGHTLY_STAGE_WORKFLOW}@${NIGHTLY_SOURCE_REF}`;
 const OIDC_ISSUER = 'https://token.actions.githubusercontent.com';
 const SHA256 = /^[a-f0-9]{64}$/;
 const PLAY_ADAPTER = resolve(
@@ -62,6 +69,26 @@ function jsonOutput(result, label) {
     fail(`${label} returned malformed JSON`);
   }
 }
+/**
+ * The workflow half of a verified certificate SAN
+ * (`https://github.com/<owner>/<repo>/<workflow path>@<ref>`). The SAN was
+ * already matched against the expected identity, so this can only ever name
+ * the staging workflow; it is read from the certificate rather than restated
+ * so the receipt carries what was verified, and it fails closed if the SAN
+ * ever stops having the shape the strip expects.
+ */
+export function signerWorkflowOf(subjectAlternativeName) {
+  const prefix = 'https://github.com/';
+  const suffix = `@${NIGHTLY_SOURCE_REF}`;
+  if (
+    typeof subjectAlternativeName !== 'string' ||
+    !subjectAlternativeName.startsWith(prefix) ||
+    !subjectAlternativeName.endsWith(suffix)
+  )
+    fail('attestation certificate identity is not a main-ref workflow');
+  return subjectAlternativeName.slice(prefix.length, -suffix.length);
+}
+
 export function ghAttestationArgs(path, sourceSha) {
   return [
     'attestation',
@@ -144,7 +171,11 @@ export function parseVerifiedAttestation(
   const entry = matching[0];
   return {
     repository: REPOSITORY,
-    signerWorkflow: NIGHTLY_WORKFLOW,
+    // Read from the verified certificate rather than restated from the
+    // constant the match above was made against.
+    signerWorkflow: signerWorkflowOf(
+      entry.verificationResult.signature.certificate.subjectAlternativeName,
+    ),
     sourceRef: NIGHTLY_SOURCE_REF,
     sourceSha,
     oidcIssuer: OIDC_ISSUER,
