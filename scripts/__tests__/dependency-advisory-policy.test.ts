@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { minimatch } from 'minimatch';
 import { describe, expect, it } from 'vitest';
 import { ALL_DEPENDENCY_SCOPES } from '../classify-ci-change.mjs';
@@ -786,13 +788,35 @@ describe('selectAuditScopes', () => {
     ).toThrow(/selected no scopes/);
   });
 
-  it('derives its scopes from the classifier map, so neither list can drift', () => {
+  it('audits exactly the scopes the classifier can attribute, and no others', () => {
     // The drift direction that would fail SILENTLY if these were two lists:
     // a scope the audit runs but the classifier has never heard of is filtered
     // out of every selection, including the fail-closed ones, and the run
     // reports success having never scanned it.
+    //
+    // This pins the VALUES agreeing, which is what catches that drift once it
+    // is real. It cannot observe that one is derived from the other -- a
+    // hardcoded list that happens to match still passes -- so the derivation
+    // is a code property, not something this asserts.
     expect(AUDIT_SCOPES.map((entry) => entry.scope)).toEqual([
       ...ALL_DEPENDENCY_SCOPES,
     ]);
+  });
+
+  it('resolves each scope to its own package directory', () => {
+    // The cwd is what `npm audit` actually runs in and what the lockfile is
+    // read from, and nothing else asserts it: a scope root edited to an
+    // absolute path, a typo, or a `..` would keep every other test green and
+    // surface only as a live "committed lockfile is missing" in CI.
+    const byScope = Object.fromEntries(
+      AUDIT_SCOPES.map((entry) => [entry.scope, entry.cwd]),
+    );
+    expect(byScope.sdk).toBe(path.join(byScope.root, 'packages', 'sdk'));
+    expect(byScope.shared).toBe(path.join(byScope.root, 'packages', 'shared'));
+    for (const cwd of Object.values(byScope)) {
+      expect(path.isAbsolute(cwd)).toBe(true);
+      expect(cwd).not.toContain('..');
+      expect(existsSync(path.join(cwd, 'package-lock.json'))).toBe(true);
+    }
   });
 });

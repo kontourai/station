@@ -12,11 +12,19 @@ const ZERO_SHA = '0'.repeat(40);
  * Order is the scan order; `ALL_DEPENDENCY_SCOPES` is what an input we cannot
  * attribute falls back to.
  */
-export const DEPENDENCY_SCOPE_ROOTS = {
+/**
+ * Directory prefixes MUST end in `/` (the repository root is the empty
+ * string). `scopesForDependencyInput` compares them against a path's
+ * slash-terminated directory, so a prefix written without the trailing slash
+ * would still audit correctly but would never attribute anything -- every
+ * input under it would fall through to widening. That fails open rather than
+ * leaving a hole, which is why it would otherwise go unnoticed.
+ */
+export const DEPENDENCY_SCOPE_ROOTS = Object.freeze({
   root: '',
   sdk: 'packages/sdk/',
   shared: 'packages/shared/',
-};
+});
 export const ALL_DEPENDENCY_SCOPES = Object.freeze(
   Object.keys(DEPENDENCY_SCOPE_ROOTS),
 );

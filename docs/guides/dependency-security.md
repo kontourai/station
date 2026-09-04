@@ -30,8 +30,10 @@ npm run audit:policy
 ```
 
 The command runs full-graph and `npm audit --omit=dev --json` production checks.
-Run locally it covers all three scopes; in CI it covers the scopes whose
-dependency inputs the change touched (see below). It fails for every
+Run locally it covers all three scopes. In CI, pull-request, push and
+merge-queue runs cover the scopes whose dependency inputs the change touched
+(see below); the scheduled scan always covers all three, which is what makes it
+a backstop rather than a second copy of the same narrowing. It fails for every
 critical or high advisory that is not fixed or exactly matched by a current
 exception, and for every production moderate or low advisory that is not
 exactly matched by a current residual record. It also fails for malformed,
@@ -168,7 +170,10 @@ the fast CI job. A Dependabot update is complete only after the same lock
 inspection, policy pass, and compatibility gates required for a manual update.
 
 That step audits the scopes whose dependency inputs the change touched, not all
-three every time (#1417). A change to the root lockfile audits `root`; a change
+three every time (#1417). This narrowing applies to `pull_request`,
+`pull_request_target`, `merge_group` and `push` events only -- the scheduled
+`dependency-advisory` workflow runs on `schedule`, so it always audits all
+three. A change to the root lockfile audits `root`; a change
 to `packages/sdk/package.json` audits `sdk`; anything the mapping cannot
 attribute -- a workspace that is not itself an audited scope, any `.npmrc`, the
 exceptions file -- audits all three, as does any classification that fails
@@ -178,6 +183,14 @@ against a scope nobody edited is caught by the scheduled
 `dependency-advisory` workflow within a day rather than by the next unrelated
 pull request. It was never caught by a PR that touched no dependency input at
 all, because the step skips entirely in that case.
+
+The delta is small but it is not zero, and it is not only dev dependencies.
+`packages/shared`'s closure is a subset of the root closure, and almost all of
+what `packages/sdk` adds is its dev graph -- but a standalone package lockfile
+can pin a PRODUCTION dependency at a version the root closure does not carry,
+and `npm audit --omit=dev` at the root cannot see that version. When a
+root-scoped pull request is the only audit a change receives, that is the gap
+the daily scan is covering.
 
 ## 2026-07 critical/high disposition
 

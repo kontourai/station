@@ -817,7 +817,12 @@ export function parseAuditCommandResult(scope, result) {
  */
 export const AUDIT_SCOPES = ALL_DEPENDENCY_SCOPES.map((scope) => ({
   scope,
-  cwd: path.join(REPO_ROOT, DEPENDENCY_SCOPE_ROOTS[scope]),
+  // `resolve`, not `join`: the scope roots are slash-terminated prefixes
+  // because attribution compares them against a path's directory, and joining
+  // one would carry that trailing slash into the audit's cwd. Nothing
+  // downstream breaks on it -- every consumer re-joins -- but it makes the
+  // value differ from the hardcoded path it replaced for no reason.
+  cwd: path.resolve(REPO_ROOT, DEPENDENCY_SCOPE_ROOTS[scope]),
 }));
 
 /**
