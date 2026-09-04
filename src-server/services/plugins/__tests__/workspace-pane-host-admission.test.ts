@@ -71,6 +71,7 @@ describe('Workspace Pane host invocation admission', () => {
   let service: OrchestrationService;
   let authority: ReturnType<typeof createWorkspacePaneHostAdmission>;
   let adapter: ProviderAdapterShape;
+  let nativeAdapter: ProviderAdapterShape | undefined;
   let start: ReturnType<
     typeof vi.fn<(input: ProviderSessionStartInput) => Promise<ProviderSession>>
   >;
@@ -223,11 +224,17 @@ describe('Workspace Pane host invocation admission', () => {
       steerTurn: async () => {},
       respondToRequest: async () => {},
     };
+    nativeAdapter = undefined;
     service = new OrchestrationService({
       adapterRegistry: {
         register: () => {},
-        get: (id) => (id === 'claude' ? adapter : undefined),
-        list: () => [adapter],
+        get: (id) =>
+          id === 'claude'
+            ? adapter
+            : id === 'station-agent'
+              ? nativeAdapter
+              : undefined,
+        list: () => [adapter, ...(nativeAdapter ? [nativeAdapter] : [])],
       },
       eventBus: new EventBus(),
       eventStore: store,
@@ -509,5 +516,50 @@ describe('Workspace Pane host invocation admission', () => {
       message:
         'The captured Workspace Pane action is unavailable or changed before invocation.',
     });
+  });
+
+  test('refuses worktree provisioning before any adapter effect', async () => {
+    const revision = storage.projectRevision(projectSlug);
+    await revision.replace({
+      ...revision.value,
+      defaultWorkspaceIsolation: 'worktree',
+    });
+    await expect(prepare()).rejects.toThrow();
+    expect(start).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  test('refuses native Agent execution that cannot consume the captured spec', async () => {
+    const nativeStart = vi.fn(adapter.startSession);
+    nativeAdapter = {
+      ...adapter,
+      provider: 'station-agent',
+      metadata: { ...adapter.metadata, engineId: engineId('station') },
+      startSession: nativeStart,
+    };
+    const prepared = await prepare();
+    await expect(
+      prepared.run(async (admission) => {
+        const outcome = await service.startSessionInternal(
+          {
+            type: 'start-session',
+            input: {
+              provider: 'station-agent',
+              threadId: 'native-refusal',
+              metadata: {
+                agentSlug: admission.agentId,
+                projectSlug: admission.project.slug,
+                userId: 'owner',
+              },
+            },
+          },
+          { userId: 'owner' },
+          { foregroundInvocationAdmission: admission },
+        );
+        if (outcome.status !== 'accepted') throw new Error(outcome.message);
+        return outcome;
+      }),
+    ).rejects.toThrow();
+    expect(nativeStart).not.toHaveBeenCalled();
   });
 });

@@ -3668,15 +3668,22 @@ export async function executeExecutionTargetMessage(
       };
     },
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
-      const dispatched = await orchestrationService.dispatchWithReceipt(
-        { type: 'sendTurn', input: turnInput },
-        dispatchContextForAuthority(
-          readAuthority,
-          context?.clientOrigin,
-          context?.principal,
-        ),
-        admission ? { foregroundInvocationAdmission: admission } : undefined,
+      const command = { type: 'sendTurn' as const, input: turnInput };
+      const dispatchContext = dispatchContextForAuthority(
+        readAuthority,
+        context?.clientOrigin,
+        context?.principal,
       );
+      const dispatched = admission
+        ? await orchestrationService.dispatchWithReceipt(
+            command,
+            dispatchContext,
+            { foregroundInvocationAdmission: admission },
+          )
+        : await orchestrationService.dispatchWithReceipt(
+            command,
+            dispatchContext,
+          );
       if (!dispatched.result || !('turnId' in dispatched.result)) {
         throw new ForegroundMessageTurnIdentityUnavailableError(
           'Foreground turn acceptance did not include a provider turn id',
