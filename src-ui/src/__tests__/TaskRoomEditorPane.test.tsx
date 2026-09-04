@@ -263,13 +263,13 @@ describe('TaskRoomEditorPane', () => {
       reason: 'dirty',
     });
 
-    navigationStore.navigate('/activity');
+    navigationStore.navigate('/agents');
     expect(window.location.pathname).toBe('/projects/station');
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
     expect(window.location.pathname).toBe('/projects/station');
-    navigationStore.navigate('/activity');
+    navigationStore.navigate('/agents');
     fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
-    await waitFor(() => expect(window.location.pathname).toBe('/activity'));
+    await waitFor(() => expect(window.location.pathname).toBe('/agents'));
   });
 
   test('settles unchanged without submitting and clears dirty state', async () => {

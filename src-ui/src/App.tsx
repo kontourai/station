@@ -41,7 +41,6 @@ import { useNavigation } from './contexts/NavigationContext';
 import { ProjectsProvider } from './contexts/ProjectsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
-import { useShowSurface } from './contexts/useShowSurface';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
 import { chatRegion } from './regions/region-model';
 import {
@@ -192,7 +191,6 @@ function App() {
     effective: effectiveDockSlotPlacement,
   } = useDockSlotPlacement(dockSlotPreference);
   const regionModel = useRegionModelOptional();
-  const showSurface = useShowSurface();
   const modelChatRegion = regionModel && chatRegion(regionModel.regions);
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -213,15 +211,6 @@ function App() {
   // Navigation functions (declared early so useEffect closures can reference them)
   const navigateToView = useCallback(
     (view: NavigationView) => {
-      if (view.type === 'activity') {
-        showSurface(
-          'activity',
-          view.sessionId
-            ? { session: view.sessionId, focus: view.focus }
-            : undefined,
-        );
-        return;
-      }
       setCurrentView(view);
       if (view.type === 'layout') {
         setLayout(view.projectSlug, view.layoutSlug);
@@ -232,7 +221,7 @@ function App() {
         navigate(path);
       }
     },
-    [navigate, setLayout, showSurface],
+    [navigate, setLayout],
   );
 
   const navigateHome = useCallback(() => {
