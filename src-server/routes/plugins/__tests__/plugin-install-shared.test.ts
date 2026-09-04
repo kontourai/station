@@ -1,4 +1,5 @@
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,10 +11,13 @@ import {
 } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import {
   corruptFile,
   skipIfCannotChmod,
@@ -22,6 +26,7 @@ import {
 import { ContextSafetyError } from '../../../services/orchestration/context-safety.js';
 import { DistributionProfileService } from '../../../services/plugins/distribution-profile-service.js';
 import {
+  computePluginContentDigest,
   findPluginContentLockCycleError,
   forgetPluginContentDigest,
   PluginContentLockCycleError,
@@ -35,13 +40,16 @@ import {
 } from '../../../services/plugins/plugin-install-consent.js';
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
 import {
+  copyPluginDependencyOwnership,
   getPluginGrants,
   grantPermissions,
   PluginGrantsUnavailableError,
+  readPluginDependencyOwnership,
   readPluginGrantState,
 } from '../../../services/plugins/plugin-permissions.js';
 import { readCurrentWorkspacePaneCatalog } from '../../../services/projects/workspace-pane-catalog.js';
 import type { Logger } from '../../../utils/logger.js';
+import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 import {
   backupPluginDurableState,
   capturePersistedAgentOwnership,
@@ -54,7 +62,12 @@ import {
   synchronizePluginAgentDefinitions,
   uninstallInstalledPlugin,
 } from '../plugin-install-shared.js';
-import { fetchPluginSource } from '../plugin-source.js';
+import { loadPluginProviders } from '../plugin-loader.js';
+import {
+  fetchPluginSource,
+  installPluginDependency,
+} from '../plugin-source.js';
+import { createRegistryRoutes } from '../registry.js';
 
 function markPluginAgentOwner(agentDir: string, plugin: string): void {
   writeFileSync(
@@ -81,6 +94,7 @@ vi.mock('../../../providers/registries/registry.js', () => ({
     listInstalled: vi.fn().mockResolvedValue([]),
   }),
   getPluginRegistryProviders,
+  getSkillRegistryProviders: () => [],
   replacePluginProvidersForSource,
   pluginProviderSourceGeneration: () => 0,
   replacePluginProvidersForSourceGeneration: async (
@@ -165,6 +179,39 @@ async function approvedConsent(
   }
 }
 
+async function dependencyApproval(
+  id: string,
+  source: string,
+  root: string,
+): Promise<{
+  id: string;
+  permissions: string[];
+  contentDigest: string;
+  dependencies: string[];
+}> {
+  const staged = await fetchPluginSource(
+    source,
+    join(root, 'plugins'),
+    logger(),
+  );
+  if ('error' in staged) throw new Error(staged.error);
+  try {
+    const manifest = await readPluginManifestFile(
+      join(staged.tempDir, 'plugin.json'),
+    );
+    const basis = derivePluginConsentBasis(staged.tempDir, manifest);
+    if (!basis) throw new Error(`no dependency consent basis for ${source}`);
+    return {
+      id,
+      permissions: basis.required,
+      contentDigest: basis.contentDigest,
+      dependencies: basis.dependencies,
+    };
+  } finally {
+    rmSync(staged.tempDir, { recursive: true, force: true });
+  }
+}
+
 afterEach(async () => {
   vi.clearAllMocks();
   getPluginRegistryProviders.mockReturnValue([]);
@@ -179,6 +226,586 @@ afterEach(async () => {
       .splice(0, cleanupDirs.length)
       .map((dir) => rm(dir, { recursive: true, force: true })),
   );
+});
+
+describe('dependency approval from the real preview route', () => {
+  const families = [
+    'entrypoint',
+    'bundle',
+    'providers',
+    'settings',
+    'permissions',
+    'declarative',
+  ] as const;
+
+  async function fixture(
+    family: (typeof families)[number],
+    installed = false,
+    transitive = false,
+  ) {
+    const root = mkdtempSync(
+      join(tmpdir(), 'station-dependency-preview-binding-'),
+    );
+    cleanupDirs.push(root);
+    const dependency = join(root, 'dependency-source');
+    const contribution = {
+      entrypoint: { entrypoint: 'index.js' },
+      bundle: {},
+      providers: { providers: [{ type: 'auth', module: './index.js' }] },
+      settings: {
+        settings: [{ key: 'label', label: 'Label', type: 'string' }],
+      },
+      permissions: { permissions: ['providers.register'] },
+      declarative: {},
+    }[family];
+    writePlugin(dependency, {
+      name: 'dependency',
+      version: '1.0.0',
+      ...contribution,
+    });
+    writeFileSync(join(dependency, 'index.js'), 'export default "reviewed";');
+    if (family === 'bundle') {
+      mkdirSync(join(dependency, 'dist'));
+      writeFileSync(
+        join(dependency, 'dist', 'bundle.js'),
+        'globalThis.reviewed = true;',
+      );
+    }
+    const parent = join(root, 'parent-source');
+    writePlugin(parent, {
+      name: 'parent',
+      version: '1.0.0',
+      dependencies: [{ id: 'dependency', source: dependency }],
+    });
+    if (transitive) {
+      const middle = join(root, 'middle-source');
+      writePlugin(middle, {
+        name: 'middle',
+        version: '1.0.0',
+        dependencies: [{ id: 'dependency', source: dependency }],
+      });
+      writePlugin(parent, {
+        name: 'parent',
+        version: '1.0.0',
+        dependencies: [{ id: 'middle', source: middle }],
+      });
+    }
+    const installDeps = deps(root);
+    if (installed) {
+      mkdirSync(join(root, 'plugins'), { recursive: true });
+      cpSync(dependency, join(root, 'plugins', 'dependency'), {
+        recursive: true,
+      });
+    }
+    installDeps.buildPlugin.mockImplementation(
+      async (dir: string, name: string) => {
+        if (name === 'dependency' && family === 'entrypoint') {
+          mkdirSync(join(dir, 'dist'), { recursive: true });
+          writeFileSync(
+            join(dir, 'dist', 'bundle.js'),
+            readFileSync(join(dir, 'index.js')),
+          );
+        }
+      },
+    );
+    const app = new Hono();
+    registerPluginInstallRoutes(app, installDeps);
+    const response = await app.request('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: parent }),
+    });
+    const preview = (await response.json()) as any;
+    expect(response.status).toBe(200);
+    expect(preview.valid).toBe(true);
+    expect(preview.dependencies).toHaveLength(transitive ? 2 : 1);
+    expect(preview.dependencies[0].consent.contentDigest).toBeTruthy();
+    const consent: Extract<
+      PluginInstallConsent,
+      { kind: 'operator-decision' }
+    > = {
+      kind: 'operator-decision',
+      permissions: preview.permissions.required,
+      contentDigest: preview.contentDigest,
+      dependencies: preview.dependencies.map((entry: any) => entry.id),
+      dependencyApprovals: preview.dependencies.map((entry: any) => ({
+        id: entry.id,
+        permissions: entry.consent.permissions,
+        contentDigest: entry.consent.contentDigest,
+        dependencies: entry.consent.dependencies,
+      })),
+    };
+    return { root, dependency, parent, installDeps, consent, app };
+  }
+
+  function registryApp(
+    root: string,
+    entries: Array<{ id: string; source: string }>,
+  ) {
+    const registryPath = join(root, 'registry.json');
+    writeFileSync(
+      registryPath,
+      JSON.stringify({
+        version: 1,
+        plugins: entries.map((entry) => ({
+          ...entry,
+          displayName: entry.id,
+          version: '1.0.0',
+        })),
+      }),
+    );
+    const provider = new JsonManifestRegistryProvider(registryPath, root);
+    getPluginRegistryProviders.mockReturnValue([{ source: 'test', provider }]);
+    return createRegistryRoutes(
+      new ConfigLoader({ projectHomeDir: root }),
+      async () => {},
+      undefined,
+      undefined,
+      { logger: logger() },
+    );
+  }
+
+  test.each(['direct', 'registry'] as const)(
+    '%s route preserves byte and permission refusals through transitive wrappers',
+    async (surface) => {
+      for (const transitive of [false, true]) {
+        for (const reason of ['content', 'permissions']) {
+          const current = await fixture('permissions', false, transitive);
+          if (reason === 'content')
+            writeFileSync(
+              join(current.dependency, 'index.js'),
+              'changed after preview',
+            );
+          else
+            current.consent.dependencyApprovals!.find(
+              (entry) => entry.id === 'dependency',
+            )!.permissions = [];
+          const app =
+            surface === 'direct'
+              ? current.app
+              : registryApp(current.root, [
+                  { id: 'parent', source: current.parent },
+                ]);
+          const response = await app.request(
+            surface === 'direct' ? '/install' : '/plugins/install',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...(surface === 'direct'
+                  ? { source: current.parent }
+                  : { id: 'parent' }),
+                consent: current.consent,
+              }),
+            },
+          );
+          const body = await response.json();
+          expect(response.status, JSON.stringify(body)).toBe(400);
+          expect(body).toMatchObject({ success: false, consent: { reason } });
+          expect(existsSync(join(current.root, 'plugins', 'dependency'))).toBe(
+            false,
+          );
+          expect(existsSync(join(current.root, 'plugins', 'parent'))).toBe(
+            false,
+          );
+        }
+      }
+    },
+  );
+
+  test.each(['direct', 'registry'] as const)(
+    '%s route keeps failed dependency compensation as 500 with the retained tree',
+    async (surface) => {
+      const current = await fixture('permissions');
+      const good = join(current.root, 'good-source');
+      writePlugin(good, {
+        name: 'good',
+        version: '1.0.0',
+        settings: [{ key: 'label', label: 'Label', type: 'string' }],
+      });
+      writePlugin(current.parent, {
+        name: 'parent',
+        version: '1.0.0',
+        dependencies: [
+          { id: 'good', source: good },
+          { id: 'dependency', source: current.dependency },
+        ],
+      });
+      const consent = await approvedConsent(current.parent, current.root);
+      consent.dependencyApprovals = [
+        await dependencyApproval('good', good, current.root),
+        await dependencyApproval(
+          'dependency',
+          current.dependency,
+          current.root,
+        ),
+      ];
+      consent.dependencyApprovals[1].permissions = [];
+      let goodCalls = 0;
+      replacePluginProvidersForSource.mockImplementation(
+        async (name: string) => {
+          if (name === 'good' && ++goodCalls > 1)
+            throw new Error('owned provider compensation failed');
+        },
+      );
+      try {
+        const app =
+          surface === 'direct'
+            ? current.app
+            : registryApp(current.root, [
+                { id: 'parent', source: current.parent },
+              ]);
+        const response = await app.request(
+          surface === 'direct' ? '/install' : '/plugins/install',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...(surface === 'direct'
+                ? { source: current.parent }
+                : { id: 'parent' }),
+              consent,
+            }),
+          },
+        );
+        const body = (await response.json()) as any;
+        expect(response.status, JSON.stringify(body)).toBe(500);
+        expect(body.consent).toBeUndefined();
+        expect(
+          existsSync(join(current.root, 'plugins', 'good', 'plugin.json')),
+        ).toBe(true);
+        expect(goodCalls).toBeGreaterThan(1);
+      } finally {
+        replacePluginProvidersForSource.mockReset();
+      }
+    },
+  );
+
+  test.each(['source', 'registry', 'installed'] as const)(
+    'preview refuses unsupported dependency permissions from %s before offering approval',
+    async (sourceKind) => {
+      const root = mkdtempSync(join(tmpdir(), 'station-unsupported-preview-'));
+      cleanupDirs.push(root);
+      const dependency = join(root, 'dependency-source');
+      writePlugin(dependency, {
+        name: 'dependency',
+        version: '1.0.0',
+        entrypoint: 'index.js',
+        permissions: ['network.fetch'],
+      });
+      writeFileSync(join(dependency, 'index.js'), 'export default {};');
+      const parent = join(root, 'parent');
+      writePlugin(parent, {
+        name: 'parent',
+        version: '1.0.0',
+        dependencies: [
+          {
+            id: 'dependency',
+            ...(sourceKind === 'registry' ? {} : { source: dependency }),
+          },
+        ],
+      });
+      if (sourceKind === 'registry')
+        registryApp(root, [{ id: 'dependency', source: dependency }]);
+      if (sourceKind === 'installed') {
+        mkdirSync(join(root, 'plugins'), { recursive: true });
+        cpSync(dependency, join(root, 'plugins', 'dependency'), {
+          recursive: true,
+        });
+      }
+      const app = new Hono();
+      registerPluginInstallRoutes(app, deps(root));
+      const response = await app.request('/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: parent }),
+      });
+      const body = (await response.json()) as any;
+      expect(response.status, JSON.stringify(body)).toBe(400);
+      expect(body).toMatchObject({
+        valid: false,
+        code: 'unsupported-plugin-dependency',
+      });
+      expect(body.permissions).toBeUndefined();
+      expect(body.contentDigest).toBeUndefined();
+      expect(body.dependencies).toBeUndefined();
+      expect(
+        readdirSync(join(root, 'plugins')).filter((name) =>
+          name.startsWith('.preview-'),
+        ),
+      ).toEqual([]);
+      expect(existsSync(join(root, 'plugins', 'parent'))).toBe(false);
+    },
+  );
+
+  test('registry preview uses the real local source for relative transitive approvals and install', async () => {
+    const root = mkdtempSync(
+      join(tmpdir(), 'station-registry-relative-preview-'),
+    );
+    cleanupDirs.push(root);
+    const leaf = join(root, 'packages', 'leaf');
+    const middle = join(root, 'packages', 'middle');
+    const parent = join(root, 'parent');
+    writePlugin(leaf, { name: 'leaf', version: '1.0.0' });
+    writePlugin(middle, {
+      name: 'middle',
+      version: '1.0.0',
+      dependencies: [{ id: 'leaf', source: '../leaf' }],
+    });
+    writePlugin(parent, {
+      name: 'parent',
+      version: '1.0.0',
+      dependencies: [{ id: 'middle' }],
+    });
+    const registry = registryApp(root, [
+      { id: 'parent', source: parent },
+      { id: 'middle', source: middle },
+    ]);
+    const app = new Hono();
+    registerPluginInstallRoutes(app, deps(root));
+    const response = await app.request('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ registryId: 'parent' }),
+    });
+    const preview = (await response.json()) as any;
+    expect(response.status, JSON.stringify(preview)).toBe(200);
+    expect(preview.dependencies.map((entry: any) => entry.id)).toEqual([
+      'middle',
+      'leaf',
+    ]);
+    expect(
+      preview.dependencies.every((entry: any) => entry.consent?.contentDigest),
+    ).toBe(true);
+    const consent = {
+      permissions: preview.permissions.required,
+      contentDigest: preview.contentDigest,
+      dependencies: preview.dependencies.map((entry: any) => entry.id),
+      dependencyApprovals: preview.dependencies.map((entry: any) => ({
+        id: entry.id,
+        ...entry.consent,
+      })),
+    };
+    const outside = mkdtempSync(join(tmpdir(), 'station-registry-outside-'));
+    cleanupDirs.push(outside);
+    writePlugin(outside, { name: 'escape', version: '1.0.0' });
+    writePlugin(middle, {
+      name: 'middle',
+      version: '1.0.0',
+      dependencies: [{ id: 'escape', source: relative(middle, outside) }],
+    });
+    const escaped = await app.request('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ registryId: 'parent' }),
+    });
+    const escapedPreview = (await escaped.json()) as any;
+    expect(escapedPreview.valid).toBe(false);
+    expect(escapedPreview.contentDigest).toBeUndefined();
+    expect(existsSync(join(root, 'plugins', 'escape'))).toBe(false);
+    // Restore the reviewed source exactly; an earlier valid approval remains
+    // bound to those bytes, not to the rejected traversal attempt.
+    writePlugin(middle, {
+      name: 'middle',
+      version: '1.0.0',
+      dependencies: [{ id: 'leaf', source: '../leaf' }],
+    });
+    const installed = await registry.request('/plugins/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'parent', consent }),
+    });
+    expect(
+      installed.status,
+      JSON.stringify(await installed.clone().json()),
+    ).toBe(200);
+    for (const id of ['parent', 'middle', 'leaf'])
+      expect(existsSync(join(root, 'plugins', id, 'plugin.json'))).toBe(true);
+  });
+
+  test.each(families)(
+    'refuses changed %s dependency bytes under the original preview approval',
+    async (family) => {
+      const { root, dependency, parent, installDeps, consent } =
+        await fixture(family);
+      const changedFile =
+        family === 'bundle'
+          ? join(dependency, 'dist', 'bundle.js')
+          : join(dependency, 'index.js');
+      writeFileSync(changedFile, 'globalThis.unreviewed = true;');
+      await expect(
+        installPluginFromSource(parent, [], installDeps, { consent }),
+      ).rejects.toThrow('its files changed after it was reviewed');
+      expect(installDeps.buildPlugin).not.toHaveBeenCalled();
+      expect(existsSync(join(root, 'plugins', 'dependency'))).toBe(false);
+      expect(existsSync(join(root, 'plugins', 'parent'))).toBe(false);
+    },
+  );
+
+  test.each(families)(
+    'installs unchanged %s dependency bytes with the preview approval',
+    async (family) => {
+      const { root, parent, installDeps, consent } = await fixture(family);
+      const installed = await installPluginFromSource(parent, [], installDeps, {
+        consent,
+      });
+      expect(installed.success).toBe(true);
+      expect(existsSync(join(root, 'plugins', 'dependency', 'index.js'))).toBe(
+        true,
+      );
+    },
+  );
+
+  test.each(families.filter((family) => family !== 'declarative'))(
+    'requires an approval for a %s dependency even when the parent names its id',
+    async (family) => {
+      const { root, parent, installDeps, consent } = await fixture(family);
+      delete consent.dependencyApprovals;
+      await expect(
+        installPluginFromSource(parent, [], installDeps, { consent }),
+      ).rejects.toThrow('no preview-bound permission approval');
+      expect(existsSync(join(root, 'plugins', 'dependency'))).toBe(false);
+    },
+  );
+
+  test('preserves the named declarative dependency policy without an individual approval', async () => {
+    const { parent, installDeps, consent } = await fixture('declarative');
+    delete consent.dependencyApprovals;
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).resolves.toMatchObject({ success: true });
+  });
+
+  test('does not treat a correct digest as approval of omitted dependency permissions', async () => {
+    const { parent, installDeps, consent } = await fixture('permissions');
+    consent.dependencyApprovals![0].permissions = [];
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).rejects.toThrow(
+      'it needs providers.register, but the approval covered none',
+    );
+  });
+
+  test.each(['entrypoint', 'providers'] as const)(
+    'removing the %s declaration after preview does not remove the approval binding',
+    async (family) => {
+      const { root, dependency, parent, installDeps, consent } =
+        await fixture(family);
+      writePlugin(dependency, { name: 'dependency', version: '1.0.0' });
+      await expect(
+        installPluginFromSource(parent, [], installDeps, { consent }),
+      ).rejects.toThrow('its files changed after it was reviewed');
+      expect(existsSync(join(root, 'plugins', 'dependency'))).toBe(false);
+      expect(installDeps.buildPlugin).not.toHaveBeenCalled();
+    },
+  );
+
+  test('an approval for a different dependency id cannot authorize browser code', async () => {
+    const { root, parent, installDeps, consent } = await fixture('entrypoint');
+    consent.dependencyApprovals![0].id = 'another-dependency';
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).rejects.toThrow('no preview-bound permission approval');
+    expect(existsSync(join(root, 'plugins', 'dependency'))).toBe(false);
+  });
+
+  test('refuses rebuilding an installed entrypoint whose bytes changed after preview', async () => {
+    const { root, parent, installDeps, consent } = await fixture(
+      'entrypoint',
+      true,
+    );
+    const installedDir = join(root, 'plugins', 'dependency');
+    writeFileSync(
+      join(installedDir, 'index.js'),
+      'globalThis.unreviewed = true;',
+    );
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).rejects.toThrow('its files changed after it was reviewed');
+    expect(installDeps.buildPlugin).not.toHaveBeenCalled();
+    expect(readFileSync(join(installedDir, 'index.js'), 'utf8')).toBe(
+      'globalThis.unreviewed = true;',
+    );
+    expect(existsSync(join(installedDir, 'dist', 'bundle.js'))).toBe(false);
+    expect(existsSync(join(root, 'plugins', 'parent'))).toBe(false);
+  });
+
+  test('rebuilds an installed entrypoint when its current bytes match preview', async () => {
+    const { root, parent, installDeps, consent } = await fixture(
+      'entrypoint',
+      true,
+    );
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).resolves.toMatchObject({ success: true });
+    expect(installDeps.buildPlugin).toHaveBeenCalledWith(
+      join(root, 'plugins', 'dependency'),
+      'dependency',
+    );
+    expect(
+      readFileSync(
+        join(root, 'plugins', 'dependency', 'dist', 'bundle.js'),
+        'utf8',
+      ),
+    ).toBe('export default "reviewed";');
+  });
+
+  test('does not rebuild an installed entrypoint without its individual approval', async () => {
+    const { parent, installDeps, consent } = await fixture('entrypoint', true);
+    delete consent.dependencyApprovals;
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).rejects.toThrow('no preview-bound permission approval');
+    expect(installDeps.buildPlugin).not.toHaveBeenCalled();
+  });
+
+  test('refuses rebuilding an installed entrypoint whose permissions changed after preview', async () => {
+    const { root, parent, installDeps, consent } = await fixture(
+      'entrypoint',
+      true,
+    );
+    writePlugin(join(root, 'plugins', 'dependency'), {
+      name: 'dependency',
+      version: '1.0.0',
+      entrypoint: 'index.js',
+      permissions: ['providers.register'],
+    });
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).rejects.toThrow('its files changed after it was reviewed');
+    expect(installDeps.buildPlugin).not.toHaveBeenCalled();
+  });
+
+  test('read-only adoption never grants changed installed permissions from a stale preview', async () => {
+    const { root, parent, installDeps, consent } = await fixture(
+      'settings',
+      true,
+    );
+    writePlugin(join(root, 'plugins', 'dependency'), {
+      name: 'dependency',
+      version: '1.0.0',
+      settings: [{ key: 'label', label: 'Label', type: 'string' }],
+      permissions: ['providers.register'],
+    });
+    const installed = await installPluginFromSource(parent, [], installDeps, {
+      consent,
+    });
+    expect(installed.permissions.dependencies).toEqual([
+      {
+        id: 'dependency',
+        pendingConsent: [{ permission: 'providers.register', tier: 'trusted' }],
+      },
+    ]);
+    expect(getPluginGrants(root, 'dependency')).toEqual([]);
+    expect(installDeps.buildPlugin).not.toHaveBeenCalledWith(
+      join(root, 'plugins', 'dependency'),
+      'dependency',
+    );
+    expect(replacePluginProvidersForSource).not.toHaveBeenCalledWith(
+      'dependency',
+      expect.anything(),
+    );
+  });
 });
 
 describe('resolvePluginRegistrySource', () => {
@@ -2236,6 +2863,14 @@ describe('a refused plugin content lock survives installPluginFromSource', () =>
     // Taken before the sibling is armed: deriving it stages a copy, and the
     // decision has to exist before the install that carries it.
     const appConsent = await approvedConsent(source, root);
+    appConsent.dependencyApprovals = [
+      await dependencyApproval('gate-dep', join(pluginsDir, 'gate-dep'), root),
+      await dependencyApproval(
+        'shared-lib',
+        join(pluginsDir, 'shared-lib'),
+        root,
+      ),
+    ];
 
     let appHeld!: () => void;
     const appHeldGate = new Promise<void>((resolve) => {
@@ -2446,6 +3081,68 @@ describe('installPluginFromSource rolls back only the dependency trees it create
     expect(existsSync(join(pluginsDir, 'trigger-dep'))).toBe(false);
     await holder;
   });
+
+  test('preserves a created-tree name when no exact digest authorized its deletion', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-plugin-rollback-digest-'));
+    cleanupDirs.push(root);
+    const pluginsDir = join(root, 'plugins');
+    writePlugin(join(pluginsDir, 'unbound-dep'), {
+      name: 'unbound-dep',
+      version: '1.0.0',
+    });
+    const rollbackLifecycle = vi.fn(async () => undefined);
+    const reviewLogger = logger();
+
+    await removeDependencyTreesCreatedByThisInstall(
+      pluginsDir,
+      new Set(['unbound-dep']),
+      'parent',
+      reviewLogger,
+      1_000,
+      rollbackLifecycle,
+      new Map(),
+    );
+
+    expect(existsSync(join(pluginsDir, 'unbound-dep', 'plugin.json'))).toBe(
+      true,
+    );
+    expect(rollbackLifecycle).not.toHaveBeenCalled();
+    expect(reviewLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('could not bind rollback ownership'),
+      { dep: 'unbound-dep' },
+    );
+  });
+
+  test('rolls transitive dependency lifecycles back in reverse creation order', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-plugin-rollback-order-'));
+    cleanupDirs.push(root);
+    const pluginsDir = join(root, 'plugins');
+    const created = new Set(['leaf', 'middle']);
+    const digests = new Map<string, string>();
+    for (const name of created) {
+      writePlugin(join(pluginsDir, name), { name, version: '1.0.0' });
+      const digest = computePluginContentDigest(pluginsDir, name);
+      if (!digest) throw new Error(`fixture ${name} was not digestible`);
+      digests.set(name, digest);
+    }
+    const rollbackOrder: string[] = [];
+
+    await removeDependencyTreesCreatedByThisInstall(
+      pluginsDir,
+      created,
+      'parent',
+      logger(),
+      1_000,
+      async (name) => {
+        rollbackOrder.push(name);
+      },
+      digests,
+    );
+
+    expect(rollbackOrder).toEqual(['middle', 'leaf']);
+    expect(existsSync(join(pluginsDir, 'middle'))).toBe(false);
+    expect(existsSync(join(pluginsDir, 'leaf'))).toBe(false);
+  });
 });
 
 describe('removeDependencyTreesCreatedByThisInstall lock timeout', () => {
@@ -2490,6 +3187,8 @@ describe('removeDependencyTreesCreatedByThisInstall lock timeout', () => {
 
     release();
     await holder;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(existsSync(join(pluginsDir, 'stuck-dep', 'plugin.json'))).toBe(true);
   });
 });
 
@@ -3180,5 +3879,1360 @@ describe('plugin install consent gate (station#4288)', () => {
     expect(refusal.reason).toBe('content');
     expect(refusal.pluginName).toBe('contributor');
     expect(refusal.required).toEqual(['network.fetch']);
+  });
+
+  test('rejects a registry dependency cycle after the registry materializes each parent tree', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-registry-dep-cycle-'));
+    cleanupDirs.push(root);
+    const pluginsDir = join(root, 'plugins');
+    mkdirSync(pluginsDir, { recursive: true });
+    const manifests = {
+      a: { name: 'a', version: '1.0.0', dependencies: [{ id: 'b' }] },
+      b: { name: 'b', version: '1.0.0', dependencies: [{ id: 'a' }] },
+    };
+    const provider = {
+      install: vi.fn(async (id: string) => {
+        if (id !== 'a' && id !== 'b') {
+          return { success: false, message: 'missing' };
+        }
+        writePlugin(join(pluginsDir, id), manifests[id]);
+        return { success: true, message: 'installed' };
+      }),
+    };
+    const created = new Set<string>();
+
+    const result = await installPluginDependency(
+      { id: 'a' },
+      pluginsDir,
+      () => provider,
+      async () => undefined,
+      logger(),
+      new Set(),
+      created,
+      new Set(['a', 'b']),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringContaining('cycle detected: a'),
+    });
+    expect(created).toEqual(new Set());
+    expect(existsSync(join(pluginsDir, 'a'))).toBe(false);
+    expect(existsSync(join(pluginsDir, 'b'))).toBe(false);
+  });
+
+  test('removes the exact registry alias when post-install dependency validation refuses', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-registry-dep-rollback-'));
+    cleanupDirs.push(root);
+    const dependencySource = join(root, 'dependency-source');
+    writePlugin(dependencySource, {
+      name: 'registry-dependency',
+      version: '1.0.0',
+      permissions: ['providers.register'],
+      providers: [{ type: 'remote', module: './provider.js' }],
+    });
+    writeFileSync(join(dependencySource, 'provider.js'), 'export default {};');
+    const registryManifest = join(root, 'registry.json');
+    writeFileSync(
+      registryManifest,
+      JSON.stringify({
+        version: 1,
+        plugins: [
+          {
+            id: 'registry-dependency',
+            displayName: 'Registry dependency',
+            description: 'Dependency rollback fixture',
+            version: '1.0.0',
+            source: dependencySource,
+            type: 'plugin',
+          },
+        ],
+      }),
+    );
+    const provider = new JsonManifestRegistryProvider(registryManifest, root);
+
+    const result = await installPluginDependency(
+      { id: 'registry-dependency' },
+      join(root, 'plugins'),
+      () => ({ install: provider.install.bind(provider) }),
+      vi.fn().mockResolvedValue(undefined),
+      logger(),
+      new Set(),
+      new Set(),
+      new Set(['registry-dependency']),
+      {
+        validate() {
+          throw new Error('forced lifecycle validation refusal');
+        },
+        activate: vi.fn().mockResolvedValue(undefined),
+        rollback: vi.fn().mockResolvedValue(undefined),
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: 'forced lifecycle validation refusal',
+    });
+    expect(existsSync(join(root, 'plugins', 'registry-dependency'))).toBe(
+      false,
+    );
+    expect(
+      JSON.parse(
+        readFileSync(join(root, 'config', 'registry-installs.json'), 'utf-8'),
+      ),
+    ).toEqual({});
+
+    const secondInstall = await provider.install('registry-dependency', {
+      expectedInstalledPluginName: 'registry-dependency',
+    });
+    expect(secondInstall.success).toBe(true);
+    const newerOwner = {
+      'registry-dependency': {
+        pluginName: 'other-plugin',
+        registryKey: 'registry:newer',
+      },
+    };
+    writeFileSync(
+      join(root, 'config', 'registry-installs.json'),
+      JSON.stringify(newerOwner),
+    );
+    await secondInstall.rollback?.();
+    expect(
+      JSON.parse(
+        readFileSync(join(root, 'config', 'registry-installs.json'), 'utf-8'),
+      ),
+    ).toEqual(newerOwner);
+  });
+
+  test('seeds the top-level plugin identity so install-over cannot adopt its own tree as a dependency', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-parent-dep-cycle-'));
+    cleanupDirs.push(root);
+    const parentSource = join(root, 'parent');
+    writePlugin(parentSource, {
+      name: 'parent',
+      version: '1.0.0',
+      dependencies: [{ id: 'parent', source: '.' }],
+    });
+    const consent = await approvedConsent(parentSource, root);
+    consent.dependencyApprovals = [
+      await dependencyApproval('parent', parentSource, root),
+    ];
+
+    await expect(
+      installPluginFromSource(parentSource, [], deps(root), { consent }),
+    ).rejects.toThrow(/cycle detected: parent/);
+    expect(existsSync(join(root, 'plugins', 'parent'))).toBe(false);
+  });
+
+  describe('lifecycle-bearing plugin dependencies', () => {
+    async function sharedParents(names: string[]) {
+      const root = mkdtempSync(join(tmpdir(), 'station-shared-custody-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const installDeps = deps(root);
+      const sources = new Map<string, string>();
+      for (const name of names) {
+        const source = join(root, `${name}-source`);
+        sources.set(name, source);
+        writePlugin(source, {
+          name,
+          version: '1.0.0',
+          dependencies: [{ id: 'shared-providers', source: dependencySource }],
+        });
+        await installPluginFromSource(source, [], installDeps, {
+          consent: await approvedParent(source, dependencySource, root),
+        });
+      }
+      return { root, dependencySource, installDeps, sources };
+    }
+
+    test('multiple consumers receive deterministic custody and only the final removal retires the dependency', async () => {
+      const { root, installDeps } = await sharedParents([
+        'z-creator',
+        'b-consumer',
+        'a-consumer',
+      ]);
+      const expected = readPluginDependencyOwnership(root, 'z-creator');
+      replacePluginProvidersForSource.mockClear();
+      await uninstallInstalledPlugin('z-creator', installDeps);
+      expect(readPluginDependencyOwnership(root, 'a-consumer')).toEqual(
+        expected,
+      );
+      expect(readPluginDependencyOwnership(root, 'b-consumer')).toEqual([]);
+      await uninstallInstalledPlugin('a-consumer', installDeps);
+      expect(readPluginDependencyOwnership(root, 'b-consumer')).toEqual(
+        expected,
+      );
+      expect(
+        replacePluginProvidersForSource.mock.calls.filter(
+          ([name]) => name === 'shared-providers',
+        ),
+      ).toHaveLength(0);
+      await uninstallInstalledPlugin('b-consumer', installDeps);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(
+        replacePluginProvidersForSource.mock.calls.filter(
+          ([name]) => name === 'shared-providers',
+        ),
+      ).toHaveLength(1);
+    });
+
+    test('a creator replacement that drops a shared dependency hands custody to the remaining consumer', async () => {
+      const { root, installDeps, sources } = await sharedParents([
+        'creator',
+        'consumer',
+      ]);
+      const source = sources.get('creator')!;
+      const expected = readPluginDependencyOwnership(root, 'creator');
+      writePlugin(source, { name: 'creator', version: '2.0.0' });
+      await installPluginFromSource(source, [], installDeps, {
+        consent: await approvedConsent(source, root),
+      });
+      expect(readPluginDependencyOwnership(root, 'creator')).toEqual([]);
+      expect(readPluginDependencyOwnership(root, 'consumer')).toEqual(expected);
+      await uninstallInstalledPlugin('consumer', installDeps);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(existsSync(join(root, 'plugins', 'creator'))).toBe(true);
+    });
+
+    test('a crash-window duplicate claim preserves the survivor and cleans only once at the last consumer', async () => {
+      const { root, installDeps } = await sharedParents([
+        'creator',
+        'consumer',
+      ]);
+      const entry = readPluginDependencyOwnership(root, 'creator')[0];
+      replacePluginProvidersForSource.mockClear();
+      const copied = await copyPluginDependencyOwnership(
+        root,
+        'creator',
+        'consumer',
+        entry,
+        computePluginContentDigest(join(root, 'plugins'), 'consumer')!,
+      );
+      expect(copied.kind).toBe('copied');
+      expect(readPluginDependencyOwnership(root, 'creator')).toEqual([entry]);
+      expect(readPluginDependencyOwnership(root, 'consumer')).toEqual([entry]);
+      expect(getPluginGrants(root, 'consumer')).toEqual([]);
+      expect(replacePluginProvidersForSource).not.toHaveBeenCalled();
+      // Simulate interruption after durable copy but before creator retirement:
+      // restart/retry observes both claims, without regranting or reactivating.
+      await uninstallInstalledPlugin('creator', installDeps);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+      expect(readPluginDependencyOwnership(root, 'consumer')).toEqual([entry]);
+      await uninstallInstalledPlugin('consumer', installDeps);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(
+        replacePluginProvidersForSource.mock.calls.filter(
+          ([name]) => name === 'shared-providers',
+        ),
+      ).toHaveLength(1);
+    });
+
+    test('failed creator retirement restores its authority and reverses the recipient handoff', async () => {
+      const { root, installDeps } = await sharedParents([
+        'creator',
+        'consumer',
+      ]);
+      const expected = readPluginDependencyOwnership(root, 'creator');
+      await expect(
+        uninstallInstalledPlugin('creator', {
+          ...installDeps,
+          eventBus: {
+            emit() {
+              throw new Error('after handoff failure');
+            },
+          } as never,
+        }),
+      ).rejects.toThrow('after handoff failure');
+      expect(existsSync(join(root, 'plugins', 'creator'))).toBe(true);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+      expect(readPluginDependencyOwnership(root, 'creator')).toEqual(expected);
+      expect(readPluginDependencyOwnership(root, 'consumer')).toEqual([]);
+      await uninstallInstalledPlugin('creator', installDeps);
+      await uninstallInstalledPlugin('consumer', installDeps);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+    });
+
+    test('failed creator replacement restores the original claim before undoing the handoff', async () => {
+      const { root, installDeps, sources } = await sharedParents([
+        'creator',
+        'consumer',
+      ]);
+      const expected = readPluginDependencyOwnership(root, 'creator');
+      const source = sources.get('creator')!;
+      writePlugin(source, { name: 'creator', version: '2.0.0' });
+      const reconcile = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('publication after handoff failed'))
+        .mockResolvedValue(undefined);
+      await expect(
+        installPluginFromSource(
+          source,
+          [],
+          { ...installDeps, reconcileEngineConnections: reconcile },
+          { consent: await approvedConsent(source, root) },
+        ),
+      ).rejects.toThrow('publication after handoff failed');
+      expect(readPluginDependencyOwnership(root, 'creator')).toEqual(expected);
+      expect(readPluginDependencyOwnership(root, 'consumer')).toEqual([]);
+      expect(
+        JSON.parse(
+          readFileSync(join(root, 'plugins', 'creator', 'plugin.json'), 'utf8'),
+        ).version,
+      ).toBe('1.0.0');
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+    });
+
+    test('a legacy unbound sole consumer causes safe refusal rather than orphaning or granting', async () => {
+      const { root, installDeps } = await sharedParents([
+        'creator',
+        'consumer',
+      ]);
+      const expected = readPluginDependencyOwnership(root, 'creator');
+      const grantsPath = join(root, 'plugin-grants.json');
+      const stored = JSON.parse(readFileSync(grantsPath, 'utf8'));
+      stored.consumer = ['network.fetch'];
+      writeFileSync(grantsPath, JSON.stringify(stored));
+      await expect(
+        uninstallInstalledPlugin('creator', installDeps),
+      ).rejects.toThrow('no verifiable surviving cleanup owner');
+      expect(existsSync(join(root, 'plugins', 'creator'))).toBe(true);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+      expect(readPluginDependencyOwnership(root, 'creator')).toEqual(expected);
+      expect(JSON.parse(readFileSync(grantsPath, 'utf8')).consumer).toEqual([
+        'network.fetch',
+      ]);
+    });
+
+    test('the last consumer removes a managed dependency after its creating parent is gone', async () => {
+      const root = mkdtempSync(
+        join(tmpdir(), 'station-shared-dependency-owner-'),
+      );
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const registryPath = join(root, 'registry.json');
+      writeFileSync(
+        registryPath,
+        JSON.stringify({
+          version: 1,
+          plugins: [
+            {
+              id: 'shared-providers',
+              displayName: 'Shared',
+              version: '1.0.0',
+              source: dependencySource,
+            },
+          ],
+        }),
+      );
+      const registry = new JsonManifestRegistryProvider(registryPath, root);
+      getPluginRegistryProviders.mockReturnValue([
+        { source: 'shared-registry', provider: registry },
+      ]);
+      const creator = join(root, 'creator-source');
+      const consumer = join(root, 'consumer-source');
+      writePlugin(creator, {
+        name: 'creator',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers' }],
+      });
+      writePlugin(consumer, {
+        name: 'consumer',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers' }],
+      });
+      const registered = new Map<string, unknown[]>();
+      replacePluginProvidersForSource.mockImplementation(
+        async (name: string, providers: unknown[]) => {
+          registered.set(name, providers);
+        },
+      );
+      try {
+        const installDeps = deps(root);
+        await installPluginFromSource(creator, [], installDeps, {
+          consent: await approvedParent(creator, dependencySource, root),
+        });
+        await grantPermissions(root, 'shared-providers', [
+          'providers.register',
+        ]);
+        const installedDependencyDir = join(
+          root,
+          'plugins',
+          'shared-providers',
+        );
+        const dependencyManifest = await readPluginManifestFile(
+          join(installedDependencyDir, 'plugin.json'),
+        );
+        await loadPluginProviders(
+          join(root, 'plugins'),
+          'shared-providers',
+          dependencyManifest,
+          logger(),
+          { strict: true },
+        );
+        await installPluginFromSource(consumer, [], installDeps, {
+          consent: await approvedParent(consumer, dependencySource, root),
+        });
+        expect(registered.get('shared-providers')).toHaveLength(1);
+        expect(dependencyManifest.settings).toHaveLength(1);
+        expect(await registry.listInstalled()).toHaveLength(1);
+        await uninstallInstalledPlugin('creator', installDeps);
+        expect(existsSync(installedDependencyDir)).toBe(true);
+        expect(getPluginGrants(root, 'shared-providers')).toContain(
+          'providers.register',
+        );
+        expect(registered.get('shared-providers')).toHaveLength(1);
+        await uninstallInstalledPlugin('consumer', installDeps);
+        expect({
+          bytesAndSettingsRemain: existsSync(installedDependencyDir),
+          aliases: (await registry.listInstalled()).map((entry) => entry.id),
+          grants: getPluginGrants(root, 'shared-providers'),
+          providers: registered.get('shared-providers')?.length,
+        }).toEqual({
+          bytesAndSettingsRemain: false,
+          aliases: [],
+          grants: [],
+          providers: 0,
+        });
+      } finally {
+        replacePluginProvidersForSource.mockReset();
+      }
+    });
+
+    test('an install waiting for publication does not retain its content lock', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-publication-order-'));
+      cleanupDirs.push(root);
+      const source = join(root, 'source');
+      writePlugin(source, { name: 'dependency', version: '1.0.0' });
+      const consent = await approvedConsent(source, root);
+      const release = await acquireFileMutationLockAsync(
+        join(root, 'plugin-install-publication.mutation'),
+      );
+      const installing = installPluginFromSource(source, [], deps(root), {
+        consent,
+      });
+      try {
+        await vi.waitFor(() =>
+          expect(
+            readdirSync(join(root, 'plugins')).some((name) =>
+              name.startsWith('.preview-'),
+            ),
+          ).toBe(true),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        const contentAvailable = await Promise.race([
+          withPluginContentLock(
+            join(root, 'plugins'),
+            'dependency',
+            async () => true,
+          ),
+          new Promise<boolean>((resolve) =>
+            setTimeout(() => resolve(false), 250),
+          ),
+        ]);
+        expect(contentAvailable).toBe(true);
+      } finally {
+        await release();
+        await installing;
+      }
+    });
+
+    test('an uninstall waiting for publication does not retain its content lock', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-publication-order-'));
+      cleanupDirs.push(root);
+      writePlugin(join(root, 'plugins', 'dependency'), {
+        name: 'dependency',
+        version: '1.0.0',
+      });
+      const release = await acquireFileMutationLockAsync(
+        join(root, 'plugin-install-publication.mutation'),
+      );
+      const { Hono } = await import('hono');
+      const { registerPluginLifecycleRoutes } = await import(
+        '../plugin-lifecycle-routes.js'
+      );
+      const app = new Hono();
+      registerPluginLifecycleRoutes(app, deps(root));
+      const removing = app.request('/dependency', { method: 'DELETE' });
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(
+          await Promise.race([
+            withPluginContentLock(
+              join(root, 'plugins'),
+              'dependency',
+              async () => true,
+            ),
+            new Promise<boolean>((resolve) =>
+              setTimeout(() => resolve(false), 250),
+            ),
+          ]),
+        ).toBe(true);
+      } finally {
+        await release();
+        expect((await removing).status).toBe(200);
+      }
+    });
+
+    test('refuses a dependency singleton colliding with the staged parent before installation', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-parent-collision-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parent = join(root, 'parent');
+      writePlugin(parent, {
+        name: 'parent',
+        version: '1.0.0',
+        providers: [{ type: 'auth', module: './provider.js' }],
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      writeFileSync(join(parent, 'provider.js'), 'export default {};');
+      await expect(
+        installPluginFromSource(parent, [], deps(root), {
+          consent: await approvedParent(parent, dependencySource, root),
+        }),
+      ).rejects.toThrow("collides with staged plugin 'parent'");
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(replacePluginProvidersForSource).not.toHaveBeenCalledWith(
+        'shared-providers',
+        expect.anything(),
+      );
+    });
+
+    test('allows moving an old parent singleton provider into its replacement dependency', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-parent-migration-'));
+      cleanupDirs.push(root);
+      writePlugin(join(root, 'plugins', 'parent'), {
+        name: 'parent',
+        version: '1.0.0',
+        providers: [{ type: 'auth', module: './provider.js' }],
+      });
+      const dependencySource = writeProviderDependency(root);
+      const parent = join(root, 'parent');
+      writePlugin(parent, {
+        name: 'parent',
+        version: '2.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const result = await installPluginFromSource(parent, [], deps(root), {
+        consent: await approvedParent(parent, dependencySource, root),
+      });
+      expect(result.success).toBe(true);
+    });
+
+    test('preserves registry ownership for the production resolveSource dependency path', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-registry-source-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const registryPath = join(root, 'registry.json');
+      writeFileSync(
+        registryPath,
+        JSON.stringify({
+          version: 1,
+          plugins: [
+            {
+              id: 'shared-providers',
+              displayName: 'Shared',
+              version: '1.0.0',
+              source: dependencySource,
+            },
+          ],
+        }),
+      );
+      const provider = new JsonManifestRegistryProvider(registryPath, root);
+      getPluginRegistryProviders.mockReturnValue([
+        { source: 'test', provider },
+      ]);
+      const parent = join(root, 'parent');
+      writePlugin(parent, {
+        name: 'parent',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers' }],
+      });
+      const installDeps = deps(root);
+      await installPluginFromSource(parent, [], installDeps, {
+        consent: await approvedParent(parent, dependencySource, root),
+      });
+      expect(await provider.listInstalled()).toEqual([
+        expect.objectContaining({
+          id: 'shared-providers',
+          installedPluginName: 'shared-providers',
+        }),
+      ]);
+      await uninstallInstalledPlugin('parent', installDeps);
+      expect(await provider.listInstalled()).toEqual([]);
+      expect(
+        JSON.parse(
+          readFileSync(join(root, 'config', 'registry-installs.json'), 'utf8'),
+        ),
+      ).toEqual({});
+    });
+
+    function writeProviderDependency(
+      root: string,
+      name = 'shared-providers',
+      providerType = 'auth',
+    ) {
+      const source = join(root, name);
+      writePlugin(source, {
+        name,
+        version: '1.0.0',
+        settings: [
+          {
+            key: 'endpoint',
+            label: 'Endpoint',
+            type: 'string',
+            default: 'https://example.test',
+          },
+        ],
+        providers: [{ type: providerType, module: './provider.js' }],
+      });
+      writeFileSync(
+        join(source, 'provider.js'),
+        'export default function provider() { return { source: "dependency" }; }\n',
+      );
+      return source;
+    }
+
+    async function approvedParent(
+      parentSource: string,
+      dependencySource: string,
+      root: string,
+    ) {
+      const consent = await approvedConsent(parentSource, root);
+      return {
+        ...consent,
+        dependencyApprovals: [
+          await dependencyApproval('shared-providers', dependencySource, root),
+        ],
+      };
+    }
+
+    test('reports current dependency approval truth after adoption of an already approved install', async () => {
+      const root = mkdtempSync(
+        join(tmpdir(), 'station-dependency-permission-truth-'),
+      );
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const installDeps = deps(root);
+      const first = await installPluginFromSource(
+        parentSource,
+        [],
+        installDeps,
+        {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        },
+      );
+      expect(first.permissions.dependencies).toEqual([
+        {
+          id: 'shared-providers',
+          pendingConsent: [
+            { permission: 'providers.register', tier: 'trusted' },
+          ],
+        },
+      ]);
+      await grantPermissions(root, 'shared-providers', ['providers.register']);
+      const adopted = await installPluginFromSource(
+        parentSource,
+        [],
+        installDeps,
+        {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        },
+      );
+      expect(readPluginGrantState(root, 'shared-providers').granted).toContain(
+        'providers.register',
+      );
+      expect(adopted.permissions.dependencies).toEqual([
+        { id: 'shared-providers', pendingConsent: [] },
+      ]);
+    });
+
+    test('installs relative provider/settings dependencies once with trusted providers pending and cleans owned lifecycle state on uninstall', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [
+          { id: 'shared-providers', source: '../shared-providers' },
+        ],
+      });
+      const installDeps = deps(root);
+
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+      expect(
+        JSON.parse(readFileSync(join(root, 'plugin-grants.json'), 'utf-8'))[
+          'enterprise-layout'
+        ].installAuthority.ownedDependencies,
+      ).toEqual([
+        expect.objectContaining({
+          id: 'shared-providers',
+          contentDigest: expect.stringMatching(/^sha256:/),
+        }),
+      ]);
+      expect(readPluginGrantState(root, 'shared-providers').granted).toEqual(
+        [],
+      );
+      expect(replacePluginProvidersForSource).toHaveBeenCalledWith(
+        'shared-providers',
+        [],
+      );
+
+      await uninstallInstalledPlugin('enterprise-layout', installDeps);
+
+      expect(existsSync(join(root, 'plugins', 'enterprise-layout'))).toBe(
+        false,
+      );
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(readPluginGrantState(root, 'shared-providers').granted).toEqual(
+        [],
+      );
+      expect(replacePluginProvidersForSource).toHaveBeenCalledWith(
+        'shared-providers',
+        [],
+      );
+    });
+
+    test('rolls dependency providers, grants, and bytes back when the parent fails', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const installDeps = {
+        ...deps(root),
+        buildPlugin: vi.fn(async (_dir: string, name: string) => {
+          if (name === 'enterprise-layout') throw new Error('parent failed');
+        }),
+      };
+
+      await expect(
+        installPluginFromSource(parentSource, [], installDeps, {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        }),
+      ).rejects.toThrow('parent failed');
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(existsSync(join(root, 'plugins', 'enterprise-layout'))).toBe(
+        false,
+      );
+      expect(readPluginGrantState(root, 'shared-providers').granted).toEqual(
+        [],
+      );
+      expect(replacePluginProvidersForSource).toHaveBeenCalledWith(
+        'shared-providers',
+        [],
+      );
+    });
+
+    test('retains activation cleanup ownership and retries every compensation step after a partial rollback failure', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const reconciled: string[] = [];
+      const settle = vi
+        .fn<() => Promise<void>>()
+        .mockRejectedValueOnce(new Error('activation settlement failed'))
+        .mockResolvedValue(undefined);
+      let dependencyEmptyReplacements = 0;
+      replacePluginProvidersForSource.mockImplementation(
+        async (plugin: string, providers: unknown[]) => {
+          if (plugin === 'shared-providers' && providers.length === 0) {
+            dependencyEmptyReplacements += 1;
+            // First [] is ordinary inactive-provider loading. The second is
+            // activation compensation; fail it once so the enclosing install
+            // must retry the retained cleanup claim.
+            if (dependencyEmptyReplacements === 2) {
+              throw new Error('provider cleanup failed once');
+            }
+          }
+        },
+      );
+      const installDeps = {
+        ...deps(root),
+        reconcileEngineConnections: vi.fn(async (plugin: string) => {
+          reconciled.push(plugin);
+        }),
+        settleProviderAdapterRetirements: settle,
+      };
+
+      try {
+        await expect(
+          installPluginFromSource(parentSource, [], installDeps, {
+            consent: await approvedParent(parentSource, dependencySource, root),
+          }),
+        ).rejects.toThrow(/activation and rollback both failed/);
+
+        expect(dependencyEmptyReplacements).toBeGreaterThanOrEqual(3);
+        expect(
+          reconciled.filter((plugin) => plugin === 'shared-providers'),
+        ).toHaveLength(3);
+        expect(settle).toHaveBeenCalledTimes(4);
+        expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(
+          false,
+        );
+        expect(readPluginGrantState(root, 'shared-providers').granted).toEqual(
+          [],
+        );
+      } finally {
+        replacePluginProvidersForSource.mockReset();
+      }
+    });
+
+    test('refuses a relative dependency source outside the parent package root', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(join(root, 'outside'));
+      const parentSource = join(root, 'packages', 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [
+          { id: 'shared-providers', source: '../../outside/shared-providers' },
+        ],
+      });
+
+      await expect(
+        installPluginFromSource(parentSource, [], deps(root), {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        }),
+      ).rejects.toThrow(/relative source escapes its allowed package root/);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+    });
+
+    test('refuses a symlinked relative dependency source', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(join(root, 'outside'));
+      const packages = join(root, 'packages');
+      const parentSource = join(packages, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [
+          { id: 'shared-providers', source: '../shared-providers' },
+        ],
+      });
+      symlinkSync(dependencySource, join(packages, 'shared-providers'), 'dir');
+
+      await expect(
+        installPluginFromSource(parentSource, [], deps(root), {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        }),
+      ).rejects.toThrow(/relative source must be a physical directory/);
+    });
+
+    test('rejects a dependency provider collision before grants or bytes land', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      writePlugin(join(root, 'plugins', 'existing-provider'), {
+        name: 'existing-provider',
+        version: '1.0.0',
+        providers: [{ type: 'auth', module: './provider.js' }],
+      });
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+
+      await expect(
+        installPluginFromSource(parentSource, [], deps(root), {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        }),
+      ).rejects.toThrow(/collides with plugin 'existing-provider'/);
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(existsSync(join(root, 'plugins', 'enterprise-layout'))).toBe(
+        false,
+      );
+      expect(readPluginGrantState(root, 'shared-providers').granted).toEqual(
+        [],
+      );
+      expect(replacePluginProvidersForSource).not.toHaveBeenCalledWith(
+        'shared-providers',
+        expect.anything(),
+      );
+    });
+
+    test('allows additive dependency providers to coexist', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      writePlugin(join(root, 'plugins', 'existing-provider'), {
+        name: 'existing-provider',
+        version: '1.0.0',
+        providers: [{ type: 'agentRegistry', module: './provider.js' }],
+      });
+      const dependencySource = writeProviderDependency(
+        root,
+        'shared-providers',
+        'agentRegistry',
+      );
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+
+      await expect(
+        installPluginFromSource(parentSource, [], deps(root), {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        }),
+      ).resolves.toMatchObject({ success: true });
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+    });
+
+    test('preserves a dependency that was installed separately', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const installDeps = deps(root);
+      await installPluginFromSource(dependencySource, [], installDeps, {
+        consent: await approvedConsent(dependencySource, root),
+      });
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      await uninstallInstalledPlugin('enterprise-layout', installDeps);
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+      expect(readPluginGrantState(root, 'shared-providers').granted).toEqual(
+        [],
+      );
+    });
+
+    test('retires dependencies dropped by a replacement before replacing ownership', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const firstSource = join(root, 'enterprise-layout-v1');
+      writePlugin(firstSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const secondSource = join(root, 'enterprise-layout-v2');
+      writePlugin(secondSource, {
+        name: 'enterprise-layout',
+        version: '2.0.0',
+      });
+      const installDeps = deps(root);
+
+      await installPluginFromSource(firstSource, [], installDeps, {
+        consent: await approvedParent(firstSource, dependencySource, root),
+      });
+      expect(
+        readPluginDependencyOwnership(root, 'enterprise-layout').map(
+          (entry) => entry.id,
+        ),
+      ).toEqual(['shared-providers']);
+
+      await installPluginFromSource(secondSource, [], installDeps, {
+        consent: await approvedConsent(secondSource, root),
+      });
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(readPluginDependencyOwnership(root, 'enterprise-layout')).toEqual(
+        [],
+      );
+      expect(replacePluginProvidersForSource).toHaveBeenCalledWith(
+        'shared-providers',
+        [],
+      );
+    });
+
+    test('retains dropped dependency ownership when retirement fails so replacement can retry', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const firstSource = join(root, 'enterprise-layout-v1');
+      writePlugin(firstSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const secondSource = join(root, 'enterprise-layout-v2');
+      writePlugin(secondSource, {
+        name: 'enterprise-layout',
+        version: '2.0.0',
+      });
+      let failRetirement = false;
+      const installDeps = {
+        ...deps(root),
+        reconcileEngineConnections: vi.fn(async (plugin: string) => {
+          if (failRetirement && plugin === 'shared-providers') {
+            failRetirement = false;
+            throw new Error('forced retirement failure');
+          }
+        }),
+      };
+      await installPluginFromSource(firstSource, [], installDeps, {
+        consent: await approvedParent(firstSource, dependencySource, root),
+      });
+
+      failRetirement = true;
+      await expect(
+        installPluginFromSource(secondSource, [], installDeps, {
+          consent: await approvedConsent(secondSource, root),
+        }),
+      ).rejects.toThrow('forced retirement failure');
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+      expect(
+        readPluginDependencyOwnership(root, 'enterprise-layout').map(
+          (entry) => entry.id,
+        ),
+      ).toEqual(['shared-providers']);
+      expect(
+        JSON.parse(
+          readFileSync(
+            join(root, 'plugins', 'enterprise-layout', 'plugin.json'),
+            'utf-8',
+          ),
+        ).version,
+      ).toBe('1.0.0');
+
+      await installPluginFromSource(secondSource, [], installDeps, {
+        consent: await approvedConsent(secondSource, root),
+      });
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(readPluginDependencyOwnership(root, 'enterprise-layout')).toEqual(
+        [],
+      );
+    });
+
+    test('restores retired dependencies when replacement fails after ownership changed', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const firstSource = join(root, 'enterprise-layout-v1');
+      writePlugin(firstSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const secondSource = join(root, 'enterprise-layout-v2');
+      writePlugin(secondSource, {
+        name: 'enterprise-layout',
+        version: '2.0.0',
+      });
+      let failReplacementPublication = false;
+      replacePluginProvidersForSource.mockImplementation(
+        async (plugin: string) => {
+          if (failReplacementPublication && plugin === 'enterprise-layout') {
+            failReplacementPublication = false;
+            throw new Error('forced parent publication failure');
+          }
+        },
+      );
+      const installDeps = deps(root);
+      await installPluginFromSource(firstSource, [], installDeps, {
+        consent: await approvedParent(firstSource, dependencySource, root),
+      });
+
+      failReplacementPublication = true;
+      await expect(
+        installPluginFromSource(secondSource, [], installDeps, {
+          consent: await approvedConsent(secondSource, root),
+        }),
+      ).rejects.toThrow('forced parent publication failure');
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+      expect(
+        readPluginDependencyOwnership(root, 'enterprise-layout').map(
+          (entry) => entry.id,
+        ),
+      ).toEqual(['shared-providers']);
+      expect(
+        JSON.parse(
+          readFileSync(
+            join(root, 'plugins', 'enterprise-layout', 'plugin.json'),
+            'utf-8',
+          ),
+        ).version,
+      ).toBe('1.0.0');
+    });
+
+    test('removes registry ownership aliases with a successfully removed owned dependency', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const installDeps = deps(root);
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      const configDir = join(root, 'config');
+      mkdirSync(configDir, { recursive: true });
+      writeFileSync(
+        join(configDir, 'registry-installs.json'),
+        JSON.stringify({
+          'shared-providers': {
+            pluginName: 'shared-providers',
+            registryKey: 'registry:test',
+          },
+        }),
+      );
+
+      await uninstallInstalledPlugin('enterprise-layout', installDeps);
+
+      expect(
+        JSON.parse(
+          readFileSync(join(configDir, 'registry-installs.json'), 'utf-8'),
+        ),
+      ).toEqual({});
+    });
+
+    test('preserves an unrelated registry alias whose id equals the removed dependency name', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const installDeps = deps(root);
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      writePlugin(join(root, 'plugins', 'other-plugin'), {
+        name: 'other-plugin',
+        version: '1.0.0',
+      });
+      const configDir = join(root, 'config');
+      mkdirSync(configDir, { recursive: true });
+      const aliases = {
+        'shared-providers': {
+          pluginName: 'other-plugin',
+          registryKey: 'registry:test',
+        },
+      };
+      writeFileSync(
+        join(configDir, 'registry-installs.json'),
+        JSON.stringify(aliases),
+      );
+
+      await uninstallInstalledPlugin('enterprise-layout', installDeps);
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(existsSync(join(root, 'plugins', 'other-plugin'))).toBe(true);
+      expect(
+        JSON.parse(
+          readFileSync(join(configDir, 'registry-installs.json'), 'utf-8'),
+        ),
+      ).toEqual(aliases);
+    });
+
+    test('rechecks owned dependency bytes after acquiring its content lock', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const installDeps = deps(root);
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const holder = withPluginContentLock(
+        join(root, 'plugins'),
+        'shared-providers',
+        async () => {
+          await held;
+          writeFileSync(
+            join(root, 'plugins', 'shared-providers', 'changed-after-lock.txt'),
+            'replacement bytes',
+          );
+        },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const removing = uninstallInstalledPlugin(
+        'enterprise-layout',
+        installDeps,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      release();
+      await holder;
+      await removing;
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+    });
+
+    test('ignores a tampered parent manifest and forged in-tree ownership record when deciding dependency deletion', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const installDeps = deps(root);
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      writePlugin(join(root, 'plugins', 'unrelated-plugin'), {
+        name: 'unrelated-plugin',
+        version: '1.0.0',
+      });
+      const unrelatedDigest = computePluginContentDigest(
+        join(root, 'plugins'),
+        'unrelated-plugin',
+      );
+      writePlugin(join(root, 'plugins', 'enterprise-layout'), {
+        name: 'unrelated-plugin',
+        version: '1.0.0',
+        dependencies: [
+          { id: 'unrelated-plugin', source: '../unrelated-plugin' },
+        ],
+      });
+      writeFileSync(
+        join(
+          root,
+          'plugins',
+          'enterprise-layout',
+          '.station-dependency-ownership.json',
+        ),
+        JSON.stringify({
+          version: 1,
+          dependencies: [
+            { id: 'unrelated-plugin', contentDigest: unrelatedDigest },
+          ],
+        }),
+      );
+
+      await expect(
+        uninstallInstalledPlugin('enterprise-layout', installDeps),
+      ).resolves.toEqual({ success: true });
+      expect(existsSync(join(root, 'plugins', 'unrelated-plugin'))).toBe(true);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(existsSync(join(root, 'plugins', 'enterprise-layout'))).toBe(
+        false,
+      );
+    });
+
+    test('preserves a dependency consumed transitively by another installed plugin', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const leafSource = join(root, 'transitive-leaf');
+      writePlugin(leafSource, { name: 'transitive-leaf', version: '1.0.0' });
+      const middleSource = join(root, 'middle-plugin');
+      writePlugin(middleSource, {
+        name: 'middle-plugin',
+        version: '1.0.0',
+        dependencies: [{ id: 'transitive-leaf', source: '../transitive-leaf' }],
+      });
+      const firstSource = join(root, 'first-parent');
+      writePlugin(firstSource, {
+        name: 'first-parent',
+        version: '1.0.0',
+        dependencies: [{ id: 'middle-plugin', source: '../middle-plugin' }],
+      });
+      const installDeps = deps(root);
+      await installPluginFromSource(firstSource, [], installDeps, {
+        consent: await approvedConsent(firstSource, root, [
+          'middle-plugin',
+          'transitive-leaf',
+        ]),
+      });
+      const secondSource = join(root, 'second-parent');
+      writePlugin(secondSource, {
+        name: 'second-parent',
+        version: '1.0.0',
+        dependencies: [{ id: 'middle-plugin', source: '../middle-plugin' }],
+      });
+      await installPluginFromSource(secondSource, [], installDeps, {
+        consent: await approvedConsent(secondSource, root, ['middle-plugin']),
+      });
+
+      await uninstallInstalledPlugin('first-parent', installDeps);
+
+      expect(existsSync(join(root, 'plugins', 'middle-plugin'))).toBe(true);
+      expect(existsSync(join(root, 'plugins', 'transitive-leaf'))).toBe(true);
+      expect(existsSync(join(root, 'plugins', 'second-parent'))).toBe(true);
+      await uninstallInstalledPlugin('second-parent', installDeps);
+      expect(existsSync(join(root, 'plugins', 'middle-plugin'))).toBe(false);
+      expect(existsSync(join(root, 'plugins', 'transitive-leaf'))).toBe(false);
+    });
+
+    test('restores removed dependencies when parent uninstall fails after cleanup', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const installDeps = deps(root);
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      const failingDeps = {
+        ...installDeps,
+        eventBus: {
+          emit: () => {
+            throw new Error('event publication failed');
+          },
+        },
+      };
+
+      await expect(
+        uninstallInstalledPlugin('enterprise-layout', failingDeps),
+      ).rejects.toThrow('event publication failed');
+      expect(existsSync(join(root, 'plugins', 'enterprise-layout'))).toBe(true);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+    });
   });
 });

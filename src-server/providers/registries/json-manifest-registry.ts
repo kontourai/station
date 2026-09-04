@@ -290,7 +290,7 @@ export class JsonManifestRegistryProvider
   async install(
     id: string,
     options: { expectedInstalledPluginName?: string } = {},
-  ): Promise<InstallResult> {
+  ): Promise<InstallResult & { rollback?: () => Promise<void> }> {
     try {
       assertSafeRegistrySegment(id, 'Registry plugin id');
       const manifest = await this.fetchManifest();
@@ -367,15 +367,39 @@ export class JsonManifestRegistryProvider
         mkdirSync(pluginsDir, { recursive: true });
         cpSync(stagedSourceDir, targetDir, { recursive: true });
         rmSync(stagedSourceDir, { recursive: true, force: true });
-        aliases[id] = {
+        const installedAlias = {
           pluginName,
           registryKey: this.getRegistryKey(),
         };
+        aliases[id] = installedAlias;
         this.writeRegistryInstallAliases(aliases);
 
         return {
           success: true,
           message: `Plugin '${pluginName}' installed successfully`,
+          // The registry write is only the first half of a dependency
+          // install. Validation and lifecycle activation happen in the
+          // caller, so hand that caller an exact compensation capability.
+          // It restores the prior record only while the alias still equals
+          // what THIS call wrote; a later owner or supply-chain pin wins.
+          rollback: async () => {
+            const currentAliases = this.readRegistryInstallAliases();
+            const current = currentAliases[id];
+            if (
+              !current ||
+              current.pluginName !== installedAlias.pluginName ||
+              current.registryKey !== installedAlias.registryKey ||
+              current.supplyChain !== undefined
+            ) {
+              return;
+            }
+            if (existingAlias) {
+              currentAliases[id] = structuredClone(existingAlias);
+            } else {
+              delete currentAliases[id];
+            }
+            this.writeRegistryInstallAliases(currentAliases);
+          },
         };
       } catch (error) {
         rmSync(stagedSourceDir, { recursive: true, force: true });

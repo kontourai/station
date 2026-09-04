@@ -39,6 +39,14 @@ const mutationCalls: Array<{
  * keeps the plain agent install path.
  */
 const previewResults = new Map<string, unknown>();
+let installedPermissions:
+  | {
+      dependencies?: Array<{
+        id: string;
+        pendingConsent: Array<{ permission: string; tier: string }>;
+      }>;
+    }
+  | undefined;
 const previewMutationCalls: string[] = [];
 let previewMutationResets = 0;
 const validDemoPreview = () => ({
@@ -136,6 +144,7 @@ function makeMutation(
       callbacks?: {
         onSuccess?: (result: {
           success: boolean;
+          permissions?: typeof installedPermissions;
           action: 'install' | 'uninstall' | 'enable' | 'disable' | 'remove';
         }) => void;
       },
@@ -151,6 +160,7 @@ function makeMutation(
       callbacks?.onSuccess?.({
         success: true,
         action: variables.action,
+        permissions: installedPermissions,
       });
     },
     variables: null,
@@ -163,6 +173,7 @@ const staleAfterMutationTabs = new Set<string>();
 const installedErrorTabs = new Set<string>();
 const reconciledRefetchTabs = new Set<string>();
 const refetchInstalled = vi.fn();
+const reloadPlugins = vi.fn(async () => undefined);
 const pluginRegistryListeners = new Set<() => void>();
 let pluginRegistryStatus: {
   state: 'ready' | 'degraded';
@@ -226,6 +237,7 @@ vi.mock('@kontourai/station-sdk', () => ({
       );
     },
   }),
+  useReloadPluginsMutation: () => ({ mutateAsync: reloadPlugins }),
   useRegistryItemsQuery: (tab: string) => ({
     data: emptyTabs.has(tab)
       ? []
@@ -263,6 +275,7 @@ vi.mock('../platform/PlatformProfileContext', () => ({
 
 const pluginRegistryReload = vi.fn();
 const requestInstallConsent = vi.fn(async () => true);
+const requestConsent = vi.fn(async () => true);
 
 vi.mock('../core/PluginRegistry', () => ({
   pluginRegistry: {
@@ -277,6 +290,7 @@ vi.mock('../core/PluginRegistry', () => ({
 
 vi.mock('../core/PermissionManager', () => ({
   usePermissions: () => ({
+    requestConsent,
     requestInstallConsent,
   }),
 }));
@@ -289,6 +303,7 @@ afterEach(() => {
   }
   mutationCalls.length = 0;
   previewResults.clear();
+  installedPermissions = undefined;
   previewMutationCalls.length = 0;
   previewMutationResets = 0;
   pluginRegistryReload.mockClear();
@@ -904,6 +919,71 @@ describe('RegistryView', () => {
     expect(screen.getByText('Installed Agent Two')).toBeTruthy();
     expect(pluginRegistryReload).toHaveBeenCalled();
   });
+
+  test.each(['granted', 'pending', 'unknown'] as const)(
+    'uses the install result for dependency approvals: %s',
+    async (state) => {
+      previewResults.set('demo-layout', {
+        ...validDemoPreview(),
+        dependencies: [
+          {
+            id: 'shared-providers',
+            status: 'installed',
+            consent: {
+              permissions: ['providers.register'],
+              contentDigest: 'sha256:dependency',
+              dependencies: [],
+              pendingConsent: [
+                { permission: 'providers.register', tier: 'trusted' },
+              ],
+            },
+          },
+        ],
+      });
+      installedPermissions =
+        state === 'unknown'
+          ? undefined
+          : {
+              dependencies: [
+                {
+                  id: 'shared-providers',
+                  pendingConsent:
+                    state === 'granted'
+                      ? []
+                      : [{ permission: 'providers.register', tier: 'trusted' }],
+                },
+              ],
+            };
+      requestConsent.mockClear();
+      render(<RegistryView initialTab="plugins" />);
+      fireEvent.click(
+        within(screen.getByTestId('registry-detail')).getByRole('button', {
+          name: 'Install',
+        }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
+      await waitFor(() => expect(mutationCalls).toHaveLength(1));
+      if (state === 'pending') {
+        await waitFor(() =>
+          expect(requestConsent).toHaveBeenCalledWith(
+            'shared-providers',
+            'shared-providers',
+            [{ permission: 'providers.register', tier: 'trusted' }],
+          ),
+        );
+      } else {
+        expect(requestConsent).not.toHaveBeenCalled();
+        if (state === 'unknown')
+          await waitFor(() =>
+            expect(
+              screen.getByText(
+                /did not report current dependency approval status/,
+              ),
+            ).toBeTruthy(),
+          );
+      }
+    },
+  );
 
   test('a declined consent decision installs nothing', async () => {
     previewResults.set('demo-layout', {

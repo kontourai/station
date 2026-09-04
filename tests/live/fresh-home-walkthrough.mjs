@@ -340,6 +340,23 @@ async function installBundledPlugin(page, plugin) {
       permissions: previewed.permissions.required ?? [],
       contentDigest: previewed.contentDigest,
       dependencies: (previewed.dependencies ?? []).map((entry) => entry.id),
+      ...((previewed.dependencies ?? []).some((entry) => entry.consent)
+        ? {
+            dependencyApprovals: (previewed.dependencies ?? []).flatMap(
+              (entry) =>
+                entry.consent
+                  ? [
+                      {
+                        id: entry.id,
+                        permissions: entry.consent.permissions,
+                        contentDigest: entry.consent.contentDigest,
+                        dependencies: entry.consent.dependencies,
+                      },
+                    ]
+                  : [],
+            ),
+          }
+        : {}),
     },
   });
 }

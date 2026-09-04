@@ -799,9 +799,32 @@ Plugins can declare dependencies on other plugins. The server resolves and insta
 ```
 
 - If `source` is provided and the dependency isn't installed, it's cloned and installed automatically
+- Relative dependency sources resolve from the declaring local plugin directory
+  but must remain inside its physical sibling package root; traversal and
+  symlinked ancestors are refused
 - If no `source`, the server tries the configured registry
 - Dependencies are resolved recursively (cycle detection included)
-- `station plugin preview <source>` shows dependency resolution status before install
+- `station plugin preview <source>` shows dependency resolution status, exact content digest, and dependency-specific permissions before install
+- Every supplied dependency approval binds its staged source bytes, permissions, and dependency ids, even for declarative-only packages. Newly installed dependencies with browser entrypoints, prebuilt browser bundles, permissions, providers, or settings require that preview-bound approval; naming the dependency id alone is insufficient. Declarative-only dependencies remain supported without an individual approval for older clients. Unsupported lifecycle contributions remain refused.
+- Already-installed dependencies are adopted without granting deletion ownership or replacing their active provider/settings lifecycle. If an installed entrypoint is rebuilt, its current installed bytes must match the preview approval, checked under the content lock held through that rebuild. Read-only adoption does not claim to install the previewed source over an existing tree.
+- Provider/settings-only dependencies use the canonical plugin lifecycle. Station records which dependency trees the parent created in host-owned, digest-bound install authority beside the existing per-plugin grant state; neither the mutable parent manifest nor files in the plugin tree can mint deletion authority. Station rolls dependency grants/providers/bytes back in reverse dependency order with a failed parent install, and removes owned dependencies plus their registry aliases with the parent unless another installed plugin references them directly or transitively, or their lock-protected content changed. A dependency whose exact creation digest is unavailable is preserved rather than deleted by name. A dependency that already existed is never adopted for deletion, and a failed parent uninstall restores every dependency it already removed.
+- Removing a creator, or replacing it with a smaller graph, hands an unchanged
+  managed dependency's existing cleanup claim to a verified surviving root
+  consumer. This is custody transfer, not new grant or execution authority.
+  The recipient copy is durable before the creator's claim disappears; an
+  interrupted handoff may leave duplicate claims, but the last consumer still
+  performs one dependency cleanup. Metadata-only rollback compares the written
+  ownership revision and preserves newer grants. Unmanaged adopted plugins stay
+  unmanaged. An unverifiable successor, exhausted capacity, legacy unbound
+  recipient grants, or unsupported nested custody causes safe refusal instead
+  of orphaning authority or promoting permissions. Recipient verification and
+  the handoff use the canonical publication/content locks.
+- Trusted dependency permissions such as `providers.register` remain pending for the separate host-owned approval surface; dependency installation does not downgrade that authority.
+  Other dependency permissions (for example `network.fetch`) currently lack
+  canonical dependency lifecycle support and are rejected by preview before
+  offering approval; approving them does not expand the supported permission set.
+  The Plugins and Registry install flows route each installed dependency through
+  that existing host approval before claiming its providers are active.
 
 ## Installation Flow
 
@@ -855,7 +878,13 @@ curl -X POST "$API_BASE/api/plugins/install" \
         "consent": {
           "permissions": ["navigation.dock", "network.fetch"],
           "contentDigest": "sha256:…",
-          "dependencies": ["shared-lib"]
+          "dependencies": ["shared-lib"],
+          "dependencyApprovals": [{
+            "id": "shared-lib",
+            "permissions": ["providers.register"],
+            "contentDigest": "sha256:…",
+            "dependencies": []
+          }]
         }
       }'
 

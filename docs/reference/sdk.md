@@ -779,6 +779,16 @@ Fetches live ACP slash-command autocomplete options.
 
 React Query wrappers for plugin management. Use these instead of raw `useQuery`.
 
+Direct and registry install mutations return `PluginInstallResult` from
+`@kontourai/station-contracts/plugin`. The same type is returned by
+`requestPluginRegistryInstallAction` and `requestRegistryCatalogAction('plugins', ...)`;
+other catalog tabs retain their existing `InstallResult` contract.
+`result.permissions?.dependencies` is the current installed dependency permission
+status, not the preview requirement list. An absent status on an older server is
+unknown; it must not be replaced with an empty list or inferred from preview.
+Each present dependency row has an `id` and typed `pendingConsent` permission/tier
+entries. Trusted permissions still require separate host-owned approval.
+
 ### `usePluginsQuery(config?)`
 
 Fetches all installed plugins. Cache key: `['plugins']`.
@@ -829,6 +839,16 @@ mutate({
     permissions: preview.permissions.required,
     contentDigest: preview.contentDigest,
     dependencies: preview.dependencies.map((entry) => entry.id),
+    dependencyApprovals: preview.dependencies.flatMap((entry) =>
+      entry.consent
+        ? [{
+            id: entry.id,
+            permissions: entry.consent.permissions,
+            contentDigest: entry.consent.contentDigest,
+            dependencies: entry.consent.dependencies,
+          }]
+        : [],
+    ),
   },
 });
 ```
@@ -837,8 +857,9 @@ mutate({
 
 Previews a plugin before installing. Returns manifest, components, conflicts,
 resolved dependencies, the derived `permissions` (`required`, `autoGranted`,
-`pendingConsent`) and the `contentDigest` of the copy it staged — everything a
-consent decision needs, without installing anything.
+`pendingConsent`) and the `contentDigest` of the copy it staged. Lifecycle-bearing
+dependencies additionally carry their own `consent` object, binding their
+permissions and bytes before installation.
 
 ```tsx
 const { mutate } = usePluginPreviewMutation();

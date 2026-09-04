@@ -41,6 +41,12 @@ it does not expose a protected URL or an upstream error body.
 These APIs do not change semantic answer standing or automatically promote an
 Output. The native Basis item actions are a separate integration step.
 
+## Plugin installation results
+
+Plugin install mutations expose typed current parent/dependency permission status
+through `PluginInstallResult`. See the canonical [Plugin Query Hooks reference](../../docs/reference/sdk.md#plugin-query-hooks)
+for older-server unknown-status handling and registry result types.
+
 ## Workspace Pane authoring
 
 Import `@kontourai/station-sdk/workspace-pane` for the opt-in portable Pane
@@ -289,7 +295,8 @@ The CLI uses the selected saved Station and its OS-keyring credential. Over raw
 HTTP it is two calls, in this order: `POST /api/plugins/preview` reports what
 installing would require from a copy it stages and throws away, and `POST
 /api/plugins/install` carries that answer back as `consent` — the preview's
-`permissions.required`, its `contentDigest`, and the ids in its `dependencies`.
+`permissions.required`, its `contentDigest`, the ids in its `dependencies`, and
+each dependency's preview-issued `consent` record when present.
 An install with no `consent` is refused with a 400 before anything is staged
 (station#4288), so the preview is not optional. The server re-derives all three
 from its own staged copy and refuses, without writing anything, when they
@@ -302,6 +309,7 @@ registers its layout; the layout is then available to add to a project. Active
 permissions named in the approval are recorded against the installed tree.
 Trusted ones come back as `pendingConsent`: they are decided on a separate,
 host-owned review page, which a same-origin click cannot substitute for.
+That remains true for trusted permissions contributed by a dependency.
 
 ## UI Components
 
