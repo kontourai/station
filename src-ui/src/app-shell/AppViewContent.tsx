@@ -144,14 +144,6 @@ const ConsoleBoardView = lazy(() =>
     default: module.ConsoleBoardView,
   })),
 );
-// The standalone placement of the Activity Workspace Pane (
-// archive#4142) — the pane path to the sessions surface, never the
-// surface directly.
-const ActivityView = lazy(() =>
-  import('../views/ActivityView').then((module) => ({
-    default: module.ActivityView,
-  })),
-);
 const SettingsView = lazy(() =>
   import('../views/SettingsView').then((module) => ({
     default: module.SettingsView,
@@ -285,15 +277,6 @@ function AppViewContentBody({
   }
   if (currentView.type === 'review-queue') {
     return <ReviewQueueView />;
-  }
-  if (currentView.type === 'activity') {
-    return (
-      <ActivityView
-        apiBase={apiBase}
-        sessionId={currentView.sessionId}
-        focusHint={currentView.focus}
-      />
-    );
   }
   if (currentView.type === 'plugins') {
     return <PluginManagementView onNavigate={onNavigate} />;

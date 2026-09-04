@@ -29,3 +29,13 @@ jobs:
       - name: Audit every committed dependency scope
         timeout-minutes: 9
         run: npm run audit:policy
+      - name: Upload bounded dependency audit diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        continue-on-error: true
+        with:
+          name: dependency-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .kontourai/verification-output/dependency-audit/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14

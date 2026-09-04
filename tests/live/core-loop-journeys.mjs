@@ -760,9 +760,14 @@ async function journeyProjectDeepLinkReload(note, shared) {
     const assertConversationVisible = async (phase) => {
       const settleFailure = await settlePageReason(page, SETTLE_TIMEOUT_MS);
       assert(!settleFailure, `${phase}: did not settle: ${settleFailure}`);
-      const path = new URL(page.url()).pathname;
+      // station#928 retired the `/activity` route, so a decay into the
+      // Activity inspector now shows up as the surface deep link rather than
+      // as a pathname. Both spellings are checked: the pathname assertion
+      // alone would pass through the very decay it exists to catch.
+      const decayed = new URL(page.url());
       assert(
-        !path.startsWith('/activity'),
+        !decayed.pathname.startsWith('/activity') &&
+          decayed.searchParams.get('surface') !== 'activity',
         `${phase}: decayed into the Activity inspector (${page.url()}) — #765 A5`,
       );
       assert(

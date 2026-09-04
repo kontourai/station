@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatDockActiveChatSync } from '../components/chat-dock/useChatDockActiveChatSync';
 
 const fetchConversationById = vi.fn();
+const updateParams = vi.fn();
+const showSurface = vi.fn();
 
 vi.mock('@kontourai/station-sdk', () => ({
   fetchConversationById: (...args: unknown[]) => fetchConversationById(...args),
@@ -15,6 +17,8 @@ vi.mock('@kontourai/station-sdk', () => ({
 describe('useChatDockActiveChatSync', () => {
   beforeEach(() => {
     fetchConversationById.mockReset();
+    updateParams.mockReset();
+    showSurface.mockReset();
     fetchConversationById.mockResolvedValue({
       id: 'thread-1',
       agentSlug: 'claude',
@@ -25,7 +29,6 @@ describe('useChatDockActiveChatSync', () => {
   it('retries a cold deep link when the agent-backed opener becomes ready', async () => {
     const firstOpener = vi.fn().mockResolvedValue(undefined);
     const readyOpener = vi.fn().mockResolvedValue(undefined);
-    const navigate = vi.fn();
     const setActiveSessionId = vi.fn();
 
     const { rerender } = renderHook(
@@ -38,7 +41,8 @@ describe('useChatDockActiveChatSync', () => {
           sessions: [],
           openConversation,
           setActiveSessionId,
-          navigate,
+          updateParams,
+          showSurface,
         }),
       {
         initialProps: {
@@ -59,7 +63,6 @@ describe('useChatDockActiveChatSync', () => {
 
     await waitFor(() => expect(readyOpener).toHaveBeenCalledTimes(1));
     expect(fetchConversationById).toHaveBeenCalledTimes(2);
-    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('restores the server-projected accepted model on a cold reopen', async () => {
@@ -82,7 +85,8 @@ describe('useChatDockActiveChatSync', () => {
         sessions: [],
         openConversation,
         setActiveSessionId: vi.fn(),
-        navigate: vi.fn(),
+        updateParams,
+        showSurface,
       }),
     );
 
@@ -117,7 +121,8 @@ describe('useChatDockActiveChatSync', () => {
         ],
         openConversation,
         setActiveSessionId,
-        navigate: vi.fn(),
+        updateParams,
+        showSurface,
       }),
     );
 
@@ -133,7 +138,6 @@ describe('useChatDockActiveChatSync', () => {
         resolveLookup = resolve;
       }),
     );
-    const navigate = vi.fn();
     const setActiveSessionId = vi.fn();
     const { rerender } = renderHook(
       ({ sessions }) =>
@@ -145,7 +149,8 @@ describe('useChatDockActiveChatSync', () => {
           sessions,
           openConversation: vi.fn(),
           setActiveSessionId,
-          navigate,
+          updateParams,
+          showSurface,
         }),
       { initialProps: { sessions: [] as never[] } },
     );
@@ -163,7 +168,6 @@ describe('useChatDockActiveChatSync', () => {
     await waitFor(() =>
       expect(setActiveSessionId).toHaveBeenCalledWith('thread-1'),
     );
-    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('does not retry merely because the opener callback changes', async () => {
@@ -179,7 +183,8 @@ describe('useChatDockActiveChatSync', () => {
           sessions: [],
           openConversation,
           setActiveSessionId: vi.fn(),
-          navigate: vi.fn(),
+          updateParams,
+          showSurface,
         }),
       { initialProps: { openConversation: firstOpener } },
     );
@@ -211,7 +216,8 @@ describe('useChatDockActiveChatSync', () => {
           sessions,
           openConversation,
           setActiveSessionId: vi.fn(),
-          navigate: vi.fn(),
+          updateParams,
+          showSurface,
         }),
       {
         initialProps: {
@@ -248,7 +254,6 @@ describe('useChatDockActiveChatSync', () => {
         agentSlug: 'claude',
       });
     const openConversation = vi.fn();
-    const navigate = vi.fn();
     const { rerender } = renderHook(
       ({ activeChat }) =>
         useChatDockActiveChatSync({
@@ -259,7 +264,8 @@ describe('useChatDockActiveChatSync', () => {
           sessions: [],
           openConversation,
           setActiveSessionId: vi.fn(),
-          navigate,
+          updateParams,
+          showSurface,
         }),
       { initialProps: { activeChat: 'thread-1' as string | null } },
     );
@@ -277,7 +283,6 @@ describe('useChatDockActiveChatSync', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(openConversation).toHaveBeenCalledTimes(1);
-    expect(navigate).not.toHaveBeenCalled();
   });
 
   // archive#801: the lookup now reports the conversation's true owner, which
@@ -286,12 +291,11 @@ describe('useChatDockActiveChatSync', () => {
   // be cleared rather than left aimed at a chat that will never render.
   //
   // archive#1284: the clear is no longer silent -- it must
-  // navigate to /activity?session=<id> (clearing the dead `chat` param in
-  // the same call) instead of only calling setActiveChat(null), or the dock
+  // reveal Activity with the session (clearing the dead `chat` param first)
+  // instead of only calling setActiveChat(null), or the dock
   // is left showing nothing with no way back to the conversation.
-  it('navigates to /activity instead of silently clearing when the owning agent can no longer be opened', async () => {
+  it('reveals Activity with the session instead of silently clearing when the owning agent can no longer be opened', async () => {
     const opener = vi.fn().mockResolvedValue(false);
-    const navigate = vi.fn();
     const setActiveSessionId = vi.fn();
 
     renderHook(() =>
@@ -303,23 +307,22 @@ describe('useChatDockActiveChatSync', () => {
         sessions: [],
         openConversation: opener,
         setActiveSessionId,
-        navigate,
+        updateParams,
+        showSurface,
       }),
     );
 
     await waitFor(() => expect(opener).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity', {
-        chat: null,
-        dock: null,
+      expect(showSurface).toHaveBeenCalledWith('activity', {
         session: 'thread-1',
       }),
     );
+    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
   });
 
   it('leaves the active chat alone when the opener succeeds', async () => {
     const opener = vi.fn().mockResolvedValue(true);
-    const navigate = vi.fn();
     const setActiveSessionId = vi.fn();
 
     renderHook(() =>
@@ -331,12 +334,13 @@ describe('useChatDockActiveChatSync', () => {
         sessions: [],
         openConversation: opener,
         setActiveSessionId,
-        navigate,
+        updateParams,
+        showSurface,
       }),
     );
 
     await waitFor(() => expect(opener).toHaveBeenCalledTimes(1));
-    expect(navigate).not.toHaveBeenCalled();
+    expect(showSurface).not.toHaveBeenCalled();
   });
 
   it('retries one transient cold-lookup failure before giving up on the active chat', async () => {
@@ -344,7 +348,6 @@ describe('useChatDockActiveChatSync', () => {
       .mockRejectedValueOnce(new Error('Conversation not found'))
       .mockResolvedValueOnce({ id: 'thread-1', agentSlug: 'claude' });
     const opener = vi.fn().mockResolvedValue(true);
-    const navigate = vi.fn();
 
     renderHook(() =>
       useChatDockActiveChatSync({
@@ -355,13 +358,13 @@ describe('useChatDockActiveChatSync', () => {
         sessions: [],
         openConversation: opener,
         setActiveSessionId: vi.fn(),
-        navigate,
+        updateParams,
+        showSurface,
       }),
     );
 
     await waitFor(() => expect(fetchConversationById).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(opener).toHaveBeenCalledTimes(1));
-    expect(navigate).not.toHaveBeenCalled();
   });
 
   // A cold `/?dock=open&chat=` load races the agent catalog fetch: the
@@ -370,10 +373,9 @@ describe('useChatDockActiveChatSync', () => {
   // "owning agent no longer exists" case below -- but here a second attempt
   // with the real catalog is still available and must get the chance to
   // resolve the chat instead of the pointer being nulled out first.
-  it('does not navigate away when only the not-yet-loaded attempt reports false', async () => {
+  it('does not reveal Activity when only the not-yet-loaded attempt reports false', async () => {
     const notYetLoadedOpener = vi.fn().mockResolvedValue(false);
     const readyOpener = vi.fn().mockResolvedValue(true);
-    const navigate = vi.fn();
     const setActiveSessionId = vi.fn();
 
     const { rerender } = renderHook(
@@ -386,7 +388,8 @@ describe('useChatDockActiveChatSync', () => {
           sessions: [],
           openConversation,
           setActiveSessionId,
-          navigate,
+          updateParams,
+          showSurface,
         }),
       {
         initialProps: {
@@ -398,7 +401,6 @@ describe('useChatDockActiveChatSync', () => {
     );
 
     await waitFor(() => expect(notYetLoadedOpener).toHaveBeenCalledTimes(1));
-    expect(navigate).not.toHaveBeenCalled();
 
     rerender({
       openConversation: readyOpener,
@@ -407,17 +409,16 @@ describe('useChatDockActiveChatSync', () => {
     });
 
     await waitFor(() => expect(readyOpener).toHaveBeenCalledTimes(1));
-    expect(navigate).not.toHaveBeenCalled();
+    expect(showSurface).not.toHaveBeenCalled();
   });
 
   // If the retry itself also reports false (the agent genuinely does not
   // exist in the now-loaded catalog), the two-attempt budget is spent and
-  // the pointer must still clear -- via the /activity fallback navigate,
+  // the pointer must still clear -- via the Activity reveal fallback,
   // not a silent null -- rather than leave the dock stuck forever.
-  it('navigates to /activity once the retry with a loaded catalog also fails', async () => {
+  it('reveals Activity with the session once the retry with a loaded catalog also fails', async () => {
     const notYetLoadedOpener = vi.fn().mockResolvedValue(false);
     const loadedCatalogOpener = vi.fn().mockResolvedValue(false);
-    const navigate = vi.fn();
     const setActiveSessionId = vi.fn();
 
     const { rerender } = renderHook(
@@ -430,7 +431,8 @@ describe('useChatDockActiveChatSync', () => {
           sessions: [],
           openConversation,
           setActiveSessionId,
-          navigate,
+          updateParams,
+          showSurface,
         }),
       {
         initialProps: {
@@ -442,7 +444,6 @@ describe('useChatDockActiveChatSync', () => {
     );
 
     await waitFor(() => expect(notYetLoadedOpener).toHaveBeenCalledTimes(1));
-    expect(navigate).not.toHaveBeenCalled();
 
     rerender({
       openConversation: loadedCatalogOpener,
@@ -452,12 +453,11 @@ describe('useChatDockActiveChatSync', () => {
 
     await waitFor(() => expect(loadedCatalogOpener).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity', {
-        chat: null,
-        dock: null,
+      expect(showSurface).toHaveBeenCalledWith('activity', {
         session: 'thread-1',
       }),
     );
+    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
   });
 
   // archive#945 MED finding: `agentCatalogKey` is built by joining agent slugs, so
@@ -468,9 +468,8 @@ describe('useChatDockActiveChatSync', () => {
   // produce a second, distinct attempt, so the archive#801 deleted-agent clear
   // never fired for it -- a stale `activeChat` pointer forever. `agentsLoaded`
   // must be the signal that actually gates this, independent of the key.
-  it('navigates away for a loaded-but-empty catalog, not just a nonempty miss', async () => {
+  it('reveals Activity for a loaded-but-empty catalog, not just a nonempty miss', async () => {
     const opener = vi.fn().mockResolvedValue(false);
-    const navigate = vi.fn();
     const setActiveSessionId = vi.fn();
 
     const { rerender } = renderHook(
@@ -485,7 +484,8 @@ describe('useChatDockActiveChatSync', () => {
           sessions: [],
           openConversation: opener,
           setActiveSessionId,
-          navigate,
+          updateParams,
+          showSurface,
         }),
       { initialProps: { agentsLoaded: false } },
     );
@@ -493,21 +493,19 @@ describe('useChatDockActiveChatSync', () => {
     // Still loading: the miss is inconclusive, so nothing is cleared yet and
     // the retry budget is preserved.
     await waitFor(() => expect(opener).toHaveBeenCalledTimes(1));
-    expect(navigate).not.toHaveBeenCalled();
 
     // The catalog resolves to durably empty -- same key, but `agentsLoaded`
     // flips true. This must still re-run the lookup and, on this definitive
-    // miss, navigate away per archive#801/archive#1284.
+    // miss, reveal Activity for the session per archive#801/archive#1284.
     rerender({ agentsLoaded: true });
 
     await waitFor(() => expect(opener).toHaveBeenCalledTimes(2));
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity', {
-        chat: null,
-        dock: null,
+      expect(showSurface).toHaveBeenCalledWith('activity', {
         session: 'thread-1',
       }),
     );
+    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
   });
 
   // archive#945 MED finding: `useAgentsLoaded`'s first cut derived
@@ -524,7 +522,6 @@ describe('useChatDockActiveChatSync', () => {
   // times the surrounding app re-renders while the catalog is still down.
   it('an errored agent catalog never authorizes navigating away from the active chat pointer', async () => {
     const opener = vi.fn().mockResolvedValue(false);
-    const navigate = vi.fn();
     const setActiveSessionId = vi.fn();
 
     const { rerender } = renderHook(() =>
@@ -542,33 +539,32 @@ describe('useChatDockActiveChatSync', () => {
         sessions: [],
         openConversation: opener,
         setActiveSessionId,
-        navigate,
+        updateParams,
+        showSurface,
       }),
     );
 
     await waitFor(() => expect(opener).toHaveBeenCalledTimes(1));
-    expect(navigate).not.toHaveBeenCalled();
 
     // Unrelated re-renders (e.g. the surrounding app polling, a keystroke
     // elsewhere) must not be misread as "the catalog changed" and must not
     // eventually wear down into a clear -- the error is still live, so the
-    // attempt key is unchanged and no new lookup (and no navigate) happens.
+    // attempt key is unchanged and no new lookup (and no reveal) happens.
     rerender();
     rerender();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(opener).toHaveBeenCalledTimes(1);
-    expect(navigate).not.toHaveBeenCalled();
+    expect(showSurface).not.toHaveBeenCalled();
   });
 
   // archive#1284: the conversation simply doesn't resolve at all
   // (deleted, or the ORIGINAL ground-truth bug -- `!conversation` at
   // useChatDockActiveChatSync.ts:148-150 used to silently null the pointer
   // here without ever trying `openConversation`).
-  it('navigates to /activity when the conversation cannot be found at all', async () => {
+  it('reveals Activity for the session when the conversation cannot be found at all', async () => {
     fetchConversationById.mockResolvedValue(null);
     const openConversation = vi.fn();
-    const navigate = vi.fn();
     const setActiveSessionId = vi.fn();
 
     renderHook(() =>
@@ -580,26 +576,25 @@ describe('useChatDockActiveChatSync', () => {
         sessions: [],
         openConversation,
         setActiveSessionId,
-        navigate,
+        updateParams,
+        showSurface,
       }),
     );
 
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity', {
-        chat: null,
-        dock: null,
+      expect(showSurface).toHaveBeenCalledWith('activity', {
         session: 'dead-chat',
       }),
     );
+    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
     expect(openConversation).not.toHaveBeenCalled();
   });
 
   // archive#1284: the lookup itself throwing (e.g. a network
   // error) is a resolution failure exactly like a definitive miss -- it
   // must not be a silent no-op either.
-  it('navigates to /activity when the conversation lookup throws', async () => {
+  it('reveals Activity for the session when the conversation lookup throws', async () => {
     fetchConversationById.mockRejectedValue(new Error('network down'));
-    const navigate = vi.fn();
     const setActiveSessionId = vi.fn();
 
     renderHook(() =>
@@ -611,16 +606,16 @@ describe('useChatDockActiveChatSync', () => {
         sessions: [],
         openConversation: vi.fn(),
         setActiveSessionId,
-        navigate,
+        updateParams,
+        showSurface,
       }),
     );
 
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity', {
-        chat: null,
-        dock: null,
+      expect(showSurface).toHaveBeenCalledWith('activity', {
         session: 'thread-network-error',
       }),
     );
+    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
   });
 });

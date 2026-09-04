@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
+import { installVisualViewportFixture } from './helpers/visual-viewport';
 
 type SkillRecord = {
   name: string;
@@ -426,6 +427,65 @@ test.describe('Command skills', () => {
     // `src-server/routes/agents/__tests__/skills.routes.test.ts:339`
     // ("POST /:name/run counts a run and answers with the stats"). What needs a
     // browser is the variable resolution reaching the dispatch, above.
+  });
+
+  // #1180: `SkillsView` (`guidance`) is one of the routes where
+  // `SplitPaneLayout`'s mobile detail sheet marks `PageFrame`'s route frame
+  // `inert` (PageFrame.tsx:155) while it is open. `SkillRunModal` and
+  // `ImportSkillsModal` render as plain siblings of `SplitPaneLayout`, so
+  // either dialog fell inside that `inert` subtree: visible, but `.focus()` a
+  // no-op and every button unclickable. A visibility assertion alone cannot
+  // tell the two states apart — this proves focus and a real click instead,
+  // the same shape #1131's `plugin-update.spec.ts` coverage uses.
+  test('skill dialogs stay reachable around a phone mobile detail sheet', async ({
+    page,
+  }) => {
+    await installVisualViewportFixture(page);
+    await seedCommandSkillRoutes(page);
+
+    // `SkillRunModal` opens from "▶ Test" INSIDE the skill detail — the
+    // exact content `SplitPaneLayout` portals into `PageFrame`'s
+    // mobile-detail slot once a skill is selected on a phone, so this dialog
+    // opens with the ancestor already `inert`.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/guidance/release-check?tab=skills');
+    await page.waitForSelector('.skill-detail', { timeout: 15_000 });
+
+    await page.getByRole('button', { name: '▶ Test' }).click();
+    const runDialog = page.getByRole('dialog', { name: 'Test: release-check' });
+    await expect(runDialog).toBeVisible();
+    await expect(runDialog).toBeFocused();
+    await runDialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(runDialog).toBeHidden();
+
+    // `ImportSkillsModal` opens from "Import .md" in the LIST pane, which a
+    // phone hides (`display: none`) the instant a mobile sheet is showing —
+    // so opening it AFTER a skill is already selected on a phone is not
+    // reachable through the UI at all. The realistic ordering is the other
+    // way around: select the skill and open the dialog while both panes are
+    // still visible (desktop — `guidance.selectedId` is deliberately excluded
+    // from the route's identity, so selecting a skill never replays the
+    // route entrance), then cross the mobile breakpoint underneath both of
+    // them — a window resize, a foldable rotation, or a narrowed split view
+    // all flip `useIsMobile()` the same way. The dialog's own state survives
+    // that; `PageFrame` marking the frame `inert` is what used to trap it.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/guidance/release-check?tab=skills');
+    await page.waitForSelector('.skill-detail', { timeout: 15_000 });
+    await page.getByRole('button', { name: 'Import .md' }).click();
+    const importDialog = page.getByRole('dialog', { name: 'Import Skills' });
+    await expect(importDialog).toBeVisible();
+    await expect(importDialog).toBeFocused();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // Visible is not proof it is still reachable: the HTML spec has the
+    // browser blur whatever was focused inside an element the instant it
+    // becomes inert — this is the assertion that tells the pre-fix and
+    // post-fix states apart.
+    await expect(importDialog).toBeFocused();
+    await importDialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(importDialog).toBeHidden();
   });
 
   test('a read-only skill is told what would make it a command', async ({

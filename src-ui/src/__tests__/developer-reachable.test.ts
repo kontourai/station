@@ -7,6 +7,14 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 // test (useSurfaceVisibilityFlags.test.ts); here it is controllable so this
 // suite can pin both sides of the gate.
 const flagsState = vi.hoisted(() => ({ flags: new Set<string>() }));
+// `RegionModelProvider` wraps the whole application, so `useShowSurface`
+// requires it. This harness mounts a fragment of that tree, and nothing
+// here asserts a surface reveal, so the command hook is supplied directly.
+const showSurfaceStub = vi.hoisted(() => vi.fn());
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceStub,
+}));
+
 vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () => flagsState.flags,
 }));

@@ -17,8 +17,8 @@ import {
 describe('Activity Workspace Pane descriptor', () => {
   test('declares no context requirement, because the sessions list binds no Project', () => {
     // The list aggregates every Project's sessions (and projectless ones);
-    // requiring a Project would make Activity permanently unavailable on the
-    // only route it appears on. This is also what makes it
+    // requiring a Project would make Activity permanently unavailable in
+    // every host that places it. This is also what makes it
     // ambient-satisfiable — the deliberate dockable-set expansion pinned in
     // workspace-pane-modes.test.ts.
     expect(WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.modes).toEqual([
@@ -26,14 +26,17 @@ describe('Activity Workspace Pane descriptor', () => {
     ]);
   });
 
-  test('is placed standalone (preferred) or docked, never inside a Layout', () => {
-    // `standalone` is the `/activity` route placement; `docked` is the
-    // shell's ambient slot. `primary`/`secondary` stay excluded: a Project
-    // host must not place a Project-less aggregate of every host session
-    // beside the work it is scoped to.
+  test('is placed docked only, never standalone and never inside a Layout', () => {
+    // station#928 retired the `/activity` route, and with it Activity's
+    // standalone placement — the shell's dock region is the only host that
+    // places this pane, so `standalone` would name a placement no host in
+    // this build supplies and `preferredRegion: 'standalone'` would prefer an
+    // unreachable one. `primary`/`secondary` stay excluded for their own
+    // reason: a Project host must not place a Project-less aggregate of every
+    // host session beside the work it is scoped to.
     expect(WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.placement).toEqual({
-      supportedRegions: ['standalone', 'docked'],
-      preferredRegion: 'standalone',
+      supportedRegions: ['docked'],
+      preferredRegion: 'docked',
     });
   });
 
@@ -85,8 +88,9 @@ describe('Activity Workspace Pane instance', () => {
     }) as WorkspacePaneInstance;
     expect(isCanonicalWorkspaceActivityPaneInstance(withProject)).toBe(false);
 
-    // A routed session id is presentation state of the standalone placement,
-    // never pane identity: an occurrence carrying one is not canonical.
+    // A routed session id is presentation state of the placement that
+    // delivered it, never pane identity: an occurrence carrying one is not
+    // canonical.
     const withSession = parseWorkspacePaneInstance({
       ...WORKSPACE_ACTIVITY_PANE_INSTANCE,
       boundContext: {

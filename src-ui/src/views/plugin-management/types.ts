@@ -104,4 +104,8 @@ export interface PluginUpdateSummary {
 export interface PluginMessage {
   type: 'success' | 'error';
   text: string;
+  action?: {
+    label: string;
+    invoke(): void;
+  };
 }

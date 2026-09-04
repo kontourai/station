@@ -29,8 +29,15 @@ export interface FirstRunTourStep {
   title: string;
   /** One sentence. Why the evidence is here, not what the button does. */
   body: string;
-  /** The canonical surface this step is about. */
-  view: NavigationView;
+  /**
+   * The canonical route this step is about. Absent for a step whose surface
+   * is shell-owned (`surface` below): #928 retired Activity's standalone
+   * placement, so there is no `NavigationView` for it to name — and naming a
+   * neighbouring one instead would be a declaration nothing derives.
+   */
+  view?: NavigationView;
+  /** Shell-owned region to reveal instead of navigating. */
+  surface?: string;
   /** `data-first-run-anchor` value on that surface. */
   anchor: string;
 }
@@ -49,12 +56,13 @@ export const FIRST_RUN_TOUR_STEPS = [
     id: 'activity',
     title: 'Every run keeps its own evidence',
     body: 'Each session holds the events that produced its result, so an answer can be traced back to the work behind it instead of being taken on trust.',
-    view: { type: 'activity' },
+    surface: 'activity',
     // The Activity page root, via `SplitPaneLayout`'s `firstRunAnchor` prop:
-    // the surface no longer has a sidebar entry (it moved under Home), and
     // `SessionsView` renders a bare `SplitPaneLayout` with no root element of
     // its own to hang the attribute on. The layout root is present whether or
-    // not any session exists yet.
+    // not any session exists yet. Not the sidebar's `nav-activity` row: that
+    // row reveals the region rather than navigating (#928), so the coachmark
+    // would point at the way in rather than at the surface it is teaching.
     anchor: 'activity',
   },
   {
@@ -78,11 +86,13 @@ export type FirstRunTourStepId = (typeof FIRST_RUN_TOUR_STEPS)[number]['id'];
 /**
  * The canonical path for a step's surface, derived — never spelled here.
  *
- * `null` only for a view type `getPathForView` cannot serialize (`not-found`),
+ * `null` for a shell-owned surface step (it is revealed, not navigated to),
+ * and for a view type `getPathForView` cannot serialize (`not-found`) —
  * which is a step-authoring mistake the test suite fails on rather than a
  * runtime state to paper over with a fallback route.
  */
 export function tourStepPath(step: FirstRunTourStep): string | null {
+  if (step.surface || !step.view) return null;
   return getPathForView(step.view);
 }
 

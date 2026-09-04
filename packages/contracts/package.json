@@ -144,6 +144,7 @@
     "./workflow": "./src/workflow.ts",
     "./work-reference": "./src/work-reference.ts",
     "./starter-work": "./src/starter-work.ts",
+    "./surface-deep-link": "./src/surface-deep-link.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",
     "./workspace-activity-pane": "./src/workspace-activity-pane.ts",
     "./workspace-chat-pane": "./src/workspace-chat-pane.ts",
