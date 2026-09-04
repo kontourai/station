@@ -3,6 +3,7 @@ export * from './action-operation.js';
 export * from './agent.js';
 export * from './agent-capability-profile.js';
 export * from './agent-identity.js';
+export * from './agent-plugin.js';
 export * from './agent-validation.js';
 export * from './answer-assessment.js';
 export * from './answer-narrative-binding.js';

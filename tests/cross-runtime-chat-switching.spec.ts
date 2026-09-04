@@ -1411,7 +1411,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
     await chatList.getByRole('button', { name: 'Earlier' }).click();
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
-    const send = page.getByRole('button', { name: 'Send' });
+    const send = page.getByRole('button', { name: 'Send', exact: true });
     const observations: UiObservation[] = [];
     for (const path of PRODUCT_PATHS)
       observations.push(
@@ -1449,7 +1449,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     const assistantRowsBefore = await assistantRows(page).count();
     const commandBinding = await submitExactTurn({
       textarea: page.locator('textarea[placeholder*="Type a message"]'),
-      send: page.getByRole('button', { name: 'Send' }),
+      send: page.getByRole('button', { name: 'Send', exact: true }),
       path,
       executionRequests,
     });

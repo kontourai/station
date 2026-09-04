@@ -49,6 +49,9 @@ describe('composer Agent/Model controls layout', () => {
     expect(chatCss).toMatch(
       /\.chat-input__meta\s+\.chat-input__agent-btn\s*\{\s*min-width:\s*44px;\s*min-height:\s*44px;/s,
     );
+    expect(chatCss).not.toMatch(
+      /@media \(max-width:\s*420px\)[\s\S]*?\.chat-input__agent-name\s*\{[^}]*display:\s*none/s,
+    );
   });
 
   /**
