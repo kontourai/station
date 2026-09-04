@@ -382,6 +382,65 @@ pulling a package pin does not update its existing `node_modules`. Run
 `npm run dependencies:install` there after a pull when the dependency-drift gate or
 `station doctor` reports a pinned-versus-installed mismatch.
 
+#### Interrupted dependency installation
+
+The dependency lifecycle runner holds an exclusive `.station-dependency-install/`
+directory across npm, approved hooks, and final verification. A second
+participating installer refuses that existing guard; a PID or elapsed time is
+not permission to reclaim it. Stop other builds and dependency writers before
+installation: this guard does not coordinate raw npm, older runners, or other
+processes using the dependency tree.
+
+For `dependencies:ci`, an existing real root `node_modules` directory is renamed
+into the guard and only that owned generated tree is cleared **before** npm
+starts. This gives npm an absent root target and avoids holding two complete
+dependency trees during installation. It preserves `npm ci` replacement
+semantics: the old generated dependencies are not a backup. Cleanup targets
+the retired identity with bounded filesystem retries, without recursively
+changing permission modes. If cleanup fails, npm does not start; the guard and
+any remaining cleanup data stay for inspection. `dependencies:install` remains
+incremental and does not retire its existing dependency tree.
+Node and npm CLI driver paths are selected before retirement. A clean install
+refuses a driver whose canonical target is within the tree it would move,
+before creating the guard; use an external Node/npm toolchain. A link to an
+external driver is bound to that external canonical path and remains usable
+after the link moves. Selected paths are passed to npm rather than
+rediscovered after the move.
+
+An install/hook/verification failure leaves the guard and any partial new
+dependencies in place. They are not automatically
+restored, verified, or retried. Inspect the original npm error and the exact
+reported guard path; first establish that the owning installer and other
+dependency consumers have stopped. Preserve the guard and partial tree in a
+separate recovery location before an intentional fresh install. Do not blindly
+delete a guard, infer ownership from a dead PID, or run gates against incomplete
+dependencies. A command-not-found error after interrupted provisioning is not
+an executed test failure.
+
+Leave disk headroom for npm extraction, staging, and cache work; this runner
+does not reserve disk space. An ENOSPC or abrupt interruption can prevent a
+phase-receipt update, so the last recorded phase is not proof that an installer
+is still alive or that an install completed.
+
+After successful verification, the exact owned receipt and any regular
+`.DS_Store` metadata up to64KiB are moved individually into a private
+`.station-dependency-record-*/` directory (the metadata uses a non-Finder
+destination name). Their identities and the metadata
+size are rechecked after each move; `rmdir` is the atomic final empty check. A
+new, replaced, linked, or larger entry keeps the fixed guard pending and is not
+deleted. The completed record is a small ignored generated worktree artifact,
+not authority to perform recovery. Records are not reclaimed by PID or age;
+normal completed-worktree cleanup removes them after relevant evidence has been
+preserved, avoiding an unattended pruning policy.
+
+If verification succeeds but guard finalization cannot finish, the runner reports
+**verified dependencies / cleanup pending** and leaves the guard blocking the
+next install until it is inspected. Unexpected guard children are never
+recursively deleted. This is cooperative install coordination and a recovery
+aid for generated dependencies, not a rollback transaction or user-data backup:
+workspace-local dependency trees and lockfiles remain npm-owned, and no
+hostile same-user/path-swap or power-loss archive guarantee is made.
+
 `npm run dependencies:ci` does **not** provision Playwright browsers. The
 runner applies Station's approved patch step explicitly; it does not trust a
 root `postinstall` hook. `node_modules/playwright/package.json` declares no
