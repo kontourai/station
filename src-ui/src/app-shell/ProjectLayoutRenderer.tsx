@@ -549,9 +549,16 @@ function BuiltinCodingLayoutHost({
           ) ??
           (isCanonicalBasisMcpWorkspacePaneInstance(instance)
             ? 'Basis App'
+            : null) ??
+          (isWorkspacePaneInstanceOwnedByProject(instance, projectId)
+            ? (catalog.entries.find(
+                (entry) =>
+                  entry.instance?.instanceId === instance.instanceId &&
+                  entry.descriptor.id === instance.descriptorId,
+              )?.descriptor.name ?? null)
             : null))
         : null,
-    [projectId, projectSlug],
+    [catalog.entries, projectId, projectSlug],
   );
   /** The document already published, kept while its content is unchanged. */
   const publishedDocument = useRef<{

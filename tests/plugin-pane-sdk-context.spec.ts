@@ -239,7 +239,17 @@ test.describe('direct plugin Pane SDK context', () => {
     page,
   }) => {
     await page.goto(`/projects/${projectSlug}/layouts/coding`);
-    await page.getByRole('button', { name: /Pane actions for Files/i }).click();
+    // Coding is the initial catalog-issued tab; Files is the intended placement
+    // origin, not an implicit fallback after invalid context records are lost.
+    await expect(
+      page.getByRole('tab', { name: 'Coding', exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
+    await page
+      .getByRole('tab', { name: 'Files', exact: true })
+      .click({ timeout: 20_000 });
+    await page
+      .getByRole('button', { name: /Pane actions for Files/i })
+      .click({ timeout: 20_000 });
     await page.getByRole('menuitem', { name: 'Open pane catalog' }).click();
     const builder = plugins.find(
       (plugin) => plugin.id === 'builder-delivery-viewer',

@@ -773,6 +773,20 @@ describe('ProjectLayoutRenderer', () => {
     expect(screen.getByText(/Hosted project-uuid/)).toBeTruthy();
     expect(screen.getByText(/instances 7/)).toBeTruthy();
     expect(screen.getByText('Coding chat pane')).toBeTruthy();
+    const label = hostMock.mock.lastCall?.[0].presentationLabel;
+    expect(label(coding.instance)).toBe('Coding');
+    expect(
+      label({ ...coding.instance, descriptorId: 'not-the-catalog-descriptor' }),
+    ).toBeNull();
+    expect(
+      label({
+        ...coding.instance,
+        boundContext: {
+          ...coding.instance.boundContext,
+          projectId: 'other-project',
+        },
+      }),
+    ).toBeNull();
     expect(screen.getByRole('button', { name: /Files pane/ })).toBeTruthy();
     expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
     expect(screen.getByText('Terminal pane /repo/workspace')).toBeTruthy();
