@@ -1,4 +1,5 @@
 import type { PluginCommandContribution } from '@kontourai/station-contracts/agent-plugin';
+import { PLUGIN_COMMAND_VERSION_MAX_LENGTH } from '@kontourai/station-contracts/plugin';
 import { describe, expect, test } from 'vitest';
 import {
   type InstalledPluginCommandSource,
@@ -41,6 +42,37 @@ function context(
 }
 
 describe('plugin command registry', () => {
+  test('uses the execution request version boundary without hiding a legacy plugin', () => {
+    const [accepted] = projectPluginPaletteCommands(
+      [{ ...plugin(), version: 'v'.repeat(PLUGIN_COMMAND_VERSION_MAX_LENGTH) }],
+      context(),
+    );
+    const [unavailable] = projectPluginPaletteCommands(
+      [
+        {
+          ...plugin(),
+          version: 'v'.repeat(PLUGIN_COMMAND_VERSION_MAX_LENGTH + 1),
+        },
+      ],
+      context(),
+    );
+    expect(accepted.unavailableReason).toBeNull();
+    expect(unavailable.unavailableReason).toBe(
+      'The plugin version is not supported for command requests.',
+    );
+  });
+  test.each(['', '   ', 'release\n1', 'release\u007f1'])(
+    'does not advertise a version the execution boundary refuses: %j',
+    (version) => {
+      const [row] = projectPluginPaletteCommands(
+        [{ ...plugin(), version }],
+        context(),
+      );
+      expect(row.unavailableReason).toBe(
+        'The plugin version is not supported for command requests.',
+      );
+    },
+  );
   test('projects a manifest-only command into the canonical palette identity', () => {
     expect(projectPluginPaletteCommands([plugin()], context())).toEqual([
       expect.objectContaining({

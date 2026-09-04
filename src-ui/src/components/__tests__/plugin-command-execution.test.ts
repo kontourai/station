@@ -26,6 +26,42 @@ const input = {
 beforeEach(() => authenticatedFetch.mockReset());
 
 describe('plugin command execution client', () => {
+  test.each([
+    undefined,
+    null,
+    [],
+    {},
+    { kind: 'composer' },
+    { kind: 'composer', sessionId: 42 },
+    { kind: 'composer', sessionId: 'session-a', extra: true },
+  ])(
+    'classifies malformed receipt target as a typed refusal: %j',
+    async (target) => {
+      authenticatedFetch.mockResolvedValue(
+        Response.json({
+          success: true,
+          receipt: {
+            schemaVersion: 'station.plugin-command-execution/v1',
+            receiptId: 'receipt-a',
+            requestId: 'request-a',
+            ...input,
+            target,
+            actor: { kind: 'operator' },
+            reportedSurface: 'web',
+            decision: 'authorized',
+            outcome: 'admitted',
+            recordedAt: '2026-09-03T00:00:00.000Z',
+          },
+        }),
+      );
+      await expect(
+        authorizePluginPaletteCommand('http://station.test', input),
+      ).rejects.toMatchObject({
+        name: 'PluginCommandExecutionError',
+        reason: 'malformed-receipt',
+      });
+    },
+  );
   test('returns only an exact host receipt and sends no composer content', async () => {
     authenticatedFetch.mockResolvedValue(
       Response.json({

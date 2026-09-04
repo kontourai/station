@@ -31,16 +31,26 @@ function validActor(value: ClientOriginActor | undefined): boolean {
 }
 
 function sameTarget(
-  left: PluginCommandResolvedTarget,
+  left: unknown,
   right: PluginCommandResolvedTarget,
 ): boolean {
+  if (!left || typeof left !== 'object' || Array.isArray(left)) return false;
+  const target = left as Record<string, unknown>;
+  if (Object.keys(target).length !== 2 || !Object.hasOwn(target, 'kind'))
+    return false;
+  if (right.kind === 'surface') {
+    return (
+      target.kind === 'surface' &&
+      Object.hasOwn(target, 'surfaceId') &&
+      typeof target.surfaceId === 'string' &&
+      target.surfaceId === right.surfaceId
+    );
+  }
   return (
-    left.kind === right.kind &&
-    (left.kind === 'surface' && right.kind === 'surface'
-      ? left.surfaceId === right.surfaceId
-      : left.kind === 'composer' && right.kind === 'composer'
-        ? left.sessionId === right.sessionId
-        : false)
+    target.kind === 'composer' &&
+    Object.hasOwn(target, 'sessionId') &&
+    typeof target.sessionId === 'string' &&
+    target.sessionId === right.sessionId
   );
 }
 

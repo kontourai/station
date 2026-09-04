@@ -14,6 +14,8 @@ import {
 import {
   isCanonicalPluginId,
   PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION,
+  PLUGIN_COMMAND_VERSION_MAX_LENGTH,
+  PLUGIN_COMMAND_VERSION_PATTERN,
   type PluginCommandExecutionReceipt,
   type PluginCommandExecutionRequest,
   type PluginCommandResolvedContext,
@@ -27,7 +29,6 @@ import { readPluginManifestFileSync } from './plugin-manifest-loader.js';
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const GENERATION = /^[a-f0-9]{64}$/;
 const SURFACE_ID = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
-const MAX_PLUGIN_VERSION_LENGTH = 256;
 
 export type PluginCommandExecutionRefusal =
   | 'invalid-request'
@@ -136,12 +137,9 @@ function validPluginVersion(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     value.length > 0 &&
-    value.length <= MAX_PLUGIN_VERSION_LENGTH &&
+    value.length <= PLUGIN_COMMAND_VERSION_MAX_LENGTH &&
     value.trim().length > 0 &&
-    ![...value].some((character) => {
-      const code = character.charCodeAt(0);
-      return code <= 0x1f || code === 0x7f;
-    })
+    PLUGIN_COMMAND_VERSION_PATTERN.test(value)
   );
 }
 

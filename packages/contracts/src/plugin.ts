@@ -103,6 +103,10 @@ export interface PluginSettingField {
 
 export const PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION =
   'station.plugin-command-execution/v1' as const;
+/** Shared availability/request limit; it does not reject legacy non-command plugins. */
+export const PLUGIN_COMMAND_VERSION_MAX_LENGTH = 256;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: This wire-format predicate explicitly excludes C0 and DEL controls.
+export const PLUGIN_COMMAND_VERSION_PATTERN = /^[^\u0000-\u001f\u007f]+$/;
 
 export type PluginCommandResolvedTarget =
   | { kind: 'surface'; surfaceId: string }

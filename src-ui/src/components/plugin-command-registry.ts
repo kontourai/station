@@ -2,6 +2,10 @@ import type {
   PluginCommandContribution,
   PluginCommandRequirement,
 } from '@kontourai/station-contracts/agent-plugin';
+import {
+  PLUGIN_COMMAND_VERSION_MAX_LENGTH,
+  PLUGIN_COMMAND_VERSION_PATTERN,
+} from '@kontourai/station-contracts/plugin';
 
 export interface InstalledPluginCommandSource {
   name: string;
@@ -76,6 +80,13 @@ export function pluginCommandUnavailableReason(
 ): string | null {
   if (!plugin.commandGeneration) {
     return 'The current plugin command installation could not be confirmed.';
+  }
+  if (
+    plugin.version.length > PLUGIN_COMMAND_VERSION_MAX_LENGTH ||
+    !plugin.version.trim() ||
+    !PLUGIN_COMMAND_VERSION_PATTERN.test(plugin.version)
+  ) {
+    return 'The plugin version is not supported for command requests.';
   }
   for (const requirement of command.requires ?? []) {
     const reason = requirementUnavailableReason(requirement, plugin, context);
