@@ -216,9 +216,11 @@ describe('loadRuntimePluginProviders providerAdapter entries', () => {
               logger,
               loadPluginOverrides: async () => ({}),
             })
-          : app.request('/reload', { method: 'POST' }).then((response) => {
-              reloadStatus = response.status;
-            });
+          : Promise.resolve(app.request('/reload', { method: 'POST' })).then(
+              (response) => {
+                reloadStatus = response.status;
+              },
+            );
       let releaseSnapshot!: () => void;
       const snapshotWait = new Promise<void>((resolve) => {
         releaseSnapshot = resolve;
