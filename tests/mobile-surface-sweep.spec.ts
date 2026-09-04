@@ -63,7 +63,7 @@ const ROUTES: readonly string[] = [
   '/registry',
   '/review-queue',
   '/schedule',
-  '/activity',
+  '/?surface=activity',
   '/settings',
 ];
 

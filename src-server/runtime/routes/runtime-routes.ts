@@ -526,7 +526,7 @@ export interface ConfigureRuntimeRoutesContext {
   orchestrationEventStore?: EventStore;
   pluginOperationalEventSubscriptions: Pick<
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
-    'quiesce'
+    'quiesce' | 'reconcile'
   >;
   // station#1225: shared per-user live-`/events`-subscriber presence — read
   // by `createOrchestrationRoutes` (connect/disconnect bookkeeping) and by
@@ -1560,6 +1560,8 @@ export function configureRuntimeRoutes(
         },
         quiesceEventSubscriptions: (plugin) =>
           context.pluginOperationalEventSubscriptions.quiesce(plugin),
+        reconcileEventSubscriptions: () =>
+          context.pluginOperationalEventSubscriptions.reconcile(),
       },
     ),
   );

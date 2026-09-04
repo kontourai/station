@@ -9,6 +9,7 @@ import {
   useSshEnvironmentsQuery,
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import {
   ENVIRONMENTS_UNAVAILABLE_NOTICE,
@@ -301,7 +302,24 @@ export function DelegationLauncher({
     }
   };
 
-  return (
+  // #1180: mounted from both `ChatDock` (a sibling of `<main>`, never inside
+  // a `PageFrame`) and `SessionsView`'s `/activity` route (a plain sibling of
+  // `SplitPaneLayout`, inside the frame `PageFrame` marks `inert` while that
+  // layout's mobile detail sheet is open — PageFrame.tsx:155). This is a
+  // hand-rolled overlay, not a `ResponsiveDialogSurface` consumer, so unlike
+  // the other sites in this class it never had a shared portal to inherit;
+  // rendered in place on `/activity` it fell inside the inert subtree, visible
+  // but with `.focus()` a no-op and every control unclickable. `createPortal`
+  // to `document.body` — the same escape `ConfirmModal` and `PluginModalStack`
+  // (#1131) already use — is unconditional, so the ChatDock mount is
+  // unaffected: `.delegation-launcher__overlay` is already `position: fixed;
+  // inset: 0` with a global z-index, so moving its DOM location changes
+  // nothing visually there. Return focus is already owned by both callers
+  // (`ChatDock`'s `restoreComposerMenuFocus`, `SessionsView`'s
+  // `captureReturnFocus`/`restoreReturnFocus` around `openDelegation` /
+  // `closeDelegation`) via element refs, which resolve the same regardless of
+  // where in the DOM this node lives — so nothing else here needed to change.
+  return createPortal(
     <div
       className="delegation-launcher__overlay responsive-surface-overlay"
       style={visualViewport.style}
@@ -553,6 +571,7 @@ export function DelegationLauncher({
           </button>
         </footer>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }

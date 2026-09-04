@@ -240,6 +240,23 @@ const contentLocks = new Map<string, PluginContentLockState>();
 const heldLockKeys = new AsyncLocalStorage<ReadonlyMap<string, symbol>>();
 
 /**
+ * Starts response-independent work without inheriting re-entrant content-lock
+ * authority. The work must still acquire the ordinary mutex for its effects.
+ * A caller with a live content guard must not await this work while keeping
+ * that guard: the independent acquire may be queued behind the caller itself.
+ */
+export function startIndependentPluginContentWork<T>(start: () => Promise<T>): {
+  work: Promise<T>;
+  callerOwnsContentLock: boolean;
+} {
+  const held = heldLockKeys.getStore();
+  const callerOwnsContentLock = held
+    ? [...held].some(([key, token]) => contentLocks.get(key)?.holder === token)
+    : false;
+  return { work: heldLockKeys.exit(start), callerOwnsContentLock };
+}
+
+/**
  * The wait-for graph: `waitingFor.get(h)` is the set of keys the holder of `h`
  * is currently blocked on. Edges exist only between a key's acquire request
  * and its grant, and only a lock's single holder can add one, so an edge

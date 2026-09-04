@@ -1,6 +1,9 @@
-import type { PermissionTier } from '@kontourai/station-contracts/plugin';
+import type {
+  PermissionTier,
+  RejectedInstalledPluginRecord,
+} from '@kontourai/station-contracts/plugin';
 
-export interface Plugin {
+export interface ReadyPlugin {
   name: string;
   displayName: string;
   version: string;
@@ -35,6 +38,14 @@ export interface Plugin {
   };
 }
 
+export type Plugin = ReadyPlugin | RejectedInstalledPluginRecord;
+
+export function isRejectedPlugin(
+  plugin: Plugin,
+): plugin is RejectedInstalledPluginRecord {
+  return 'status' in plugin && plugin.status === 'rejected';
+}
+
 export interface PreviewComponent {
   type: string;
   id: string;
@@ -52,7 +63,7 @@ export interface GitInfo {
 export interface PreviewData {
   valid: boolean;
   error?: string;
-  manifest?: Plugin;
+  manifest?: ReadyPlugin;
   components: PreviewComponent[];
   conflicts: Array<{ type: string; id: string; existingSource?: string }>;
   /**
@@ -93,4 +104,8 @@ export interface PluginUpdateSummary {
 export interface PluginMessage {
   type: 'success' | 'error';
   text: string;
+  action?: {
+    label: string;
+    invoke(): void;
+  };
 }

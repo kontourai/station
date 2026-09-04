@@ -97,6 +97,9 @@ jobs:
   native-cohort:
     needs: [test-gate, full-regression]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha }}
+    # Reusable workflows can only reduce the caller's token. The cohort writes
+    # immutable version reservations, recovery locks, and promotion fences.
+    permissions: { contents: write, id-token: write, attestations: write }
     uses: ./.github/workflows/nightly-native-cohort.yml
     with:
       source_sha: ${{ needs.test-gate.outputs.source_sha }}

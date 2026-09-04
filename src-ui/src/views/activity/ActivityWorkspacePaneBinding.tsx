@@ -7,9 +7,12 @@ import { createContext, type ReactNode, useContext } from 'react';
  * data, so a renderer's live inputs reach it through context owned by the
  * placement that has them, read by the renderer that needs them. For
  * Activity those inputs are the API base its session queries and mutations
- * are addressed to, and — only for the standalone route placement — the
- * deep-linked session id (`/activity/:sessionId`). A routed selection is
- * presentation state of that placement, never pane identity, which is why it
+ * are addressed to, and the deep-linked intent. BOTH placements carry that
+ * intent: the standalone `/activity` route reads it off the URL
+ * (`AppViewContent` → `ActivityView`) and the region placement receives it as
+ * a region-model surface intent (`ActivityRegionShell`); only the region's
+ * repeat-activation fields below are its alone. A routed selection is
+ * presentation state of a placement, never pane identity, which is why it
  * lives here and not on the occurrence.
  *
  * Unlike Home's, the context lives in its own module rather than beside the
@@ -22,10 +25,18 @@ import { createContext, type ReactNode, useContext } from 'react';
  */
 export interface ActivityWorkspacePaneBinding {
   apiBase: string;
-  /** Deep-linked session id of the standalone route placement, if any. */
+  /** Deep-linked session id of whichever placement supplied it, if any. */
   sessionId?: string;
   /** Routed focus target, forwarded to the sessions surface untouched. */
   focusHint?: 'evidence';
+  /**
+   * Monotonic activation identity, including repeated intents for the same
+   * session. Region placement only: the standalone route re-mounts on each
+   * navigation, so it has no repeat to distinguish.
+   */
+  intentToken?: number;
+  /** Region placement only, for the same reason as `intentToken`. */
+  onFocusConsumed?: () => void;
 }
 
 const ActivityWorkspacePaneContext =
