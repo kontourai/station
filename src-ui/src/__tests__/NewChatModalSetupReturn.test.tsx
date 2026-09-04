@@ -473,3 +473,16 @@ test('restores an exact non-default Pane path, tab and query selection', async (
   expect(new URLSearchParams(window.location.search).get('view')).toBeNull();
   expect(new URLSearchParams(window.location.search).get('tab')).toBe('diff');
 });
+
+test('opening repair from the same Connections route stays in setup', async () => {
+  act(() => navigationStore.navigate('/connections/models'));
+  harness();
+  await openSetup();
+  await act(async () => {});
+  expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'Return to New Chat' }),
+  ).toBeTruthy();
+  await returnToChat();
+  expect(navigationStore.getSnapshot().pathname).toBe('/connections/models');
+});

@@ -168,8 +168,10 @@ export function useNewChatSetupReturn({
       dismissible: false,
     });
     if (!journey.entered) {
-      journey.entered = true;
+      // Ignore this initiating navigation, including setup opened from the
+      // very same Connections page. Only a later Back can mean return.
       navigationStore.navigate(journey.target);
+      journey.entered = true;
     }
   }, [authority, cancel, id, journey, resume]);
 
