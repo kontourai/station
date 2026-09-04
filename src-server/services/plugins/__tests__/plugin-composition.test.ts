@@ -1276,7 +1276,14 @@ describe('plugin composition profiles', () => {
   );
 
   test('bounds stalled staging and disposes a late fenced handle', async () => {
-    const dispose = vi.fn();
+    let finishDisposal!: () => void;
+    const dispose = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishDisposal = resolve;
+        }),
+    );
+    const release = vi.fn();
     let stageCalls = 0;
     let finishStage!: () => void;
     let occurrenceCurrent: (() => boolean) | undefined;
@@ -1291,6 +1298,7 @@ describe('plugin composition profiles', () => {
     };
     const module = moduleWith([['cache', implementation]], {
       disposerTimeoutMs: 5,
+      onRelease: release,
     });
 
     await expect(
@@ -1303,8 +1311,12 @@ describe('plugin composition profiles', () => {
       ),
     ).resolves.toMatchObject({ kind: 'failed' });
     expect(occurrenceCurrent?.()).toBe(false);
+    expect(release).not.toHaveBeenCalled();
 
-    await module.retire(projectA);
+    await expect(module.retire(projectA)).resolves.toMatchObject({
+      kind: 'pending',
+      liveFences: [expect.objectContaining({ instanceId: 'cache' })],
+    });
     await expect(
       module.apply(
         profile(projectA, [contribution('cache', 'workspace.cache')]),
@@ -1315,10 +1327,25 @@ describe('plugin composition profiles', () => {
 
     finishStage();
     await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
+    expect(release).not.toHaveBeenCalled();
+    finishDisposal();
+    await vi.waitFor(() => expect(release).toHaveBeenCalledOnce());
     await expect(module.retire(projectA)).resolves.toMatchObject({
       kind: 'retired',
     });
   });
+
+  test.each(['constructor'])(
+    'empty selections cannot invent a provider selection for %s',
+    async (capability) => {
+      const module = moduleWith([factory('cache', [])]);
+      await expect(
+        module.apply(
+          profile(projectA, [contribution('cache', capability)], {}),
+        ),
+      ).resolves.toMatchObject({ kind: 'activated' });
+    },
+  );
 
   test('holds one whole-plan authorization lease and rolls back when it becomes stale before publication', async () => {
     const events: string[] = [];

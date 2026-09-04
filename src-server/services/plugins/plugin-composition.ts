@@ -739,7 +739,7 @@ export interface PluginCompositionModule {
   ): Promise<PluginCompositionApplyResult>;
   inspect(scope: PluginCompositionScope): PluginCompositionInspection;
   retire(scope: PluginCompositionScope): Promise<{
-    readonly kind: 'retired' | 'refused';
+    readonly kind: 'retired' | 'refused' | 'pending';
     readonly liveFences: readonly PluginCompositionInspectionEntry[];
     readonly inspection: PluginCompositionInspection;
   }>;
@@ -1378,7 +1378,10 @@ export function createPluginCompositionModule(options: {
     const shadowed: PluginCompositionInspectionEntry[] = [];
     const selectionFailures: PluginCompositionInspectionEntry[] = [];
     for (const [capability, candidates] of byCapability) {
-      const selectedId = profile.selections?.[capability];
+      const selectedId =
+        profile.selections && Object.hasOwn(profile.selections, capability)
+          ? profile.selections[capability]
+          : undefined;
       const selected =
         candidates.length === 1 && selectedId === undefined
           ? candidates[0]
@@ -1626,11 +1629,19 @@ export function createPluginCompositionModule(options: {
     }
 
     let released = false;
+    let releaseOperation: Promise<void> | undefined;
+    let lateStageOwnsAuthorization = false;
+    const beginAuthorizationRelease = () => {
+      releaseOperation ??= Promise.resolve().then(() =>
+        authorization.lease.release(),
+      );
+      return releaseOperation;
+    };
     const releaseAuthorization = async () => {
       if (released) return;
       released = true;
       await settleBestEffortWithin(
-        () => authorization.lease.release(),
+        beginAuthorizationRelease,
         disposerTimeoutMs,
       );
     };
@@ -1721,24 +1732,44 @@ export function createPluginCompositionModule(options: {
             disposerTimeoutMs,
           );
           if (stageOutcome.kind === 'timed-out') {
+            lateStageOwnsAuthorization = true;
             leaseControl.fence();
             pendingLifecycle.set(key, [
               entry(contribution, 'pending', 'activation-aborted'),
             ]);
             void stageOperation
-              .then(async (lateHandle) => {
-                const stagedHandle = snapshotStagedHandle(lateHandle);
-                const occurrence = claimOccurrence(leaseControl, stagedHandle);
-                if (!occurrence) return;
-                await disposeOne(
-                  { ...contribution, binding, occurrence },
-                  key,
-                  nextGeneration,
-                  'rollback',
-                );
-              })
-              .catch(() => {})
-              .finally(() => pendingLifecycle.delete(key));
+              .then(
+                async (lateHandle) => {
+                  const stagedHandle = snapshotStagedHandle(lateHandle);
+                  const occurrence = claimOccurrence(
+                    leaseControl,
+                    stagedHandle,
+                  );
+                  if (!occurrence) return;
+                  const disposal = Promise.resolve().then(() =>
+                    occurrence.dispose(),
+                  );
+                  void disposal
+                    .then(beginAuthorizationRelease)
+                    .then(() => pendingLifecycle.delete(key))
+                    .catch(() => {});
+                  await disposeOne(
+                    {
+                      ...contribution,
+                      binding,
+                      occurrence: { ...occurrence, dispose: () => disposal },
+                    },
+                    key,
+                    nextGeneration,
+                    'rollback',
+                  );
+                },
+                async () => {
+                  await beginAuthorizationRelease();
+                  pendingLifecycle.delete(key);
+                },
+              )
+              .catch(() => {});
             throw new Error('plugin composition staging timed out');
           }
           if (stageOutcome.kind === 'rejected') {
@@ -1833,7 +1864,7 @@ export function createPluginCompositionModule(options: {
         inspection: inspect(profile.scope),
       };
     } finally {
-      await releaseAuthorization();
+      if (!lateStageOwnsAuthorization) await releaseAuthorization();
     }
   };
 
@@ -1903,11 +1934,14 @@ export function createPluginCompositionModule(options: {
             )
           : [];
         const liveFences = fenceEntries(key);
+        const pending = pendingLifecycle.get(key) ?? [];
         return {
-          kind: 'retired' as const,
+          kind: pendingLifecycle.has(key)
+            ? ('pending' as const)
+            : ('retired' as const),
           liveFences:
-            liveFences.length > 0
-              ? liveFences
+            liveFences.length > 0 || pending.length > 0
+              ? [...liveFences, ...pending]
               : failures.filter(
                   (candidate) => candidate.reason !== 'disposer-timeout',
                 ),
