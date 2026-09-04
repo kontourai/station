@@ -192,10 +192,17 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     if (adoptedIntentKeyRef.current === intentKey) return;
     adoptedIntentKeyRef.current = intentKey;
     if (REGION_SURFACE_REGISTRY.has(surfaceIntent.surfaceId)) {
-      showSurface(surfaceIntent.surfaceId, {
-        session: surfaceIntent.sessionId,
-        focus: surfaceIntent.focus,
-      });
+      // A sessionless link (`activityDeepLink()` with no session mints a bare
+      // `/?surface=activity`) must reveal the surface WITHOUT an intent: an
+      // intent object mints a token and `session: intent.session ??
+      // previous?.session` above would re-deliver whichever session a prior
+      // deep link left behind. Same shape as App.tsx's `navigateToView`.
+      showSurface(
+        surfaceIntent.surfaceId,
+        surfaceIntent.sessionId
+          ? { session: surfaceIntent.sessionId, focus: surfaceIntent.focus }
+          : undefined,
+      );
     }
     updateParams(clearSurfaceDeepLinkParams());
   }, [intentKey]);

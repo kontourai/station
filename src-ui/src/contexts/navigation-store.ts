@@ -531,11 +531,26 @@ class NavigationStore {
       // inherits a real bug. Only the shell-scoped params below outlive a
       // route change — everything else describes the route being left.
       // `session`/`focus` are fragments of a surface deep link
-      // (`surfaceDeepLink`): they travel with `surface` and fall away with it,
-      // including when the caller clears the surface on this navigation.
+      // (`surfaceDeepLink`): they travel with *their* surface and fall away
+      // with it — when the caller clears the surface on this navigation, and
+      // equally when it swaps in a different one. Comparing the value rather
+      // than mere presence is what separates those: `/projects?surface=activity
+      // &session=x&focus=evidence` → `navigate('/?surface=chat')` would
+      // otherwise re-attach one surface's session to another.
+      const outgoingSurface = url.searchParams.get(
+        SURFACE_DEEP_LINK_QUERY_KEYS.surface,
+      );
+      // Precedence mirrors the writes below: the structured `params` argument
+      // is applied last and so wins, then the target pathname's own query,
+      // then — when neither names a surface — the outgoing one stays put
+      // (`surface` is shell-scoped, so the loop below never deletes it).
+      const incomingSurface =
+        params && SURFACE_DEEP_LINK_QUERY_KEYS.surface in params
+          ? params[SURFACE_DEEP_LINK_QUERY_KEYS.surface]
+          : (target.searchParams.get(SURFACE_DEEP_LINK_QUERY_KEYS.surface) ??
+            outgoingSurface);
       const surfaceSurvives =
-        url.searchParams.has(SURFACE_DEEP_LINK_QUERY_KEYS.surface) &&
-        params?.[SURFACE_DEEP_LINK_QUERY_KEYS.surface] !== null;
+        outgoingSurface !== null && incomingSurface === outgoingSurface;
       for (const key of [...url.searchParams.keys()]) {
         if (SHELL_SCOPED_QUERY_PARAMS.has(key)) continue;
         if (

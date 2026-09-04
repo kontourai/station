@@ -72,6 +72,14 @@ let workflowTasksByProject: Record<
   }>
 > = {};
 
+// `RegionModelProvider` wraps the whole application, so `useShowSurface`
+// requires it. This harness mounts a fragment of that tree, and nothing
+// here asserts a surface reveal, so the command hook is supplied directly.
+const showSurfaceStub = vi.hoisted(() => vi.fn());
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceStub,
+}));
+
 vi.mock('../contexts/ToastContext', () => ({
   ToastProvider: ({ children }: { children: unknown }) => children,
   useToast: () => ({ showToast }),
@@ -4180,6 +4188,33 @@ describe('SessionsView', () => {
         ),
       );
       expect(window.location.search).toBe('');
+    });
+
+    // `armEvidenceReveal` reports the ROUTED focus consumed, so it must fire
+    // `onFocusConsumed` only for the routed session. A local activation on
+    // another row is that row's own reveal: reporting it would clear a routed
+    // `focus=evidence` that was never delivered, and the intent's own session
+    // would then land without its evidence region.
+    test('activating Evidence on another row does not report the routed focus consumed', async () => {
+      sessions = [
+        flatSession({ threadId: 'other', displayTitle: 'Other work' }),
+      ];
+      const onFocusConsumed = vi.fn();
+      // The routed session is not in the list, so its focus is still pending.
+      renderView('done', 'evidence', 1, onFocusConsumed);
+      expect(onFocusConsumed).not.toHaveBeenCalled();
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Evidence for Other work' }),
+      );
+
+      // The click really did arm a reveal — for `other`, not for `done`.
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByTestId('session-evidence-region'),
+        ),
+      );
+      expect(onFocusConsumed).not.toHaveBeenCalled();
     });
 
     test('a new intent token re-fires the same mounted session and focus intent', async () => {

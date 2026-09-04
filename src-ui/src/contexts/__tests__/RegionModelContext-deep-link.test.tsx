@@ -9,7 +9,6 @@ import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
 import { navigationStore } from '../navigation-store';
 import { RegionModelProvider, useRegionModel } from '../RegionModelContext';
-import { useShowSurface } from '../useShowSurface';
 
 const sessionsProps = vi.hoisted(() => vi.fn());
 
@@ -38,20 +37,6 @@ function Probe() {
     model = value;
   }, [value]);
   return null;
-}
-
-function FallbackProducer() {
-  const showSurface = useShowSurface();
-  return (
-    <button
-      type="button"
-      onClick={() =>
-        showSurface('activity', { session: 'thread/alpha', focus: 'evidence' })
-      }
-    >
-      Reveal
-    </button>
-  );
 }
 
 function Harness({ shell = false }: { shell?: boolean }) {
@@ -98,21 +83,6 @@ afterEach(() => {
 });
 
 describe('RegionModelProvider surface deep-link adoption', () => {
-  test('useShowSurface falls back to the canonical deep link without a provider', () => {
-    const { getByRole } = render(<FallbackProducer />);
-
-    act(() => getByRole('button', { name: 'Reveal' }).click());
-
-    expect(window.location.pathname + window.location.search).toBe(
-      '/?surface=activity&session=thread%2Falpha&focus=evidence',
-    );
-    expect(navigationStore.getSnapshot().surfaceIntent).toEqual({
-      surfaceId: 'activity',
-      sessionId: 'thread/alpha',
-      focus: 'evidence',
-    });
-  });
-
   test('adopts Activity once, delivers its binding, and clears by replacement', async () => {
     setUrl('/');
     const historyLength = window.history.length;
@@ -171,6 +141,35 @@ describe('RegionModelProvider surface deep-link adoption', () => {
     setUrl('/?surface=activity&session=s1');
     await waitFor(() => expect(window.location.search).toBe(''));
     expect(model?.surfaceIntents.activity?.token).toBe(2);
+  });
+
+  // `activityDeepLink()` with no session mints a bare `/?surface=activity`.
+  // Adopting it must reveal Activity WITHOUT an intent object: `showSurface`
+  // resolves `session: intent.session ?? previous?.session`, so passing one
+  // would re-deliver whichever session an earlier deep link left behind, under
+  // a fresh token the pane reads as a new instruction.
+  test('a sessionless deep link reveals Activity without re-delivering a previous session', async () => {
+    setUrl('/?surface=activity&session=thread%2Falpha');
+    render(<Harness />);
+    await waitFor(() => expect(window.location.search).toBe(''));
+    expect(model?.surfaceIntents.activity).toEqual({
+      session: 'thread/alpha',
+      focus: undefined,
+      token: 1,
+    });
+
+    act(() => model?.setRegion('right', { visible: false }));
+    await waitFor(() => expect(model?.regions.right.visible).toBe(false));
+
+    setUrl('/?surface=activity');
+
+    await waitFor(() => expect(model?.regions.right.visible).toBe(true));
+    expect(model?.regions.right.occupant).toBe('activity');
+    expect(model?.surfaceIntents.activity).toEqual({
+      session: 'thread/alpha',
+      focus: undefined,
+      token: 1,
+    });
   });
 
   test('preserves dock ordering on desktop and folds to Activity on bottom-only devices', async () => {

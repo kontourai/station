@@ -340,6 +340,7 @@ describe('useChatDockActiveChatSync', () => {
     );
 
     await waitFor(() => expect(opener).toHaveBeenCalledTimes(1));
+    expect(showSurface).not.toHaveBeenCalled();
   });
 
   it('retries one transient cold-lookup failure before giving up on the active chat', async () => {
@@ -408,6 +409,7 @@ describe('useChatDockActiveChatSync', () => {
     });
 
     await waitFor(() => expect(readyOpener).toHaveBeenCalledTimes(1));
+    expect(showSurface).not.toHaveBeenCalled();
   });
 
   // If the retry itself also reports false (the agent genuinely does not
@@ -553,6 +555,7 @@ describe('useChatDockActiveChatSync', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(opener).toHaveBeenCalledTimes(1);
+    expect(showSurface).not.toHaveBeenCalled();
   });
 
   // archive#1284: the conversation simply doesn't resolve at all

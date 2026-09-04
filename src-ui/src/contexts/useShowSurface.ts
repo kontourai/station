@@ -1,27 +1,16 @@
-import { surfaceDeepLink } from '@kontourai/station-contracts/surface-deep-link';
-import { useCallback } from 'react';
-import { navigationStore } from './navigation-store';
-import {
-  type SurfaceIntent,
-  useRegionModelOptional,
-} from './RegionModelContext';
+import { type SurfaceIntent, useRegionModel } from './RegionModelContext';
 
+/**
+ * The state-free command half of the region model, for renderers that must not
+ * read region state (`region-surface-boundary.test.ts` permits this hook by
+ * name for exactly that). `RegionModelProvider` wraps `<App/>` unconditionally
+ * (`main.tsx`, pinned by `main-provider-order.test.ts`) and every call site is
+ * inside App, so a provider-less path here would be dead code: `useRegionModel`
+ * throws instead of silently degrading.
+ */
 export function useShowSurface(): (
   surfaceId: string,
   intent?: SurfaceIntent,
 ) => void {
-  const model = useRegionModelOptional();
-  return useCallback(
-    (surfaceId: string, intent?: SurfaceIntent) => {
-      if (model?.showSurface) return model.showSurface(surfaceId, intent);
-      navigationStore.navigate(
-        surfaceDeepLink({
-          surfaceId,
-          sessionId: intent?.session,
-          focus: intent?.focus,
-        }),
-      );
-    },
-    [model?.showSurface],
-  );
+  return useRegionModel().showSurface;
 }

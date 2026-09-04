@@ -665,6 +665,51 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
     expect(window.location.pathname + window.location.search).toBe('/settings');
   });
 
+  // Swapping one surface for another is the same loss of ownership as clearing
+  // it: Activity's session/focus must not be re-attached to Chat. Asserting
+  // only that *a* surface survives cannot tell these apart.
+  test('drops a surface intent fragment when the target pathname carries a different surface', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/projects?surface=activity&session=x&focus=evidence',
+    );
+    navigationStore.navigate('/?surface=chat');
+    const params = new URLSearchParams(window.location.search);
+    expect(window.location.pathname).toBe('/');
+    expect(params.get('surface')).toBe('chat');
+    expect(params.get('session')).toBeNull();
+    expect(params.get('focus')).toBeNull();
+  });
+
+  test('drops a surface intent fragment when structured params carry a different surface', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/projects?surface=activity&session=x&focus=evidence',
+    );
+    navigationStore.navigate('/settings', { surface: 'chat' });
+    const params = new URLSearchParams(window.location.search);
+    expect(window.location.pathname).toBe('/settings');
+    expect(params.get('surface')).toBe('chat');
+    expect(params.get('session')).toBeNull();
+    expect(params.get('focus')).toBeNull();
+  });
+
+  test('keeps a surface intent fragment when the target pathname restates the same surface', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/projects?surface=activity&session=x&focus=evidence',
+    );
+    navigationStore.navigate('/settings?surface=activity');
+    const params = new URLSearchParams(window.location.search);
+    expect(window.location.pathname).toBe('/settings');
+    expect(params.get('surface')).toBe('activity');
+    expect(params.get('session')).toBe('x');
+    expect(params.get('focus')).toBe('evidence');
+  });
+
   test('leaves the query alone when only params change on the same route', () => {
     window.history.replaceState({}, '', '/settings?view=appearance');
     navigationStore.navigate('/settings', { highlight: 'theme' });
