@@ -14,6 +14,7 @@ describe('exact CI change classification', () => {
     expect(classifyChangedPaths(paths)).toEqual({
       heavy: true,
       container: true,
+      dependencies: false,
       classification: 'runtime-or-workflow',
       changedFiles: 351,
     });
@@ -27,6 +28,7 @@ describe('exact CI change classification', () => {
     expect(classifyChangedPaths(paths)).toEqual({
       heavy: false,
       container: false,
+      dependencies: false,
       classification: 'docs-only',
       changedFiles: 350,
     });
@@ -39,6 +41,7 @@ describe('exact CI change classification', () => {
       [
         'heavy=true',
         'container=true',
+        'dependencies=false',
         'classification=runtime-or-workflow',
         'changed-files=1',
       ].join('\n'),
@@ -54,8 +57,22 @@ describe('exact CI change classification', () => {
     ).toEqual({
       heavy: true,
       container: true,
+      dependencies: true,
       classification: 'missing-before-fail-closed',
       changedFiles: null,
     });
+  });
+
+  test.each([
+    'package.json',
+    'package-lock.json',
+    'packages/sdk/package.json',
+    'packages/shared/package-lock.json',
+    'packages/shared/npm-shrinkwrap.json',
+    '.npmrc',
+    'packages/sdk/.npmrc',
+    'scripts/dependency-advisory-exceptions.json',
+  ])('requires the advisory scan for %s', (changedPath) => {
+    expect(classifyChangedPaths([changedPath]).dependencies).toBe(true);
   });
 });
