@@ -1,0 +1,39 @@
+name: Starved pull request report
+
+# station#1153: a PR that is CLEAN, outside the merge queue and unarmed is
+# finished work that nothing will land. It is the only PR state with no
+# surface — red shows in checks, conflicted shows as DIRTY, drafts are
+# visibly draft — so it is invisible until someone happens to look.
+#
+# This reports and never arms. Arming automatically would close the gap by
+# removing the decision, and in one evening on this repo four PRs were CLEAN
+# with a real defect inside them, each caught by a human declining to arm.
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: starved-pr-report
+  cancel-in-progress: true
+
+jobs:
+  report:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Report pull requests that are ready and will not merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/starved-pr-report.mjs --apply

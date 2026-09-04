@@ -220,7 +220,6 @@ export function useAgentsViewModel({
   const receivedFreshDetail =
     agentLoadSucceeded &&
     !agentLoadFailed &&
-    !isFetching &&
     (dataUpdatedAt > detailRoute.baselineDataUpdatedAt ||
       (isFetchedAfterMount && detailRoute.fromNoSelection));
   const successfulMismatch =
