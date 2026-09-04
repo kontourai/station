@@ -53,6 +53,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { isBuiltinStationControl } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { SC_READ_ONLY_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 
 export interface SessionAgentResolverOptions {
@@ -140,7 +141,10 @@ export function builtinStationAgentSpec(slug: string): AgentSpec | null {
     // spec is what is resolved. `bootstrapRuntimeDefaultAgent` persists the
     // docs integration BEFORE its external-engine early return precisely so
     // `resolveToolServer('station-docs')` can find it here.
-    tools: { mcpServers: [...BUILTIN_STATION_AGENT_MCP_SERVER_IDS] },
+    tools: {
+      mcpServers: [...BUILTIN_STATION_AGENT_MCP_SERVER_IDS],
+      autoApprove: SC_READ_ONLY_TOOLS,
+    },
   };
 }
 
@@ -162,6 +166,7 @@ export function withBuiltinStationAgentCapabilities(
   return {
     ...authored,
     tools: {
+      ...builtin.tools,
       ...authored.tools,
       mcpServers: [
         ...BUILTIN_STATION_AGENT_MCP_SERVER_IDS,

@@ -289,6 +289,9 @@ describe('createSessionAgentResolver', () => {
       'station-control',
       'station-docs',
     ]);
+    expect(result.agent?.autoApprove).toContain(
+      'station-control_list_projects',
+    );
     expect(
       result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY],
     ).toMatchObject({
