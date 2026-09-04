@@ -17,7 +17,7 @@ concurrency: { group: nightly, cancel-in-progress: false }
 
 jobs:
   fleet-staging:
-    name: 2 · Stage portable fleet evidence
+    name: 3 · Stage portable fleet evidence
     needs: [test-gate, full-regression]
     if: ${{ github.ref == 'refs/heads/main' && needs.test-gate.outputs.source_sha == github.sha && needs.full-regression.result == 'success' }}
     permissions: { contents: read, attestations: write, id-token: write }
