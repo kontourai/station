@@ -244,6 +244,7 @@ describe('CI verification workflow contracts', () => {
       '.github/workflows/secret-scan.yml',
       '.github/workflows/backlog-priority-policy.yml',
       '.github/workflows/android-test.yml',
+      '.github/workflows/dependency-advisory.yml',
     ];
     const intendedTargetNames = intendedTargetFiles.map((targetFile) => {
       const target = workflowDocuments.find(({ file }) => file === targetFile)
