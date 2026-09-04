@@ -967,8 +967,17 @@ export async function runPolicyCli({
   // Name the range on this path too. `reason` is a docs-vs-runtime
   // classification, orthogonal to whether dependencies changed, so on its own
   // it cannot explain why the registry is being contacted.
+  //
+  // The justification has to be derived from whether a range exists, not
+  // asserted. A scheduled or dispatched run scans everything BECAUSE it is
+  // periodic, not because anything changed -- and it never sees a range at
+  // all, so "dependency inputs changed" would be a claim nothing computed
+  // (#1465). That is the failure this whole message set exists to remove.
+  const why = decision.range
+    ? `dependency inputs changed in ${describeRange(decision.range)}`
+    : 'full scan; this event carries no range to narrow by';
   console.log(
-    `Dependency advisory floor: scanning ${scopes.map((entry) => entry.scope).join(', ')} — dependency inputs changed in ${describeRange(decision.range)} (${decision.reason})`,
+    `Dependency advisory floor: scanning ${scopes.map((entry) => entry.scope).join(', ')} — ${why} (${decision.reason})`,
   );
   const audits = await runAudits(scopes);
   const exceptions = readJson(

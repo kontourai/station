@@ -50,11 +50,18 @@ import {
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { getCachedUser } from '../../../routes/system/auth.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { waitForReceipt } from '../../../services/infra/receipt-bus.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
+import { createRuntimeSearch } from '../../../services/search/runtime-search.js';
 import {
   DevicePairingService,
   type PairingApproval,
@@ -162,7 +169,9 @@ const OPERATOR_SECRET = 'operator-secret-remote-fixture';
 
 describe('device-session chat principal resolution over the REAL auth path (station#4518)', () => {
   const directories: string[] = [];
-  afterEach(() => {
+  const searchCleanup: Array<() => Promise<void>> = [];
+  afterEach(async () => {
+    for (const close of searchCleanup.splice(0)) await close();
     vi.restoreAllMocks();
     for (const directory of directories.splice(0))
       rmSync(directory, { recursive: true, force: true });
@@ -180,7 +189,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
    * pairing-code/tailnet device — which is exactly the fact this regression
    * turns on.
    */
-  function pairRealDevice() {
+  function pairRealDevice(homePossession = false) {
     const homeDir = mkdtempSync(join(tmpdir(), 'station-device-chat-'));
     directories.push(homeDir);
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
@@ -207,11 +216,20 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       source: 'tailnet',
       requester: { provider: 'tailscale-serve', login: 'owner@github' },
     });
-    pairing.confirmRequest(request.requestId, operatorApproval);
+    pairing.confirmRequest(
+      request.requestId,
+      homePossession ? { kind: 'local-grant' } : operatorApproval,
+    );
     const paired = pairing.exchange({
       offerId: offer.offerId,
       proof: offer.challenge,
       requestId: request.requestId,
+      ...(homePossession
+        ? {
+            locality: 'home-possession' as const,
+            mintKind: 'local-grant' as const,
+          }
+        : {}),
     });
     return { pairing, paired };
   }
@@ -247,13 +265,69 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     });
   }
 
-  async function setup() {
-    const { pairing, paired } = pairRealDevice();
+  async function setup(searchMode?: 'device' | 'whois' | 'home' | 'operator') {
+    const { pairing, paired } = pairRealDevice(searchMode === 'home');
     const roomHomeDir = mkdtempSync(
       join(tmpdir(), 'station-device-chat-room-'),
     );
     directories.push(roomHomeDir);
     const store = new EventStore(join(roomHomeDir, 'orchestration.sqlite'));
+    let runtimeSearch: ReturnType<typeof createRuntimeSearch> | undefined;
+    if (searchMode) {
+      for (const [threadId, userId] of [
+        ['device-owned', `human:device:${paired.device.id}`],
+        ['whois-owned', 'human:tailscale-serve:owner@github'],
+        ['legacy-owned', getCachedUser().alias],
+      ]) {
+        store.appendEvent({
+          eventId: `${threadId}:start`,
+          threadId,
+          sessionId: threadId,
+          provider: 'claude',
+          method: 'session.started',
+          createdAt: '2026-09-04T00:00:00Z',
+          metadata: { userId },
+        });
+        store.appendEvent({
+          eventId: `${threadId}:exact`,
+          threadId,
+          turnId: `${threadId}:turn`,
+          provider: 'claude',
+          method: 'turn.started',
+          createdAt: '2026-09-04T00:00:01Z',
+          prompt: 'cobalt receipt',
+        });
+      }
+      const orchestration = new OrchestrationService({
+        eventStore: store,
+        adoptionLedger: store.createAdoptionLedger(),
+        eventBus: new EventBus(),
+        adapterRegistry: {
+          register() {},
+          get: () => undefined,
+          list: () => [],
+        },
+        logger: { debug() {}, warn() {} },
+        legacyPersonalOwner: getCachedUser().alias,
+      });
+      const settled = waitForReceipt(
+        (receipt) => receipt.kind === 'session.attachment.settled',
+      );
+      orchestration.initialize();
+      await settled;
+      runtimeSearch = createRuntimeSearch({
+        stationId: '22222222-2222-4222-8222-222222222222',
+        tasks: new TaskGraphService(roomHomeDir, {
+          resolveProjectWorkspace: async () => '',
+        }),
+        transcripts: orchestration,
+      });
+      searchCleanup.push(async () => {
+        await runtimeSearch!.close();
+        await orchestration.shutdown();
+        await expect.poll(() => store.close().kind).toBe('closed');
+      });
+    }
     const app = new Hono();
     const context = deepStub({
       app,
@@ -274,6 +348,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       metricsLog: [],
       monitoringEvents: [],
       orchestrationEventStore: store,
+      ...(runtimeSearch ? { runtimeSearch } : {}),
       taskGraphService: {
         readTaskView: (id: string) => (id === task.id ? task : null),
         listTasks: () => [],
@@ -291,6 +366,144 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     );
     return { app, store, roomRuntime: result.projectTaskRoomRuntime!, paired };
   }
+
+  test.each(['device', 'whois', 'home', 'operator'] as const)(
+    'search and exact open use actual %s ingress ownership, not the OS alias',
+    async (mode) => {
+      const { app, roomRuntime, paired } = await setup(mode);
+      searchCleanup.unshift(async () => {
+        await roomRuntime.close();
+      });
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${mode === 'operator' ? OPERATOR_SECRET : paired.credential}`,
+        ...(mode === 'whois'
+          ? {
+              [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+                JSON.stringify({
+                  provider: 'tailscale-serve',
+                  login: 'owner@github',
+                }),
+              ).toString('base64url'),
+              [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+            }
+          : {}),
+      };
+      const environment =
+        mode === 'whois' ? LOOPBACK_SERVE_PROXY_ENV : REMOTE_TAILNET_ENV;
+      const response = await app.request(
+        '/api/search',
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ version: UNIFIED_SEARCH_V1, query: 'cobalt' }),
+        },
+        environment,
+      );
+      const body = (await response.json()) as any;
+      expect(response.status, JSON.stringify(body)).toBe(200);
+      const expected =
+        mode === 'home' || mode === 'operator'
+          ? 'legacy-owned'
+          : `${mode}-owned`;
+      expect(body.data.results.map((row: any) => row.scope.sessionId)).toEqual(
+        mode === 'operator' ? [] : [expected],
+      );
+      const opened = await app.request(
+        '/api/search/resolve-open',
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            kind: 'session-message',
+            sessionId: expected,
+            matchedEventId: `${expected}:exact`,
+          }),
+        },
+        environment,
+      );
+      expect(await opened.json()).toMatchObject(
+        mode === 'operator'
+          ? { data: { state: 'not-found' } }
+          : {
+              data: {
+                state: 'resolved',
+                target: {
+                  sessionId: expected,
+                  matchedEventId: `${expected}:exact`,
+                },
+              },
+            },
+      );
+    },
+  );
+
+  test('bounded chunked search and open preserve the authenticated Request and cancel over-limit input', async () => {
+    const { app, roomRuntime, paired } = await setup('device');
+    searchCleanup.unshift(async () => {
+      await roomRuntime.close();
+    });
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${paired.credential}`,
+    };
+    for (const [path, body] of [
+      ['/api/search', { version: UNIFIED_SEARCH_V1, query: 'cobalt' }],
+      [
+        '/api/search/resolve-open',
+        {
+          kind: 'session-message',
+          sessionId: 'device-owned',
+          matchedEventId: 'device-owned:exact',
+        },
+      ],
+    ] as const) {
+      const bytes = new TextEncoder().encode(JSON.stringify(body));
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytes.slice(0, 8));
+          controller.enqueue(bytes.slice(8));
+          controller.close();
+        },
+      });
+      const response = await app.request(
+        path,
+        {
+          method: 'POST',
+          headers,
+          body: stream,
+          duplex: 'half',
+        } as RequestInit,
+        REMOTE_TAILNET_ENV,
+      );
+      expect(response.status).toBe(200);
+      const wire = (await response.json()) as any;
+      expect(
+        path.endsWith('resolve-open')
+          ? wire.data.state
+          : wire.data.results[0].scope.sessionId,
+      ).toBe(path.endsWith('resolve-open') ? 'resolved' : 'device-owned');
+      const cancel = vi.fn();
+      const oversized = new ReadableStream({
+        pull(controller) {
+          controller.enqueue(new Uint8Array(13 * 1024));
+        },
+        cancel,
+      });
+      const refused = await app.request(
+        path,
+        {
+          method: 'POST',
+          headers,
+          body: oversized,
+          duplex: 'half',
+        } as RequestInit,
+        REMOTE_TAILNET_ENV,
+      );
+      expect(refused.status).toBe(413);
+      expect(cancel).toHaveBeenCalledOnce();
+    }
+  });
 
   test('an approved device session’s credential resolves a principal and its request is ADMITTED — never PrincipalUnresolvedError', async () => {
     const { app, store, roomRuntime, paired } = await setup();

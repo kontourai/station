@@ -271,6 +271,17 @@ jobs:
           # reached it; `tauri ios build` reuses this project as is.
           xcodegen generate --spec gen/apple/project.yml --project gen/apple
           grep -Fq 'PrivacyInfo.xcprivacy' gen/apple/station.xcodeproj/project.pbxproj
+          # xcodegen rewrites `info.path` (station_iOS/Info.plist) from the
+          # spec's `info.properties`, and the Tauri-rendered spec carries no
+          # usage descriptions, so the preserved Info.plist must be restored
+          # AFTER regeneration (Nightly 33910685946 shipped an IPA without
+          # NSCameraUsageDescription). The project references the file by
+          # path, so restoring its bytes is enough.
+          ditto "$preserved/station_iOS/Info.plist" gen/apple/station_iOS/Info.plist
+          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
+          for key in NSCameraUsageDescription NSMicrophoneUsageDescription NSLocalNetworkUsageDescription; do
+            grep -Fq "<key>$key</key>" gen/apple/station_iOS/Info.plist
+          done
       - name: Build signed and channel-audited iOS package
         working-directory: src-desktop
         run: |

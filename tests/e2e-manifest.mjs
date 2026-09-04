@@ -380,7 +380,10 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // Creates and repairs one invalid plugin directory in the runner-owned
     // temporary home, then removes it and reloads before yielding the server.
     'tests/plugin-rejection-visibility.spec.ts',
+    // Seeds exact historical/current-child events only in the managed temporary home.
+    'tests/workspace-search-exact-message.spec.ts',
     'tests/plugin-system.spec.ts',
+    'tests/plugin-dependency-lifecycle.spec.ts',
     'tests/survey-review-workbench.spec.ts',
     'tests/fieldwork-review.spec.ts',
     'tests/plugin-dev-hot-reload.spec.ts',
@@ -579,6 +582,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/workspace-search-exact-message.spec.ts',
+    bucket: 'product',
+    surface: 'Workspace search',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real runner-owned EventStore, authenticated runtime and browser: exact historical Session/event selection, old target outside newest history window, canonical text pagination and keyboard focus without current-child substitution or parallel legacy search.',
+    exceptions: [],
+  },
+  {
     path: 'tests/dialog-return-focus.spec.ts',
     bucket: 'product',
     surface: 'Core accessibility',
@@ -704,6 +717,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       "Proves remote plugin bundles execute only through the isolated plugin host: hostile storage, DOM, parent-global, network, bridge, and spoofed-message attacks remain contained; mismatched declared exports visibly fail; and a benign bundle raising the pane-host contract's confirm intent is answered by Station's own modal, with the decision reaching the frame back across the boundary on desktop and at 390x844.",
+    exceptions: [],
+  },
+  {
+    path: 'tests/plugin-pane-sdk-context.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves a test-only plugin installed through real preview and consent receives a server-issued Project Pane occurrence and executes public Agent, navigation, and toast SDK hooks in direct and placed hosts, without migrating first-party examples.',
     exceptions: [],
   },
   {
@@ -1011,6 +1034,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted plugin system lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/plugin-dependency-lifecycle.spec.ts',
+    bucket: 'product',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Test-only managed API fixture proves preview-bound dependency consent, pending provider-permission/settings projection, and individual owned-plugin cleanup. It is not provider non-execution, Enterprise rendering, registry-alias retirement, or external-effect drain proof.',
     exceptions: [],
   },
   {

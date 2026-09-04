@@ -324,6 +324,24 @@ describe('frozen stable client-build provenance', () => {
     expect(run).toContain(
       "grep -Fq 'PrivacyInfo.xcprivacy' gen/apple/station.xcodeproj/project.pbxproj",
     );
+    // xcodegen rewrites Info.plist from the spec, and the Tauri-rendered spec
+    // has no usage descriptions: the preserved plist is restored after the
+    // regeneration and the keys the package audit demands are asserted there.
+    const restoreInfoPlist =
+      'ditto "$preserved/station_iOS/Info.plist" gen/apple/station_iOS/Info.plist';
+    expect(run.indexOf(restoreInfoPlist)).toBeGreaterThan(run.indexOf(regen));
+    for (const key of [
+      'NSCameraUsageDescription',
+      'NSMicrophoneUsageDescription',
+      'NSLocalNetworkUsageDescription',
+    ]) {
+      expect(run).toContain(key);
+    }
+    expect(
+      run.indexOf(
+        'grep -Fq "<key>$key</key>" gen/apple/station_iOS/Info.plist',
+      ),
+    ).toBeGreaterThan(run.indexOf(restoreInfoPlist));
     expect(
       run.indexOf(
         "grep -Fq 'PrivacyInfo.xcprivacy' gen/apple/station.xcodeproj",

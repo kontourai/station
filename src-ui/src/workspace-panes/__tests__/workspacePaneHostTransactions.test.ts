@@ -51,6 +51,40 @@ function storage() {
 }
 
 describe('workspace pane host transactions', () => {
+  test('commits a real catalog contribution without losing its plugin provenance', () => {
+    const pane = parseWorkspacePaneInstance({
+      ...two,
+      boundContext: {
+        projectId: 'project',
+        contribution: {
+          id: 'builder:sessions',
+          version: '1.0.0',
+          sourceIdentity: {
+            id: 'builder',
+            kind: 'local',
+            source: 'file:///plugins/builder',
+          },
+          provenance: { origin: 'plugin', pluginId: 'builder' },
+        },
+      },
+    })!;
+    const before = document();
+    const { adapter, values } = storage();
+    const result = prepareWorkspacePaneHostOpen({
+      state: { document: before, rendererFailures: {} },
+      instance: pane,
+      storage: adapter,
+      owner: Symbol('plugin'),
+      preparation: { prepare: () => true, rollback: () => {} },
+    });
+    expect(result).not.toBeNull();
+    const persisted = JSON.parse(
+      values.get(workspacePaneHostStorageKey(before.scope, before.id)) ??
+        'null',
+    );
+    expect(persisted.instances).toEqual([one, pane]);
+  });
+
   test('rolls host persistence back before a rejected pane preparation becomes visible', () => {
     const before = document();
     const { adapter, values } = storage();

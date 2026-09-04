@@ -1060,6 +1060,15 @@ export class OrchestrationService {
   private readonly turnProgress: TurnProgressTracker;
   /** Transcript read/search/usage projections (epic archive#4024, archive#4144). */
   private readonly transcriptReads: SessionTranscriptReads;
+  private readonly transcriptReadEventStore: EventStore | undefined;
+  private isolatedTranscriptSearch?: ReturnType<
+    SessionTranscriptReads['createIsolatedSearch']
+  >;
+  private isolatedTranscriptSource?: ReturnType<
+    EventStore['createIsolatedTranscriptReads']
+  >;
+  private isolatedTranscriptRetired = false;
+  private transcriptSearchStopped = false;
   /** Event paging & stream replay (epic archive#4024, archive#4155). */
   private readonly sessionEventReads: SessionEventReads;
   /** Tenancy & owner authorization (epic archive#4024, archive#4166). */
@@ -1196,8 +1205,11 @@ export class OrchestrationService {
     // Constructed FIRST: SessionAuthorization holds only raw option values
     // and no back-references, so building it before every other collaborator
     // means no later closure can capture an undefined authz seam.
+    this.transcriptReadEventStore = options.eventStore;
     this.sessionAuthz = new SessionAuthorization({
-      ...(options.eventStore ? { eventStore: options.eventStore } : {}),
+      ...(this.transcriptReadEventStore
+        ? { eventStore: this.transcriptReadEventStore }
+        : {}),
       ...(options.requireTenantExecutionContext !== undefined
         ? {
             requireTenantExecutionContext:
@@ -2373,6 +2385,9 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
+    this.transcriptSearchStopped = true;
+    this.sessionAuthz.stopTranscriptReads();
+    const transcriptRetirement = this.isolatedTranscriptSearch?.close();
     // Revoke private native-output scopes before any provider cleanup. A
     // stop/retirement rejection must not leave a callback capable of
     // admitting output while this service is already shutting down.
@@ -2409,6 +2424,16 @@ export class OrchestrationService {
     // double-stops. Pinned by a source invariant.
     const retiringAdapters = this.adapterRetirement.retiringAdapters();
     const cleanupResults = await Promise.allSettled([
+      ...(transcriptRetirement
+        ? [
+            transcriptRetirement.then(() => {
+              if (this.isolatedTranscriptSearch?.inspect().phase !== 'closed')
+                throw new Error(
+                  'Transcript reader retirement is still pending',
+                );
+            }),
+          ]
+        : []),
       ...this.adapterRetirement.shutdownRetirementTasks(),
       ...currentAdapters
         .filter((adapter) => !retiringAdapters.has(adapter))
@@ -3280,6 +3305,50 @@ export class OrchestrationService {
   ): ReturnType<SessionTranscriptReads['searchSessionMessages']> {
     this.initialize();
     return this.transcriptReads.searchSessionMessages(query, authority, limit);
+  }
+
+  /**
+   * Compose once after runtime initialization, never as request-time bootstrap.
+   * Runtime search routes use this owner. Branded authority remains with this same
+   * SessionAuthorization instance; EventStore owns worker shutdown custody.
+   */
+  createIsolatedTranscriptSearch() {
+    if (
+      !this.started ||
+      this.transcriptSearchStopped ||
+      !this.transcriptReadEventStore
+    )
+      throw new Error(
+        'Initialize an EventStore-backed runtime before composing transcript reads',
+      );
+    if (!this.isolatedTranscriptSearch) {
+      this.isolatedTranscriptSource =
+        this.transcriptReadEventStore.createIsolatedTranscriptReads();
+      this.isolatedTranscriptSearch = this.transcriptReads.createIsolatedSearch(
+        this.isolatedTranscriptSource,
+        this.sessionAuthz,
+        () => !this.transcriptSearchStopped && this.sessionAttachmentSettled,
+      );
+    }
+    return this.isolatedTranscriptSearch;
+  }
+
+  /** Narrow failed-initialization cleanup; does not stop providers or discard their work. */
+  async retireIsolatedTranscriptSearchAfterFailedInitialization(): Promise<{
+    state: 'closed' | 'winding-down' | 'incomplete';
+  }> {
+    this.transcriptSearchStopped = true;
+    this.sessionAuthz.stopTranscriptReads();
+    if (this.isolatedTranscriptRetired) return { state: 'closed' };
+    if (!this.isolatedTranscriptSearch || !this.isolatedTranscriptSource)
+      return { state: 'closed' };
+    const result = await this.isolatedTranscriptSearch.close();
+    if (result.state !== 'closed') return result;
+    this.isolatedTranscriptRetired =
+      this.transcriptReadEventStore?.releaseClosedIsolatedTranscriptReads(
+        this.isolatedTranscriptSource,
+      ) === true;
+    return { state: this.isolatedTranscriptRetired ? 'closed' : 'incomplete' };
   }
 
   /**

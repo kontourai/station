@@ -20,6 +20,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | Module | Intent | Primary source |
 | --- | --- | --- |
 | [SurfaceRegistry](#surfaceregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/surface-registry.ts` |
+| [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
 | [InstalledPluginInventory](#installedplugininventory) | Keep valid and rejected installed plugin directories visible from one filesystem-backed inventory. | `src-server/services/plugins/installed-plugin-inventory.ts` |
 | [PackageMcpAdmissionJournal](#packagemcpadmissionjournal) | Retain package-incarnation admission evidence without inventing destructive retirement authority. | `src-server/services/plugins/package-mcp-admission.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
@@ -69,6 +70,163 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate exact-route owners, duplicate view owners, and duplicate sidebar or palette order slots. It never invokes a label or badge while composing or filtering; locale, branding, and attention state remain render-time inputs. A preview surface stays registered and routable while `getAdvertised` hides it until its named flag is enabled. `hiddenFromNav` removes only the sidebar affordance; route, palette, badge, and header callers remain independent projections. Parameterized Project, layout, task, Agent, connection, and Workspace Pane routes retain their domain parsers. Dynamic Workspace Panes retain their typed availability catalog and join the command palette after static registry projection rather than becoming unvalidated root-route contributions.
 
 **Seam, Implementation, callers, and tests.** The UI shell composes built-in descriptors. `routing.ts` consumes exact routes and semantic management ownership; `ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their ordered projections. Icons are a presentation Adapter keyed by the registry's finite icon vocabulary. Future trusted plugin surface contributions must enter at registry composition and pass the same validation; there is no mutable global `register()` operation or renderer callback in persisted plugin data. Contract coverage is `src-ui/src/app-shell/__tests__/surface-registry.test.ts` plus sidebar, palette, routing, and header suites. **Do not reintroduce:** component-local static destination arrays, route-to-sidebar switch statements, hard-coded badge copy outside the registry, mutable post-construction registration, or treating a contributed renderer declaration as navigation authority.
+
+## UnifiedSearchService
+
+**Intent and Interface.** `UnifiedSearchService.search(request, signal)` asks
+one to eight immutable typed Providers for independently authorized pages and
+returns a versioned result envelope whose key includes provider and semantic
+owner identity. Results retain kind, exact scope, matched fields, currentness,
+and a typed open intent that must be re-resolved by
+its owner before navigation.
+
+**Contract.** Query, provider, result, string, count, byte, continuation, and
+result-acceptance deadlines are fixed by the host. Elapsed monotonic checks
+reject late results even when synchronous work prevents the timer from firing.
+This in-process foundation cannot preempt synchronous provider/source work and
+does not establish a server responsiveness bound. Production composition is
+blocked on an isolated, cancellable execution/read-owner boundary; making a
+synchronous source method return a Promise is not that boundary.
+Provider output is cloned and validated;
+unknown shapes, duplicate identities, excessive pages, throwing accessors,
+timeouts, and exceptions become source-level unavailable state without error
+detail. Restricted sources return no results or resource counts. A partial,
+stale, restricted, or unavailable source never erases authorized results from
+another source, and ranking uses provider relevance only—not trust or inferred
+correlation. Same-text ids from different Station/tenant/Console owners cannot
+collide. Provider continuations are wrapped by the host and bind provider
+owner/version, normalized query, and exact filters. Providers are composed over
+request-bound read authority, but the aggregate result does not invent a host
+authorization receipt; navigation must re-resolve current authority. Console
+projection is a contract owner only: Station has no sibling
+store reader, and cross-product results remain blocked on a published Console
+Adapter.
+
+**Seam, Implementation, callers, and tests.** Public shapes live in
+`@kontourai/station-contracts/unified-search`; server composition and validation
+live in `src-server/services/search/unified-search-service.ts`. Initial local
+Adapters map the existing authority-filtered Session message index and the
+personal-mode TaskGraph list. The Task Adapter is deliberately not eligible for
+hosted composition until a tenant-bound Task store exists. The runtime/API/SDK
+slice below adds read-only transport; there is no command-palette row, file
+scan, or output/receipt Provider. Focused behavioral evidence lives in
+`src-server/services/search/__tests__/`. **Do not reintroduce:** a universal
+resource graph, sibling-repository scraping, provider-supplied owner stamping,
+unauthorized hit/count projection, cached-snippet authority, inferred identity,
+unbounded fan-out, or a second command-palette registry.
+
+**Task-only isolation prerequisite (#1413).** `TaskGraphService.createPersonalSearchReader(stationId)`
+binds one explicit-lifecycle reader to that owner's canonical file. Its fixed
+worker operation reuses TaskGraph validation, ordering, and JsonFileStore's
+missing-primary `.previous` recovery; corrupt primary data never falls back.
+The worker accepts files up to 8 MiB (with a bounded one-byte overflow probe;
+oversize is unavailable, not empty), scans the
+existing bounded Task window, and transfers only a bounded provider page.
+One request may execute; there is no queue. The two-second deadline includes
+worker startup. Deadline/cancellation fences result acceptance and retains the
+exact worker until exit/termination is confirmed. An uncertain or rejected
+cleanup occupies the slot; `inspect()` reports retiring/incomplete and bounded
+`close()` reports winding-down/incomplete. Repeated close joins pending cleanup
+and retries only settled rejection. The owner must close the reader. This is
+trusted first-party CPU isolation, not a hostile-plugin security sandbox, and
+is not a host-wide pool or a new authorization authority. Do not allocate one
+reader per request. Runtime composition below owns the caller; supported-platform
+responsiveness qualification remains open. Existing arbitrary Provider callbacks remain in-process and do
+not acquire an isolation guarantee from this Task-only slice.
+
+**Transcript read/auth isolation (#1413).** `OrchestrationService.createIsolatedTranscriptSearch()`
+is the explicit-lifecycle composition seam used by the runtime owner.
+Runtime initialization/recovery must precede query admission; it is not hidden
+inside the request deadline. Canonical FTS ranking/scope terms and owner SQL
+live in `transcript-search-queries.ts`, reused by EventStore and a read-only
+worker. The worker never constructs EventStore, migrates a database, or receives
+a branded SessionReadAuthority. Missing databases/schema and oversized read
+facts are unavailable, never empty/ownerless success. Candidate content is
+bounded before leaving SQLite; only excerpts/identities cross the worker port.
+The existing single SessionAuthorization applies the same personal/hosted/
+legacy policy with async cold owner lookups and positive-only caching. Its
+generation fence invalidates in-flight lookups on owner/tenant changes. Parent
+principal currentness and the generation are rechecked before publication.
+
+**Owner-backed exact open reads (#1363).** The same Task reader now supports a
+fresh personal-only Task/project point read, and the same transcript reader
+supports exact Session metadata and indexed-message event point reads. Hosted
+Task authority is rejected before worker admission. Transcript owner/tenant and
+optional project filtering happen in SQL before the search limit; parent
+SessionAuthorization, principal currentness, cancellation and runtime generation
+still gate returned facts. Indexed messages carry an exact `matchedEventId`
+separately from the legacy `messageId` navigation anchor, which multiple events
+in one turn may share. Unified hit identity uses the exact event when present;
+old providers' navigation-anchor API remains compatible. New message opens
+require an exact Session/event pair, verify the canonical event still exists,
+and never follow lineage to a newer child. Typed open locators are not cached
+authorization receipts. These methods reuse one reader slot and its retained
+cleanup, with no new worker per call or synchronous fallback.
+The complete query plus authorization sequence has one two-second acceptance
+deadline, one active query and no queue. Task and transcript workers share
+private termination custody, not a plugin execution framework. EventStore
+close reports pending/unavailable while its read worker remains outstanding;
+Orchestration shutdown also fences and settles its reader. Native SQLite work
+may defer thread termination until its native call returns; uncertain cleanup
+retains the occupied slot and is never reported complete. This is CPU isolation
+for fixed first-party reads, not a sandbox or a hard-real-time/preemption claim.
+**Runtime/API/SDK slice (#1363).** `StationRuntime.configureRoutes` constructs
+one `RuntimeSearch` after initialized Orchestration is published. It uses the
+existing handshake `environmentId` as result `stationId`, without inventing a
+machine/logical-Station identity. Request-bound lightweight adapters reuse one
+Task owner and one Orchestration transcript owner; hosted Task search is
+restricted and never invokes its worker. `POST /api/search` and
+`POST /api/search/resolve-open` use closed 12 KiB bodies and the same
+`orchestration:read` pairing scope as existing Task GET routes. No owner or
+authority fields are accepted. The ingress-derived SessionReadAuthority,
+request abort and live principal scope are checked before and after owner I/O.
+Responses are private/no-store. Search/read outcome telemetry contains only
+bounded operation/state labels, never queries or resource identities.
+Shutdown fences admission synchronously before initialization/configuration
+drains, keeps the Task close capability when retirement remains pending, and
+leaves transcript shutdown to Orchestration/EventStore. SDK cached hooks require
+the existing API-base/authority-epoch request scope and hide cached snippets
+until a fresh successful read. Real owner+Hono tests live in
+`services/search/__tests__/runtime-search.test.ts`; mounted SDK tests cover
+same-origin epoch replacement. CommandPalette/UI, additional source kinds, and
+supported-platform responsiveness qualification remain deferred.
+
+The SDK root publishes hooks/query keys only; direct operations stay on the
+existing React-free `/client` entry. Hooks load that client lazily after
+capturing request/scope, recheck cancellation, and use the existing live
+credential-authority guard. This avoids introducing a shared search chunk
+into the first-paint dependency table while retaining the full typed API.
+
+Search routes bind the same exact ingress principal and home-possession fact
+as conversation reads, not the server's OS display alias. A streaming bounded
+validator preserves the authenticated Request object and its WeakMap bindings.
+The single SessionAuthorization owner derives at most one legacy owner bridge,
+only for a personal local-operator authority with home possession; SQL groups
+the canonical/legacy owner postings before tenant/project/content filters and
+the result limit. Paired, WhoIs, hosted, and remote-operator-only authorities
+cannot claim the bridge. Final parent authorization still checks each result.
+Failed initialization synchronously fences the captured runtime search, then
+retains both retirement capabilities until actual closed proof. EventStore can
+release only that identical closed source, never pending/replaced/closing
+storage. Retry constructs a fresh Orchestration reader; old wrappers and old
+async authorizers remain stopped and cannot borrow its worker. No broad provider
+shutdown or source replacement is inferred from a failed search cleanup.
+
+**Exact-message inspector (#1436).** The palette has an explicit local
+Workspace-search mode, separate from existing command/remote-message search;
+the inactive search mode sends no queries. A lazy read-only inspector consumes
+`POST /api/search/read-message` through the public SDK with captured authority.
+The same isolated transcript owner selects prompt/output text from the exact
+canonical event, bounded in SQL before JavaScript materialization. Search-index
+text is never a displayed-message authority. Content-bound pages preserve the
+Session/event and reject mutation, deletion and authority loss. An optional
+assigned Agent identity is projected only from recorded owner metadata. No
+ChatDock current-conversation resolution, default Agent, second index or worker
+is introduced. Task navigation passes existing unsaved guards, then performs a
+fresh exact-open read and a final synchronous currentness check before the
+canonical route commit. The managed-browser exact-message proof and focused
+owner/SDK/UI tests qualify this tracer; broader source and platform qualification
+remains separate.
 
 ## PackageMcpAdmissionJournal
 

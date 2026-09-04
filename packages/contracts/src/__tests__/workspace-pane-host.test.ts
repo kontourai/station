@@ -48,11 +48,24 @@ function fullyBoundInstance(id: string) {
     stateKey: `state-${id}`,
     boundContext: {
       projectId: `project-${id}`,
+      layoutId: `layout-${id}`,
       taskId: `task-${id}`,
       sessionId: `session-${id}`,
+      turnId: `turn-${id}`,
+      answerReferenceId: `answer-${id}`,
       runId: `run-${id}`,
       workspaceId: `workspace-${id}`,
       sourceId: `source-${id}`,
+      contribution: {
+        id: `contribution-${id}`,
+        version: '1.0.0',
+        sourceIdentity: {
+          id: `source-${id}`,
+          kind: 'local',
+          source: 'file:///plugins/builder',
+        },
+        provenance: { origin: 'plugin', pluginId: 'builder' },
+      },
     },
   })!;
 }
@@ -135,6 +148,67 @@ function overDepthTree(instanceIds: readonly string[]): RawHostNode {
 }
 
 describe('Workspace Pane host document', () => {
+  test('admits and restores the exact structured plugin contribution', () => {
+    const pane = fullyBoundInstance('plugin');
+    const baseline = createWorkspacePaneHostBaselineDocument(
+      'host',
+      { kind: 'project', projectId: 'project', layoutId: 'layout' },
+      [pane],
+    );
+    expect(baseline?.instances).toEqual([pane]);
+    expect(parseWorkspacePaneHostDocument(baseline)?.instances).toEqual([pane]);
+    expect(
+      restoreWorkspacePaneHostDocument(JSON.parse(JSON.stringify(baseline)), [
+        pane,
+      ]).document?.instances,
+    ).toEqual([pane]);
+  });
+
+  test('rejects malformed, oversized, and accessor contribution records without invoking getters', () => {
+    const pane = fullyBoundInstance('plugin');
+    const contribution = pane.boundContext!.contribution!;
+    const getter = vi.fn(() => 'builder');
+    for (const bad of [
+      { ...contribution, provenance: { origin: 'plugin' } },
+      {
+        ...contribution,
+        provenance: {
+          origin: 'plugin',
+          pluginId: 'builder',
+          mcpServerId: 'other',
+        },
+      },
+      {
+        ...contribution,
+        sourceIdentity: {
+          ...contribution.sourceIdentity,
+          source: 'x'.repeat(1025),
+        },
+      },
+      {
+        ...contribution,
+        provenance: Object.defineProperty({ origin: 'plugin' }, 'pluginId', {
+          enumerable: true,
+          get: getter,
+        }),
+      },
+    ]) {
+      const invalid = {
+        ...pane,
+        boundContext: { ...pane.boundContext, contribution: bad },
+      };
+      expect(
+        parseWorkspacePaneHostDocument(documentWith(invalid as typeof pane)),
+      ).toBeNull();
+      expect(
+        createWorkspacePaneHostBaselineDocument('host', { kind: 'ambient' }, [
+          invalid as typeof pane,
+        ]),
+      ).toBeNull();
+    }
+    expect(getter).not.toHaveBeenCalled();
+  });
+
   test('derives only identities actually bound by each host scope', () => {
     expect(workspacePaneHostSuppliableContexts({ kind: 'ambient' })).toEqual(
       new Set(),

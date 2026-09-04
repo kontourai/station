@@ -80,6 +80,7 @@ export * from './turn-changed-files.js';
 export * from './turn-provenance.js';
 export * from './turn-provenance-context.js';
 export * from './ui-block.js';
+export * from './unified-search.js';
 export * from './work-item-provider.js';
 export * from './work-reference.js';
 export * from './workflow.js';

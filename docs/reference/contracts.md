@@ -26,7 +26,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes |
-| `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts |
+| `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status |
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes |
 | `@kontourai/station-contracts/project` | Project config and metadata |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
@@ -36,6 +36,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
 | `@kontourai/station-contracts/scheduler` | Scheduler jobs, stats, capabilities, notifications |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
+| `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 
 ## Import examples
 
@@ -44,6 +45,7 @@ import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import type { SessionMetadata } from '@kontourai/station-contracts/runtime';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import type { UnifiedSearchResult } from '@kontourai/station-contracts/unified-search';
 ```
 
 ## Scheduler deferral events

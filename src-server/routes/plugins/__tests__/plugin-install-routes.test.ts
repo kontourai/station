@@ -549,4 +549,58 @@ describe('plugin-install-routes', () => {
       }),
     ]);
   });
+
+  test('preview identifies a lifecycle dependency, its permissions, and its exact bytes', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-plugin-preview-'));
+    cleanupDirs.push(root);
+    const sourceDir = join(root, 'source-plugin');
+    const dependencyDir = join(root, 'shared-provider');
+    mkdirSync(sourceDir, { recursive: true });
+    mkdirSync(dependencyDir, { recursive: true });
+    writeFileSync(
+      join(sourceDir, 'plugin.json'),
+      JSON.stringify({
+        name: 'preview-plugin',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-provider', source: '../shared-provider' }],
+      }),
+    );
+    writeFileSync(
+      join(dependencyDir, 'plugin.json'),
+      JSON.stringify({
+        name: 'shared-provider',
+        version: '1.0.0',
+        settings: [{ key: 'mode', label: 'Mode', type: 'string' }],
+        providers: [{ type: 'auth', module: './provider.js' }],
+      }),
+    );
+    writeFileSync(
+      join(dependencyDir, 'provider.js'),
+      'export default () => ({});\n',
+    );
+
+    const response = await createApp(root).request('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: sourceDir }),
+    });
+    const body = await readJson(response);
+
+    expect(response.status).toBe(200);
+    expect(body.dependencies).toEqual([
+      expect.objectContaining({
+        id: 'shared-provider',
+        status: 'will-install',
+        consent: {
+          contentDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+          permissions: ['providers.register'],
+          dependencies: [],
+          pendingConsent: [
+            { permission: 'providers.register', tier: 'trusted' },
+          ],
+        },
+      }),
+    ]);
+    expect(existsSync(join(root, 'plugins', 'shared-provider'))).toBe(false);
+  });
 });

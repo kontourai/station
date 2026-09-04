@@ -10,7 +10,21 @@ The SDK wraps core app contexts and exposes them through stable React hooks, UI 
 
 ## Setup
 
-Plugins are automatically wrapped in `SDKProvider` by the runtime. No manual setup required. For layout plugins, use `LayoutProvider` instead — it also sets the layout context for agent resolution.
+Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
+by the host, on both direct routes and placed Pane hosts. No plugin-side mock
+provider is required. Project identity comes from the server-issued Pane
+occurrence, not ambient navigation or a parsed URL.
+
+The host binds plugin header attribution to each provider boundary. It never
+installs whichever plugin rendered last as global request identity. Header
+attribution is not an authorization grant. `useSDK()` exposes that bound
+identity; the pure `getPluginHeaders` utility is available on the existing
+`@kontourai/station-sdk/client` entry. Legacy imperative calls without a bound
+identity remain unqualified.
+
+`LayoutProvider` is a compatibility wrapper over the supplied SDK context. It
+does not infer Agent prefixes or select a default Agent. Layout-global actions
+and default-Agent migration remain separately tracked by #1372.
 
 ```tsx
 // Core app wraps your plugin automatically:
@@ -18,7 +32,7 @@ Plugins are automatically wrapped in `SDKProvider` by the runtime. No manual set
   <YourPlugin />
 </SDKProvider>
 
-// Workspace plugins use LayoutProvider:
+// Compatibility wrapper for an explicitly supplied legacy context:
 <LayoutProvider sdk={sdkContextValue} layout={layoutConfig}>
   <YourWorkspacePlugin />
 </LayoutProvider>
@@ -49,13 +63,9 @@ Returns a single agent by slug.
 const agent = useAgent('my-agent');
 ```
 
-#### `useResolveAgent(agentSlug: string): string`
-
-Resolves a short agent name to a fully-qualified slug using the current layout context. Returns the slug unchanged if it already contains `:`.
-
-```tsx
-const resolved = useResolveAgent('my-agent'); // → 'sa-agent:my-agent'
-```
+Agent operations take explicit canonical Agent IDs. A Layout or Pane slug does
+not supply an Agent prefix or a default execution binding; the former
+`useResolveAgent` description is not a supported current hook contract.
 
 ---
 
@@ -375,6 +385,54 @@ const result = await serverFetch('https://api.example.com/data');
 ---
 
 ## Query Hooks
+
+### Unified search (backend and SDK slice)
+
+`searchStation(apiBase, request, { requestScope, signal? })` queries `POST /api/search` with the
+closed `station.unified-search/v1` request from
+`@kontourai/station-contracts/unified-search`. The response retains each source's
+owner, availability, restriction and partial-result state; unavailable does not
+mean empty. `resolveSearchOpen(apiBase, locator, { requestScope, signal? })` performs a fresh
+read-only `POST /api/search/resolve-open`, returning `resolved`, `not-found`
+(also authorization denial), or `unavailable`. It does not navigate or execute
+work. Message locators require the exact `matchedEventId`; never substitute a
+legacy navigation anchor or follow a Session's current child. Both helpers are
+available from the React-free `/client` export and declare POST transport as
+read-only. Both require a host-captured scope matching `apiBase`, rejecting absent
+or mismatched scopes before transport. Older servers return `UnifiedSearchRequestError.kind: 'unsupported'`
+on 404/405, never fabricated empty results.
+
+Import `searchStation`, `resolveSearchOpen`, and `UnifiedSearchRequestError`
+from `@kontourai/station-sdk/client`. The root `@kontourai/station-sdk` entry
+exports `useUnifiedSearchQuery` and `unifiedSearchQueries`; its hook loads the
+existing client entry on demand, preserving captured request scope and abort
+signal across that asynchronous boundary.
+
+`readSearchMessage(apiBase, { sessionId, matchedEventId, continuation? },
+{ requestScope, signal? })`, from `@kontourai/station-sdk/client`, reads a page
+of the exact canonical event's prompt or completed output. Every page is
+reauthorized; text is never read from the search index. Pages contain at most
+4,096 Unicode code points, with an existing 128 KiB source allowance and the
+same isolated reader deadline. The opaque continuation binds Session/event,
+content and recorded metadata; changed content refuses continuation instead of
+splicing revisions. Missing Agent identity is optional, never a default Agent.
+The read-only inspector does not adopt, resume, fork, or send to a Session.
+
+The palette's explicit **Workspace search (this Station)** mode consumes local
+Task/message results and this exact inspector. Command/legacy remote search is
+preserved as a separate mode; only the selected mode dispatches search queries.
+This is a local tracer, not completion of the broader multi-source search issue.
+
+`useUnifiedSearchQuery(request, { requestScope, enabled? })` is the protected
+React wrapper. A host-captured `ApiRequestScope` is required: no scope means no
+request and no data. Query keys include exact API base and authority epoch;
+authority changes fence delayed responses through the existing credential
+resolver. Cached snippets are hidden until a fresh successful read, and while
+refetching or after failure; they never authorize opening. `unifiedSearchQueries`
+exposes the same scoped key for explicit invalidation. Only personal Tasks and authorized indexed messages are
+searched; hosted Task reads are restricted until a tenant-owned Task store is
+composed. Files, receipts, external projections and arbitrary plugin sources
+are not supported by this initial runtime composition.
 
 React Query wrappers. Use these instead of raw `useQuery` — they handle cache keys, stale times, and API base resolution automatically.
 
@@ -769,6 +827,16 @@ Fetches live ACP slash-command autocomplete options.
 
 React Query wrappers for plugin management. Use these instead of raw `useQuery`.
 
+Direct and registry install mutations return `PluginInstallResult` from
+`@kontourai/station-contracts/plugin`. The same type is returned by
+`requestPluginRegistryInstallAction` and `requestRegistryCatalogAction('plugins', ...)`;
+other catalog tabs retain their existing `InstallResult` contract.
+`result.permissions?.dependencies` is the current installed dependency permission
+status, not the preview requirement list. An absent status on an older server is
+unknown; it must not be replaced with an empty list or inferred from preview.
+Each present dependency row has an `id` and typed `pendingConsent` permission/tier
+entries. Trusted permissions still require separate host-owned approval.
+
 ### `usePluginsQuery(config?)`
 
 Fetches all installed plugins. Cache key: `['plugins']`.
@@ -819,6 +887,16 @@ mutate({
     permissions: preview.permissions.required,
     contentDigest: preview.contentDigest,
     dependencies: preview.dependencies.map((entry) => entry.id),
+    dependencyApprovals: preview.dependencies.flatMap((entry) =>
+      entry.consent
+        ? [{
+            id: entry.id,
+            permissions: entry.consent.permissions,
+            contentDigest: entry.consent.contentDigest,
+            dependencies: entry.consent.dependencies,
+          }]
+        : [],
+    ),
   },
 });
 ```
@@ -827,8 +905,9 @@ mutate({
 
 Previews a plugin before installing. Returns manifest, components, conflicts,
 resolved dependencies, the derived `permissions` (`required`, `autoGranted`,
-`pendingConsent`) and the `contentDigest` of the copy it staged — everything a
-consent decision needs, without installing anything.
+`pendingConsent`) and the `contentDigest` of the copy it staged. Lifecycle-bearing
+dependencies additionally carry their own `consent` object, binding their
+permissions and bytes before installation.
 
 ```tsx
 const { mutate } = usePluginPreviewMutation();
@@ -1028,7 +1107,8 @@ Injects the SDK context into a plugin tree. Used by the runtime — plugins don'
 
 ### `LayoutProvider`
 
-Wraps a layout plugin with SDK context and sets the layout for agent resolution.
+Compatibility wrapper over an explicitly supplied SDK context. It does not
+publish ambient plugin identity or infer Agent identity from a Layout slug.
 
 ```tsx
 <LayoutProvider sdk={sdkContextValue} layout={layoutConfig}>
