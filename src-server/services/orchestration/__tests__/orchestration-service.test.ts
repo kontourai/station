@@ -12862,14 +12862,21 @@ describe('OrchestrationService', () => {
   // thread with a very large event log — that single `.all()` wedged the whole
   // server. It uses the complete, method-targeted projection + COUNT pair so
   // old load-bearing facts remain authoritative and `eventCount` stays true.
-  // Deliberately writes a 50k-event delta (see the assertions below: the
+  // Deliberately writes a 5k-event delta (see the assertions below: the
   // point is that facts at the START of a very large transcript survive,
-  // which a bounded recent-tail read would lose), so the fixture build alone
-  // costs ~30s of synchronous appends — far past the 5s default. Budget it
-  // explicitly rather than shrinking the delta, which would weaken exactly
-  // what the test proves.
+  // which a bounded recent-tail read would lose). 5,000 is chosen against
+  // the numeric tails on the reads this path could plausibly be rewritten
+  // to use (`LIMIT 1001` on the recent-by-thread read, 250 on the paged
+  // read, 1,000 recent events / 100 records in conversation history) with a
+  // 5x margin, so a tail-shaped regression still loses the head facts. The
+  // reads the fold actually uses are bounded by projection cardinality, not
+  // by a row cap -- which is what the `< 60` guard below pins directly and
+  // at any fixture size. The previous 50k proved nothing more and cost ~30s
+  // of synchronous appends alone (~125s under corpus load), making this one
+  // test the critical path of its ordinary shard. Budget the fixture
+  // explicitly rather than relying on the 30s default.
   test('listSessionReadModel uses a complete targeted projection and accurate total count (station#1867)', {
-    timeout: 180_000,
+    timeout: 60_000,
   }, async () => {
     const threadId = 'read-model-bounded-1867';
     const now = '2026-07-22T00:00:00.000Z';
@@ -12899,7 +12906,7 @@ describe('OrchestrationService', () => {
       method: 'policy.hooks-attached',
       cwd: '/workspace/policy',
     } as never);
-    const total = 50_000;
+    const total = 5_000;
     for (let i = 0; i < total; i += 1) {
       eventStore.appendEvent({
         eventId: `evt-1867-rm-${i}`,
@@ -12921,7 +12928,7 @@ describe('OrchestrationService', () => {
     // `countEventsByThreads` and asserted only `toHaveBeenCalledWith(...)` —
     // that passed even when the first version of
     // `listSessionProjectionEventsForThreads` fetched EVERY one of this
-    // fixture's 50,002 rows unfiltered (an independent review caught it: the
+    // fixture's 5,002 rows unfiltered (an independent review caught it: the
     // spy watched a NAME, not the row/attachment work behind it). `mapEventRow`
     // (called once per SQL row actually materialized with its payload) and
     // `hydrateAttachments` (called once per `mapEventRow`, and the one that
@@ -12958,19 +12965,19 @@ describe('OrchestrationService', () => {
       expect.arrayContaining([threadId]),
     );
     expect(countSpy).toHaveBeenCalled();
-    // THE bounded-work guard: this thread has 50,002 rows, but the fold's
+    // THE bounded-work guard: this thread has 5,002 rows, but the fold's
     // reachable rows are bounded by construction, independent of transcript
     // length: at most 2 ranked rows per PROJECTION_FOLD_METHOD (first+last,
     // 11 methods) plus the latest-any-method, first-prompted, turn-terminal
     // and own-turn-start companions — ~26 on a maximally fold-rich thread
     // (delta review measured 25). 60 = that derivation with margin; the
-    // defect this guards produced 50,002, three orders of magnitude away,
+    // defect this guards produced 5,002, two orders of magnitude away,
     // so the headroom costs no power while letting the fixture grow a
     // turn.started without a false red.
     expect(mapEventRowSpy.mock.calls.length).toBeLessThan(60);
     expect(hydrateAttachmentsSpy.mock.calls.length).toBeLessThan(60);
 
-    // The facts at the beginning of a 50k-delta transcript remain available
+    // The facts at the beginning of a 5k-delta transcript remain available
     // to their consumers. A recent tail would make both of these false/null.
     const targetedService = service as unknown as {
       flowPolicy: {

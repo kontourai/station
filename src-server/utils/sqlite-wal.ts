@@ -1,4 +1,5 @@
 import { createLogger } from './logger.js';
+import { fixtureSqliteSynchronousOffForTest } from './sqlite-fixture-durability.js';
 
 /**
  * Turning a SQLite database's journal mode to WAL at open — the one place
@@ -185,12 +186,25 @@ export interface ApplyWalJournalModeOptions
   readonly onUnavailable?: 'warn' | 'throw';
 }
 
+/**
+ * `synchronous` is per connection, so the fixture relaxation (see
+ * sqlite-fixture-durability.ts for the contract) is applied here, on the one
+ * open path every store already takes, and only once WAL is actually on.
+ */
+function applyFixtureSynchronousMode(db: SqliteJournalModeDatabase): void {
+  if (!fixtureSqliteSynchronousOffForTest()) return;
+  db.exec('PRAGMA synchronous = OFF');
+}
+
 export function applyWalJournalMode(
   db: SqliteJournalModeDatabase,
   options: ApplyWalJournalModeOptions,
 ): WalJournalModeResult {
   const result = enableWalJournalMode(db, options);
-  if (result.enabled) return result;
+  if (result.enabled) {
+    applyFixtureSynchronousMode(db);
+    return result;
+  }
   const journalMode = observedJournalMode(db);
   const contention = isSqliteContentionError(result.lastError);
   logger.warn('SQLite store is not in WAL journal mode', {
