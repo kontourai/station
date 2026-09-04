@@ -701,21 +701,39 @@ export async function withPluginProviderGrantPublication<T>(
   pluginName: string,
   publish: () => Promise<T>,
 ): Promise<{ kind: 'applied'; value: T } | { kind: 'superseded' }> {
+  return withPluginProviderGrantsPublication(
+    projectHomeDir,
+    [pluginName],
+    async (granted) => {
+      if (!granted.has(pluginName)) return { kind: 'superseded' };
+      return { kind: 'applied', value: await publish() };
+    },
+  );
+}
+
+/** Same grant-store lease for an atomic multi-source reload publication. */
+export async function withPluginProviderGrantsPublication<T>(
+  projectHomeDir: string,
+  pluginNames: readonly string[],
+  publish: (granted: ReadonlySet<string>) => Promise<T>,
+): Promise<T> {
   return grantsStore(projectHomeDir).withReadLease(async (grants) => {
-    const record = toGrantRecord(grants[pluginName]);
-    const digest = refreshPluginContentDigest(
-      pluginsDirFor(projectHomeDir),
-      pluginName,
-    );
-    if (
-      digest === null ||
-      !derivePluginGrantBinding(record, digest).granted.includes(
-        'providers.register',
+    const granted = new Set<string>();
+    for (const name of new Set(pluginNames)) {
+      const digest = refreshPluginContentDigest(
+        pluginsDirFor(projectHomeDir),
+        name,
+      );
+      if (
+        digest !== null &&
+        derivePluginGrantBinding(
+          toGrantRecord(grants[name]),
+          digest,
+        ).granted.includes('providers.register')
       )
-    ) {
-      return { kind: 'superseded' };
+        granted.add(name);
     }
-    return { kind: 'applied', value: await publish() };
+    return publish(granted);
   });
 }
 

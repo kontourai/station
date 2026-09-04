@@ -2,8 +2,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
+import { publishPluginProviderGeneration } from '../../../providers/plugin-provider-loader.js';
 import {
+  getProvider,
+  pluginProviderRegistryGeneration,
   pluginProviderSourceGeneration,
+  registerProvider,
+  registerProviderAdapter,
+  replacePluginProvidersForSource,
   replacePluginProvidersForSourceGeneration,
   retirePluginProvidersForSourceGeneration,
 } from '../../../providers/registries/registry.js';
@@ -25,6 +31,89 @@ import {
 } from '../plugin-permissions.js';
 
 const cleanup: string[] = [];
+
+test('a stale full reload cannot overwrite a newer provider publication', async () => {
+  const name = 'full-reload-generation';
+  const root = grantFixture(name);
+  await grantPermissions(root, name, ['providers.register']);
+  const expected = pluginProviderRegistryGeneration();
+  const newer = { current: true };
+  await replacePluginProvidersForSource(name, [
+    { type: 'settings', source: name, provider: newer },
+  ]);
+  const stopAll = vi.fn(async () => undefined);
+  try {
+    await expect(
+      publishPluginProviderGeneration(root, expected, [
+        {
+          type: 'providerAdapter',
+          source: name,
+          provider: { provider: 'probe', stopAll },
+        },
+      ]),
+    ).rejects.toThrow('superseded before publication');
+    expect(getProvider('settings')).toBe(newer);
+    expect(stopAll).toHaveBeenCalledOnce();
+  } finally {
+    await replacePluginProvidersForSource(name, []);
+  }
+});
+
+test.each(['provider', 'adapter'] as const)(
+  'direct plugin %s registration invalidates a prepared full reload',
+  async (kind) => {
+    const name = `direct-${kind}-generation`;
+    const root = grantFixture(name);
+    await grantPermissions(root, name, ['providers.register']);
+    const expected = pluginProviderRegistryGeneration();
+    const expectedSource = pluginProviderSourceGeneration(name);
+    if (kind === 'provider') {
+      registerProvider('settings', {}, { plugin: true, source: name });
+    } else {
+      registerProviderAdapter({ provider: name } as never, { source: name });
+    }
+    expect(pluginProviderSourceGeneration(name)).toBe(expectedSource + 1);
+    const stopAll = vi.fn(async () => undefined);
+    try {
+      await expect(
+        publishPluginProviderGeneration(root, expected, [
+          {
+            type: 'providerAdapter',
+            source: name,
+            provider: { provider: 'stale', stopAll },
+          },
+        ]),
+      ).rejects.toThrow('superseded before publication');
+      expect(stopAll).toHaveBeenCalledOnce();
+    } finally {
+      await replacePluginProvidersForSource(name, []);
+    }
+  },
+);
+
+test('refusing one source does not dispose an adapter shared by an accepted source', async () => {
+  const name = 'shared-accepted-generation';
+  const root = grantFixture(name);
+  await grantPermissions(root, name, ['providers.register']);
+  const stopAll = vi.fn(async () => undefined);
+  const provider = { provider: 'shared', stopAll };
+  try {
+    const published = await publishPluginProviderGeneration(
+      root,
+      pluginProviderRegistryGeneration(),
+      [
+        { type: 'providerAdapter', source: name, provider },
+        { type: 'providerAdapter', source: 'ungranted', provider },
+      ],
+    );
+    expect(published).toEqual([
+      { type: 'providerAdapter', source: name, provider },
+    ]);
+    expect(stopAll).not.toHaveBeenCalled();
+  } finally {
+    await replacePluginProvidersForSource(name, []);
+  }
+});
 
 function grantFixture(name: string) {
   const root = mkdtempSync(join(tmpdir(), 'station-plugin-publication-grant-'));

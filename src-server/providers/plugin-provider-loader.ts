@@ -2,13 +2,18 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import { publishGrantedPluginProviderGeneration } from '../services/plugins/plugin-installation-generation-fence.js';
+import { withPluginProviderGrantsPublication } from '../services/plugins/plugin-permissions.js';
 import type { Logger } from '../utils/logger.js';
 import { assertExistingPathInside } from '../utils/path-containment.js';
 import { isProviderAdapterShape } from './adapter-shape.js';
 import {
   disposePreparedPluginProviders,
   type PreparedPluginProviderRegistration,
-  replacePluginProvidersForSource,
+  pluginProviderRegistryGeneration,
+  pluginProviderSourceGeneration,
+  replacePluginProviders,
+  replacePluginProvidersForSourceGeneration,
 } from './registries/registry.js';
 
 let pluginProviderImportRevision = 0;
@@ -24,6 +29,7 @@ export async function loadPluginProviders(
   logger: Pick<Logger, 'error'>,
   options: { strict?: boolean } = {},
 ): Promise<number> {
+  const expectedProviderGeneration = pluginProviderSourceGeneration(pluginName);
   const prepared = await preparePluginProviders(
     pluginsDir,
     pluginName,
@@ -31,8 +37,68 @@ export async function loadPluginProviders(
     logger,
     options,
   );
-  await replacePluginProvidersForSource(pluginName, prepared);
-  return prepared.length;
+  const outcome =
+    prepared.length === 0
+      ? await replacePluginProvidersForSourceGeneration(
+          pluginName,
+          expectedProviderGeneration,
+          prepared,
+          () => true,
+        )
+      : await publishGrantedPluginProviderGeneration({
+          projectHomeDir: dirname(pluginsDir),
+          pluginName,
+          expectedProviderGeneration,
+          prepared,
+          isCurrent: () => true,
+        });
+  return outcome === 'activated' ? prepared.length : 0;
+}
+
+/** Publishes a prepared reload through the same durable grant authority. */
+export async function publishPluginProviderGeneration(
+  projectHomeDir: string,
+  expectedGeneration: number,
+  prepared: PreparedPluginProviderRegistration[],
+): Promise<PreparedPluginProviderRegistration[]> {
+  if (prepared.length === 0) {
+    await replacePluginProviders(
+      [],
+      () => pluginProviderRegistryGeneration() === expectedGeneration,
+    );
+    return [];
+  }
+  let registryOwnsPrepared = false;
+  let unowned = prepared;
+  try {
+    return await withPluginProviderGrantsPublication(
+      projectHomeDir,
+      prepared.map((entry) => entry.source),
+      async (granted) => {
+        // Dispose refused staging before publication. Do not transfer those
+        // objects to the registry, which owns only the remaining accepted set.
+        const accepted = prepared.filter((entry) => granted.has(entry.source));
+        const acceptedHandles = new Set(
+          accepted.map((entry) => entry.provider),
+        );
+        const refused = prepared.filter(
+          (entry) =>
+            !granted.has(entry.source) && !acceptedHandles.has(entry.provider),
+        );
+        unowned = accepted;
+        await disposePreparedPluginProviders(refused);
+        registryOwnsPrepared = true;
+        await replacePluginProviders(
+          accepted,
+          () => pluginProviderRegistryGeneration() === expectedGeneration,
+        );
+        return accepted;
+      },
+    );
+  } catch (error) {
+    if (!registryOwnsPrepared) await disposePreparedPluginProviders(unowned);
+    throw error;
+  }
 }
 
 export interface PluginProviderPreparationRequest {

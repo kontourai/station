@@ -65,9 +65,8 @@ export async function loadRuntimePluginProviders(
 ): Promise<void> {
   const pluginsDir = join(context.projectHomeDir, 'plugins');
 
-  const { replacePluginProviders } = await import(
-    '../../providers/registries/registry.js'
-  );
+  const { replacePluginProviders, pluginProviderRegistryGeneration } =
+    await import('../../providers/registries/registry.js');
   if (!existsSync(pluginsDir)) {
     await replacePluginProviders([]);
     return;
@@ -76,9 +75,8 @@ export async function loadRuntimePluginProviders(
   const { resolvePluginProviders } = await import(
     '../../providers/resolver.js'
   );
-  const { preparePluginProviderGeneration } = await import(
-    '../../providers/plugin-provider-loader.js'
-  );
+  const { preparePluginProviderGeneration, publishPluginProviderGeneration } =
+    await import('../../providers/plugin-provider-loader.js');
 
   const overrides = await context.loadPluginOverrides();
   const { resolved, conflicts } = resolvePluginProviders(
@@ -110,6 +108,7 @@ export async function loadRuntimePluginProviders(
 
   let prepared: Awaited<ReturnType<typeof preparePluginProviderGeneration>>;
   try {
+    const expectedGeneration = pluginProviderRegistryGeneration();
     prepared = await preparePluginProviderGeneration(
       pluginsDir,
       resolved.map((entry) => ({
@@ -129,7 +128,11 @@ export async function loadRuntimePluginProviders(
       })),
       context.logger,
     );
-    await replacePluginProviders(prepared);
+    prepared = await publishPluginProviderGeneration(
+      context.projectHomeDir,
+      expectedGeneration,
+      prepared,
+    );
   } catch (error) {
     const failure = error as {
       pluginName?: unknown;

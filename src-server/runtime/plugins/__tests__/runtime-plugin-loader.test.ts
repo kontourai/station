@@ -11,11 +11,18 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { getProviderAdapterRegistrationProvenance } from '../../../providers/adapter-shape.js';
 import {
+  loadPluginProviders,
+  preparePluginProviderGeneration,
+  publishPluginProviderGeneration,
+} from '../../../providers/plugin-provider-loader.js';
+import {
   clearAll,
   getProvider,
   getProviderAdapter,
   getProviderAdapters,
+  pluginProviderRegistryGeneration,
 } from '../../../providers/registries/registry.js';
+import { revokeGrants } from '../../../services/plugins/plugin-permissions.js';
 import {
   loadRuntimePluginPrompts,
   loadRuntimePluginProviders,
@@ -88,8 +95,78 @@ describe('loadRuntimePluginProviders providerAdapter entries', () => {
     clearAll();
     delete (globalThis as any).__untrustedProviderImported;
     delete (globalThis as any).__ungrantedSingletonImported;
+    delete (globalThis as any).__grantPublicationProbe;
     rmSync(projectHomeDir, { recursive: true, force: true });
   });
+
+  test.each([
+    'direct lifecycle loader',
+    'runtime bootstrap',
+    'full reload',
+  ] as const)(
+    'does not publish from %s after durable revocation during real module import',
+    async (path) => {
+      const pluginsDir = join(projectHomeDir, 'plugins');
+      let started!: () => void;
+      let finish!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const wait = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const stopAll = vi.fn(async () => undefined);
+      (globalThis as any).__grantPublicationProbe = { started, wait, stopAll };
+      writePlugin(
+        pluginsDir,
+        'racing-plugin',
+        `
+        globalThis.__grantPublicationProbe.started();
+        await globalThis.__grantPublicationProbe.wait;
+        export default { provider: 'custom', metadata: {displayName:'Custom',description:'Fixture adapter',capabilities:['agent-runtime'],runtimeId:'custom-runtime'}, ${ADAPTER_METHODS}, stopAll: globalThis.__grantPublicationProbe.stopAll };
+      `,
+      );
+      const manifest = JSON.parse(
+        readFileSync(join(pluginsDir, 'racing-plugin', 'plugin.json'), 'utf8'),
+      );
+      const expectedGeneration = pluginProviderRegistryGeneration();
+      const logger = createLogger();
+      const loading =
+        path === 'runtime bootstrap'
+          ? loadRuntimePluginProviders({
+              projectHomeDir,
+              logger,
+              loadPluginOverrides: async () => ({}),
+            })
+          : path === 'full reload'
+            ? preparePluginProviderGeneration(
+                pluginsDir,
+                [{ pluginName: 'racing-plugin', manifest }],
+                logger,
+              ).then((prepared) =>
+                publishPluginProviderGeneration(
+                  projectHomeDir,
+                  expectedGeneration,
+                  prepared,
+                ),
+              )
+            : loadPluginProviders(
+                pluginsDir,
+                'racing-plugin',
+                manifest,
+                logger,
+                { strict: true },
+              );
+      await entered;
+      await revokeGrants(projectHomeDir, 'racing-plugin', [
+        'providers.register',
+      ]);
+      finish();
+      await loading;
+      expect(getProviderAdapter('custom')).toBeUndefined();
+      expect(stopAll).toHaveBeenCalledOnce();
+    },
+  );
 
   test('registers plugin runtime adapters through the adapter registry path', async () => {
     const pluginsDir = join(projectHomeDir, 'plugins');

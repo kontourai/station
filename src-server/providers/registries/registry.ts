@@ -107,7 +107,14 @@ function preparedAdapterCleanup(
 let pluginProviderMutationQueue = Promise.resolve();
 const pluginProviderSourceGenerations = new Map<string, number>();
 
+let pluginProviderGeneration = 0;
+
+export function pluginProviderRegistryGeneration(): number {
+  return pluginProviderGeneration;
+}
+
 function advancePluginProviderSourceGeneration(source: string): void {
+  pluginProviderGeneration += 1;
   pluginProviderSourceGenerations.set(
     source,
     (pluginProviderSourceGenerations.get(source) ?? 0) + 1,
@@ -272,6 +279,7 @@ export function registerProvider(
   const targetAdditiveStore = opts?.plugin
     ? pluginAdditiveStore
     : additiveStore;
+  if (opts?.plugin) advancePluginProviderSourceGeneration(source);
   // For additive types, push to array.
   if (PROVIDER_TYPE_META[type] === 'additive') {
     if (!targetAdditiveStore.has(type)) targetAdditiveStore.set(type, []);
@@ -540,6 +548,7 @@ export async function withPluginProviderSourceGeneration<T>(
 
 export async function replacePluginProviders(
   registrations: PreparedPluginProviderRegistration[],
+  isCurrent: () => boolean = () => true,
 ): Promise<void> {
   await serializePluginProviderMutation(async () => {
     const priorSources = new Set([
@@ -563,6 +572,12 @@ export async function replacePluginProviders(
       throw new AggregateError(
         cleanupErrors,
         'Plugin provider generation preparation failed.',
+      );
+    }
+    if (!isCurrent()) {
+      await disposePreparedPluginProviders(active);
+      throw new Error(
+        'Plugin provider generation was superseded before publication.',
       );
     }
     const nextStore = new Map<string, Map<string, ProviderEntry>>();

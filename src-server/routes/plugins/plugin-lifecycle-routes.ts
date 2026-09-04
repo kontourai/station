@@ -8,8 +8,14 @@ import {
 import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { Hono } from 'hono';
-import { preparePluginProviderGeneration } from '../../providers/plugin-provider-loader.js';
-import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
+import {
+  preparePluginProviderGeneration,
+  publishPluginProviderGeneration,
+} from '../../providers/plugin-provider-loader.js';
+import {
+  getPluginRegistryProviders,
+  pluginProviderRegistryGeneration,
+} from '../../providers/registries/registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
@@ -815,6 +821,7 @@ export function registerPluginLifecycleRoutes(
             });
           }
 
+          const expectedGeneration = pluginProviderRegistryGeneration();
           const prepared = await preparePluginProviderGeneration(
             pluginsDir,
             resolved.map((entry) => ({
@@ -832,9 +839,13 @@ export function registerPluginLifecycleRoutes(
             })),
             logger,
           );
-          await replacePluginProviders(prepared);
+          const published = await publishPluginProviderGeneration(
+            projectHomeDir,
+            expectedGeneration,
+            prepared,
+          );
           await settleProviderAdapterRetirements?.();
-          return { success: true as const, loaded: prepared.length };
+          return { success: true as const, loaded: published.length };
         },
       );
       if (mutation.value.success) {
