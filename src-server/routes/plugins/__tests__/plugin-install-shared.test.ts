@@ -1,4 +1,5 @@
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -222,7 +223,7 @@ describe('dependency approval from the real preview route', () => {
     'declarative',
   ] as const;
 
-  async function fixture(family: (typeof families)[number]) {
+  async function fixture(family: (typeof families)[number], installed = false) {
     const root = mkdtempSync(
       join(tmpdir(), 'station-dependency-preview-binding-'),
     );
@@ -258,6 +259,12 @@ describe('dependency approval from the real preview route', () => {
       dependencies: [{ id: 'dependency', source: dependency }],
     });
     const installDeps = deps(root);
+    if (installed) {
+      mkdirSync(join(root, 'plugins'), { recursive: true });
+      cpSync(dependency, join(root, 'plugins', 'dependency'), {
+        recursive: true,
+      });
+    }
     installDeps.buildPlugin.mockImplementation(
       async (dir: string, name: string) => {
         if (name === 'dependency' && family === 'entrypoint') {
@@ -383,6 +390,56 @@ describe('dependency approval from the real preview route', () => {
       installPluginFromSource(parent, [], installDeps, { consent }),
     ).rejects.toThrow('no preview-bound permission approval');
     expect(existsSync(join(root, 'plugins', 'dependency'))).toBe(false);
+  });
+
+  test('refuses rebuilding an installed entrypoint whose bytes changed after preview', async () => {
+    const { root, parent, installDeps, consent } = await fixture(
+      'entrypoint',
+      true,
+    );
+    const installedDir = join(root, 'plugins', 'dependency');
+    writeFileSync(
+      join(installedDir, 'index.js'),
+      'globalThis.unreviewed = true;',
+    );
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).rejects.toThrow('its files changed after it was reviewed');
+    expect(installDeps.buildPlugin).not.toHaveBeenCalled();
+    expect(readFileSync(join(installedDir, 'index.js'), 'utf8')).toBe(
+      'globalThis.unreviewed = true;',
+    );
+    expect(existsSync(join(installedDir, 'dist', 'bundle.js'))).toBe(false);
+    expect(existsSync(join(root, 'plugins', 'parent'))).toBe(false);
+  });
+
+  test('rebuilds an installed entrypoint when its current bytes match preview', async () => {
+    const { root, parent, installDeps, consent } = await fixture(
+      'entrypoint',
+      true,
+    );
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).resolves.toMatchObject({ success: true });
+    expect(installDeps.buildPlugin).toHaveBeenCalledWith(
+      join(root, 'plugins', 'dependency'),
+      'dependency',
+    );
+    expect(
+      readFileSync(
+        join(root, 'plugins', 'dependency', 'dist', 'bundle.js'),
+        'utf8',
+      ),
+    ).toBe('export default "reviewed";');
+  });
+
+  test('does not rebuild an installed entrypoint without its individual approval', async () => {
+    const { parent, installDeps, consent } = await fixture('entrypoint', true);
+    delete consent.dependencyApprovals;
+    await expect(
+      installPluginFromSource(parent, [], installDeps, { consent }),
+    ).rejects.toThrow('no preview-bound permission approval');
+    expect(installDeps.buildPlugin).not.toHaveBeenCalled();
   });
 });
 
@@ -2441,6 +2498,14 @@ describe('a refused plugin content lock survives installPluginFromSource', () =>
     // Taken before the sibling is armed: deriving it stages a copy, and the
     // decision has to exist before the install that carries it.
     const appConsent = await approvedConsent(source, root);
+    appConsent.dependencyApprovals = [
+      await dependencyApproval('gate-dep', join(pluginsDir, 'gate-dep'), root),
+      await dependencyApproval(
+        'shared-lib',
+        join(pluginsDir, 'shared-lib'),
+        root,
+      ),
+    ];
 
     let appHeld!: () => void;
     const appHeldGate = new Promise<void>((resolve) => {

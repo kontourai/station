@@ -783,24 +783,40 @@ async function validateAndBuildInstalledDependency(
   dependencyId: string,
   buildPlugin: (pluginDir: string, name: string) => Promise<void>,
   lifecycle?: PluginDependencyLifecycle,
+  stagedSourceAlreadyValidated = false,
 ): Promise<void> {
-  const manifest = readInstalledDependencyManifest(pluginsDir, dependencyId);
-  assertDependencyLifecycleSupported(
-    dependencyId,
-    join(pluginsDir, dependencyId),
-    manifest,
-    lifecycle,
-  );
-  if (lifecycle && (manifest.providers?.length || manifest.settings?.length)) {
-    lifecycle.validateInstalled?.({ dependencyId, manifest });
-    return;
-  }
-  await buildDependencyIfNeeded(
-    pluginsDir,
-    dependencyId,
-    manifest,
-    buildPlugin,
-  );
+  await withPluginContentLock(pluginsDir, dependencyId, async () => {
+    const manifest = readInstalledDependencyManifest(pluginsDir, dependencyId);
+    assertDependencyLifecycleSupported(
+      dependencyId,
+      join(pluginsDir, dependencyId),
+      manifest,
+      lifecycle,
+    );
+    if (
+      lifecycle &&
+      (manifest.providers?.length || manifest.settings?.length)
+    ) {
+      lifecycle.validateInstalled?.({ dependencyId, manifest });
+      return;
+    }
+    // Adoption alone is read-only, but an entrypoint rebuild executes a build
+    // and replaces browser bytes. Bind that effect to the installed preview
+    // basis while holding the same content lock through the actual build.
+    if (manifest.entrypoint && !stagedSourceAlreadyValidated) {
+      lifecycle?.validate({
+        dependencyId,
+        dependencyDir: join(pluginsDir, dependencyId),
+        manifest,
+      });
+    }
+    await buildDependencyIfNeeded(
+      pluginsDir,
+      dependencyId,
+      manifest,
+      buildPlugin,
+    );
+  });
 }
 
 async function recordCreatedDependency(options: {
@@ -1038,6 +1054,11 @@ export async function installPluginDependency(
                 dependency.id,
                 buildPlugin,
                 lifecycle,
+                // This call owns a new tree copied from the staged source
+                // validated before its build; its generated digest differs
+                // legitimately from the source approval. Concurrent adoption
+                // above must instead validate that installed tree's own basis.
+                true,
               );
               await lifecycle?.activate({
                 dependencyId: dependency.id,
