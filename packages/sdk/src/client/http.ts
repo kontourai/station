@@ -1087,8 +1087,9 @@ export interface FetchSseOptions extends ClientRequestOptions {
    */
   healthyConnectionMs?: number;
   onOpen?: (response: Response) => void;
-  onMessage: (message: FetchSseMessage) => void;
-  /** A consumed SSE checkpoint, after its frame was delivered to onMessage. */
+  /** Return false when the frame was rejected and must not advance its checkpoint. */
+  onMessage: (message: FetchSseMessage) => unknown;
+  /** An accepted SSE checkpoint, after its frame was delivered to onMessage. */
   onCheckpoint?: (checkpoint: { id?: string; retry?: number }) => void;
   onError?: (error: unknown) => void;
   /**
@@ -1334,8 +1335,8 @@ function classifySseFailure(error: unknown): ConnectionRetryClassification {
 
 function dispatchSseFrame(
   lines: string[],
-  onMessage: (message: FetchSseMessage) => void,
-): { id?: string; retry?: number } {
+  onMessage: (message: FetchSseMessage) => unknown,
+): { accepted: boolean; id?: string; retry?: number } {
   let event = 'message';
   let id: string | undefined;
   let retry: number | undefined;
@@ -1351,14 +1352,16 @@ function dispatchSseFrame(
     else if (field === 'id' && !value.includes('\0')) id = value;
     else if (field === 'retry' && /^\d+$/.test(value)) retry = Number(value);
   }
-  if (data.length > 0) onMessage({ data: data.join('\n'), event, id });
-  return { id, retry };
+  const accepted =
+    data.length === 0 ||
+    onMessage({ data: data.join('\n'), event, id }) !== false;
+  return { accepted, id, retry };
 }
 
 async function consumeSseResponse(
   response: Response,
   signal: AbortSignal,
-  onMessage: (message: FetchSseMessage) => void,
+  onMessage: (message: FetchSseMessage) => unknown,
   onCheckpoint: (checkpoint: { id?: string; retry?: number }) => void,
 ): Promise<void> {
   if (!response.ok) {
@@ -1385,7 +1388,7 @@ async function consumeSseResponse(
       buffer = frames.pop() ?? '';
       for (const frame of frames) {
         const result = dispatchSseFrame(frame.split(/\r?\n/), onMessage);
-        onCheckpoint(result);
+        if (result.accepted) onCheckpoint(result);
       }
       if (chunk.done) break;
     }
@@ -1488,7 +1491,7 @@ export function fetchSSE(
           controller.signal,
           (message) => {
             attemptMessages++;
-            opts.onMessage(message);
+            return opts.onMessage(message);
           },
           (checkpoint) => {
             if (checkpoint.id !== undefined) {

@@ -78,9 +78,12 @@ describe('ProjectTaskRoom SDK client', () => {
         onCheckpoint,
         onEvent,
       });
-      transportCallbacks.onMessage(message);
-      transportCallbacks.onCheckpoint({ id: message.id });
+      const accepted = transportCallbacks.onMessage(message);
+      if (accepted !== false) {
+        transportCallbacks.onCheckpoint({ id: message.id });
+      }
 
+      expect(accepted).toBe(false);
       expect(onError).toHaveBeenCalledOnce();
       expect(onEvent).not.toHaveBeenCalled();
       expect(onCheckpoint).not.toHaveBeenCalled();

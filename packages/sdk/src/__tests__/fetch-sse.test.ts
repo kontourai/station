@@ -283,6 +283,34 @@ describe('fetchSSE', () => {
     expect(stream.signal.aborted).toBe(true);
   });
 
+  it('does not advance Last-Event-ID when the consumer rejects a frame', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        failingSseResponse('id: rejected-7\ndata: malformed\n\n'),
+      )
+      .mockImplementationOnce(
+        async () => new Promise<Response>(() => undefined),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      retryDelayMs: 10,
+      onMessage: () => false,
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(10);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const reconnectInit = (fetchMock.mock.calls as unknown[][])[1]?.[1] as
+      | RequestInit
+      | undefined;
+    expect(new Headers(reconnectInit?.headers).get('Last-Event-ID')).toBeNull();
+
+    stream.close();
+  });
+
   it('exhausts capped retries for repeated post-open stream errors', async () => {
     vi.useFakeTimers();
     const onError = vi.fn();
