@@ -1,0 +1,13 @@
+{
+  "name": "Knowledge Library",
+  "slug": "knowledge-library",
+  "icon": "library",
+  "description": "Recall canonical Knowledge Kit records with provenance and lifecycle context.",
+  "tabs": [
+    {
+      "id": "library",
+      "label": "Library",
+      "component": "kit-knowledge-library"
+    }
+  ]
+}

@@ -56,33 +56,6 @@ export async function previewPluginForInstall(
   return preview;
 }
 
-/** Preview the exact source resolved by the plugin Registry for one item id. */
-export async function previewRegistryPluginForInstall(
-  apiBase: string,
-  registryId: string,
-): Promise<PluginPreviewPayload> {
-  const response = await authenticatedE2EFetch(
-    `${apiBase}/api/plugins/preview`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ registryId }),
-    },
-  );
-  const preview = (await response.json()) as PluginPreviewPayload;
-  if (!preview.valid) {
-    throw new Error(
-      `Plugin Registry preview refused ${registryId}: ${preview.error ?? 'no reason given'}`,
-    );
-  }
-  if (!preview.contentDigest || !preview.permissions) {
-    throw new Error(
-      `Plugin Registry preview for ${registryId} reported no basis to approve, so there is nothing to install with.`,
-    );
-  }
-  return preview;
-}
-
 export async function installPluginWithConsent(
   apiBase: string,
   source: string,
@@ -96,32 +69,6 @@ export async function installPluginWithConsent(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         source,
-        ...(options.skip ? { skip: options.skip } : {}),
-        consent: {
-          permissions: preview.permissions?.required ?? [],
-          contentDigest: preview.contentDigest,
-          dependencies: (preview.dependencies ?? []).map((entry) => entry.id),
-        },
-      }),
-    },
-  );
-  return response.json();
-}
-
-/** Preview and install through the same Registry identity and consent basis. */
-export async function installRegistryPluginWithConsent(
-  apiBase: string,
-  registryId: string,
-  options: { skip?: string[] } = {},
-): Promise<any> {
-  const preview = await previewRegistryPluginForInstall(apiBase, registryId);
-  const response = await authenticatedE2EFetch(
-    `${apiBase}/api/registry/plugins/install`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: registryId,
         ...(options.skip ? { skip: options.skip } : {}),
         consent: {
           permissions: preview.permissions?.required ?? [],

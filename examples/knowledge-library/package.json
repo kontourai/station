@@ -6,6 +6,7 @@
   "description": "Read-only Station plugin for recalling canonical Knowledge Kit records across registered roots.",
   "main": "./src/index.tsx",
   "files": [
+    "layout.json",
     "plugin.json",
     "src"
   ],

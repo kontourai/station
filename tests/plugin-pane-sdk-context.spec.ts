@@ -1,10 +1,10 @@
 /**
  * Direct plugin Pane SDK-context proof (#1371).
  *
- * This is the exact failed #265 journey: Registry preview/install, a real
- * Project-issued occurrence, explicit Add pane selection, and actual renderer
- * output from `minimal-layout`, whose public SDK hooks require the canonical
- * SDKAdapter context graph.
+ * Real preview/consent/install, a Project-issued occurrence, explicit Add pane
+ * selection, and genuine public SDK hooks in direct and placed hosts. The
+ * test-only plugin deliberately does not migrate first-party examples or claim
+ * global-action/default-Agent semantics (https://github.com/kontourai/station/issues/1372).
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -13,30 +13,16 @@ import { join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
-import {
-  installPluginWithConsent,
-  installRegistryPluginWithConsent,
-} from './helpers/install-plugin';
+import { installPluginWithConsent } from './helpers/install-plugin';
 
 const api = resolveE2EApiBase();
 const projectSlug = 'plugin-pane-sdk-context';
 const plugins = [
   {
-    id: 'minimal-layout',
-    rendererName: 'minimal-workspace',
-    expectedText: 'Minimal plugin starter',
-  },
-  {
-    id: 'builder-delivery-viewer',
-    source: resolve('examples/builder-delivery-viewer'),
-    rendererName: 'builder-delivery-viewer-main',
-    expectedText:
-      "Builder artifacts unavailable: Plugin 'builder-delivery-viewer' does not have plugin.server permission",
-  },
-  {
-    id: 'knowledge-docs-starter',
-    rendererName: 'knowledge-library',
-    expectedText: 'Document library',
+    id: 'pane-sdk-context-proof',
+    source: resolve('tests/fixtures/plugin-pane-sdk-context'),
+    rendererName: 'pane-sdk-context-proof',
+    expectedText: 'Installed Pane SDK proof',
   },
 ] as const;
 
@@ -78,7 +64,7 @@ test.describe('direct plugin Pane SDK context', () => {
 
   test.beforeAll(async () => {
     // Playwright gives beforeAll its own timeout; describe.configure only
-    // sets the test-body budget. Three real preview/consent/install journeys
+    // sets the test-body budget. The real preview/consent/install journey
     // must settle before cleanup or any renderer assertion can begin.
     test.setTimeout(180_000);
     const initiallyInstalled = await installedPluginIds();
@@ -89,10 +75,7 @@ test.describe('direct plugin Pane SDK context', () => {
 
     for (const plugin of plugins) {
       await test.step(`Preview and install ${plugin.id}`, async () => {
-        const installed =
-          'source' in plugin
-            ? await installPluginWithConsent(api, plugin.source)
-            : await installRegistryPluginWithConsent(api, plugin.id);
+        const installed = await installPluginWithConsent(api, plugin.source);
         expect(installed.success).toBe(true);
       });
     }
@@ -207,7 +190,7 @@ test.describe('direct plugin Pane SDK context', () => {
     }
   });
 
-  test('opens the Registry-installed renderer with live Agent, navigation, and toast contexts', async ({
+  test('opens the installed renderer with live Agent, navigation, and toast contexts', async ({
     page,
   }) => {
     await page.addInitScript(() => {
@@ -232,20 +215,38 @@ test.describe('direct plugin Pane SDK context', () => {
       ).toBeVisible({
         timeout: 20_000,
       });
+      const proof = page.getByRole('region', {
+        name: 'Installed Pane SDK proof',
+      });
+      await expect(
+        proof.getByText(`Plugin: ${plugin.id}`, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        proof.getByText(`Project: ${projectSlug}`, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        proof.getByText(`Occurrence: ${occurrenceIds.get(plugin.id)}`, {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(proof.getByText(/^Discovered Agents: \d+$/)).toBeVisible();
     }
 
     await page.goto(`/projects/${projectSlug}`);
     await page.getByRole('button', { name: '+ Add pane', exact: true }).click();
-    const minimalName = descriptorNames.get('minimal-layout')!;
+    const descriptorName = descriptorNames.get('pane-sdk-context-proof')!;
     await page
       .getByRole('dialog', { name: 'Add workspace pane' })
       .getByRole('listitem')
-      .filter({ has: page.getByText(minimalName, { exact: true }) })
-      .getByRole('button', { name: `Open ${minimalName}` })
+      .filter({ has: page.getByText(descriptorName, { exact: true }) })
+      .getByRole('button', { name: `Open ${descriptorName}` })
       .click();
     await page.getByRole('button', { name: 'Open Chat Dock' }).click();
     await expect(
-      page.getByText('Chat dock opened', { exact: true }),
+      page.getByText('Pane proof chat dock opened', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Chat dock: open', { exact: true }),
     ).toBeVisible();
   });
 
@@ -270,26 +271,39 @@ test.describe('direct plugin Pane SDK context', () => {
       .getByRole('button', { name: /Pane actions for Files/i })
       .click({ timeout: 20_000 });
     await page.getByRole('menuitem', { name: 'Open pane catalog' }).click();
-    const builder = plugins.find(
-      (plugin) => plugin.id === 'builder-delivery-viewer',
-    )!;
-    const builderName = descriptorNames.get(builder.id)!;
+    const plugin = plugins[0];
+    const descriptorName = descriptorNames.get(plugin.id)!;
     const picker = page.getByRole('dialog', { name: 'Add workspace pane' });
     await picker
       .getByRole('listitem')
-      .filter({ has: page.getByText(builderName, { exact: true }) })
-      .getByRole('button', { name: `Open ${builderName}` })
+      .filter({ has: page.getByText(descriptorName, { exact: true }) })
+      .getByRole('button', { name: `Open ${descriptorName}` })
       .click();
     await expect(
-      page.getByText(builder.expectedText, { exact: true }),
+      page.getByText(plugin.expectedText, { exact: true }),
     ).toBeVisible({
       timeout: 20_000,
     });
+    const proof = page.getByRole('region', {
+      name: 'Installed Pane SDK proof',
+    });
+    await expect(
+      proof.getByText(`Plugin: ${plugin.id}`, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      proof.getByText(`Project: ${projectSlug}`, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      proof.getByText(`Occurrence: ${occurrenceIds.get(plugin.id)}`, {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(proof.getByText(/^Discovered Agents: \d+$/)).toBeVisible();
     await expect(page).toHaveURL(
       (url) =>
         url.origin === expectedHost.origin &&
         url.pathname === `/projects/${projectSlug}/layouts/coding` &&
-        url.searchParams.get('pane') === occurrenceIds.get(builder.id) &&
+        url.searchParams.get('pane') === occurrenceIds.get(plugin.id) &&
         url.searchParams.get('paneScope') ===
           JSON.stringify(['project', catalogProjectId, appliedLayoutId]),
     );

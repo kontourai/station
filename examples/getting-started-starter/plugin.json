@@ -6,53 +6,8 @@
   "entrypoint": "src/index.tsx",
   "capabilities": ["chat", "navigation"],
   "permissions": ["navigation.dock"],
-  "workspacePanes": [
-    {
-      "version": "1.0",
-      "id": "pane:plugin%3Agetting-started-starter:getting-started:start",
-      "name": "Start",
-      "rendererId": "renderer:plugin%3Agetting-started-starter:plugin-component:getting-started-home",
-      "renderer": {
-        "kind": "plugin-component",
-        "name": "getting-started-home"
-      },
-      "placement": {
-        "supportedRegions": ["primary"],
-        "preferredRegion": "primary"
-      },
-      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
-      "actions": [
-        {
-          "type": "prompt",
-          "label": "Explain this workspace",
-          "data": "Explain how this starter plugin is structured and what I should customize first."
-        }
-      ],
-      "provenance": {
-        "origin": "plugin",
-        "pluginId": "getting-started-starter"
-      },
-      "lifecycle": { "stage": "stable" }
-    },
-    {
-      "version": "1.0",
-      "id": "pane:plugin%3Agetting-started-starter:getting-started:patterns",
-      "name": "SDK Patterns",
-      "rendererId": "renderer:plugin%3Agetting-started-starter:plugin-component:getting-started-patterns",
-      "renderer": {
-        "kind": "plugin-component",
-        "name": "getting-started-patterns"
-      },
-      "placement": {
-        "supportedRegions": ["primary"],
-        "preferredRegion": "primary"
-      },
-      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
-      "provenance": {
-        "origin": "plugin",
-        "pluginId": "getting-started-starter"
-      },
-      "lifecycle": { "stage": "stable" }
-    }
-  ]
+  "layout": {
+    "slug": "getting-started",
+    "source": "./layout.json"
+  }
 }

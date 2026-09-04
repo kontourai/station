@@ -23,11 +23,11 @@ function GettingStartedHome({ onShowChat }: WorkspaceComponentProps) {
   return (
     <main className="starter-shell starter-shell--home">
       <section className="starter-intro">
-        <p className="starter-kicker">Default Workspace Pane starter</p>
+        <p className="starter-kicker">Default layout starter</p>
         <h1>Build a useful workspace first.</h1>
         <p>
           This starter keeps the plugin small while showing the SDK hooks most
-          UI plugins need on day one: agents, navigation, chat, and toasts.
+          layouts need on day one: agents, navigation, chat, and toasts.
         </p>
         <button className="starter-primary" type="button" onClick={openChat}>
           Open chat dock

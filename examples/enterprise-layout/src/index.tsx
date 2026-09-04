@@ -1,7 +1,7 @@
 /**
  * Enterprise Layout — Plugin entry point.
  *
- * Exports named components that match the Workspace Pane renderer names in plugin.json.
+ * Exports named components that match the `component` keys in layout.json.
  * Each component is wrapped with the provider context so data hooks work.
  */
 

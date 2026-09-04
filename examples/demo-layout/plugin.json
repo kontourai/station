@@ -12,60 +12,8 @@
       "source": "./agents/assistant/agent.json"
     }
   ],
-  "workspacePanes": [
-    {
-      "version": "1.0",
-      "id": "pane:plugin%3Ademo-layout:demo:welcome",
-      "name": "Welcome",
-      "rendererId": "renderer:plugin%3Ademo-layout:plugin-component:demo-layout-welcome",
-      "renderer": {
-        "kind": "plugin-component",
-        "name": "demo-layout-welcome"
-      },
-      "placement": {
-        "supportedRegions": ["primary"],
-        "preferredRegion": "primary"
-      },
-      "modes": [
-        {
-          "id": "default",
-          "contextRequirement": {
-            "project": true,
-            "requiredAgents": ["demo-layout:assistant"]
-          }
-        }
-      ],
-      "actions": [
-        {
-          "type": "prompt",
-          "label": "Say Hello",
-          "data": "Hello! What can you help me with today?"
-        }
-      ],
-      "provenance": { "origin": "plugin", "pluginId": "demo-layout" },
-      "lifecycle": { "stage": "stable" }
-    },
-    {
-      "version": "1.0",
-      "id": "pane:plugin%3Ademo-layout:demo:notes",
-      "name": "Notes",
-      "rendererId": "renderer:plugin%3Ademo-layout:plugin-component:demo-layout-notes",
-      "renderer": { "kind": "plugin-component", "name": "demo-layout-notes" },
-      "placement": {
-        "supportedRegions": ["primary"],
-        "preferredRegion": "primary"
-      },
-      "modes": [
-        {
-          "id": "default",
-          "contextRequirement": {
-            "project": true,
-            "requiredAgents": ["demo-layout:assistant"]
-          }
-        }
-      ],
-      "provenance": { "origin": "plugin", "pluginId": "demo-layout" },
-      "lifecycle": { "stage": "stable" }
-    }
-  ]
+  "layout": {
+    "slug": "demo",
+    "source": "./layout.json"
+  }
 }

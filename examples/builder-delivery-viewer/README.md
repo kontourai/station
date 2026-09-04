@@ -1,6 +1,6 @@
 # Builder Delivery Viewer
 
-An opt-in, read-only Station Workspace Pane set for Builder Kit artifacts in a project's
+An opt-in, read-only Station layout for Builder Kit artifacts in a project's
 `.kontourai/flow-agents/` directory. It reads only published `state.json`,
 `acceptance.json`, `trust.bundle`, and delivery companion filenames.
 
@@ -17,6 +17,6 @@ enforceable host capability; [Station #501](https://github.com/kontourai/station
 owns that platform boundary. This plugin's read-only claim therefore describes
 the reviewed implementation and its gates, not a process sandbox.
 
-Install it from Station's example registry, enable its panes for a Project, and select
+Install it from Station's example registry, add its project layout, and select
 **Builder sessions**. Flow runs are joined only where Builder state contains an
 explicit, exact `flow_run.run_id` match.

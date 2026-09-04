@@ -712,7 +712,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Proves a Registry-installed plugin receives a server-issued Project Pane occurrence and executes public Agent, navigation, and toast SDK hooks after explicit selection from the Add pane picker.',
+      'Proves a test-only plugin installed through real preview and consent receives a server-issued Project Pane occurrence and executes public Agent, navigation, and toast SDK hooks in direct and placed hosts, without migrating first-party examples.',
     exceptions: [],
   },
   {

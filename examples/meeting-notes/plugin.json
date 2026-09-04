@@ -12,57 +12,8 @@
       "source": "./agents/compile/agent.json"
     }
   ],
-  "workspacePanes": [
-    {
-      "version": "1.0",
-      "id": "pane:plugin%3Ameeting-notes:meeting-notes:capture",
-      "name": "Capture",
-      "rendererId": "renderer:plugin%3Ameeting-notes:plugin-component:meeting-notes-capture",
-      "renderer": {
-        "kind": "plugin-component",
-        "name": "meeting-notes-capture"
-      },
-      "placement": {
-        "supportedRegions": ["primary"],
-        "preferredRegion": "primary"
-      },
-      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
-      "provenance": { "origin": "plugin", "pluginId": "meeting-notes" },
-      "lifecycle": { "stage": "stable" }
-    },
-    {
-      "version": "1.0",
-      "id": "pane:plugin%3Ameeting-notes:meeting-notes:library",
-      "name": "Library",
-      "rendererId": "renderer:plugin%3Ameeting-notes:plugin-component:meeting-notes-library",
-      "renderer": {
-        "kind": "plugin-component",
-        "name": "meeting-notes-library"
-      },
-      "placement": {
-        "supportedRegions": ["primary"],
-        "preferredRegion": "primary"
-      },
-      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
-      "provenance": { "origin": "plugin", "pluginId": "meeting-notes" },
-      "lifecycle": { "stage": "stable" }
-    },
-    {
-      "version": "1.0",
-      "id": "pane:plugin%3Ameeting-notes:meeting-notes:ask",
-      "name": "Ask",
-      "rendererId": "renderer:plugin%3Ameeting-notes:plugin-component:meeting-notes-ask",
-      "renderer": {
-        "kind": "plugin-component",
-        "name": "meeting-notes-ask"
-      },
-      "placement": {
-        "supportedRegions": ["primary"],
-        "preferredRegion": "primary"
-      },
-      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
-      "provenance": { "origin": "plugin", "pluginId": "meeting-notes" },
-      "lifecycle": { "stage": "stable" }
-    }
-  ]
+  "layout": {
+    "slug": "meeting-notes",
+    "source": "./layout.json"
+  }
 }

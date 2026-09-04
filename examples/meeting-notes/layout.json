@@ -1,0 +1,23 @@
+{
+  "name": "Meeting Notes",
+  "slug": "meeting-notes",
+  "icon": "mic",
+  "description": "Capture a meeting transcript, compile it into a provenance-linked note, and recall it via a wikilink graph and retrieval-grounded Q&A.",
+  "tabs": [
+    {
+      "id": "capture",
+      "label": "Capture",
+      "component": "meeting-notes-capture"
+    },
+    {
+      "id": "library",
+      "label": "Library",
+      "component": "meeting-notes-library"
+    },
+    {
+      "id": "ask",
+      "label": "Ask",
+      "component": "meeting-notes-ask"
+    }
+  ]
+}

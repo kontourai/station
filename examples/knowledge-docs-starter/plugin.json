@@ -6,66 +6,10 @@
   "entrypoint": "src/index.tsx",
   "capabilities": ["chat", "navigation", "knowledge"],
   "permissions": ["navigation.dock"],
-  "workspacePanes": [
-    {
-      "version": "1.0",
-      "id": "pane:plugin%3Aknowledge-docs-starter:knowledge-docs:library",
-      "name": "Library",
-      "rendererId": "renderer:plugin%3Aknowledge-docs-starter:plugin-component:knowledge-library",
-      "renderer": { "kind": "plugin-component", "name": "knowledge-library" },
-      "placement": {
-        "supportedRegions": ["primary"],
-        "preferredRegion": "primary"
-      },
-      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
-      "actions": [
-        {
-          "type": "prompt",
-          "label": "Summarize selected documents",
-          "data": "Summarize the selected documents and cite the source names that support each claim."
-        }
-      ],
-      "provenance": {
-        "origin": "plugin",
-        "pluginId": "knowledge-docs-starter"
-      },
-      "lifecycle": { "stage": "stable" }
-    },
-    {
-      "version": "1.0",
-      "id": "pane:plugin%3Aknowledge-docs-starter:knowledge-docs:ask",
-      "name": "Ask",
-      "rendererId": "renderer:plugin%3Aknowledge-docs-starter:plugin-component:knowledge-ask",
-      "renderer": { "kind": "plugin-component", "name": "knowledge-ask" },
-      "placement": {
-        "supportedRegions": ["primary"],
-        "preferredRegion": "primary"
-      },
-      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
-      "provenance": {
-        "origin": "plugin",
-        "pluginId": "knowledge-docs-starter"
-      },
-      "lifecycle": { "stage": "stable" }
-    },
-    {
-      "version": "1.0",
-      "id": "pane:plugin%3Aknowledge-docs-starter:knowledge-docs:sources",
-      "name": "Sources",
-      "rendererId": "renderer:plugin%3Aknowledge-docs-starter:plugin-component:knowledge-sources",
-      "renderer": { "kind": "plugin-component", "name": "knowledge-sources" },
-      "placement": {
-        "supportedRegions": ["primary"],
-        "preferredRegion": "primary"
-      },
-      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
-      "provenance": {
-        "origin": "plugin",
-        "pluginId": "knowledge-docs-starter"
-      },
-      "lifecycle": { "stage": "stable" }
-    }
-  ],
+  "layout": {
+    "slug": "knowledge-docs",
+    "source": "./layout.json"
+  },
   "knowledge": {
     "namespaces": [
       {

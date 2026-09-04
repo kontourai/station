@@ -1,0 +1,13 @@
+{
+  "name": "Survey Review",
+  "slug": "survey-review",
+  "icon": "🔎",
+  "description": "Review extracted candidates with Kontour Survey's Review Workbench, persist sessions per project, and project completed reviews into a Surface trust bundle.",
+  "tabs": [
+    {
+      "id": "workbench",
+      "label": "Review Workbench",
+      "component": "survey-review-workbench-main"
+    }
+  ]
+}

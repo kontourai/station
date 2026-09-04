@@ -27,7 +27,7 @@ cd ../..
 ```
 
 Register a personal or project knowledge root in **Settings → Knowledge**, then
-enable the Knowledge Library pane for a Project. If no relevant root exists, the
+add the Knowledge Library layout to a project. If no relevant root exists, the
 plugin links back to that setup surface.
 
 ## Boundaries

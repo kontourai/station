@@ -1,6 +1,6 @@
-# Minimal Workspace Pane Plugin
+# Minimal Layout Plugin
 
-A minimal Workspace Pane plugin example for Station, demonstrating the plugin architecture and SDK usage.
+A minimal layout plugin example for Station, demonstrating the plugin architecture and SDK usage.
 
 ## Features
 
@@ -55,8 +55,8 @@ npm run dev:ui
 ## Usage
 
 1. Install the plugin in your Station instance
-2. Open a Project and choose **Add pane**
-3. Select **Workspace** from the plugin panes
+2. Open a project and choose **Add Layout**
+3. Select **Minimal** from the plugin layouts
 
 ## SDK Usage
 
@@ -112,26 +112,12 @@ minimal-layout/
 {
   "name": "minimal-layout",
   "version": "1.0.0",
+  "type": "layout",
   "displayName": "Minimal Layout",
-  "description": "A minimal Workspace Pane plugin example",
-  "entrypoint": "./src/index.tsx",
+  "description": "A minimal layout plugin example",
+  "entrypoint": "./index.tsx",
   "capabilities": ["chat", "navigation"],
-  "permissions": ["navigation.dock"],
-  "workspacePanes": [
-    {
-      "version": "1.0",
-      "id": "pane:plugin%3Aminimal-layout:minimal:workspace",
-      "name": "Workspace",
-      "rendererId": "renderer:plugin%3Aminimal-layout:plugin-component:minimal-workspace",
-      "renderer": { "kind": "plugin-component", "name": "minimal-workspace" },
-      "placement": { "supportedRegions": ["primary"] },
-      "modes": [
-        { "id": "default", "contextRequirement": { "project": true } }
-      ],
-      "provenance": { "origin": "plugin", "pluginId": "minimal-layout" },
-      "lifecycle": { "stage": "stable" }
-    }
-  ]
+  "permissions": ["navigation.dock"]
 }
 ```
 

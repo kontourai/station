@@ -6,26 +6,8 @@
   "entrypoint": "src/index.tsx",
   "capabilities": ["navigation", "knowledge"],
   "permissions": ["navigation.dock"],
-  "workspacePanes": [
-    {
-      "version": "1.0",
-      "id": "pane:plugin%3Aknowledge-library:knowledge-library:library",
-      "name": "Library",
-      "rendererId": "renderer:plugin%3Aknowledge-library:plugin-component:kit-knowledge-library",
-      "renderer": {
-        "kind": "plugin-component",
-        "name": "kit-knowledge-library"
-      },
-      "placement": {
-        "supportedRegions": ["primary"],
-        "preferredRegion": "primary"
-      },
-      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
-      "provenance": {
-        "origin": "plugin",
-        "pluginId": "knowledge-library"
-      },
-      "lifecycle": { "stage": "stable" }
-    }
-  ]
+  "layout": {
+    "slug": "knowledge-library",
+    "source": "./layout.json"
+  }
 }

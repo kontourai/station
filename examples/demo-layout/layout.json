@@ -1,0 +1,27 @@
+{
+  "name": "Demo",
+  "slug": "demo",
+  "icon": "🚀",
+  "description": "A demo layout showing Station capabilities",
+  "availableAgents": ["demo-layout:assistant"],
+  "defaultAgent": "demo-layout:assistant",
+  "tabs": [
+    {
+      "id": "welcome",
+      "label": "Welcome",
+      "component": "demo-layout-welcome"
+    },
+    {
+      "id": "notes",
+      "label": "Notes",
+      "component": "demo-layout-notes"
+    }
+  ],
+  "globalSkills": [
+    {
+      "id": "hello",
+      "label": "Say Hello",
+      "prompt": "Hello! What can you help me with today?"
+    }
+  ]
+}

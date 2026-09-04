@@ -6,6 +6,7 @@
   "type": "module",
   "main": "./src/index.tsx",
   "files": [
+    "layout.json",
     "plugin.json",
     "src"
   ],
@@ -22,7 +23,7 @@
     "station",
     "starter",
     "plugin",
-    "workspace-pane"
+    "layout"
   ],
   "license": "Apache-2.0"
 }

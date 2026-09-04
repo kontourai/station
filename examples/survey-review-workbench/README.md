@@ -1,6 +1,6 @@
 # Survey Review Workbench
 
-Kontour Survey's Review Workbench as an installable Station Workspace Pane plugin —
+Kontour Survey's Review Workbench as an installable Station layout plugin —
 the proof that a Kontour vertical is "just a plugin". A reviewer works a
 queue of extracted candidates (`@kontourai/survey/review-workbench`),
 sessions persist per project on the Station server, and a completed review
@@ -8,7 +8,7 @@ projects into a Surface trust bundle.
 
 ## What it contributes
 
-- **Workspace Pane** `survey-review` mounting
+- **Layout** `survey-review` with one tab mounting
   `mountReviewWorkbench` (Survey's DOM mount function) plus Station chrome
   for sessions and projection.
 - **Server module** (`server/plugin.mjs`, dependency-free ESM) providing the
@@ -53,8 +53,8 @@ Install the built plugin from the Plugins page — or from a terminal with
 `station plugin install <this directory>`, which previews it, prints what it
 requires, and asks before anything is written. (Over raw HTTP that is
 `POST /api/plugins/preview` followed by `POST /api/plugins/install` carrying
-the preview's answer as `consent`; an install without one is refused.) Then enable
-the "Review Workbench" pane for a Project.
+the preview's answer as `consent`; an install without one is refused.) Then add
+the "Survey Review" layout to a project via *Add layout → From plugin*.
 
 Use **Load example review** to seed a session from Survey's published example
 data (`@kontourai/survey/example-data/public-directory-review-resource`) —
