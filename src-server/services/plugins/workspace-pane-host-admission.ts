@@ -208,6 +208,9 @@ export function createWorkspacePaneHostAdmission(input: {
             return outcome.value;
           },
         });
+      }).catch((error) => {
+        if (error instanceof ForegroundInvocationUnavailableError) throw error;
+        throw new ForegroundInvocationUnavailableError();
       });
     },
   });
