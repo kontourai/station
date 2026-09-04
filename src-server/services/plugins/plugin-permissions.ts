@@ -690,6 +690,35 @@ export async function revokeGrants(
   });
 }
 
+/**
+ * Final provider publication authority. Call inside the installed-content
+ * lease, after module preparation. Grant writes (including revoke, rebind,
+ * approval and rollback) use the same cross-process store lock, so none can
+ * commit between this fresh grant read and provider publication.
+ */
+export async function withPluginProviderGrantPublication<T>(
+  projectHomeDir: string,
+  pluginName: string,
+  publish: () => Promise<T>,
+): Promise<{ kind: 'applied'; value: T } | { kind: 'superseded' }> {
+  return grantsStore(projectHomeDir).withReadLease(async (grants) => {
+    const record = toGrantRecord(grants[pluginName]);
+    const digest = refreshPluginContentDigest(
+      pluginsDirFor(projectHomeDir),
+      pluginName,
+    );
+    if (
+      digest === null ||
+      !derivePluginGrantBinding(record, digest).granted.includes(
+        'providers.register',
+      )
+    ) {
+      return { kind: 'superseded' };
+    }
+    return { kind: 'applied', value: await publish() };
+  });
+}
+
 export async function revokeAllGrants(
   projectHomeDir: string,
   pluginName: string,

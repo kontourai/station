@@ -280,6 +280,30 @@ export class GrantsFileStore<T extends Record<string, unknown>> {
     }
   }
 
+  /**
+   * Holds the same cross-process authority as mutate through a publication
+   * reader's effect. The callback must not recursively mutate this store.
+   */
+  async withReadLease<R>(effect: (current: T) => Promise<R>): Promise<R> {
+    let release: () => void | Promise<void>;
+    try {
+      mkdirSync(dirname(this.options.filePath), { recursive: true });
+      release = await acquireFileMutationLockAsync(
+        `${this.options.filePath}.mutation`,
+      );
+    } catch (error) {
+      throw this.reportCorruption(
+        `store infrastructure failure (${(error as NodeJS.ErrnoException).code ?? 'lock unavailable'})`,
+        error,
+      );
+    }
+    try {
+      return await effect(this.read());
+    } finally {
+      await release();
+    }
+  }
+
   private reportCorruption(
     detail: string,
     cause: unknown,

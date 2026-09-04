@@ -1,13 +1,57 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  disposePreparedPluginProviders,
+  type PreparedPluginProviderRegistration,
+  replacePluginProvidersForSourceGeneration,
+} from '../../providers/registries/registry.js';
+import {
   computePluginContentDigest,
   withPluginContentLock,
 } from './plugin-content-integrity.js';
+import { withPluginProviderGrantPublication } from './plugin-permissions.js';
 
 export interface PluginInstallationGenerationFence {
   readonly installed: boolean;
   readonly installationGeneration: string | null;
+}
+
+/** Final publication seam used by retained activation inside its content lease. */
+export async function publishGrantedPluginProviderGeneration(input: {
+  projectHomeDir: string;
+  pluginName: string;
+  expectedProviderGeneration: number;
+  prepared: PreparedPluginProviderRegistration[];
+  isCurrent: () => boolean;
+}): Promise<'activated' | 'superseded'> {
+  let registryOwnsPrepared = false;
+  let publication:
+    | { kind: 'applied'; value: 'activated' | 'superseded' }
+    | { kind: 'superseded' };
+  try {
+    publication = await withPluginProviderGrantPublication(
+      input.projectHomeDir,
+      input.pluginName,
+      () => {
+        registryOwnsPrepared = true;
+        return replacePluginProvidersForSourceGeneration(
+          input.pluginName,
+          input.expectedProviderGeneration,
+          input.prepared,
+          input.isCurrent,
+        );
+      },
+    );
+  } catch (error) {
+    if (!registryOwnsPrepared)
+      await disposePreparedPluginProviders(input.prepared);
+    throw error;
+  }
+  if (publication.kind === 'superseded') {
+    await disposePreparedPluginProviders(input.prepared);
+    return 'superseded';
+  }
+  return publication.value;
 }
 
 /**

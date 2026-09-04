@@ -8,7 +8,6 @@ import { Hono } from 'hono';
 import {
   disposeRetainedPreparedPluginProviders,
   pluginProviderSourceGeneration,
-  replacePluginProvidersForSourceGeneration,
   retirePluginProvidersForSourceGeneration,
   withPluginProviderSourceGeneration,
 } from '../../providers/registries/registry.js';
@@ -17,7 +16,10 @@ import type { ConsentChannelService } from '../../services/consent/consent-chann
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { computePluginContentDigest } from '../../services/plugins/plugin-content-integrity.js';
 import { createPluginGrantReconciliationService } from '../../services/plugins/plugin-grant-reconciliation.js';
-import { withPluginInstallationGeneration } from '../../services/plugins/plugin-installation-generation-fence.js';
+import {
+  publishGrantedPluginProviderGeneration,
+  withPluginInstallationGeneration,
+} from '../../services/plugins/plugin-installation-generation-fence.js';
 import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
 import { getPluginGrants } from '../../services/plugins/plugin-permissions.js';
 import type { Logger } from '../../utils/logger.js';
@@ -94,12 +96,13 @@ export function createPluginRoutes(
                   logger,
                   { strict: true },
                 );
-                return replacePluginProvidersForSourceGeneration(
+                return publishGrantedPluginProviderGeneration({
+                  projectHomeDir,
                   pluginName,
-                  expected.providerGeneration,
+                  expectedProviderGeneration: expected.providerGeneration,
                   prepared,
                   isCurrent,
-                );
+                });
               },
             });
             return activation.kind === 'applied'
