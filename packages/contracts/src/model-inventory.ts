@@ -1,3 +1,4 @@
+import { recognisedOpenAICompatOrigin } from './openai-compat-catalog-semantics.js';
 export interface ModelInventoryComponentIdentity {
   id: string;
   version: string | null;
@@ -58,37 +59,90 @@ export interface CanonicalModelIdentityReference {
   verifiedAgainst: string;
 }
 
+/**
+ * Which kind of route a provider-native id is native TO. A model id is only
+ * meaningful together with the route that issued it: `sonnet` is Claude Sonnet
+ * 4.5 on the Claude Code engine and nothing in particular anywhere else, so an
+ * OpenAI-compatible endpoint that happens to expose a model called `sonnet`
+ * must not inherit that identity. The reviewed fact is (family, id), never id
+ * alone -- review round on #1208.
+ */
+export type ModelRouteFamily =
+  | 'anthropic'
+  | 'bedrock'
+  | 'claude'
+  | 'openrouter';
+
+export interface CuratedModelRoute {
+  family: ModelRouteFamily;
+  /** Compared as an opaque, exact string within its family. */
+  providerModel: string;
+}
+
 export interface CuratedModelIdentity {
   canonicalId: string;
   displayName: string;
   verifiedAgainst: string;
-  /** Provider-native IDs are compared as opaque, exact strings. */
-  providerModels: readonly string[];
+  routes: readonly CuratedModelRoute[];
 }
 
 /**
  * Reviewed data only. Do not derive entries from names, prefixes, or model
- * metadata. An omitted provider-native ID is intentionally unrecognised.
+ * metadata. An omitted route is intentionally unrecognised.
  */
 export const CURATED_MODEL_IDENTITIES: readonly CuratedModelIdentity[] = [
   {
     canonicalId: 'anthropic:claude-sonnet-4-5',
     displayName: 'Claude Sonnet 4.5',
     verifiedAgainst: 'Anthropic model documentation, reviewed 2026-08-31',
-    providerModels: [
-      'sonnet',
-      'anthropic.claude-sonnet-4-5-v1:0',
-      'anthropic/claude-sonnet-4.5',
-      'claude-sonnet-4-5',
+    routes: [
+      { family: 'claude', providerModel: 'sonnet' },
+      { family: 'bedrock', providerModel: 'anthropic.claude-sonnet-4-5-v1:0' },
+      { family: 'openrouter', providerModel: 'anthropic/claude-sonnet-4.5' },
+      { family: 'anthropic', providerModel: 'claude-sonnet-4-5' },
     ],
   },
 ];
 
-export function curatedModelIdentityFor(
-  providerModel: string,
-): CanonicalModelIdentityReference | undefined {
+/**
+ * The route family a connection issues model ids for, or undefined when
+ * Station cannot say. Derived from the connection's own type and, for an
+ * OpenAI-compatible endpoint, the exact origin it points at -- never from a
+ * model's name. A connection this cannot classify contributes no identity,
+ * which degrades to an ungrouped row rather than to a guess.
+ */
+export function modelRouteFamilyFor(connection: {
+  type: string;
+  config?: Record<string, unknown> | null;
+}): ModelRouteFamily | undefined {
+  switch (connection.type) {
+    case 'anthropic':
+    case 'bedrock':
+    case 'claude':
+      return connection.type;
+    case 'openai-compat': {
+      const baseUrl = connection.config?.baseUrl;
+      if (typeof baseUrl !== 'string') return undefined;
+      return recognisedOpenAICompatOrigin(baseUrl) === 'https://openrouter.ai'
+        ? 'openrouter'
+        : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+export function curatedModelIdentityFor(route: {
+  family: ModelRouteFamily | undefined;
+  providerModel: string;
+}): CanonicalModelIdentityReference | undefined {
+  if (!route.family) return undefined;
   const identity = CURATED_MODEL_IDENTITIES.find((candidate) =>
-    candidate.providerModels.some((knownId) => knownId === providerModel),
+    candidate.routes.some(
+      (known) =>
+        known.family === route.family &&
+        known.providerModel === route.providerModel,
+    ),
   );
   return identity
     ? {
