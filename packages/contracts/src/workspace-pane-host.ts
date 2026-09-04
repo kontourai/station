@@ -593,11 +593,14 @@ function sameOwnShape(candidate: unknown, canonical: unknown): boolean {
   const ownKeys = (value: object) =>
     Reflect.ownKeys(value).filter((key) => !isArray || key !== 'length');
   const keys = ownKeys(candidate);
-  if (keys.length !== ownKeys(canonical).length) return false;
+  // Same size plus every candidate key present makes the two key sets equal,
+  // so neither side can carry a key the other lacks.
+  const canonicalKeys = new Set<PropertyKey>(ownKeys(canonical));
+  if (keys.length !== canonicalKeys.size) return false;
   return keys.every(
     (key) =>
       typeof key === 'string' &&
-      Object.hasOwn(canonical, key) &&
+      canonicalKeys.has(key) &&
       sameOwnShape(
         (candidate as Record<string, unknown>)[key],
         (canonical as Record<string, unknown>)[key],
