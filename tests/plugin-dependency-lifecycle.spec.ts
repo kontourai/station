@@ -33,7 +33,7 @@ test.describe
       await authenticatedRequest.delete(`${API}/api/plugins/${PROVIDER}`);
     });
 
-  test('preview-bound install projects pending provider permission and removes each owned plugin', async ({
+    test('preview-bound install projects pending provider permission and removes each owned plugin', async ({
       authenticatedRequest,
     }) => {
       const preview = await previewPluginForInstall(API, SOURCE);
@@ -75,8 +75,8 @@ test.describe
           ]),
         },
       });
-    // This asserts declared permission/settings projection only. The throwing
-    // fixture factory is not an invocation receipt: a loader could catch it.
+      // This asserts declared permission/settings projection only. The throwing
+      // fixture factory is not an invocation receipt: a loader could catch it.
       const settings = await authenticatedRequest.get(
         `${API}/api/plugins/${PROVIDER}/settings`,
       );
