@@ -4,8 +4,13 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { loadStrandsTools } from '../../frameworks/strands-tool-loader.js';
+import {
+  loadStrandsTools,
+  type StrandsToolLoadOptions,
+} from '../../frameworks/strands-tool-loader.js';
+import type { CreateAgentOptions } from '../../frameworks/voltagent-adapter.js';
 import { createBuiltinTool } from '../../mcp/mcp-manager.js';
 import {
   createBuiltinVendedToolDef,
@@ -275,6 +280,29 @@ describe('vended tool compatibility', () => {
 
   test('Strands loader pulls built-in tools through the shared implementation path', async () => {
     const toolDef = createBuiltinVendedToolDef('notebook');
+    const mcpConnectionStatus: CreateAgentOptions['mcpConnectionStatus'] =
+      new Map();
+    const integrationMetadata: CreateAgentOptions['integrationMetadata'] =
+      new Map();
+    const logger = { warn: vi.fn(), error: vi.fn(), info: vi.fn() };
+    // The loader claims local connection custody for every configured
+    // integration before it reads the definition, so a live claim on the id
+    // is superseded before the kind is even known. The built-in branch runs
+    // inside that fence and therefore needs a real custody owner, exactly as
+    // the runtime supplies one. Typed against StrandsToolLoadOptions rather
+    // than cast to `any`, so the next required option reddens the compiler
+    // instead of routing this test through the loader's failure path.
+    const opts: StrandsToolLoadOptions = {
+      configLoader: {
+        loadIntegration: vi.fn().mockResolvedValue(toolDef),
+      } as any,
+      mcpCustody: new MCPLocalConnectionCustody(),
+      mcpConnectionStatus,
+      integrationMetadata,
+      toolNameMapping: new Map(),
+      toolNameReverseMapping: new Map(),
+      logger,
+    };
     const tools = await loadStrandsTools({
       slug: 'agent-b',
       spec: {
@@ -282,22 +310,23 @@ describe('vended tool compatibility', () => {
         prompt: 'Test',
         tools: { mcpServers: ['notebook'] },
       },
-      opts: {
-        configLoader: {
-          loadIntegration: vi.fn().mockResolvedValue(toolDef),
-        },
-        mcpConnectionStatus: new Map(),
-        integrationMetadata: new Map(),
-        toolNameMapping: new Map(),
-        toolNameReverseMapping: new Map(),
-        logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
-      } as any,
+      opts,
       state: {
         mcpClients: new Map(),
         agentMcpClients: new Map(),
       },
     });
 
+    // An empty list is how this path failed before: the loader's per-tool
+    // catch redacts any throw — a missing option included — into a generic
+    // "Tool server connection failed". Assert what the built-in branch is
+    // supposed to have published, so a regression names its own cause.
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(mcpConnectionStatus.get('notebook')).toEqual({ connected: true });
+    expect(integrationMetadata.get('notebook')).toEqual({
+      type: 'builtin',
+      toolCount: 1,
+    });
     expect(tools).toHaveLength(1);
     expect(tools[0]?.name).toBe('notebook');
     await expect(
