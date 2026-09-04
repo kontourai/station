@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import App from '../App';
 import { bannerStore } from '../contexts/banner-store';
 import { openChatsStore } from '../contexts/open-chats-store';
+import { DEFAULT_DEVICE_REGION_LAYOUT } from '../regions/region-model';
 
 vi.mock('../contexts/open-chats-store', () => ({
   openChatsStore: {
@@ -48,10 +49,12 @@ const {
   coreUpdateStatus,
   invalidateQueries,
   navigate,
+  showSurface,
   setDockMode,
   setLayout,
   showToast,
   chatControllerAction,
+  registerRegionSurfaceHost,
 } = vi.hoisted(() => ({
   hooks: {
     projects: { data: [], isLoading: false, isError: false } as QueryState<
@@ -69,6 +72,9 @@ const {
       lastProjectLayout: null as string | null,
       dockMode: 'bottom' as const,
     },
+    // `null` is the legacy no-provider mount every other test in this file
+    // uses. A test that needs App's region wiring supplies a stub instead.
+    regionModel: null as Record<string, unknown> | null,
   },
   homeConnection: {
     id: 'home-connection',
@@ -92,10 +98,12 @@ const {
   },
   invalidateQueries: vi.fn(),
   navigate: vi.fn(),
+  showSurface: vi.fn(),
   setDockMode: vi.fn(),
   setLayout: vi.fn(),
   showToast: vi.fn(),
   chatControllerAction: vi.fn(),
+  registerRegionSurfaceHost: vi.fn(() => () => undefined),
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -197,6 +205,9 @@ vi.mock('../app-shell/AppViewContent', () => ({
       >
         Continue fixture
       </button>
+      <button type="button" onClick={() => onNavigate({ type: 'activity' })}>
+        View activity fixture
+      </button>
       <button type="button" onClick={() => onNavigate({ type: 'schedule' })}>
         Go to Schedule
       </button>
@@ -295,6 +306,12 @@ vi.mock('../contexts/NavigationContext', () => ({
 vi.mock('../contexts/ProjectsContext', () => ({
   ProjectsProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
+vi.mock('../contexts/RegionModelContext', () => ({
+  useRegionModelOptional: () => hooks.regionModel,
+}));
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurface,
+}));
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast }),
 }));
@@ -322,10 +339,13 @@ function resetHooks() {
     lastProjectLayout: null,
     dockMode: 'bottom',
   };
+  hooks.regionModel = null;
+  registerRegionSurfaceHost.mockClear();
   coreUpdateStatus.data = undefined;
   window.history.replaceState({}, '', '/');
   invalidateQueries.mockClear();
   navigate.mockClear();
+  showSurface.mockClear();
   setDockMode.mockClear();
   setLayout.mockClear();
   showToast.mockClear();
@@ -462,9 +482,19 @@ describe('App home route resolution', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue fixture' }));
 
-    expect(navigate).toHaveBeenCalledWith('/activity', {
+    expect(showSurface).toHaveBeenCalledWith('activity', {
       session: 'thread/alpha',
+      focus: undefined,
     });
+  });
+
+  test('reveals Activity without an intent for a session-less navigation', async () => {
+    render(<App />);
+    await act(async () => undefined);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View activity fixture' }),
+    );
+    expect(showSurface).toHaveBeenCalledWith('activity', undefined);
   });
 
   test('/?project=<name> pre-selects the matching project via setLayout, overriding lastProject, and strips the param', () => {
@@ -531,6 +561,41 @@ describe('App home route resolution', () => {
     expect(chatControllerAction).toHaveBeenCalledTimes(2);
     expect(chatControllerAction).toHaveBeenNthCalledWith(1, 'fullscreen:focus');
     expect(chatControllerAction).toHaveBeenNthCalledWith(2, 'fullscreen:new');
+  });
+
+  /**
+   * #928. `RegionShells` is the only host that renders a region surface, and
+   * App mounts it solely while `showAmbientChatDock` holds. That suppression
+   * is why `showSurface` alone could not reveal anything from a Chat
+   * workspace layout, so the host's own registration — what `useShowSurface`
+   * reads to decide between commanding the model and navigating — is asserted
+   * against App's real gate rather than against a restatement of it.
+   */
+  const regionModelStub = () => ({
+    regions: DEFAULT_DEVICE_REGION_LAYOUT,
+    lastShownRegion: 'bottom',
+    registerRegionSurfaceHost,
+    placeSurface: vi.fn(),
+  });
+
+  test('registers a region surface host on Home', async () => {
+    hooks.regionModel = regionModelStub();
+
+    render(<App />);
+    await act(async () => undefined);
+
+    expect(registerRegionSurfaceHost).toHaveBeenCalled();
+  });
+
+  test('registers no region surface host for a full-screen chat layout', async () => {
+    window.history.replaceState({}, '', '/projects/demo/layouts/chat');
+    hooks.layout = { data: { type: 'chat' }, isLoading: false };
+    hooks.regionModel = regionModelStub();
+
+    render(<App />);
+    await act(async () => undefined);
+
+    expect(registerRegionSurfaceHost).not.toHaveBeenCalled();
   });
 });
 

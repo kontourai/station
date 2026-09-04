@@ -31,6 +31,8 @@ export interface FirstRunTourStep {
   body: string;
   /** The canonical surface this step is about. */
   view: NavigationView;
+  /** Shell-owned region to reveal instead of navigating. */
+  surface?: string;
   /** `data-first-run-anchor` value on that surface. */
   anchor: string;
 }
@@ -50,6 +52,7 @@ export const FIRST_RUN_TOUR_STEPS = [
     title: 'Every run keeps its own evidence',
     body: 'Each session holds the events that produced its result, so an answer can be traced back to the work behind it instead of being taken on trust.',
     view: { type: 'activity' },
+    surface: 'activity',
     // The Activity page root, via `SplitPaneLayout`'s `firstRunAnchor` prop:
     // the surface no longer has a sidebar entry (it moved under Home), and
     // `SessionsView` renders a bare `SplitPaneLayout` with no root element of
@@ -83,6 +86,7 @@ export type FirstRunTourStepId = (typeof FIRST_RUN_TOUR_STEPS)[number]['id'];
  * runtime state to paper over with a fallback route.
  */
 export function tourStepPath(step: FirstRunTourStep): string | null {
+  if (step.surface) return null;
   return getPathForView(step.view);
 }
 

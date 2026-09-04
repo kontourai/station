@@ -27,6 +27,46 @@ const selection = vi.hoisted(() => ({
     },
   } as unknown,
 }));
+const regionOccupant = vi.hoisted(() => ({
+  activity: false,
+  activityVisible: true,
+  chatVisible: true,
+  lastShownRegion: 'right' as 'right' | 'bottom',
+  setRegion: vi.fn(),
+  placeSurface: vi.fn(),
+  showSurface: vi.fn(),
+}));
+
+vi.mock('../contexts/RegionModelContext', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../contexts/RegionModelContext')>();
+  return {
+    ...actual,
+    useRegionModelOptional: () =>
+      regionOccupant.activity
+        ? {
+            regions: {
+              main: { visible: true, size: 0, occupant: null },
+              left: { visible: false, size: 400, occupant: null },
+              right: {
+                visible: regionOccupant.activityVisible,
+                size: 400,
+                occupant: 'activity',
+              },
+              bottom: {
+                visible: regionOccupant.chatVisible,
+                size: 320,
+                occupant: 'chat',
+              },
+            },
+            lastShownRegion: regionOccupant.lastShownRegion,
+            setRegion: regionOccupant.setRegion,
+            placeSurface: regionOccupant.placeSurface,
+            showSurface: regionOccupant.showSurface,
+          }
+        : null,
+  };
+});
 
 vi.mock('../workspace-panes/workspacePaneRendererSelection', () => ({
   selectClientWorkspacePaneRenderer: () => selection.result,
@@ -67,7 +107,14 @@ vi.mock('../views/activity/ActivityWorkspacePane', () => ({
 const mobileFlag = vi.hoisted(() => ({ isMobile: false }));
 vi.mock('../hooks/useIsMobile', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/useIsMobile')>();
-  return { ...actual, useIsMobile: () => mobileFlag.isMobile };
+  return {
+    ...actual,
+    useIsMobile: () => mobileFlag.isMobile,
+    useDockSlotDevice: () => ({
+      viewportWidth: mobileFlag.isMobile ? 390 : 1024,
+      coarsePointer: mobileFlag.isMobile,
+    }),
+  };
 });
 
 import { WORKSPACE_ACTIVITY_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-activity-pane';
@@ -82,6 +129,13 @@ import {
 
 beforeEach(() => {
   mobileFlag.isMobile = false;
+  regionOccupant.activity = false;
+  regionOccupant.activityVisible = true;
+  regionOccupant.chatVisible = true;
+  regionOccupant.lastShownRegion = 'right';
+  regionOccupant.setRegion.mockReset();
+  regionOccupant.placeSurface.mockReset();
+  regionOccupant.showSurface.mockReset();
 });
 
 function publishedAction(
@@ -149,13 +203,12 @@ test("Home's away action asks the HOST to undock — it owns no dock semantics",
   expect(undock).toHaveBeenCalledTimes(1);
 });
 
-test('Activity renders its away state while the published dock occupant is Activity', () => {
+test('Activity ignores the ambient dock occupant — the region model is its only away-state authority (#928)', () => {
+  // No host publishes Activity as an ambient occupant any more; a stale
+  // publication must not resurrect the retired "in the dock" away state.
   renderActivity(publishedAction(WORKSPACE_ACTIVITY_PANE_INSTANCE.instanceId));
-  expect(screen.getByText('Activity is in the dock')).not.toBeNull();
-  expect(
-    screen.getByRole('button', { name: 'Bring it back here' }),
-  ).not.toBeNull();
-  expect(screen.queryByTestId('activity-surface')).toBeNull();
+  expect(screen.queryByText('Activity is in the dock')).toBeNull();
+  expect(screen.getByTestId('activity-surface')).not.toBeNull();
 });
 
 test('Activity renders its pane when the occupant is someone else or absent', () => {
@@ -164,13 +217,48 @@ test('Activity renders its pane when the occupant is someone else or absent', ()
   expect(screen.getByTestId('activity-surface')).not.toBeNull();
 });
 
-test("Activity's away action asks the HOST to undock", () => {
-  const undock = vi.fn();
-  renderActivity(
-    publishedAction(WORKSPACE_ACTIVITY_PANE_INSTANCE.instanceId, undock),
-  );
-  fireEvent.click(screen.getByRole('button', { name: 'Bring it back here' }));
-  expect(undock).toHaveBeenCalledTimes(1);
+test('Activity route points at its occupied region without mounting a second pane', () => {
+  regionOccupant.activity = true;
+  renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
+
+  expect(screen.getByText('Activity is in the Right region')).not.toBeNull();
+  expect(
+    screen.getByText('This pane is currently open in the right region.'),
+  ).not.toBeNull();
+  expect(screen.queryByTestId('activity-surface')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Show Activity' })).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Bring it back here' }),
+  ).toBeNull();
+});
+
+test('a hidden Activity region offers a working Show Activity action', () => {
+  regionOccupant.activity = true;
+  regionOccupant.activityVisible = false;
+  renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
+
+  expect(
+    screen.getByText('Activity is hidden from the Right region'),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
+  expect(regionOccupant.showSurface).toHaveBeenCalledWith('activity');
+});
+
+test('coarse device: a visible Activity region folded behind Chat reads as hidden from the bottom bar', () => {
+  // `foldedDockRegion`: every placement folds to bottom, and only the most
+  // recently shown occupied region renders — a visible `right` is still off
+  // screen while Chat's `bottom` was shown last.
+  mobileFlag.isMobile = true;
+  regionOccupant.activity = true;
+  regionOccupant.activityVisible = true;
+  regionOccupant.lastShownRegion = 'bottom';
+  renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
+
+  expect(
+    screen.getByText('Activity is hidden from the bottom bar'),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
+  expect(regionOccupant.showSurface).toHaveBeenCalledWith('activity');
 });
 
 /* ------------------------------------------------------------------ *

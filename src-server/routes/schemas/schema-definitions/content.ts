@@ -1,3 +1,4 @@
+import { LAYOUT_CATALOG_ITEM_ID_PATTERN } from '@kontourai/station-contracts/distribution';
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import {
   SKILL_COMMAND_NAME_PATTERN,
@@ -278,11 +279,7 @@ export const projectLayoutFromPluginSchema = z.object({
 });
 
 export const projectLayoutApplySchema = z.object({
-  layoutId: z
-    .string()
-    .regex(
-      /^(builtin|plugin):[a-z0-9][a-z0-9-]{0,62}(?::[a-z0-9][a-z0-9-]{0,62})?$/,
-    ),
+  layoutId: z.string().regex(LAYOUT_CATALOG_ITEM_ID_PATTERN),
 });
 
 /**

@@ -119,6 +119,28 @@
   padding: 0 var(--space-3) var(--space-3);
 }
 
+.session-model-picker__model-group {
+  /* Not display: contents -- that drops the fieldset, and with it the group
+     the legend names, from the accessibility tree in WebKit. A real box with
+     the native chrome reset keeps the group announced (#1208 delta review). */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.session-model-picker__model-group-name {
+  padding: var(--space-2) var(--space-3) 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .session-model-picker__model-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px;

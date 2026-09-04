@@ -198,7 +198,7 @@ function HomeWorkContent({
  * What each count reveals, and only where that thing is actually rendered.
  *
  * Every target is a region of THIS page. Nothing outside Home accepts these
- * populations: `/activity` takes only `?session=<id>` and its project filter
+ * populations: Activity takes only a session intent and its project filter
  * is component state with no route parameter, so linking a count there would
  * land the reader on the unfiltered global list under a heading promising a
  * filter — see `home-reveal.ts`.

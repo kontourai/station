@@ -61,6 +61,11 @@ describe('one-revision native promotion contract', () => {
     expect(source.run).toContain('test "$source_sha" = "$GITHUB_SHA"');
     expect(gate?.steps?.[0]?.with?.ref).toBe('$' + '{{ github.sha }}');
     expect(caller?.needs).toEqual(['test-gate', 'full-regression']);
+    expect(caller?.permissions).toEqual({
+      contents: 'write',
+      'id-token': 'write',
+      attestations: 'write',
+    });
     expect((caller as any)?.with?.source_sha).toBe(
       '$' + '{{ needs.test-gate.outputs.source_sha }}',
     );
@@ -492,7 +497,7 @@ describe('one-revision native promotion contract', () => {
     expect(dependencyStep).toBeGreaterThanOrEqual(0);
     expect(planStep).toBeGreaterThan(dependencyStep ?? -1);
     for (const action of [
-      'anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610',
+      'anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
       'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
     ])
       expect(source).toContain(action);

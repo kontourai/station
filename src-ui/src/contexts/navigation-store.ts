@@ -1,3 +1,7 @@
+import {
+  SURFACE_DEEP_LINK_QUERY_KEYS,
+  type SurfaceDeepLinkIntent,
+} from '@kontourai/station-contracts/surface-deep-link';
 import { MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { getLegacyPathRedirect } from '../app-shell/routing';
 import {
@@ -11,6 +15,7 @@ import {
   parseOpenFilePreviewIntent,
   serializeOpenFilePreviewIntent,
 } from '../workspace-panes/openFilePreviewIntent';
+import { parseSurfaceDeepLink } from './surface-deep-link';
 
 export type NavigationState = {
   pathname: string;
@@ -26,6 +31,8 @@ export type NavigationState = {
   activeWorkspacePaneScope: string | null;
   /** One exact, route-owned File Preview request. Consumers clear it after host admission. */
   openFilePreviewIntent: OpenFilePreviewIntent | null;
+  /** One exact shell-owned surface reveal request. The region model clears it after adoption. */
+  surfaceIntent: SurfaceDeepLinkIntent | null;
   isDockOpen: boolean;
   isDockMaximized: boolean;
   dockMode: DockMode;
@@ -72,6 +79,7 @@ function getDefaultNavigationState(): NavigationState {
     activeWorkspacePane: null,
     activeWorkspacePaneScope: null,
     openFilePreviewIntent: null,
+    surfaceIntent: null,
     isDockOpen: false,
     isDockMaximized: false,
     dockMode: 'bottom',
@@ -109,6 +117,7 @@ const SHELL_SCOPED_QUERY_PARAMS = new Set([
   'dockSlotPlacement',
   'fontSize',
   'maximize',
+  'surface',
 ]);
 
 /**
@@ -149,7 +158,7 @@ class NavigationStore {
    * rule matches on `is-maximized` alone and forces `height` with
    * `!important`, beating the plain inline height guard regardless of
    * `is-collapsed` — archive#945 finding). So navigating away from a maximized
-   * dock and back (e.g. following a delegated task into `/activity`, then
+   * dock and back (e.g. revealing Activity for a delegated task, then
    * returning via the mobile task switcher) would otherwise lose the
    * maximize preference for good once that param is gone. `commitState`
    * refreshes this to `true` on every parsed navigation state that has it
@@ -287,6 +296,17 @@ class NavigationStore {
       ...(this.state.openFilePreviewIntent
         ? serializeOpenFilePreviewIntent(this.state.openFilePreviewIntent)
         : {}),
+      ...(this.state.surfaceIntent
+        ? {
+            surface: this.state.surfaceIntent.surfaceId,
+            ...(this.state.surfaceIntent.sessionId && {
+              session: this.state.surfaceIntent.sessionId,
+            }),
+            ...(this.state.surfaceIntent.focus && {
+              focus: this.state.surfaceIntent.focus,
+            }),
+          }
+        : {}),
       ...(this.state.isDockOpen && { dock: 'open' }),
       ...(this.state.isDockMaximized && { maximize: 'true' }),
       ...(this.state.fontSize && { fontSize: this.state.fontSize.toString() }),
@@ -394,6 +414,7 @@ class NavigationStore {
         selectedProject,
         params,
       ),
+      surfaceIntent: parseSurfaceDeepLink(params),
       isDockOpen: params.get('dock') === 'open',
       isDockMaximized: params.get('maximize') === 'true',
       // archive#settings-revamp (docs/design/settings-architecture.md §3, §6).
@@ -503,14 +524,41 @@ class NavigationStore {
       // 6-OPS-30: a route change used to carry the SOURCE route's query string
       // to the destination — `/settings?view=notifications` → "View the
       // notifications inbox" landed on `/notifications?view=notifications`,
-      // and ⌘K from `/settings?view=developer-tools` landed on
-      // `/activity?view=developer-tools`. Harmless only for as long as the
+      // and a shell surface opened from `/settings?view=developer-tools`
+      // inherited `view=developer-tools`. Harmless only for as long as the
       // destination ignores the param it inherited; `/notifications` already
       // reads `?category=` from the URL, so the next query-backed surface
       // inherits a real bug. Only the shell-scoped params below outlive a
       // route change — everything else describes the route being left.
+      // `session`/`focus` are fragments of a surface deep link
+      // (`surfaceDeepLink`): they travel with *their* surface and fall away
+      // with it — when the caller clears the surface on this navigation, and
+      // equally when it swaps in a different one. Comparing the value rather
+      // than mere presence is what separates those: `/projects?surface=activity
+      // &session=x&focus=evidence` → `navigate('/?surface=chat')` would
+      // otherwise re-attach one surface's session to another.
+      const outgoingSurface = url.searchParams.get(
+        SURFACE_DEEP_LINK_QUERY_KEYS.surface,
+      );
+      // Precedence mirrors the writes below: the structured `params` argument
+      // is applied last and so wins, then the target pathname's own query,
+      // then — when neither names a surface — the outgoing one stays put
+      // (`surface` is shell-scoped, so the loop below never deletes it).
+      const incomingSurface =
+        params && SURFACE_DEEP_LINK_QUERY_KEYS.surface in params
+          ? params[SURFACE_DEEP_LINK_QUERY_KEYS.surface]
+          : (target.searchParams.get(SURFACE_DEEP_LINK_QUERY_KEYS.surface) ??
+            outgoingSurface);
+      const surfaceSurvives =
+        outgoingSurface !== null && incomingSurface === outgoingSurface;
       for (const key of [...url.searchParams.keys()]) {
         if (SHELL_SCOPED_QUERY_PARAMS.has(key)) continue;
+        if (
+          surfaceSurvives &&
+          (key === SURFACE_DEEP_LINK_QUERY_KEYS.session ||
+            key === SURFACE_DEEP_LINK_QUERY_KEYS.focus)
+        )
+          continue;
         if (params && key in params) continue;
         url.searchParams.delete(key);
       }
@@ -722,7 +770,7 @@ class NavigationStore {
    * correct for a caller stating an explicit new preference (an explicit
    * non-maximized open, or a close that forwards the live value per archive#945),
    * but it is the wrong tool for a dock-owned navigation seam (an inbox row
-   * falling back to `/activity`, the project-context badge, a delegation
+   * revealing Activity, the project-context badge, a delegation
    * toast) — the dock stays open the whole time, so there is no
    * close-then-reopen round trip for `lastDockMaximized` to survive; it
    * would just get clobbered to `false` on every such navigation. archive#1298's

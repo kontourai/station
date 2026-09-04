@@ -76,7 +76,7 @@ export interface HomeWorkItem {
    * archive#1297 introduced it for `'orchestration'` items
    * (`session.assignedAgentSlug`), so a row-open policy could rehydrate the
    * session into the chat overlay (`useOpenConversation`/`openConversation`)
-   * instead of falling back to `/activity` purely because no in-memory chat
+   * instead of revealing Activity purely because no in-memory chat
    * tab happens to exist for it yet. Its docblock then said "never set on a
    * `'chat'` item", which described that need, not a hazard: a chat item
    * always carries `chatSessionId`, and `resolveWorkItemOpenAction` returns
@@ -108,7 +108,7 @@ export interface HomeWorkItem {
    * archive#1297: an `'orchestration'` item's `session.controlMode`. A
    * `'read-only-attached'` session is followed from an external source
    * Station does not own the runtime for — it cannot be rehydrated into the
-   * chat overlay, so the row-open policy falls back to `/activity` for it
+   * chat overlay, so the row-open policy reveals Activity for it
    * even when `agentSlug` is present.
    */
   controlMode?: SessionControlMode;

@@ -213,6 +213,11 @@ describe('birthProvesReuse (station#2904)', () => {
       identity: { pid: 42, start: '2026-08-29T16:16:27.1234567Z' },
     });
     expect(exec).toHaveBeenCalledTimes(2);
+    expect(exec.mock.calls.map((call) => call[0])).toEqual([
+      'powershell.exe',
+      'pwsh.exe',
+    ]);
+    expect(exec.mock.calls[1]?.[1]).toEqual(exec.mock.calls[0]?.[1]);
     expect(alive).toHaveBeenCalledTimes(2);
     expect(exec.mock.calls.map((call) => call[2]?.timeout)).toEqual([
       WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS,

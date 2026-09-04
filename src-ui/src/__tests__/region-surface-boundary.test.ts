@@ -1,10 +1,19 @@
+// @vitest-environment jsdom
+
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { REGION_SURFACE_SHELLS } from '../app-shell/RegionShells';
 import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
 
 describe('registered surface region boundary', () => {
+  test('every registered surface has exactly one region shell', () => {
+    expect([...REGION_SURFACE_REGISTRY.keys()].sort()).toEqual(
+      [...REGION_SURFACE_SHELLS.keys()].sort(),
+    );
+  });
   test('registered surface renderers never read region state directly', () => {
+    // Renderers must not read region state; the state-free useShowSurface command hook is permitted.
     for (const surface of REGION_SURFACE_REGISTRY.values()) {
       const source = readFileSync(
         resolve(process.cwd(), surface.sourceFile),

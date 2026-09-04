@@ -1633,6 +1633,49 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
   test.setTimeout(20_000);
   await page.setViewportSize({ width: 320, height: 568 });
   await mockChatShell(page);
+  // The delegated task must be a real session before `Open task` can reveal
+  // it: `SessionsView` only selects a routed session that exists in the
+  // read-model. A second session keeps the assertion honest — a detail that
+  // named nothing in particular would pass on an auto-selected list of one.
+  const delegatedSession = {
+    threadId: 'task:mobile-delegation',
+    displayTitle: 'Delegated mobile task',
+    provider: 'codex',
+    model: 'model-selected',
+    projectSlug: 'default',
+    assignedAgentSlug: 'station',
+    delegation: { taskId: 'task:mobile-delegation' },
+    controlMode: 'station-owned',
+    status: 'ready',
+    lifecycleState: 'running',
+    createdAt: '2026-07-19T10:07:00Z',
+    updatedAt: '2026-07-19T10:07:00Z',
+    isLoaded: true,
+    isPersisted: true,
+    eventCount: 1,
+  };
+  const otherSession = {
+    ...delegatedSession,
+    threadId: 'delegated-review',
+    displayTitle: 'Other mobile task',
+    delegation: { taskId: 'task:delegated-review' },
+    lifecycleState: 'needs_input',
+  };
+  await page.route('**/api/orchestration/sessions/**', (route) => {
+    const last = new URL(route.request().url()).pathname
+      .split('/')
+      .filter(Boolean)
+      .at(-1);
+    if (last === 'read-model')
+      return route.fulfill(
+        json({ success: true, data: [otherSession, delegatedSession] }),
+      );
+    if (last === 'flow-run')
+      return route.fulfill(json({ success: true, data: null }));
+    return route.fulfill(
+      json({ success: true, data: { session: delegatedSession, events: [] } }),
+    );
+  });
   await openComposer(page, true);
   const parentTaskId = await page.evaluate(() =>
     new URL(location.href).searchParams.get('chat'),
@@ -1699,10 +1742,21 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
 
   await expect(page.getByText('Delegated to Codex')).toBeVisible();
   await page.getByRole('button', { name: 'Open task' }).click();
-  await expect.poll(() => new URL(page.url()).pathname).toBe('/activity');
-  expect(new URL(page.url()).searchParams.get('session')).toBe(
-    'task:mobile-delegation',
-  );
+  /**
+   * #928: `Open task` reveals the Activity surface through the region model
+   * rather than changing the route, so the URL says nothing about whether the
+   * click did anything — a `session` param nothing writes any more, and a
+   * pathname poll that is satisfied the instant it runs, both passed against
+   * a click that revealed nothing at all. Assert the surface and the session
+   * it was told to show.
+   */
+  await expect(
+    page.locator('#chat-dock').getByRole('button', { name: 'Hide Activity' }),
+  ).toBeVisible({ timeout: 10_000 });
+  const revealed = page.getByTestId('session-detail');
+  await expect(revealed).toBeVisible({ timeout: 10_000 });
+  await expect(revealed).toContainText('Delegated mobile task');
+  await expect(revealed).not.toContainText('Other mobile task');
 });
 
 /**
@@ -2332,8 +2386,28 @@ for (const viewport of [
     );
     const modelButton = page.locator('.chat-input__model-btn');
     await expect(modelButton).toBeVisible();
+    await expect(modelButton.locator('.chat-input__choice-label')).toHaveText(
+      'Model',
+    );
+    await expect(modelButton.locator('.chat-input__model-name')).toHaveText(
+      'test-model',
+    );
+    await expect(modelButton).toContainText('⌄');
     const modelBox = await modelButton.boundingBox();
     expect(modelBox!.x + modelBox!.width).toBeLessThanOrEqual(viewport.width);
+    const agentButton = page.locator('.chat-input__agent-btn');
+    await expect(agentButton).toBeVisible();
+    await expect(agentButton).toHaveAccessibleName(
+      'Agent: Claude. Send a message before changing Agent.',
+    );
+    await expect(agentButton).toHaveAttribute('aria-disabled', 'true');
+    await expect(agentButton.locator('.chat-input__choice-label')).toHaveText(
+      'Agent',
+    );
+    await expect(agentButton.locator('.chat-input__agent-name')).toHaveText(
+      'Claude',
+    );
+    await expect(agentButton).toContainText('⌄');
     const attach = page.getByRole('button', { name: 'Attach files' });
     const attachBox = await attach.boundingBox();
     expect(attachBox!.x + attachBox!.width).toBeLessThanOrEqual(viewport.width);
