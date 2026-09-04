@@ -501,4 +501,13 @@ describe('Workspace Pane host invocation admission', () => {
     expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual(manifest);
     expect(start).not.toHaveBeenCalled();
   });
+
+  test('maps malformed installed source to the bounded unavailable contract', async () => {
+    writeFileSync(join(pluginDir, 'plugin.json'), '{not json');
+    await expect(prepare()).rejects.toMatchObject({
+      code: 'foreground_invocation_unavailable',
+      message:
+        'The captured Workspace Pane action is unavailable or changed before invocation.',
+    });
+  });
 });
