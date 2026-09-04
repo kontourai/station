@@ -172,6 +172,94 @@ describe('StationRuntime agent configuration revision', () => {
     expect(context.getAgentConfigurationRevision()).toBe(2);
   });
 
+  test('plugin configuration activation rediscovers Skills before publishing the rebuilt runtime', async () => {
+    const runtime = Object.create(StationRuntime.prototype) as any;
+    runtime.agentConfigurationRevision = 0;
+    runtime.agentConfigurationMutationQueue = Promise.resolve();
+    runtime.agentConfigurationMutationsClosed = false;
+    runtime.pluginSkillSourceRevision = 0;
+    runtime.loadedPluginSkillSourceRevision = 0;
+    runtime.storageAdapter = {
+      listProjects: () => [{ slug: 'active-project' }],
+    };
+    const order: string[] = [];
+    runtime.skillService = {
+      discoverSkills: vi.fn(async () => {
+        order.push('skills');
+      }),
+    };
+    runtime.configLoader = {
+      getProjectHomeDir: () => '/station-home',
+    };
+    runtime.reloadAgentsFromDisk = vi.fn(async () => {
+      order.push('agents');
+    });
+
+    await runtime.applyAgentConfigurationMutation(
+      async (beginMutation: () => void) => {
+        beginMutation();
+        order.push('persisted');
+        return 'installed';
+      },
+      { rediscoverSkills: true },
+    );
+
+    expect(order).toEqual(['persisted', 'skills', 'agents']);
+    expect(runtime.skillService.discoverSkills).toHaveBeenCalledExactlyOnceWith(
+      '/station-home',
+      'active-project',
+    );
+    expect(runtime.loadedPluginSkillSourceRevision).toBe(1);
+  });
+
+  test('retains failed plugin Skill rediscovery for configuration reconciliation', async () => {
+    const runtime = Object.create(StationRuntime.prototype) as any;
+    runtime.agentConfigurationRevision = 0;
+    runtime.agentConfigurationMutationQueue = Promise.resolve();
+    runtime.agentConfigurationMutationsClosed = false;
+    runtime.pluginSkillSourceRevision = 0;
+    runtime.loadedPluginSkillSourceRevision = 0;
+    runtime.loadedProviderLaunchabilityRevision = 0;
+    runtime.loadedAppConfigLaunchabilityRevision = 0;
+    runtime.providerService = { getLaunchabilityRevision: () => 0 };
+    runtime.storageAdapter = { listProjects: () => [] };
+    runtime.configLoader = {
+      getLaunchabilityRevision: () => 0,
+      getProjectHomeDir: () => '/station-home',
+    };
+    runtime.skillService = {
+      discoverSkills: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('injected discovery failure'))
+        .mockResolvedValueOnce(undefined),
+    };
+    runtime.reloadAgentsFromDisk = vi.fn(async () => undefined);
+    runtime.scheduleAgentConfigurationReconciliation = vi.fn();
+    runtime.logger = { error: vi.fn() };
+    let activation: { status: string } | undefined;
+
+    await runtime.applyAgentConfigurationMutation(
+      async (beginMutation: () => void, receipt: typeof activation) => {
+        activation = receipt;
+        beginMutation();
+        return 'installed';
+      },
+      { rediscoverSkills: true },
+    );
+
+    expect(activation).toMatchObject({ status: 'pending' });
+    expect(runtime.pluginSkillSourceRevision).toBe(1);
+    expect(runtime.loadedPluginSkillSourceRevision).toBe(0);
+    expect(runtime.scheduleAgentConfigurationReconciliation).toHaveBeenCalled();
+
+    await expect(runtime.reconcileAgentConfigurationSources()).resolves.toBe(
+      true,
+    );
+    expect(runtime.skillService.discoverSkills).toHaveBeenCalledTimes(2);
+    expect(runtime.reloadAgentsFromDisk).toHaveBeenCalledOnce();
+    expect(runtime.loadedPluginSkillSourceRevision).toBe(1);
+  });
+
   test('forwards mutation options through the production runtime context', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
     runtime.agentConfigurationRevision = 0;

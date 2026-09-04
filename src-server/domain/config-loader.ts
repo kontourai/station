@@ -197,6 +197,19 @@ export interface ConfigLoaderOptions {
    * Direct domain callers keep the historic opt-in behaviour for now.
    */
   enforceHomeSchema?: boolean;
+  integrationSources?: IntegrationDefinitionSource[];
+}
+
+/** Read-only live ToolDef source; Station-owned integration files still win. */
+export interface IntegrationDefinitionSource {
+  loadIntegration(id: string): ToolDef | undefined;
+  listIntegrations(): ToolMetadata[];
+}
+
+export interface LoadedIntegrationDefinition {
+  definition: ToolDef;
+  /** True only when the returned definition came from a live read-only source. */
+  contributed: boolean;
 }
 
 export interface SkillConfig extends SkillConfigRecord {}
@@ -255,11 +268,13 @@ export class ConfigLoader {
     string,
     () => Pick<ToolDef, 'command' | 'args' | 'env'>
   >();
+  private readonly integrationSources: IntegrationDefinitionSource[];
 
   constructor(options: ConfigLoaderOptions = {}) {
     this.projectHomeDir = resolve(options.projectHomeDir || resolveHomeDir());
     this.listeners = new Map();
     this.enforceHomeSchema = options.enforceHomeSchema === true;
+    this.integrationSources = [...(options.integrationSources ?? [])];
     this.homeSchemaReady = this.enforceHomeSchema
       ? ensureStationHomeSchema(this.projectHomeDir)
       : Promise.resolve();
@@ -722,12 +737,50 @@ export class ConfigLoader {
   }
 
   /**
+   * Whether `id` is currently owned by a live read-only definition source.
+   * A Station file always wins; source ownership applies only while no local
+   * definition shadows the id.
+   */
+  isLiveContributedIntegration(id: string): boolean {
+    if (integrationConfigExists(this.projectHomeDir, id)) return false;
+    return this.integrationSources.some((source) => source.loadIntegration(id));
+  }
+
+  private assertIntegrationDefinitionWritable(id: string): void {
+    if (this.isLiveContributedIntegration(id)) {
+      throw new Error(
+        `Integration '${id}' is supplied by an installed package and its definition is read-only; uninstall or update the owning package instead`,
+      );
+    }
+  }
+
+  /**
    * Load tool definition
    */
   async loadIntegration(id: string): Promise<ToolDef> {
+    return (await this.loadIntegrationWithOwnership(id)).definition;
+  }
+
+  /**
+   * Resolves definition and ownership in one read. Callers must retain this
+   * provenance instead of re-reading live ownership after using the value: a
+   * package can disappear between those operations.
+   */
+  async loadIntegrationWithOwnership(
+    id: string,
+  ): Promise<LoadedIntegrationDefinition> {
     await this.ensureHomeSchema();
+    if (!integrationConfigExists(this.projectHomeDir, id)) {
+      for (const source of this.integrationSources) {
+        const projected = source.loadIntegration(id);
+        if (projected) return { definition: projected, contributed: true };
+      }
+    }
     const def = await loadIntegrationConfig(this.projectHomeDir, id);
-    return this.withBuiltinIntegrationRuntimeIdentity(id, def);
+    return {
+      definition: this.withBuiltinIntegrationRuntimeIdentity(id, def),
+      contributed: false,
+    };
   }
 
   async captureIntegrationPolicySnapshot(
@@ -793,6 +846,7 @@ export class ConfigLoader {
    * churn). A genuine content change still writes and still activates.
    */
   async saveIntegration(id: string, def: ToolDef): Promise<void> {
+    this.assertIntegrationDefinitionWritable(id);
     // archive#3063: a registered built-in's spawn identity never reaches
     // disk — projected out BEFORE the byte comparison so the compare runs
     // against the bytes that would actually be written. Credential writes
@@ -829,6 +883,7 @@ export class ConfigLoader {
     update: (current: ToolDef) => ToolDef,
   ): Promise<ToolDef> {
     await this.ensureHomeSchema();
+    this.assertIntegrationDefinitionWritable(id);
     return updateIntegrationConfig(this.projectHomeDir, id, (current) => {
       const updated = update(current);
       this.assertBuiltinIntegrationCredentialFree(id, updated);
@@ -839,6 +894,7 @@ export class ConfigLoader {
   }
 
   async deleteIntegration(id: string): Promise<void> {
+    this.assertIntegrationDefinitionWritable(id);
     await deleteIntegrationConfig(this.projectHomeDir, id);
   }
 
@@ -854,7 +910,7 @@ export class ConfigLoader {
     // truth `loadIntegration` serves. Without this, station-control would
     // list as secret-free and the ACP tool-server picker would stop flagging
     // it, even though its loaded shape still declares env.
-    return metadata.map((entry) => {
+    const local = metadata.map((entry) => {
       const resolveIdentity = this.builtinIntegrationRuntimeIdentities.get(
         entry.id,
       );
@@ -868,6 +924,11 @@ export class ConfigLoader {
         ),
       };
     });
+    const localIds = new Set(local.map((entry) => entry.id));
+    const contributed = this.integrationSources.flatMap((source) =>
+      source.listIntegrations().filter((entry) => !localIds.has(entry.id)),
+    );
+    return [...local, ...contributed];
   }
 
   /**
@@ -894,7 +955,8 @@ export class ConfigLoader {
       id,
       'integration.json',
     );
-    return existsSync(path);
+    if (existsSync(path)) return true;
+    return this.integrationSources.some((source) => source.loadIntegration(id));
   }
 
   /**

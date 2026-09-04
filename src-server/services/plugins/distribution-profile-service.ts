@@ -36,7 +36,7 @@ import {
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
-import { parsePluginManifest } from './plugin-manifest-loader.js';
+import { parsePluginManifestDocument } from './plugin-manifest-loader.js';
 
 const SAFE_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const LIFECYCLE_FILE = ['config', 'distribution-lifecycle.json'] as const;
@@ -210,7 +210,7 @@ function readPluginManifestFile(
   const pluginDir = resolvePluginDirectory(projectHomeDir, pluginName);
   if (!pluginDir) throw new Error('Plugin directory is unavailable');
   const manifestPath = resolve(pluginDir, 'plugin.json');
-  const manifest = parsePluginManifest(
+  const manifest = parsePluginManifestDocument(
     readContainedRegularFile(pluginDir, 'plugin.json'),
     manifestPath,
   );

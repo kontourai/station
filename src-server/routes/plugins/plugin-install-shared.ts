@@ -1,4 +1,5 @@
 import { execFile as execFileCb } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   cpSync,
   existsSync,
@@ -6,6 +7,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -43,6 +45,7 @@ import {
   writeRegistryInstallAliases,
 } from '../../providers/registries/registry-install-aliases.js';
 import { ContextSafetyError } from '../../services/orchestration/context-safety.js';
+import { resolveAgentPluginDataDirectory } from '../../services/plugins/agent-plugin-loader.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   computePluginContentDigest,
@@ -60,6 +63,7 @@ import {
 import {
   readPluginManifestFile,
   readPluginManifestFileSync,
+  readPluginManifestFileWithFormat,
 } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   copyPluginDependencyOwnership,
@@ -148,6 +152,18 @@ function assertNoSymlinkTree(
     if (entry.isDirectory()) {
       assertNoSymlinkTree(root, child, label);
     }
+  }
+}
+
+function assertAgentPluginDataStaging(root: string, candidate: string): void {
+  const rootInfo = lstatSync(root);
+  if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) {
+    throw new Error('Agent Plugin data root must be a real directory');
+  }
+  assertExistingPathInside(root, candidate, 'Agent Plugin staged data');
+  const info = lstatSync(candidate);
+  if (info.isSymbolicLink() || !info.isDirectory()) {
+    throw new Error('Agent Plugin staged data must be a real directory');
   }
 }
 
@@ -316,6 +332,8 @@ export interface PluginInstallSharedDeps {
   settleProviderAdapterRetirements?: () => Promise<void>;
   reconcileEngineConnections?: (plugin: string) => Promise<void>;
   removeEngineConnections?: (plugin: string) => Promise<void>;
+  /** Fault-injection seam; production uses recursive filesystem removal. */
+  removeStagedAgentPluginData?: (path: string) => void;
   quiesceEventSubscriptions?: (
     pluginName: string,
   ) => Promise<{ release(): void }>;
@@ -1976,7 +1994,9 @@ export async function installPluginFromSource(
   let eventSubscriptionQuiescence: { release(): void } | null = null;
   let releaseInstallPublication: (() => Promise<void>) | undefined;
   try {
-    const manifest = await readPluginManifestFile(join(tempDir, 'plugin.json'));
+    const { manifest, format: manifestFormat } =
+      await readPluginManifestFileWithFormat(join(tempDir, 'plugin.json'));
+    const isAgentPlugin = manifestFormat === 'agent-plugin-1.0';
     const pluginName = manifest.name || tempName;
     assertPluginNameSegment(pluginName);
     // The identity itself, not just its shape as a path segment: Station
@@ -2242,7 +2262,9 @@ export async function installPluginFromSource(
           }
         }
 
-        scanPluginPromptGeneration(tempDir, pluginName);
+        if (!isAgentPlugin) {
+          scanPluginPromptGeneration(tempDir, pluginName);
+        }
         await buildPlugin(tempDir, pluginName);
         assertPluginBundleAssetsContained(tempDir);
 
@@ -2275,10 +2297,12 @@ export async function installPluginFromSource(
           join(projectHomeDir, 'integrations'),
           pluginName,
         );
-        const copiedIntegrations = copyPluginIntegrations(
-          pluginDir,
-          join(projectHomeDir, 'integrations'),
-        );
+        const copiedIntegrations = isAgentPlugin
+          ? []
+          : copyPluginIntegrations(
+              pluginDir,
+              join(projectHomeDir, 'integrations'),
+            );
         for (const integrationId of copiedIntegrations) {
           logger.info(`Copied tool config: ${integrationId}`);
         }
@@ -2659,6 +2683,20 @@ async function uninstallPluginUnderPublication(
   let backupRoot: string | null = null;
   let removedDependencyBackups: RemovedDependencyBackup[] = [];
   const ownershipHandoffs: PluginDependencyOwnershipHandoff[] = [];
+  let stagedAgentPluginData: string | null = null;
+  let backedUpAgentPluginData: string | null = null;
+  let agentPluginDataDirectory: string | null = null;
+  let isAgentPlugin = false;
+  try {
+    const raw = JSON.parse(
+      readFileSync(join(pluginDir, 'plugin.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    isAgentPlugin =
+      raw.$schema ===
+      'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
+  } catch {
+    // The authoritative manifest read below owns the uninstall refusal.
+  }
   const manifest = await readManifestForRemoval(
     join(pluginDir, 'plugin.json'),
     installedPluginName,
@@ -2671,6 +2709,25 @@ async function uninstallPluginUnderPublication(
     projectHomeDir,
     installedPluginName,
   );
+  if ((manifest.name || installedPluginName) !== installedPluginName) {
+    throw new Error(
+      'Installed plugin manifest identity does not match its directory',
+    );
+  }
+  // Presence under Station's dedicated data root is durable historical
+  // ownership. A supported package may transition to the legacy manifest
+  // format during update, but that must not orphan data on later uninstall.
+  const hasHistoricalAgentPluginData = existsSync(
+    join(projectHomeDir, 'agent-plugin-data', pluginName),
+  );
+  if (isAgentPlugin || hasHistoricalAgentPluginData) {
+    // Preflight before quiescence or any plugin mutation. The same authority is
+    // re-read immediately around each later data rename/delete boundary.
+    agentPluginDataDirectory = resolveAgentPluginDataDirectory(
+      projectHomeDir,
+      pluginName,
+    ).directory;
+  }
   const eventSubscriptionQuiescence =
     (await deps.quiesceEventSubscriptions?.(pluginName)) ?? null;
   let serverQuiescence: PluginPublicServerQuiescence;
@@ -2707,6 +2764,14 @@ async function uninstallPluginUnderPublication(
     // Last: throws typed on a corrupt grants store, before which every other
     // backup element is already complete.
     backupPluginDurableState(projectHomeDir, backupRoot, pluginName);
+    if (agentPluginDataDirectory && existsSync(agentPluginDataDirectory)) {
+      backedUpAgentPluginData = join(backupRoot, 'agent-plugin-data');
+      cpSync(
+        agentPluginDataDirectory,
+        backedUpAgentPluginData,
+        PLUGIN_TREE_COPY,
+      );
+    }
     backupComplete = true;
 
     if (manifest.agents) {
@@ -2752,6 +2817,30 @@ async function uninstallPluginUnderPublication(
       name === installedPluginName ? undefined : name,
     );
     await removePluginHostRecord(projectHomeDir, pluginName);
+    if (agentPluginDataDirectory) {
+      const { root: dataRoot, directory: dataDir } =
+        resolveAgentPluginDataDirectory(projectHomeDir, pluginName);
+      if (existsSync(dataDir)) {
+        stagedAgentPluginData = join(
+          dataRoot,
+          `.removed-${pluginName}-${randomUUID()}`,
+        );
+        renameSync(dataDir, stagedAgentPluginData);
+      }
+    }
+    if (stagedAgentPluginData) {
+      const { root: dataRoot } = resolveAgentPluginDataDirectory(
+        projectHomeDir,
+        pluginName,
+      );
+      assertAgentPluginDataStaging(dataRoot, stagedAgentPluginData);
+      if (deps.removeStagedAgentPluginData) {
+        deps.removeStagedAgentPluginData(stagedAgentPluginData);
+      } else {
+        rmSync(stagedAgentPluginData, { recursive: true, force: true });
+      }
+      stagedAgentPluginData = null;
+    }
     eventBus?.emit('plugins:removed', { name: pluginName });
     pluginUninstalls.add(1, { plugin: pluginName });
     logger.info('Plugin removed', { plugin: pluginName });
@@ -2786,6 +2875,19 @@ async function uninstallPluginUnderPublication(
           backupRoot,
         );
         await restorePluginDurableState(projectHomeDir, backupRoot);
+        if (backedUpAgentPluginData && existsSync(backedUpAgentPluginData)) {
+          const { root: dataRoot, directory: dataDir } =
+            resolveAgentPluginDataDirectory(projectHomeDir, pluginName);
+          if (stagedAgentPluginData && existsSync(stagedAgentPluginData)) {
+            assertAgentPluginDataStaging(dataRoot, stagedAgentPluginData);
+            rmSync(stagedAgentPluginData, { recursive: true, force: true });
+          }
+          if (existsSync(dataDir)) {
+            rmSync(dataDir, { recursive: true, force: true });
+          }
+          cpSync(backedUpAgentPluginData, dataDir, PLUGIN_TREE_COPY);
+          stagedAgentPluginData = null;
+        }
         await synchronizePluginAgentDefinitions({
           agentsDir,
           pluginDir,

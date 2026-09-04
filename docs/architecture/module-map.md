@@ -38,6 +38,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [ExtensionNotificationBindings](#extensionnotificationbindings) | Bind exact observed extension tuples to functional consumers without promoting vendor semantics. | `src-shared/extension-notification-bindings.ts` |
 | [JsonFileMutationAuthority](#jsonfilemutationauthority) | Serialize bounded JSON read/derive/publish work without blocking the server event loop. | `src-server/domain/file-storage-helpers.ts` |
 | [LocalSkillMutationAuthority and SetupImportEffectJournal](#localskillmutationauthority-and-setupimporteffectjournal) | Serialize every local Skill mutation and retain each reviewed import effect through recovery. | `src-server/services/agents/skill-service.ts`, `src-server/services/setup/existing-agent-setup-import.ts` |
+| [AgentPluginLoader](#agentpluginloader) | Consume one installed Agent Plugins package without copying portable components or widening failure boundaries. | `src-server/services/plugins/agent-plugin-loader.ts` |
 | [StationHomeArchive](#stationhomearchive) | Validate, back up, and atomically restore one inactive Station home. | `packages/shared/src/station-home-archive.ts` |
 | [ProjectFileTransactions](#projectfiletransactions) | Serialize Project lifecycle and nested record mutations under exact revision capabilities. | `src-server/domain/project-file-transactions.ts` |
 | [KnowledgeFileTransactions](#knowledgefiletransactions) | Publish one multi-file knowledge mutation with durable rollback and exact conflict detection. | `src-server/knowledge-store/adapters/shared/file-transactions.ts` |
@@ -61,6 +62,45 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [SchedulerLedger and BuiltinScheduler](#schedulerledger-and-builtinscheduler) | Own scheduled-job state, occurrence receipts, and safe unattended execution. | `src-server/services/scheduling/scheduler-ledger.ts` |
 | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) | Dispatch a task while keeping graph state and orchestration detail local. | `src-server/services/projects/task-dispatcher.ts` |
 | [StationInstanceReconciler](#stationinstancereconciler) | Observe and converge one installed Station instance safely. | `packages/cli/src/commands/station-instance-reconciler.ts` |
+
+## AgentPluginLoader
+
+**Intent and Interface.** `AgentPluginLoader` selects only locally vendored
+Agent Plugins 1.0 schemas, reports bounded component failures, and projects
+read-only Skill sources and live ToolDefs from installed package bytes.
+`ConfigLoader` accepts that projection through its read-only integration-source
+Interface; Station-owned files retain collision precedence.
+Package ToolDefs remain definition-read-only: probes may return ephemeral
+health, while mutations refuse until an owner-bound overlay exists, so no
+Station integration snapshot can mask an updated or uninstalled package.
+
+**Contract.** Fatal manifest failures discover nothing. Unknown root fields and
+a non-object `extensions` value are reported and ignored; only
+`io.kontourai.station` is validated. An object-valued `extensions` map still
+requires every namespace member to be an object, without inspecting unknown
+namespace contents. Vendored schemas resolve from the source or bundled module
+asset tree and immutable compiled validators are shared across reads. Skill, MCP-document, MCP-entry, and
+unsupported-transport failures remain isolated at their specified boundary.
+Every recognized package root is excluded from legacy recursive Skill discovery,
+even when the package fails fatally or none of its portable Skills validate.
+Unreadable Skill enumeration is isolated to that component. Recognized packages never enter
+the legacy `prompts` or copied-`integrations` contribution paths, and the shared
+hidden-content manifest scan runs before format dispatch.
+Stdio path and environment projection owns containment, default cwd,
+single-pass placeholders, and persistent plugin data. Streamable HTTP owns URL
+and literal-header validation and refuses redirects so package headers cannot
+cross origins. No portable component is copied into a Station integration or
+Skill directory.
+
+**Seam, Implementation, callers, and tests.** Runtime bootstrap composes the
+loader into `SkillService` and `ConfigLoader`; the shared MCP transport consumes
+the projected cwd and headers. Directory/git install validates recognized
+packages through the same loader while the legacy parser remains an explicit
+#346 fallback. Behavioral and real-child-process evidence lives in
+`agent-plugin-loader.test.ts`, `plugin-install-shared.test.ts`, and
+`mcp-v2.test.ts`. **Do not reintroduce:** recursive Agent Plugin Skill discovery,
+copied MCP snapshots, schema fetching, whole-plugin failure for an invalid
+Skill/server, or placeholder expansion in commands/URLs/headers.
 
 ## SurfaceRegistry
 

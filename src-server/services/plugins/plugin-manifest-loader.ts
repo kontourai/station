@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
+import { AGENT_PLUGIN_MANIFEST_SCHEMA_1_0 } from '@kontourai/station-contracts/agent-plugin';
 import { validateOperationalEventScopes } from '@kontourai/station-contracts/operational-event';
 import {
   isCanonicalPluginId,
@@ -9,6 +10,7 @@ import {
 import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
+import { AgentPluginLoader } from './agent-plugin-loader.js';
 
 const SUBSCRIPTION_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 const SUBSCRIPTION_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$/;
@@ -48,15 +50,101 @@ function invalidManifest(
 export async function readPluginManifestFile(
   manifestPath: string,
 ): Promise<PluginManifest> {
+  return (await readPluginManifestFileWithFormat(manifestPath)).manifest;
+}
+
+export type PluginManifestFormat = 'legacy' | 'agent-plugin-1.0';
+
+export interface PluginManifestWithFormat {
+  manifest: PluginManifest;
+  format: PluginManifestFormat;
+}
+
+export async function readPluginManifestFileWithFormat(
+  manifestPath: string,
+): Promise<PluginManifestWithFormat> {
   const raw = await readFile(manifestPath, 'utf-8');
-  return parsePluginManifest(raw, manifestPath);
+  return parsePluginManifestDocumentWithFormat(raw, manifestPath);
 }
 
 export function readPluginManifestFileSync(
   manifestPath: string,
 ): PluginManifest {
+  return readPluginManifestFileSyncWithFormat(manifestPath).manifest;
+}
+
+export function readPluginManifestFileSyncWithFormat(
+  manifestPath: string,
+): PluginManifestWithFormat {
   const raw = readFileSync(manifestPath, 'utf-8');
-  return parsePluginManifest(raw, manifestPath);
+  return parsePluginManifestDocumentWithFormat(raw, manifestPath);
+}
+
+/** Dispatches recognized Agent Plugins documents without weakening legacy reads. */
+export function parsePluginManifestDocument(
+  raw: string,
+  manifestPath: string,
+): PluginManifest {
+  return parsePluginManifestDocumentWithFormat(raw, manifestPath).manifest;
+}
+
+export function parsePluginManifestDocumentWithFormat(
+  raw: string,
+  manifestPath: string,
+): PluginManifestWithFormat {
+  // Both manifest families enter the same hidden-content boundary. Agent
+  // Plugins dispatch must not become a way around legacy manifest safety.
+  assertSafeContextText(raw, {
+    profile: 'hidden-only',
+    source: `plugin manifest '${dirname(manifestPath)}/${basename(manifestPath)}'`,
+  });
+  const agentPlugin = readAgentPluginManifest(raw, manifestPath);
+  return agentPlugin
+    ? { manifest: agentPlugin, format: 'agent-plugin-1.0' }
+    : { manifest: parsePluginManifest(raw, manifestPath), format: 'legacy' };
+}
+
+function readAgentPluginManifest(
+  raw: string,
+  manifestPath: string,
+): PluginManifest | null {
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (
+    !candidate ||
+    typeof candidate !== 'object' ||
+    Array.isArray(candidate) ||
+    typeof (candidate as Record<string, unknown>).$schema !== 'string'
+  ) {
+    return null;
+  }
+  const schema = (candidate as Record<string, unknown>).$schema as string;
+  if (!schema.startsWith('https://agent-plugins.org/schemas/')) return null;
+
+  const pluginRoot = dirname(manifestPath);
+  const projectHomeDir = dirname(dirname(pluginRoot));
+  const outcome = new AgentPluginLoader({ projectHomeDir }).loadPackageResult(
+    pluginRoot,
+    { provisionData: false, manifestDocument: candidate },
+  );
+  if (!outcome.ok) {
+    const reason = outcome.reports[0]?.message ?? 'unknown validation failure';
+    throw new Error(
+      schema === AGENT_PLUGIN_MANIFEST_SCHEMA_1_0
+        ? `Agent Plugin manifest is invalid: ${reason}`
+        : `Unsupported Agent Plugins manifest schema '${schema}'`,
+    );
+  }
+  const loaded = outcome.plugin;
+  return {
+    name: loaded.manifest.name,
+    version: loaded.manifest.version ?? '0.0.0-agent-plugin-unversioned',
+    description: loaded.manifest.description,
+  };
 }
 
 export function parsePluginManifest(

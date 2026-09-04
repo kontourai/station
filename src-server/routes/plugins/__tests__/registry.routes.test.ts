@@ -114,6 +114,7 @@ function setup(
     typeof StationKitObservabilityRegistry
   >,
   approveKitOperatorAction?: (candidate: any) => boolean | Promise<boolean>,
+  applyConfigurationMutation?: (...args: any[]) => Promise<any>,
 ) {
   const configLoader = {
     getProjectHomeDir: vi.fn().mockReturnValue('/tmp'),
@@ -135,6 +136,7 @@ function setup(
     {
       kitObservabilityRegistry,
       approveKitOperatorAction,
+      applyConfigurationMutation,
       layoutCatalog,
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as any,
     },
@@ -591,7 +593,16 @@ describe('Registry Routes', () => {
   });
 
   test('registry plugin installs forward the operator decision from the preview (both catalog faces)', async () => {
-    const { app } = setup();
+    const applyConfigurationMutation = vi.fn(
+      async (operation, _options?: unknown) =>
+        operation(vi.fn(), { status: 'applied' }),
+    );
+    const { app } = setup(
+      undefined,
+      undefined,
+      undefined,
+      applyConfigurationMutation,
+    );
     const consent = {
       permissions: ['navigation.dock'],
       contentDigest: 'sha256:abc',
@@ -619,6 +630,9 @@ describe('Registry Routes', () => {
         },
       );
     }
+    expect(
+      applyConfigurationMutation.mock.calls.map((call) => call[1]),
+    ).toEqual([{ rediscoverSkills: true }, { rediscoverSkills: true }]);
   });
 
   test('a consent refusal answers 400 with the refusal sentence, on both catalog faces', async () => {

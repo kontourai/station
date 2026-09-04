@@ -395,8 +395,9 @@ describe('Plugin Routes', () => {
       .mockResolvedValueOnce(JSON.stringify(oldManifest))
       .mockResolvedValueOnce(JSON.stringify(renamedManifest));
     const beginMutation = vi.fn();
-    const applyConfigurationMutation = vi.fn(async (operation) =>
-      operation(beginMutation, { status: 'applied' }),
+    const applyConfigurationMutation = vi.fn(
+      async (operation, _options?: unknown) =>
+        operation(beginMutation, { status: 'applied' }),
     );
     const settleProviderAdapterRetirements = vi
       .fn()
@@ -415,6 +416,9 @@ describe('Plugin Routes', () => {
     expect(body).toMatchObject({
       success: false,
       error: expect.stringContaining('identity cannot change'),
+    });
+    expect(applyConfigurationMutation.mock.calls[0]?.[1]).toEqual({
+      rediscoverSkills: true,
     });
     expect(beginMutation).toHaveBeenCalledOnce();
     expect(loadPluginProviders).toHaveBeenCalledWith(
@@ -1221,8 +1225,9 @@ describe('Plugin Routes', () => {
 
   test('uninstall runs inside configuration activation and waits for adapter retirement', async () => {
     const beginMutation = vi.fn();
-    const applyConfigurationMutation = vi.fn(async (operation) =>
-      operation(beginMutation, { status: 'applied' }),
+    const applyConfigurationMutation = vi.fn(
+      async (operation, _options?: unknown) =>
+        operation(beginMutation, { status: 'applied' }),
     );
     const settleProviderAdapterRetirements = vi
       .fn()
@@ -1237,6 +1242,9 @@ describe('Plugin Routes', () => {
     await expect(json(response)).resolves.toEqual({ success: true });
     expect(response.status).toBe(200);
     expect(applyConfigurationMutation).toHaveBeenCalledOnce();
+    expect(applyConfigurationMutation.mock.calls[0]?.[1]).toEqual({
+      rediscoverSkills: true,
+    });
     expect(beginMutation).toHaveBeenCalledOnce();
     expect(replacePluginProvidersForSource).toHaveBeenCalledWith(
       'test-plugin',

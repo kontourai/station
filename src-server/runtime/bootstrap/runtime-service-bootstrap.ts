@@ -36,6 +36,7 @@ import { resolveCanonicalSkillSources } from '../../services/flow/flow-agents-sk
 import { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
+import { AgentPluginLoader } from '../../services/plugins/agent-plugin-loader.js';
 import { MCPService } from '../../services/plugins/mcp-service.js';
 import { scanPluginCommandSkills } from '../../services/plugins/plugin-command-skill-source.js';
 import { FileTreeService } from '../../services/projects/file-tree-service.js';
@@ -74,6 +75,7 @@ interface RuntimeServiceBootstrapContext {
   host?: string;
   logger: any;
   configLoader: ConfigLoader;
+  agentPluginLoader?: AgentPluginLoader;
   approvalRegistry: ApprovalRegistry;
   eventBus: EventBus;
   orchestrationEventStore: EventStore;
@@ -139,6 +141,7 @@ export function createRuntimeServiceBundle(
   const storageAdapter =
     factories.createStorageAdapter?.(context.projectHomeDir) ??
     new FileStorageAdapter(context.configLoader.getProjectHomeDir());
+  const agentPluginLoader = context.agentPluginLoader;
   let connectionService: ConnectionService | undefined;
   // The default ConnectionService owns this monitor and disposes it with the
   // runtime. A custom factory owns any monitor it chooses to construct.
@@ -197,7 +200,10 @@ export function createRuntimeServiceBundle(
       // Canonical Flow Agents skills (deliver, plan-work, verify-work, …)
       // from the installed package become browsable/assignable Station
       // skills — a read-only source adapter, no copied content (S3 item 3).
-      canonicalSources: resolveCanonicalSkillSources(),
+      canonicalSources: () => [
+        ...resolveCanonicalSkillSources(),
+        ...(agentPluginLoader?.skillSources() ?? []),
+      ],
       pluginCommandSource: (projectHomeDir, takenNames) =>
         scanPluginCommandSkills(projectHomeDir, context.logger, takenNames).map(
           (skill) => ({ ...skill, resources: [] }),
