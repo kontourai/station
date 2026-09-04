@@ -549,11 +549,49 @@ describe('loadStrandsTools', () => {
   });
 
   /**
-   * #1485. The built-in vended-tool branch opens no connection, so a throw
-   * raised on it cannot be a connection outcome. These three cover the whole
-   * classification: preconnect programming error, preconnect thrown non-Error,
-   * and a genuine connect-path failure that must stay redacted.
+   * #1485. The loader's per-tool catch is the only failure seam for phases
+   * that never connect to anything. These cover the classification in both
+   * directions: which throws escape redaction, what of them is surfaced, and
+   * every arm that must stay redacted.
    */
+  const LOGGER_METHODS = [
+    'trace',
+    'debug',
+    'info',
+    'warn',
+    'error',
+    'fatal',
+  ] as const;
+
+  /** All six methods of the Station logger contract (src-server/utils/logger.ts). */
+  function loggerSpy(): Record<
+    (typeof LOGGER_METHODS)[number],
+    ReturnType<typeof vi.fn>
+  > {
+    return Object.fromEntries(
+      LOGGER_METHODS.map((method) => [method, vi.fn()]),
+    ) as Record<(typeof LOGGER_METHODS)[number], ReturnType<typeof vi.fn>>;
+  }
+
+  /**
+   * `JSON.stringify(new Error('CANARY'))` is `{}` — an Error has no enumerable
+   * own properties — so a plain stringify of the logger's calls cannot see text
+   * that rode in on an Error object. Expand Errors explicitly, including the
+   * stack, which opens with `${name}: ${message}`.
+   */
+  function loggedText(
+    logger: Record<(typeof LOGGER_METHODS)[number], ReturnType<typeof vi.fn>>,
+    ...extra: unknown[]
+  ): string {
+    return JSON.stringify(
+      [...LOGGER_METHODS.map((method) => logger[method].mock.calls), ...extra],
+      (_key, value) =>
+        value instanceof Error
+          ? { name: value.name, message: value.message, stack: value.stack }
+          : value,
+    );
+  }
+
   function custodyBrokenFor(
     brokenId: string,
     thrown: () => never,
@@ -564,24 +602,20 @@ describe('loadStrandsTools', () => {
         id === brokenId ? thrown() : real.acquire(id, purpose),
       release: (claim: unknown) => real.release(claim as never),
       releaseClaims: (claims: unknown[]) => real.releaseClaims(claims as never),
-      // The ONE cast: production supplies a real custody owner, and the point
-      // of this fixture is a loader option that is broken in a way the type
-      // system would otherwise refuse to express (#1482's actual shape — the
-      // loader dereferences `opts.mcpCustody.acquire` with no guard).
+      // A cast: production supplies a real custody owner, and the point of this
+      // fixture is a loader option broken in a way the type system would
+      // otherwise refuse to express (#1482's actual shape — the loader
+      // dereferences `opts.mcpCustody.acquire` with no guard).
     } as unknown as MCPLocalConnectionCustody;
   }
 
-  test('reports a preconnect TypeError on the built-in path with its own class and keeps loading the rest (#1485)', async () => {
+  test('reports a TypeError from custody acquisition with its own class and keeps loading the rest (#1485)', async () => {
+    // This one throws from `mcpCustody.acquire`, so it never reaches the
+    // built-in branch — it is #1482's own shape, a broken loader OPTION. The
+    // built-in branch itself is exercised by the next test.
     const mcpConnectionStatus = new Map();
-    const logger = {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    };
+    const logger = loggerSpy();
     const notebook = createBuiltinVendedToolDef('notebook');
-    // The ONE cast: `{ acquire: undefined }` is the option shape #1482 hit in
-    // production, and the type system exists to forbid exactly it.
     const brokenOption = { acquire: undefined } as unknown as {
       acquire: (id: string, purpose: string) => never;
     };
@@ -589,11 +623,11 @@ describe('loadStrandsTools', () => {
     const tools = await loadStrandsTools({
       slug: 'agent-a',
       spec: {
-        tools: { mcpServers: ['broken-builtin', 'notebook'], available: ['*'] },
+        tools: { mcpServers: ['broken-option', 'notebook'], available: ['*'] },
       } as any,
       opts: {
-        mcpCustody: custodyBrokenFor('broken-builtin', () =>
-          brokenOption.acquire('broken-builtin', 'managed'),
+        mcpCustody: custodyBrokenFor('broken-option', () =>
+          brokenOption.acquire('broken-option', 'managed'),
         ),
         configLoader: {
           loadIntegration: vi.fn().mockResolvedValue(notebook),
@@ -607,16 +641,17 @@ describe('loadStrandsTools', () => {
       state: { mcpClients: new Map(), agentMcpClients: new Map() },
     });
 
-    const status = mcpConnectionStatus.get('broken-builtin');
+    const status = mcpConnectionStatus.get('broken-option');
     expect(status.connected).toBe(false);
     expect(status.error).toMatch(/^TypeError: /);
     expect(status.error).not.toContain('Tool server connection failed');
     expect(logger.error).toHaveBeenCalledWith(
       'Failed to load agent tool before any connection',
       expect.objectContaining({
-        toolId: 'broken-builtin',
+        toolId: 'broken-option',
         failure: 'loader',
         errorClass: 'TypeError',
+        messageWithheld: false,
         error: expect.any(TypeError),
       }),
     );
@@ -626,25 +661,171 @@ describe('loadStrandsTools', () => {
     expect(mcpConnectionStatus.get('notebook')).toEqual({ connected: true });
   });
 
-  test('reports a thrown non-Error on the built-in path instead of swallowing it (#1485)', async () => {
+  test('reports a TypeError raised INSIDE the built-in vended-tool branch with its own class (#1485)', async () => {
+    // The built-in branch runs to completion — `createBuiltinVendedTool`
+    // returns a real tool and `mcpConnectionStatus.set(id, {connected:true})`
+    // has already run — and then a broken `integrationMetadata` option throws.
+    // Nothing here has connected to anything, so this is the assignment site of
+    // `phase = 'connect'` under test: moving that flip any earlier (e.g. to
+    // just after `mcpCustody.acquire`) redacts this throw and reddens here.
     const mcpConnectionStatus = new Map();
-    const logger = {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    };
+    const logger = loggerSpy();
+    const brokenMetadata = { set: undefined } as unknown as Map<string, never>;
 
     await expect(
       loadStrandsTools({
         slug: 'agent-a',
         spec: {
-          tools: { mcpServers: ['broken-builtin'], available: ['*'] },
+          tools: { mcpServers: ['notebook'], available: ['*'] },
         } as any,
         opts: {
-          // A non-Error throw is the case under test, not an accident.
-          mcpCustody: custodyBrokenFor('broken-builtin', () => {
-            throw 'builtin-loader-string-throw' as unknown as Error;
+          mcpCustody: new MCPLocalConnectionCustody(),
+          configLoader: {
+            loadIntegration: vi
+              .fn()
+              .mockResolvedValue(createBuiltinVendedToolDef('notebook')),
+          } as any,
+          mcpConnectionStatus,
+          integrationMetadata: brokenMetadata,
+          toolNameMapping: new Map(),
+          toolNameReverseMapping: new Map(),
+          logger,
+        },
+        state: { mcpClients: new Map(), agentMcpClients: new Map() },
+      }),
+      // The tool was pushed before the throw; the loop does not unwind it.
+    ).resolves.toHaveLength(1);
+
+    const status = mcpConnectionStatus.get('notebook');
+    expect(status.connected).toBe(false);
+    expect(status.error).toMatch(/^TypeError: /);
+    expect(status.error).not.toContain('Tool server connection failed');
+    expect(logger.error).toHaveBeenCalledWith(
+      'Failed to load agent tool before any connection',
+      expect.objectContaining({
+        toolId: 'notebook',
+        failure: 'loader',
+        errorClass: 'TypeError',
+      }),
+    );
+  });
+
+  test('names a SyntaxError class but never its message, which quotes secret-bearing config (#1485)', async () => {
+    // `configLoader.loadIntegration` runs preconnect and reaches unguarded
+    // JSON.parse calls on integration.json and the tool-server credential
+    // store. V8 composes a SyntaxError message from a WINDOW OF THE PARSED
+    // SOURCE, so surfacing it would publish file bytes through
+    // GET /agents/:slug/health and the log store.
+    //
+    // The window is only ~12 characters wide, which is why this fixture uses a
+    // short stored value and a leading pad standing in for the rest of a real
+    // integration.json: a long secret leaks a tail fragment instead of the
+    // whole thing, which is the same defect and merely harder to assert on.
+    const secret = 'sekr';
+    const mcpConnectionStatus = new Map();
+    const logger = loggerSpy();
+    let thrown: SyntaxError | undefined;
+    try {
+      JSON.parse(`{"pad":"${'a'.repeat(30)}","TOKEN":"${secret}","b":x}`);
+    } catch (error) {
+      thrown = error as SyntaxError;
+    }
+    // Not hypothetical: the real V8 message quotes the stored value verbatim.
+    expect(thrown).toBeInstanceOf(SyntaxError);
+    expect(thrown?.message).toContain(`"${secret}"`);
+    const leakedMessage = thrown?.message as string;
+
+    await expect(
+      loadStrandsTools({
+        slug: 'agent-a',
+        spec: {
+          tools: { mcpServers: ['demoServer'], available: ['*'] },
+        } as any,
+        opts: {
+          mcpCustody: new MCPLocalConnectionCustody(),
+          configLoader: {
+            loadIntegration: vi.fn().mockRejectedValue(thrown),
+          } as any,
+          mcpConnectionStatus,
+          integrationMetadata: new Map(),
+          toolNameMapping: new Map(),
+          toolNameReverseMapping: new Map(),
+          logger,
+        },
+        state: { mcpClients: new Map(), agentMcpClients: new Map() },
+      }),
+    ).resolves.toEqual([]);
+
+    // Class named — this is not a connection failure — message dropped.
+    expect(mcpConnectionStatus.get('demoServer')).toEqual({
+      connected: false,
+      error: 'SyntaxError',
+    });
+    expect(logger.error).toHaveBeenCalledWith(
+      'Failed to load agent tool before any connection',
+      expect.objectContaining({
+        errorClass: 'SyntaxError',
+        messageWithheld: true,
+      }),
+    );
+    const observable = loggedText(logger, [...mcpConnectionStatus]);
+    expect(observable).not.toContain(leakedMessage);
+    expect(observable).not.toContain(`"${secret}"`);
+  });
+
+  test('names an AssertionError class but never its message, which quotes the compared values (#1485)', async () => {
+    const canary = 'assertion-compared-value-canary';
+    const mcpConnectionStatus = new Map();
+    const logger = loggerSpy();
+    const assertion = Object.assign(
+      new Error(`Expected values to be equal: ${canary}`),
+      { name: 'AssertionError', code: 'ERR_ASSERTION' },
+    );
+
+    await expect(
+      loadStrandsTools({
+        slug: 'agent-a',
+        spec: {
+          tools: { mcpServers: ['demoServer'], available: ['*'] },
+        } as any,
+        opts: {
+          mcpCustody: new MCPLocalConnectionCustody(),
+          configLoader: {
+            loadIntegration: vi.fn().mockRejectedValue(assertion),
+          } as any,
+          mcpConnectionStatus,
+          integrationMetadata: new Map(),
+          toolNameMapping: new Map(),
+          toolNameReverseMapping: new Map(),
+          logger,
+        },
+        state: { mcpClients: new Map(), agentMcpClients: new Map() },
+      }),
+    ).resolves.toEqual([]);
+
+    expect(mcpConnectionStatus.get('demoServer')).toEqual({
+      connected: false,
+      error: 'AssertionError',
+    });
+    expect(loggedText(logger, [...mcpConnectionStatus])).not.toContain(canary);
+  });
+
+  test('reports that a non-Error was thrown without surfacing the value (#1485)', async () => {
+    const canary = 'builtin-loader-thrown-value-canary';
+    const mcpConnectionStatus = new Map();
+    const logger = loggerSpy();
+
+    await expect(
+      loadStrandsTools({
+        slug: 'agent-a',
+        spec: {
+          tools: { mcpServers: ['broken-option'], available: ['*'] },
+        } as any,
+        opts: {
+          // A non-Error throw is the case under test, not an accident. The
+          // thrown value IS data, so it is named by type and withheld.
+          mcpCustody: custodyBrokenFor('broken-option', () => {
+            throw canary as unknown as Error;
           }),
           configLoader: {
             loadIntegration: vi
@@ -661,31 +842,34 @@ describe('loadStrandsTools', () => {
       }),
     ).resolves.toEqual([]);
 
-    expect(mcpConnectionStatus.get('broken-builtin')).toEqual({
+    expect(mcpConnectionStatus.get('broken-option')).toEqual({
       connected: false,
-      error: 'Non-Error thrown (string): builtin-loader-string-throw',
+      error: 'Non-Error thrown (string)',
     });
     expect(logger.error).toHaveBeenCalledWith(
       'Failed to load agent tool before any connection',
       expect.objectContaining({
         failure: 'loader',
         errorClass: 'non-error:string',
+        messageWithheld: true,
       }),
     );
+    expect(loggedText(logger, [...mcpConnectionStatus])).not.toContain(canary);
   });
 
-  test('bounds a surfaced loader message and says it truncated (#1485)', async () => {
+  test('flattens control characters and bounds a surfaced message to exactly the limit (#1485)', async () => {
     const mcpConnectionStatus = new Map();
-    const long = 'x'.repeat(500);
+    // Multi-line, like a real assertion or validation message.
+    const long = `head\nline\ttwo${'x'.repeat(500)}`;
 
     await expect(
       loadStrandsTools({
         slug: 'agent-a',
         spec: {
-          tools: { mcpServers: ['broken-builtin'], available: ['*'] },
+          tools: { mcpServers: ['broken-option'], available: ['*'] },
         } as any,
         opts: {
-          mcpCustody: custodyBrokenFor('broken-builtin', () => {
+          mcpCustody: custodyBrokenFor('broken-option', () => {
             throw new RangeError(long);
           }),
           configLoader: {
@@ -697,32 +881,24 @@ describe('loadStrandsTools', () => {
           integrationMetadata: new Map(),
           toolNameMapping: new Map(),
           toolNameReverseMapping: new Map(),
-          logger: {
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          },
+          logger: loggerSpy(),
         },
         state: { mcpClients: new Map(), agentMcpClients: new Map() },
       }),
     ).resolves.toEqual([]);
 
-    const surfaced = mcpConnectionStatus.get('broken-builtin').error as string;
-    expect(surfaced.startsWith('RangeError: xxx')).toBe(true);
+    const surfaced = mcpConnectionStatus.get('broken-option').error as string;
+    expect(surfaced.startsWith('RangeError: head line two')).toBe(true);
     expect(surfaced.endsWith('… (truncated)')).toBe(true);
-    expect(surfaced.length).toBeLessThan(long.length);
+    // The limit is the TOTAL length, truncation marker included.
+    expect(surfaced).toHaveLength(300);
+    expect(/[\p{Cc}\p{Cf}]/u.test(surfaced)).toBe(false);
   });
 
   test('keeps an ordinary preconnect Error redacted rather than widening the escape (#1485)', async () => {
     const canary = 'integration-config-loader-canary';
     const mcpConnectionStatus = new Map();
-    const logger = {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    };
+    const logger = loggerSpy();
 
     await expect(
       loadStrandsTools({
@@ -733,8 +909,8 @@ describe('loadStrandsTools', () => {
         opts: {
           mcpCustody: new MCPLocalConnectionCustody(),
           configLoader: {
-            // Preconnect, but a plain Error is not a shape only Station's own
-            // code produces, so it keeps today's bounded message.
+            // Preconnect, but a plain Error is not a class the runtime raises
+            // for a defect in the program, so it keeps today's bounded message.
             loadIntegration: vi
               .fn()
               .mockRejectedValue(new Error(`load failed ${canary}`)),
@@ -753,26 +929,13 @@ describe('loadStrandsTools', () => {
       connected: false,
       error: 'Tool server connection failed',
     });
-    expect(
-      JSON.stringify([
-        ...logger.debug.mock.calls,
-        ...logger.info.mock.calls,
-        ...logger.warn.mock.calls,
-        ...logger.error.mock.calls,
-        [...mcpConnectionStatus],
-      ]),
-    ).not.toContain(canary);
+    expect(loggedText(logger, [...mcpConnectionStatus])).not.toContain(canary);
   });
 
   test('keeps a genuine connect-path failure redacted, whatever its class (#1485)', async () => {
     const canary = 'remote-listtools-provider-canary';
     const mcpConnectionStatus = new Map();
-    const logger = {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    };
+    const logger = loggerSpy();
     // A provider-derived TypeError raised by the connect/listTools path: the
     // class is one the preconnect rule would surface, so this is the case that
     // proves phase — not class alone — gates the redaction #1428 installed.
@@ -811,14 +974,6 @@ describe('loadStrandsTools', () => {
       connected: false,
       error: 'Tool server connection failed',
     });
-    expect(
-      JSON.stringify([
-        ...logger.debug.mock.calls,
-        ...logger.info.mock.calls,
-        ...logger.warn.mock.calls,
-        ...logger.error.mock.calls,
-        [...mcpConnectionStatus],
-      ]),
-    ).not.toContain(canary);
+    expect(loggedText(logger, [...mcpConnectionStatus])).not.toContain(canary);
   });
 });

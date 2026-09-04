@@ -141,8 +141,17 @@ async function nativeStationControlClient(
 }
 
 /**
- * How far a per-tool load got before it threw. Only `connect` has spoken to a
- * tool server, so only `connect` can be carrying remote text.
+ * How far a per-tool load got before it threw.
+ *
+ * `connect` is the phase that has spoken to a tool server, so only `connect`
+ * can be carrying remote text. The flip is deliberately EARLY — it happens
+ * before `establishMcpSecretChild` / `withStationControlRuntimeEnv` /
+ * `createCustodiedStrandsClient`, and it stays set through the post-`listTools`
+ * normalization — so Station-owned failures in those stretches still report as
+ * connection failures. This distinction narrows the mislabelled population to
+ * the paths that never reach a server at all (built-in vended tools, disabled
+ * and non-stdio integrations, custody acquisition, config loading); it does not
+ * close the class. Tightening it needs a third phase, not a moved assignment.
  */
 type StrandsToolLoadPhase = 'preconnect' | 'connect';
 
@@ -162,14 +171,13 @@ type StrandsToolLoadPhase = 'preconnect' | 'connect';
  *     (`phase === 'preconnect'`) — every throw from the connect / listTools /
  *     callTool path stays redacted, whatever its class, because its message can
  *     be built from remote data; and
- *  2. its shape is one only a defect in Station's own code or configuration
- *     produces: a thrown non-`Error` value, or an `Error` named `TypeError`,
- *     `ReferenceError`, `RangeError`, `SyntaxError`, `EvalError`, `URIError`,
- *     `AssertionError`, or carrying Node's `ERR_ASSERTION` code.
+ *  2. its class is one the JavaScript runtime raises for a defect in the
+ *     program itself, or the throw is not an `Error` at all
+ *     (`LOADER_PROGRAMMING_ERROR_NAMES`, plus Node's `ERR_ASSERTION` code).
  *
- * Anything else preconnect — a custody error, a config-loader failure, a plain
- * `Error` — keeps today's redacted message, so no path that used to be bounded
- * becomes unbounded.
+ * Any other preconnect throw — a custody error, a `Tool '<id>' not found`
+ * config-loader `Error`, anything already wearing Station's own bounded
+ * vocabulary — keeps today's redacted message.
  */
 const LOADER_PROGRAMMING_ERROR_NAMES = new Set([
   'AssertionError',
@@ -181,8 +189,43 @@ const LOADER_PROGRAMMING_ERROR_NAMES = new Set([
   'URIError',
 ]);
 
-/** Station-owned text only; bounded so one huge message cannot bloat status. */
+/**
+ * Escaping redaction decides that the CLASS is safe to name. It does not
+ * decide that the MESSAGE is, and for these it is not: their text is composed
+ * from the data the loader was examining rather than from program text.
+ *
+ * `SyntaxError` is the live one. `configLoader.loadIntegration` runs preconnect
+ * and reaches two unguarded `JSON.parse` calls on secret-bearing files —
+ * `integration.json` (which can still hold plaintext legacy `env` values,
+ * src-server/domain/config-loader-storage.ts) and the tool-server credential
+ * store (plaintext secrets and OAuth tokens,
+ * packages/shared/src/tool-server-credential-store.ts). V8 composes a
+ * `SyntaxError` message from a WINDOW OF THE PARSED SOURCE, so a corrupt file
+ * would publish secret fragments through `mcpConnectionStatus.error` into
+ * `GET /agents/:slug/health` and into the log store. `AssertionError` composes
+ * its message from the values compared, and a thrown non-`Error` IS a value.
+ *
+ * For these the class is surfaced and the text is dropped everywhere — status
+ * AND log. Not "logged but redacted on egress": tool-server-oauth.ts records
+ * that an earlier revision admitted raw error text to the debug logger on
+ * exactly that theory and it did not hold, because `/api/diagnostics/logs`
+ * serves those records to any authenticated diagnostics reader. `error.stack`
+ * begins with `${name}: ${message}`, so the whole Error object is withheld too,
+ * not just the message field.
+ */
+const LOADER_DATA_DERIVED_MESSAGE_NAMES = new Set([
+  'AssertionError',
+  'SyntaxError',
+]);
+
+/**
+ * A surfaced detail is Station-composed but can quote a JavaScript runtime
+ * message, so it is bounded and control characters are flattened before it
+ * reaches a status map an HTTP response renders. The limit is the TOTAL
+ * length, truncation marker included.
+ */
 const LOADER_FAILURE_DETAIL_LIMIT = 300;
+const LOADER_FAILURE_TRUNCATION_MARK = '… (truncated)';
 
 function loaderErrorClass(error: unknown): string {
   if (error instanceof Error) {
@@ -191,9 +234,18 @@ function loaderErrorClass(error: unknown): string {
   return `non-error:${typeof error}`;
 }
 
+/** How the surfaced detail names the throw when its text is withheld. */
+function loaderFailureLabel(error: unknown): string {
+  return error instanceof Error
+    ? loaderErrorClass(error)
+    : `Non-Error thrown (${typeof error})`;
+}
+
 function isLoaderProgrammingFailure(error: unknown): boolean {
-  // A tool server can only ever reach this seam by throwing an Error; a thrown
-  // non-Error is Station's own code failing to throw properly.
+  // A tool server reaches this seam by throwing an Error in every path this
+  // loader has; a thrown non-Error is Station's own code failing to throw
+  // properly. The classification does not lean on that being exhaustive — a
+  // non-Error's text is withheld either way (see LOADER_DATA_DERIVED_*).
   if (!(error instanceof Error)) return true;
   // Already bounded, Station-owned vocabulary — capture returns these as-is.
   if (
@@ -206,24 +258,44 @@ function isLoaderProgrammingFailure(error: unknown): boolean {
   return (error as { code?: unknown }).code === 'ERR_ASSERTION';
 }
 
-function printableLoaderValue(value: unknown): string {
-  try {
-    return String(value);
-  } catch {
-    return '[unprintable value]';
-  }
+function isLoaderMessageDataDerived(error: unknown): boolean {
+  if (!(error instanceof Error)) return true;
+  return (
+    LOADER_DATA_DERIVED_MESSAGE_NAMES.has(loaderErrorClass(error)) ||
+    (error as { code?: unknown }).code === 'ERR_ASSERTION'
+  );
 }
 
-function describeLoaderFailure(error: unknown): string {
-  const detail =
-    error instanceof Error
-      ? error.message
-        ? `${loaderErrorClass(error)}: ${error.message}`
-        : loaderErrorClass(error)
-      : `Non-Error thrown (${typeof error}): ${printableLoaderValue(error)}`;
-  return detail.length > LOADER_FAILURE_DETAIL_LIMIT
-    ? `${detail.slice(0, LOADER_FAILURE_DETAIL_LIMIT)}… (truncated)`
-    : detail;
+function boundLoaderDetail(detail: string): string {
+  if (detail.length <= LOADER_FAILURE_DETAIL_LIMIT) return detail;
+  const head = detail.slice(
+    0,
+    LOADER_FAILURE_DETAIL_LIMIT - LOADER_FAILURE_TRUNCATION_MARK.length,
+  );
+  return `${head}${LOADER_FAILURE_TRUNCATION_MARK}`;
+}
+
+type LoaderFailureReport = {
+  /** What `mcpConnectionStatus.error` receives. */
+  detail: string;
+  /** True when the throw's own text was dropped rather than surfaced. */
+  messageWithheld: boolean;
+};
+
+function describeLoaderFailure(error: unknown): LoaderFailureReport {
+  const label = loaderFailureLabel(error);
+  if (isLoaderMessageDataDerived(error)) {
+    return { detail: label, messageWithheld: true };
+  }
+  const message = error instanceof Error ? error.message : '';
+  if (!message) return { detail: label, messageWithheld: false };
+  // Control and format characters would otherwise ride a multi-line runtime
+  // message into a single-line status field.
+  const flattened = message.replace(/[\p{Cc}\p{Cf}]/gu, ' ');
+  return {
+    detail: boundLoaderDetail(`${label}: ${flattened}`),
+    messageWithheld: false,
+  };
 }
 
 type StrandsToolLoadOptions = Pick<
@@ -509,13 +581,16 @@ export async function loadStrandsTools(options: {
         // Never connected, and the shape is one only Station's own code or
         // configuration produces: report the real class, do not assert a
         // connection outcome that was never observed (#1485).
-        const detail = describeLoaderFailure(error);
+        const { detail, messageWithheld } = describeLoaderFailure(error);
         opts.logger.error('Failed to load agent tool before any connection', {
           agent: slug,
           toolId,
           failure: 'loader',
           errorClass: loaderErrorClass(error),
-          error,
+          messageWithheld,
+          // Withheld means withheld: `error.stack` opens with the message, so
+          // the object itself cannot ride into the log store either.
+          ...(messageWithheld ? {} : { error }),
         });
         opts.mcpConnectionStatus.set(toolId, {
           connected: false,
