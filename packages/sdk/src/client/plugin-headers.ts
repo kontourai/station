@@ -5,5 +5,12 @@ export function getPluginHeaders(
   extraHeaders?: Record<string, string>,
   pluginName = '',
 ): Record<string, string> {
-  return { ...extraHeaders, [STATION_PLUGIN_HEADER]: pluginName };
+  return {
+    ...Object.fromEntries(
+      Object.entries(extraHeaders ?? {}).filter(
+        ([name]) => name.toLowerCase() !== STATION_PLUGIN_HEADER,
+      ),
+    ),
+    [STATION_PLUGIN_HEADER]: pluginName,
+  };
 }

@@ -105,10 +105,17 @@ class ToastStore {
     // Collapse rapid duplicates (a provider error retried in a loop would
     // otherwise stack identical toasts until they cover the viewport). Refresh
     // the existing toast's auto-dismiss timer instead of adding another copy.
-    const existing = this.toasts.find(
-      (t) =>
-        t.type === tone && t.message === clean && t.sessionId === sessionId,
-    );
+    // Actions carry distinct caller-owned intent. Equal copy must not retain
+    // another Pane's callback or attach an old action to an actionless notice.
+    const existing =
+      !actions?.length &&
+      this.toasts.find(
+        (t) =>
+          !t.actions?.length &&
+          t.type === tone &&
+          t.message === clean &&
+          t.sessionId === sessionId,
+      );
     if (existing) {
       const prevTimeout = this.timeouts.get(existing.id);
       if (prevTimeout) clearTimeout(prevTimeout);

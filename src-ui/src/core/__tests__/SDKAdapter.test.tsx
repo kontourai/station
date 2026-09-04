@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   activeLayoutQuery: vi.fn(),
@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   setApiBase: vi.fn(),
   setProviderFunctions: vi.fn(),
   shellToast: vi.fn(),
+  useShellToast: vi.fn(),
 }));
 
 const ambientNavigation = {
@@ -40,11 +41,14 @@ vi.mock('../../contexts/ConversationsContext', () => ({
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => ambientNavigation,
 }));
-vi.mock('../../contexts/ToastContext', () => ({
-  useToast: () => ({
-    showToast: mocks.shellToast,
-  }),
-}));
+vi.mock('../../contexts/ToastContext', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../contexts/ToastContext')>();
+  return {
+    ...actual,
+    useToast: mocks.useShellToast,
+  };
+});
 vi.mock('../../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => vi.fn(),
   useCreateChatSession: () => vi.fn(),
@@ -58,6 +62,7 @@ import {
   useSDK,
   useToast,
 } from '@kontourai/station-sdk';
+import { ToastProvider, toastStore } from '../../contexts/ToastContext';
 import { SDKAdapter } from '../SDKAdapter';
 
 const paneLayout = {
@@ -124,8 +129,92 @@ function IdentityProbe({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.useShellToast.mockImplementation(() => ({
+    showToast: mocks.shellToast,
+  }));
   mocks.layoutsQuery.mockReturnValue({ data: [] });
   mocks.activeLayoutQuery.mockReturnValue({ data: undefined });
+});
+
+afterEach(() => {
+  toastStore.dismissAll();
+  toastStore.clearHistory();
+});
+
+function ActionToastProbe({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  const { showToast } = useToast();
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        showToast({
+          message: 'Saved',
+          type: 'success',
+          duration: 0,
+          action: { label, onClick },
+        })
+      }
+    >
+      {label}
+    </button>
+  );
+}
+
+test('identical toast copy from separate Pane actions retains each exact callback', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../contexts/ToastContext')
+  >('../../contexts/ToastContext');
+  mocks.useShellToast.mockImplementation(actual.useToast);
+  const first = vi.fn();
+  const second = vi.fn();
+  render(
+    <ToastProvider>
+      <SDKAdapter
+        layout={paneLayout}
+        boundProjectSlug="project-alpha"
+        boundPluginName="plugin-alpha"
+      >
+        <ActionToastProbe label="Open A" onClick={first} />
+      </SDKAdapter>
+      <SDKAdapter
+        layout={paneLayout}
+        boundProjectSlug="project-beta"
+        boundPluginName="plugin-beta"
+      >
+        <ActionToastProbe label="Open B" onClick={second} />
+      </SDKAdapter>
+    </ToastProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Open A' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Open B' }));
+  const toasts = toastStore.getSnapshot();
+  expect(toasts).toHaveLength(2);
+  expect(toasts[0].id).not.toBe(toasts[1].id);
+  expect(toasts.map((t) => t.actions?.[0].label)).toEqual(['Open A', 'Open B']);
+  toasts[1].actions?.[0].onClick();
+  expect(second).toHaveBeenCalledTimes(1);
+  expect(first).not.toHaveBeenCalled();
+  const plainId = toastStore.show(
+    'Saved',
+    undefined,
+    0,
+    undefined,
+    undefined,
+    'success',
+  );
+  expect(toastStore.getSnapshot()).toHaveLength(3);
+  expect(
+    toastStore.getSnapshot().find((t) => t.id === plainId)?.actions,
+  ).toBeUndefined();
+  expect(
+    toastStore.show('Saved', undefined, 0, undefined, undefined, 'success'),
+  ).toBe(plainId);
 });
 
 test('binds SDK navigation and layout reads to the admitted Pane Project', () => {
