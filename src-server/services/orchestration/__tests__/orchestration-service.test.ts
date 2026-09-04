@@ -6779,6 +6779,7 @@ describe('OrchestrationService', () => {
         provider: 'claude',
         metadata: { agentSlug: 'delegated-agent', delegation },
       }),
+      undefined,
     );
     expect(lifecycle).toEqual(['pre-tool-installed', 'replayed']);
     await restartService.shutdown();
@@ -11649,6 +11650,7 @@ describe('OrchestrationService', () => {
 
     expect(resolveSessionAgent).toHaveBeenCalledWith(
       expect.objectContaining({ threadId: 'thread-resolve-agent' }),
+      undefined,
     );
     expect(claude.startSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -12058,6 +12060,7 @@ describe('OrchestrationService', () => {
       expect.objectContaining({
         metadata: expect.objectContaining({ agentSlug: 'my-agent' }),
       }),
+      undefined,
     );
     expect(claude.startSession).toHaveBeenCalledWith(
       expect.objectContaining({
