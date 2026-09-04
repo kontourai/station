@@ -11,6 +11,12 @@ import type {
   ProjectMetadata,
 } from '@kontourai/station-contracts/project';
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
+import {
+  assertObservationTreeBudget,
+  KnowledgeObservationRefusal,
+  readObservationFile,
+} from '../knowledge-store/adapters/shared/observation-file.js';
+import type { KnowledgeRootObservation } from '../knowledge-store/knowledge-record-observation.js';
 import { mutateJsonFile, readJsonFile } from './file-storage-helpers.js';
 import {
   buildLayoutAgentReferences,
@@ -369,6 +375,33 @@ export class FileStorageAdapter implements IStorageAdapter {
 
   listKnowledgeStoreRoots(): KnowledgeStoreRoot[] {
     return this.readKnowledgeStoreRoots();
+  }
+
+  /** No construction, bootstrap, write lock, read-repair, or directory creation. */
+  observeKnowledgeStoreRoots(): KnowledgeRootObservation {
+    const file = readObservationFile(this.knowledgeStoreRootsPath, 1024 * 1024);
+    if (!file) return { roots: [], digest: 'missing' };
+    let value: unknown;
+    try {
+      value = JSON.parse(file.text);
+    } catch {
+      throw new KnowledgeObservationRefusal('corrupt');
+    }
+    assertObservationTreeBudget(value);
+    if (!Array.isArray(value) || value.length > 1024) {
+      throw new KnowledgeObservationRefusal('over-budget');
+    }
+    let roots: KnowledgeStoreRoot[];
+    try {
+      roots = parseKnowledgeStoreRoots(value);
+    } catch {
+      throw new KnowledgeObservationRefusal('corrupt');
+    }
+    if (new Set(roots.map((root) => root.id)).size !== roots.length) {
+      throw new KnowledgeObservationRefusal('corrupt');
+    }
+    file.recheck();
+    return { roots, digest: file.digest };
   }
 
   async saveKnowledgeStoreRoot(root: KnowledgeStoreRoot): Promise<void> {

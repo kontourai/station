@@ -28,6 +28,7 @@ import type {
   UpdateEvidence,
   UpdateFields,
 } from '@kontourai/station-contracts/knowledge-store';
+import { isSafePathSegment } from '../knowledge-index/path-safety.js';
 import {
   knowledgeStoreRecordOps,
   knowledgeStoreRootOps,
@@ -36,6 +37,18 @@ import { createLogger } from '../utils/logger.js';
 import { KnowledgeAdapterRegistry } from './adapter-registry.js';
 import { kitDefaultStoreAdapterDescriptor } from './adapters/default-store.js';
 import { kitObsidianStoreAdapterDescriptor } from './adapters/obsidian-store.js';
+import { observeExactKnowledgeRecordFile } from './adapters/shared/file-transactions.js';
+import { parseMarkdown } from './adapters/shared/frontmatter.js';
+import {
+  assertObservationTreeBudget,
+  KnowledgeObservationRefusal,
+} from './adapters/shared/observation-file.js';
+import { assertKitRecord } from './adapters/shared/record-schema.js';
+import type {
+  KnowledgeRecordObservation,
+  KnowledgeRecordObservationPolicy,
+  KnowledgeRootObservation,
+} from './knowledge-record-observation.js';
 
 const logger = createLogger({ name: 'knowledge-store-provider' });
 
@@ -67,6 +80,8 @@ export interface KnowledgeStoreRootPersistence {
   listKnowledgeStoreRoots(): KnowledgeStoreRoot[];
   saveKnowledgeStoreRoot(root: KnowledgeStoreRoot): Promise<void> | void;
   removeKnowledgeStoreRoot(id: string): Promise<void> | void;
+  /** Explicit opt-in; ordinary list/get is NOT a zero-write observation fallback. */
+  observeKnowledgeStoreRoots?(): KnowledgeRootObservation;
 }
 
 type RecordsChangedListener = (event: {
@@ -82,8 +97,23 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   private readonly registry = new KnowledgeAdapterRegistry();
   private readonly adapterInstances = new Map<string, KnowledgeStoreAdapter>();
   private readonly listeners = new Set<RecordsChangedListener>();
+  private readonly observationPolicy?: {
+    stationHome: string;
+    authorize: KnowledgeRecordObservationPolicy['authorize'];
+  };
 
-  constructor(private readonly persistence: KnowledgeStoreRootPersistence) {
+  constructor(
+    private readonly persistence: KnowledgeStoreRootPersistence,
+    observationPolicy?: KnowledgeRecordObservationPolicy,
+  ) {
+    if (observationPolicy) {
+      const authorize = observationPolicy.authorize;
+      this.observationPolicy = {
+        stationHome: observationPolicy.stationHome,
+        authorize: (target, authority) =>
+          Reflect.apply(authorize, observationPolicy, [target, authority]),
+      };
+    }
     // Pre-register both Station-owned Kit-format adapters (Wave 1: default-file;
     // Wave 2: Obsidian). Additive — plugins may register further adapters via
     // `registerAdapter`.
@@ -183,6 +213,149 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   }
 
   // ── Record access — thin delegation to the root's adapter instance ────
+
+  /**
+   * Owner-only source observation. No runtime/HTTP/UI composition exists yet;
+   * absent host policy denies even localhost and registered-root requests.
+   */
+  observeExactRecord(
+    rootId: string,
+    recordId: string,
+    authority: unknown,
+  ): KnowledgeRecordObservation {
+    if (
+      typeof rootId !== 'string' ||
+      !rootId ||
+      rootId.length > 200 ||
+      typeof recordId !== 'string' ||
+      recordId.length > 200 ||
+      !isSafePathSegment(recordId)
+    ) {
+      return { state: 'invalid-input' };
+    }
+    const policy = this.observationPolicy;
+    if (!policy) return { state: 'restricted' };
+    const target = Object.freeze({ rootId, recordId });
+    const authorize = (): 'allowed' | 'restricted' | 'unavailable' => {
+      const result = policy.authorize(target, authority);
+      return result === 'allowed' || result === 'restricted'
+        ? result
+        : 'unavailable';
+    };
+    try {
+      const initialAccess = authorize();
+      if (initialAccess !== 'allowed') return { state: initialAccess };
+      const readRegistry = this.persistence.observeKnowledgeStoreRoots;
+      if (!readRegistry) return { state: 'unsupported' };
+      const registry = Reflect.apply(
+        readRegistry,
+        this.persistence,
+        [],
+      ) as KnowledgeRootObservation;
+      const root = registry.roots.find((entry) => entry.id === rootId);
+      if (!root) return { state: 'missing' };
+      if (root.adapterId !== 'kit-default-store')
+        return { state: 'unsupported' };
+      const rootSnapshot = JSON.stringify(root);
+      const beforeReadAccess = authorize();
+      if (beforeReadAccess !== 'allowed') return { state: beforeReadAccess };
+      const observed = observeExactKnowledgeRecordFile(
+        root.storeRoot,
+        policy.stationHome,
+        recordId,
+      );
+      let outcome: KnowledgeRecordObservation = { state: 'missing' };
+      if (observed.file) {
+        const text = observed.file.text;
+        const metadataEnd = text.indexOf('\n---\n', 4);
+        if (!text.startsWith('---\n') || metadataEnd < 0)
+          return { state: 'corrupt' };
+        if (metadataEnd > 64 * 1024) return { state: 'over-budget' };
+        let parsed: ReturnType<typeof parseMarkdown>;
+        try {
+          parsed = parseMarkdown(text, {
+            maxDepth: 32,
+            maxAliases: 0,
+            maxTotalMergeKeys: 0,
+          });
+        } catch {
+          return { state: 'corrupt' };
+        }
+        assertObservationTreeBudget(parsed.meta);
+        if (
+          parsed.meta.status !== undefined &&
+          typeof parsed.meta.status !== 'string'
+        ) {
+          return { state: 'corrupt' };
+        }
+        let record: ReturnType<typeof assertKitRecord>;
+        try {
+          record = assertKitRecord(parsed.meta, parsed.body, 'observed record');
+        } catch {
+          return { state: 'corrupt' };
+        }
+        if (record.id !== recordId) return { state: 'corrupt' };
+        outcome = {
+          state: 'observed',
+          source: {
+            rootId,
+            recordId,
+            adapterId: 'kit-default-store',
+            type: record.type,
+            title: record.title,
+            category: record.category,
+            body: record.body,
+            provenance: {
+              agent: record.provenance.agent,
+              ...(record.provenance.source_ids === undefined
+                ? {}
+                : { source_ids: [...record.provenance.source_ids] }),
+              ...(record.provenance.session_id === undefined
+                ? {}
+                : { session_id: record.provenance.session_id }),
+              ...(record.provenance.note === undefined
+                ? {}
+                : { note: record.provenance.note }),
+            },
+            created_at: record.created_at,
+            updated_at: record.updated_at,
+            ...(record.status === undefined ? {} : { status: record.status }),
+          },
+          observation: {
+            observedAt: new Date().toISOString(),
+            contentDigest: observed.file.digest,
+            ownerRevision: 'unknown',
+            consistency: 'non-atomic',
+            transactionState: 'unknown',
+          },
+        };
+      }
+      const finalAccess = authorize();
+      if (finalAccess !== 'allowed') return { state: finalAccess };
+      const currentRegistry = Reflect.apply(
+        readRegistry,
+        this.persistence,
+        [],
+      ) as KnowledgeRootObservation;
+      if (
+        currentRegistry.digest !== registry.digest ||
+        JSON.stringify(
+          currentRegistry.roots.find((entry) => entry.id === rootId),
+        ) !== rootSnapshot
+      ) {
+        return { state: 'unavailable' };
+      }
+      observed.recheck();
+      return outcome;
+    } catch (error) {
+      return {
+        state:
+          error instanceof KnowledgeObservationRefusal
+            ? error.state
+            : 'unavailable',
+      };
+    }
+  }
 
   async adapterFor(rootId: string): Promise<KnowledgeStoreAdapter> {
     const cached = this.adapterInstances.get(rootId);
