@@ -336,12 +336,11 @@ async function buildDependencyIfNeeded(
   }
 }
 
-function assertDependencyLifecycleSupported(
-  dependencyId: string,
+function unsupportedDependencyFeatures(
   dependencyDir: string,
   manifest: PluginManifest,
-  lifecycle?: PluginDependencyLifecycle,
-): void {
+  lifecycle: boolean,
+): string[] {
   const unsupported: string[] = [];
   if (manifest.agents?.length) unsupported.push('agents');
   if (manifest.layout) unsupported.push('layout');
@@ -366,10 +365,33 @@ function assertDependencyLifecycleSupported(
     unsupported.push('bundled integrations');
   }
 
+  return unsupported;
+}
+
+function assertDependencyLifecycleSupported(
+  dependencyId: string,
+  dependencyDir: string,
+  manifest: PluginManifest,
+  lifecycle?: PluginDependencyLifecycle,
+): void {
+  const unsupported = unsupportedDependencyFeatures(
+    dependencyDir,
+    manifest,
+    Boolean(lifecycle),
+  );
   if (unsupported.length) {
     throw new Error(
       `Plugin dependency '${dependencyId}' declares lifecycle features that require canonical install support: ${unsupported.join(', ')}`,
     );
+  }
+}
+
+export class PluginPreviewUnsupportedDependencyError extends Error {
+  constructor(dependencyId: string, features: readonly string[]) {
+    super(
+      `Plugin dependency '${dependencyId}' is not supported by canonical installation: ${features.join(', ')}`,
+    );
+    this.name = 'PluginPreviewUnsupportedDependencyError';
   }
 }
 
@@ -595,11 +617,13 @@ export async function resolvePluginDependencies(
     let depGit: PluginGitInfo | undefined;
     let status: ResolvedPluginDependency['status'] = 'missing';
     let consent: ResolvedPluginDependency['consent'];
+    let unsupported: string[] = [];
     const resolvedDependency = resolvePluginDependencySource(
       dependency,
       parentSourceDir,
       allowedLocalRoot,
     );
+    let dependencySourceContext = resolvedDependency.source;
 
     const dependencyDir = join(pluginsDir, dependency.id);
     if (existsSync(join(dependencyDir, 'plugin.json'))) {
@@ -615,6 +639,13 @@ export async function resolvePluginDependencies(
         });
       }
       depGit = await getPluginGitInfo(dependencyDir, logger);
+      if (depManifest) {
+        unsupported = unsupportedDependencyFeatures(
+          dependencyDir,
+          depManifest,
+          true,
+        );
+      }
       const basis = depManifest
         ? derivePluginConsentBasis(dependencyDir, depManifest)
         : null;
@@ -635,28 +666,36 @@ export async function resolvePluginDependencies(
       );
       if (!('error' in result)) {
         try {
-          depManifest = readPluginManifestFileSync(
-            join(result.tempDir, 'plugin.json'),
-          );
-        } catch (error) {
-          logger.debug('Failed to read fetched dependency manifest', {
-            dep: dependency.id,
-            error,
-          });
-        }
-        depGit = await getPluginGitInfo(result.tempDir, logger);
-        if (depManifest) {
-          const basis = derivePluginConsentBasis(result.tempDir, depManifest);
-          if (basis) {
-            consent = {
-              contentDigest: basis.contentDigest,
-              permissions: basis.required,
-              dependencies: basis.dependencies,
-              pendingConsent: basis.pendingConsent,
-            };
+          try {
+            depManifest = readPluginManifestFileSync(
+              join(result.tempDir, 'plugin.json'),
+            );
+          } catch (error) {
+            logger.debug('Failed to read fetched dependency manifest', {
+              dep: dependency.id,
+              error,
+            });
           }
+          depGit = await getPluginGitInfo(result.tempDir, logger);
+          if (depManifest) {
+            unsupported = unsupportedDependencyFeatures(
+              result.tempDir,
+              depManifest,
+              true,
+            );
+            const basis = derivePluginConsentBasis(result.tempDir, depManifest);
+            if (basis) {
+              consent = {
+                contentDigest: basis.contentDigest,
+                permissions: basis.required,
+                dependencies: basis.dependencies,
+                pendingConsent: basis.pendingConsent,
+              };
+            }
+          }
+        } finally {
+          rmSync(result.tempDir, { recursive: true, force: true });
         }
-        rmSync(result.tempDir, { recursive: true, force: true });
       }
     } else {
       try {
@@ -666,6 +705,7 @@ export async function resolvePluginDependencies(
         if (match) {
           status = 'will-install';
           if (match.source) {
+            dependencySourceContext = match.source;
             const result = await fetchPluginSource(
               match.source,
               pluginsDir,
@@ -675,6 +715,11 @@ export async function resolvePluginDependencies(
               try {
                 depManifest = readPluginManifestFileSync(
                   join(result.tempDir, 'plugin.json'),
+                );
+                unsupported = unsupportedDependencyFeatures(
+                  result.tempDir,
+                  depManifest,
+                  true,
                 );
                 const basis = derivePluginConsentBasis(
                   result.tempDir,
@@ -702,6 +747,12 @@ export async function resolvePluginDependencies(
       }
     }
 
+    if (unsupported.length > 0) {
+      throw new PluginPreviewUnsupportedDependencyError(
+        dependency.id,
+        unsupported,
+      );
+    }
     const components: Array<{ type: string; id: string }> = [];
     if (depManifest) {
       for (const agent of depManifest.agents || []) {
@@ -735,9 +786,9 @@ export async function resolvePluginDependencies(
           getPluginRegistryProvider,
           logger,
           seen,
-          resolvedDependency.source &&
-            !dangerousProtocolOrGitSource(resolvedDependency.source)
-            ? resolvedDependency.source
+          dependencySourceContext &&
+            !dangerousProtocolOrGitSource(dependencySourceContext)
+            ? dependencySourceContext
             : dependencyDir,
           allowedLocalRoot,
         )),

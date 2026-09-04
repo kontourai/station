@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -65,6 +65,7 @@ import {
   fetchPluginSource,
   installPluginDependency,
 } from '../plugin-source.js';
+import { createRegistryRoutes } from '../registry.js';
 
 function markPluginAgentOwner(agentDir: string, plugin: string): void {
   writeFileSync(
@@ -91,6 +92,7 @@ vi.mock('../../../providers/registries/registry.js', () => ({
     listInstalled: vi.fn().mockResolvedValue([]),
   }),
   getPluginRegistryProviders,
+  getSkillRegistryProviders: () => [],
   replacePluginProvidersForSource,
 }));
 
@@ -223,7 +225,11 @@ describe('dependency approval from the real preview route', () => {
     'declarative',
   ] as const;
 
-  async function fixture(family: (typeof families)[number], installed = false) {
+  async function fixture(
+    family: (typeof families)[number],
+    installed = false,
+    transitive = false,
+  ) {
     const root = mkdtempSync(
       join(tmpdir(), 'station-dependency-preview-binding-'),
     );
@@ -258,6 +264,19 @@ describe('dependency approval from the real preview route', () => {
       version: '1.0.0',
       dependencies: [{ id: 'dependency', source: dependency }],
     });
+    if (transitive) {
+      const middle = join(root, 'middle-source');
+      writePlugin(middle, {
+        name: 'middle',
+        version: '1.0.0',
+        dependencies: [{ id: 'dependency', source: dependency }],
+      });
+      writePlugin(parent, {
+        name: 'parent',
+        version: '1.0.0',
+        dependencies: [{ id: 'middle', source: middle }],
+      });
+    }
     const installDeps = deps(root);
     if (installed) {
       mkdirSync(join(root, 'plugins'), { recursive: true });
@@ -286,7 +305,7 @@ describe('dependency approval from the real preview route', () => {
     const preview = (await response.json()) as any;
     expect(response.status).toBe(200);
     expect(preview.valid).toBe(true);
-    expect(preview.dependencies).toHaveLength(1);
+    expect(preview.dependencies).toHaveLength(transitive ? 2 : 1);
     expect(preview.dependencies[0].consent.contentDigest).toBeTruthy();
     const consent: Extract<
       PluginInstallConsent,
@@ -303,8 +322,293 @@ describe('dependency approval from the real preview route', () => {
         dependencies: entry.consent.dependencies,
       })),
     };
-    return { root, dependency, parent, installDeps, consent };
+    return { root, dependency, parent, installDeps, consent, app };
   }
+
+  function registryApp(
+    root: string,
+    entries: Array<{ id: string; source: string }>,
+  ) {
+    const registryPath = join(root, 'registry.json');
+    writeFileSync(
+      registryPath,
+      JSON.stringify({
+        version: 1,
+        plugins: entries.map((entry) => ({
+          ...entry,
+          displayName: entry.id,
+          version: '1.0.0',
+        })),
+      }),
+    );
+    const provider = new JsonManifestRegistryProvider(registryPath, root);
+    getPluginRegistryProviders.mockReturnValue([{ source: 'test', provider }]);
+    return createRegistryRoutes(
+      new ConfigLoader({ projectHomeDir: root }),
+      async () => {},
+      undefined,
+      undefined,
+      { logger: logger() },
+    );
+  }
+
+  test.each(['direct', 'registry'] as const)(
+    '%s route preserves byte and permission refusals through transitive wrappers',
+    async (surface) => {
+      for (const transitive of [false, true]) {
+        for (const reason of ['content', 'permissions']) {
+          const current = await fixture('permissions', false, transitive);
+          if (reason === 'content')
+            writeFileSync(
+              join(current.dependency, 'index.js'),
+              'changed after preview',
+            );
+          else
+            current.consent.dependencyApprovals!.find(
+              (entry) => entry.id === 'dependency',
+            )!.permissions = [];
+          const app =
+            surface === 'direct'
+              ? current.app
+              : registryApp(current.root, [
+                  { id: 'parent', source: current.parent },
+                ]);
+          const response = await app.request(
+            surface === 'direct' ? '/install' : '/plugins/install',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...(surface === 'direct'
+                  ? { source: current.parent }
+                  : { id: 'parent' }),
+                consent: current.consent,
+              }),
+            },
+          );
+          const body = await response.json();
+          expect(response.status, JSON.stringify(body)).toBe(400);
+          expect(body).toMatchObject({ success: false, consent: { reason } });
+          expect(existsSync(join(current.root, 'plugins', 'dependency'))).toBe(
+            false,
+          );
+          expect(existsSync(join(current.root, 'plugins', 'parent'))).toBe(
+            false,
+          );
+        }
+      }
+    },
+  );
+
+  test.each(['direct', 'registry'] as const)(
+    '%s route keeps failed dependency compensation as 500 with the retained tree',
+    async (surface) => {
+      const current = await fixture('permissions');
+      const good = join(current.root, 'good-source');
+      writePlugin(good, {
+        name: 'good',
+        version: '1.0.0',
+        settings: [{ key: 'label', label: 'Label', type: 'string' }],
+      });
+      writePlugin(current.parent, {
+        name: 'parent',
+        version: '1.0.0',
+        dependencies: [
+          { id: 'good', source: good },
+          { id: 'dependency', source: current.dependency },
+        ],
+      });
+      const consent = await approvedConsent(current.parent, current.root);
+      consent.dependencyApprovals = [
+        await dependencyApproval('good', good, current.root),
+        await dependencyApproval(
+          'dependency',
+          current.dependency,
+          current.root,
+        ),
+      ];
+      consent.dependencyApprovals[1].permissions = [];
+      let goodCalls = 0;
+      replacePluginProvidersForSource.mockImplementation(
+        async (name: string) => {
+          if (name === 'good' && ++goodCalls > 1)
+            throw new Error('owned provider compensation failed');
+        },
+      );
+      try {
+        const app =
+          surface === 'direct'
+            ? current.app
+            : registryApp(current.root, [
+                { id: 'parent', source: current.parent },
+              ]);
+        const response = await app.request(
+          surface === 'direct' ? '/install' : '/plugins/install',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...(surface === 'direct'
+                ? { source: current.parent }
+                : { id: 'parent' }),
+              consent,
+            }),
+          },
+        );
+        const body = (await response.json()) as any;
+        expect(response.status, JSON.stringify(body)).toBe(500);
+        expect(body.consent).toBeUndefined();
+        expect(
+          existsSync(join(current.root, 'plugins', 'good', 'plugin.json')),
+        ).toBe(true);
+        expect(goodCalls).toBeGreaterThan(1);
+      } finally {
+        replacePluginProvidersForSource.mockReset();
+      }
+    },
+  );
+
+  test.each(['source', 'registry', 'installed'] as const)(
+    'preview refuses unsupported dependency permissions from %s before offering approval',
+    async (sourceKind) => {
+      const root = mkdtempSync(join(tmpdir(), 'station-unsupported-preview-'));
+      cleanupDirs.push(root);
+      const dependency = join(root, 'dependency-source');
+      writePlugin(dependency, {
+        name: 'dependency',
+        version: '1.0.0',
+        entrypoint: 'index.js',
+        permissions: ['network.fetch'],
+      });
+      writeFileSync(join(dependency, 'index.js'), 'export default {};');
+      const parent = join(root, 'parent');
+      writePlugin(parent, {
+        name: 'parent',
+        version: '1.0.0',
+        dependencies: [
+          {
+            id: 'dependency',
+            ...(sourceKind === 'registry' ? {} : { source: dependency }),
+          },
+        ],
+      });
+      if (sourceKind === 'registry')
+        registryApp(root, [{ id: 'dependency', source: dependency }]);
+      if (sourceKind === 'installed') {
+        mkdirSync(join(root, 'plugins'), { recursive: true });
+        cpSync(dependency, join(root, 'plugins', 'dependency'), {
+          recursive: true,
+        });
+      }
+      const app = new Hono();
+      registerPluginInstallRoutes(app, deps(root));
+      const response = await app.request('/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: parent }),
+      });
+      const body = (await response.json()) as any;
+      expect(response.status, JSON.stringify(body)).toBe(400);
+      expect(body).toMatchObject({
+        valid: false,
+        code: 'unsupported-plugin-dependency',
+      });
+      expect(body.permissions).toBeUndefined();
+      expect(body.contentDigest).toBeUndefined();
+      expect(body.dependencies).toBeUndefined();
+      expect(
+        readdirSync(join(root, 'plugins')).filter((name) =>
+          name.startsWith('.preview-'),
+        ),
+      ).toEqual([]);
+      expect(existsSync(join(root, 'plugins', 'parent'))).toBe(false);
+    },
+  );
+
+  test('registry preview uses the real local source for relative transitive approvals and install', async () => {
+    const root = mkdtempSync(
+      join(tmpdir(), 'station-registry-relative-preview-'),
+    );
+    cleanupDirs.push(root);
+    const leaf = join(root, 'packages', 'leaf');
+    const middle = join(root, 'packages', 'middle');
+    const parent = join(root, 'parent');
+    writePlugin(leaf, { name: 'leaf', version: '1.0.0' });
+    writePlugin(middle, {
+      name: 'middle',
+      version: '1.0.0',
+      dependencies: [{ id: 'leaf', source: '../leaf' }],
+    });
+    writePlugin(parent, {
+      name: 'parent',
+      version: '1.0.0',
+      dependencies: [{ id: 'middle' }],
+    });
+    const registry = registryApp(root, [
+      { id: 'parent', source: parent },
+      { id: 'middle', source: middle },
+    ]);
+    const app = new Hono();
+    registerPluginInstallRoutes(app, deps(root));
+    const response = await app.request('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ registryId: 'parent' }),
+    });
+    const preview = (await response.json()) as any;
+    expect(response.status, JSON.stringify(preview)).toBe(200);
+    expect(preview.dependencies.map((entry: any) => entry.id)).toEqual([
+      'middle',
+      'leaf',
+    ]);
+    expect(
+      preview.dependencies.every((entry: any) => entry.consent?.contentDigest),
+    ).toBe(true);
+    const consent = {
+      permissions: preview.permissions.required,
+      contentDigest: preview.contentDigest,
+      dependencies: preview.dependencies.map((entry: any) => entry.id),
+      dependencyApprovals: preview.dependencies.map((entry: any) => ({
+        id: entry.id,
+        ...entry.consent,
+      })),
+    };
+    const outside = mkdtempSync(join(tmpdir(), 'station-registry-outside-'));
+    cleanupDirs.push(outside);
+    writePlugin(outside, { name: 'escape', version: '1.0.0' });
+    writePlugin(middle, {
+      name: 'middle',
+      version: '1.0.0',
+      dependencies: [{ id: 'escape', source: relative(middle, outside) }],
+    });
+    const escaped = await app.request('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ registryId: 'parent' }),
+    });
+    const escapedPreview = (await escaped.json()) as any;
+    expect(escapedPreview.valid).toBe(false);
+    expect(escapedPreview.contentDigest).toBeUndefined();
+    expect(existsSync(join(root, 'plugins', 'escape'))).toBe(false);
+    // Restore the reviewed source exactly; an earlier valid approval remains
+    // bound to those bytes, not to the rejected traversal attempt.
+    writePlugin(middle, {
+      name: 'middle',
+      version: '1.0.0',
+      dependencies: [{ id: 'leaf', source: '../leaf' }],
+    });
+    const installed = await registry.request('/plugins/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'parent', consent }),
+    });
+    expect(
+      installed.status,
+      JSON.stringify(await installed.clone().json()),
+    ).toBe(200);
+    for (const id of ['parent', 'middle', 'leaf'])
+      expect(existsSync(join(root, 'plugins', id, 'plugin.json'))).toBe(true);
+  });
 
   test.each(families)(
     'refuses changed %s dependency bytes under the original preview approval',

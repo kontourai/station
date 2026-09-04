@@ -41,6 +41,12 @@ it does not expose a protected URL or an upstream error body.
 These APIs do not change semantic answer standing or automatically promote an
 Output. The native Basis item actions are a separate integration step.
 
+## Plugin installation results
+
+Plugin install mutations expose typed current parent/dependency permission status
+through `PluginInstallResult`. See the canonical [Plugin Query Hooks reference](../../docs/reference/sdk.md#plugin-query-hooks)
+for older-server unknown-status handling and registry result types.
+
 ## Workspace Pane authoring
 
 Import `@kontourai/station-sdk/workspace-pane` for the opt-in portable Pane

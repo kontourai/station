@@ -769,6 +769,16 @@ Fetches live ACP slash-command autocomplete options.
 
 React Query wrappers for plugin management. Use these instead of raw `useQuery`.
 
+Direct and registry install mutations return `PluginInstallResult` from
+`@kontourai/station-contracts/plugin`. The same type is returned by
+`requestPluginRegistryInstallAction` and `requestRegistryCatalogAction('plugins', ...)`;
+other catalog tabs retain their existing `InstallResult` contract.
+`result.permissions?.dependencies` is the current installed dependency permission
+status, not the preview requirement list. An absent status on an older server is
+unknown; it must not be replaced with an empty list or inferred from preview.
+Each present dependency row has an `id` and typed `pendingConsent` permission/tier
+entries. Trusted permissions still require separate host-owned approval.
+
 ### `usePluginsQuery(config?)`
 
 Fetches all installed plugins. Cache key: `['plugins']`.

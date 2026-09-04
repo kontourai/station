@@ -404,13 +404,24 @@ export function usePluginManagementViewModel() {
       },
       {
         onSuccess: async (data) => {
-          const pluginName = data.plugin.displayName || data.plugin.name;
-          const pending = data.permissions?.pendingConsent;
           setShowInstallModal(false);
+          const installedPlugin = data.plugin;
+          if (!installedPlugin) {
+            setMessage({
+              type: 'error',
+              text: 'Station did not return installed plugin details. Refresh Plugins before continuing.',
+            });
+            await reloadPluginsMutation.mutateAsync().catch(() => {});
+            await reloadClientPluginRegistry();
+            return;
+          }
+          const pluginName =
+            installedPlugin.displayName || installedPlugin.name;
+          const pending = data.permissions?.pendingConsent;
 
           if (pending?.length) {
             const approved = await requestConsent(
-              data.plugin.name,
+              installedPlugin.name,
               pluginName,
               pending,
             );
@@ -474,7 +485,7 @@ export function usePluginManagementViewModel() {
           }
           await reloadClientPluginRegistry();
 
-          const agents = data.plugin.agents || [];
+          const agents = installedPlugin.agents || [];
           if (agents.length > 0) {
             const slug = agents[0].slug;
             const health = await waitForAgentHealth(slug);
@@ -491,7 +502,7 @@ export function usePluginManagementViewModel() {
             setQuickProjectName(pluginName);
             setSelectedProjects(new Set());
             setLayoutAssignment({
-              pluginName: data.plugin.name,
+              pluginName: installedPlugin.name,
               displayName: pluginName,
               layoutSlug: data.layout.slug,
             });

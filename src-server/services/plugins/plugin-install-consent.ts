@@ -224,6 +224,25 @@ export function isPluginConsentRefusedError(
   return error instanceof PluginConsentRefusedError;
 }
 
+/** Recover a refusal through ordinary dependency wrappers, not failed rollback aggregates. */
+export function findPluginConsentRefusedError(
+  error: unknown,
+): PluginConsentRefusedError | null {
+  const seen = new Set<object>();
+  try {
+    for (let depth = 0; depth < 32 && error instanceof Error; depth++) {
+      if (error instanceof AggregateError || seen.has(error)) return null;
+      if (isPluginConsentRefusedError(error)) return error;
+      seen.add(error);
+      const cause = Object.getOwnPropertyDescriptor(error, 'cause');
+      error = cause && 'value' in cause ? cause.value : undefined;
+    }
+  } catch {
+    // A hostile reflection trap cannot prove a simple consent refusal.
+  }
+  return null;
+}
+
 /**
  * Everything a consent prompt needs, from a staged copy — no install, no
  * grant, no write. `stagedDir` is the directory `fetchPluginSource` produced,

@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
   requestInstallConsent: vi.fn(),
   installOnSuccess: null as
     | ((data: {
-        plugin: { name: string; displayName?: string; agents?: unknown[] };
+        plugin?: { name: string; displayName?: string; agents?: unknown[] };
         permissions?: {
           pendingConsent?: Array<{ permission: string; tier: string }>;
           dependencies?: Array<{
@@ -513,6 +513,28 @@ describe('usePluginManagementViewModel', () => {
       mocks.previewOnSuccess?.(preview);
     });
   }
+
+  test('missing installed plugin details remain unknown and cannot prompt from preview identity', async () => {
+    mocks.requestInstallConsent.mockResolvedValue(true);
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await primePreview(result);
+    await act(async () => {
+      await result.current.install([]);
+    });
+    await act(async () => {
+      await mocks.installOnSuccess?.({
+        permissions: {
+          pendingConsent: [{ permission: 'network.fetch', tier: 'active' }],
+        },
+      });
+    });
+    expect(mocks.requestConsent).not.toHaveBeenCalled();
+    expect(result.current.message?.text).toContain(
+      'did not return installed plugin details',
+    );
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.reloadClientRegistry).toHaveBeenCalledOnce();
+  });
 
   /**
    * ACCEPTANCE 1 and 2 at the client. Declining does not reach the server at

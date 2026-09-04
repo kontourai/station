@@ -14,6 +14,8 @@ import { promisify } from 'node:util';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   isCanonicalPluginId,
+  type PermissionTier,
+  type PluginInstallResult,
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
@@ -53,6 +55,7 @@ import {
 import {
   assertPluginInstallConsent,
   derivePluginConsentBasis,
+  findPluginConsentRefusedError,
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
 import {
@@ -316,7 +319,7 @@ export interface PluginInstallSharedDeps {
   ) => Promise<{ release(): void }>;
 }
 
-export interface InstalledPluginResult {
+export interface InstalledPluginResult extends PluginInstallResult {
   success: true;
   plugin: {
     name: string;
@@ -344,11 +347,11 @@ export interface InstalledPluginResult {
      * `autoGranted` so neither word has to cover the other's meaning.
      */
     consentGranted: string[];
-    pendingConsent: Array<{ permission: string; tier: string }>;
+    pendingConsent: Array<{ permission: string; tier: PermissionTier }>;
     /** Current permission truth for the actual installed transitive graph. */
     dependencies: Array<{
       id: string;
-      pendingConsent: Array<{ permission: string; tier: string }>;
+      pendingConsent: Array<{ permission: string; tier: PermissionTier }>;
     }>;
     /**
      * Permissions this install WITHDREW because it replaced the code they
@@ -1516,7 +1519,8 @@ export async function removeDependencyTreesCreatedByThisInstall(
   lockTimeoutMs: number = ROLLBACK_LOCK_TIMEOUT_MS,
   rollbackLifecycle?: (dependencyId: string) => Promise<void>,
   createdPluginDigests?: ReadonlyMap<string, string>,
-): Promise<void> {
+): Promise<unknown[]> {
+  const failures: unknown[] = [];
   // Recursive creation records postorder (leaf before its dependent). Undo in
   // the reverse so a dependent lifecycle retires before the service it uses.
   for (const name of [...createdPluginTrees].reverse()) {
@@ -1581,6 +1585,7 @@ export async function removeDependencyTreesCreatedByThisInstall(
         if (timeout) clearTimeout(timeout);
       }
     } catch (error) {
+      failures.push(error);
       // The reason is DERIVED, not assumed: this try covers three failure
       // sources -- a path escape, a lock refusal or timeout, and `rmSync`
       // itself throwing. Reporting all three as 'the lock could not be taken'
@@ -1599,6 +1604,7 @@ export async function removeDependencyTreesCreatedByThisInstall(
       );
     }
   }
+  return failures;
 }
 
 function readPluginOwnedIntegrationIds(
@@ -2083,6 +2089,10 @@ export async function installPluginFromSource(
             error: dependencyResult.error,
           });
           if (!dependencyResult.success) {
+            const refusal = findPluginConsentRefusedError(
+              dependencyResult.cause,
+            );
+            if (refusal) throw refusal;
             // `cause`, not just the message: a refused lock acquisition is a
             // typed error carrying WHICH plugins are waiting on each other,
             // and flattening it here is what left the routes with a sentence
@@ -2367,16 +2377,24 @@ export async function installPluginFromSource(
             withdrawn: withdrewOnInstall,
           },
         };
-      } catch (error) {
-        await removeDependencyTreesCreatedByThisInstall(
-          pluginsDir,
-          createdPluginTrees,
-          pluginName,
-          logger,
-          ROLLBACK_LOCK_TIMEOUT_MS,
-          (dependencyId) => dependencyLifecycle.rollback(dependencyId),
-          createdPluginDigests,
-        );
+      } catch (installError) {
+        const dependencyCleanupFailures =
+          await removeDependencyTreesCreatedByThisInstall(
+            pluginsDir,
+            createdPluginTrees,
+            pluginName,
+            logger,
+            ROLLBACK_LOCK_TIMEOUT_MS,
+            (dependencyId) => dependencyLifecycle.rollback(dependencyId),
+            createdPluginDigests,
+          );
+        const error =
+          dependencyCleanupFailures.length > 0
+            ? new AggregateError(
+                [installError, ...dependencyCleanupFailures],
+                'Plugin install and dependency rollback both failed.',
+              )
+            : installError;
         if (hadExistingPlugin && !backupComplete) {
           // The failure happened while (or before) taking the backup: nothing
           // has touched the existing installation yet, and there is no complete

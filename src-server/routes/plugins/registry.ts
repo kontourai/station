@@ -745,8 +745,8 @@ export function createRegistryRoutes(
       );
     } catch (error: unknown) {
       // Same refusal, same shape as the direct install route: the request and
-      // the plugin disagree about what was approved, and nothing was written
-      // when it refused (archive#4288).
+      // the plugin disagree about what was approved. Earlier dependency effects
+      // may have been compensated; failed rollback is not a simple consent 400.
       if (isPluginConsentRefusedError(error)) {
         deps?.logger?.warn(
           'Registry plugin install refused: consent did not cover the source',
