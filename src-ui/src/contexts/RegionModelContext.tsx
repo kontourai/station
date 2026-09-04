@@ -49,6 +49,19 @@ interface RegionModelValue {
   showSurface(surfaceId: string, intent?: SurfaceIntent): void;
   surfaceIntents: Readonly<Partial<Record<string, SurfaceIntentRecord>>>;
   clearSurfaceIntentFocus(surfaceId: string): void;
+  /**
+   * Whether a region surface host is mounted, i.e. whether `showSurface` can
+   * produce anything the reader will see. Not a predicate re-derived from the
+   * route: the app mounts `RegionShells` only while `showAmbientChatDock`
+   * holds (`App.tsx`), and a Chat workspace layout owns the whole view
+   * instead — so a commanded reveal during one mutates state nothing renders.
+   * This is that host's own registration, so it cannot drift from whatever
+   * gates the host. `useShowSurface` navigates to the surface's deep link
+   * instead when it is false.
+   */
+  canRenderRegionSurfaces: boolean;
+  /** Called by a mounted region surface host; returns its unregister. */
+  registerRegionSurfaceHost(): () => void;
 }
 
 const RegionModelContext = createContext<RegionModelValue | null>(null);
@@ -76,6 +89,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   const [surfaceIntents, setSurfaceIntents] = useState<
     Partial<Record<string, SurfaceIntentRecord>>
   >({});
+  const [mountedSurfaceHosts, setMountedSurfaceHosts] = useState(0);
   const surfaceIntentTokenRef = useRef(0);
   const adoptedIntentKeyRef = useRef<string | null>(null);
   const regionsRef = useRef(regions);
@@ -125,6 +139,14 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     },
     [bottomOnly],
   );
+
+  // Counted rather than a boolean: React can commit a replacement host before
+  // running the departing one's cleanup, and a boolean would then end up
+  // false with a host on screen.
+  const registerRegionSurfaceHost = useCallback(() => {
+    setMountedSurfaceHosts((count) => count + 1);
+    return () => setMountedSurfaceHosts((count) => count - 1);
+  }, []);
 
   const clearSurfaceIntentFocus = useCallback((surfaceId: string) => {
     setSurfaceIntents((current) => {
@@ -217,6 +239,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       showSurface,
       surfaceIntents,
       clearSurfaceIntentFocus,
+      canRenderRegionSurfaces: mountedSurfaceHosts > 0,
+      registerRegionSurfaceHost,
     }),
     [
       regions,
@@ -226,6 +250,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       showSurface,
       surfaceIntents,
       clearSurfaceIntentFocus,
+      mountedSurfaceHosts,
+      registerRegionSurfaceHost,
     ],
   );
   return (

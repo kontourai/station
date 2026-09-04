@@ -4,11 +4,17 @@ import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ActivityRegionShell } from '../../app-shell/ActivityRegionShell';
+import { RegionShells } from '../../app-shell/RegionShells';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
 import { navigationStore } from '../navigation-store';
-import { RegionModelProvider, useRegionModel } from '../RegionModelContext';
+import {
+  RegionModelProvider,
+  type SurfaceIntent,
+  useRegionModel,
+} from '../RegionModelContext';
+import { useShowSurface } from '../useShowSurface';
 
 const sessionsProps = vi.hoisted(() => vi.fn());
 
@@ -17,6 +23,11 @@ vi.mock('../../views/SessionsView', () => ({
     sessionsProps(props);
     return <div data-testid="sessions-view" />;
   },
+}));
+// The Chat shell would mount the whole chat data stack; `RegionShells` is
+// here as the region surface HOST, not for what it renders inside.
+vi.mock('../../components/chat-dock/ChatDock', () => ({
+  ChatDock: () => <div data-testid="chat-shell" />,
 }));
 vi.mock('../ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
@@ -39,13 +50,40 @@ function Probe() {
   return null;
 }
 
-function Harness({ shell = false }: { shell?: boolean }) {
+let revealSurface:
+  | ((surfaceId: string, intent?: SurfaceIntent) => void)
+  | null = null;
+
+function CommandProbe() {
+  const command = useShowSurface();
+  useEffect(() => {
+    revealSurface = command;
+  }, [command]);
+  return null;
+}
+
+function Harness({
+  shell = false,
+  host = false,
+}: {
+  shell?: boolean;
+  /** Mount the real region surface host, as App does while it can. */
+  host?: boolean;
+}) {
   return (
     <KeyboardShortcutsProvider>
       <NavigationProvider>
         <RegionModelProvider>
           <Probe />
+          <CommandProbe />
           {shell ? <ActivityRegionShell regionId="right" /> : null}
+          {host ? (
+            <RegionShells
+              homeContinuation={null}
+              onNavigate={() => undefined}
+              onDockActionChange={() => undefined}
+            />
+          ) : null}
         </RegionModelProvider>
       </NavigationProvider>
     </KeyboardShortcutsProvider>
@@ -59,6 +97,7 @@ function setUrl(url: string) {
 
 beforeEach(() => {
   model = null;
+  revealSurface = null;
   sessionsProps.mockReset();
   localStorage.clear();
   deviceSettingsStore.reloadFromStorage();
@@ -273,5 +312,73 @@ describe('RegionModelProvider surface deep-link adoption', () => {
       focus: 'evidence',
       token: 2,
     });
+  });
+});
+
+/**
+ * #928. `showSurface` only mutates region-model state, and `App.tsx` mounts
+ * `RegionShells` — the one host that renders a region surface — solely while
+ * `showAmbientChatDock` holds. While a Chat workspace layout is the current
+ * view there is no host, so every commanded reveal used to change state
+ * nothing rendered: the click did nothing at all.
+ *
+ * Both halves are driven through the shipped hook rather than the model, and
+ * the host is the real `RegionShells` rather than a stand-in for it, because
+ * "the model was told" is exactly the assertion that could not see the defect.
+ */
+describe('useShowSurface reveals a surface even where no region host renders', () => {
+  test('commands the region model while the host is mounted', async () => {
+    setUrl('/');
+    render(<Harness host />);
+    await waitFor(() => expect(model?.canRenderRegionSurfaces).toBe(true));
+    const navigate = vi.spyOn(navigationStore, 'navigate');
+
+    act(() => revealSurface?.('activity', { session: 's1' }));
+
+    expect(navigate).not.toHaveBeenCalled();
+    expect(
+      new URLSearchParams(window.location.search).get('surface'),
+    ).toBeNull();
+    expect(model?.regions.right.occupant).toBe('activity');
+    expect(model?.surfaceIntents.activity).toMatchObject({ session: 's1' });
+  });
+
+  test('navigates to the canonical deep link from a Chat workspace layout, and the adoption effect reveals the surface there', async () => {
+    setUrl('/projects/demo/layouts/chat');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(model?.canRenderRegionSurfaces).toBe(false);
+    const navigate = vi.spyOn(navigationStore, 'navigate');
+
+    act(() =>
+      revealSurface?.('activity', { session: 's1', focus: 'evidence' }),
+    );
+
+    expect(navigate).toHaveBeenCalledWith(
+      '/?surface=activity&session=s1&focus=evidence',
+    );
+    // The link is not the deliverable — the revealed surface is. Leaving the
+    // layout is what mounts a host, and the provider's adoption effect is
+    // what turns the minted link back into a reveal carrying the intent.
+    await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
+    expect(window.location.pathname).toBe('/');
+    expect(model?.surfaceIntents.activity).toMatchObject({
+      session: 's1',
+      focus: 'evidence',
+    });
+  });
+
+  test('stops commanding the model the moment the host unmounts', async () => {
+    setUrl('/');
+    const rendered = render(<Harness host />);
+    await waitFor(() => expect(model?.canRenderRegionSurfaces).toBe(true));
+
+    rendered.rerender(<Harness />);
+    await waitFor(() => expect(model?.canRenderRegionSurfaces).toBe(false));
+
+    const navigate = vi.spyOn(navigationStore, 'navigate');
+    act(() => revealSurface?.('activity'));
+
+    expect(navigate).toHaveBeenCalledWith('/?surface=activity');
   });
 });
