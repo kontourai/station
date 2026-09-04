@@ -153,13 +153,21 @@ function ConnectedRegionToolbarControls() {
     available.includes(id),
   );
   const [menuRegion, setMenuRegion] = useState<DockMode | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the layout owners are this effect's trigger, not values it reads — it exists to fire when they change.
   useEffect(() => {
-    // Closing, not just not-rendering: the overflow branch below returns before
-    // the menu markup, which unmounts the portal while leaving this state set.
-    // Widening back would then re-open a menu the user never reopened, and
-    // `useMenuFocus` would pull focus into it.
-    if (commandsInOverflowMenu) setMenuRegion(null);
-  }, [commandsInOverflowMenu]);
+    // Close whenever the branch that OWNS the menu changes, not only when the
+    // overflow branch takes over. Three transitions reach this, and rendering
+    // through any of them is wrong in a different way:
+    //   fine -> coarse while still wide: `bottomOnly` flips but the overflow
+    //     branch does not, so an open per-region popover silently becomes the
+    //     folded Regions menu, anchored where the old trigger used to be.
+    //   -> overflow: the early return below unmounts the portal without
+    //     clearing this, so widening back re-opens a menu nobody reopened.
+    //   overflow -> back: same state, restored under a different owner.
+    // The anchor belongs to the trigger that opened it, and that trigger is
+    // what these transitions replace.
+    setMenuRegion(null);
+  }, [bottomOnly, commandsInOverflowMenu]);
   const [menuAnchorRight, setMenuAnchorRight] = useState(8);
   const menuOccupant = menuRegion && regions[menuRegion].occupant;
   const menuLabel = menuRegion && regionLabel(menuRegion);

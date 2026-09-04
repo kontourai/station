@@ -252,6 +252,31 @@ describe('RegionToolbarControls', () => {
     expect(regionsRule).not.toMatch(/min-width:\s*0/);
   });
 
+  test('a wide device gaining a coarse pointer closes the menu instead of re-anchoring it', () => {
+    const { rerender } = render(<RegionToolbarControls />);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Choose a surface for Left region' }),
+    );
+    expect(screen.queryByRole('menu')).not.toBeNull();
+
+    // A wide device can change its PRIMARY pointer to coarse without becoming
+    // mobile — a touchscreen laptop, a tablet in a keyboard case. `bottomOnly`
+    // flips while the overflow branch does not, so this renders the folded
+    // Regions menu: an open per-region popover would silently become a
+    // different menu, still anchored to the trigger that is now gone.
+    harness.bottomOnly = true;
+    harness.isMobile = false;
+    rerender(<RegionToolbarControls />);
+
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Regions' })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
   test('narrowing into the phone layout takes the whole control away and strands no open menu', () => {
     const { container, rerender } = render(<RegionToolbarControls />);
 
