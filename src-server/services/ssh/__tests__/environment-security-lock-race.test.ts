@@ -1,6 +1,8 @@
 import {
   chmodSync,
   existsSync,
+  linkSync,
+  lstatSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -34,16 +36,39 @@ import { EnvironmentSecurityService } from '../environment-security-service.js';
 const lockReadFault = vi.hoisted(() => ({
   path: null as string | null,
   onFault: null as (() => void) | null,
+  // 'enoent': the read itself fails as the owner's rm would make it.
+  // 'unlink-after-read': the read succeeds and the lock is removed right
+  // after it, which is the window between the ownership check and release.
+  mode: 'enoent' as 'enoent' | 'unlink-after-read',
+}));
+// A contender that samples nlink === 2 and then finds no candidate lost a
+// race against the owner's link-then-unlink publication: the seam removes the
+// candidate on one nominated readdirSync of the security directory.
+const readdirFault = vi.hoisted(() => ({
+  dir: null as string | null,
+  onFault: null as (() => void) | null,
 }));
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
   return {
     ...actual,
+    readdirSync: (path: never, options: never) => {
+      if (readdirFault.dir !== null && String(path) === readdirFault.dir) {
+        readdirFault.dir = null;
+        readdirFault.onFault?.();
+      }
+      return actual.readdirSync(path, options);
+    },
     readFileSync: (path: never, options: never) => {
       if (lockReadFault.path !== null && String(path) === lockReadFault.path) {
         const faulted = lockReadFault.path;
         lockReadFault.path = null;
+        if (lockReadFault.mode === 'unlink-after-read') {
+          const contents = actual.readFileSync(path, options);
+          lockReadFault.onFault?.();
+          return contents;
+        }
         lockReadFault.onFault?.();
         const error = new Error(
           `ENOENT: no such file or directory, open '${faulted}'`,
@@ -97,11 +122,17 @@ function writeLiveLock(homeDir: string, contents?: string): string {
 beforeEach(() => {
   lockReadFault.path = null;
   lockReadFault.onFault = null;
+  lockReadFault.mode = 'enoent';
+  readdirFault.dir = null;
+  readdirFault.onFault = null;
 });
 
 afterEach(() => {
   lockReadFault.path = null;
   lockReadFault.onFault = null;
+  lockReadFault.mode = 'enoent';
+  readdirFault.dir = null;
+  readdirFault.onFault = null;
   for (const home of testHomes.splice(0)) {
     rmSync(home, { recursive: true, force: true });
   }
@@ -191,5 +222,58 @@ describe('EnvironmentSecurityService lock-release race (#1475)', () => {
       'Environment security lock disappeared while held',
     );
     expect(lockReadFault.path).toBeNull();
+  });
+
+  test('releases without error when the lock vanished after the ownership check', async () => {
+    // The same external removal one window later: ownership was proven, so
+    // the release must not surface a raw ENOENT (which would also discard
+    // the operation's own error); the acquisition simply completes.
+    const homeDir = makeHome();
+    const lockPath = lockPathFor(homeDir);
+    const service = new EnvironmentSecurityService({ homeDir });
+    lockReadFault.mode = 'unlink-after-read';
+    lockReadFault.path = lockPath;
+    lockReadFault.onFault = () => rmSync(lockPath);
+
+    const snapshot = await service.initialize();
+
+    expect(lockReadFault.path).toBeNull();
+    expect(snapshot.environmentId).toEqual(expect.any(String));
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  test('treats a publication whose candidate unlinks under the contender as complete, not unsafe', async () => {
+    // Cross-process shape: the owner has linked its candidate to the lock
+    // path (nlink 2) and its unlink of the candidate lands between the
+    // contender's lstat and its readdir. The lock is then an ordinary held
+    // lock and the contender must wait on it, not fail closed.
+    const homeDir = makeHome();
+    await new EnvironmentSecurityService({ homeDir }).initialize();
+    const lockPath = writeLiveLock(homeDir);
+    const securityDir = join(homeDir, 'security');
+    const candidatePath = join(
+      securityDir,
+      '.environment.lock.candidate.661e12df-a948-4adb-9b44-c993d616c5a5',
+    );
+    const published = readFileSync(lockPath, 'utf8');
+    rmSync(lockPath);
+    writeFileSync(candidatePath, published);
+    chmodSync(candidatePath, 0o600);
+    linkSync(candidatePath, lockPath);
+    expect(lstatSync(lockPath).nlink).toBe(2);
+    readdirFault.dir = securityDir;
+    readdirFault.onFault = () => rmSync(candidatePath);
+
+    await expect(
+      new EnvironmentSecurityService({
+        homeDir,
+        hostIdentity: 'test-host',
+        lockRetryMs: 2,
+        lockTimeoutMs: 15,
+      }).initialize(),
+    ).rejects.toThrow(/timed out/i);
+    expect(readdirFault.dir).toBeNull();
+    expect(lstatSync(lockPath).nlink).toBe(1);
+    expect(readFileSync(lockPath, 'utf8')).toBe(published);
   });
 });

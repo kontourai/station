@@ -799,7 +799,10 @@ export class EnvironmentSecurityService {
         'Environment security lock ownership changed unexpectedly',
       );
     }
-    await rm(this.#lockPath);
+    // Ownership was proven just above; a lock that vanished in between is
+    // the same external removal, and a raw ENOENT here would mask the
+    // operation's own error below.
+    await rm(this.#lockPath, { force: true });
     if (operationError) throw operationError;
     return result as T;
   }
@@ -850,6 +853,22 @@ export class EnvironmentSecurityService {
           candidate.ino === status.ino
         );
       });
+    if (candidates.length === 0) {
+      // An owner publishes with link-then-unlink: sampling nlink === 2 and
+      // then finding no candidate means its unlink landed in between. Prove
+      // that reading, rather than assuming it: the same inode must now have
+      // one link. Anything else stays fail-closed.
+      const settled = lstatSync(this.#lockPath);
+      if (
+        settled.dev === status.dev &&
+        settled.ino === status.ino &&
+        settled.nlink === 1
+      )
+        return;
+      throw new EnvironmentSecurityRecordError(
+        'Unsafe environment security lock type',
+      );
+    }
     if (candidates.length !== 1) {
       throw new EnvironmentSecurityRecordError(
         'Unsafe environment security lock type',
