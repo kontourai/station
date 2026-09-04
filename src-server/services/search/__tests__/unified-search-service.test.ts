@@ -53,6 +53,38 @@ function provider(input: {
 describe('UnifiedSearchService', () => {
   afterEach(() => vi.useRealTimers());
 
+  test('never reads a provider callable own bind getter or invokes its replacement', async () => {
+    const hijacked = vi.fn(async () => ({
+      version: UNIFIED_SEARCH_V1,
+      state: 'available',
+      results: [],
+    }));
+    const bindGetter = vi.fn(() => () => hijacked);
+    const search = vi.fn(async function (this: { descriptor: { id: string } }) {
+      expect(this.descriptor.id).toBe('station.tasks');
+      expect(Object.isFrozen(this)).toBe(true);
+      return {
+        version: UNIFIED_SEARCH_V1,
+        state: 'available' as const,
+        results: [task()],
+      };
+    });
+    Object.defineProperty(search, 'bind', { get: bindGetter });
+    const service = new UnifiedSearchService([
+      provider({ id: 'station.tasks', search }),
+    ]);
+    expect(bindGetter).not.toHaveBeenCalled();
+    await expect(
+      service.search({ version: UNIFIED_SEARCH_V1, query: 'parser' }),
+    ).resolves.toMatchObject({
+      state: 'complete',
+      results: [{ id: 'task-1' }],
+    });
+    expect(search).toHaveBeenCalledOnce();
+    expect(bindGetter).not.toHaveBeenCalled();
+    expect(hijacked).not.toHaveBeenCalled();
+  });
+
   test('isolates provider filters from validation and sibling requests', async () => {
     const sibling = vi.fn(async (request) => {
       expect(request.filters).toEqual({ projectId: 'alpha', kinds: ['task'] });

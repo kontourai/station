@@ -675,9 +675,11 @@ export class UnifiedSearchService {
               ...kinds,
             ]) as readonly UnifiedSearchResultKind[],
           });
+          const receiver = Object.freeze({ descriptor: boundDescriptor });
           const bound: BoundProvider = {
             descriptor: boundDescriptor,
-            search: search.bind(Object.freeze({ descriptor: boundDescriptor })),
+            search: (request, signal) =>
+              Reflect.apply(search, receiver, [request, signal]),
           };
           return Object.freeze(bound);
         } catch (error) {
