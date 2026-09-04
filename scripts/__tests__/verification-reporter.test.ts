@@ -744,10 +744,17 @@ describe('verification reporter', () => {
   // the escapes still in place that check never matches, every diagnostic
   // grades as `unknown`, and first-match hands the run the WARNING sitting
   // above the real error.
+  // Deliberately on STDOUT, with the warning ABOVE the error. Stdout is
+  // scanned forward, so reaching the error requires grading the warning as a
+  // warning and walking past it -- which is only possible if the `!` marker on
+  // the line below its header is legible. On stderr this proves nothing:
+  // `preferLast` scans from the end and would reach the error either way.
   test('ranks a coloured biome error above the coloured warning before it (#1471)', () => {
     const summary = summarizeVerificationOutput({
-      stdout: '> @kontourai/station-core@0.0.0 lint:check',
-      stderr: [
+      stdout: [
+        '> @kontourai/station-core@0.0.0 lint:check',
+        '> biome check .',
+        '',
         `${ESC}[33msrc-ui/src/Warned.tsx:1:1 lint/suspicious/noExplicitAny ━━━━━━━━━━${ESC}[39m`,
         `  ${ESC}[33m!${ESC}[39m The warning above the error.`,
         `${ESC}[31msrc-ui/src/Errored.tsx:9:3 lint/style/noVar ━━━━━━━━━━${ESC}[39m`,
