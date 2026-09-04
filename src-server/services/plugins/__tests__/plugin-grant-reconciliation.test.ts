@@ -7,6 +7,7 @@ import {
   replacePluginProvidersForSourceGeneration,
   retirePluginProvidersForSourceGeneration,
 } from '../../../providers/registries/registry.js';
+import { withPluginContentLock } from '../plugin-content-integrity.js';
 import {
   createPluginGrantReconciliationService,
   type PluginGrantReconciliationAdapters,
@@ -72,6 +73,55 @@ function harness(
     },
   };
 }
+
+test('a caller holding a content guard gets winding-down before independently owned activation can enter', async () => {
+  const state = harness({
+    installed: true,
+    installationGeneration: 'sha256:generation-1',
+    providerGeneration: 1,
+    grants: ['providers.register'],
+  });
+  const original = state.adapters.activateProviders;
+  let entered = false;
+  state.adapters.activateProviders = (name, expected, current) =>
+    withPluginContentLock('/plugins', name, async () => {
+      entered = true;
+      return original(name, expected, current);
+    });
+  const service = createPluginGrantReconciliationService(state.adapters);
+  await withPluginContentLock('/plugins', 'guarded', async () => {
+    const result = await service.reconcile({
+      pluginName: 'guarded',
+      permissions: ['providers.register'],
+    });
+    expect(result.status).toBe('winding-down');
+    expect(entered).toBe(false);
+  });
+  await vi.waitFor(() =>
+    expect(service.inspect('guarded')?.status).toBe('completed'),
+  );
+  expect(entered).toBe(true);
+});
+
+test('an expired inherited content token does not force winding-down for fast work', async () => {
+  const state = harness();
+  const service = createPluginGrantReconciliationService(state.adapters);
+  let start!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    start = resolve;
+  });
+  let work!: ReturnType<typeof service.reconcile>;
+  await withPluginContentLock('/plugins', 'expired', async () => {
+    work = gate.then(() =>
+      service.reconcile({
+        pluginName: 'expired',
+        permissions: ['providers.register'],
+      }),
+    );
+  });
+  start();
+  await expect(work).resolves.toMatchObject({ status: 'completed' });
+});
 
 describe('plugin grant reconciliation', () => {
   test('drains module/subscription work before retiring providers and connections', async () => {

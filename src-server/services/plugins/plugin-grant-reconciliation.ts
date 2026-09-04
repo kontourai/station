@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
+import { startIndependentPluginContentWork } from './plugin-content-integrity.js';
 
 export interface PluginGrantRuntimeSnapshot {
   readonly installed: boolean;
@@ -456,34 +457,45 @@ export function createPluginGrantReconciliationService(
       }
       pendingPermissions.set(input.pluginName, completePermissionVector);
       const prior = tails.get(input.pluginName) ?? Promise.resolve();
-      const work = prior
-        .catch(() => undefined)
-        .then(() =>
-          perform({
-            ...input,
-            permissions: [...completePermissionVector],
-            generation,
-            operationId,
-          }),
-        );
-      retained.set(input.pluginName, { generation });
-      const tail = work.then(
-        (result) => {
-          const record = retained.get(input.pluginName);
-          if (record?.generation === generation) {
-            record.result = result;
-            if (result.status === 'completed') {
-              pendingPermissions.delete(input.pluginName);
-            }
-          }
+      const { work, callerOwnsContentLock } = startIndependentPluginContentWork(
+        () => {
+          const work = prior
+            .catch(() => undefined)
+            .then(() =>
+              perform({
+                ...input,
+                permissions: [...completePermissionVector],
+                generation,
+                operationId,
+              }),
+            );
+          retained.set(input.pluginName, { generation });
+          const tail = work.then(
+            (result) => {
+              const record = retained.get(input.pluginName);
+              if (record?.generation === generation) {
+                record.result = result;
+                if (result.status === 'completed') {
+                  pendingPermissions.delete(input.pluginName);
+                }
+              }
+            },
+            () => undefined,
+          );
+          tails.set(input.pluginName, tail);
+          void tail.finally(() => {
+            if (tails.get(input.pluginName) === tail)
+              tails.delete(input.pluginName);
+          });
+          return work;
         },
-        () => undefined,
       );
-      tails.set(input.pluginName, tail);
-      void tail.finally(() => {
-        if (tails.get(input.pluginName) === tail)
-          tails.delete(input.pluginName);
-      });
+      // Trusted approval still owns its decision guard. Return acceptance now
+      // so it can release that guard; background work queues for its own actual
+      // lease instead of borrowing a token that expires with this response.
+      if (callerOwnsContentLock) {
+        return { status: 'winding-down', operationId, generation };
+      }
       if (await awaitSettlementWithin(work, deadlineMs)) return work;
       return { status: 'winding-down', operationId, generation };
     },
