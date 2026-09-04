@@ -93,6 +93,11 @@ The read and receipt append share the plugin lifecycle lock and reject
 physically uncontained manifest paths. Station resolves declared availability
 requirements during admission and repeats device-local context checks at the
 effect boundary.
+After every awaited context check, a command requiring `plugin.server` rereads
+its current content-bound grant under the same durable grants-store mutation
+lease and holds that lease through receipt publication. Composer seeding also
+uses a single-use draft occurrence capability: newer edits, edit-away-and-back,
+attachment/history changes, or chat removal/recreation refuse a delayed seed.
 The receipt never contains composer text or future argument input.
 Hosted multi-tenant execution remains unavailable until this receipt carries
 an exact tenant binding.

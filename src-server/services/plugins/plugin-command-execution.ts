@@ -288,11 +288,10 @@ function eventFor(input: {
 export function createPluginCommandExecutionAuthority(options: {
   pluginsDir: string;
   publisher: OperationalEventPublisher;
-  grantedPermissions(
+  withServerGrant<T>(
     pluginId: string,
-  ):
-    | { kind: 'available'; permissions: readonly string[] }
-    | { kind: 'unavailable' };
+    admit: () => T | Promise<T>,
+  ): Promise<{ kind: 'admitted'; value: T } | { kind: 'denied' }>;
   resolveRequirement(input: {
     requirement: Exclude<PluginCommandRequirement, 'plugin-server'>;
     request: PluginCommandExecutionRequest;
@@ -376,18 +375,6 @@ export function createPluginCommandExecutionAuthority(options: {
                 if (typeof manifest.serverModule !== 'string') {
                   return refuse(request, origin, 'requirement-not-satisfied');
                 }
-                let permissions: ReturnType<typeof options.grantedPermissions>;
-                try {
-                  permissions = options.grantedPermissions(request.pluginId);
-                } catch {
-                  permissions = { kind: 'unavailable' };
-                }
-                if (permissions.kind === 'unavailable') {
-                  return { kind: 'unavailable' };
-                }
-                if (!permissions.permissions.includes('plugin.server')) {
-                  return refuse(request, origin, 'permission-denied');
-                }
                 continue;
               }
               let resolution: PluginCommandRequirementResolution;
@@ -407,26 +394,38 @@ export function createPluginCommandExecutionAuthority(options: {
                 return refuse(request, origin, 'requirement-not-satisfied');
               }
             }
-            const event = append(request, origin, 'authorized', 'admitted');
-            if (!event) return { kind: 'unavailable' };
-            return {
-              kind: 'authorized',
-              receipt: {
-                schemaVersion: PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION,
-                receiptId: event.id,
-                requestId: request.requestId,
-                pluginId: request.pluginId,
-                pluginVersion: request.pluginVersion,
-                commandGeneration: request.commandGeneration,
-                commandId: request.commandId,
-                target: structuredClone(request.target),
-                actor: structuredClone(origin.actor),
-                reportedSurface: origin.reported.surface,
-                decision: 'authorized',
-                outcome: 'admitted',
-                recordedAt: event.occurredAt,
-              },
+            const admit = (): PluginCommandExecutionOutcome => {
+              const event = append(request, origin, 'authorized', 'admitted');
+              if (!event) return { kind: 'unavailable' };
+              return {
+                kind: 'authorized',
+                receipt: {
+                  schemaVersion: PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION,
+                  receiptId: event.id,
+                  requestId: request.requestId,
+                  pluginId: request.pluginId,
+                  pluginVersion: request.pluginVersion,
+                  commandGeneration: request.commandGeneration,
+                  commandId: request.commandId,
+                  target: structuredClone(request.target),
+                  actor: structuredClone(origin.actor),
+                  reportedSurface: origin.reported.surface,
+                  decision: 'authorized',
+                  outcome: 'admitted',
+                  recordedAt: event.occurredAt,
+                },
+              };
             };
+            if (command.requires?.includes('plugin-server')) {
+              const admission = await options.withServerGrant(
+                request.pluginId,
+                admit,
+              );
+              return admission.kind === 'admitted'
+                ? admission.value
+                : refuse(request, origin, 'permission-denied');
+            }
+            return admit();
           },
         );
       } catch {

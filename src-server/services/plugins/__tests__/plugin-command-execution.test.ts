@@ -6,7 +6,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { PluginCommandContribution } from '@kontourai/station-contracts/agent-plugin';
 import {
   CLIENT_ORIGIN_VERSION,
@@ -25,6 +25,16 @@ import { pluginCommandGeneration } from '../plugin-command-contributions.js';
 import { createPluginCommandExecutionAuthority } from '../plugin-command-execution.js';
 import { withPluginContentLock } from '../plugin-content-integrity.js';
 import { readPluginManifestFileSync } from '../plugin-manifest-loader.js';
+import {
+  grantPermissions,
+  revokeGrants,
+  withPluginCommandServerGrantAdmission,
+} from '../plugin-permissions.js';
+
+function grantAdmission(pluginsDir: string) {
+  return <T>(pluginId: string, admit: () => T | Promise<T>) =>
+    withPluginCommandServerGrantAdmission(dirname(pluginsDir), pluginId, admit);
+}
 
 const roots: string[] = [];
 const origin: ClientOrigin = {
@@ -91,6 +101,131 @@ function request(
 }
 
 describe('plugin command execution authority', () => {
+  test.each([
+    ['server-first', true],
+    ['server-last', true],
+    ['server-first', false],
+    ['server-last', false],
+  ] as const)(
+    'checks durable grants after awaited requirements: %s revoked=%s',
+    async (order, revoked) => {
+      const { pluginsDir, manifest } = fixture();
+      const installedManifest: PluginManifest = {
+        ...manifest,
+        serverModule: 'server.js',
+      };
+      installedManifest.extensions!['io.kontourai.station']!
+        .commands![0].requires =
+        order === 'server-first'
+          ? ['plugin-server', 'project']
+          : ['project', 'plugin-server'];
+      writeFileSync(
+        join(pluginsDir, manifest.name, 'server.js'),
+        'export default {};',
+      );
+      writeFileSync(
+        join(pluginsDir, manifest.name, 'plugin.json'),
+        JSON.stringify(installedManifest),
+      );
+      const home = dirname(pluginsDir);
+      await grantPermissions(home, manifest.name, ['plugin.server']);
+      let entered!: () => void;
+      let finish!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const waiting = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const events: OperationalEventEnvelope[] = [];
+      const authority = createPluginCommandExecutionAuthority({
+        pluginsDir,
+        withServerGrant: grantAdmission(pluginsDir),
+        resolveRequirement: async () => {
+          entered();
+          await waiting;
+          return { kind: 'available' };
+        },
+        publisher: {
+          append(event) {
+            events.push(event);
+            return { kind: 'appended', journalSequence: events.length, event };
+          },
+        },
+      });
+      const observed = readPluginManifestFileSync(
+        join(pluginsDir, manifest.name, 'plugin.json'),
+      );
+      const admission = authority.authorize(request(observed), origin);
+      await Promise.race([
+        started,
+        admission.then((result) => {
+          throw new Error(
+            `Admission ended before context resolution: ${JSON.stringify(result)}`,
+          );
+        }),
+      ]);
+      try {
+        if (revoked) await revokeGrants(home, manifest.name, ['plugin.server']);
+      } finally {
+        finish();
+      }
+      await expect(admission).resolves.toMatchObject(
+        revoked
+          ? { kind: 'refused', reason: 'permission-denied' }
+          : { kind: 'authorized' },
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0].payload).toMatchObject({
+        data: { decision: revoked ? 'refused' : 'authorized' },
+      });
+    },
+  );
+
+  test('holds the durable grants lease through final admission and releases it after failure', async () => {
+    const { pluginsDir, manifest } = fixture();
+    const home = dirname(pluginsDir);
+    await grantPermissions(home, manifest.name, ['plugin.server']);
+    let entered!: () => void;
+    let finish!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const waiting = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const admission = withPluginCommandServerGrantAdmission(
+      home,
+      manifest.name,
+      async () => {
+        entered();
+        await waiting;
+        throw new Error('receipt unavailable');
+      },
+    );
+    const refused = expect(admission).rejects.toThrow('receipt unavailable');
+    await Promise.race([
+      started,
+      admission.then((result) => {
+        throw new Error(
+          `Grant admission ended before effect: ${JSON.stringify(result)}`,
+        );
+      }),
+    ]);
+    let revoked = false;
+    const revocation = revokeGrants(home, manifest.name, [
+      'plugin.server',
+    ]).then(() => {
+      revoked = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(revoked).toBe(false);
+    finish();
+    await refused;
+    await revocation;
+    expect(revoked).toBe(true);
+  });
+
   test('persists a bounded actor/target receipt before admitting the UI effect', async () => {
     const { pluginsDir, manifest } = fixture();
     const append = vi.fn((value: unknown) => ({
@@ -101,7 +236,7 @@ describe('plugin command execution authority', () => {
     const authority = createPluginCommandExecutionAuthority({
       pluginsDir,
       publisher: { append },
-      grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      withServerGrant: grantAdmission(pluginsDir),
       resolveRequirement: () => ({ kind: 'available' }),
     });
 
@@ -147,7 +282,7 @@ describe('plugin command execution authority', () => {
     const authority = createPluginCommandExecutionAuthority({
       pluginsDir,
       publisher: { append },
-      grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      withServerGrant: grantAdmission(pluginsDir),
       resolveRequirement: () => ({ kind: 'available' }),
     });
 
@@ -173,7 +308,7 @@ describe('plugin command execution authority', () => {
     const authority = createPluginCommandExecutionAuthority({
       pluginsDir,
       publisher: { append: () => ({ kind: 'unavailable' }) },
-      grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      withServerGrant: grantAdmission(pluginsDir),
       resolveRequirement: () => ({ kind: 'available' }),
     });
 
@@ -201,7 +336,7 @@ describe('plugin command execution authority', () => {
           event: event as OperationalEventEnvelope,
         }),
       },
-      grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      withServerGrant: grantAdmission(pluginsDir),
       resolveRequirement: () => ({ kind: 'available' }),
     });
 
@@ -235,7 +370,7 @@ describe('plugin command execution authority', () => {
     const authority = createPluginCommandExecutionAuthority({
       pluginsDir,
       publisher: { append },
-      grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      withServerGrant: grantAdmission(pluginsDir),
       resolveRequirement,
     });
 
@@ -273,10 +408,7 @@ describe('plugin command execution authority', () => {
           event: event as OperationalEventEnvelope,
         }),
       },
-      grantedPermissions: () => ({
-        kind: 'available',
-        permissions: ['plugin.server'],
-      }),
+      withServerGrant: grantAdmission(pluginsDir),
       resolveRequirement: () => ({ kind: 'available' }),
     });
 
@@ -305,7 +437,7 @@ describe('plugin command execution authority', () => {
     const authority = createPluginCommandExecutionAuthority({
       pluginsDir,
       publisher: { append },
-      grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      withServerGrant: grantAdmission(pluginsDir),
       resolveRequirement: () => ({ kind: 'available' }),
     });
     const outcome = authority.authorize(request(manifest), origin);
@@ -332,7 +464,7 @@ describe('plugin command execution authority', () => {
     const authority = createPluginCommandExecutionAuthority({
       pluginsDir,
       publisher: { append },
-      grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      withServerGrant: grantAdmission(pluginsDir),
       resolveRequirement: () => ({ kind: 'available' }),
     });
 

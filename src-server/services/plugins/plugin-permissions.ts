@@ -278,6 +278,34 @@ export function readPluginGrantRecord(
 }
 
 /**
+ * Final command admission under the durable grant mutation authority.
+ * The caller already holds the plugin content lease and has finished all
+ * asynchronous context checks; admit must only append its exact receipt.
+ */
+export async function withPluginCommandServerGrantAdmission<T>(
+  projectHomeDir: string,
+  pluginName: string,
+  admit: () => T | Promise<T>,
+): Promise<{ kind: 'admitted'; value: T } | { kind: 'denied' }> {
+  return grantsStore(projectHomeDir).withReadLease(async (grants) => {
+    const digest = refreshPluginContentDigest(
+      pluginsDirFor(projectHomeDir),
+      pluginName,
+    );
+    const record = toGrantRecord(grants[pluginName]);
+    if (
+      digest === null ||
+      !derivePluginGrantBinding(record, digest).granted.includes(
+        'plugin.server',
+      )
+    ) {
+      return { kind: 'denied' };
+    }
+    return { kind: 'admitted', value: await admit() };
+  });
+}
+
+/**
  * **The derivation.** What this plugin may actually do right now, and why.
  *
  * The defect this closes (archive#4288): `POST /:name/update` replaces a

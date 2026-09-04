@@ -323,7 +323,7 @@ import {
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
 import { createPluginCommandExecutionAuthority } from '../../services/plugins/plugin-command-execution.js';
-import { readPluginGrantState } from '../../services/plugins/plugin-permissions.js';
+import { withPluginCommandServerGrantAdmission } from '../../services/plugins/plugin-permissions.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
 import { DiffCommentService } from '../../services/projects/diff-comment-service.js';
@@ -2012,19 +2012,12 @@ export function configureRuntimeRoutes(
           context.orchestrationEventStore?.createOperationalEventPublisher() ?? {
             append: () => ({ kind: 'unavailable' as const }),
           },
-        grantedPermissions: (pluginId) => {
-          try {
-            return {
-              kind: 'available' as const,
-              permissions: readPluginGrantState(
-                context.configLoader.getProjectHomeDir(),
-                pluginId,
-              ).granted,
-            };
-          } catch {
-            return { kind: 'unavailable' as const };
-          }
-        },
+        withServerGrant: (pluginId, admit) =>
+          withPluginCommandServerGrantAdmission(
+            context.configLoader.getProjectHomeDir(),
+            pluginId,
+            admit,
+          ),
         resolveRequirement: ({ requirement, request }) => {
           if (requirement === 'active-chat') {
             return request.context.activeChatSessionId &&
