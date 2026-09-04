@@ -42,6 +42,22 @@ records must resolve through an acyclic `via` graph to concrete advisory
 identities, and npm's blocking metadata counts must match the records. Audit
 subprocess signals and operational exit statuses also fail closed.
 
+Each actual audit attempt retains bounded, structured phase diagnostics under
+`.kontourai/verification-output/dependency-audit/`. Separate started and terminal
+facts distinguish interrupted work from settled children; retries keep distinct
+identities. Completed npm phase timings, bulk response status/duration, actual
+tool versions and child elapsed/status are observations, not policy verdicts.
+The child uses npm's info log level so actual version messages and HTTP timing
+messages are both emitted; the narrower HTTP level suppresses version messages.
+Missing phase completion is unknown, not zero. Package names, raw URLs, config,
+advisory payloads and npm debug output are never copied into these artifacts.
+Private npm timing files are removed after child settlement; a hard interruption
+may leave them in the operating system's temporary directory, outside upload
+roots. CI and scheduled scans retain the bounded diagnostics even after failure.
+This instrumentation does not change scan scopes, concurrency, retries,
+deadlines, or the advisory floor. Missing diagnostic storage is reported without
+changing the audit outcome.
+
 ## Local CodeQL SARIF policy
 
 The hosted security-analysis workflow is a JavaScript/TypeScript source scan

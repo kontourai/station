@@ -75,6 +75,8 @@ export interface SurfaceDefinition {
   icon?: SurfaceIconId;
   previewFlag?: string;
   hiddenFromNav?: boolean;
+  /** When set, the palette calls `showSurface(regionSurface)` and `params` are not applied. */
+  regionSurface?: string;
   sidebar?: { section: SurfaceSection; order: number };
   palette?: { order: number; params?: Readonly<Record<string, string | null>> };
   /** Stable semantic owner used by sidebar selection and management routing. */
@@ -386,6 +388,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     // their query. `sessions` remains a palette keyword for muscle memory.
     id: 'activity',
     route: '/activity',
+    regionSurface: 'activity',
     label: () => 'Activity',
     keywords: ['activity', 'sessions', 'monitor', 'events'],
     icon: 'activity',

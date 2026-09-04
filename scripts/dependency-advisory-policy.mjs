@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -9,6 +9,7 @@ import {
   classifyGitRange,
   DEPENDENCY_SCOPE_ROOTS,
 } from './classify-ci-change.mjs';
+import { createAuditAttemptDiagnostics } from './lib/dependency-audit-diagnostics.mjs';
 
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 const RESIDUAL_SEVERITIES = new Set(['moderate', 'low']);
@@ -614,10 +615,32 @@ function readJson(file, label) {
 const AUDIT_TIMEOUT_MS = 4 * 60 * 1000;
 const AUDIT_ATTEMPTS = 2;
 
+/**
+ * #1430 — GitHub sets `pull_request.base.sha` to the base branch's CURRENT
+ * TIP, not the point the branch was cut from. Diffing that against the head
+ * therefore attributes every dependency change that landed on `main` after
+ * the branch started to this pull request, and drags a change with no
+ * dependency inputs of its own through a live registry scan. Those commits
+ * were audited on their own pull requests and again by `main`'s push run;
+ * this range must describe what the branch itself changed.
+ *
+ * Failing to resolve a merge base (a shallow clone, an unfetched base) is
+ * left to the caller's `catch`, which fails closed — the right answer when
+ * the range is unknown.
+ */
+function gitMergeBase({ before, after, cwd }) {
+  return execFileSync('git', ['merge-base', before, after], {
+    cwd,
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim();
+}
+
 export function dependencyAuditDecision({
   env = process.env,
   loadEvent = (eventPath) => JSON.parse(readFileSync(eventPath, 'utf8')),
   classifyRange = classifyGitRange,
+  resolveMergeBase = gitMergeBase,
   cwd = REPO_ROOT,
 } = {}) {
   if (env.GITHUB_ACTIONS !== 'true')
@@ -642,8 +665,15 @@ export function dependencyAuditDecision({
   try {
     if (!env.GITHUB_EVENT_PATH) throw new Error('GITHUB_EVENT_PATH is missing');
     const event = loadEvent(env.GITHUB_EVENT_PATH);
+    // `merge_group` and `push` already carry a genuine range boundary
+    // (`base_sha` is the candidate's own base, `before` the previous tip), so
+    // only the pull-request path needs the merge base — see `gitMergeBase`.
     const before = eventName.startsWith('pull_request')
-      ? event.pull_request?.base?.sha
+      ? resolveMergeBase({
+          before: event.pull_request?.base?.sha,
+          after: event.pull_request?.head?.sha,
+          cwd,
+        })
       : eventName === 'merge_group'
         ? event.merge_group?.base_sha
         : event.before;
@@ -671,42 +701,84 @@ export function dependencyAuditDecision({
   }
 }
 
-function runAuditAttempt(scope, cwd, productionOnly) {
+/** @type {(command: string, args: string[], options: import('node:child_process').ExecFileOptionsWithStringEncoding, callback: (error: import('node:child_process').ExecFileException | null, stdout: string, stderr: string) => void) => import('node:child_process').ChildProcess} */
+const executeAuditFile = execFile;
+
+export function runAuditAttempt(
+  scope,
+  cwd,
+  productionOnly,
+  {
+    attempt = 1,
+    execute = executeAuditFile,
+    diagnosticsRoot = path.join(
+      REPO_ROOT,
+      '.kontourai/verification-output/dependency-audit',
+    ),
+  } = {},
+) {
   const args = ['audit', '--json'];
   if (productionOnly) args.push('--omit=dev');
   if (scope !== 'root') args.push('--workspaces=false');
+  const diagnostics = createAuditAttemptDiagnostics({
+    scope,
+    reachability: productionOnly ? 'production' : 'full',
+    attempt,
+    outputRoot: diagnosticsRoot,
+    timeoutMs: AUDIT_TIMEOUT_MS,
+  });
+  args.push(...diagnostics.args);
   return new Promise((resolveAudit, rejectAudit) => {
-    execFile(
-      'npm',
-      args,
-      {
-        cwd,
-        encoding: 'utf8',
-        maxBuffer: 50 * 1024 * 1024,
-        timeout: AUDIT_TIMEOUT_MS,
-      },
-      (error, stdout, stderr) => {
-        const status = error
-          ? typeof error.code === 'number'
-            ? error.code
-            : null
-          : 0;
-        try {
-          resolveAudit(
-            parseAuditCommandResult(scope, {
-              error:
-                error && status === null && !error.signal ? error : undefined,
-              status,
-              signal: error?.signal ?? null,
-              stdout,
-              stderr,
-            }),
-          );
-        } catch (parseError) {
-          rejectAudit(parseError);
-        }
-      },
-    );
+    diagnostics.startChild();
+    let child;
+    try {
+      child = execute(
+        'npm',
+        args,
+        {
+          cwd,
+          encoding: 'utf8',
+          maxBuffer: 50 * 1024 * 1024,
+          timeout: AUDIT_TIMEOUT_MS,
+          windowsHide: true,
+        },
+        (error, stdout, stderr) => {
+          const status = error
+            ? typeof error.code === 'number'
+              ? error.code
+              : null
+            : 0;
+          diagnostics.settle({
+            status,
+            signal: error?.signal ?? null,
+            operationalCode: error?.code,
+          });
+          try {
+            resolveAudit(
+              parseAuditCommandResult(scope, {
+                error:
+                  error && status === null && !error.signal ? error : undefined,
+                status,
+                signal: error?.signal ?? null,
+                stdout,
+                stderr,
+              }),
+            );
+          } catch (parseError) {
+            rejectAudit(parseError);
+          }
+        },
+      );
+    } catch (error) {
+      diagnostics.settle({
+        status: null,
+        signal: null,
+        operationalCode: error?.code,
+      });
+      rejectAudit(error);
+      return;
+    }
+    child.stderr?.on('data', (chunk) => diagnostics.consume(chunk));
   });
 }
 
@@ -718,7 +790,7 @@ export async function withAuditRetries(
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await operation();
+      return await operation(attempt);
     } catch (error) {
       lastError = error;
       if (attempt < attempts)
@@ -739,8 +811,8 @@ function runAudit(scope, cwd, productionOnly = false) {
   } catch {
     throw new Error(`committed lockfile is missing for ${scope}: ${lockfile}`);
   }
-  return withAuditRetries(scope, () =>
-    runAuditAttempt(scope, cwd, productionOnly),
+  return withAuditRetries(scope, (attempt) =>
+    runAuditAttempt(scope, cwd, productionOnly, { attempt }),
   );
 }
 

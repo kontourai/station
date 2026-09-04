@@ -655,7 +655,7 @@ function HomeWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
 // Activity binds no Project either (its list aggregates every host session),
 // so it never consults `useWorkspacePaneBoundIdentity`; its own renderer
 // still refuses a non-canonical occurrence. Lazy for the same reason Home
-// is: the sessions surface is the `/activity` route's own chunk, and a host
+// is: the sessions surface is Activity's own chunk, and a host
 // that never mounts Activity should not download it to have it in the table.
 function ActivityWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
   return (
