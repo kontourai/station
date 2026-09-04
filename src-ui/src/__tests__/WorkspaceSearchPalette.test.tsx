@@ -153,6 +153,11 @@ test('server-ranked message survives local text mismatch, names partial source, 
         },
       });
     expect(path).toBe('/api/search/read-message');
+    expect(body).toEqual({
+      sessionId: 'historical-a',
+      matchedEventId: 'exact-event',
+      ...(body.continuation ? { continuation: body.continuation } : {}),
+    });
     return reply(
       body.continuation
         ? page('Second canonical page')

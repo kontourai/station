@@ -22,7 +22,11 @@ export function ExactMessageInspector({
     undefined,
   ]);
   const continuation = cursors.at(-1);
-  const request = { ...locator, ...(continuation ? { continuation } : {}) };
+  const request = {
+    sessionId: locator.sessionId,
+    matchedEventId: locator.matchedEventId,
+    ...(continuation ? { continuation } : {}),
+  };
   const queryKey = [
     'exact-search-message',
     scope.apiBase,
