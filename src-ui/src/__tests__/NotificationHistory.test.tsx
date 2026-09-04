@@ -207,7 +207,7 @@ describe('NotificationHistory', () => {
           title: 'Approval needed',
           createdAt: timestamp,
           updatedAt: timestamp,
-          openHref: '/activity?session=thread-1',
+          openHref: '/?surface=activity&session=thread-1',
           source: {
             notificationId: 'notif-1',
             notificationSource: 'approval-inbox',
@@ -270,7 +270,7 @@ describe('NotificationHistory', () => {
           title: 'Input needed',
           createdAt: timestamp,
           updatedAt: timestamp,
-          openHref: '/activity?session=thread-1',
+          openHref: '/?surface=activity&session=thread-1',
           source: { threadId: 'thread-1' },
         },
       ],
@@ -318,7 +318,7 @@ describe('NotificationHistory attention section agrees with the badge', () => {
       title: `Session ${index} failed`,
       createdAt: stamp,
       updatedAt: stamp,
-      openHref: `/activity?session=thread-${index}`,
+      openHref: `/?surface=activity&session=thread-${index}`,
       source: { threadId: `thread-${index}` },
       ...(acknowledged ? { acknowledgedAt: acknowledged } : {}),
     };

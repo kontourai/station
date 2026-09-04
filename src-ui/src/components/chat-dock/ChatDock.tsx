@@ -48,6 +48,7 @@ import {
 } from '../../contexts/open-chats-store';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { ensureOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
 import { useActiveProject } from '../../hooks/useActiveProject';
@@ -420,11 +421,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeChat,
     pathname,
     navigate,
+    updateParams,
     setActiveChat,
     setDockState,
     setProject,
     setLayout,
   } = useNavigation();
+  const showSurface = useShowSurface();
   // Placement, viewport and placement-commit are shell CHROME (station#4460)
   // — read from `chrome` (the shared ambient instance when docked, this
   // placement's own instance when full-screen) rather than a second local
@@ -714,7 +717,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // surface (an inbox row, the project badge, a delegation toast) can
   // navigate to a route that is ALREADY the current pathname with just a
   // different query param (e.g. two inbox rows that both fall back to
-  // `/activity?session=<id>` for a session Station can't rehydrate, each
+  // the Activity region for a session Station can't rehydrate, each
   // naming a different session). The effect above only fires on a pathname
   // CHANGE, so that case would never collapse the dock even though the
   // content underneath it just changed. Call this explicitly at each such
@@ -1036,16 +1039,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [isInboxOpen, setDeviceSetting],
   );
   const openInboxHistory = useCallback(() => setIsHistoryOpen(true), []);
-  // #1298: falling back to /activity is a dock-owned navigation seam —
+  // #1298: revealing Activity is a dock-owned navigation seam —
   // collapse a maximized dock first so the destination is actually visible.
   // Same stabilization reason as the block comment above: this used to be
   // an inline closure at the `ChatDockInboxPanel` call site.
   const onOpenInboxSession = useCallback(
     (threadId: string) => {
       collapseDockForNavigation();
-      navigate('/activity', { session: threadId });
+      showSurface('activity', { session: threadId });
     },
-    [collapseDockForNavigation, navigate],
+    [collapseDockForNavigation, showSurface],
   );
   const openChatSettings = useCallback(
     () => setShowChatSettings(true),
@@ -1590,7 +1593,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     // from outside the ChatDock subtree. The request used to carry only
     // `sessionId` and silently drop when that id wasn't a live in-memory
     // tab — the same rehydrate-vs-navigate accident the inbox had. Fall
-    // through to `openConversation` (rehydrate) and finally `/activity`
+    // through to `openConversation` (rehydrate) and finally Activity
     // (a session Station cannot rehydrate) instead of no-oping.
     const focusChat = (detail: ChatFocusTarget) => {
       const {
@@ -1657,7 +1660,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           if (opened === false) {
             // Same catalog rule as the inbox click path (#3724 review): an
             // unanswered catalog is not a deleted agent — say to wait
-            // instead of bouncing to /activity.
+            // instead of bouncing to Activity.
             if (!agentsLoaded) {
               showInboxOpenFailure(
                 'Still loading your agents — try this item again in a moment.',
@@ -1666,7 +1669,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             }
             if (threadId) {
               collapseDockForNavigation();
-              navigate('/activity', { session: threadId });
+              showSurface('activity', { session: threadId });
             }
           }
         });
@@ -1674,7 +1677,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       }
       if (threadId) {
         collapseDockForNavigation();
-        navigate('/activity', { session: threadId });
+        showSurface('activity', { session: threadId });
       }
     };
     const unregisterOpenChatsNavigation = openChatsStore.registerNavigation({
@@ -1735,6 +1738,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setDeviceSetting,
     showInboxOpenFailure,
     agentsLoaded,
+    showSurface,
   ]);
 
   // Sync activeChat (conversationId) from URL to local state
@@ -1749,7 +1753,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessions,
     openConversation: openColdConversationInScopedPane,
     setActiveSessionId,
-    navigate,
+    updateParams,
+    showSurface,
   });
 
   useEffect(() => {
@@ -2482,7 +2487,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               },
               onOpenSession: (threadId) => {
                 if (isFullscreenPlacement) {
-                  navigate('/activity', { session: threadId });
+                  showSurface('activity', { session: threadId });
                   return;
                 }
                 // Sessions must remain usable on a phone, so the dock closes.
@@ -2504,7 +2509,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 // this round trip through `lastDockMaximized` (navigation-store)
                 // instead, which `focusSession` already reads on the way back in.
                 setDockState(false, isDockMaximized);
-                navigate('/activity', { session: threadId });
+                showSurface('activity', { session: threadId });
               },
             }}
             pending={null}
@@ -2522,7 +2527,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             onOpenTranscript: (threadId) => {
               setIsBackgroundTasksOpen(false);
               setDockState(false, isDockMaximized);
-              navigate('/activity', { session: threadId });
+              showSurface('activity', { session: threadId });
             },
             onClose: () => setIsBackgroundTasksOpen(false),
           }}
@@ -2581,7 +2586,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     // — collapse a maximized dock first, same as the other
                     // dock-owned navigation seams.
                     collapseDockForNavigation();
-                    navigate('/activity', { session: task.sessionId });
+                    showSurface('activity', { session: task.sessionId });
                   },
                 },
               ]);

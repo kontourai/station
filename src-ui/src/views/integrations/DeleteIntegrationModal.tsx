@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
@@ -12,7 +13,17 @@ export function DeleteIntegrationModal({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  return (
+  // #1180: opened from `Delete` inside `IntegrationEditorPanel` — the detail
+  // content `SplitPaneLayout` portals into `PageFrame`'s mobile-detail slot
+  // on a phone, exempt from the `inert` its sibling frame div carries while
+  // that sheet is open (PageFrame.tsx:155). Rendered in place, this modal is
+  // a plain sibling of `SplitPaneLayout` in `IntegrationsView`, not that
+  // exempt content, so it inherited the `inert` its own trigger was exempt
+  // from: visible, but `.focus()` a no-op and both buttons unclickable.
+  // `createPortal` to `document.body` is the same escape `ConfirmModal` and
+  // `PluginModalStack` (#1131) already use — DOM placement only, so React
+  // context and event bubbling still follow the component tree.
+  return createPortal(
     <ResponsiveDialogSurface
       onClose={onCancel}
       ariaLabelledBy="delete-integration-title"
@@ -37,6 +48,7 @@ export function DeleteIntegrationModal({
           Delete
         </button>
       </ResponsiveSurfaceActions>
-    </ResponsiveDialogSurface>
+    </ResponsiveDialogSurface>,
+    document.body,
   );
 }

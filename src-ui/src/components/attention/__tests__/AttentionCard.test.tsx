@@ -120,7 +120,7 @@ function baseFailure(
     createdAt: now,
     updatedAt: now,
     sessionId: 'thread-boom',
-    openHref: '/activity?session=thread-boom',
+    openHref: '/?surface=activity&session=thread-boom',
     source: { threadId: 'thread-boom' },
     ...overrides,
   };
@@ -226,7 +226,9 @@ describe('AttentionCard — dismiss affordance', () => {
     ).toBe('Fix the login redirect');
     expect(screen.getByText('Engine exited with code 1')).toBeTruthy();
     const link = screen.getByRole('link', { name: 'Open session' });
-    expect(link.getAttribute('href')).toBe('/activity?session=thread-boom');
+    expect(link.getAttribute('href')).toBe(
+      '/?surface=activity&session=thread-boom',
+    );
   });
 
   // archive#1914: a failed session's failure is not an approval to decide,
@@ -474,7 +476,9 @@ describe('AttentionCard — opening acknowledges (#3203)', () => {
     // destination's own `/api/attention` read races the write it depends on.
     expect(navigate).not.toHaveBeenCalled();
     await vi.waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity?session=thread-boom'),
+      expect(navigate).toHaveBeenCalledWith(
+        '/?surface=activity&session=thread-boom',
+      ),
     );
   });
 
@@ -485,7 +489,9 @@ describe('AttentionCard — opening acknowledges (#3203)', () => {
     screen.getByRole('link', { name: 'Open session' }).click();
 
     await vi.waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity?session=thread-boom'),
+      expect(navigate).toHaveBeenCalledWith(
+        '/?surface=activity&session=thread-boom',
+      ),
     );
   });
 

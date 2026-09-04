@@ -5,6 +5,7 @@ import {
   SESSION_LIFECYCLE_STATES,
   type SessionLifecycleState,
 } from '@kontourai/station-contracts/session-lifecycle';
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -288,11 +289,11 @@ describe('AttentionProjectionService', () => {
       items: expect.arrayContaining([
         expect.objectContaining({
           kind: 'approval',
-          openHref: '/activity?session=thread%2Fone',
+          openHref: activityDeepLink({ sessionId: 'thread/one' }),
         }),
         expect.objectContaining({
           kind: 'needs_input',
-          openHref: '/activity?session=thread%20two',
+          openHref: activityDeepLink({ sessionId: 'thread two' }),
         }),
       ]),
     });
@@ -1347,7 +1348,7 @@ describe('AttentionProjectionService', () => {
           title: 'Untitled session',
           body: 'Engine exited with code 1',
           sessionId: 'thread-boom',
-          openHref: '/activity?session=thread-boom',
+          openHref: activityDeepLink({ sessionId: 'thread-boom' }),
         }),
       );
     });
@@ -1506,8 +1507,8 @@ describe('AttentionProjectionService', () => {
        * chat dock, and the dock has no failure surface at all — `failureText`
        * is derived in `useMutableSessionDetailState` and rendered only by
        * `SessionDetailErrors`, inside the session detail pane. A failed
-       * session must therefore land on `/activity?session=`, EVEN WHEN it has
-       * a project slug that would otherwise route it to the dock.
+       * session must therefore land on the Activity surface, EVEN WHEN it
+       * has a project slug that would otherwise route it to the dock.
        */
       test('a project-scoped failure opens the session detail, not the chat dock', async () => {
         const service = makeService({
@@ -1532,7 +1533,7 @@ describe('AttentionProjectionService', () => {
         expect(
           result.items.find((item) => item.sessionId === 'thread-boom')
             ?.openHref,
-        ).toBe('/activity?session=thread-boom');
+        ).toBe(activityDeepLink({ sessionId: 'thread-boom' }));
         expect(
           result.items.find((item) => item.sessionId === 'thread-ask')
             ?.openHref,
@@ -1988,7 +1989,8 @@ describe('AttentionProjectionService', () => {
     // AC4: "Open session" must actually open the dock. `dock=open` is what
     // navigation-store.ts's `isDockOpen` reads; without it the deep link
     // lands on the project layout with the dock still shut — defect 1 in
-    // the issue. `/activity` is not a dock target and must stay plain.
+    // the issue. The surface deep link carries its own reveal; it must not
+    // also stamp `dock=open`.
     test('sessionOpenHref stamps dock=open on the project-scoped href only', async () => {
       const service = makeService({
         sessions: [
@@ -2013,7 +2015,7 @@ describe('AttentionProjectionService', () => {
       expect(
         result.items.find((item) => item.sessionId === 'thread-no-project')
           ?.openHref,
-      ).toBe('/activity?session=thread-no-project');
+      ).toBe(activityDeepLink({ sessionId: 'thread-no-project' }));
     });
   });
 });
@@ -2045,7 +2047,7 @@ describe('buildSessionFailedItem (#3203)', () => {
       createdAt: now,
       updatedAt: now,
       sessionId: 'thread-boom',
-      openHref: '/activity?session=thread-boom',
+      openHref: activityDeepLink({ sessionId: 'thread-boom' }),
       source: { threadId: 'thread-boom' },
       engine: 'claude',
       agent: 'reviewer',
@@ -2112,7 +2114,7 @@ describe('the bell agrees with the client fold (station#3227 B1)', () => {
           title: 'Session blocked',
           body: 'Waiting on a human decision about the deploy',
           sessionId: 'thread-stuck',
-          openHref: '/activity?session=thread-stuck',
+          openHref: activityDeepLink({ sessionId: 'thread-stuck' }),
         }),
       );
     });

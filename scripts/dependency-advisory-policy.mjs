@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { classifyGitRange } from './classify-ci-change.mjs';
+import {
+  ALL_DEPENDENCY_SCOPES,
+  classifyGitRange,
+  DEPENDENCY_SCOPE_ROOTS,
+} from './classify-ci-change.mjs';
 
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 const RESIDUAL_SEVERITIES = new Set(['moderate', 'low']);
@@ -599,14 +603,40 @@ function readJson(file, label) {
 const AUDIT_TIMEOUT_MS = 4 * 60 * 1000;
 const AUDIT_ATTEMPTS = 2;
 
+/**
+ * #1430 — GitHub sets `pull_request.base.sha` to the base branch's CURRENT
+ * TIP, not the point the branch was cut from. Diffing that against the head
+ * therefore attributes every dependency change that landed on `main` after
+ * the branch started to this pull request, and drags a change with no
+ * dependency inputs of its own through a live registry scan. Those commits
+ * were audited on their own pull requests and again by `main`'s push run;
+ * this range must describe what the branch itself changed.
+ *
+ * Failing to resolve a merge base (a shallow clone, an unfetched base) is
+ * left to the caller's `catch`, which fails closed — the right answer when
+ * the range is unknown.
+ */
+function gitMergeBase({ before, after, cwd }) {
+  return execFileSync('git', ['merge-base', before, after], {
+    cwd,
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim();
+}
+
 export function dependencyAuditDecision({
   env = process.env,
   loadEvent = (eventPath) => JSON.parse(readFileSync(eventPath, 'utf8')),
   classifyRange = classifyGitRange,
+  resolveMergeBase = gitMergeBase,
   cwd = REPO_ROOT,
 } = {}) {
   if (env.GITHUB_ACTIONS !== 'true')
-    return { required: true, reason: 'non-github execution' };
+    return {
+      required: true,
+      reason: 'non-github execution',
+      scopes: [...ALL_DEPENDENCY_SCOPES],
+    };
 
   const eventName = env.GITHUB_EVENT_NAME;
   if (
@@ -614,13 +644,24 @@ export function dependencyAuditDecision({
       eventName,
     )
   )
-    return { required: true, reason: `${eventName ?? 'unknown'} event` };
+    return {
+      required: true,
+      reason: `${eventName ?? 'unknown'} event`,
+      scopes: [...ALL_DEPENDENCY_SCOPES],
+    };
 
   try {
     if (!env.GITHUB_EVENT_PATH) throw new Error('GITHUB_EVENT_PATH is missing');
     const event = loadEvent(env.GITHUB_EVENT_PATH);
+    // `merge_group` and `push` already carry a genuine range boundary
+    // (`base_sha` is the candidate's own base, `before` the previous tip), so
+    // only the pull-request path needs the merge base — see `gitMergeBase`.
     const before = eventName.startsWith('pull_request')
-      ? event.pull_request?.base?.sha
+      ? resolveMergeBase({
+          before: event.pull_request?.base?.sha,
+          after: event.pull_request?.head?.sha,
+          cwd,
+        })
       : eventName === 'merge_group'
         ? event.merge_group?.base_sha
         : event.before;
@@ -633,11 +674,17 @@ export function dependencyAuditDecision({
     return {
       required: classification.dependencies,
       reason: classification.classification,
+      // A classifier that does not name scopes is not a classifier that means
+      // "none": anything short of an explicit list scans everything.
+      scopes: Array.isArray(classification.dependencyScopes)
+        ? classification.dependencyScopes
+        : [...ALL_DEPENDENCY_SCOPES],
     };
   } catch (error) {
     return {
       required: true,
       reason: `range classification failed closed: ${error.message}`,
+      scopes: [...ALL_DEPENDENCY_SCOPES],
     };
   }
 }
@@ -791,6 +838,46 @@ export function parseAuditCommandResult(scope, result) {
   return parsed;
 }
 
+/**
+ * The scopes an audit run covers, derived from the ONE map that also decides
+ * attribution. Keeping a second list here is what would let a scope be added
+ * to the audit, never appear in any classifier's widening, and be silently
+ * filtered out of every pull request -- unscanned, reported as a clean run.
+ */
+export const AUDIT_SCOPES = ALL_DEPENDENCY_SCOPES.map((scope) => ({
+  scope,
+  // `resolve`, not `join`: the scope roots are slash-terminated prefixes
+  // because attribution compares them against a path's directory, and joining
+  // one would carry that trailing slash into the audit's cwd. Nothing
+  // downstream breaks on it -- every consumer re-joins -- but it makes the
+  // value differ from the hardcoded path it replaced for no reason.
+  cwd: path.resolve(REPO_ROOT, DEPENDENCY_SCOPE_ROOTS[scope]),
+}));
+
+/**
+ * Each scope costs TWO concurrent `npm audit` processes (full and production),
+ * and `packages/sdk`/`packages/shared` have no installed tree -- the repo
+ * installs at the root -- so npm resolves theirs from the registry. Auditing
+ * all three ran six registry-bound processes against a four-minute per-call
+ * timeout that one of them exceeds on its own; #1417 has the measurements.
+ *
+ * A decision that names no scopes at all is treated as every scope, never as
+ * none. An empty selection is a bug, not a clean run, so it throws rather than
+ * reporting success having audited nothing.
+ */
+export function selectAuditScopes(decision, allScopes = AUDIT_SCOPES) {
+  const selected = new Set(
+    decision.scopes ?? allScopes.map((entry) => entry.scope),
+  );
+  const scopes = allScopes.filter((entry) => selected.has(entry.scope));
+  if (scopes.length === 0) {
+    throw new Error(
+      `dependency advisory scan selected no scopes (decision: ${decision.reason})`,
+    );
+  }
+  return scopes;
+}
+
 export async function runPolicyCli() {
   const decision = dependencyAuditDecision();
   if (!decision.required) {
@@ -799,11 +886,10 @@ export async function runPolicyCli() {
     );
     return 0;
   }
-  const scopes = [
-    { scope: 'root', cwd: REPO_ROOT },
-    { scope: 'sdk', cwd: path.join(REPO_ROOT, 'packages', 'sdk') },
-    { scope: 'shared', cwd: path.join(REPO_ROOT, 'packages', 'shared') },
-  ];
+  const scopes = selectAuditScopes(decision);
+  console.log(
+    `Dependency advisory floor: scanning ${scopes.map((entry) => entry.scope).join(', ')} (${decision.reason})`,
+  );
   const audits = await collectAudits(scopes);
   const exceptions = readJson(
     path.join(SCRIPT_DIR, 'dependency-advisory-exceptions.json'),

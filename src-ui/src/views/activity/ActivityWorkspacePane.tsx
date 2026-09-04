@@ -39,6 +39,8 @@ export function ActivityWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
       apiBase={binding.apiBase}
       sessionId={binding.sessionId}
       focusHint={binding.focusHint}
+      intentToken={binding.intentToken}
+      onFocusConsumed={binding.onFocusConsumed}
     />
   );
 }

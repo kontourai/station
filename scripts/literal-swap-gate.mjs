@@ -28,9 +28,11 @@
  *   node scripts/literal-swap-gate.mjs [--base <ref>] [--range <commit>] [--strict]
  *
  * There is deliberately no npm alias yet. Adding one edits package.json, which
- * `classify-ci-change.mjs` counts as a dependency input, forcing the full live
- * advisory scan on every CI attempt -- a cost unrelated to this gate. The alias
- * is a follow-up for when the npm advisory registry is healthy.
+ * `classify-ci-change.mjs` counts as a dependency input, so CI runs the live
+ * advisory scan on a push that has nothing to do with dependencies. Since
+ * #1417 that is the root scope alone rather than all three, so the cost is
+ * much smaller than it was -- but it is still a live registry scan bought by
+ * an alias, so the follow-up stands.
  */
 
 import { execFileSync } from 'node:child_process';

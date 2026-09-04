@@ -606,6 +606,22 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'Workspace file preview public contract',
   },
   {
+    pattern: 'packages/contracts/src/surface-deep-link.ts',
+    tests: [
+      'packages/contracts/src/__tests__/surface-deep-link.test.ts',
+      // The builder lives here; the round trip from its output back through
+      // the src-ui parser is asserted on the consumer side, so a change to
+      // the minted URL shape has to schedule both halves.
+      'src-ui/src/contexts/__tests__/surface-deep-link.test.ts',
+    ],
+    reason: 'surface deep-link public contract',
+  },
+  {
+    pattern: 'src-ui/src/contexts/surface-deep-link.ts',
+    tests: ['src-ui/src/contexts/__tests__/surface-deep-link.test.ts'],
+    reason: 'surface deep-link URL handling',
+  },
+  {
     pattern: 'packages/contracts/package.json',
     tests: [
       'packages/contracts/src/__tests__/workspace-file-preview.test.ts',
