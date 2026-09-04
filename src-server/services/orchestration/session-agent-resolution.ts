@@ -64,6 +64,7 @@ export interface SessionAgentResolverOptions {
 
 export type ResolveSessionAgent = (
   input: ProviderSessionStartInput,
+  captured?: { agentId: string; spec: AgentSpec },
 ) => Promise<ProviderSessionStartInput>;
 
 /**
@@ -234,6 +235,7 @@ export function createSessionAgentResolver(
 
   return async function resolveSessionAgent(
     input: ProviderSessionStartInput,
+    captured?: { agentId: string; spec: AgentSpec },
   ): Promise<ProviderSessionStartInput> {
     const slug = input.metadata?.agentSlug;
     if (typeof slug !== 'string' || !slug) {
@@ -245,7 +247,11 @@ export function createSessionAgentResolver(
     }
 
     try {
-      const spec = (await loadAgentSpec(slug)) ?? builtinStationAgentSpec(slug);
+      const spec = captured
+        ? captured.agentId === slug
+          ? structuredClone(captured.spec)
+          : null
+        : ((await loadAgentSpec(slug)) ?? builtinStationAgentSpec(slug));
       if (!spec) {
         return input;
       }

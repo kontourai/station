@@ -14,9 +14,17 @@ export interface WorkspacePaneHostPromptAction {
   readonly icon?: string;
   /** A `skill-prompt` is presentation history, not an installed Skill. */
   readonly presentation: 'action' | 'skill-prompt';
-  readonly intent: {
-    readonly kind: 'prompt';
-    readonly prompt: string;
+  readonly intent: (
+    | {
+        readonly kind: 'prompt';
+        readonly prompt: string;
+      }
+    | {
+        readonly kind: 'plugin-prompt';
+        /** Exact own-package registered prompt id, never inferred from prompt text. */
+        readonly promptId: string;
+      }
+  ) & {
     /** Omission uses only this declaration's explicit default Agent. */
     readonly agent?: WorkspacePaneHostAgentRef;
   };
@@ -34,14 +42,14 @@ export interface WorkspacePaneHostContributionV1 {
 
 export interface WorkspacePaneHostContributionOwner {
   readonly pluginId: string;
-  readonly installationGeneration: number;
+  readonly installationGeneration: string;
 }
 
 export type WorkspacePaneHostBoundAgent =
   | {
       readonly kind: 'plugin-agent';
       readonly pluginId: string;
-      readonly installationGeneration: number;
+      readonly installationGeneration: string;
       readonly agentId: AgentId;
     }
   | { readonly kind: 'station-agent'; readonly agentId: AgentId };

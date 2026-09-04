@@ -11,7 +11,10 @@ import {
   parseWorkspacePaneHostContribution,
 } from '../workspace-pane-host-contributions.js';
 
-const owner = { pluginId: 'demo-layout', installationGeneration: 4 };
+const owner = {
+  pluginId: 'demo-layout',
+  installationGeneration: `sha256:${'a'.repeat(64)}`,
+};
 const ownAgent = {
   kind: 'own-plugin-agent' as const,
   agentId: 'assistant' as AgentId,
@@ -252,7 +255,7 @@ describe('Workspace Pane host contributions', () => {
               agent: {
                 kind: 'plugin-agent',
                 pluginId: 'demo-layout',
-                installationGeneration: 4,
+                installationGeneration: owner.installationGeneration,
                 agentId: 'assistant',
               },
             },
@@ -321,6 +324,44 @@ describe('Workspace Pane host contributions', () => {
     );
   });
 
+  test('captures dependency methods and never returns mutable declaration authority', async () => {
+    const agents = {
+      resolveOwnPluginAgent:
+        async (): Promise<WorkspacePaneHostAgentResolution> => availableOwn(),
+      resolveStationAgent:
+        async (): Promise<WorkspacePaneHostAgentResolution> => ({
+          state: 'unavailable',
+        }),
+    };
+    const contribution = createWorkspacePaneHostContribution({
+      declaration: declaration(),
+      owner,
+      projectId: 'project-a',
+      agents,
+      authority: { current: () => ({ state: 'current' }) },
+      launcher: { launch: async () => ({ state: 'unavailable' }) },
+    });
+    agents.resolveOwnPluginAgent = async () => ({ state: 'restricted' });
+    const first = await contribution.project();
+    if (first.state !== 'available') throw new Error('expected projection');
+    (
+      first.projection.agentSelection.availableAgents[0]!.declaration as {
+        agentId: AgentId;
+      }
+    ).agentId = 'another-agent' as AgentId;
+    const second = await contribution.project();
+    expect(second).toMatchObject({
+      state: 'available',
+      projection: {
+        agentSelection: {
+          availableAgents: [
+            { declaration: ownAgent, resolution: { state: 'available' } },
+          ],
+        },
+      },
+    });
+  });
+
   test('rejects resolver identity equivocation and retirement during an Agent await', async () => {
     let ownerState: 'current' | 'retired' = 'current';
     let releaseResolution!: () => void;
@@ -367,7 +408,7 @@ describe('Workspace Pane host contributions', () => {
           agent: {
             kind: 'plugin-agent',
             pluginId: 'other-plugin',
-            installationGeneration: 4,
+            installationGeneration: owner.installationGeneration,
             agentId: ownAgent.agentId,
           },
         }),

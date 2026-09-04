@@ -24,6 +24,10 @@ import {
 } from '../../domain/agent-registry.js';
 import { owningProjectExists } from '../../domain/config-loader-agents.js';
 import { saveIntegrationConfig } from '../../domain/config-loader-storage.js';
+import {
+  PLUGIN_AGENT_OWNER_FILE,
+  pluginAgentOwner,
+} from '../../domain/plugin-agent-ownership.js';
 import type { IPluginRegistryProvider } from '../../providers/provider-interfaces.js';
 import {
   getIntegrationRegistryProvider,
@@ -460,23 +464,6 @@ export function assertPluginNameSegment(pluginName: string): void {
     pluginName.includes('\\')
   ) {
     throw new Error(`Invalid plugin name: ${pluginName || '(empty)'}`);
-  }
-}
-
-const PLUGIN_AGENT_OWNER_FILE = '.station-plugin-owner.json';
-
-function pluginAgentOwner(agentDir: string): string | null {
-  const marker = join(agentDir, PLUGIN_AGENT_OWNER_FILE);
-  if (!existsSync(marker)) return null;
-  const stats = lstatSync(marker);
-  if (!stats.isFile() || stats.isSymbolicLink()) return null;
-  try {
-    const parsed = JSON.parse(readFileSync(marker, 'utf-8')) as {
-      plugin?: unknown;
-    };
-    return typeof parsed.plugin === 'string' ? parsed.plugin : null;
-  } catch {
-    return null;
   }
 }
 

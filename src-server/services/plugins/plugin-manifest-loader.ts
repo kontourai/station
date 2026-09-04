@@ -9,6 +9,7 @@ import {
 import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
+import { parseWorkspacePaneHostContribution } from './workspace-pane-host-contributions.js';
 
 const SUBSCRIPTION_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 const SUBSCRIPTION_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$/;
@@ -72,6 +73,17 @@ export function parsePluginManifest(
     invalidManifest('invalid-manifest', 'Plugin manifest must be an object');
   }
   const candidate = value as Record<string, unknown>;
+  if (candidate.workspacePaneHost !== undefined) {
+    const contribution = parseWorkspacePaneHostContribution(
+      candidate.workspacePaneHost,
+    );
+    if (!contribution)
+      invalidManifest(
+        'invalid-manifest',
+        'Invalid Workspace Pane host contribution',
+      );
+    candidate.workspacePaneHost = contribution;
+  }
   if (typeof candidate.name !== 'string' || !candidate.name.trim()) {
     invalidManifest(
       'invalid-plugin-name',

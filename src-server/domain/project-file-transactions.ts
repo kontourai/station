@@ -67,6 +67,8 @@ export interface StoredFileRevision<T> {
 
 export interface ProjectStoredFileRevision<T> extends StoredFileRevision<T> {
   createLayout(layoutSlug: string, value: unknown): Promise<void>;
+  /** Server-only read admission under the existing Project mutation owner. */
+  withCurrentRead?<R>(operation: (value: T) => Promise<R>): Promise<R>;
 }
 
 export interface ProjectFileTransactionFaults {
@@ -292,6 +294,9 @@ export class ProjectFileTransactions {
       );
     }
     const expected = snapshot.fingerprint;
+    const admissionValue = options.projectRevision
+      ? structuredClone(value)
+      : undefined;
     let intent: string | undefined;
     let pending: Promise<void> | undefined;
     let applied = false;
@@ -320,6 +325,19 @@ export class ProjectFileTransactions {
 
     const revision = {
       value,
+      ...(options.projectRevision
+        ? {
+            withCurrentRead: <R>(operation: (current: T) => Promise<R>) =>
+              this.#withProjectLock(projectSlug, async () => {
+                if (readFingerprint(path) !== expected) {
+                  throw new FileStorageConflictError(
+                    'Project changed before invocation admission',
+                  );
+                }
+                return operation(structuredClone(admissionValue as T));
+              }),
+          }
+        : {}),
       replace: (next: T): Promise<void> => {
         const serialized = JSON.stringify(next);
         const ownedNext = JSON.parse(serialized) as T;

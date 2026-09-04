@@ -162,12 +162,19 @@ function parseAction(value: unknown): WorkspacePaneHostPromptAction | null {
   ) {
     return null;
   }
-  const intentFields = ['kind', 'prompt'];
+  const intentFields = [
+    'kind',
+    intentInput.kind === 'plugin-prompt' ? 'promptId' : 'prompt',
+  ];
   if (intentInput.agent !== undefined) intentFields.push('agent');
   if (
     !exact(intentInput, intentFields) ||
-    intentInput.kind !== 'prompt' ||
-    !promptText(intentInput.prompt)
+    !(
+      (intentInput.kind === 'prompt' && promptText(intentInput.prompt)) ||
+      (intentInput.kind === 'plugin-prompt' &&
+        typeof intentInput.promptId === 'string' &&
+        ID.test(intentInput.promptId))
+    )
   ) {
     return null;
   }
@@ -182,8 +189,12 @@ function parseAction(value: unknown): WorkspacePaneHostPromptAction | null {
     ...(typeof actionInput.icon === 'string' ? { icon: actionInput.icon } : {}),
     presentation: actionInput.presentation,
     intent: {
-      kind: 'prompt',
-      prompt: intentInput.prompt,
+      ...(intentInput.kind === 'plugin-prompt'
+        ? {
+            kind: 'plugin-prompt' as const,
+            promptId: intentInput.promptId as string,
+          }
+        : { kind: 'prompt' as const, prompt: intentInput.prompt as string }),
       ...(agent ? { agent } : {}),
     },
   };
@@ -494,8 +505,7 @@ export function createWorkspacePaneHostContribution(input: {
   if (
     !declaration ||
     !isCanonicalPluginId(input.owner.pluginId) ||
-    !Number.isSafeInteger(input.owner.installationGeneration) ||
-    input.owner.installationGeneration < 1 ||
+    !/^sha256:[a-f0-9]{64}$/.test(input.owner.installationGeneration) ||
     !text(input.projectId, 256)
   ) {
     throw new Error('Invalid Workspace Pane host contribution composition');
@@ -505,18 +515,26 @@ export function createWorkspacePaneHostContribution(input: {
     installationGeneration: input.owner.installationGeneration,
   });
   const projectId = input.projectId;
+  const resolveOwnPluginAgent = input.agents.resolveOwnPluginAgent.bind(
+    input.agents,
+  );
+  const resolveStationAgent = input.agents.resolveStationAgent.bind(
+    input.agents,
+  );
+  const currentOwner = input.authority.current.bind(input.authority);
+  const launch = input.launcher.launch.bind(input.launcher);
   const resolveAgent = async (
     ref: WorkspacePaneHostAgentRef,
   ): Promise<WorkspacePaneHostAgentResolution> => {
     try {
       const result =
         ref.kind === 'own-plugin-agent'
-          ? await input.agents.resolveOwnPluginAgent({
+          ? await resolveOwnPluginAgent({
               owner,
               projectId,
               agentId: ref.agentId,
             })
-          : await input.agents.resolveStationAgent({
+          : await resolveStationAgent({
               projectId,
               agentId: ref.agentId,
             });
@@ -552,7 +570,7 @@ export function createWorkspacePaneHostContribution(input: {
     'current' | 'retired' | 'unavailable'
   > => {
     try {
-      const result = await input.authority.current(owner);
+      const result = await currentOwner(owner);
       return result.state === 'current' ||
         result.state === 'retired' ||
         result.state === 'unavailable'
@@ -624,7 +642,7 @@ export function createWorkspacePaneHostContribution(input: {
           defaultAgent,
         },
       };
-      return { state: 'available', projection };
+      return { state: 'available', projection: structuredClone(projection) };
     },
 
     async dispatch(
@@ -634,6 +652,9 @@ export function createWorkspacePaneHostContribution(input: {
         (candidate) => actionKey(owner, projectId, candidate.id) === actionId,
       );
       if (!action) return { state: 'refused', reason: 'action-not-found' };
+      // This projection-only compatibility dispatcher has no installed-body
+      // authority. Registered prompts require the owned invocation capability.
+      if (action.intent.kind !== 'prompt') return { state: 'unavailable' };
       const before = await ownerState();
       if (before !== 'current') {
         return before === 'retired'
@@ -659,7 +680,7 @@ export function createWorkspacePaneHostContribution(input: {
         };
       }
       try {
-        const launched = await input.launcher.launch({
+        const launched = await launch({
           owner,
           projectId,
           actionKey: actionId,
