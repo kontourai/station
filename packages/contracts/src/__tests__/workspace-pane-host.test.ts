@@ -611,6 +611,20 @@ describe('Workspace Pane host document', () => {
     );
     expect(repaired.document?.instances[0]).toBe(pane);
 
+    // The recovery path: every persisted candidate is rejected, so the document
+    // is rebuilt from the catalog alone and must still carry its records.
+    const rebuilt = restoreWorkspacePaneHostDocument(
+      {
+        ...(persisted as Record<string, unknown>),
+        instances: [{ ...pane, stateKey: 'different-state' }],
+      },
+      catalog,
+    );
+    expect(rebuilt.failures.map((failure) => failure.code)).toContain(
+      'unknown-instance',
+    );
+    expect(rebuilt.document?.instances[0]).toBe(pane);
+
     // The baseline document seeded straight from a catalog.
     expect(
       createWorkspacePaneHostBaselineDocument(
@@ -631,5 +645,44 @@ describe('Workspace Pane host document', () => {
     expect(admitted).toEqual(pane);
     expect(admitted).not.toBe(widened);
     expect(Object.keys(admitted!)).not.toContain('unexpected');
+  });
+
+  test('canonicalizes records carrying an own key that reads as equal but the parser never produces', () => {
+    const pane = instance('one');
+    const nonEnumerable = Object.defineProperty({ ...pane }, 'hidden', {
+      value: 'not-a-contract-field',
+      enumerable: false,
+    });
+    const undefinedValued = { ...pane, unexpected: undefined };
+    // Both are admitted by `hasSafeDataGraph` and both read as deeply equal to
+    // the canonical record — `Object.keys` and JSON hide the extra key
+    // entirely — so only own-key equality separates them from it.
+    for (const supplied of [nonEnumerable, undefinedValued]) {
+      const admitted = restoreWorkspacePaneHostDocument(documentWith(pane), [
+        supplied as typeof pane,
+      ]).document?.instances[0];
+      expect(admitted).toEqual(pane);
+      expect(admitted).not.toBe(supplied);
+      expect(Reflect.ownKeys(admitted!)).toEqual([
+        'version',
+        'descriptorId',
+        'instanceId',
+        'stateKey',
+      ]);
+    }
+  });
+
+  test('retains a null-prototype record, which is the shape every catalog record has', () => {
+    // `cloneData` builds catalog records with `Object.create(null)`, so a guard
+    // that demanded `Object.prototype` would copy every record this contract
+    // exists to hand back. A null prototype carries no extra own key and is the
+    // more inert of the two, so it is canonical here.
+    const pane = instance('one');
+    const nullPrototype = Object.assign(Object.create(null), pane);
+    expect(
+      restoreWorkspacePaneHostDocument(documentWith(pane), [
+        nullPrototype as typeof pane,
+      ]).document?.instances[0],
+    ).toBe(nullPrototype);
   });
 });

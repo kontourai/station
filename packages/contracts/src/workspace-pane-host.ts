@@ -563,18 +563,62 @@ function parseBoundedWorkspacePaneInstance(
 }
 
 /**
+ * Own-key equality, which `structurallyEqual` does not give: it compares
+ * ENUMERABLE STRING keys by value, so it also reports equal for a record
+ * carrying a non-enumerable own property or an own key whose value is
+ * `undefined`. `hasSafeDataGraph` admits both — it rejects only accessors and
+ * non-plain prototypes — and JSON and `Object.keys` hide both, so such a record
+ * would be retained while carrying a field the parse never produced. Comparing
+ * `Reflect.ownKeys` catches them.
+ *
+ * A null prototype is deliberately NOT rejected: `cloneData` builds every
+ * catalog record with `Object.create(null)`, so requiring `Object.prototype`
+ * would canonicalize the exact records this contract exists to hand back.
+ * Objects must therefore be plain (`Object.prototype` or null) and arrays must
+ * be ordinary arrays — the same prototype rule `hasSafeDataGraph` enforces.
+ */
+function sameOwnShape(candidate: unknown, canonical: unknown): boolean {
+  if (canonical === null || typeof canonical !== 'object')
+    return candidate === null || typeof candidate !== 'object';
+  if (candidate === null || typeof candidate !== 'object') return false;
+  const isArray = Array.isArray(canonical);
+  if (isArray !== Array.isArray(candidate)) return false;
+  const prototype = Object.getPrototypeOf(candidate);
+  if (
+    isArray
+      ? prototype !== Array.prototype
+      : prototype !== Object.prototype && prototype !== null
+  )
+    return false;
+  const ownKeys = (value: object) =>
+    Reflect.ownKeys(value).filter((key) => !isArray || key !== 'length');
+  const keys = ownKeys(candidate);
+  if (keys.length !== ownKeys(canonical).length) return false;
+  return keys.every(
+    (key) =>
+      typeof key === 'string' &&
+      Object.hasOwn(canonical, key) &&
+      sameOwnShape(
+        (candidate as Record<string, unknown>)[key],
+        (canonical as Record<string, unknown>)[key],
+      ),
+  );
+}
+
+/**
  * Admits a catalog-supplied record, keeping the caller's own object whenever it
- * already is its canonical form. The parse stays the admission gate — a record
- * that is not already canonical is replaced by its canonical form — but the
- * catalog's record is handed back by identity, not by copy: restoration and the
- * baseline document must carry the same instance objects the catalog holds, or
- * two hosts reading one catalog silently diverge and the catalog's own freeze
- * stops applying to the pane a host renders.
+ * already is exactly what the parse would have produced. The parse stays the
+ * admission gate — a record that is not already canonical is replaced by its
+ * canonical form — but a record that is canonical is handed back by identity,
+ * not by copy, which is what this module's documented catalog contract requires
+ * of restoration ("matching IDs must retain the exact known record", below).
+ * A caller that freezes or interns its catalog records therefore still holds
+ * those same objects after restoration.
  */
 function canonicalKnownInstance(value: unknown): WorkspacePaneInstance | null {
   const parsed = parseBoundedWorkspacePaneInstance(value);
   if (!parsed) return null;
-  return structurallyEqual(value, parsed)
+  return structurallyEqual(value, parsed) && sameOwnShape(value, parsed)
     ? (value as WorkspacePaneInstance)
     : parsed;
 }
