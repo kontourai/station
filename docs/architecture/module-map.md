@@ -21,6 +21,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | --- | --- | --- |
 | [SurfaceRegistry](#surfaceregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/surface-registry.ts` |
 | [PluginCommandRegistry](#plugincommandregistry) | Project inert plugin actions into the host command palette without creating navigation, shortcut, or execution authority. | `src-ui/src/components/plugin-command-registry.ts` |
+| [InstalledPluginInventory](#installedplugininventory) | Keep valid and rejected installed plugin directories visible from one filesystem-backed inventory. | `src-server/services/plugins/installed-plugin-inventory.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
@@ -97,9 +98,9 @@ Hosted multi-tenant execution remains unavailable until this receipt carries
 an exact tenant binding.
 
 **Seam, Implementation, callers, and tests.** The server manifest loader is the
-admission parser and the installed-plugin collection accepts only canonical
-directory/manifest identity pairs, excluding `.preview-*` and every other
-host-owned staging tree. It exposes normalized declarations, their generation,
+admission parser. The installed-plugin collection preserves rejected and legacy
+alias visibility, but only canonical directory/manifest identity pairs expose
+commands; `.preview-*` and other hidden staging trees remain excluded. It exposes normalized declarations, their generation,
 and server-derived operation capability. Install preview lists each command as
 a non-skippable package declaration. `CommandPalette` joins the projection
 after its built-in, shortcut-derived, Project, Pane, Agent, and Skill rows are
@@ -117,6 +118,14 @@ is withdrawn. Behavioral coverage lives in
 trees in installed inventory, raw plugin routes, manifest callbacks or markup,
 plugin-defined shortcuts, client-inferred permission grants, unreceipted local
 effects, auto-sending composer text, or a second navigation registry.
+
+## InstalledPluginInventory
+
+**Intent and Interface.** `scanInstalledPluginInventory()` performs one fresh deterministic scan of the existing installed-plugin directory. A readable valid manifest returns its parsed manifest; a missing, unreadable, unsafe, malformed, or invalid manifest returns a rejected entry naming only the directory plus a bounded path-free reason and recovery instruction. Rejections are not persisted in a second registry.
+
+**Contract.** The scanner reuses the canonical manifest loader, including its Agent Plugins dispatch when that loader is present. Hidden staging directories remain absent. Malformed JSON never echoes source bytes, and filesystem diagnostics never reach the collection response. Every rejection emits one structured warning through the Station logger supplied by the caller. Provider resolution and Registry installed-state consume only valid scan entries, while `GET /api/plugins` projects both valid and rejected entries. A rejected directory has no trustworthy plugin version, permissions, bundle, settings, update, or removal claim. The Plugins surface therefore gives it a distinct selection identity, renders the exact rejection and repair instruction, and offers only the existing Reload plugins recovery action.
+
+**Seam, Implementation, callers, and tests.** The canonical collection route, provider resolver, and JSON manifest registry share this scanner; the SDK validates the rejected-row union and the existing Plugins view renders it. Unit tests cover classification, secret/path suppression, fresh repair recovery, logger routing, SDK validation, view-model reload ordering, and visible detail controls. `tests/plugin-rejection-visibility.spec.ts` defines the managed-browser repair/reload proof; its local execution remains `NOT_VERIFIED` when the configured Playwright Chromium installation is absent. **Do not reintroduce:** catch-and-continue inventory loss, `console.debug` rejection reporting, a persisted rejection cache, a fake version, valid-plugin controls on a rejected row, raw JSON parse snippets, filesystem paths, or treating a directory name as validated plugin identity.
 
 ## DesktopStartupReadiness
 

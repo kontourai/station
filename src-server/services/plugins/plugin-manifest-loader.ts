@@ -18,6 +18,35 @@ const OPERATIONAL_EVENT_TYPE =
   /^(?:station|(?:plugin|kit)\.[a-z][a-z0-9-]*)\.[a-z][a-z0-9.-]*\/v[1-9][0-9]*$/;
 const MAX_PLUGIN_EVENT_SUBSCRIPTIONS = 16;
 
+export type PluginManifestValidationFailureCode =
+  | 'invalid-plugin-name'
+  | 'reserved-plugin-name'
+  | 'missing-version'
+  | 'invalid-workspace-panes'
+  | 'invalid-manifest';
+
+/**
+ * Stable loader authority for public rejection classification. Messages may
+ * contain manifest-controlled values and must never be used as classifiers.
+ */
+export class PluginManifestValidationError extends Error {
+  readonly name = 'PluginManifestValidationError';
+
+  constructor(
+    readonly code: PluginManifestValidationFailureCode,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+function invalidManifest(
+  code: PluginManifestValidationFailureCode,
+  message: string,
+): never {
+  throw new PluginManifestValidationError(code, message);
+}
+
 export async function readPluginManifestFile(
   manifestPath: string,
 ): Promise<PluginManifest> {
@@ -42,11 +71,14 @@ export function parsePluginManifest(
   });
   const value = JSON.parse(raw) as unknown;
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Plugin manifest must be an object');
+    invalidManifest('invalid-manifest', 'Plugin manifest must be an object');
   }
   const candidate = value as Record<string, unknown>;
   if (typeof candidate.name !== 'string' || !candidate.name.trim()) {
-    throw new Error('Plugin manifest name must be a non-empty string');
+    invalidManifest(
+      'invalid-plugin-name',
+      'Plugin manifest name must be a non-empty string',
+    );
   }
   // archive#4307: `manifest.name` is a STORE KEY, not a display string — the
   // plugin-overrides store, the grants store, the provider resolver and the
@@ -66,17 +98,22 @@ export function parsePluginManifest(
   // but `constructor` and `prototype` SATISFY it, and the reserved-key set
   // refuses those three but not `../evil` or `Name With Spaces`.
   if (!isCanonicalPluginId(candidate.name)) {
-    throw new Error(
+    invalidManifest(
+      'invalid-plugin-name',
       `Plugin manifest name '${candidate.name}' is not a canonical plugin id under Agent Plugins 1.0 (1-64 lowercase letters, digits, hyphens or periods; alphanumeric endpoints; no repeated hyphens or periods)`,
     );
   }
   if (isReservedObjectKey(candidate.name)) {
-    throw new Error(
+    invalidManifest(
+      'reserved-plugin-name',
       `Plugin manifest name '${candidate.name}' is a reserved object key and cannot name a plugin`,
     );
   }
   if (typeof candidate.version !== 'string' || !candidate.version.trim()) {
-    throw new Error('Plugin manifest version must be a non-empty string');
+    invalidManifest(
+      'missing-version',
+      'Plugin manifest version must be a non-empty string',
+    );
   }
   const commandContributions = parsePluginCommandContributions(
     candidate.extensions,
@@ -107,7 +144,8 @@ export function parsePluginManifest(
     candidate.settings.forEach((field, index) => {
       const key = (field as Record<string, unknown> | null)?.key;
       if (typeof key === 'string' && isReservedObjectKey(key)) {
-        throw new Error(
+        invalidManifest(
+          'invalid-manifest',
           `Plugin manifest settings[${index}].key '${key}' is a reserved object key and cannot name a setting`,
         );
       }
@@ -119,16 +157,25 @@ export function parsePluginManifest(
       typeof candidate.layout !== 'object' ||
       Array.isArray(candidate.layout)
     ) {
-      throw new Error('Plugin manifest layout must be an object');
+      invalidManifest(
+        'invalid-manifest',
+        'Plugin manifest layout must be an object',
+      );
     }
     const source = (candidate.layout as Record<string, unknown>).source;
     if (source !== undefined && typeof source !== 'string') {
-      throw new Error('Plugin layout source must be a string');
+      invalidManifest(
+        'invalid-manifest',
+        'Plugin layout source must be a string',
+      );
     }
   }
   if (candidate.workspacePanes !== undefined) {
     if (!Array.isArray(candidate.workspacePanes)) {
-      throw new Error('Plugin workspacePanes must be an array');
+      invalidManifest(
+        'invalid-workspace-panes',
+        'Plugin workspacePanes must be an array',
+      );
     }
     // One manifest, one contribution channel (archive#3543). A manifest
     // combining `workspacePanes` with a legacy `layout`/`layouts` declaration
@@ -138,7 +185,8 @@ export function parsePluginManifest(
     // ambiguous. The check is deliberately one-way: a legacy-only manifest is
     // the archive#2713 retirement path and never reaches it.
     if (candidate.layout !== undefined || candidate.layouts !== undefined) {
-      throw new Error(
+      invalidManifest(
+        'invalid-workspace-panes',
         'Plugin workspacePanes cannot be combined with legacy layout declarations',
       );
     }
@@ -147,30 +195,37 @@ export function parsePluginManifest(
       if (pane && typeof pane === 'object' && !Array.isArray(pane)) {
         const descriptor = pane as Record<string, unknown>;
         if (Object.hasOwn(descriptor, 'contextRequirement')) {
-          throw new Error(
+          invalidManifest(
+            'invalid-workspace-panes',
             `Plugin workspacePanes[${index}] uses retired field 'contextRequirement'; write modes: [{ id: 'default', contextRequirement: … }] instead`,
           );
         }
         if (Object.hasOwn(descriptor, 'dockability')) {
-          throw new Error(
+          invalidManifest(
+            'invalid-workspace-panes',
             `Plugin workspacePanes[${index}] uses retired field 'dockability'; write modes: [{ id: 'default', contextRequirement: … }] instead`,
           );
         }
       }
       const parsed = parseWorkspacePaneDescriptor(pane);
       if (!parsed) {
-        throw new Error(`Plugin workspacePanes[${index}] is invalid`);
+        invalidManifest(
+          'invalid-workspace-panes',
+          `Plugin workspacePanes[${index}] is invalid`,
+        );
       }
       if (
         parsed.provenance.origin !== 'plugin' ||
         parsed.provenance.pluginId !== candidate.name
       ) {
-        throw new Error(
+        invalidManifest(
+          'invalid-workspace-panes',
           `Plugin workspacePanes[${index}] provenance must name plugin '${candidate.name}'`,
         );
       }
       if (ids.has(parsed.id)) {
-        throw new Error(
+        invalidManifest(
+          'invalid-workspace-panes',
           `Plugin workspacePanes contains duplicate id '${parsed.id}'`,
         );
       }
@@ -180,13 +235,17 @@ export function parsePluginManifest(
   }
   if (candidate.operationalEventSubscriptions !== undefined) {
     if (!Array.isArray(candidate.operationalEventSubscriptions)) {
-      throw new Error('Plugin operationalEventSubscriptions must be an array');
+      invalidManifest(
+        'invalid-manifest',
+        'Plugin operationalEventSubscriptions must be an array',
+      );
     }
     if (
       candidate.operationalEventSubscriptions.length >
       MAX_PLUGIN_EVENT_SUBSCRIPTIONS
     ) {
-      throw new Error(
+      invalidManifest(
+        'invalid-manifest',
         `Plugin operationalEventSubscriptions may contain at most ${MAX_PLUGIN_EVENT_SUBSCRIPTIONS} entries`,
       );
     }
@@ -194,7 +253,8 @@ export function parsePluginManifest(
       candidate.operationalEventSubscriptions.length > 0 &&
       typeof candidate.serverModule !== 'string'
     ) {
-      throw new Error(
+      invalidManifest(
+        'invalid-manifest',
         'Plugin operationalEventSubscriptions require a serverModule',
       );
     }
@@ -202,7 +262,8 @@ export function parsePluginManifest(
     candidate.operationalEventSubscriptions =
       candidate.operationalEventSubscriptions.map((value, index) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
-          throw new Error(
+          invalidManifest(
+            'invalid-manifest',
             `Plugin operationalEventSubscriptions[${index}] must be an object`,
           );
         }
@@ -218,17 +279,20 @@ export function parsePluginManifest(
             ].includes(key),
         );
         if (unknown.length > 0) {
-          throw new Error(
+          invalidManifest(
+            'invalid-manifest',
             `Plugin operationalEventSubscriptions[${index}] contains unknown field '${unknown[0]}'`,
           );
         }
         if (typeof entry.id !== 'string' || !SUBSCRIPTION_ID.test(entry.id)) {
-          throw new Error(
+          invalidManifest(
+            'invalid-manifest',
             `Plugin operationalEventSubscriptions[${index}].id is invalid`,
           );
         }
         if (ids.has(entry.id)) {
-          throw new Error(
+          invalidManifest(
+            'invalid-manifest',
             `Plugin operationalEventSubscriptions contains duplicate id '${entry.id}'`,
           );
         }
@@ -237,7 +301,8 @@ export function parsePluginManifest(
           typeof entry.version !== 'string' ||
           !SUBSCRIPTION_VERSION.test(entry.version)
         ) {
-          throw new Error(
+          invalidManifest(
+            'invalid-manifest',
             `Plugin operationalEventSubscriptions[${index}].version is invalid`,
           );
         }
@@ -251,7 +316,8 @@ export function parsePluginManifest(
               typeof type === 'string' && OPERATIONAL_EVENT_TYPE.test(type),
           )
         ) {
-          throw new Error(
+          invalidManifest(
+            'invalid-manifest',
             `Plugin operationalEventSubscriptions[${index}].eventTypes is invalid`,
           );
         }
@@ -259,7 +325,8 @@ export function parsePluginManifest(
           entry.projection !== undefined &&
           !['metadata', 'envelope'].includes(entry.projection as string)
         ) {
-          throw new Error(
+          invalidManifest(
+            'invalid-manifest',
             `Plugin operationalEventSubscriptions[${index}].projection is invalid`,
           );
         }
@@ -267,7 +334,8 @@ export function parsePluginManifest(
           entry.requiredScopes ?? [],
         );
         if (!scopes.ok) {
-          throw new Error(
+          invalidManifest(
+            'invalid-manifest',
             `Plugin operationalEventSubscriptions[${index}].requiredScopes is invalid`,
           );
         }

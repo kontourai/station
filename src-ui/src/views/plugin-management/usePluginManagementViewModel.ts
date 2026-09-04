@@ -2,6 +2,7 @@ import type { PermissionTier } from '@kontourai/station-contracts/plugin';
 import {
   type PluginProviderDetail,
   type PluginSettingField,
+  reloadPlugins,
   useAddProjectLayoutFromPluginMutation,
   useCreateProjectMutation,
   usePluginChangelogQuery,
@@ -20,7 +21,7 @@ import {
   waitForAgentHealth,
 } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useProjects } from '../../contexts/ProjectsContext';
@@ -31,15 +32,17 @@ import {
   revokeNeedsConfirmation,
 } from '../../core/permission-vocabulary';
 import { useUrlSelection } from '../../hooks/useUrlSelection';
-import type {
-  Plugin,
-  PluginMessage,
-  PluginUpdateSummary,
-  PreviewData,
+import {
+  isRejectedPlugin,
+  type Plugin,
+  type PluginMessage,
+  type PluginUpdateSummary,
+  type PreviewData,
 } from './types';
 import {
   buildPluginListItems,
   filterPlugins,
+  pluginSelectionId,
   slugifyProjectName,
   toggleSetValue,
 } from './view-utils';
@@ -76,6 +79,8 @@ export function usePluginManagementViewModel() {
     select: selectPlugin,
     deselect: deselectPlugin,
   } = useUrlSelection('/plugins');
+  const selectedPluginRef = useRef(selectedPlugin);
+  selectedPluginRef.current = selectedPlugin;
 
   // `error`/`refetch` too, or a failed read renders the definitive
   // "No plugins installed yet" over plugins Station simply could not read.
@@ -88,7 +93,11 @@ export function usePluginManagementViewModel() {
     data: Plugin[];
     error?: unknown;
     isLoading: boolean;
-    refetch: () => unknown;
+    refetch: () => Promise<{
+      data?: Plugin[];
+      error: unknown;
+      isError: boolean;
+    }>;
   };
   const { data: updates = [] } = usePluginUpdatesQuery() as {
     data: PluginUpdateSummary[];
@@ -119,22 +128,22 @@ export function usePluginManagementViewModel() {
     null,
   );
   const [changelogExpanded, setChangelogExpanded] = useState(false);
+  const rejectedReloadInFlight = useRef(false);
+  const [reloadRejectedPending, setReloadRejectedPending] = useState(false);
 
-  const selected = plugins.find((plugin) => plugin.name === selectedPlugin);
-
-  const { data: settingsData } = usePluginSettingsQuery(
-    selectedPlugin ?? undefined,
-    {
-      enabled: !!selectedPlugin && !!selected?.hasSettings,
-    },
+  const selected = plugins.find(
+    (plugin) => pluginSelectionId(plugin) === selectedPlugin,
   );
+  const selectedReady =
+    selected && !isRejectedPlugin(selected) ? selected : undefined;
 
-  const { data: changelogData } = usePluginChangelogQuery(
-    selectedPlugin ?? undefined,
-    {
-      enabled: !!selectedPlugin && !!selected?.git,
-    },
-  );
+  const { data: settingsData } = usePluginSettingsQuery(selectedReady?.name, {
+    enabled: !!selectedReady?.hasSettings,
+  });
+
+  const { data: changelogData } = usePluginChangelogQuery(selectedReady?.name, {
+    enabled: !!selectedReady?.git,
+  });
 
   const saveSettingsMutation = usePluginSettingsMutation();
   const previewMutation = usePluginPreviewMutation();
@@ -165,8 +174,8 @@ export function usePluginManagementViewModel() {
   const toggleProviderMutation = usePluginProviderToggleMutation();
 
   const { data: providerDetails, isLoading: loadingProviderDetails } =
-    usePluginProvidersQuery(selectedPlugin ?? undefined, {
-      enabled: !!selectedPlugin && expandedProviders.has(selectedPlugin),
+    usePluginProvidersQuery(selectedReady?.name, {
+      enabled: !!selectedReady && expandedProviders.has(selectedReady.name),
     });
 
   const filtered = useMemo(
@@ -177,9 +186,89 @@ export function usePluginManagementViewModel() {
 
   async function reloadClientPluginRegistry() {
     try {
-      await pluginRegistry.reload();
+      const registryState = await pluginRegistry.reload();
+      if (registryState === 'degraded') {
+        throw new Error('browser plugin registry is still degraded');
+      }
     } catch (error) {
       console.warn('Plugin registry reload failed', error);
+    }
+  }
+
+  async function reloadRejectedPlugin() {
+    if (rejectedReloadInFlight.current) return;
+    const selectionAtStart = selectedPlugin;
+    const rejectedDirectoryAtStart =
+      selected && isRejectedPlugin(selected) ? selected.name : null;
+    rejectedReloadInFlight.current = true;
+    setReloadRejectedPending(true);
+    setMessage(null);
+    try {
+      // Use the direct request rather than the generic mutation hook here.
+      // That hook invalidates the collection as soon as the server answers,
+      // which can refetch before the browser registry has finished reloading.
+      await reloadPlugins();
+      // Recovery is one ordered operation. A stale client registry means the
+      // repaired package is not ready even if the server reload succeeded.
+      const registryState = await pluginRegistry.reload();
+      if (registryState === 'degraded') {
+        throw new Error('browser plugin registry is still degraded');
+      }
+      // The canonical reload mutation invalidates these plugin-derived graph
+      // caches. Preserve that contract after the ordered server -> browser
+      // registry boundary; the plugin collection itself is explicitly
+      // refetched below so its failure remains observable here.
+      for (const queryKey of [
+        ['plugin-updates'],
+        ['layouts'],
+        ['agents'],
+        ['projects'],
+      ]) {
+        queryClient.invalidateQueries({ queryKey });
+      }
+      const refreshed = await refetchPlugins();
+      if (refreshed.isError) {
+        throw refreshed.error instanceof Error
+          ? refreshed.error
+          : new Error('Plugin collection refresh failed');
+      }
+      if (
+        selectionAtStart &&
+        selectedPluginRef.current === selectionAtStart &&
+        rejectedDirectoryAtStart
+      ) {
+        const repaired = refreshed.data?.find(
+          (plugin) =>
+            !isRejectedPlugin(plugin) &&
+            plugin.name === rejectedDirectoryAtStart,
+        );
+        const stillRejected = refreshed.data?.find(
+          (plugin): plugin is Extract<Plugin, { status: 'rejected' }> =>
+            isRejectedPlugin(plugin) &&
+            pluginSelectionId(plugin) === selectionAtStart,
+        );
+        // A valid manifest in another directory can use this directory's
+        // name. The exact rejected selection remains authoritative until its
+        // row disappears; a same-name valid row alone does not prove repair.
+        if (stillRejected) {
+          setMessage({
+            type: 'error',
+            text: `${stillRejected.displayName} is still rejected. ${stillRejected.rejection.reason}`,
+          });
+        } else if (repaired) selectPlugin(repaired.name);
+        else deselectPlugin();
+      }
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error
+            ? `Plugins were not reloaded: ${error.message}`
+            : 'Plugins were not reloaded.',
+      });
+    } finally {
+      rejectedReloadInFlight.current = false;
+      setReloadRejectedPending(false);
     }
   }
 
@@ -482,6 +571,8 @@ export function usePluginManagementViewModel() {
     assigningLayout,
     pluginsError,
     refetchPlugins,
+    reloadRejectedPlugin,
+    reloadRejectedPending,
     changelogData,
     changelogExpanded,
     createProjectForLayout,

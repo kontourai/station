@@ -40,6 +40,88 @@ describe('client plugin collection', () => {
     await expect(listPlugins('https://station.example')).rejects.toThrow(
       'Plugin collection response is malformed',
     );
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          plugins: [
+            { status: 'quarantined', name: 'future-state', version: '1' },
+          ],
+        }),
+      ),
+    );
+    await expect(listPlugins('https://station.example')).rejects.toThrow(
+      'Plugin collection response is malformed',
+    );
+  });
+
+  test('preserves a validated rejected-manifest row without inventing a version', async () => {
+    const rejected = {
+      status: 'rejected',
+      name: 'Legacy_Plugin',
+      displayName: 'Legacy_Plugin',
+      rejection: {
+        code: 'invalid-plugin-name',
+        reason: 'Plugin manifest name is not a canonical plugin id.',
+        recovery: {
+          kind: 'repair-manifest',
+          instruction: 'Repair plugin.json, then choose Reload plugins.',
+        },
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(Response.json({ plugins: [rejected] })),
+    );
+
+    await expect(listPlugins('https://station.example')).resolves.toEqual([
+      rejected,
+    ]);
+
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          Response.json({ plugins: [{ ...rejected, version: 'invented' }] }),
+        ),
+    );
+    await expect(listPlugins('https://station.example')).rejects.toThrow(
+      'Plugin collection response is malformed',
+    );
+
+    for (const malformed of [
+      {
+        ...rejected,
+        rejection: {
+          ...rejected.rejection,
+          recovery: {
+            ...rejected.rejection.recovery,
+            kind: ['repair-manifest'],
+          },
+        },
+      },
+      {
+        ...rejected,
+        rejection: {
+          ...rejected.rejection,
+          reason: 'Invalid\u202Eplugin',
+        },
+      },
+    ]) {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(Response.json({ plugins: [malformed] })),
+      );
+      await expect(listPlugins('https://station.example')).rejects.toThrow(
+        'Plugin collection response is malformed',
+      );
+    }
   });
 
   test('preserves a stable grants-unavailable failure envelope', async () => {

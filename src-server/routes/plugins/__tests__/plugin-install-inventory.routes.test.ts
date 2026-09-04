@@ -97,6 +97,16 @@ describe('installed plugin inventory route', () => {
           },
         ],
       }),
+      expect.objectContaining({
+        name: 'other-plugin',
+        commandContributions: [],
+        commandCapabilities: {
+          invokeDeclaredOperation: expect.objectContaining({
+            available: false,
+          }),
+        },
+      }),
     ]);
+    expect(body.plugins[1]).not.toHaveProperty('commandGeneration');
   });
 });
