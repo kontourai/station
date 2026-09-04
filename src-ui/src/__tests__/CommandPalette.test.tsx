@@ -801,6 +801,81 @@ describe('CommandPalette', () => {
     }
   });
 
+  test.each(['unchanged', 'edited', 'edited-back', 'recreated', 'removed'])(
+    'applies delayed plugin seed only to its unchanged draft: %s',
+    async (change) => {
+      const id = 'session-draft-fence';
+      activeChatsStore.initChat(id, {
+        agentSlug: 'station',
+        agentName: 'Station',
+        title: 'Draft fence chat',
+      });
+      activeChatsStore.updateChat(id, { input: 'Original draft' });
+      activeChatMock = id;
+      pluginsMock = [
+        {
+          name: 'demo-plugin',
+          version: '1.0.0',
+          commandGeneration: 'a'.repeat(64),
+          commandContributions: [
+            {
+              version: '1.0',
+              id: 'demo-plugin.seed',
+              title: 'Seed this draft',
+              intent: { kind: 'seed-composer', text: 'Plugin seed' },
+            },
+          ],
+        },
+      ];
+      let finish!: (receipt: { receiptId: string }) => void;
+      authorizePluginPaletteCommand.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      try {
+        await renderCommandPalette();
+        open();
+        fireEvent.click(
+          screen.getByRole('option', { name: /Seed this draft/ }),
+        );
+        expect(authorizePluginPaletteCommand).toHaveBeenCalledOnce();
+        act(() => {
+          if (change === 'edited' || change === 'edited-back') {
+            activeChatsStore.updateChat(id, { input: 'New user draft' });
+            if (change === 'edited-back')
+              activeChatsStore.updateChat(id, { input: 'Original draft' });
+          } else if (change === 'recreated' || change === 'removed') {
+            activeChatsStore.removeChat(id);
+            if (change === 'recreated') {
+              activeChatsStore.initChat(id, {
+                agentSlug: 'station',
+                agentName: 'Station',
+                title: 'Replacement draft chat',
+              });
+              activeChatsStore.updateChat(id, { input: 'Original draft' });
+            }
+          }
+        });
+        await act(async () => finish({ receiptId: 'receipt-draft' }));
+        expect(activeChatsStore.getSnapshot()[id]?.input).toBe(
+          change === 'unchanged'
+            ? 'Plugin seed'
+            : change === 'edited'
+              ? 'New user draft'
+              : change === 'removed'
+                ? undefined
+                : 'Original draft',
+        );
+        if (change !== 'unchanged')
+          expect(setDockStateMock).not.toHaveBeenCalled();
+      } finally {
+        finish?.({ receiptId: 'cleanup' });
+        activeChatsStore.removeChat(id);
+      }
+    },
+  );
+
   test('does not advertise a preview-hidden surface through a plugin command', async () => {
     pluginsMock = [
       {

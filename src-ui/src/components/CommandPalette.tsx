@@ -668,6 +668,11 @@ export function CommandPalette() {
                 ? { kind: 'composer' as const, sessionId: activeSessionId }
                 : null;
           if (!target) return;
+          const draft =
+            target.kind === 'composer'
+              ? activeChatsStore.captureComposerDraft(target.sessionId)
+              : null;
+          if (target.kind === 'composer' && !draft) return;
           const context = {
             ...(activeSessionId
               ? {
@@ -744,9 +749,9 @@ export function CommandPalette() {
                 liveActiveSessionId === target.sessionId &&
                 activeChatsStore.getSnapshot()[liveActiveSessionId]
               ) {
-                activeChatsStore.updateChat(liveActiveSessionId, {
-                  input: contribution.intent.text,
-                });
+                if (!draft?.replaceInputIfUnchanged(contribution.intent.text)) {
+                  return;
+                }
                 setDockState(true);
                 close();
               }

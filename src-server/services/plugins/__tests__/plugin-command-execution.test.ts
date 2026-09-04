@@ -7,6 +7,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { PluginCommandContribution } from '@kontourai/station-contracts/agent-plugin';
 import {
   CLIENT_ORIGIN_VERSION,
   type ClientOrigin,
@@ -48,23 +49,22 @@ function fixture() {
   const pluginsDir = join(root, 'plugins');
   const pluginDir = join(pluginsDir, 'demo-plugin');
   mkdirSync(pluginDir, { recursive: true });
+  const command: PluginCommandContribution = {
+    version: '1.0',
+    id: 'demo-plugin.review',
+    title: 'Review work',
+    intent: {
+      kind: 'seed-composer',
+      text: 'Private prompt text must not enter the receipt.',
+    },
+  };
   const manifest = {
     name: 'demo-plugin',
     version: '1.0.0',
     extensions: {
       'io.kontourai.station': {
         schemaVersion: '1.0' as const,
-        commands: [
-          {
-            version: '1.0' as const,
-            id: 'demo-plugin.review',
-            title: 'Review work',
-            intent: {
-              kind: 'seed-composer' as const,
-              text: 'Private prompt text must not enter the receipt.',
-            },
-          },
-        ],
+        commands: [command],
       },
     },
   };
