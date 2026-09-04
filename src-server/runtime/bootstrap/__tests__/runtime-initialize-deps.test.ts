@@ -10,6 +10,7 @@ describe('createRuntimeInitializationDeps', () => {
       .mockImplementation(async (slug: string) => ({ slug }));
     const configureRoutes = vi.fn();
     const reloadAgents = vi.fn(async () => {});
+    const onACPConnectionsReady = vi.fn(async () => {});
     const replaceTemplateVariables = vi.fn(
       (text: string, agentName?: string) => `${text}:${agentName ?? ''}`,
     );
@@ -59,6 +60,7 @@ describe('createRuntimeInitializationDeps', () => {
       feedbackService: { kind: 'feedback' } as any,
       voiceService: { kind: 'voice' } as any,
       acpBridge: { kind: 'acp' } as any,
+      onACPConnectionsReady,
       orchestrationEventStore: { kind: 'events' } as any,
       usageAggregator: { kind: 'usage' } as any,
       activeAgents: new Map([['default', { id: 'agent' } as any]]),
@@ -106,6 +108,7 @@ describe('createRuntimeInitializationDeps', () => {
     expect(deps.createVoltAgentInstance).toBe(createVoltAgentInstance);
     expect(deps.configureRoutes).toBe(configureRoutes);
     expect(deps.reloadAgents).toBe(reloadAgents);
+    expect(deps.onACPConnectionsReady).toBe(onACPConnectionsReady);
     expect(deps.replaceTemplateVariables).toBe(replaceTemplateVariables);
     expect(deps.startHealthChecks).toBe(startHealthChecks);
     expect(deps.onCoreConfigReady).toBe(onCoreConfigReady);

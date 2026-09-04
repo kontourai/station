@@ -331,6 +331,9 @@ describe("the Station Agent's own definition (#3662)", () => {
       id: 'station',
       kind: 'station',
     });
+    await expect(loader.loadAgent('station')).resolves.toMatchObject({
+      tools: { mcpServers: ['station-control', 'station-docs'] },
+    });
   });
 
   it('heals an existing home at load, keeping everything else on execution', async () => {
