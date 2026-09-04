@@ -940,6 +940,15 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     const notarize = build;
     expect(notarize).toContain('--release-tag nightly-desktop');
     expect(notarize).toContain('--bundle-id io.kontourai.station.nightly');
+    // Nightly, and only Nightly, buys wall-clock time by overlapping the two
+    // notarization waits; its disk image therefore encloses an application
+    // whose ticket Gatekeeper resolves online rather than from a local staple.
+    // The flag has to be on the invocation itself, not merely in the step.
+    const notarizeInvocations = notarize
+      .split('\n')
+      .filter((line) => line.includes('macos-notarized-artifacts.mjs'));
+    expect(notarizeInvocations).toHaveLength(1);
+    expect(notarizeInvocations[0]).toContain(' --overlap-notarization ');
     expect(notarize).toContain('CFBundleShortVersionString');
     expect(notarize).toContain('CFBundleIdentifier');
     expect(notarize).toContain('macos-signing-readiness.mjs unlock');
