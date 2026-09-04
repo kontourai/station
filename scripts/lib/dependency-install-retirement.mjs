@@ -10,6 +10,7 @@ import {
   readdirSync,
   realpathSync,
   renameSync,
+  rmdirSync,
   rmSync,
   writeSync,
 } from 'node:fs';
@@ -81,6 +82,7 @@ export function withDependencyInstallGuard({
   run,
   warn = console.warn,
   removeTree = rmSync,
+  moveEntry = renameSync,
 }) {
   const canonicalRoot = realpathSync(root);
   const rootIdentity = lstatSync(canonicalRoot);
@@ -109,6 +111,7 @@ export function withDependencyInstallGuard({
   let receiptFd;
   let receiptIdentity;
   let retiredIdentity;
+  let recordDirectory;
   let result;
   const record = (phase) => {
     const text = `${JSON.stringify({ version: 1, pid: process.pid, phase, clean, previousRootTree: Boolean(retiredIdentity) })}\n`;
@@ -186,34 +189,68 @@ export function withDependencyInstallGuard({
   }
   try {
     assertOwned();
-    // Keep successful state (and small ordinary macOS directory metadata)
-    // rather than racing a .DS_Store writer during rmdir of the fixed guard.
+    // Publish only exact entries, then use rmdir as the atomic empty check.
     const children = readdirSync(guard);
-    const metadata = entry(join(guard, '.DS_Store'));
-    const ordinaryMetadata =
-      metadata?.isFile() &&
-      !metadata.isSymbolicLink() &&
-      metadata.size <= 65_536;
     if (
       !sameEntry(guard, guardIdentity) ||
-      !sameEntry(receiptPath, receiptIdentity) ||
-      children.some(
-        (name) =>
-          name !== 'receipt.json' &&
-          !(name === '.DS_Store' && ordinaryMetadata),
-      )
+      !sameEntry(receiptPath, receiptIdentity)
     )
       throw new Error('Dependency installer cleanup ownership changed.');
-    const recordDirectory = mkdtempSync(
-      join(canonicalRoot, DEPENDENCY_INSTALL_RECORD_PREFIX),
+    const metadataPath = join(guard, '.DS_Store');
+    const metadata = entry(metadataPath);
+    const ordinaryMetadata =
+      !metadata ||
+      (metadata.isFile() &&
+        !metadata.isSymbolicLink() &&
+        metadata.size <= 65_536);
+    if (
+      !ordinaryMetadata ||
+      children.some((name) => name !== 'receipt.json' && name !== '.DS_Store')
+    )
+      throw new Error('Dependency installer guard has unknown children.');
+    recordDirectory = mkdtempSync(
+      join(canonicalRoot, `${DEPENDENCY_INSTALL_RECORD_PREFIX}${process.pid}-`),
     );
-    renameSync(guard, join(recordDirectory, 'state'));
-    // Publication ends ownership of the fixed name. A later installer may
-    // acquire it immediately; never touch that name after this rename.
+    const archivedReceipt = join(recordDirectory, 'receipt.json');
+    moveEntry(receiptPath, archivedReceipt);
+    const receiptPublished = sameEntry(archivedReceipt, receiptIdentity);
+    let metadataPublished = true;
+    if (metadata) {
+      const current = entry(metadataPath);
+      if (
+        !current ||
+        current.dev !== metadata.dev ||
+        current.ino !== metadata.ino ||
+        !current.isFile() ||
+        current.isSymbolicLink() ||
+        current.size > 65_536
+      )
+        throw new Error(
+          'Dependency installer metadata changed before publication.',
+        );
+      const archivedMetadata = join(recordDirectory, '.DS_Store');
+      moveEntry(metadataPath, archivedMetadata);
+      const published = entry(archivedMetadata);
+      metadataPublished =
+        Boolean(published) &&
+        published.dev === metadata.dev &&
+        published.ino === metadata.ino &&
+        published.isFile() &&
+        !published.isSymbolicLink() &&
+        published.size <= 65_536;
+    }
+    if (
+      !receiptPublished ||
+      !metadataPublished ||
+      readdirSync(guard).length !== 0
+    )
+      throw new Error('Dependency installer guard changed during publication.');
+    // rmdir is the atomic final check: a raced-in child retains the fixed guard.
+    rmdirSync(guard);
     return result;
   } catch {
     warn(
-      `[dependency-lifecycle] Dependencies verified; installer guard cleanup is pending at ${JSON.stringify(guard)}. Inspect retained state before the next install.`,
+      `[dependency-lifecycle] Dependencies verified; installer guard cleanup is pending at ${JSON.stringify(guard)}${recordDirectory ? `; record state ${JSON.stringify(recordDirectory)}` : ''}. Inspect retained state before the next install.`,
     );
   }
   return result;

@@ -276,13 +276,90 @@ test('successful guard state and ordinary macOS metadata are preserved while the
     name.startsWith(DEPENDENCY_INSTALL_RECORD_PREFIX),
   );
   expect(records).toHaveLength(1);
-  const state = join(f.root, records[0], 'state');
+  const state = join(f.root, records[0]);
   expect(readFileSync(join(state, '.DS_Store'), 'utf8')).toBe('metadata');
   expect(
     JSON.parse(readFileSync(join(state, 'receipt.json'), 'utf8')).phase,
   ).toBe('verified');
   withDependencyInstallGuard({ root: f.root, clean: false, run: () => {} });
   expect(existsSync(f.guard)).toBe(false);
+});
+
+test('metadata created after validation keeps the fixed guard pending', () => {
+  const f = fixture();
+  const warn = vi.fn();
+  withDependencyInstallGuard({
+    root: f.root,
+    warn,
+    run: () => seed(f.modules),
+    moveEntry: (from, to) => {
+      renameSync(from, to);
+      if (from.endsWith('receipt.json'))
+        writeFileSync(join(f.guard, '.DS_Store'), 'x'.repeat(65_537));
+    },
+  });
+  expect(existsSync(f.guard)).toBe(true);
+  expect(statSync(join(f.guard, '.DS_Store')).size).toBe(65_537);
+  expect(warn).toHaveBeenCalledWith(
+    expect.stringContaining('cleanup is pending'),
+  );
+});
+
+test('metadata grown between validation and publication is preserved without releasing the fixed guard', () => {
+  const f = fixture();
+  const warn = vi.fn();
+  withDependencyInstallGuard({
+    root: f.root,
+    warn,
+    run: () => {
+      seed(f.modules);
+      writeFileSync(join(f.guard, '.DS_Store'), 'small');
+    },
+    moveEntry: (from, to) => {
+      if (from.endsWith('.DS_Store')) {
+        rmSync(from);
+        writeFileSync(from, 'x'.repeat(65_537));
+      }
+      renameSync(from, to);
+    },
+  });
+  expect(existsSync(f.guard)).toBe(true);
+  const record = readdirSync(f.root).find((name) =>
+    name.startsWith(DEPENDENCY_INSTALL_RECORD_PREFIX),
+  )!;
+  expect(statSync(join(f.root, record, '.DS_Store')).size).toBe(65_537);
+  expect(warn).toHaveBeenCalledWith(
+    expect.stringContaining('cleanup is pending'),
+  );
+});
+
+test('a receipt replacement during publication is preserved without releasing the fixed guard', () => {
+  const f = fixture();
+  const warn = vi.fn();
+  const original = join(f.root, 'owned-receipt');
+  withDependencyInstallGuard({
+    root: f.root,
+    warn,
+    run: () => seed(f.modules),
+    moveEntry: (from, to) => {
+      if (from.endsWith('receipt.json')) {
+        renameSync(from, original);
+        writeFileSync(from, 'replacement');
+      }
+      renameSync(from, to);
+    },
+  });
+  expect(existsSync(f.guard)).toBe(true);
+  expect(JSON.parse(readFileSync(original, 'utf8')).phase).toBe('verified');
+  const record = readdirSync(f.root).find((name) =>
+    name.startsWith(DEPENDENCY_INSTALL_RECORD_PREFIX),
+  )!;
+  expect(readFileSync(join(f.root, record, 'receipt.json'), 'utf8')).toBe(
+    'replacement',
+  );
+  expect(warn).toHaveBeenCalledWith(
+    expect.stringContaining('cleanup is pending'),
+  );
 });
 
 test.each(['large', 'directory', 'link'])(
