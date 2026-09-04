@@ -1,0 +1,31 @@
+name: Scheduled dependency advisory floor
+
+# PRs scan changed dependency inputs; this independent daily scan detects newly
+# disclosed advisories even when all committed dependency inputs are unchanged.
+on:
+  schedule:
+    - cron: '23 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-dependency-advisory
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - run: npm run dependencies:ci
+      - name: Audit every committed dependency scope
+        timeout-minutes: 9
+        run: npm run audit:policy
