@@ -96,6 +96,8 @@ describe('dependency audit attempt diagnostics', () => {
       windowsHide: true,
     });
     expect(args).toContain('--logs-max=0');
+    expect(args).toContain('--timing');
+    expect(args).toContain('--loglevel=http');
     const rawLogs = args
       .find((arg: string) => arg.startsWith('--logs-dir='))
       .slice('--logs-dir='.length);
