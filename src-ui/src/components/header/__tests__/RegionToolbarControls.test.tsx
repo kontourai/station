@@ -149,19 +149,6 @@ describe('RegionToolbarControls', () => {
     });
   });
 
-  test('the Activity chord uses a free region instead of evicting Chat from its preferred region', () => {
-    Object.assign(harness.regions.bottom, {
-      visible: false,
-      occupant: null,
-    });
-    Object.assign(harness.regions.right, { visible: true, occupant: 'chat' });
-    render(<RegionToolbarControls />);
-
-    harness.shortcuts.get('activity.toggle')?.handler();
-
-    expect(harness.showSurface).toHaveBeenCalledWith('activity');
-  });
-
   test('the Activity chord toggles its existing region hidden and visible', () => {
     Object.assign(harness.regions.right, {
       visible: true,

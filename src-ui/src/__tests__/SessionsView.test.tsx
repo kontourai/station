@@ -4192,12 +4192,17 @@ describe('SessionsView', () => {
       );
       await waitFor(() => expect(document.activeElement).toBe(evidenceRegion));
       expect(onFocusConsumed).toHaveBeenCalledTimes(1);
+      const evidenceButton = screen.getByRole('button', {
+        name: 'Evidence for Completed work',
+      });
+      evidenceButton.focus();
       // the region host clears the consumed focus (`clearSurfaceIntentFocus`)
+      // under the same token: no second reveal
       view.rerenderSession('done', undefined, 1, onFocusConsumed);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.activeElement).toBe(evidenceButton);
+      expect(onFocusConsumed).toHaveBeenCalledTimes(1);
 
-      screen
-        .getByRole('button', { name: 'Evidence for Completed work' })
-        .focus();
       view.rerenderSession('done', 'evidence', 2, onFocusConsumed);
 
       await waitFor(() => expect(document.activeElement).toBe(evidenceRegion));

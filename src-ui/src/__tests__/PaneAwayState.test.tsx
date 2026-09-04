@@ -244,6 +244,23 @@ test('a hidden Activity region offers a working Show Activity action', () => {
   expect(regionOccupant.showSurface).toHaveBeenCalledWith('activity');
 });
 
+test('coarse device: a visible Activity region folded behind Chat reads as hidden from the bottom bar', () => {
+  // `foldedDockRegion`: every placement folds to bottom, and only the most
+  // recently shown occupied region renders — a visible `right` is still off
+  // screen while Chat's `bottom` was shown last.
+  mobileFlag.isMobile = true;
+  regionOccupant.activity = true;
+  regionOccupant.activityVisible = true;
+  regionOccupant.lastShownRegion = 'bottom';
+  renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
+
+  expect(
+    screen.getByText('Activity is hidden from the bottom bar'),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
+  expect(regionOccupant.showSurface).toHaveBeenCalledWith('activity');
+});
+
 /* ------------------------------------------------------------------ *
  * station#520 part 2: posture-aware away-state copy. "Docked at the edge
  * of your workspace" is desktop-specific (a side/bottom panel); on mobile
