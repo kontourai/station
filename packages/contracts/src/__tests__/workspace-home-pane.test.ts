@@ -23,9 +23,11 @@ describe('Home Workspace Pane descriptor', () => {
   });
 
   test('is placed standalone (preferred) or docked, never inside a Layout', () => {
-    // `standalone` is the `/` route placement; `docked` is the shell's
-    // ambient slot, which admits the canonical Home occurrence — the region
-    // set states both facts and no others. `primary`/`secondary` stay
+    // `standalone` is the `/` route placement; `docked` is the capability
+    // claim that a shell region may hold this pane — Home is in the ambient
+    // dock's render table, and docked-capability-derivation.test.ts pins the
+    // claim to that table. The region set states both facts and no others.
+    // `primary`/`secondary` stay
     // excluded: a Project host must not place a Project-less aggregate of
     // every Project beside the work it is scoped to.
     expect(WORKSPACE_HOME_PANE_DESCRIPTOR.placement).toEqual({

@@ -78,6 +78,7 @@ import {
   removeRemovedFilePreviewPaneState,
 } from '../workspace-panes/filePreviewPaneInstance';
 import { trackMcpAppDisplayModeDecision } from '../workspace-panes/mcpAppDisplayModeTelemetry';
+import { PluginWorkspacePaneSDKBoundary } from '../workspace-panes/PluginWorkspacePaneSDKBoundary';
 import { ProjectWorkspacePaneModal } from '../workspace-panes/ProjectWorkspacePaneCatalog';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
 import { WorkspacePaneHost } from '../workspace-panes/WorkspacePaneHost';
@@ -93,6 +94,7 @@ import { presentWorkspacePaneAvailability } from '../workspace-panes/workspacePa
 import { isWorkspacePaneInstanceOwnedByProject } from '../workspace-panes/workspacePaneHostAdmission';
 import { WorkspacePaneHostRuntime } from '../workspace-panes/workspacePaneHostRuntime';
 import { createWorkspacePaneOperationalEventContext } from '../workspace-panes/workspacePaneOperationalEvents';
+import { resolveClientTrustedPluginLayout } from '../workspace-panes/workspacePaneRendererSelection';
 import { trackCodingDiffCompositionReceipt } from './codingDiffCompositionTelemetry';
 import { trackCodingEvidenceCompositionReceipt } from './codingEvidenceCompositionTelemetry';
 import { codingEvidenceUnavailableCopy } from './codingEvidenceUnavailableCopy';
@@ -478,6 +480,28 @@ function BuiltinCodingLayoutHost({
       return (
         basisCandidate ??
         basisMcpCandidate ??
+        (() => {
+          if (!parsedCandidate) return null;
+          const current = catalog.entries.find(
+            (entry) =>
+              entry.instance?.instanceId === parsedCandidate.instanceId &&
+              entry.descriptor.id === parsedCandidate.descriptorId,
+          );
+          return current?.instance &&
+            current.availability.state === 'available' &&
+            current.selectedRenderer?.renderer.kind === 'plugin-component' &&
+            isWorkspacePaneInstanceOwnedByProject(
+              current.instance,
+              projectId,
+            ) &&
+            resolveClientTrustedPluginLayout(
+              current.descriptor,
+              current.selectedRenderer,
+              current.instance,
+            )
+            ? current.instance
+            : null;
+        })() ??
         admitRestoredFilePreviewPaneInstance(
           projectId,
           projectSlug,
@@ -491,7 +515,7 @@ function BuiltinCodingLayoutHost({
         )
       );
     },
-    [projectId, projectSlug],
+    [catalog.entries, projectId, projectSlug],
   );
   const onInstanceRemoved = useCallback(
     (instance: WorkspacePaneInstance) => {
@@ -526,9 +550,16 @@ function BuiltinCodingLayoutHost({
           ) ??
           (isCanonicalBasisMcpWorkspacePaneInstance(instance)
             ? 'Basis App'
+            : null) ??
+          (isWorkspacePaneInstanceOwnedByProject(instance, projectId)
+            ? (catalog.entries.find(
+                (entry) =>
+                  entry.instance?.instanceId === instance.instanceId &&
+                  entry.descriptor.id === instance.descriptorId,
+              )?.descriptor.name ?? null)
             : null))
         : null,
-    [projectId, projectSlug],
+    [catalog.entries, projectId, projectSlug],
   );
   /** The document already published, kept while its content is unchanged. */
   const publishedDocument = useRef<{
@@ -555,10 +586,23 @@ function BuiltinCodingLayoutHost({
           candidate.descriptor.id === entry.descriptor.id &&
           candidate.instance?.instanceId === entry.instance?.instanceId,
       );
+      const trustedPluginLayout =
+        resolved?.instance &&
+        resolved.selectedRenderer?.renderer.kind === 'plugin-component'
+          ? resolveClientTrustedPluginLayout(
+              resolved.descriptor,
+              resolved.selectedRenderer,
+              resolved.instance,
+            )
+          : null;
       if (
         !resolved?.instance ||
         resolved.availability.state !== 'available' ||
-        !getBuiltinWorkspacePaneRenderer(resolved.descriptor, resolved.instance)
+        (!getBuiltinWorkspacePaneRenderer(
+          resolved.descriptor,
+          resolved.instance,
+        ) &&
+          (!trustedPluginLayout || !catalog.projectSlug))
       ) {
         return;
       }
@@ -568,7 +612,7 @@ function BuiltinCodingLayoutHost({
         setCatalogRequest(null);
       }
     },
-    [catalog.entries, catalogRequest],
+    [catalog.entries, catalog.projectSlug, catalogRequest],
   );
   const codingOccurrence = catalog.entries.find(
     (candidate) =>
@@ -1037,6 +1081,22 @@ function BuiltinCodingLayoutHost({
             paneEntry?.selectedRenderer?.renderer.kind === 'mcp-tool-ui'
               ? paneEntry.selectedRenderer.renderer
               : null;
+          const pluginRenderer =
+            paneEntry?.selectedRenderer?.renderer.kind === 'plugin-component'
+              ? paneEntry.selectedRenderer
+              : null;
+          const pluginComponent =
+            pluginRenderer?.renderer.kind === 'plugin-component'
+              ? pluginRenderer.renderer
+              : null;
+          const trustedPluginLayout =
+            pluginRenderer && pluginComponent && descriptor
+              ? resolveClientTrustedPluginLayout(
+                  descriptor,
+                  pluginRenderer,
+                  instance,
+                )
+              : null;
           if (codeIssuedBasisMcp) {
             return (
               <LazyBoundary
@@ -1076,6 +1136,53 @@ function BuiltinCodingLayoutHost({
                 onMcpUiRequestDisplayMode={presentation.requestDisplayMode}
                 onMcpUiDisplayModeDecision={trackMcpAppDisplayModeDecision}
               />
+            );
+          }
+          if (
+            trustedPluginLayout &&
+            pluginRenderer &&
+            pluginComponent &&
+            descriptor
+          ) {
+            const pluginName =
+              instance.boundContext?.contribution?.provenance.origin ===
+              'plugin'
+                ? instance.boundContext.contribution.provenance.pluginId
+                : undefined;
+            if (!pluginName || !catalog.projectSlug) {
+              return (
+                <Empty
+                  label="Workspace pane unavailable"
+                  description="Station could not bind this plugin pane to its owning Project and plugin."
+                />
+              );
+            }
+            const selectedTab = {
+              id: instance.instanceId,
+              label: descriptor.name,
+              description: descriptor.description,
+              component: pluginComponent,
+              actions: descriptor.actions,
+            };
+            const paneLayout = {
+              name: descriptor.name,
+              slug: instance.instanceId,
+              tabs: [selectedTab],
+            };
+            return (
+              <PluginWorkspacePaneSDKBoundary
+                layout={paneLayout}
+                projectSlug={catalog.projectSlug}
+                pluginName={pluginName}
+              >
+                <LayoutRenderer
+                  componentId={pluginComponent}
+                  trustedPluginLayout={trustedPluginLayout}
+                  layout={paneLayout}
+                  activeTab={selectedTab}
+                  activeTabId={selectedTab.id}
+                />
+              </PluginWorkspacePaneSDKBoundary>
             );
           }
           return Pane ? (

@@ -90,6 +90,12 @@ export interface PreviewData {
     status: string;
     components?: Array<{ type: string; id: string }>;
     git?: GitInfo;
+    consent?: {
+      contentDigest: string;
+      permissions: string[];
+      dependencies: string[];
+      pendingConsent: Array<{ permission: string; tier: PermissionTier }>;
+    };
   }>;
   git?: GitInfo;
 }
@@ -108,4 +114,32 @@ export interface PluginMessage {
     label: string;
     invoke(): void;
   };
+}
+
+/** Installed permission truth, never inferred from a pre-install preview. */
+export function installedDependencyPermissions(result: unknown):
+  | Array<{
+      id: string;
+      pendingConsent: Array<{ permission: string; tier: PermissionTier }>;
+    }>
+  | undefined {
+  const rows = (result as { permissions?: { dependencies?: unknown } } | null)
+    ?.permissions?.dependencies;
+  if (!Array.isArray(rows)) return undefined;
+  if (
+    rows.some(
+      (row) =>
+        !row ||
+        typeof row.id !== 'string' ||
+        !Array.isArray(row.pendingConsent) ||
+        row.pendingConsent.some(
+          (entry: { permission?: unknown; tier?: unknown }) =>
+            !entry ||
+            typeof entry.permission !== 'string' ||
+            !['passive', 'active', 'trusted'].includes(entry.tier as string),
+        ),
+    )
+  )
+    return undefined;
+  return rows;
 }

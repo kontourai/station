@@ -21,7 +21,14 @@ export interface PluginPreviewPayload {
   valid: boolean;
   error?: string;
   manifest?: { name?: string; version?: string };
-  dependencies?: Array<{ id: string }>;
+  dependencies?: Array<{
+    id: string;
+    consent?: {
+      contentDigest: string;
+      permissions: string[];
+      dependencies: string[];
+    };
+  }>;
   contentDigest?: string;
   permissions?: {
     required: string[];
@@ -74,6 +81,23 @@ export async function installPluginWithConsent(
           permissions: preview.permissions?.required ?? [],
           contentDigest: preview.contentDigest,
           dependencies: (preview.dependencies ?? []).map((entry) => entry.id),
+          ...((preview.dependencies ?? []).some((entry) => entry.consent)
+            ? {
+                dependencyApprovals: (preview.dependencies ?? []).flatMap(
+                  (entry) =>
+                    entry.consent
+                      ? [
+                          {
+                            id: entry.id,
+                            permissions: entry.consent.permissions,
+                            contentDigest: entry.consent.contentDigest,
+                            dependencies: entry.consent.dependencies,
+                          },
+                        ]
+                      : [],
+                ),
+              }
+            : {}),
         },
       }),
     },
