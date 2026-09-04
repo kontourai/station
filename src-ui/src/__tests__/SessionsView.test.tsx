@@ -4258,8 +4258,8 @@ describe('SessionsView', () => {
         name: 'Evidence for Completed work',
       });
       evidenceButton.focus();
-      // the region host clears the consumed focus (`clearSurfaceIntentFocus`)
-      // under the same token: no second reveal
+      // the region host clears the consumed focus from the intent it holds
+      // (`ActivityRegionShell`) under the same token: no second reveal
       view.rerenderSession('done', undefined, 1, onFocusConsumed);
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(document.activeElement).toBe(evidenceButton);

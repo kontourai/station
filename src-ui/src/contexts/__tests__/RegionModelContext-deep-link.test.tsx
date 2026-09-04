@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ActivityRegionShell } from '../../app-shell/ActivityRegionShell';
@@ -90,6 +90,22 @@ function Harness({
   );
 }
 
+/**
+ * Every distinct `sessionId` the sessions surface has been rendered with since
+ * the last reset. `[undefined]` means the surface mounted and was handed no
+ * session at all — an assertion a single "last call" check cannot make, since
+ * a re-delivery can arrive and be superseded between renders.
+ */
+function deliveredSessionIds(): (string | undefined)[] {
+  return [
+    ...new Set(
+      sessionsProps.mock.calls.map(
+        ([props]) => (props as { sessionId?: string }).sessionId,
+      ),
+    ),
+  ];
+}
+
 function setUrl(url: string) {
   window.history.replaceState({}, '', url);
   window.dispatchEvent(new PopStateEvent('popstate'));
@@ -159,7 +175,10 @@ describe('RegionModelProvider surface deep-link adoption', () => {
     );
     expect(window.location.search).toBe('?dock=open');
     expect(window.history.length).toBe(historyLength);
-    expect(model?.surfaceIntents.activity?.token).toBe(1);
+    // Delivered means GONE from the model: the mounted shell took the record,
+    // and that take — not a ref inside the consumer — is the consumption
+    // record, so it survives the consumer's unmount.
+    expect(model?.surfaceIntents.activity).toBeUndefined();
 
     rendered.unmount();
     render(<Harness />);
@@ -183,13 +202,13 @@ describe('RegionModelProvider surface deep-link adoption', () => {
   });
 
   // `activityDeepLink()` with no session mints a bare `/?surface=activity`.
-  // Adopting it must reveal Activity WITHOUT an intent object: `showSurface`
-  // resolves `session: intent.session ?? previous?.session`, so passing one
-  // would re-deliver whichever session an earlier deep link left behind, under
-  // a fresh token the pane reads as a new instruction.
+  // Adopting it must reveal Activity WITHOUT an intent object, which is what
+  // makes `showSurface` DROP the undelivered record rather than leave it
+  // standing: no placement is mounted here, so leaving it would hand the next
+  // mount a session this reveal never named.
   test('a sessionless deep link reveals Activity without re-delivering a previous session', async () => {
     setUrl('/?surface=activity&session=thread%2Falpha');
-    render(<Harness />);
+    const rendered = render(<Harness />);
     await waitFor(() => expect(window.location.search).toBe(''));
     expect(model?.surfaceIntents.activity).toEqual({
       session: 'thread/alpha',
@@ -204,11 +223,16 @@ describe('RegionModelProvider surface deep-link adoption', () => {
 
     await waitFor(() => expect(model?.regions.right.visible).toBe(true));
     expect(model?.regions.right.occupant).toBe('activity');
-    expect(model?.surfaceIntents.activity).toEqual({
-      session: 'thread/alpha',
-      focus: undefined,
-      token: 1,
-    });
+    expect(model?.surfaceIntents.activity).toBeUndefined();
+
+    // An emptied outbox is only the mechanism; the deliverable is that the
+    // placement this reveal mounts is handed no session. Mount the host now —
+    // nothing was ever delivered to a consumer, so a record left standing here
+    // would arrive as a first delivery, which is the whole hazard.
+    sessionsProps.mockReset();
+    rendered.rerender(<Harness host />);
+    await waitFor(() => expect(sessionsProps).toHaveBeenCalled());
+    expect(deliveredSessionIds()).toEqual([undefined]);
   });
 
   test('preserves dock ordering on desktop and folds to Activity on bottom-only devices', async () => {
@@ -288,30 +312,49 @@ describe('RegionModelProvider surface deep-link adoption', () => {
     act(() =>
       model?.showSurface('activity', { session: 's2', focus: 'evidence' }),
     );
+    // Asserted through the binding the shell hands down, not the model: the
+    // mounted shell TAKES the record, so an empty outbox is what delivery
+    // looks like from the model's side.
     await waitFor(() =>
-      expect(model?.surfaceIntents.activity).toEqual({
-        session: 's2',
-        focus: 'evidence',
-        token: 1,
-      }),
+      expect(sessionsProps).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          sessionId: 's2',
+          focusHint: 'evidence',
+          intentToken: 1,
+        }),
+      ),
     );
+    expect(model?.surfaceIntents.activity).toBeUndefined();
 
     const binding = sessionsProps.mock.lastCall?.[0] as
       | { onFocusConsumed?: () => void }
       | undefined;
     act(() => binding?.onFocusConsumed?.());
-    expect(model?.surfaceIntents.activity).toEqual({
-      session: 's2',
-      focus: undefined,
-      token: 1,
-    });
+    await waitFor(() =>
+      expect(sessionsProps).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          sessionId: 's2',
+          focusHint: undefined,
+          intentToken: 1,
+        }),
+      ),
+    );
 
-    act(() => model?.showSurface('activity', { focus: 'evidence' }));
-    expect(model?.surfaceIntents.activity).toEqual({
-      session: 's2',
-      focus: 'evidence',
-      token: 2,
-    });
+    // A repeat activation of the same session is a NEW instruction, and the
+    // already-mounted shell must see it: a fresh token under the same session.
+    act(() =>
+      model?.showSurface('activity', { session: 's2', focus: 'evidence' }),
+    );
+    await waitFor(() =>
+      expect(sessionsProps).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          sessionId: 's2',
+          focusHint: 'evidence',
+          intentToken: 2,
+        }),
+      ),
+    );
+    expect(model?.surfaceIntents.activity).toBeUndefined();
   });
 });
 
@@ -380,5 +423,98 @@ describe('useShowSurface reveals a surface even where no region host renders', (
     act(() => revealSurface?.('activity'));
 
     expect(navigate).toHaveBeenCalledWith('/?surface=activity');
+  });
+});
+
+/**
+ * #928. A surface intent is a ONE-SHOT instruction ("reveal Activity, select
+ * session X"). Every consumption record downstream of the model is
+ * mount-scoped — `SessionsView`'s `routedIntentTokenRef` is a ref that dies at
+ * unmount — while the record itself lived in the model and outlived it. So an
+ * unmount/remount handed the SAME instruction to the new mount as new, and the
+ * reader who asked for Activity got session X reopened instead, possibly long
+ * after and with no relation to what they clicked.
+ *
+ * Both tests here drive a REAL unmount of the placement (`RegionShells`
+ * dropping the shell, and `App` dropping the host) rather than poking the
+ * model, because "the model's state is right" is exactly the assertion that
+ * cannot see this defect: the whole bug is the record outliving its consumer.
+ */
+describe('a delivered surface intent is never delivered a second time', () => {
+  function stubBottomOnlyDevice() {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 390,
+    });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('pointer: coarse'),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+  }
+
+  test('folding Chat in front of Activity and revealing Activity again opens no session', async () => {
+    stubBottomOnlyDevice();
+    setUrl('/');
+    render(<Harness host />);
+    await waitFor(() => expect(model?.canRenderRegionSurfaces).toBe(true));
+
+    act(() => revealSurface?.('activity', { session: 's1' }));
+    await waitFor(() =>
+      expect(sessionsProps).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: 's1' }),
+      ),
+    );
+
+    // A bottom-only device has one dock slot, so `RegionShells` renders only
+    // the folded region's shell: revealing Chat genuinely UNMOUNTS Activity,
+    // taking every consumption record inside it. Asserted on the DOM rather
+    // than on region state, because a still-mounted shell would make the rest
+    // of this test vacuous.
+    act(() => revealSurface?.('chat'));
+    await waitFor(() =>
+      expect(screen.queryByTestId('sessions-view')).toBeNull(),
+    );
+    expect(screen.getByTestId('chat-shell')).toBeTruthy();
+
+    sessionsProps.mockReset();
+
+    // Reveal Activity generically — the sidebar, the palette, ⌘⇧A and "All
+    // activity" all land here, carrying no session.
+    act(() => revealSurface?.('activity'));
+    await waitFor(() =>
+      expect(screen.queryByTestId('sessions-view')).not.toBeNull(),
+    );
+    expect(deliveredSessionIds()).toEqual([undefined]);
+  });
+
+  test('leaving the region host and coming back re-opens no session, with no reveal in between', async () => {
+    setUrl('/');
+    const rendered = render(<Harness host />);
+    await waitFor(() => expect(model?.canRenderRegionSurfaces).toBe(true));
+
+    act(() => revealSurface?.('activity', { session: 's1' }));
+    await waitFor(() =>
+      expect(sessionsProps).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: 's1' }),
+      ),
+    );
+
+    // `App` mounts `RegionShells` only while `showAmbientChatDock` holds, so a
+    // Chat workspace layout takes the host — and with it the shell — away and
+    // gives it back on return. Nothing commands a reveal across this, which is
+    // what makes it a test of the CONSUMPTION record rather than of the
+    // clear-on-generic-reveal path the previous test drives.
+    rendered.rerender(<Harness />);
+    await waitFor(() => expect(model?.canRenderRegionSurfaces).toBe(false));
+    expect(screen.queryByTestId('sessions-view')).toBeNull();
+
+    sessionsProps.mockReset();
+    rendered.rerender(<Harness host />);
+    await waitFor(() =>
+      expect(screen.queryByTestId('sessions-view')).not.toBeNull(),
+    );
+    expect(deliveredSessionIds()).toEqual([undefined]);
   });
 });

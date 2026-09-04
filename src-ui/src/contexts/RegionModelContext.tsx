@@ -40,6 +40,18 @@ export interface SurfaceIntentRecord extends SurfaceIntent {
   token: number;
 }
 
+type SurfaceIntents = Partial<Record<string, SurfaceIntentRecord>>;
+
+function withoutSurfaceIntent(
+  current: SurfaceIntents,
+  surfaceId: string,
+): SurfaceIntents {
+  if (!current[surfaceId]) return current;
+  return Object.fromEntries(
+    Object.entries(current).filter(([id]) => id !== surfaceId),
+  );
+}
+
 interface RegionModelValue {
   regions: RegionLayout;
   lastShownRegion: RegionId | null;
@@ -47,8 +59,21 @@ interface RegionModelValue {
   setRegion(id: RegionId, patch: Partial<RegionState>): void;
   placeSurface(surfaceId: string, regionId: RegionId): void;
   showSurface(surfaceId: string, intent?: SurfaceIntent): void;
-  surfaceIntents: Readonly<Partial<Record<string, SurfaceIntentRecord>>>;
-  clearSurfaceIntentFocus(surfaceId: string): void;
+  /**
+   * Undelivered one-shot instructions, keyed by surface — an OUTBOX, not a
+   * store of "what this surface is showing". A mounted placement takes its
+   * record with `consumeSurfaceIntent` and holds its own copy from then on;
+   * anything still here has not been delivered to anyone (#928).
+   */
+  surfaceIntents: Readonly<SurfaceIntents>;
+  /**
+   * Called by the placement that has taken delivery of `surfaceIntents[id]`.
+   * The record is dropped, so the consumer's own unmount can no longer make
+   * the same instruction look new: the consumption record now outlives the
+   * consumer. The token guard keeps a take from swallowing a NEWER intent
+   * minted between the render that read the record and this call.
+   */
+  consumeSurfaceIntent(surfaceId: string, token: number): void;
   /**
    * Whether a region surface host is mounted, i.e. whether `showSurface` can
    * produce anything the reader will see. Not a predicate re-derived from the
@@ -86,9 +111,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   const [lastShownRegion, setLastShownRegion] = useState<RegionId | null>(
     () => chatRegion(regions) ?? null,
   );
-  const [surfaceIntents, setSurfaceIntents] = useState<
-    Partial<Record<string, SurfaceIntentRecord>>
-  >({});
+  const [surfaceIntents, setSurfaceIntents] = useState<SurfaceIntents>({});
   const [mountedSurfaceHosts, setMountedSurfaceHosts] = useState(0);
   const surfaceIntentTokenRef = useRef(0);
   const adoptedIntentKeyRef = useRef<string | null>(null);
@@ -124,18 +147,24 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       setRegions(shown.layout);
       if (intent) {
         const token = ++surfaceIntentTokenRef.current;
-        setSurfaceIntents((current) => {
-          const previous = current[surfaceId];
-          return {
-            ...current,
-            [surfaceId]: {
-              ...intent,
-              session: intent.session ?? previous?.session,
-              token,
-            },
-          };
-        });
+        // The record is exactly what this caller asked for. It used to
+        // inherit `session` from whatever record still stood, which made a
+        // focus-only intent re-deliver an older session — the same
+        // stale-delivery this fix exists to remove, and no caller mints that
+        // shape (`App.tsx` passes no intent at all for a sessionless reveal).
+        setSurfaceIntents((current) => ({
+          ...current,
+          [surfaceId]: { ...intent, token },
+        }));
+        return;
       }
+      // A reveal carrying no session is "show me this surface", never "show
+      // me what the last link named". Leaving a standing record here would
+      // leave it DELIVERABLE: an intent minted while no placement was
+      // mounted survives to the next mount, which this reveal is about to
+      // cause. Anything still in the outbox by definition reached nobody, so
+      // dropping it cannot undo a delivery already made (#928).
+      setSurfaceIntents((current) => withoutSurfaceIntent(current, surfaceId));
     },
     [bottomOnly],
   );
@@ -148,13 +177,15 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     return () => setMountedSurfaceHosts((count) => count - 1);
   }, []);
 
-  const clearSurfaceIntentFocus = useCallback((surfaceId: string) => {
-    setSurfaceIntents((current) => {
-      const intent = current[surfaceId];
-      if (!intent?.focus) return current;
-      return { ...current, [surfaceId]: { ...intent, focus: undefined } };
-    });
-  }, []);
+  const consumeSurfaceIntent = useCallback(
+    (surfaceId: string, token: number) => {
+      setSurfaceIntents((current) => {
+        if (current[surfaceId]?.token !== token) return current;
+        return withoutSurfaceIntent(current, surfaceId);
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     const previous = mirroredRegionsRef.current;
@@ -216,9 +247,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     if (REGION_SURFACE_REGISTRY.has(surfaceIntent.surfaceId)) {
       // A sessionless link (`activityDeepLink()` with no session mints a bare
       // `/?surface=activity`) must reveal the surface WITHOUT an intent: an
-      // intent object mints a token and `session: intent.session ??
-      // previous?.session` above would re-deliver whichever session a prior
-      // deep link left behind. Same shape as App.tsx's `navigateToView`.
+      // intent object mints a token, which the next mounted placement reads as
+      // a fresh instruction. Passing none is what makes `showSurface` clear an
+      // undelivered record instead. Same shape as App.tsx's `navigateToView`.
       showSurface(
         surfaceIntent.surfaceId,
         surfaceIntent.sessionId
@@ -238,7 +269,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       placeSurface,
       showSurface,
       surfaceIntents,
-      clearSurfaceIntentFocus,
+      consumeSurfaceIntent,
       canRenderRegionSurfaces: mountedSurfaceHosts > 0,
       registerRegionSurfaceHost,
     }),
@@ -249,7 +280,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       placeSurface,
       showSurface,
       surfaceIntents,
-      clearSurfaceIntentFocus,
+      consumeSurfaceIntent,
       mountedSurfaceHosts,
       registerRegionSurfaceHost,
     ],
