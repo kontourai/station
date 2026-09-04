@@ -545,7 +545,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'UX audit E8: one parametrised 390x844 sweep over EVERY route src-ui/src/app-shell/surface-registry.ts declares — no horizontal document scroll on each, and the shared SplitPaneLayout detail-sheet contract ("← Back to list", list hidden, Back restores it) on the split-pane surfaces, whose lists are seeded so an empty rail cannot pass as coverage. The route list is checked against the registry source, so a surface added without a decision about its phone behaviour reds this spec instead of shipping unswept.',
+      'UX audit E8: one parametrised 390x844 sweep over EVERY route src-ui/src/app-shell/destination-registry.ts declares — no horizontal document scroll on each, and the shared SplitPaneLayout detail-sheet contract ("← Back to list", list hidden, Back restores it) on the split-pane surfaces, whose lists are seeded so an empty rail cannot pass as coverage. The route list is checked against the registry source, so a surface added without a decision about its phone behaviour reds this spec instead of shipping unswept.',
     exceptions: [],
   },
   {

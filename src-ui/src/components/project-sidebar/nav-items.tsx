@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 import type {
-  SurfaceIconId,
-  SurfaceSection,
-} from '../../app-shell/surface-registry';
+  DestinationIconId,
+  DestinationSection,
+} from '../../app-shell/destination-registry';
 
 function sidebarIcon(children: ReactNode): ReactNode {
   return (
@@ -22,7 +22,7 @@ function sidebarIcon(children: ReactNode): ReactNode {
   );
 }
 
-const SURFACE_ICONS: Readonly<Record<SurfaceIconId, ReactNode>> = {
+const DESTINATION_ICONS: Readonly<Record<DestinationIconId, ReactNode>> = {
   agents: sidebarIcon(
     <>
       <circle cx="12" cy="8" r="4" />
@@ -86,12 +86,12 @@ const SURFACE_ICONS: Readonly<Record<SurfaceIconId, ReactNode>> = {
   ),
 };
 
-export function surfaceIcon(icon: SurfaceIconId): ReactNode {
-  return SURFACE_ICONS[icon];
+export function destinationIcon(icon: DestinationIconId): ReactNode {
+  return DESTINATION_ICONS[icon];
 }
 
 export const PROJECT_SIDEBAR_NAV_GROUPS: ReadonlyArray<{
-  id: SurfaceSection;
+  id: DestinationSection;
   label: string;
   icon: ReactNode;
 }> = [

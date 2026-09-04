@@ -1,10 +1,10 @@
 import { useFeaturePreviewsQuery } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
-import { DEVELOPER_TOOLS_FLAG } from '../app-shell/surface-registry';
+import { DEVELOPER_TOOLS_FLAG } from '../app-shell/destination-registry';
 import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
 
 /**
- * The enabled-flags set that `SurfaceRegistry.getSidebar`/`getPalette` filter
+ * The enabled-flags set that `DestinationRegistry.getSidebar`/`getPalette` filter
  * `previewFlag`-gated surfaces against (archive#3313).
  *
  * Two sources compose into one set:

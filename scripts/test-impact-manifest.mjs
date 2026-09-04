@@ -400,7 +400,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     // that reads the registry as a value went unscheduled. The registry is a
     // data table, not a module with behaviour, so `--related` would not have
     // found most of these anyway: they assert what it DECLARES.
-    pattern: 'src-ui/src/app-shell/surface-registry.ts',
+    pattern: 'src-ui/src/app-shell/destination-registry.ts',
     tests: [
       'scripts/__tests__/documentation-foundations.test.ts',
       // Route/label/deep-link declarations read straight off the registry.

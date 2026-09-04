@@ -17,7 +17,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
+import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
 import {
   evaluateShortcutWhen,
   useShortcutRegistry,
@@ -383,22 +383,22 @@ export function CommandPalette() {
     });
 
     // Navigation (static)
-    for (const surface of APP_SURFACE_REGISTRY.getPalette(
+    for (const destination of APP_DESTINATION_REGISTRY.getPalette(
       surfaceVisibilityFlags,
     )) {
-      const params = surface.palette?.params;
+      const params = destination.palette?.params;
       list.push({
-        id: `nav:${surface.id}`,
-        label: surface.label(),
+        id: `nav:${destination.id}`,
+        label: destination.label(),
         group: 'Navigation',
-        keywords: surface.keywords ? [...surface.keywords] : undefined,
+        keywords: destination.keywords ? [...destination.keywords] : undefined,
         run: () => {
-          if (surface.regionSurface) {
-            showSurface(surface.regionSurface);
+          if (destination.regionSurface) {
+            showSurface(destination.regionSurface);
             return;
           }
-          if (params) navigate(surface.route, { ...params });
-          else navigate(surface.route);
+          if (params) navigate(destination.route, { ...params });
+          else navigate(destination.route);
         },
       });
     }

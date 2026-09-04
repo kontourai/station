@@ -1,13 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { APP_DESTINATION_REGISTRY } from '../../../app-shell/destination-registry';
 import { resolvePageFrame } from '../../../app-shell/page-frame-registry';
 import {
   getLegacyPathRedirect,
   getPathForView,
   resolveViewFromPath,
 } from '../../../app-shell/routing';
-import { APP_SURFACE_REGISTRY } from '../../../app-shell/surface-registry';
 import { REGION_SURFACE_REGISTRY } from '../../../regions/region-model';
 import {
   FIRST_RUN_ANCHOR_ATTRIBUTE,
@@ -33,9 +33,11 @@ describe('first-run tour anchors resolve to canonical routes', () => {
       if ('surface' in step && step.surface)
         expect(REGION_SURFACE_REGISTRY.has(step.surface)).toBe(true);
     }
-    for (const surface of APP_SURFACE_REGISTRY.getPalette()) {
-      if (surface.regionSurface)
-        expect(REGION_SURFACE_REGISTRY.has(surface.regionSurface)).toBe(true);
+    for (const destination of APP_DESTINATION_REGISTRY.getPalette()) {
+      if (destination.regionSurface)
+        expect(REGION_SURFACE_REGISTRY.has(destination.regionSurface)).toBe(
+          true,
+        );
     }
   });
   test.each(FIRST_RUN_TOUR_STEPS)(
@@ -104,8 +106,8 @@ describe('first-run tour anchors resolve to canonical routes', () => {
       )
       .join('\n');
     const navGroups = new Set(
-      APP_SURFACE_REGISTRY.getSidebar().flatMap((surface) =>
-        surface.managementGroup ? [surface.managementGroup] : [],
+      APP_DESTINATION_REGISTRY.getSidebar().flatMap((destination) =>
+        destination.managementGroup ? [destination.managementGroup] : [],
       ),
     );
 
