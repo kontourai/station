@@ -174,15 +174,23 @@ const VERBS: Record<string, VerbSpec> = {
   },
   home: {
     group: 'Lifecycle',
-    summary: 'Verify, back up, restore, or archive a Station home',
+    summary:
+      'Inspect recovery, verify, back up, restore, or archive a Station home',
     usage: [
+      'station home recovery-plan --base=<existing-home> [--json]',
       'station home verify [--json] [options]',
       'station home backup [--output=<directory>] [options]',
       'station home restore --from=<directory> --confirm [options]',
       'station home reset --confirm [options]',
     ],
-    actions: ['verify', 'backup', 'restore', 'reset'],
+    actions: ['recovery-plan', 'verify', 'backup', 'restore', 'reset'],
     detail: [
+      '`recovery-plan` reports bounded selected-field observations only. It',
+      'requires an explicit --base or --home, writes nothing and opens no',
+      'credential/app-home, database, history or plugin payloads. It neither',
+      'migrates nor authorizes migration. Exit 2 means partial/refused inspection;',
+      'exit 0 does not prove recoverability or owner exclusion. Unknown payloads',
+      'remain unverified. No --temp-home, --confirm or mutation flags are accepted.',
       '`verify` runs an integrity check over the SQLite stores this home',
       'owns and reports each one. It opens them read-only, so it is safe to',
       'run while Station is up. Exit 1 means a store is corrupt; exit 2 means',

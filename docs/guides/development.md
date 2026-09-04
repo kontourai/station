@@ -100,6 +100,33 @@ never move `$STATION_ROOT/config/profiles.json`. Deleting the selected
 channel's default runtime home requires `--allow-default-home-clean` in
 addition to `--force`; the shared root is not a runtime cleanup target.
 
+### Read-only recovery planning
+
+`station home recovery-plan --base=<existing-home> --json` (or `--home=`)
+reports a bounded observation of schema and selected Engine/Agent identity
+fields. An explicit target is required; no default home is selected and no
+`--temp-home`, `--confirm`, or mutation flags are accepted. This command does
+not migrate, reset, back up, repair, start Station, or authorize any apply.
+Normal startup still refuses unsupported home schemas.
+
+The report contains category counts and fixed reason codes, not raw paths,
+identities, config values, transcript text, or credentials. It reads selected
+JSON metadata files, including `config/app.json`; arbitrary connection config
+inside those files is not interpreted or printed. Credential files, app-home
+payloads, SQLite stores, history, grants and plugin code are not opened. Opaque
+directories count as one observed entry, not as an inventory of their contents.
+Unknown entries and uninspected fields remain explicit, not implicitly safe.
+
+Exit 2 means partial or refused inspection; exit 0 only means the selected
+fields produced no finding. Neither means recovery is safe. Filesystem checks
+detect observed changes and unsafe links; they are not an atomic snapshot or
+protection against every non-cooperating filesystem race. PID existence is not
+exact process-birth ownership. Modern leases and legacy profiles are not
+inspected, and owner exclusion is always **not proven**. A future recovery
+transaction must independently validate mappings, preserve original evidence,
+and obtain the existing lifecycle authorities. Preserving history must never
+implicitly reactivate sessions, scheduled jobs, grants, or account selection.
+
 ## Packages
 
 | Package | Path | Distribution | Purpose |
