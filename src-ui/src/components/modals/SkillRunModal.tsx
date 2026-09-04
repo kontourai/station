@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   type SubstitutableSkillVariable,
   substituteSkillVariables,
@@ -55,7 +56,18 @@ export function SkillRunModal({
 
   if (!isOpen) return null;
 
-  return (
+  // #1180: opened from `▶ Test` inside `SkillsView`'s skill detail — the
+  // content `SplitPaneLayout` portals into `PageFrame`'s mobile-detail slot
+  // on a phone, and therefore exempt from the `inert` that slot's sibling
+  // frame div carries while the sheet is open (PageFrame.tsx:155). Rendered
+  // in place, THIS modal was not that exempt content — it is a plain sibling
+  // of `SplitPaneLayout`, so it inherited the `inert` its own trigger button
+  // was exempt from: visible, but `.focus()` a no-op and every button
+  // unclickable. `createPortal` to `document.body` is the same escape
+  // `ConfirmModal` and `PluginModalStack` (#1131) already use, for the same
+  // reason — DOM placement only, so React context and event bubbling still
+  // follow the component tree.
+  return createPortal(
     <ResponsiveDialogSurface
       onClose={onCancel}
       ariaLabelledBy="skill-run-modal-title"
@@ -147,6 +159,7 @@ export function SkillRunModal({
           ▶ Send to Agent
         </button>
       </ResponsiveSurfaceActions>
-    </ResponsiveDialogSurface>
+    </ResponsiveDialogSurface>,
+    document.body,
   );
 }
