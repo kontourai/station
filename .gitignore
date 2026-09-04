@@ -1,4 +1,5 @@
 node_modules/
+.station-dependency-install/
 dist/
 dist-pages/
 dist-ui/

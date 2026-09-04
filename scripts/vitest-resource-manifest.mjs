@@ -276,6 +276,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',
+  // Real child process proves the fixed installer guard excludes a second owner.
+  'scripts/__tests__/dependency-install-retirement.test.ts',
   // Drives the merge driver's executable entry point as a child process so
   // the provisional resolution and decline-without-writing are real exits.
   'scripts/__tests__/ui-bundle-budget.test.ts',

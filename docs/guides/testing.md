@@ -382,6 +382,47 @@ pulling a package pin does not update its existing `node_modules`. Run
 `npm run dependencies:install` there after a pull when the dependency-drift gate or
 `station doctor` reports a pinned-versus-installed mismatch.
 
+#### Interrupted dependency installation
+
+The dependency lifecycle runner holds an exclusive `.station-dependency-install/`
+directory across npm, approved hooks, and final verification. A second
+participating installer refuses that existing guard; a PID or elapsed time is
+not permission to reclaim it. Stop other builds and dependency writers before
+installation: this guard does not coordinate raw npm, older runners, or other
+processes using the dependency tree.
+
+For `dependencies:ci`, an existing real root `node_modules` directory is renamed
+into the guard before npm starts, so npm begins with an absent root target.
+This avoids the observed reused-tree cleanup race with freshly-created
+`.DS_Store` entries without recursively changing permission modes. The previous
+root tree stays retained until **all** hooks and verification succeed; then
+only that owned generated tree is removed. `dependencies:install` remains
+incremental and does not retire its existing dependency tree.
+Node and npm CLI driver paths are selected before retirement. A clean install
+refuses a driver whose canonical target is within the tree it would move,
+before creating the guard; use an external Node/npm toolchain. A link to an
+external driver is bound to that external canonical path and remains usable
+after the link moves. Selected paths are passed to npm rather than
+rediscovered after the move.
+
+An install/hook/verification failure leaves the guard, its phase receipt, and
+any previous root tree in place. New partial dependencies are not automatically
+restored, verified, or retried. Inspect the original npm error and the exact
+reported guard path; first establish that the owning installer and other
+dependency consumers have stopped. Preserve the guard and partial tree in a
+separate recovery location before an intentional fresh install. Do not blindly
+delete a guard, infer ownership from a dead PID, or run gates against incomplete
+dependencies. A command-not-found error after interrupted provisioning is not
+an executed test failure.
+
+If verification succeeds but old-tree cleanup fails, the runner reports
+**verified dependencies / cleanup pending** and leaves the guard blocking the
+next install until it is inspected. Unexpected guard children are never
+recursively deleted. This is cooperative install coordination and a recovery
+aid for generated dependencies, not a rollback transaction or user-data backup:
+workspace-local dependency trees and lockfiles remain npm-owned, and no
+hostile same-user/path-swap or power-loss archive guarantee is made.
+
 `npm run dependencies:ci` does **not** provision Playwright browsers. The
 runner applies Station's approved patch step explicitly; it does not trust a
 root `postinstall` hook. `node_modules/playwright/package.json` declares no
