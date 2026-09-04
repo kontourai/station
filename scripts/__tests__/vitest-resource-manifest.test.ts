@@ -100,6 +100,9 @@ describe('Vitest resource manifest', () => {
     // in discovery count or Vitest shard semantics force an explicit mapping
     // review instead of silently moving #1156's failing slice elsewhere.
     const ordinary = repositoryDiscovery.groups.ordinary;
+    // Every assertion below is relative to `ordinary.length`, so an empty
+    // corpus would satisfy all of them; pin the floor independently.
+    expect(ordinary.length).toBeGreaterThan(0);
     const eighths = await Promise.all(
       Array.from({ length: 8 }, (_, index) =>
         ordinaryShardFiles(ordinary, index + 1, 8),
