@@ -1664,6 +1664,19 @@ export const e2eManifest = [
     exceptions: ['waitForTimeout'],
   },
   {
+    path: 'tests/android/toolbar-reachability.spec.ts',
+    bucket: 'android',
+    surface: 'Android',
+    tierTarget: 'partial',
+    primary: false,
+    rationale:
+      'Toolbar occlusion (#1400) reproduces only at mobile widths in a ' +
+      'news-carrying connection state, so it runs in the Android matrix.',
+    // The 390/360 cases are skipped with #1401 named as the reason, not
+    // deleted: un-skipping them is the check that proves that fix.
+    exceptions: ['test.skip'],
+  },
+  {
     path: 'tests/android/webview-compat.spec.ts',
     bucket: 'android',
     surface: 'Android',
