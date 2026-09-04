@@ -3671,10 +3671,25 @@ for (const requiredHelper of [
   'export function _resolveAgent',
   'export function _getPluginName',
   'export async function _getApiBase',
-  'export function getPluginHeaders',
+  // #1451 moved the implementation to client/plugin-headers.ts; api-core.ts
+  // keeps the public re-export so every consumer path stays unchanged.
+  "export { getPluginHeaders } from './client/plugin-headers';",
 ]) {
   if (!sdkApiCore.includes(requiredHelper)) {
     errors.push(`packages/sdk/src/api-core.ts must include ${requiredHelper}.`);
+  }
+}
+const sdkPluginHeaders = readRequiredSource(
+  '../packages/sdk/src/client/plugin-headers.ts',
+);
+// Presence only: the spoof-resistance of the header itself is a behavioural
+// property, pinned by packages/sdk/src/__tests__/api-core-layout-context.test.ts,
+// which a source scan cannot express without pretending to.
+for (const requiredHelper of ['export function getPluginHeaders(']) {
+  if (!sdkPluginHeaders.includes(requiredHelper)) {
+    errors.push(
+      `packages/sdk/src/client/plugin-headers.ts must include ${requiredHelper}.`,
+    );
   }
 }
 
