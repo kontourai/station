@@ -103,9 +103,9 @@ Adapter.
 live in `src-server/services/search/unified-search-service.ts`. Initial local
 Adapters map the existing authority-filtered Session message index and the
 personal-mode TaskGraph list. The Task Adapter is deliberately not eligible for
-hosted composition until a tenant-bound Task store exists. There is no route,
-SDK hook, command-palette row, file scan, output/receipt Provider, or open-intent
-resolver in this tracer. Focused behavioral evidence lives in
+hosted composition until a tenant-bound Task store exists. The runtime/API/SDK
+slice below adds read-only transport; there is no command-palette row, file
+scan, or output/receipt Provider. Focused behavioral evidence lives in
 `src-server/services/search/__tests__/`. **Do not reintroduce:** a universal
 resource graph, sibling-repository scraping, provider-supplied owner stamping,
 unauthorized hit/count projection, cached-snippet authority, inferred identity,
@@ -126,12 +126,12 @@ cleanup occupies the slot; `inspect()` reports retiring/incomplete and bounded
 and retries only settled rejection. The owner must close the reader. This is
 trusted first-party CPU isolation, not a hostile-plugin security sandbox, and
 is not a host-wide pool or a new authorization authority. Do not allocate one
-reader per request. No runtime caller is wired; supported-platform
+reader per request. Runtime composition below owns the caller; supported-platform
 responsiveness qualification remains open. Existing arbitrary Provider callbacks remain in-process and do
 not acquire an isolation guarantee from this Task-only slice.
 
 **Transcript read/auth isolation (#1413).** `OrchestrationService.createIsolatedTranscriptSearch()`
-is an additive explicit-lifecycle composition seam, not an HTTP/UI caller.
+is the explicit-lifecycle composition seam used by the runtime owner.
 Runtime initialization/recovery must precede query admission; it is not hidden
 inside the request deadline. Canonical FTS ranking/scope terms and owner SQL
 live in `transcript-search-queries.ts`, reused by EventStore and a read-only
@@ -157,8 +157,7 @@ old providers' navigation-anchor API remains compatible. New message opens
 require an exact Session/event pair, verify the canonical event still exists,
 and never follow lineage to a newer child. Typed open locators are not cached
 authorization receipts. These methods reuse one reader slot and its retained
-cleanup, with no new worker per call or synchronous fallback. There is still no
-runtime route, SDK, or palette wiring in this additive read-contract slice.
+cleanup, with no new worker per call or synchronous fallback.
 The complete query plus authorization sequence has one two-second acceptance
 deadline, one active query and no queue. Task and transcript workers share
 private termination custody, not a plugin execution framework. EventStore
@@ -167,8 +166,26 @@ Orchestration shutdown also fences and settles its reader. Native SQLite work
 may defer thread termination until its native call returns; uncertain cleanup
 retains the occupied slot and is never reported complete. This is CPU isolation
 for fixed first-party reads, not a sandbox or a hard-real-time/preemption claim.
-Runtime search routes, provider composition, open-time authorization/UI wiring,
-and supported-platform responsiveness qualification remain deferred.
+**Runtime/API/SDK slice (#1363).** `StationRuntime.configureRoutes` constructs
+one `RuntimeSearch` after initialized Orchestration is published. It uses the
+existing handshake `environmentId` as result `stationId`, without inventing a
+machine/logical-Station identity. Request-bound lightweight adapters reuse one
+Task owner and one Orchestration transcript owner; hosted Task search is
+restricted and never invokes its worker. `POST /api/search` and
+`POST /api/search/resolve-open` use closed 12 KiB bodies and the same
+`orchestration:read` pairing scope as existing Task GET routes. No owner or
+authority fields are accepted. The ingress-derived SessionReadAuthority,
+request abort and live principal scope are checked before and after owner I/O.
+Responses are private/no-store. Search/read outcome telemetry contains only
+bounded operation/state labels, never queries or resource identities.
+Shutdown fences admission synchronously before initialization/configuration
+drains, keeps the Task close capability when retirement remains pending, and
+leaves transcript shutdown to Orchestration/EventStore. SDK cached hooks require
+the existing API-base/authority-epoch request scope and hide cached snippets
+until a fresh successful read. Real owner+Hono tests live in
+`services/search/__tests__/runtime-search.test.ts`; mounted SDK tests cover
+same-origin epoch replacement. CommandPalette/UI, additional source kinds, and
+supported-platform responsiveness qualification remain deferred.
 
 ## DesktopStartupReadiness
 

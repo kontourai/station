@@ -279,6 +279,10 @@ import {
   createMCPToolProvenanceGeneration,
   type MCPToolProvenanceGeneration,
 } from '../../services/orchestration/mcp-tool-provenance.js';
+import {
+  createRuntimeSearch,
+  type RuntimeSearch,
+} from '../../services/search/runtime-search.js';
 import { continueExecutionTargetMessage } from '../../tools/station-control-delegation.js';
 import { buildRuntimeContext as createRuntimeContext } from '../agents/runtime-context-builder.js';
 import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js';
@@ -730,6 +734,8 @@ export class StationRuntime {
   private knowledgeStoreProvider!: KnowledgeStoreProvider;
   private fileTreeService!: FileTreeService;
   private readonly taskGraphService: TaskGraphService;
+  private runtimeSearch?: RuntimeSearch;
+  private searchAdmissionStopped = false;
   private readonly taskDispatchAssignmentClaims: Pick<
     AssignmentClaimService,
     'claim' | 'release' | 'status'
@@ -3215,6 +3221,14 @@ export class StationRuntime {
   private configureRoutes(
     app: Parameters<NonNullable<HonoServerConfig['configureApp']>>[0],
   ): void {
+    // The existing handshake environment identity qualifies these local owner
+    // records; it is not a new logical Station or machine identity.
+    this.runtimeSearch ??= createRuntimeSearch({
+      stationId: this.stationEnvironmentId!,
+      tasks: this.taskGraphService,
+      transcripts: this.orchestrationService,
+    });
+    if (this.searchAdmissionStopped) this.runtimeSearch.stop();
     const {
       schedulerService,
       notificationService,
@@ -3256,6 +3270,7 @@ export class StationRuntime {
       secretBindingIntegrationAdministration:
         this.secretBindingIntegrationAdministration,
       taskGraphService: this.taskGraphService,
+      runtimeSearch: this.runtimeSearch,
       taskDispatcher: this.taskDispatcher,
       terminalService: this.terminalService,
       actionOperations: this.actionOperations,
@@ -3699,6 +3714,8 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    this.searchAdmissionStopped = true;
+    this.runtimeSearch?.stop();
     // Settle any pending native-engine adoption window before timers are
     // cleared, so its promise cannot strand on a cleared timeout (archive#1575).
     // Optional-chained: prototype-built test doubles (Object.create) have no
@@ -3732,6 +3749,11 @@ export class StationRuntime {
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
+    if (this.runtimeSearch) {
+      const retirement = await this.runtimeSearch.close();
+      if (retirement.state !== 'closed')
+        failures.push(new Error('Task search reader shutdown pending'));
+    }
     try {
       await this.discordGatewayService?.stop();
     } catch (error) {

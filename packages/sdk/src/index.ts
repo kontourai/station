@@ -1157,6 +1157,13 @@ export {
 } from './starter-work';
 export { telemetry } from './telemetry';
 export * from './types';
+export {
+  resolveSearchOpen,
+  searchStation,
+  UnifiedSearchRequestError,
+  unifiedSearchQueries,
+  useUnifiedSearchQuery,
+} from './unified-search';
 export type {
   VoiceRealtimeCapabilities,
   VoiceRealtimeConnection,
