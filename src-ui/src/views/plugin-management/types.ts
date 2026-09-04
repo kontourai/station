@@ -100,3 +100,31 @@ export interface PluginMessage {
   type: 'success' | 'error';
   text: string;
 }
+
+/** Installed permission truth, never inferred from a pre-install preview. */
+export function installedDependencyPermissions(result: unknown):
+  | Array<{
+      id: string;
+      pendingConsent: Array<{ permission: string; tier: PermissionTier }>;
+    }>
+  | undefined {
+  const rows = (result as { permissions?: { dependencies?: unknown } } | null)
+    ?.permissions?.dependencies;
+  if (!Array.isArray(rows)) return undefined;
+  if (
+    rows.some(
+      (row) =>
+        !row ||
+        typeof row.id !== 'string' ||
+        !Array.isArray(row.pendingConsent) ||
+        row.pendingConsent.some(
+          (entry: { permission?: unknown; tier?: unknown }) =>
+            !entry ||
+            typeof entry.permission !== 'string' ||
+            !['passive', 'active', 'trusted'].includes(entry.tier as string),
+        ),
+    )
+  )
+    return undefined;
+  return rows;
+}

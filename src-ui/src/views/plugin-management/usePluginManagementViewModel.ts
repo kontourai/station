@@ -31,11 +31,12 @@ import {
   revokeNeedsConfirmation,
 } from '../../core/permission-vocabulary';
 import { useUrlSelection } from '../../hooks/useUrlSelection';
-import type {
-  Plugin,
-  PluginMessage,
-  PluginUpdateSummary,
-  PreviewData,
+import {
+  installedDependencyPermissions,
+  type Plugin,
+  type PluginMessage,
+  type PluginUpdateSummary,
+  type PreviewData,
 } from './types';
 import {
   buildPluginListItems,
@@ -336,8 +337,21 @@ export function usePluginManagementViewModel() {
               return;
             }
           }
-          for (const dependency of basis.dependencies ?? []) {
-            const dependencyPending = dependency.consent?.pendingConsent ?? [];
+          const dependencyStatus = installedDependencyPermissions(data);
+          if (
+            dependencyStatus === undefined &&
+            (basis.dependencies?.length ?? 0) > 0
+          ) {
+            setMessage({
+              type: 'error',
+              text: `${pluginName} is installed, but Station did not report current dependency approval status. Check Plugins on the Station host.`,
+            });
+            await reloadPluginsMutation.mutateAsync().catch(() => {});
+            await reloadClientPluginRegistry();
+            return;
+          }
+          for (const dependency of dependencyStatus ?? []) {
+            const dependencyPending = dependency.pendingConsent;
             if (dependencyPending.length === 0) continue;
             const approved = await requestConsent(
               dependency.id,

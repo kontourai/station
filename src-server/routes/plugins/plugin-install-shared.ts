@@ -388,13 +388,26 @@ function assertDependencyProviderSlotsAvailable(
   pluginsDir: string,
   dependencyId: string,
   manifest: PluginManifest,
+  stagedParent: PluginManifest,
 ): void {
   for (const provider of manifest.providers ?? []) {
     if (PROVIDER_TYPE_META[provider.type] === 'additive') continue;
+    if (
+      (stagedParent.providers ?? []).some(
+        (candidate) =>
+          candidate.type === provider.type &&
+          (candidate.layout ?? null) === (provider.layout ?? null),
+      )
+    ) {
+      throw new Error(
+        `Plugin dependency '${dependencyId}' provider '${provider.type}' collides with staged plugin '${stagedParent.name}'`,
+      );
+    }
     for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
       if (
         !entry.isDirectory() ||
         entry.name === dependencyId ||
+        entry.name === stagedParent.name ||
         entry.name.startsWith('.preview-')
       ) {
         continue;
@@ -512,6 +525,7 @@ function dependencyHasOtherInstalledConsumer(
 
 function createDependencyLifecycle(options: {
   consent: PluginInstallConsent;
+  stagedParent: PluginManifest;
   pluginsDir: string;
   projectHomeDir: string;
   logger: Logger;
@@ -584,6 +598,14 @@ function createDependencyLifecycle(options: {
   };
 
   return {
+    validateInstalled({ dependencyId, manifest }) {
+      assertDependencyProviderSlotsAvailable(
+        options.pluginsDir,
+        dependencyId,
+        manifest,
+        options.stagedParent,
+      );
+    },
     validate({ dependencyId, dependencyDir, manifest }) {
       if (!pluginHasDependencyLifecycle(manifest)) return;
       const approval = approvals.get(dependencyId);
@@ -612,6 +634,7 @@ function createDependencyLifecycle(options: {
         options.pluginsDir,
         dependencyId,
         manifest,
+        options.stagedParent,
       );
       if (!grantSnapshots.has(dependencyId)) {
         grantSnapshots.set(
@@ -1890,6 +1913,7 @@ export async function installPluginFromSource(
     );
     const dependencyLifecycle = createDependencyLifecycle({
       consent,
+      stagedParent: manifest,
       pluginsDir,
       projectHomeDir,
       logger,
@@ -1897,6 +1921,11 @@ export async function installPluginFromSource(
       settleProviderAdapterRetirements: deps.settleProviderAdapterRetirements,
     });
 
+    // One lock order for every publication: global publication, then plugin
+    // content. Waiting for publication must never retain a dependency lock.
+    releaseInstallPublication = await acquireFileMutationLockAsync(
+      join(projectHomeDir, 'plugin-install-publication.mutation'),
+    );
     await ensureCanonicalRegistryInstallAliases(projectHomeDir);
     if (manifest.workspacePanes?.length) {
       for (const pane of manifest.workspacePanes) {
@@ -1986,9 +2015,7 @@ export async function installPluginFromSource(
         // The parent and every dependency publish under one cross-process
         // transaction. A provider collision cannot race between preflight and
         // dependency activation, and rollback retains the same outer fence.
-        releaseInstallPublication = await acquireFileMutationLockAsync(
-          join(projectHomeDir, 'plugin-install-publication.mutation'),
-        );
+        const registryDependencyOwners = new Map<string, string>();
 
         for (const [index, dependency] of (
           manifest.dependencies ?? []
@@ -1999,7 +2026,25 @@ export async function installPluginFromSource(
             pluginsDir,
             () => ({
               async resolveSource(id: string) {
-                return (await resolveSinglePluginRegistryProvider(id)).source;
+                const entry = await resolveSinglePluginRegistryProvider(id);
+                if (entry.source) {
+                  if (!entry.provider.registryKey) {
+                    throw new Error(
+                      `Plugin registry provider for '${id}' has no source identity`,
+                    );
+                  }
+                  // Source staging must preserve the same ownership refusal
+                  // as provider.install, before it creates any target bytes.
+                  assertRegistryInstallTargetAvailable(
+                    projectHomeDir,
+                    pluginsDir,
+                    id,
+                    entry.provider.registryKey,
+                    id,
+                  );
+                  registryDependencyOwners.set(id, entry.provider.registryKey);
+                }
+                return entry.source;
               },
               async install(
                 id: string,
@@ -2033,6 +2078,15 @@ export async function installPluginFromSource(
                 `Plugin dependency '${dependency.id}' failed to install`,
               { cause: dependencyResult.cause },
             );
+          }
+          // Source-backed registry dependencies were staged and validated by
+          // Station, not provider.install. Publish their exact registry owner
+          // under the same outer transaction; the durable backup restores
+          // aliases if any later dependency or parent step fails.
+          for (const [id, registryKey] of registryDependencyOwners) {
+            if (createdPluginTrees.has(id)) {
+              rememberRegistryInstall(projectHomeDir, id, registryKey, id);
+            }
           }
         }
 
@@ -2433,10 +2487,28 @@ export async function uninstallInstalledPlugin(
   name: string,
   deps: PluginInstallSharedDeps,
 ): Promise<{ success: true }> {
+  const release = await acquireFileMutationLockAsync(
+    join(deps.projectHomeDir, 'plugin-install-publication.mutation'),
+  );
+  try {
+    await ensureCanonicalRegistryInstallAliases(deps.projectHomeDir);
+    const installedName =
+      resolveInstalledPluginName(deps.projectHomeDir, deps.pluginsDir, name) ||
+      name;
+    return await withPluginContentLock(deps.pluginsDir, installedName, () =>
+      uninstallPluginUnderPublication(name, deps, installedName),
+    );
+  } finally {
+    await release();
+  }
+}
+
+async function uninstallPluginUnderPublication(
+  name: string,
+  deps: PluginInstallSharedDeps,
+  installedPluginName: string,
+): Promise<{ success: true }> {
   const { agentsDir, eventBus, logger, pluginsDir, projectHomeDir } = deps;
-  await ensureCanonicalRegistryInstallAliases(projectHomeDir);
-  const installedPluginName =
-    resolveInstalledPluginName(projectHomeDir, pluginsDir, name) || name;
   const pluginDir = join(pluginsDir, installedPluginName);
   // The selected installed directory is the uninstall identity. A mutable
   // manifest may describe what needs cleanup, but it cannot rename the
@@ -2449,7 +2521,6 @@ export async function uninstallInstalledPlugin(
   }
 
   let backupRoot: string | null = null;
-  let releaseInstallPublication: (() => Promise<void>) | undefined;
   let removedDependencyBackups: RemovedDependencyBackup[] = [];
   const manifest = await readManifestForRemoval(
     join(pluginDir, 'plugin.json'),
@@ -2500,9 +2571,6 @@ export async function uninstallInstalledPlugin(
     // backup element is already complete.
     backupPluginDurableState(projectHomeDir, backupRoot, pluginName);
     backupComplete = true;
-    releaseInstallPublication = await acquireFileMutationLockAsync(
-      join(projectHomeDir, 'plugin-install-publication.mutation'),
-    );
 
     if (manifest.agents) {
       persistedAgentOwnership = capturePersistedAgentOwnership(
@@ -2614,7 +2682,6 @@ export async function uninstallInstalledPlugin(
     }
     throw error;
   } finally {
-    await releaseInstallPublication?.();
     serverQuiescence.release();
     eventSubscriptionQuiescence?.release();
     if (backupRoot) {

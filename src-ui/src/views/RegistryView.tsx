@@ -35,7 +35,10 @@ import {
 } from '../core/remotePluginBundleConsent';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { InstallPreviewModal } from './plugin-management/InstallPreviewModal';
-import type { PreviewData } from './plugin-management/types';
+import {
+  installedDependencyPermissions,
+  type PreviewData,
+} from './plugin-management/types';
 import './PluginManagementView.css';
 import './RegistryView.css';
 import './page-layout.css';
@@ -343,11 +346,20 @@ export function RegistryView({
     const baseCallbacks = actionCallbacks(tab, item, itemId, false);
     const callbacks = {
       onError: baseCallbacks.onError,
-      onSuccess: async () => {
+      onSuccess: async (result: unknown) => {
         baseCallbacks.onSuccess();
         void pluginRegistry.reload();
-        for (const dependency of data.dependencies ?? []) {
-          const dependencyPending = dependency.consent?.pendingConsent ?? [];
+        const dependencyStatus = installedDependencyPermissions(result);
+        if (
+          dependencyStatus === undefined &&
+          (data.dependencies?.length ?? 0) > 0
+        ) {
+          setMessage(
+            `${displayName} is installed, but Station did not report current dependency approval status. Check Plugins on the Station host.`,
+          );
+        }
+        for (const dependency of dependencyStatus ?? []) {
+          const dependencyPending = dependency.pendingConsent;
           if (dependencyPending.length === 0) continue;
           const approved = await requestConsent(
             dependency.id,

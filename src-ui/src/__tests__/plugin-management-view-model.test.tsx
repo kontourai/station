@@ -24,6 +24,10 @@ const mocks = vi.hoisted(() => ({
         plugin: { name: string; displayName?: string; agents?: unknown[] };
         permissions?: {
           pendingConsent?: Array<{ permission: string; tier: string }>;
+          dependencies?: Array<{
+            id: string;
+            pendingConsent: Array<{ permission: string; tier: string }>;
+          }>;
         };
       }) => Promise<void>)
     | null,
@@ -304,7 +308,17 @@ describe('usePluginManagementViewModel', () => {
     await act(async () => {
       await mocks.installOnSuccess?.({
         plugin: { name: 'network-kit', displayName: 'Network Kit' },
-        permissions: { pendingConsent: [] },
+        permissions: {
+          pendingConsent: [],
+          dependencies: [
+            {
+              id: 'shared-providers',
+              pendingConsent: [
+                { permission: 'providers.register', tier: 'trusted' },
+              ],
+            },
+          ],
+        },
       });
     });
     expect(mocks.requestConsent).toHaveBeenCalledWith(
@@ -313,6 +327,55 @@ describe('usePluginManagementViewModel', () => {
       [{ permission: 'providers.register', tier: 'trusted' }],
     );
   });
+
+  test.each([true, false])(
+    'uses installed dependency permission truth (reported=%s), never pending preview state',
+    async (reported) => {
+      mocks.requestInstallConsent.mockResolvedValue(true);
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await primePreview(result, {
+        ...PREVIEW,
+        dependencies: [
+          {
+            id: 'shared-providers',
+            status: 'installed',
+            consent: {
+              permissions: ['providers.register'],
+              contentDigest: 'sha256:dependency',
+              dependencies: [],
+              pendingConsent: [
+                { permission: 'providers.register', tier: 'trusted' },
+              ],
+            },
+          },
+        ],
+      });
+      await act(async () => {
+        await result.current.install([]);
+      });
+      await act(async () => {
+        await mocks.installOnSuccess?.({
+          plugin: { name: 'network-kit' },
+          permissions: {
+            pendingConsent: [],
+            ...(reported
+              ? {
+                  dependencies: [
+                    { id: 'shared-providers', pendingConsent: [] },
+                  ],
+                }
+              : {}),
+          },
+        });
+      });
+      expect(mocks.requestConsent).not.toHaveBeenCalled();
+      expect(result.current.message?.text).toContain(
+        reported
+          ? 'is ready'
+          : 'did not report current dependency approval status',
+      );
+    },
+  );
 
   test('will not install a source it has no preview to approve against', async () => {
     const { result } = renderHook(() => usePluginManagementViewModel());

@@ -84,6 +84,10 @@ export interface ResolvedPluginDependency {
 }
 
 export interface PluginDependencyLifecycle {
+  validateInstalled?(input: {
+    dependencyId: string;
+    manifest: PluginManifest;
+  }): void;
   validate(input: {
     dependencyId: string;
     dependencyDir: string;
@@ -788,6 +792,7 @@ async function validateAndBuildInstalledDependency(
     lifecycle,
   );
   if (lifecycle && (manifest.providers?.length || manifest.settings?.length)) {
+    lifecycle.validateInstalled?.({ dependencyId, manifest });
     return;
   }
   await buildDependencyIfNeeded(

@@ -11,6 +11,7 @@ import {
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
@@ -3418,6 +3419,174 @@ describe('plugin install consent gate (station#4288)', () => {
   });
 
   describe('lifecycle-bearing plugin dependencies', () => {
+    test('an install waiting for publication does not retain its content lock', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-publication-order-'));
+      cleanupDirs.push(root);
+      const source = join(root, 'source');
+      writePlugin(source, { name: 'dependency', version: '1.0.0' });
+      const consent = await approvedConsent(source, root);
+      const release = await acquireFileMutationLockAsync(
+        join(root, 'plugin-install-publication.mutation'),
+      );
+      const installing = installPluginFromSource(source, [], deps(root), {
+        consent,
+      });
+      try {
+        await vi.waitFor(() =>
+          expect(
+            readdirSync(join(root, 'plugins')).some((name) =>
+              name.startsWith('.preview-'),
+            ),
+          ).toBe(true),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        const contentAvailable = await Promise.race([
+          withPluginContentLock(
+            join(root, 'plugins'),
+            'dependency',
+            async () => true,
+          ),
+          new Promise<boolean>((resolve) =>
+            setTimeout(() => resolve(false), 250),
+          ),
+        ]);
+        expect(contentAvailable).toBe(true);
+      } finally {
+        await release();
+        await installing;
+      }
+    });
+
+    test('an uninstall waiting for publication does not retain its content lock', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-publication-order-'));
+      cleanupDirs.push(root);
+      writePlugin(join(root, 'plugins', 'dependency'), {
+        name: 'dependency',
+        version: '1.0.0',
+      });
+      const release = await acquireFileMutationLockAsync(
+        join(root, 'plugin-install-publication.mutation'),
+      );
+      const { Hono } = await import('hono');
+      const { registerPluginLifecycleRoutes } = await import(
+        '../plugin-lifecycle-routes.js'
+      );
+      const app = new Hono();
+      registerPluginLifecycleRoutes(app, deps(root));
+      const removing = app.request('/dependency', { method: 'DELETE' });
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(
+          await Promise.race([
+            withPluginContentLock(
+              join(root, 'plugins'),
+              'dependency',
+              async () => true,
+            ),
+            new Promise<boolean>((resolve) =>
+              setTimeout(() => resolve(false), 250),
+            ),
+          ]),
+        ).toBe(true);
+      } finally {
+        await release();
+        expect((await removing).status).toBe(200);
+      }
+    });
+
+    test('refuses a dependency singleton colliding with the staged parent before installation', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-parent-collision-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parent = join(root, 'parent');
+      writePlugin(parent, {
+        name: 'parent',
+        version: '1.0.0',
+        providers: [{ type: 'auth', module: './provider.js' }],
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      writeFileSync(join(parent, 'provider.js'), 'export default {};');
+      await expect(
+        installPluginFromSource(parent, [], deps(root), {
+          consent: await approvedParent(parent, dependencySource, root),
+        }),
+      ).rejects.toThrow("collides with staged plugin 'parent'");
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(replacePluginProvidersForSource).not.toHaveBeenCalledWith(
+        'shared-providers',
+        expect.anything(),
+      );
+    });
+
+    test('allows moving an old parent singleton provider into its replacement dependency', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-parent-migration-'));
+      cleanupDirs.push(root);
+      writePlugin(join(root, 'plugins', 'parent'), {
+        name: 'parent',
+        version: '1.0.0',
+        providers: [{ type: 'auth', module: './provider.js' }],
+      });
+      const dependencySource = writeProviderDependency(root);
+      const parent = join(root, 'parent');
+      writePlugin(parent, {
+        name: 'parent',
+        version: '2.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const result = await installPluginFromSource(parent, [], deps(root), {
+        consent: await approvedParent(parent, dependencySource, root),
+      });
+      expect(result.success).toBe(true);
+    });
+
+    test('preserves registry ownership for the production resolveSource dependency path', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-registry-source-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const registryPath = join(root, 'registry.json');
+      writeFileSync(
+        registryPath,
+        JSON.stringify({
+          version: 1,
+          plugins: [
+            {
+              id: 'shared-providers',
+              displayName: 'Shared',
+              version: '1.0.0',
+              source: dependencySource,
+            },
+          ],
+        }),
+      );
+      const provider = new JsonManifestRegistryProvider(registryPath, root);
+      getPluginRegistryProviders.mockReturnValue([
+        { source: 'test', provider },
+      ]);
+      const parent = join(root, 'parent');
+      writePlugin(parent, {
+        name: 'parent',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers' }],
+      });
+      const installDeps = deps(root);
+      await installPluginFromSource(parent, [], installDeps, {
+        consent: await approvedParent(parent, dependencySource, root),
+      });
+      expect(await provider.listInstalled()).toEqual([
+        expect.objectContaining({
+          id: 'shared-providers',
+          installedPluginName: 'shared-providers',
+        }),
+      ]);
+      await uninstallInstalledPlugin('parent', installDeps);
+      expect(await provider.listInstalled()).toEqual([]);
+      expect(
+        JSON.parse(
+          readFileSync(join(root, 'config', 'registry-installs.json'), 'utf8'),
+        ),
+      ).toEqual({});
+    });
+
     function writeProviderDependency(
       root: string,
       name = 'shared-providers',
