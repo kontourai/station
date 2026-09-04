@@ -678,35 +678,29 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       document.querySelector('section[aria-label="Activity"]'),
     ).not.toBeNull();
     expect(document.querySelectorAll('#chat-dock')).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Show Chat' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show Chat' }));
     await waitFor(() =>
       expect(document.querySelectorAll('#chat-dock')).toHaveLength(1),
     );
     expect(shells()).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show Activity' }));
     await waitFor(() =>
       expect(
         document.querySelector('section[aria-label="Activity"]'),
       ).not.toBeNull(),
     );
     expect(shells()).toHaveLength(1);
-    fireEvent.click(
-      within(screen.getByRole('group', { name: 'Regions' })).getByRole(
-        'button',
-        { name: 'Hide Activity' },
-      ),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Hide Activity' }));
     await waitFor(() =>
       expect(
         document.querySelector('section[aria-label="Activity"]'),
       ).toBeNull(),
     );
-    fireEvent.click(
-      within(screen.getByRole('group', { name: 'Regions' })).getByRole(
-        'button',
-        { name: 'Show Activity' },
-      ),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show Activity' }));
     await waitFor(() =>
       expect(
         document.querySelector('section[aria-label="Activity"]'),

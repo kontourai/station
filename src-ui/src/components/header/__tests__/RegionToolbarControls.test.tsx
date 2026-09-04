@@ -237,37 +237,51 @@ describe('RegionToolbarControls', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  test('a bottom-only device renders one control per surface and makes either surface the sole visible region', () => {
+  test('a bottom-only device offers all surfaces through one Regions menu and makes either surface the sole visible region', () => {
     harness.bottomOnly = true;
     const { rerender } = render(<RegionToolbarControls />);
 
-    expect(
-      screen.getByRole('group', { name: 'Regions' }).querySelectorAll('button'),
-    ).toHaveLength(2);
-    const chat = screen.getByRole('button', { name: 'Hide Chat' });
-    expect(chat.getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(chat);
+    const group = screen.getByRole('group', { name: 'Regions' });
+    expect(group.querySelectorAll('button')).toHaveLength(1);
+    const trigger = screen.getByRole('button', { name: 'Regions' });
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menu', { name: 'Region surfaces' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Hide Chat' }));
     expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
       visible: false,
     });
+    expect(screen.queryByRole('menu')).toBeNull();
 
     harness.setRegion.mockClear();
     harness.regions.bottom.visible = false;
     rerender(<RegionToolbarControls />);
+    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
+    expect(screen.getByRole('menuitem', { name: 'Show Chat' })).toBeTruthy();
     expect(
-      screen
-        .getByRole('button', { name: 'Show Chat' })
-        .getAttribute('aria-pressed'),
-    ).toBe('false');
-    fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
+      screen.getByRole('menuitem', { name: 'Show Activity' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show Activity' }));
     expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
     expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
       visible: false,
     });
     expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: true });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show Chat' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show Chat' }));
     expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: false });
     expect(harness.setRegion).toHaveBeenCalledWith('bottom', { visible: true });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
+    const backdrop = screen.getByRole('button', {
+      name: 'Close regions menu',
+    });
+    const pointerDown = createEvent.pointerDown(backdrop);
+    fireEvent(backdrop, pointerDown);
+    expect(pointerDown.defaultPrevented).toBe(true);
+    expect(screen.queryByRole('menu')).not.toBeNull();
+    fireEvent.click(backdrop);
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 });

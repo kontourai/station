@@ -59,20 +59,22 @@ function RegionShortcut({
   return null;
 }
 
-function RegionSurfaceMenu({
-  regionId,
-  occupant,
-  surfaces,
-  onClose,
-  onPlace,
+function ToolbarMenu({
+  ariaLabel,
+  dismissLabel,
   anchorRight,
+  onClose,
+  items,
 }: {
-  regionId: DockMode;
-  occupant: string | null;
-  surfaces: readonly RegisteredSurface[];
-  onClose: () => void;
-  onPlace: (surfaceId: string, regionId: DockMode) => void;
+  ariaLabel: string;
+  dismissLabel: string;
   anchorRight: number;
+  onClose: () => void;
+  items: readonly {
+    key: string;
+    label: string;
+    onSelect: () => void;
+  }[];
 }) {
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
   useEffect(() => {
@@ -85,16 +87,12 @@ function RegionSurfaceMenu({
     return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [onClose]);
 
-  const choices = occupant
-    ? surfaces.filter((surface) => surface.id !== occupant)
-    : surfaces;
-  const label = regionLabel(regionId);
   return createPortal(
     <>
       <button
         type="button"
         className="header-menu__dismiss-backdrop"
-        aria-label={`Close ${label} region menu`}
+        aria-label={dismissLabel}
         style={{
           position: 'fixed',
           inset: 0,
@@ -113,23 +111,21 @@ function RegionSurfaceMenu({
         ref={menuRef}
         className="app-toolbar__overflow-menu app-toolbar__region-menu"
         role="menu"
-        aria-label={`${label} region surfaces`}
+        aria-label={ariaLabel}
         tabIndex={-1}
         style={{ right: `${anchorRight}px` }}
       >
-        {choices.map((surface) => (
+        {items.map((item) => (
           <button
-            key={surface.id}
+            key={item.key}
             type="button"
             role="menuitem"
             onClick={() => {
-              onPlace(surface.id, regionId);
+              item.onSelect();
               onClose();
             }}
           >
-            {occupant
-              ? `Swap in ${surface.title}`
-              : `Place ${surface.title} here`}
+            {item.label}
           </button>
         ))}
       </div>
@@ -155,6 +151,8 @@ function ConnectedRegionToolbarControls() {
   const [menuRegion, setMenuRegion] = useState<DockMode | null>(null);
   const [menuAnchorRight, setMenuAnchorRight] = useState(8);
   const foldedRegion = foldedDockRegion(regions, lastShownRegion);
+  const menuOccupant = menuRegion && regions[menuRegion].occupant;
+  const menuLabel = menuRegion && regionLabel(menuRegion);
 
   const showSurfaceAlone = useCallback(
     (surfaceId: string, regionId: DockMode) => {
@@ -227,83 +225,100 @@ function ConnectedRegionToolbarControls() {
           onToggle={() => toggleSurface(surface)}
         />
       ))}
-      {bottomOnly
-        ? surfaceList.map((surface) => {
+      {bottomOnly ? (
+        <button
+          type="button"
+          className="app-toolbar__region-btn"
+          aria-label="Regions"
+          title="Regions"
+          aria-haspopup="menu"
+          aria-expanded={menuRegion === 'bottom'}
+          onClick={(event) => openMenu('bottom', event.currentTarget)}
+        >
+          <RegionGlyph id={foldedRegion ?? 'bottom'} />
+        </button>
+      ) : (
+        availableRegions.map((id) => {
+          const occupant = regions[id].occupant;
+          const surface = occupant ? surfaces.get(occupant) : undefined;
+          const label = regionLabel(id);
+          const pressed = Boolean(surface && regions[id].visible);
+          const actionLabel = surface
+            ? `${pressed ? 'Hide' : 'Show'} ${surface.title} ${label} region`
+            : `Choose a surface for ${label} region`;
+          return (
+            <span key={id} className="app-toolbar__region-control">
+              <button
+                type="button"
+                className="app-toolbar__region-btn"
+                aria-label={actionLabel}
+                {...(surface
+                  ? { 'aria-pressed': pressed }
+                  : {
+                      'aria-haspopup': 'menu' as const,
+                      'aria-expanded': menuRegion === id,
+                    })}
+                title={actionLabel}
+                onClick={(event) => {
+                  if (surface) toggleSurface(surface);
+                  else openMenu(id, event.currentTarget);
+                }}
+              >
+                <RegionGlyph id={id} />
+                {!surface && <span className="app-toolbar__region-add">+</span>}
+              </button>
+              {surface && surfaceList.length > 1 ? (
+                <button
+                  type="button"
+                  className="app-toolbar__region-swap"
+                  aria-label={`Change ${label} region surface`}
+                  aria-haspopup="menu"
+                  aria-expanded={menuRegion === id}
+                  onClick={(event) => openMenu(id, event.currentTarget)}
+                >
+                  ⋯
+                </button>
+              ) : null}
+            </span>
+          );
+        })
+      )}
+      {menuRegion && bottomOnly ? (
+        <ToolbarMenu
+          ariaLabel="Region surfaces"
+          dismissLabel="Close regions menu"
+          anchorRight={menuAnchorRight}
+          onClose={() => setMenuRegion(null)}
+          items={surfaceList.map((surface) => {
             const occupied = occupiedDockRegion(regions, surface.id);
             const pressed = Boolean(
               occupied &&
                 occupied === foldedRegion &&
                 regions[occupied].visible,
             );
-            const actionLabel = `${pressed ? 'Hide' : 'Show'} ${surface.title}`;
-            return (
-              <button
-                key={surface.id}
-                type="button"
-                className="app-toolbar__region-btn"
-                aria-label={actionLabel}
-                aria-pressed={pressed}
-                title={actionLabel}
-                onClick={() => toggleSurface(surface)}
-              >
-                <RegionGlyph id={occupied ?? surface.defaultRegion} />
-              </button>
-            );
-          })
-        : availableRegions.map((id) => {
-            const occupant = regions[id].occupant;
-            const surface = occupant ? surfaces.get(occupant) : undefined;
-            const label = regionLabel(id);
-            const pressed = Boolean(surface && regions[id].visible);
-            const actionLabel = surface
-              ? `${pressed ? 'Hide' : 'Show'} ${surface.title} ${label} region`
-              : `Choose a surface for ${label} region`;
-            return (
-              <span key={id} className="app-toolbar__region-control">
-                <button
-                  type="button"
-                  className="app-toolbar__region-btn"
-                  aria-label={actionLabel}
-                  {...(surface
-                    ? { 'aria-pressed': pressed }
-                    : {
-                        'aria-haspopup': 'menu' as const,
-                        'aria-expanded': menuRegion === id,
-                      })}
-                  title={actionLabel}
-                  onClick={(event) => {
-                    if (surface) toggleSurface(surface);
-                    else openMenu(id, event.currentTarget);
-                  }}
-                >
-                  <RegionGlyph id={id} />
-                  {!surface && (
-                    <span className="app-toolbar__region-add">+</span>
-                  )}
-                </button>
-                {surface && surfaceList.length > 1 ? (
-                  <button
-                    type="button"
-                    className="app-toolbar__region-swap"
-                    aria-label={`Change ${label} region surface`}
-                    aria-haspopup="menu"
-                    aria-expanded={menuRegion === id}
-                    onClick={(event) => openMenu(id, event.currentTarget)}
-                  >
-                    ⋯
-                  </button>
-                ) : null}
-              </span>
-            );
+            return {
+              key: surface.id,
+              label: `${pressed ? 'Hide' : 'Show'} ${surface.title}`,
+              onSelect: () => toggleSurface(surface),
+            };
           })}
-      {menuRegion ? (
-        <RegionSurfaceMenu
-          regionId={menuRegion}
-          occupant={regions[menuRegion].occupant}
-          surfaces={surfaceList}
+        />
+      ) : menuRegion ? (
+        <ToolbarMenu
+          ariaLabel={`${menuLabel} region surfaces`}
+          dismissLabel={`Close ${menuLabel} region menu`}
           anchorRight={menuAnchorRight}
           onClose={() => setMenuRegion(null)}
-          onPlace={placeSurface}
+          items={(menuOccupant
+            ? surfaceList.filter((surface) => surface.id !== menuOccupant)
+            : surfaceList
+          ).map((surface) => ({
+            key: surface.id,
+            label: menuOccupant
+              ? `Swap in ${surface.title}`
+              : `Place ${surface.title} here`,
+            onSelect: () => placeSurface(surface.id, menuRegion),
+          }))}
         />
       ) : null}
     </fieldset>
