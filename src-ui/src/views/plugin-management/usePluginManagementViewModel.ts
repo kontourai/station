@@ -255,7 +255,7 @@ export function usePluginManagementViewModel() {
             type: 'error',
             text: `${stillRejected.displayName} is still rejected. ${stillRejected.rejection.reason}`,
           });
-        } else if (repaired) selectPlugin(pluginSelectionId(repaired));
+        } else if (repaired) selectPlugin(repaired.name);
         else deselectPlugin();
       }
     } catch (error) {
