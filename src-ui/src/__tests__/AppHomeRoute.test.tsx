@@ -39,6 +39,13 @@ interface LayoutFixture {
 
 interface SelectedLayoutFixture {
   type?: string;
+  config?: Record<string, unknown>;
+  catalogContribution?: {
+    id: string;
+    version: string;
+    sourceIdentity: { id: string; kind: 'builtin' | 'local' | 'remote' };
+    provenance: { origin: 'builtin' | 'plugin' | 'mcp'; pluginId?: string };
+  };
 }
 
 const {
@@ -570,6 +577,47 @@ describe('App home route resolution', () => {
     await act(async () => undefined);
 
     expect(registerRegionSurfaceHost).not.toHaveBeenCalled();
+  });
+
+  /**
+   * #1446. A plugin-contributed layout may carry `type: 'chat'` and still
+   * render its own declared tabs through `LayoutView`; only the layout that
+   * renders `ChatWorkspaceLayout` owns the whole viewport. The suppression
+   * above must not fire on the word alone, or every installed example layout
+   * loses its dock, Activity, and every region surface.
+   */
+  test('registers a region surface host for a plugin-contributed layout typed chat', async () => {
+    window.history.replaceState({}, '', '/projects/demo/layouts/minimal');
+    hooks.layout = {
+      data: {
+        type: 'chat',
+        config: {
+          tabs: [
+            {
+              id: 'workspace',
+              component: {
+                kind: 'plugin-component',
+                name: 'minimal-workspace',
+              },
+            },
+          ],
+        },
+        catalogContribution: {
+          id: 'plugin:minimal-layout:minimal',
+          version: '1.0.0',
+          sourceIdentity: { id: 'minimal-layout', kind: 'local' },
+          provenance: { origin: 'plugin', pluginId: 'minimal-layout' },
+        },
+      },
+      isLoading: false,
+    };
+    hooks.regionModel = regionModelStub();
+
+    render(<App />);
+    await act(async () => undefined);
+
+    expect(registerRegionSurfaceHost).toHaveBeenCalled();
+    expect(screen.getByTestId('ambient-chat-controller')).toBeTruthy();
   });
 });
 
