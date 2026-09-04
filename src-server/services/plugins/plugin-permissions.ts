@@ -18,6 +18,7 @@
  * means, what an un-bound legacy grant does, and why.
  */
 
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type {
   PermissionTier,
@@ -36,6 +37,7 @@ import {
 import {
   pluginContentDigest,
   refreshPluginContentDigest,
+  withPluginContentLock,
 } from './plugin-content-integrity.js';
 
 export type { PermissionTier };
@@ -89,6 +91,8 @@ export interface PluginInstallAuthorityRecord {
   version: 1;
   installedDigest: string;
   ownedDependencies: PluginDependencyOwnershipEntry[];
+  /** Host-only CAS identity; absent on pre-handoff records. */
+  ownershipRevision?: string;
 }
 
 type StoredGrantEntry =
@@ -260,15 +264,28 @@ function pluginGrantsShapeProblems(value: unknown): string[] {
         problems.push(`${pluginName}: installAuthority must be an object`);
         continue;
       }
+      const authorityKeys = Object.keys(authority).sort().join(',');
       if (
-        Object.keys(authority).sort().join(',') !==
-        'installedDigest,ownedDependencies,version'
+        authorityKeys !== 'installedDigest,ownedDependencies,version' &&
+        authorityKeys !==
+          'installedDigest,ownedDependencies,ownershipRevision,version'
       ) {
         problems.push(`${pluginName}: installAuthority has unexpected fields`);
         continue;
       }
       if (authority.version !== 1) {
         problems.push(`${pluginName}: installAuthority version must be 1`);
+      }
+      if (
+        authority.ownershipRevision !== undefined &&
+        (typeof authority.ownershipRevision !== 'string' ||
+          !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(
+            authority.ownershipRevision,
+          ))
+      ) {
+        problems.push(
+          `${pluginName}: installAuthority ownershipRevision must be a UUID`,
+        );
       }
       if (
         typeof authority.installedDigest !== 'string' ||
@@ -311,6 +328,22 @@ function pluginGrantsShapeProblems(value: unknown): string[] {
     }
   }
   return problems;
+}
+
+/** Backup readers use the same authority schema as the live host store. */
+export function isPluginInstallAuthorityRecord(
+  value: unknown,
+): value is PluginInstallAuthorityRecord {
+  return (
+    value !== undefined &&
+    pluginGrantsShapeProblems({
+      validation: {
+        permissions: [],
+        contentDigest: 'validation',
+        installAuthority: value,
+      },
+    }).length === 0
+  );
 }
 
 /** Reads one entry into the normalized record. Never coerces a bad shape. */
@@ -886,6 +919,7 @@ export async function recordPluginDependencyOwnership(
       installAuthority: {
         version: 1,
         installedDigest,
+        ownershipRevision: randomUUID(),
         ownedDependencies: ownedDependencies.map((dependency) => ({
           ...dependency,
         })),
@@ -893,6 +927,213 @@ export async function recordPluginDependencyOwnership(
     });
     return grants;
   });
+}
+
+export interface PluginDependencyOwnershipHandoff {
+  readonly recipientPlugin: string;
+  rollback(): Promise<void>;
+}
+
+interface PluginDependencyOwnershipHandoffData {
+  readonly sourcePlugin: string;
+  readonly recipientPlugin: string;
+  readonly dependency: PluginDependencyOwnershipEntry;
+  readonly previousAuthority?: PluginInstallAuthorityRecord;
+  readonly writtenRevision: string;
+  rolledBack?: boolean;
+}
+
+class IneligibleOwnershipRecipient extends Error {}
+
+/**
+ * Stage durable custody before the creator record disappears. The source claim
+ * remains until its enclosing publication transaction commits, so interruption
+ * can duplicate custody but cannot erase the only deletion authority.
+ */
+export async function copyPluginDependencyOwnership(
+  projectHomeDir: string,
+  sourcePlugin: string,
+  recipientPlugin: string,
+  dependency: PluginDependencyOwnershipEntry,
+  expectedRecipientDigest: string,
+): Promise<
+  | { kind: 'copied'; handoff: PluginDependencyOwnershipHandoff }
+  | { kind: 'already-owned' }
+  | { kind: 'ineligible' }
+> {
+  if (
+    ![sourcePlugin, recipientPlugin, dependency.id].every(
+      isCanonicalPluginId,
+    ) ||
+    new Set([sourcePlugin, recipientPlugin, dependency.id]).size !== 3
+  ) {
+    throw new Error('Invalid dependency ownership handoff identities');
+  }
+  const pluginsDir = pluginsDirFor(projectHomeDir);
+  return withPluginContentLock(pluginsDir, dependency.id, () =>
+    withPluginContentLock(pluginsDir, recipientPlugin, async () => {
+      let handoff: PluginDependencyOwnershipHandoffData | undefined;
+      try {
+        await grantsStore(projectHomeDir).mutate(recipientPlugin, (grants) => {
+          const source = toGrantRecord(grants[sourcePlugin]);
+          if (
+            !source.installAuthority?.ownedDependencies.some(
+              (entry) =>
+                entry.id === dependency.id &&
+                entry.contentDigest === dependency.contentDigest,
+            )
+          ) {
+            throw new Error(
+              'Dependency ownership handoff has no matching host-owned source claim',
+            );
+          }
+          if (
+            refreshPluginContentDigest(pluginsDir, dependency.id) !==
+            dependency.contentDigest
+          ) {
+            throw new Error('Dependency changed before ownership handoff');
+          }
+          const installedDigest = refreshPluginContentDigest(
+            pluginsDir,
+            recipientPlugin,
+          );
+          if (!installedDigest || installedDigest !== expectedRecipientDigest)
+            throw new IneligibleOwnershipRecipient();
+          // A managed child may itself be removed by its owner. Transfer only
+          // to a surviving root, otherwise its deletion could discard custody.
+          if (
+            Object.values(grants).some((value) =>
+              toGrantRecord(value).installAuthority?.ownedDependencies.some(
+                (entry) =>
+                  entry.id === recipientPlugin &&
+                  entry.contentDigest === installedDigest,
+              ),
+            )
+          ) {
+            throw new IneligibleOwnershipRecipient();
+          }
+          const recipient = toGrantRecord(grants[recipientPlugin]);
+          if (
+            recipient.permissions.length > 0 &&
+            recipient.contentDigest === null
+          ) {
+            // Adding custody must never turn legacy/unverified grants into
+            // consent for the current bytes just to fit a bound host record.
+            throw new IneligibleOwnershipRecipient();
+          }
+          const owned = recipient.installAuthority?.ownedDependencies ?? [];
+          const existing = owned.find((entry) => entry.id === dependency.id);
+          if (existing) {
+            if (existing.contentDigest !== dependency.contentDigest)
+              throw new IneligibleOwnershipRecipient();
+            return grants;
+          }
+          if (owned.length >= 256) throw new IneligibleOwnershipRecipient();
+          const revision = randomUUID();
+          handoff = {
+            sourcePlugin,
+            recipientPlugin,
+            dependency: { ...dependency },
+            ...(recipient.installAuthority
+              ? {
+                  previousAuthority: structuredClone(
+                    recipient.installAuthority,
+                  ),
+                }
+              : {}),
+            writtenRevision: revision,
+          };
+          grants[recipientPlugin] = toStoredEntry({
+            permissions: recipient.permissions,
+            contentDigest: recipient.contentDigest ?? installedDigest,
+            installAuthority: {
+              version: 1,
+              installedDigest,
+              ownershipRevision: revision,
+              ownedDependencies: [...owned, { ...dependency }],
+            },
+          });
+          return grants;
+        });
+      } catch (error) {
+        if (error instanceof IneligibleOwnershipRecipient)
+          return { kind: 'ineligible' };
+        throw error;
+      }
+      if (!handoff) return { kind: 'already-owned' };
+      const ownedHandoff = handoff;
+      return {
+        kind: 'copied',
+        handoff: Object.freeze({
+          recipientPlugin,
+          rollback: () =>
+            rollbackPluginDependencyOwnershipHandoff(
+              projectHomeDir,
+              ownedHandoff,
+            ),
+        }),
+      };
+    }),
+  );
+}
+
+/** Undo only this transaction's custody write, never a later handoff or grants. */
+async function rollbackPluginDependencyOwnershipHandoff(
+  projectHomeDir: string,
+  handoff: PluginDependencyOwnershipHandoffData,
+): Promise<void> {
+  if (handoff.rolledBack) return;
+  await withPluginContentLock(
+    pluginsDirFor(projectHomeDir),
+    handoff.recipientPlugin,
+    async () => {
+      await grantsStore(projectHomeDir).mutate(
+        handoff.recipientPlugin,
+        (grants) => {
+          const source = toGrantRecord(grants[handoff.sourcePlugin]);
+          if (
+            !source.installAuthority?.ownedDependencies.some(
+              (entry) =>
+                entry.id === handoff.dependency.id &&
+                entry.contentDigest === handoff.dependency.contentDigest,
+            )
+          ) {
+            throw new Error(
+              'Original dependency custody must be restored before undoing its handoff',
+            );
+          }
+          const recipient = toGrantRecord(grants[handoff.recipientPlugin]);
+          if (
+            recipient.installAuthority?.ownershipRevision !==
+            handoff.writtenRevision
+          ) {
+            throw new Error(
+              'Dependency ownership changed after handoff; rollback refused',
+            );
+          }
+          if (handoff.previousAuthority) {
+            grants[handoff.recipientPlugin] = toStoredEntry({
+              permissions: recipient.permissions,
+              contentDigest: recipient.contentDigest,
+              // Restore the exact prior revision so an earlier handoff in this
+              // same transaction can unwind next. Any later committed transfer
+              // has a fresh revision and fails the CAS above instead.
+              installAuthority: structuredClone(handoff.previousAuthority),
+            });
+          } else if (recipient.permissions.length === 0) {
+            delete grants[handoff.recipientPlugin];
+          } else {
+            grants[handoff.recipientPlugin] = toStoredEntry({
+              permissions: recipient.permissions,
+              contentDigest: recipient.contentDigest,
+            });
+          }
+          return grants;
+        },
+      );
+      handoff.rolledBack = true;
+    },
+  );
 }
 
 /** Drops the complete per-plugin host record only after uninstall succeeds. */

@@ -13,7 +13,6 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
-  isCanonicalPluginId,
   type PermissionTier,
   type PluginInstallResult,
   type PluginManifest,
@@ -63,9 +62,12 @@ import {
   readPluginManifestFileSync,
 } from '../../services/plugins/plugin-manifest-loader.js';
 import {
+  copyPluginDependencyOwnership,
   getPermissionTier,
   hasGrant,
+  isPluginInstallAuthorityRecord,
   type PluginDependencyOwnershipEntry,
+  type PluginDependencyOwnershipHandoff,
   type PluginInstallAuthorityRecord,
   processInstallPermissions,
   readPluginDependencyOwnership,
@@ -470,15 +472,16 @@ function deriveDependencyOwnership(
   return [...entries.values()];
 }
 
-function dependencyHasOtherInstalledConsumer(
+function installedDependencyConsumers(
   pluginsDir: string,
   removedPluginName: string,
   dependencyId: string,
-): boolean {
+): { verified: string[]; uncertain: boolean } {
   const transitivelyDependsOn = (
     manifest: PluginManifest,
     visiting: Set<string>,
-  ): boolean => {
+  ): boolean | 'unknown' => {
+    let unknown = false;
     for (const dependency of manifest.dependencies ?? []) {
       if (dependency.id === dependencyId) return true;
       if (visiting.has(dependency.id)) continue;
@@ -486,21 +489,24 @@ function dependencyHasOtherInstalledConsumer(
       try {
         assertPluginNameSegment(dependency.id);
         const manifestPath = join(pluginsDir, dependency.id, 'plugin.json');
-        if (!existsSync(manifestPath)) return true;
-        if (
-          transitivelyDependsOn(
-            readPluginManifestFileSync(manifestPath),
-            visiting,
-          )
-        ) {
-          return true;
+        if (!existsSync(manifestPath)) {
+          unknown = true;
+          continue;
         }
+        const result = transitivelyDependsOn(
+          readPluginManifestFileSync(manifestPath),
+          visiting,
+        );
+        if (result === true) return true;
+        if (result === 'unknown') unknown = true;
       } catch {
-        return true;
+        unknown = true;
       }
     }
-    return false;
+    return unknown ? 'unknown' : false;
   };
+  const verified: string[] = [];
+  let uncertain = false;
   for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
     if (
       !entry.isDirectory() ||
@@ -513,17 +519,70 @@ function dependencyHasOtherInstalledConsumer(
     try {
       const manifestPath = join(pluginsDir, entry.name, 'plugin.json');
       if (!existsSync(manifestPath)) continue;
+      assertPluginNameSegment(entry.name);
       const manifest = readPluginManifestFileSync(manifestPath);
-      if (transitivelyDependsOn(manifest, new Set([manifest.name]))) {
-        return true;
+      if (manifest.name !== entry.name) {
+        uncertain = true;
+        continue;
       }
+      const result = transitivelyDependsOn(manifest, new Set([manifest.name]));
+      if (result === true) verified.push(entry.name);
+      else if (result === 'unknown') uncertain = true;
     } catch {
       // If another installed plugin cannot be inspected, deleting a dependency
       // it may reference would turn corruption into destructive guesswork.
-      return true;
+      uncertain = true;
     }
   }
-  return false;
+  return { verified: verified.sort(), uncertain };
+}
+
+/** Ordering comes from edges; authority still comes only from the host entries. */
+function ownedDependencyRetirementOrder(
+  pluginsDir: string,
+  dependencies: readonly PluginDependencyOwnershipEntry[],
+): PluginDependencyOwnershipEntry[] {
+  const byId = new Map(dependencies.map((entry) => [entry.id, entry]));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const ordered: PluginDependencyOwnershipEntry[] = [];
+  const visit = (entry: PluginDependencyOwnershipEntry) => {
+    if (visited.has(entry.id)) return;
+    if (visiting.has(entry.id))
+      throw new Error('Owned dependency graph has a cycle; removal refused');
+    visiting.add(entry.id);
+    if (
+      computePluginContentDigest(pluginsDir, entry.id) === entry.contentDigest
+    ) {
+      const manifest = readPluginManifestFileSync(
+        join(pluginsDir, entry.id, 'plugin.json'),
+      );
+      for (const dependency of manifest.dependencies ?? []) {
+        const owned = byId.get(dependency.id);
+        if (owned) visit(owned);
+      }
+    }
+    visiting.delete(entry.id);
+    visited.add(entry.id);
+    ordered.push(entry);
+  };
+  for (const entry of dependencies) visit(entry);
+  return ordered.reverse();
+}
+
+async function rollbackOwnershipHandoffs(
+  handoffs: readonly PluginDependencyOwnershipHandoff[],
+): Promise<void> {
+  const failures: unknown[] = [];
+  for (const handoff of [...handoffs].reverse()) {
+    try {
+      await handoff.rollback();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0)
+    throw new AggregateError(failures, 'Dependency custody rollback failed');
 }
 
 function createDependencyLifecycle(options: {
@@ -725,10 +784,14 @@ async function removeOwnedDependencyLifecycles(options: {
   logger: Logger;
   reconcileEngineConnections?: (plugin: string) => Promise<void>;
   settleProviderAdapterRetirements?: () => Promise<void>;
+  ownershipHandoffs: PluginDependencyOwnershipHandoff[];
 }): Promise<RemovedDependencyBackup[]> {
   const removed: RemovedDependencyBackup[] = [];
   try {
-    for (const dependency of [...options.dependencies].reverse()) {
+    for (const dependency of ownedDependencyRetirementOrder(
+      options.pluginsDir,
+      options.dependencies,
+    )) {
       const dependencyDir = join(options.pluginsDir, dependency.id);
       assertPathInside(
         options.pluginsDir,
@@ -741,19 +804,6 @@ async function removeOwnedDependencyLifecycles(options: {
         async () => {
           if (!existsSync(dependencyDir)) return;
           if (
-            dependencyHasOtherInstalledConsumer(
-              options.pluginsDir,
-              options.removedPluginName,
-              dependency.id,
-            )
-          ) {
-            options.logger.info(
-              'Preserved shared plugin dependency during removal',
-              { plugin: dependency.id },
-            );
-            return;
-          }
-          if (
             computePluginContentDigest(options.pluginsDir, dependency.id) !==
             dependency.contentDigest
           ) {
@@ -762,6 +812,82 @@ async function removeOwnedDependencyLifecycles(options: {
               { plugin: dependency.id },
             );
             return;
+          }
+          const consumers = installedDependencyConsumers(
+            options.pluginsDir,
+            options.removedPluginName,
+            dependency.id,
+          );
+          if (consumers.verified.length > 0 || consumers.uncertain) {
+            for (const recipient of consumers.verified) {
+              const handedOff = await withPluginContentLock(
+                options.pluginsDir,
+                recipient,
+                async () => {
+                  const recipientDirectory = join(
+                    options.pluginsDir,
+                    recipient,
+                  );
+                  const recipientStatus = lstatSync(recipientDirectory);
+                  if (
+                    !recipientStatus.isDirectory() ||
+                    recipientStatus.isSymbolicLink()
+                  )
+                    throw new Error(
+                      'Dependency cleanup recipient must be an installed directory',
+                    );
+                  assertExistingPathInside(
+                    options.pluginsDir,
+                    recipientDirectory,
+                    'Dependency cleanup recipient',
+                  );
+                  // Revalidate while the recipient's update/removal guard is
+                  // held, not against the earlier inventory snapshot.
+                  if (
+                    !installedDependencyConsumers(
+                      options.pluginsDir,
+                      options.removedPluginName,
+                      dependency.id,
+                    ).verified.includes(recipient)
+                  )
+                    return false;
+                  const recipientDigest = computePluginContentDigest(
+                    options.pluginsDir,
+                    recipient,
+                  );
+                  if (!recipientDigest) return false;
+                  const outcome = await copyPluginDependencyOwnership(
+                    options.projectHomeDir,
+                    options.removedPluginName,
+                    recipient,
+                    dependency,
+                    recipientDigest,
+                  );
+                  if (outcome.kind === 'ineligible') return false;
+                  if (outcome.kind === 'copied')
+                    options.ownershipHandoffs.push(outcome.handoff);
+                  return true;
+                },
+              );
+              if (handedOff) {
+                options.logger.info(
+                  'Handed shared dependency cleanup custody to a surviving plugin',
+                  { plugin: dependency.id, recipient },
+                );
+                return;
+              }
+            }
+            throw new Error(
+              `Plugin dependency '${dependency.id}' has no verifiable surviving cleanup owner; removal refused`,
+            );
+          }
+          if (
+            readPluginDependencyOwnership(options.projectHomeDir, dependency.id)
+              .length > 0
+          ) {
+            throw new Error(
+              `Plugin dependency '${dependency.id}' owns further cleanup authority; remove it directly before its parent`,
+            );
           }
           const manifest = await readPluginManifestFile(
             join(dependencyDir, 'plugin.json'),
@@ -1002,33 +1128,7 @@ export async function restorePluginDurableState(
       : undefined;
   const installAuthorityValid =
     installAuthority === undefined ||
-    (installAuthority !== null &&
-      typeof installAuthority === 'object' &&
-      Object.keys(installAuthority).sort().join(',') ===
-        'installedDigest,ownedDependencies,version' &&
-      installAuthority.version === 1 &&
-      typeof installAuthority.installedDigest === 'string' &&
-      /^sha256:[0-9a-f]{64}$/.test(installAuthority.installedDigest) &&
-      Array.isArray(installAuthority.ownedDependencies) &&
-      installAuthority.ownedDependencies.length <= 256 &&
-      installAuthority.ownedDependencies.every((dependency) => {
-        if (!dependency || typeof dependency !== 'object') return false;
-        const candidate = dependency as {
-          id?: unknown;
-          contentDigest?: unknown;
-        };
-        return (
-          Object.keys(candidate).sort().join(',') === 'contentDigest,id' &&
-          isCanonicalPluginId(candidate.id) &&
-          typeof candidate.contentDigest === 'string' &&
-          /^sha256:[0-9a-f]{64}$/.test(candidate.contentDigest)
-        );
-      }) &&
-      new Set(
-        installAuthority.ownedDependencies.map(
-          (dependency) => (dependency as { id: string }).id,
-        ),
-      ).size === installAuthority.ownedDependencies.length);
+    isPluginInstallAuthorityRecord(installAuthority);
   if (
     typeof snapshot.pluginName !== 'string' ||
     snapshot.pluginName.length === 0 ||
@@ -1859,6 +1959,7 @@ export async function installPluginFromSource(
   const createdPluginTrees = new Set<string>();
   const createdPluginDigests = new Map<string, string>();
   let retiredDependencyBackups: RemovedDependencyBackup[] = [];
+  const ownershipHandoffs: PluginDependencyOwnershipHandoff[] = [];
 
   const result = await fetchPluginSource(source, pluginsDir, logger);
   if ('error' in result) {
@@ -2264,6 +2365,7 @@ export async function installPluginFromSource(
           // publication step fails, the outer catch restores these backups
           // alongside the old parent tree and grant/ownership snapshot.
           retiredDependencyBackups = await removeOwnedDependencyLifecycles({
+            ownershipHandoffs,
             dependencies: droppedDependencyOwnership,
             removedPluginName: pluginName,
             pluginsDir,
@@ -2455,6 +2557,7 @@ export async function installPluginFromSource(
             );
             await deps.reconcileEngineConnections?.(pluginName);
             await deps.settleProviderAdapterRetirements?.();
+            await rollbackOwnershipHandoffs(ownershipHandoffs);
           } catch (rollbackError) {
             throw new AggregateError(
               [error, rollbackError],
@@ -2489,6 +2592,7 @@ export async function installPluginFromSource(
               previousManifest: manifest,
               logger,
             });
+            await rollbackOwnershipHandoffs(ownershipHandoffs);
           } catch (rollbackError) {
             throw new AggregateError(
               [error, rollbackError],
@@ -2554,6 +2658,7 @@ async function uninstallPluginUnderPublication(
 
   let backupRoot: string | null = null;
   let removedDependencyBackups: RemovedDependencyBackup[] = [];
+  const ownershipHandoffs: PluginDependencyOwnershipHandoff[] = [];
   const manifest = await readManifestForRemoval(
     join(pluginDir, 'plugin.json'),
     installedPluginName,
@@ -2631,6 +2736,7 @@ async function uninstallPluginUnderPublication(
     await deps.settleProviderAdapterRetirements?.();
     await deps.removeEngineConnections?.(pluginName);
     removedDependencyBackups = await removeOwnedDependencyLifecycles({
+      ownershipHandoffs,
       dependencies: ownedDependencies,
       removedPluginName: pluginName,
       pluginsDir,
@@ -2703,6 +2809,7 @@ async function uninstallPluginUnderPublication(
         );
         await deps.reconcileEngineConnections?.(pluginName);
         await deps.settleProviderAdapterRetirements?.();
+        await rollbackOwnershipHandoffs(ownershipHandoffs);
       } catch (rollbackError) {
         throw new AggregateError(
           [error, rollbackError],
