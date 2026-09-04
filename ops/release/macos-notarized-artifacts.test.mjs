@@ -117,6 +117,85 @@ function fixture({
   };
 }
 
+function isSubmission(program, args, extension) {
+  return (
+    program === 'xcrun' &&
+    args[0] === 'notarytool' &&
+    args[1] === 'submit' &&
+    args.some((argument) => argument.endsWith(extension))
+  );
+}
+
+/**
+ * Withholds the application notarization receipt until the DMG submission has
+ * actually been invoked, so the two submissions can only both complete when
+ * they overlap. A release that waits for the application receipt before it
+ * creates and submits the DMG cannot reach that resolution; the bounded guard
+ * turns that into a named failure rather than a hang.
+ */
+function withOverlappedSubmissions(
+  release,
+  { applicationReceipt, dmgReceipt, dmgSettlesLast = false } = {},
+) {
+  const baseRun = release.run;
+  const state = { applicationSettled: false, dmgSettled: false };
+  let observeDmgSubmission;
+  let guardTimer;
+  const dmgSubmissionStarted = new Promise((resolve) => {
+    observeDmgSubmission = resolve;
+  });
+  const guard = new Promise((_resolve, reject) => {
+    guardTimer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            'the DMG submission never started while the application submission was still waiting',
+          ),
+        ),
+      750,
+    );
+  });
+  release.run = (program, args, options) => {
+    if (isSubmission(program, args, '.zip')) {
+      const observed = baseRun(program, args, options);
+      return Promise.race([
+        dmgSubmissionStarted.then(() => {
+          state.applicationSettled = true;
+          state.dmgPendingAtApplicationOutcome = !state.dmgSettled;
+          return applicationReceipt ?? observed;
+        }),
+        guard,
+      ]);
+    }
+    if (isSubmission(program, args, '.dmg')) {
+      const observed = baseRun(program, args, options);
+      observeDmgSubmission();
+      state.applicationPendingAtDmgOutcome = !state.applicationSettled;
+      const receipt = dmgReceipt ?? observed;
+      if (!dmgSettlesLast) {
+        state.dmgSettled = true;
+        return receipt;
+      }
+      // Keep the DMG submission genuinely in flight so an application outcome
+      // that arrives first is observed against a pending DMG submission.
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          state.dmgSettled = true;
+          resolve(receipt);
+        }, 20);
+      });
+    }
+    return baseRun(program, args, options);
+  };
+  return { release, state, stopGuard: () => clearTimeout(guardTimer) };
+}
+
+const invalidReceipt = {
+  status: 0,
+  stdout: JSON.stringify({ status: 'Invalid' }),
+  stderr: '',
+};
+
 async function rejectsBeforeSubmission({
   designatedRequirement,
   entitlementOutput,
@@ -192,6 +271,37 @@ test('uses a visible phase for each injected command and preserves the canonical
     ['-d', '--entitlements', '-', '--xml', '/app/Station.app'],
     expect.objectContaining({ phase: 'outer app entitlements' }),
   ]);
+  // The notarization region runs both service waits concurrently: the
+  // application submission starts, the disk image is built and admitted, the
+  // disk image is submitted, and only then is either artifact stapled.
+  const phases = calls.map(([_program, _args, options]) => options.phase);
+  expect(
+    phases.slice(phases.indexOf('application notarization archive')),
+  ).toEqual([
+    'application notarization archive',
+    'notarize notarization-input.zip',
+    'DMG staging',
+    'DMG creation',
+    'DMG signing',
+    'DMG signature verification',
+    'DMG signing metadata',
+    'DMG designated requirement',
+    'notarize station-v1.2.3-macos-aarch64.dmg',
+    'application stapling',
+    'application staple validation',
+    'application Gatekeeper assessment',
+    'DMG stapling',
+    'DMG staple validation',
+    'DMG Gatekeeper assessment',
+    'DMG mount',
+    'mounted app signature verification',
+    'mounted app bundle identity',
+    'mounted app Gatekeeper assessment',
+    'DMG detach',
+    'updater archive derivation',
+    'updater archive validation',
+    'updater signature derivation',
+  ]);
 });
 
 test('rejects missing, non-app, symlinked, newline, and escaping app paths before signing', async () => {
@@ -261,6 +371,9 @@ test('does not assess Gatekeeper until the accepted app has been stapled', async
       args[1] === 'submit' &&
       args.includes('/scratch/notarization-input.zip'),
   );
+  const dmgSubmit = calls.findIndex(([program, args]) =>
+    isSubmission(program, args, '.dmg'),
+  );
   const staple = calls.findIndex(
     ([program, args]) =>
       program === 'xcrun' &&
@@ -273,8 +386,92 @@ test('does not assess Gatekeeper until the accepted app has been stapled', async
       args.includes('execute') &&
       args.includes('/app/Station.app'),
   );
-  expect(submit).toBeLessThan(staple);
+  const dmgStaple = calls.findIndex(
+    ([program, args]) =>
+      program === 'xcrun' &&
+      args[1] === 'staple' &&
+      args.some((argument) => argument.endsWith('.dmg')),
+  );
+  expect(submit).toBeGreaterThanOrEqual(0);
+  // Both submissions start before either artifact is stapled, and each staple
+  // still precedes its own Gatekeeper assessment.
+  expect(submit).toBeLessThan(dmgSubmit);
+  expect(dmgSubmit).toBeLessThan(staple);
   expect(staple).toBeLessThan(assess);
+  expect(assess).toBeLessThan(dmgStaple);
+});
+
+test('waits on both notarizations concurrently before stapling either artifact', async () => {
+  const { release, state, stopGuard } = withOverlappedSubmissions(fixture());
+  try {
+    await expect(
+      createMacosNotarizedArtifacts(release.options, release),
+    ).resolves.toMatchObject({
+      dmg: '/assets/station-v1.2.3-macos-aarch64.dmg',
+    });
+  } finally {
+    stopGuard();
+  }
+  // The injected application submission only produced its receipt after the
+  // DMG submission had been invoked, so completing at all proves the waits
+  // overlapped rather than ran back to back.
+  expect(state.applicationPendingAtDmgOutcome).toBe(true);
+  const phase = (name) =>
+    release.calls.findIndex(
+      ([_program, _args, options]) => options.phase === name,
+    );
+  expect(phase('notarize notarization-input.zip')).toBeLessThan(
+    phase('DMG creation'),
+  );
+  expect(phase('DMG creation')).toBeLessThan(
+    phase('notarize station-v1.2.3-macos-aarch64.dmg'),
+  );
+  expect(phase('notarize station-v1.2.3-macos-aarch64.dmg')).toBeLessThan(
+    phase('application stapling'),
+  );
+});
+
+test('staples nothing when the DMG is rejected while the application submission is still waiting', async () => {
+  const { release, state, stopGuard } = withOverlappedSubmissions(fixture(), {
+    dmgReceipt: invalidReceipt,
+  });
+  try {
+    await expect(
+      createMacosNotarizedArtifacts(release.options, release),
+    ).rejects.toThrow('notarytool rejected station-v1.2.3-macos-aarch64.dmg.');
+  } finally {
+    stopGuard();
+  }
+  expect(state.applicationPendingAtDmgOutcome).toBe(true);
+  for (const name of ['application stapling', 'DMG stapling'])
+    expect(
+      release.calls.some(
+        ([_program, _args, options]) => options.phase === name,
+      ),
+    ).toBe(false);
+  expect(release.removed).toContain('/scratch');
+});
+
+test('staples nothing when the application is rejected while the DMG submission is still waiting', async () => {
+  const { release, state, stopGuard } = withOverlappedSubmissions(fixture(), {
+    applicationReceipt: invalidReceipt,
+    dmgSettlesLast: true,
+  });
+  try {
+    await expect(
+      createMacosNotarizedArtifacts(release.options, release),
+    ).rejects.toThrow('notarytool rejected notarization-input.zip.');
+  } finally {
+    stopGuard();
+  }
+  expect(state.dmgPendingAtApplicationOutcome).toBe(true);
+  for (const name of ['application stapling', 'DMG stapling'])
+    expect(
+      release.calls.some(
+        ([_program, _args, options]) => options.phase === name,
+      ),
+    ).toBe(false);
+  expect(release.removed).toContain('/scratch');
 });
 
 test('DMG-only mode revalidates a notarized app but never signs, archives, submits, or staples it', async () => {
