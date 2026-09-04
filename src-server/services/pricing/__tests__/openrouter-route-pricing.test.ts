@@ -24,6 +24,8 @@ function catalogue(
     completion?: string;
     /** Drop `pricing.overrides`, i.e. quote a flat schedule. */
     flat?: boolean;
+    /** Replace `pricing.overrides` wholesale. */
+    overrides?: unknown[];
   }>,
 ) {
   return JSON.stringify({
@@ -43,6 +45,7 @@ function catalogue(
           ...(row.completion !== undefined
             ? { completion: row.completion }
             : {}),
+          ...(row.overrides !== undefined ? { overrides: row.overrides } : {}),
         },
       };
     }),
@@ -114,8 +117,16 @@ describe('OpenRouterRoutePricing', () => {
       completionUsdPerMillionTokens: 15,
       // The captured row's own `pricing.overrides` charges more above 200k
       // prompt tokens. Bearing drops that field, so without this the base
-      // figure would be published as the whole schedule.
-      tieredAbovePromptTokens: 200_000,
+      // figure would be published as the whole schedule. The tier carries its
+      // OWN rates: 2x prompt and 1.5x completion, derived rather than
+      // described, so a discount would read as a discount.
+      promptTokenTiers: [
+        {
+          abovePromptTokens: 200_000,
+          promptUsdPerMillionTokens: 6,
+          completionUsdPerMillionTokens: 22.5,
+        },
+      ],
       observedAt: expect.any(String),
       validUntil: expect.any(String),
     });
@@ -235,8 +246,8 @@ describe('OpenRouterRoutePricing', () => {
   });
 
   // A flat schedule must say so rather than leave the field to a default that
-  // happens to be right: `tieredAbovePromptTokens` is read from the row, so
-  // dropping `pricing.overrides` has to change it.
+  // happens to be right: the tiers are read from the row, so dropping
+  // `pricing.overrides` has to change them.
   test('a flat schedule reports no tier threshold', async () => {
     const { service } = pricing({
       fetch: fakeFetch(
@@ -246,7 +257,7 @@ describe('OpenRouterRoutePricing', () => {
       ),
     });
     await service.refresh();
-    expect(service.priceFor(ROW)?.tieredAbovePromptTokens).toBeNull();
+    expect(service.priceFor(ROW)?.promptTokenTiers).toEqual([]);
   });
 
   // Scaling an exact decimal to per-million by multiplication produces
@@ -281,6 +292,152 @@ describe('OpenRouterRoutePricing', () => {
     await service.refresh();
     await service.refresh();
     expect(put).toHaveBeenCalledTimes(1);
+  });
+
+  // The finding that made the tiers carry their own rates rather than a
+  // direction: a threshold is not always a surcharge. A volume DISCOUNT has
+  // the identical shape, and a field asserting "charges more above N" would
+  // have been true only by today's data -- a surface qualifying the base
+  // figure with a warning would tell the user a cheaper turn costs extra.
+  test('a volume discount reads as a discount, not as a surcharge', async () => {
+    const { service } = pricing({
+      fetch: fakeFetch(
+        catalogue([
+          {
+            id: ROW,
+            prompt: '0.000003',
+            completion: '0.000015',
+            overrides: [
+              {
+                min_prompt_tokens: 128_000,
+                prompt: '0.0000015',
+                completion: '0.0000075',
+              },
+            ],
+          },
+        ]),
+      ),
+    });
+    await service.refresh();
+    expect(service.priceFor(ROW)?.promptTokenTiers).toEqual([
+      {
+        abovePromptTokens: 128_000,
+        promptUsdPerMillionTokens: 1.5,
+        completionUsdPerMillionTokens: 7.5,
+      },
+    ]);
+  });
+
+  // Five live rows quote two thresholds. A single field could not have said
+  // so; these must arrive in threshold order whatever order the source used.
+  test('a multi-tier schedule keeps every tier, lowest threshold first', async () => {
+    const { service } = pricing({
+      fetch: fakeFetch(
+        catalogue([
+          {
+            id: ROW,
+            prompt: '0.000003',
+            completion: '0.000015',
+            overrides: [
+              {
+                min_prompt_tokens: 128_000,
+                prompt: '0.0000075',
+                completion: '0.00002',
+              },
+              {
+                min_prompt_tokens: 32_000,
+                prompt: '0.000006',
+                completion: '0.0000175',
+              },
+            ],
+          },
+        ]),
+      ),
+    });
+    await service.refresh();
+    expect(
+      service.priceFor(ROW)?.promptTokenTiers.map((t) => t.abovePromptTokens),
+    ).toEqual([32_000, 128_000]);
+  });
+
+  // A tier whose rate the source declines to state must not read as free,
+  // on exactly the same terms as the base figures.
+  test("a tier's unavailable rate reads as null, not zero", async () => {
+    const { service } = pricing({
+      fetch: fakeFetch(
+        catalogue([
+          {
+            id: ROW,
+            prompt: '0.000003',
+            completion: '0.000015',
+            overrides: [
+              {
+                min_prompt_tokens: 200_000,
+                prompt: '0.000006',
+                completion: '-1',
+              },
+            ],
+          },
+        ]),
+      ),
+    });
+    await service.refresh();
+    expect(
+      service.priceFor(ROW)?.promptTokenTiers[0]?.completionUsdPerMillionTokens,
+    ).toBeNull();
+  });
+
+  // A corrupt record in the snapshot directory must not take pricing to zero.
+  // The dedupe reads the store before writing, and the write it would skip is
+  // the one that would add a good record -- so an unguarded read would make a
+  // single bad file permanent.
+  test('a snapshot store whose read throws still prices, and still writes', async () => {
+    const inner = createInMemorySnapshotStore();
+    const put = vi.fn(inner.put.bind(inner));
+    const { service, logger } = pricing({
+      store: {
+        ...inner,
+        put,
+        latest: async () => {
+          throw new Error('snapshotCorrupt');
+        },
+      },
+      fetch: fakeFetch(
+        catalogue([{ id: ROW, prompt: '0.000003', completion: '0.000015' }]),
+      ),
+    });
+    await service.refresh();
+    expect(service.priceFor(ROW)?.promptUsdPerMillionTokens).toBe(3);
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'OpenRouter snapshot store read failed; writing anyway',
+      expect.anything(),
+    );
+  });
+
+  // The condition the fixtures were hiding. bearing 0.2.0 rejects 17 of the
+  // 427 live catalogue rows -- `alias_target`, a non-null `supported_voices`,
+  // and time-of-day `pricing.overrides` -- and one bad row fails the WHOLE
+  // document, so against the real API this service prices nothing today
+  // (kontourai/bearing#41). What must hold regardless of that bug is the
+  // fail-closed property: a catalogue Station cannot fully parse yields no
+  // prices at all, never a partial or guessed one.
+  test('a catalogue carrying a row bearing rejects prices nothing, and says why', async () => {
+    const body = JSON.parse(
+      catalogue([{ id: ROW, prompt: '0.000003', completion: '0.000015' }]),
+    );
+    body.data[0].alias_target = 'anthropic/claude-sonnet-4.5';
+    const { service, logger } = pricing({
+      fetch: fakeFetch(JSON.stringify(body)),
+    });
+    await service.refresh();
+    expect(service.priceFor(ROW)).toBeUndefined();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'OpenRouter route pricing refresh failed',
+      expect.objectContaining({
+        error: expect.stringContaining('alias_target'),
+      }),
+    );
   });
 
   test('with no read at all, every route is unpriced', () => {

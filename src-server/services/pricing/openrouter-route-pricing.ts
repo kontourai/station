@@ -17,6 +17,7 @@ import {
 import {
   CURATED_MODEL_IDENTITIES,
   type RoutePricingReference,
+  type RoutePricingTier,
 } from '@kontourai/station-contracts/model-inventory';
 
 /**
@@ -57,54 +58,107 @@ const TOKENS_PER_MILLION = 1_000_000;
 /**
  * `value * 1_000_000` on an exact decimal turns "0.0000001" into
  * 0.09999999999999999; 143 of the live catalogue's price values land on a
- * noisy double, and a surface that stringifies one shows every digit. Six
- * decimal places is finer than any figure the source quotes, and is the
- * precision `RoutePricingReference` promises.
+ * noisy double, and a surface that stringifies one shows every digit.
+ *
+ * Normalising to significant digits rather than to a fixed number of decimal
+ * places is deliberate. The source's finest live figure already uses twelve
+ * decimals, which is exactly six after scaling -- a six-decimal round has no
+ * headroom at all, and bearing's own validator permits thirty-two, so a
+ * legal quote could be truncated to zero and then read as "genuinely free",
+ * which is the conflation this module exists to prevent. Fifteen significant
+ * digits is below a double's precision, so it removes the scaling artefact
+ * without discarding anything the source said.
  */
-const PRICE_DECIMALS = 6;
+const PRICE_SIGNIFICANT_DIGITS = 15;
 
 function perMillionTokens(value: number): number {
-  return Number((value * TOKENS_PER_MILLION).toFixed(PRICE_DECIMALS));
+  return Number(
+    (value * TOKENS_PER_MILLION).toPrecision(PRICE_SIGNIFICANT_DIGITS),
+  );
 }
 
 /**
- * The lowest prompt-token threshold at which each row's schedule charges a
- * higher rate, read from the snapshot body bearing has already accepted.
+ * Each row's prompt-token rate tiers, lowest threshold first, read from the
+ * snapshot body bearing has already accepted.
  *
  * Bearing validates `pricing.overrides` and then surfaces only the base keys,
  * so in its observations a tiered schedule is indistinguishable from a flat
  * one. Publishing the base figure alone would assert a flatness the source
  * never stated -- the route priced today doubles its prompt rate above
- * 200,000 tokens. This reads one integer per row out of the same sha256-
- * verified bytes bearing parsed; no price is ever taken from this path.
+ * 200,000 tokens. This reads the thresholds and THEIR OWN RATES out of the
+ * same sha256-verified bytes bearing parsed, so the reference carries numbers
+ * a surface can render rather than a direction this code would have to infer:
+ * a threshold is not always an increase, and a volume discount has exactly
+ * the same shape as a surcharge.
+ *
+ * Only `min_prompt_tokens` overrides are read. OpenRouter also publishes
+ * time-of-day schedules (`utc_days`, `utc_start`/`utc_end`), which this does
+ * not represent and does not claim to -- an empty tier list says there is no
+ * prompt-token tier, not that the price never varies.
+ *
+ * A failure here must be LOUD. Returning nothing silently would republish
+ * every base figure as a whole schedule, which is the fabrication this
+ * function exists to prevent. No test drives those branches: bearing has
+ * already parsed these exact bytes by the time this runs, so a body that
+ * reaches here and does not parse, or has no `data` array, is unreachable
+ * through the public seam. The reporting is defence in depth against a future
+ * caller that reads a body bearing has not accepted -- untested on purpose,
+ * rather than covered by a mock that would prove only that the mock works.
  */
-function tierThresholds(body: string | Uint8Array): Map<string, number> {
-  const thresholds = new Map<string, number>();
+function promptTokenTiersByRow(
+  body: string | Uint8Array,
+  onUnreadable: (reason: string) => void,
+): Map<string, RoutePricingTier[]> {
+  const tiers = new Map<string, RoutePricingTier[]>();
   let parsed: unknown;
   try {
     parsed = JSON.parse(
       typeof body === 'string' ? body : new TextDecoder().decode(body),
     );
-  } catch {
-    return thresholds;
+  } catch (error) {
+    onUnreadable(
+      `snapshot body did not parse: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return tiers;
   }
   const rows = (parsed as { data?: unknown } | null)?.data;
-  if (!Array.isArray(rows)) return thresholds;
+  if (!Array.isArray(rows)) {
+    onUnreadable('snapshot body has no `data` array');
+    return tiers;
+  }
   for (const row of rows) {
     const id = (row as { id?: unknown } | null)?.id;
     const overrides = (row as { pricing?: { overrides?: unknown } } | null)
       ?.pricing?.overrides;
     if (typeof id !== 'string' || !Array.isArray(overrides)) continue;
-    let lowest: number | null = null;
+    const rowTiers: RoutePricingTier[] = [];
     for (const override of overrides) {
-      const min = (override as { min_prompt_tokens?: unknown } | null)
-        ?.min_prompt_tokens;
-      if (typeof min !== 'number' || !Number.isFinite(min)) continue;
-      if (lowest === null || min < lowest) lowest = min;
+      const entry = override as Record<string, unknown> | null;
+      const above = entry?.min_prompt_tokens;
+      if (typeof above !== 'number' || !Number.isFinite(above)) continue;
+      rowTiers.push({
+        abovePromptTokens: above,
+        promptUsdPerMillionTokens: decimalPerMillion(entry?.prompt),
+        completionUsdPerMillionTokens: decimalPerMillion(entry?.completion),
+      });
     }
-    if (lowest !== null) thresholds.set(id, lowest);
+    if (rowTiers.length === 0) continue;
+    rowTiers.sort((a, b) => a.abovePromptTokens - b.abovePromptTokens);
+    tiers.set(id, rowTiers);
   }
-  return thresholds;
+  return tiers;
+}
+
+/**
+ * A tier's own rate, on the same terms as the base figures: "-1" is the
+ * source's unavailable sentinel, not a price, and anything unreadable is null
+ * rather than a guess.
+ */
+function decimalPerMillion(value: unknown): number | null {
+  if (typeof value !== 'string' || value === '-1') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return perMillionTokens(parsed);
 }
 
 export interface OpenRouterRoutePricingDependencies {
@@ -250,11 +304,35 @@ export class OpenRouterRoutePricing {
     // Every put writes a new <fetchedAt>-<digest> record even for a
     // byte-identical body, and the store never prunes -- it throws
     // permanently once it reaches its cap, and its cap cannot be changed
-    // after the directory is initialised. So only a body the store does not
-    // already hold is worth a record, which bounds growth by how often the
-    // catalogue actually changes rather than by how often Station refreshes.
+    // after the directory is initialised. So a body matching the newest
+    // record is not worth another one, which bounds growth by how often the
+    // catalogue changes rather than by how often Station refreshes.
+    //
+    // `latest` is the NEWEST record only, so a body identical to an older one
+    // is still written; deduplicating against the whole history would mean
+    // reading it, which is the cost this avoids. And a read that throws must
+    // not decide anything: forage guards its own `latest` call for exactly
+    // this reason, and one corrupt record in the directory would otherwise
+    // take pricing to zero permanently, since the put that would add a good
+    // record is the one being skipped.
+    //
+    // Skipping the put leaves this fetch's snapshot ref naming a `fetchedAt`
+    // nothing persists. Harmless while the ref is handed to bearing inline
+    // and discarded -- but publishing it as citable provenance would make
+    // every citation after the first dangle, so that has to come with a
+    // different dedupe.
     if (!snapshot.notModified) {
-      const stored = await this.store.latest(snapshot.sourceId);
+      let stored: Snapshot | undefined;
+      try {
+        stored = await this.store.latest(snapshot.sourceId);
+      } catch (error) {
+        this.logger.warn(
+          'OpenRouter snapshot store read failed; writing anyway',
+          {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+      }
       if (stored?.bodyHash !== snapshot.bodyHash)
         await this.store.put(snapshot);
     }
@@ -307,7 +385,18 @@ export class OpenRouterRoutePricing {
       }
       collected.set(id, entry);
     }
-    const tiers = tierThresholds(snapshot.body);
+    // Read AFTER bearing's import, never before: this hands the same bytes to
+    // a second parser, and running it first would let a body bearing rejects
+    // (duplicate keys among them) reach `JSON.parse` and diverge from what
+    // bearing saw.
+    const tiers = promptTokenTiersByRow(snapshot.body, (reason) => {
+      this.logger.warn(
+        'OpenRouter route pricing could not read tier schedules',
+        {
+          reason,
+        },
+      );
+    });
     const rows = new Map<string, PricedRow>();
     for (const [id, entry] of collected) {
       // A row bearing reported with neither price is not a priced route; it
@@ -319,7 +408,7 @@ export class OpenRouterRoutePricing {
           attributionUrl: OPENROUTER_MODELS_SOURCE.attributionUrl,
           promptUsdPerMillionTokens: entry.prompt,
           completionUsdPerMillionTokens: entry.completion,
-          tieredAbovePromptTokens: tiers.get(id) ?? null,
+          promptTokenTiers: tiers.get(id) ?? [],
           observedAt: entry.observedAt,
           validUntil: entry.validUntil,
         },
