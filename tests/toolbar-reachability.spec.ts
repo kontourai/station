@@ -3,20 +3,23 @@
  * own centre.
  *
  * WHY THIS EXISTS. Two toolbar occlusion defects (#917, #1384) shipped to main
- * and nothing in this suite noticed. What eventually noticed #1384 was a
+ * and nothing designed to catch them did. What eventually noticed #1384 was a
  * Playwright actionability timeout in `tests/device-pairing-mobile.spec.ts` —
  * a spec about device pairing, whose failure names neither the toolbar nor
- * what was covering what. The android suite was 37/37 green on the broken
- * commit (450a2e2d5) with the defect fully present at its own viewport.
+ * what was covering what.
  *
- * The existing assertions are blind by construction:
- *   - `mobile-layout.spec.ts:11` hit-tests only the Settings action — the
- *     far-right control, never the covered one.
- *   - `mobile-layout.spec.ts` touch-target floor: an overlapped 44px button
- *     still measures 44px.
- *   - `app-load.spec.ts` `documentElement.scrollWidth > clientWidth` measures
- *     DOCUMENT overflow, which is false in every one of these cases — the
- *     toolbar row clips, it does not scroll the document.
+ * The mobile assertions that exist are blind by construction:
+ *   - `tests/android/mobile-layout.spec.ts:11` hit-tests only the Settings
+ *     action — the far-right control, never the covered one.
+ *   - its touch-target floor: an overlapped 44px button still measures 44px.
+ *   - `tests/android/app-load.spec.ts`'s
+ *     `documentElement.scrollWidth > clientWidth` measures DOCUMENT overflow,
+ *     which is false in every one of these cases — the toolbar row clips, it
+ *     does not scroll the document.
+ *
+ * ...and, as the `PHONE` comment below records, that whole suite is behind a
+ * trigger no toolbar change reaches, so on #1384's broken commit those three
+ * did not merely lack power — they never executed.
  *
  * THE TWO THINGS THAT MAKE THIS GUARD REAL, both of which it asserts as
  * preconditions rather than assuming:
@@ -47,11 +50,50 @@
  */
 
 import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts/environment-security';
-import { expect, type Page, test } from '@playwright/test';
-import { dismissSetupLauncher } from '../helpers/orchestration';
+import { devices, expect, type Page, test } from '@playwright/test';
+import { dismissSetupLauncher } from './helpers/orchestration';
 
 /** Pixel 7's own viewport height, held constant so only width varies. */
 const VIEWPORT_HEIGHT = 839;
+
+/**
+ * The device emulation, declared HERE rather than inherited from a Playwright
+ * project.
+ *
+ * This spec lived in `tests/android/` first, which is the `android` project's
+ * testDir and supplies this profile for free. That was a mistake, and a
+ * self-defeating one: `android-test.yml` only runs on `workflow_run` of
+ * `Build Android verification artifact`, and `build-android.yml` is
+ * path-filtered to `src-desktop/**` and six named scripts — `src-ui/**` and
+ * `tests/android/**` are in neither list. A toolbar change therefore triggers
+ * no Android build, so no Android Tests, so no guard. That is very likely also
+ * why the android suite was "37/37 green" on #1384's broken commit: it never
+ * ran on it at all.
+ *
+ * Nothing here needs an APK or the Android build — it is a browser layout
+ * assertion, and the Pixel 7 profile is just a convenient viewport + touch
+ * preset. Declaring it inline lets the spec live in `tests/`, where a lane
+ * that a UI change actually triggers can run it.
+ *
+ * `assertToolbarPreconditions` turns that inline declaration into a CHECKED
+ * precondition (`coarsePointer`, `mobileBreakpoint`), because a silently
+ * desktop context would measure a different toolbar and prove nothing.
+ *
+ * The four fields are named rather than spread from the descriptor wholesale:
+ * `devices['Pixel 7']` also carries `defaultBrowserType`, which Playwright
+ * refuses inside a describe-group `test.use` ("because it forces a new
+ * worker"), and a `viewport`/`screen` that each case overrides anyway. Naming
+ * them also says which emulation is load-bearing — `hasTouch`/`isMobile` are
+ * what make `(pointer: coarse)` match, and that is what folds the region
+ * controls into the `⋯` menu (#917).
+ */
+const PIXEL_7 = devices['Pixel 7'];
+const PHONE = {
+  userAgent: PIXEL_7.userAgent,
+  deviceScaleFactor: PIXEL_7.deviceScaleFactor,
+  isMobile: PIXEL_7.isMobile,
+  hasTouch: PIXEL_7.hasTouch,
+} as const;
 
 /**
  * `HeaderActions` renders `app-toolbar__conn--${connState}`. These are the
@@ -146,6 +188,11 @@ interface ToolbarMeasurement {
   connectionStateText: string | null;
   connectionStateWidth: number | null;
   connectionChipWidth: number | null;
+  /** `(pointer: coarse)` — what decides the region-control fold (#917). */
+  coarsePointer: boolean;
+  /** The app's own mobile breakpoint, copied from `chat.css` verbatim. */
+  mobileBreakpoint: boolean;
+  maxTouchPoints: number;
   controls: MeasuredControl[];
 }
 
@@ -299,6 +346,14 @@ async function measureToolbarControls(page: Page): Promise<ToolbarMeasurement> {
         ? rectOf(connectionState).width
         : null,
       connectionChipWidth: connection ? rectOf(connection).width : null,
+      coarsePointer: window.matchMedia('(pointer: coarse)').matches,
+      // Byte-for-byte the query `chat.css` uses for its mobile branch. If this
+      // is false the page is being styled as a desktop and every measurement
+      // below is of a different toolbar.
+      mobileBreakpoint: window.matchMedia(
+        '(max-width: 768px), (max-height: 540px) and (pointer: coarse)',
+      ).matches,
+      maxTouchPoints: navigator.maxTouchPoints,
       controls,
     };
   });
@@ -313,6 +368,8 @@ function renderInventory(measurement: ToolbarMeasurement): string {
   );
   return (
     `viewport ${measurement.viewportWidth}x${measurement.viewportHeight}; ` +
+    `coarse pointer ${measurement.coarsePointer}, mobile breakpoint ` +
+    `${measurement.mobileBreakpoint}, maxTouchPoints ${measurement.maxTouchPoints}; ` +
     `toolbar ${JSON.stringify(measurement.toolbarRect)}; ` +
     `connection chip ${measurement.connectionChipWidth}px ` +
     `(${measurement.connectionClass}, state text ${JSON.stringify(measurement.connectionStateText)} ` +
@@ -333,6 +390,26 @@ function assertToolbarPreconditions(measurement: ToolbarMeasurement): void {
     measurement.toolbarRect,
     `no .app-toolbar rendered\n${context}`,
   ).not.toBeNull();
+
+  // Precondition 0 — the device emulation this spec declares for itself
+  // actually took effect. This spec no longer inherits a Playwright project's
+  // device profile, so a `test.use` that stopped being applied would silently
+  // measure a DESKTOP toolbar: `.app-toolbar__action--secondary` visible,
+  // `.app-toolbar__overflow-btn` hidden, the region controls unfolded, and a
+  // completely different set of controls to hit-test. That would not be a
+  // false pass so much as a measurement of the wrong product, so it must red.
+  expect(
+    measurement.coarsePointer,
+    `the page does not report (pointer: coarse), so touch emulation is not ` +
+      `applied and this is not the mobile toolbar — check this describe's ` +
+      `test.use({ ...PHONE })\n${context}`,
+  ).toBe(true);
+  expect(
+    measurement.mobileBreakpoint,
+    `the app's own mobile breakpoint does not match, so chat.css is styling ` +
+      `this as a desktop and the measurement is of a different toolbar` +
+      `\n${context}`,
+  ).toBe(true);
 
   // The news-carrying connection state — precondition 1. Asserted two
   // independent ways: the state modifier class the component writes, and the
@@ -401,11 +478,13 @@ async function refuseStationHandshake(page: Page): Promise<void> {
 
 for (const { width, skipReason } of TOOLBAR_WIDTHS) {
   const suffix = skipReason ? ' (skipped — #1401)' : '';
-  test.describe(`Android — toolbar reachability at ${width}px${suffix}`, () => {
+  test.describe(`Toolbar reachability on a phone at ${width}px${suffix}`, () => {
     // Per-width viewport at LOAD time, not a `setViewportSize` on an already
     // laid-out page: the mobile breakpoint and the region-control fold are
-    // decided on mount, and a resize is not the same input.
-    test.use({ viewport: { width, height: VIEWPORT_HEIGHT } });
+    // decided on mount, and a resize is not the same input. The Pixel 7
+    // profile supplies the touch/mobile emulation the app's CSS keys on;
+    // `assertToolbarPreconditions` verifies it actually applied.
+    test.use({ ...PHONE, viewport: { width, height: VIEWPORT_HEIGHT } });
 
     // `#1401` is in the describe title as well as the annotation so the reason
     // is legible in a plain terminal reporter, which prints skipped tests by

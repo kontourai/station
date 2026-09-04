@@ -297,6 +297,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'read-only against the isolated temp-home instance; the only writes are this browser context’s own ambient dock document in localStorage and a browser-local config/app route mock pinning the first-run fact',
   },
   parallelSafe: [
+    'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
@@ -723,6 +724,22 @@ export const e2eManifest = [
     rationale:
       'Deterministic 320px/390px mobile task-switcher, visual-viewport, composer, scroll-anchor, model/session preservation, restore, and desktop parity lane.',
     exceptions: [],
+  },
+  {
+    path: 'tests/toolbar-reachability.spec.ts',
+    bucket: 'product',
+    surface: 'App toolbar',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Toolbar occlusion (#917, #1384) reproduces only at phone widths in a ' +
+      'news-carrying connection state. It declares its own Pixel 7 emulation ' +
+      'rather than living in tests/android/, whose lane a src-ui change never ' +
+      'triggers (build-android.yml is path-filtered to src-desktop and six ' +
+      'named scripts), so the guard would never have run where it is needed.',
+    // The 390/360 cases are skipped with #1401 named as the reason, not
+    // deleted: un-skipping them is the check that proves that fix.
+    exceptions: ['test.skip'],
   },
   {
     path: 'tests/mobile-dock-clearance.spec.ts',
@@ -1662,19 +1679,6 @@ export const e2eManifest = [
     primary: false,
     rationale: 'Android split-pane coverage runs in the Android matrix.',
     exceptions: ['waitForTimeout'],
-  },
-  {
-    path: 'tests/android/toolbar-reachability.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale:
-      'Toolbar occlusion (#1400) reproduces only at mobile widths in a ' +
-      'news-carrying connection state, so it runs in the Android matrix.',
-    // The 390/360 cases are skipped with #1401 named as the reason, not
-    // deleted: un-skipping them is the check that proves that fix.
-    exceptions: ['test.skip'],
   },
   {
     path: 'tests/android/webview-compat.spec.ts',
