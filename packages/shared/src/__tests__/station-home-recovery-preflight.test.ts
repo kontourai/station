@@ -218,6 +218,18 @@ describe('read-only home recovery preflight', () => {
       'identity-conflict',
     );
   });
+  it('uses the canonical identity parser to reject UUID-shaped identities', () => {
+    const home = fixture();
+    registry(home, [
+      {
+        id: 'abcd1234-abcd-4123-8123-abcdef123456',
+        runtimeConnectionId: 'codex',
+      },
+    ]);
+    expect(inspectStationHomeRecovery({ homeDir: home }).codes).toContain(
+      'invalid-shape',
+    );
+  });
   it('reports a mixed home-marker/registry schema instead of accepting a partial cutover', () => {
     const home = fixture();
     registry(home);

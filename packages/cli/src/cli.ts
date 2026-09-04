@@ -1449,6 +1449,7 @@ export async function runCli(
   dependencies: CliDependencies = {},
 ): Promise<void> {
   const [command, ...args] = argv;
+  const recoveryObservation = command === 'home' && args[0] === 'recovery-plan';
   const interactive =
     dependencies.isInteractive ?? Boolean(process.stdin.isTTY);
 
@@ -1525,7 +1526,7 @@ export async function runCli(
 
   // Every Station request gets a deadline from here on, so a listening-but-
   // silent server fails loudly instead of hanging with no output.
-  configureRequestTimeout();
+  if (!recoveryObservation) configureRequestTimeout();
 
   // Manual unknown-command arm: an unrecognized verb never reaches Commander,
   // so Commander's own "unknown command" handling can never override the pinned
@@ -1538,7 +1539,7 @@ export async function runCli(
   // Help, version, default/contributor/host refusals, and unknown input must
   // not construct or query the platform keyring. The executable provides this
   // adapter lazily only for a dispatchable client command.
-  if (!(command === 'home' && args[0] === 'recovery-plan')) {
+  if (!recoveryObservation) {
     await dependencies.configureProfileCredentialStore?.();
   }
 

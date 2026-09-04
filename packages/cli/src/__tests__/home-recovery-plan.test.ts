@@ -11,6 +11,7 @@ const roots: string[] = [];
 const originalExit = process.exitCode;
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   syncBuiltinESMExports();
   process.exitCode = originalExit;
   for (const root of roots.splice(0))
@@ -83,6 +84,15 @@ it('explains unopened payloads, non-atomic observation, and absent apply authori
   expect(text).toContain('NOT PROVEN');
   expect(text).toContain('non-atomic');
   expect(text).not.toContain(home);
+});
+
+it('does not configure remote HTTP requests for a local observation', async () => {
+  const home = homeFixture();
+  vi.stubEnv('STATION_REQUEST_TIMEOUT_MS', 'synthetic-private-invalid-timeout');
+  const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+  await runCli(['home', 'recovery-plan', `--base=${home}`, '--json']);
+  expect(output).toHaveBeenCalledTimes(1);
+  expect(String(output.mock.calls[0][0])).not.toContain('synthetic-private');
 });
 
 it.each(

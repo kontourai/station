@@ -6,7 +6,7 @@
  */
 import { lstatSync, opendirSync, type Stats } from 'node:fs';
 import { dirname, join, parse, resolve } from 'node:path';
-import { CLEAN_ID_PATTERN } from '@kontourai/station-contracts/agent-identity';
+import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   canonicalStationHome,
   readRegularFileNoFollow,
@@ -143,7 +143,7 @@ function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 function clean(value: unknown): value is string {
-  return typeof value === 'string' && CLEAN_ID_PATTERN.test(value);
+  return parseEngineConnectionId(value) !== undefined;
 }
 function same(left: Stats, right: Stats): boolean {
   return (
