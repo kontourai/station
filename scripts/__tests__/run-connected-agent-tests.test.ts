@@ -111,7 +111,8 @@ describe('connected-agent macro execution boundary', () => {
             repositoryRoot: root,
             packages: [],
           }),
-          testTimeoutMs,
+          // Deliberately violate the typed boundary to test runtime refusal.
+          testTimeoutMs: testTimeoutMs as number,
         }),
       ).rejects.toThrow('testTimeoutMs');
       expect(spawnProcess).not.toHaveBeenCalled();

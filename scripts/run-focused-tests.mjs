@@ -67,6 +67,11 @@ export function resolveFocusedTestFiles(args, root = SCRIPT_ROOT) {
   });
 }
 
+/**
+ * @param {readonly string[]} args
+ * @param {string} [root]
+ * @param {{ testTimeoutMs?: number }} [options]
+ */
 export function buildFocusedVitestInvocation(
   args,
   root = SCRIPT_ROOT,
@@ -149,6 +154,10 @@ export function focusedVitestVerdict({ inspection, invocation, exitCode }) {
   return { exitCode, diagnostic: null };
 }
 
+/**
+ * @param {readonly string[]} args
+ * @param {{ root?: string, spawnProcess?: typeof spawn, assertDependencyProvenance?: typeof assertWorkspacePackageProvenance, testTimeoutMs?: number }} [options]
+ */
 export async function runFocusedTests(
   args,
   {
