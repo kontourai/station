@@ -1,4 +1,8 @@
-import { execFile, execFileSync } from 'node:child_process';
+import {
+  type ExecFileOptionsWithStringEncoding,
+  execFile,
+  execFileSync,
+} from 'node:child_process';
 import {
   existsSync,
   mkdtempSync,
@@ -70,25 +74,26 @@ describe('dependency audit attempt diagnostics', () => {
     if (!npmCli || !existsSync(npmCli))
       throw new Error('Run through the repository npm test:focused entry');
     let actualVersion = '';
-    const execute = vi.fn((_command, args, options, callback) =>
-      execFile(
-        process.execPath,
-        [
-          npmCli,
-          '--version',
-          ...args.filter(
-            (arg: string) =>
-              arg === '--timing' ||
-              arg.startsWith('--loglevel=') ||
-              arg.startsWith('--logs-'),
-          ),
-        ],
+    const execute = vi.fn(
+      (_command, args, options: ExecFileOptionsWithStringEncoding, callback) =>
+        execFile(
+          process.execPath,
+          [
+            npmCli,
+            '--version',
+            ...args.filter(
+              (arg: string) =>
+                arg === '--timing' ||
+                arg.startsWith('--loglevel=') ||
+                arg.startsWith('--logs-'),
+            ),
+          ],
           { ...options, encoding: 'utf8', windowsHide: true },
-        (error, stdout, stderr) => {
-          actualVersion = stdout.trim();
-          callback(error, stdout, stderr);
-        },
-      ),
+          (error, stdout, stderr) => {
+            actualVersion = stdout.trim();
+            callback(error, stdout, stderr);
+          },
+        ),
     );
     // npm --version is deliberately not an audit document. Parsing still
     // refuses it; only the real child version/diagnostic path is under test.
