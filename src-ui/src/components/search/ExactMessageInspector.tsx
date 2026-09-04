@@ -119,7 +119,7 @@ export function ExactMessageInspector({
             {page.role === 'user' ? 'User message' : 'Agent message'} ·{' '}
             {page.assignedAgentId
               ? `Agent: ${page.assignedAgentId}`
-              : 'No assigned Agent identity recorded'}
+              : 'No assigned Agent identity available'}
           </p>
           <p role="status">
             Text page {cursors.length}

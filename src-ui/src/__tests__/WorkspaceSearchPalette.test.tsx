@@ -168,7 +168,7 @@ test('server-ranked message survives local text mismatch, names partial source, 
     (await screen.findByRole('region', { name: 'Exact matched message' }))
       .textContent,
   ).toContain('Canonical historical A text');
-  expect(screen.getByText(/No assigned Agent identity recorded/)).toBeTruthy();
+  expect(screen.getByText(/No assigned Agent identity available/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Next text page' }));
   expect(await screen.findByText('Second canonical page')).toBeTruthy();
   expect(screen.queryByText('Canonical historical A text')).toBeNull();
@@ -228,7 +228,7 @@ test('a delayed dirty-state guard checks authority before requesting an exact Ta
     mount();
     await screen.findByRole('option');
     fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
-    expect(proceed).toBeTypeOf('function');
+    await waitFor(() => expect(proceed).toBeTypeOf('function'));
     active = scope('epoch-b');
     await act(async () => {
       proceed();
@@ -305,4 +305,35 @@ test('a denied exact open keeps the palette and does not read another message', 
   expect(
     fetch.mock.calls.some(([url]) => String(url).endsWith('/read-message')),
   ).toBe(false);
+});
+
+test('a new query never inherits completed source or empty verdicts during debounce', async () => {
+  let finish!: (response: Response) => void;
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(reply({ ...search(), state: 'complete' }))
+    .mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+  vi.stubGlobal('fetch', fetch);
+  mount();
+  await screen.findByRole('option');
+  expect(screen.getByText('Tasks: unavailable')).toBeTruthy();
+  fireEvent.change(screen.getByRole('combobox'), {
+    target: { value: 'new query' },
+  });
+  expect(screen.queryByRole('option')).toBeNull();
+  expect(screen.queryByText('Tasks: unavailable')).toBeNull();
+  expect(screen.queryByText('No matching work on this Station')).toBeNull();
+  await waitFor(() => expect(finish).toBeTypeOf('function'));
+  expect(screen.queryByText('No matching work on this Station')).toBeNull();
+  await act(async () => {
+    finish(reply({ ...search(), state: 'complete', results: [] }));
+  });
+  expect(
+    await screen.findByText('No matching work on this Station'),
+  ).toBeTruthy();
 });

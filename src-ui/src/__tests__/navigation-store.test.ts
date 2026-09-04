@@ -38,6 +38,7 @@ describe('parseProjectSelectionFromPath', () => {
         prepare,
         signal: controller.signal,
       });
+      await vi.waitFor(() => expect(continueNavigation).toBeTypeOf('function'));
       expect(prepare).not.toHaveBeenCalled();
       current = false;
       continueNavigation();
@@ -75,6 +76,9 @@ describe('parseProjectSelectionFromPath', () => {
           prepare,
           signal: controller.signal,
         });
+        await vi.waitFor(() =>
+          expect(continueNavigation).toBeTypeOf('function'),
+        );
         continueNavigation();
         continueNavigation();
         expect(prepare).toHaveBeenCalledOnce();

@@ -506,60 +506,26 @@ class NavigationStore {
       signal: AbortSignal;
     },
   ): Promise<boolean> {
-    return new Promise((resolve) => {
-      let settled = false;
-      const finish = (committed: boolean) => {
-        if (settled) return;
-        settled = true;
-        admission.signal.removeEventListener('abort', abort);
-        resolve(committed);
-      };
-      const abort = () => finish(false);
-      const current = () => {
-        try {
-          return (
-            !settled &&
-            !admission.signal.aborted &&
-            admission.current() === true
-          );
-        } catch {
-          return false;
-        }
-      };
-      admission.signal.addEventListener('abort', abort, { once: true });
-      if (!current()) return finish(false);
-      let started = false;
-      this.runNavigationGuards(
-        () => {
-          if (started || !current()) {
-            if (!started) finish(false);
-            return;
-          }
-          started = true;
-          void (async () => {
+    const captured = { ...admission };
+    return import('./navigation-precommit')
+      .then(({ runNavigationPrecommit }) =>
+        runNavigationPrecommit(
+          captured,
+          (proceed, cancel) => this.runNavigationGuards(proceed, cancel),
+          () => {
+            if (this.isNavigating) return false;
+            const previousBypass = this.navigationGuardBypass;
+            this.navigationGuardBypass = true;
             try {
-              if (
-                !(await admission.prepare()) ||
-                !current() ||
-                this.isNavigating
-              )
-                return finish(false);
-              const previousBypass = this.navigationGuardBypass;
-              this.navigationGuardBypass = true;
-              try {
-                this.navigate(pathname);
-              } finally {
-                this.navigationGuardBypass = previousBypass;
-              }
-              finish(true);
-            } catch {
-              finish(false);
+              this.navigate(pathname);
+            } finally {
+              this.navigationGuardBypass = previousBypass;
             }
-          })();
-        },
-        () => finish(false),
-      );
-    });
+            return true;
+          },
+        ),
+      )
+      .catch(() => false);
   }
 
   navigate(pathname: string, params?: Record<string, string | null>) {

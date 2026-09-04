@@ -71,10 +71,9 @@ export default function WorkspaceSearchPalette({
     requestScope: scope,
     enabled: !selected && query.trim() === debounced && debounced.length >= 2,
   });
-  const rows =
-    scope?.isCurrent() && query.trim() === debounced
-      ? (search.data?.results ?? [])
-      : [];
+  const ready =
+    scope?.isCurrent() && query.trim() === debounced && debounced.length >= 2;
+  const rows = ready ? (search.data?.results ?? []) : [];
   const current = (
     captured: NonNullable<typeof scope>,
     controller: AbortController,
@@ -236,14 +235,15 @@ export default function WorkspaceSearchPalette({
           label={opening ? 'Resolving exact result' : 'Searching this Station'}
         />
       ) : null}
-      {scope?.isCurrent() &&
+      {ready &&
         search.data?.sources.map((source) => (
           <p role="status" key={source.providerId}>
             {sourceLabel(source.providerId)}: {source.state}
             {source.state === 'partial' ? ' — bounded result window' : ''}
           </p>
         ))}
-      {!search.isFetching &&
+      {ready &&
+        !search.isFetching &&
         rows.length === 0 &&
         query.trim().length >= 2 &&
         !search.isError &&
