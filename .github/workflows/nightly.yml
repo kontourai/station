@@ -17,6 +17,7 @@ concurrency: { group: nightly, cancel-in-progress: false }
 
 jobs:
   fleet-staging:
+    name: 2 · Stage portable fleet evidence
     needs: [test-gate, full-regression]
     if: ${{ github.ref == 'refs/heads/main' && needs.test-gate.outputs.source_sha == github.sha && needs.full-regression.result == 'success' }}
     permissions: { contents: read, attestations: write, id-token: write }
@@ -25,6 +26,7 @@ jobs:
       source_sha: ${{ needs.test-gate.outputs.source_sha }}
 
   test-gate:
+    name: 1 · Source gate (lint, typecheck, browser smoke)
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
     timeout-minutes: 45
@@ -89,7 +91,7 @@ jobs:
           retention-days: 14
 
   full-regression:
-    name: Nightly exact-SHA full regression
+    name: 2 · Full regression gate
     needs: [test-gate]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
     uses: ./.github/workflows/full-regression.yml
@@ -100,6 +102,7 @@ jobs:
   # needs only the source gate and runs alongside the full-regression receipt
   # instead of behind it (#1453). Promotion below still requires that receipt.
   native-stage:
+    name: 2 · Stage native builds
     needs: [test-gate]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs['test-gate'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha }}
     # Reusable workflows can only reduce the caller's token. Staging writes the
@@ -112,6 +115,7 @@ jobs:
     secrets: inherit
 
   native-cohort:
+    name: 3 · Publish native cohort
     needs: [test-gate, full-regression, native-stage]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' && needs['native-stage'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha }}
     # Reusable workflows can only reduce the caller's token. The cohort writes
@@ -127,6 +131,7 @@ jobs:
     secrets: inherit
 
   nightly-cli:
+    name: 3 · Publish CLI to npm nightly
     needs: [test-gate, full-regression]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-22.04

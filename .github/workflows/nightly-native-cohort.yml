@@ -24,6 +24,7 @@ permissions:
 
 jobs:
   admit-cohort:
+    name: Admit staged bytes
     # The caller admits this workflow only after `nightly-native-stage.yml`
     # and the exact-SHA full-regression receipt both succeeded; the staged
     # artifacts are read back from this run by name below.
@@ -54,6 +55,7 @@ jobs:
           retention-days: 14
 
   create-promotion-fence:
+    name: Create promotion fence
     needs: [admit-cohort]
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.admit-cohort.result == 'success' }}
     runs-on: ubuntu-22.04
@@ -103,6 +105,7 @@ jobs:
           retention-days: 30
 
   promote-android:
+    name: Publish Android to Play internal
     needs: [admit-cohort, create-promotion-fence]
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.admit-cohort.result == 'success' }}
     runs-on: ubuntu-22.04
@@ -192,6 +195,7 @@ jobs:
           retention-days: 14
 
   promote-macos:
+    name: Publish macOS rolling release
     needs: [promote-android]
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.promote-android.result == 'success' }}
     runs-on: macos-15
@@ -260,6 +264,7 @@ jobs:
           retention-days: 14
 
   deliver-ios:
+    name: Publish iOS
     needs: [promote-macos]
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.promote-macos.result == 'success' }}
     permissions:
@@ -286,6 +291,7 @@ jobs:
     secrets: inherit
 
   protected-finalize:
+    name: Verify providers and finalize
     needs: [promote-macos, deliver-ios]
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.promote-macos.result == 'success' && needs.deliver-ios.result == 'success' }}
     runs-on: macos-15
@@ -348,6 +354,7 @@ jobs:
           retention-days: 30
 
   record-native-completion:
+    name: Record ledger and markers
     needs: [protected-finalize]
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.protected-finalize.result == 'success' }}
     runs-on: ubuntu-22.04
@@ -461,6 +468,7 @@ jobs:
           test "$status" = 404
 
   recover-native-cohort:
+    name: Recovery lock (owner must reconcile)
     needs: [create-promotion-fence, promote-android, promote-macos, deliver-ios, protected-finalize, record-native-completion]
     if: ${{ always() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.build == 'true' && (needs.promote-android.result != 'success' || needs.promote-macos.result != 'success' || needs.deliver-ios.result != 'success' || needs.protected-finalize.result != 'success' || needs.record-native-completion.result != 'success') }}
     runs-on: ubuntu-22.04

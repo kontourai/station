@@ -11,6 +11,7 @@ permissions: { contents: read, attestations: write, id-token: write }
 
 jobs:
   fleet-plan:
+    name: Plan portable staging
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha }}
     runs-on: ubuntu-22.04
     outputs:
@@ -43,6 +44,7 @@ jobs:
           echo "plan_digest=$digest" >> "$GITHUB_OUTPUT"
 
   portable:
+    name: Package portable server
     needs: fleet-plan
     if: ${{ needs.fleet-plan.result == 'success' }}
     runs-on: ubuntu-22.04
@@ -75,6 +77,7 @@ jobs:
         with: { name: "nightly-fleet-portable-${{ github.run_id }}", path: fleet-assets/*, if-no-files-found: error, retention-days: 14 }
 
   admit-fleet:
+    name: Admit portable bytes
     needs: [fleet-plan, portable]
     if: ${{ always() && !cancelled() && needs.fleet-plan.result == 'success' && needs.portable.result == 'success' }}
     runs-on: ubuntu-22.04

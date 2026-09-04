@@ -36,6 +36,7 @@ permissions:
 
 jobs:
   plan-cohort:
+    name: Plan cohort (reserve version code)
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha }}
     runs-on: ubuntu-22.04
     timeout-minutes: 20
@@ -190,6 +191,7 @@ jobs:
           retention-days: 14
 
   stage-android:
+    name: Build Android (sign arm64 AAB + APK)
     needs: plan-cohort
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
     runs-on: ubuntu-22.04
@@ -310,6 +312,7 @@ jobs:
           retention-days: 14
 
   stage-macos:
+    name: Build macOS (sign + notarize)
     needs: plan-cohort
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
     runs-on: macos-15
@@ -413,6 +416,7 @@ jobs:
 
 
   stage-ios:
+    name: Build iOS
     needs: plan-cohort
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
     permissions:

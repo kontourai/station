@@ -60,6 +60,7 @@ permissions:
 
 jobs:
   deliver:
+    name: Build, sign and audit IPA
     if: ${{ inputs.delivery != 'upload' }}
     runs-on: macos-15
     timeout-minutes: 90
@@ -317,6 +318,7 @@ jobs:
         run: security delete-keychain "$RUNNER_TEMP/station-ios.keychain-db" 2>/dev/null || true
 
   upload:
+    name: Upload to TestFlight
     # Runs after `deliver` in build-and-upload mode, or alone in upload mode
     # against the staged artifact an earlier call in this run retained. Never
     # rebuilds or re-signs: the bytes uploaded are the bytes that were audited.
