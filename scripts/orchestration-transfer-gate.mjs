@@ -184,17 +184,56 @@ export function transferCaptureLivenessTimeoutMs(env = process.env) {
 }
 
 /**
- * Where a baseline belongs for this candidate. Relative `../station-worktrees/…`
- * advice only resolves correctly from the primary checkout; a lane worktree
- * already under `station-worktrees/` would nest a second `station-worktrees/`
- * inside it, so the suggestion is absolute and sibling-aware.
+ * The primary checkout backing this worktree. `--git-common-dir` resolves to
+ * the main checkout's `.git` from any linked worktree, so its parent is the
+ * primary checkout wherever the pre-push hook fired: a `station-worktrees/`
+ * lane, an agent's `.claude/worktrees/` lane, or the primary checkout itself.
+ *
+ * Falls back to the candidate root when git cannot answer, which means the
+ * path is not in a repository at all — a case the gate has already failed on
+ * for a louder reason by the time any advice is rendered.
  */
-export function suggestedBaselineRoot(candidateRoot, baseSha) {
+export function primaryCheckoutRoot(candidateRoot) {
+  try {
+    return dirname(
+      git(candidateRoot, [
+        'rev-parse',
+        '--path-format=absolute',
+        '--git-common-dir',
+      ]),
+    );
+  } catch {
+    return resolve(candidateRoot);
+  }
+}
+
+/**
+ * Where a baseline belongs relative to a given checkout root: a sibling of the
+ * checkout, never nested inside it. A nested checkout makes one repository
+ * look like many to anything walking the tree (`scripts/worktree-hygiene.mjs`
+ * exists to flag exactly that), and nothing reaps what it cannot find.
+ */
+export function baselineRootFor(checkoutRoot, baseSha) {
   const name = `4294-transfer-baseline-${baseSha.slice(0, 12)}`;
-  const parent = dirname(resolve(candidateRoot));
+  const parent = dirname(resolve(checkoutRoot));
   return basename(parent) === 'station-worktrees'
     ? resolve(parent, name)
     : resolve(parent, 'station-worktrees', name);
+}
+
+/**
+ * Where a baseline belongs for this candidate.
+ *
+ * Inferring the location from the candidate's own path only lands correctly
+ * when that path sits directly under `station-worktrees/`. An agent lane under
+ * `.claude/worktrees/` fails that shape test and produced
+ * `…/station/.claude/worktrees/station-worktrees/<baseline>` — a worktree
+ * nested inside the primary checkout's own working tree, which is worse than
+ * the doubled `station-worktrees/` this advice was first fixed for (#512).
+ * Ask git where the repository is instead of reading it off a directory name.
+ */
+export function suggestedBaselineRoot(candidateRoot, baseSha) {
+  return baselineRootFor(primaryCheckoutRoot(candidateRoot), baseSha);
 }
 
 export function missingBaselineRootMessage(baseSha, candidateRoot) {
