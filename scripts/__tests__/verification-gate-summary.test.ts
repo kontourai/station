@@ -386,6 +386,88 @@ describe('verification gate summary', () => {
     expect(summary).toContain('unparseable');
   });
 
+  // A stated verdict and the gate step's own outcome are two observations of
+  // one run. The reachable disagreement is exit 0 beside `passed: false`
+  // (run-verification.mjs prints false and exits 0 when the receipt's
+  // `passed` is neither true nor false), which would otherwise render a red
+  // summary on a job GitHub shows green with no annotation saying so.
+  test('flags a verdict that disagrees with the gate outcome in either direction', () => {
+    const root = workspace();
+    const capture = join(root, 'full-regression.stdout.log');
+    const counts = {
+      executed: 4225,
+      passed: 4213,
+      failed: 0,
+      infrastructureErrors: 0,
+    };
+    writeFileSync(
+      capture,
+      capturedStdout(
+        passingStdout,
+        verdictDocument({
+          stdout: capturedStdout(passingStdout, ''),
+          status: 'completed',
+          exitCode: 0,
+          counts,
+          passed: false,
+        }),
+      ),
+    );
+    const disagree = runSummary(root, [
+      '--stdout-file',
+      capture,
+      '--gate-outcome',
+      'success',
+    ]);
+    expect(disagree.status).toBe(0);
+    const flagged = errorAnnotations(disagree.stdout).filter((line) =>
+      line.includes('disagree'),
+    );
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0]).toContain('"success"');
+    expect(flagged[0]).toContain('passed=false');
+
+    // The other direction: a failed step whose document claims a pass.
+    writeFileSync(
+      capture,
+      capturedStdout(
+        passingStdout,
+        verdictDocument({
+          stdout: capturedStdout(passingStdout, ''),
+          status: 'completed',
+          exitCode: 0,
+          counts,
+          passed: true,
+        }),
+      ),
+    );
+    const inverse = runSummary(root, [
+      '--stdout-file',
+      capture,
+      '--gate-outcome',
+      'failure',
+    ]);
+    expect(inverse.status).toBe(0);
+    expect(
+      errorAnnotations(inverse.stdout).filter((line) =>
+        line.includes('disagree'),
+      ),
+    ).toHaveLength(1);
+
+    // Agreement in both directions stays silent on this channel.
+    const agree = runSummary(root, [
+      '--stdout-file',
+      capture,
+      '--gate-outcome',
+      'success',
+    ]);
+    expect(
+      errorAnnotations(agree.stdout).filter((line) =>
+        line.includes('disagree'),
+      ),
+    ).toEqual([]);
+  });
+
   test('stays a ::warning for the same unparseable capture when the gate SUCCEEDED', () => {
     const root = workspace();
     const capture = join(root, 'full-regression.stdout.log');

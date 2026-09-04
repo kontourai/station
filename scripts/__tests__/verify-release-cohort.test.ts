@@ -113,6 +113,8 @@ describe('protected release cohort verifier parsers', () => {
       ),
     ).toMatchObject({
       subjectDigest: `sha256:${record.sha256}`,
+      signerWorkflow:
+        'kontourai/station/.github/workflows/nightly-native-stage.yml',
       authenticatedWorkflowRunId: '112061',
       verifiedTimestampDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     });

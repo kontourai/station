@@ -120,12 +120,13 @@ function readTail(path) {
  *
  * The document being looked for is itself capped at 8 KiB
  * (`CONTROL_OUTPUT_CAP` in run-verification.mjs), so a 32 KiB window per
- * candidate cannot clip it; the whole-pass budget then makes the cost linear
- * in the input rather than in candidates x length. Candidates are tried
- * newest-first and the verdict is the LAST thing the gate prints, so a real
- * document is reached in the first candidate or two and the budget cannot
- * hide one. Exhausting the budget takes the same path as unparseable input:
- * the summary says so.
+ * candidate cannot clip it; the whole-pass budget, charged by bytes actually
+ * scanned, then makes the cost linear in the input rather than in candidates
+ * x length. Candidates are tried newest-first and the verdict is the LAST
+ * thing the gate prints, so a real document is normally reached in the first
+ * candidate or two. The budget can miss a verdict only when more than 8 MiB
+ * of line-initial-brace text follows it; exhausting it takes the same path
+ * as unparseable input, and the summary says so.
  */
 const MAX_DOCUMENT_SCAN_BYTES = 32 * 1024;
 const MAX_DOCUMENT_SCAN_TOTAL_BYTES = 8 * 1024 * 1024;
@@ -177,9 +178,10 @@ export function lastJsonDocument(text) {
   let budget = MAX_DOCUMENT_SCAN_TOTAL_BYTES;
   for (let candidate = starts.length - 1; candidate >= 0; candidate -= 1) {
     if (budget <= 0) break;
-    budget -= MAX_DOCUMENT_SCAN_BYTES;
     const start = starts[candidate];
-    const end = matchingBrace(text, start, start + MAX_DOCUMENT_SCAN_BYTES);
+    const limit = Math.min(text.length, start + MAX_DOCUMENT_SCAN_BYTES);
+    const end = matchingBrace(text, start, limit);
+    budget -= (end < 0 ? limit : end + 1) - start;
     if (end < 0) continue;
     let value;
     try {
@@ -449,7 +451,23 @@ export function main(argv, { log = console.log, warn = console.error } = {}) {
   // true }`) is a perfectly parsable object carrying no verdict, and used to
   // produce no annotation at all -- exactly the silence this script exists to
   // remove.
-  if (verdictOf(document?.summary ?? {}) === null) {
+  const verdict = verdictOf(document?.summary ?? {});
+  // The gate step's outcome and the verdict it printed are two observations
+  // of one run; when they disagree, neither may be presented alone. The
+  // reachable case is exit 0 beside `passed: false` (a terminal `passed`
+  // that is neither true nor false prints false and exits 0), which would
+  // otherwise render a red summary on a green job.
+  if (
+    options.gateOutcome &&
+    verdict !== null &&
+    (options.gateOutcome === 'success') !== verdict
+  )
+    log(
+      `::error title=full-regression::${annotationMessage(
+        `the completion gate step reported "${options.gateOutcome}" but its verdict document states passed=${verdict}; the two disagree, so read the run's full-regression-* artifact before trusting either.`,
+      )}`,
+    );
+  if (verdict === null) {
     const reason =
       unparseableReason ??
       'the captured verdict document stated no verdict (`passed` was absent)';

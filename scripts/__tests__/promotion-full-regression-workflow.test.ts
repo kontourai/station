@@ -140,11 +140,14 @@ describe('promotion full-regression workflow', () => {
     const verdictReport = namedStep(gate, 'Report the completion gate verdict');
     expect(verdictReport.if).toBe('always()');
     expect(verdictReport['timeout-minutes']).toBe(2);
-    expect(verdictReport.run).toContain(
-      'node scripts/verification-gate-summary.mjs',
-    );
-    expect(verdictReport.run).toContain(
-      `--gate-outcome "${githubExpression('steps.gate.outcome')}"`,
+    // Exact, for the same reason the gate step is exact: a trailing
+    // `|| true`, a swapped script, or a dropped argument must be visible.
+    expect(verdictReport.run?.trim()).toBe(
+      [
+        'node scripts/verification-gate-summary.mjs \\',
+        '  --stdout-file "$RUNNER_TEMP/full-regression.stdout.log" \\',
+        `  --gate-outcome "${githubExpression('steps.gate.outcome')}"`,
+      ].join('\n'),
     );
     // Both steps must name the SAME capture file, or the report renders an
     // empty summary for a run whose verdict was captured elsewhere.

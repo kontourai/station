@@ -69,6 +69,26 @@ function jsonOutput(result, label) {
     fail(`${label} returned malformed JSON`);
   }
 }
+/**
+ * The workflow half of a verified certificate SAN
+ * (`https://github.com/<owner>/<repo>/<workflow path>@<ref>`). The SAN was
+ * already matched against the expected identity, so this can only ever name
+ * the staging workflow; it is read from the certificate rather than restated
+ * so the receipt carries what was verified, and it fails closed if the SAN
+ * ever stops having the shape the strip expects.
+ */
+export function signerWorkflowOf(subjectAlternativeName) {
+  const prefix = 'https://github.com/';
+  const suffix = `@${NIGHTLY_SOURCE_REF}`;
+  if (
+    typeof subjectAlternativeName !== 'string' ||
+    !subjectAlternativeName.startsWith(prefix) ||
+    !subjectAlternativeName.endsWith(suffix)
+  )
+    fail('attestation certificate identity is not a main-ref workflow');
+  return subjectAlternativeName.slice(prefix.length, -suffix.length);
+}
+
 export function ghAttestationArgs(path, sourceSha) {
   return [
     'attestation',
@@ -153,10 +173,9 @@ export function parseVerifiedAttestation(
     repository: REPOSITORY,
     // Read from the verified certificate rather than restated from the
     // constant the match above was made against.
-    signerWorkflow:
-      entry.verificationResult.signature.certificate.subjectAlternativeName
-        .replace(/^https:\/\/github\.com\//, '')
-        .replace(/@refs\/heads\/main$/, ''),
+    signerWorkflow: signerWorkflowOf(
+      entry.verificationResult.signature.certificate.subjectAlternativeName,
+    ),
     sourceRef: NIGHTLY_SOURCE_REF,
     sourceSha,
     oidcIssuer: OIDC_ISSUER,

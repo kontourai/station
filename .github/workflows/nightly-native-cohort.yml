@@ -34,6 +34,11 @@ jobs:
     runs-on: ubuntu-22.04
     permissions: { contents: read }
     steps:
+      - name: Require the identity the staging phase bound before any promotion job can run
+        run: |
+          test -n '${{ inputs.marketing_version }}'
+          test -n '${{ inputs.bundle_version }}'
+          test -n '${{ inputs.reservation_tag }}'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_sha }}
@@ -487,7 +492,7 @@ jobs:
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
           JOB_RESULTS: >-
-            {"stage":"${{ inputs.build }}","promotion-fence":"${{ needs.create-promotion-fence.result }}","promote-android":"${{ needs.promote-android.result }}","promote-macos":"${{ needs.promote-macos.result }}","deliver-ios":"${{ needs.deliver-ios.result }}","protected-finalize":"${{ needs.protected-finalize.result }}","record-native-completion":"${{ needs.record-native-completion.result }}","final-attestation":"${{ needs.record-native-completion.outputs.final_attestation }}","app-token":"${{ needs.record-native-completion.outputs.app_token }}","ledger":"${{ needs.record-native-completion.outputs.ledger }}","tag":"${{ needs.record-native-completion.outputs.tag }}","promotion-fence-clear":"${{ needs.record-native-completion.outputs.promotion_fence }}"}
+            {"promotion-fence":"${{ needs.create-promotion-fence.result }}","promote-android":"${{ needs.promote-android.result }}","promote-macos":"${{ needs.promote-macos.result }}","deliver-ios":"${{ needs.deliver-ios.result }}","protected-finalize":"${{ needs.protected-finalize.result }}","record-native-completion":"${{ needs.record-native-completion.result }}","final-attestation":"${{ needs.record-native-completion.outputs.final_attestation }}","app-token":"${{ needs.record-native-completion.outputs.app_token }}","ledger":"${{ needs.record-native-completion.outputs.ledger }}","tag":"${{ needs.record-native-completion.outputs.tag }}","promotion-fence-clear":"${{ needs.record-native-completion.outputs.promotion_fence }}"}
         run: |
           printf '%s\n' "$JOB_RESULTS" > recovery-job-results.json
           node scripts/release-cohort-workflow.mjs recovery-receipt native-cohort-recovery.json "$SOURCE_SHA" "$GITHUB_RUN_ID" cohort/cohort-plan.json recovery-job-results.json cohort/cohort-admission.json cohort/verification-candidate.json cohort/play-observation.json cohort/github-release-observation.json

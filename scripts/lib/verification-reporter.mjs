@@ -619,9 +619,11 @@ export function summarizeVerificationOutput({
     candidates.find((line) => FAIL_LINE.test(line));
   // Hoisted above the causal scan (it also gates `failingStep` further down,
   // where it was originally computed) because a PASSING run must not report a
-  // cause at all. `completed` with a zero exit is exactly the predicate
-  // `failingStep` already uses to decide the same question, so the two fields
-  // can never disagree about whether this run failed.
+  // cause at all. It is one conjunct of `observedClean` below; `failingStep`
+  // reads it alone. The two fields can therefore disagree, by design, in
+  // exactly the under-approximated cases: a run that `completed` with exit 0
+  // but failed cleanup or counts names no failing step yet still reports its
+  // causal excerpt.
   const exitedNonZero =
     typeof terminal.exitCode === 'number' && terminal.exitCode !== 0;
   // station#1459: the fallback that rescues a FAILED warnings-only capture is
@@ -717,9 +719,9 @@ export function summarizeVerificationOutput({
   //    is a real non-pass, and testing `status !== 'completed'` alone would
   //    stay silent on exactly the run a reader needs the field for.
   //
-  // `exitedNonZero` is computed once, above the causal scan, because
-  // station#1459 needs the same predicate there; this is its second reader,
-  // not a second definition.
+  // `exitedNonZero` is computed once, above the causal scan, where
+  // station#1459 folds it into the strictly stronger `observedClean`; this is
+  // its second reader, not a second definition.
   // The step is reported under a name that matches what the status actually
   // claims. Under `timed_out` or `canceled` nothing failed -- the note above
   // says as much, and asked the reader not to read `failingStep` as blame.

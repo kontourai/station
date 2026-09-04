@@ -312,8 +312,14 @@ describe('two-phase native Nightly', () => {
             .filter(Boolean);
           handoffs.push(`${name}#${id}`);
           for (const path of paths) {
+            // A workspace-relative path starts with a plain name segment
+            // and never climbs out; anything absolute, home-relative, or
+            // resolved from a runner/env context is refused outright.
+            expect(path, `${name}#${id} uploads ${path}`).toMatch(
+              /^[A-Za-z0-9_-]/,
+            );
             expect(path, `${name}#${id} uploads ${path}`).not.toMatch(
-              /runner\.temp|RUNNER_TEMP|^\//,
+              /(^|\/)\.\.(\/|$)|~|\$HOME|\$\{\{\s*(runner|env|github)\./,
             );
           }
         }
