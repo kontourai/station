@@ -173,6 +173,7 @@ export default function WorkspaceSearchPalette({
     <Dialog
       title="Workspace search (this Station)"
       initialFocusRef={inputRef}
+      initialFocusPolicy="always"
       closeLabel="Close workspace search"
       onClose={onClose}
       size="lg"

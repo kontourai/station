@@ -162,6 +162,7 @@ test('server-ranked message survives local text mismatch, names partial source, 
   vi.stubGlobal('fetch', fetch);
   mount();
   expect(await screen.findByRole('option')).toBeTruthy();
+  expect(document.activeElement).toBe(screen.getByRole('combobox'));
   expect(screen.getByText('Tasks: unavailable')).toBeTruthy();
   fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
   expect(
