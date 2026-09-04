@@ -2,7 +2,7 @@ import type { EngineConnectionId } from '@kontourai/station-contracts/agent-iden
 import type { FleetContributionManifest } from '@kontourai/station-contracts/fleet-contribution';
 import type { ConnectionInventoryFailure } from '@kontourai/station-contracts/model-inventory';
 import {
-  curatedModelIdentityFor,
+  type CanonicalModelIdentityReference,
   describeConnectionInventoryFailures,
 } from '@kontourai/station-contracts/model-inventory';
 import type {
@@ -245,20 +245,12 @@ export function useModelPickerCatalogQuery(
                   ...(typeof model.resolvedModel === 'string'
                     ? { resolvedModel: model.resolvedModel }
                     : {}),
-                  // One derivation for every route reaching a surface. Keyed on
-                  // the concrete model an alias resolves to when the engine
-                  // reported one ('default' -> 'claude-sonnet-4-5'), else the
-                  // provider-native id. Unrecognised ids carry no field.
-                  ...(() => {
-                    const identity = curatedModelIdentityFor(
-                      typeof model.resolvedModel === 'string'
-                        ? model.resolvedModel
-                        : typeof model.originalId === 'string'
-                          ? model.originalId
-                          : candidate.id,
-                    );
-                    return identity ? { canonicalModelIdentity: identity } : {};
-                  })(),
+                  // Identity is decided server-side from the route's own
+                  // family (#1208 review); the client only carries a
+                  // well-formed reference through, never derives one.
+                  ...(isCanonicalModelIdentity(model.canonicalModelIdentity)
+                    ? { canonicalModelIdentity: model.canonicalModelIdentity }
+                    : {}),
                   ...(model.capabilities
                     ? {
                         capabilities: {
@@ -1177,3 +1169,16 @@ export function useClearAppHomeProfileMutation(
 
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
+
+function isCanonicalModelIdentity(
+  value: unknown,
+): value is CanonicalModelIdentityReference {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    typeof (value as CanonicalModelIdentityReference).canonicalId ===
+      'string' &&
+    typeof (value as CanonicalModelIdentityReference).verifiedAgainst ===
+      'string'
+  );
+}
