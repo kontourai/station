@@ -1312,6 +1312,10 @@ describe('plugin composition profiles', () => {
     ).resolves.toMatchObject({ kind: 'failed' });
     expect(occurrenceCurrent?.()).toBe(false);
     expect(release).not.toHaveBeenCalled();
+    // Inspect before retire/apply can replace the failed attempt projection.
+    expect(module.inspect(projectA).pending).toEqual([
+      expect.objectContaining({ instanceId: 'cache', status: 'pending' }),
+    ]);
 
     await expect(module.retire(projectA)).resolves.toMatchObject({
       kind: 'pending',
@@ -1334,6 +1338,146 @@ describe('plugin composition profiles', () => {
       kind: 'retired',
     });
   });
+
+  test.each([
+    ['stage-failure', 'resolve'],
+    ['stage-failure', 'reject'],
+    ['stale-authorization', 'resolve'],
+    ['stale-authorization', 'reject'],
+  ] as const)(
+    'retains ordinary %s rollback ownership until disposer will %s',
+    async (failure, outcome) => {
+      vi.useFakeTimers();
+      let finishDisposal!: () => void;
+      let current = true;
+      const release = vi.fn();
+      const dispose = vi.fn(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            finishDisposal = () =>
+              outcome === 'resolve'
+                ? resolve()
+                : reject(new Error('rollback failed'));
+          }),
+      );
+      const firstStage = vi.fn(async () => {
+        if (failure === 'stale-authorization') current = false;
+        return { dispose };
+      });
+      const secondStage = vi.fn(async () => {
+        throw new Error('stage failed');
+      });
+      const module = moduleWith(
+        [
+          ['a', { stage: firstStage }],
+          ['b', { stage: secondStage }],
+        ],
+        { disposerTimeoutMs: 5, onRelease: release, isCurrent: () => current },
+      );
+      const candidate = profile(projectA, [
+        contribution('a', 'workspace.a'),
+        contribution('b', 'workspace.b', {
+          requires: [{ capability: 'workspace.a', version: '1.0.0' }],
+        }),
+      ]);
+      try {
+        const applying = module.apply(candidate);
+        await vi.advanceTimersByTimeAsync(11);
+        await expect(applying).resolves.toMatchObject({
+          kind: failure === 'stage-failure' ? 'failed' : 'pending',
+        });
+        expect(dispose).toHaveBeenCalledOnce();
+        expect(release).not.toHaveBeenCalled();
+        expect(module.inspect(projectA).pending).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ instanceId: 'a', status: 'pending' }),
+          ]),
+        );
+        await expect(module.apply(candidate)).resolves.toMatchObject({
+          kind: 'pending',
+        });
+        expect(firstStage).toHaveBeenCalledOnce();
+        await expect(module.retire(projectA)).resolves.toMatchObject({
+          kind: 'pending',
+        });
+        finishDisposal();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(dispose).toHaveBeenCalledOnce();
+        if (outcome === 'resolve') {
+          expect(release).toHaveBeenCalledOnce();
+          await expect(module.retire(projectA)).resolves.toMatchObject({
+            kind: 'retired',
+          });
+        } else {
+          expect(release).not.toHaveBeenCalled();
+          await expect(module.retire(projectA)).resolves.toMatchObject({
+            kind: 'pending',
+          });
+          expect(module.inspect(projectA).pending.length).toBeGreaterThan(0);
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  test.each(['resolve', 'reject'] as const)(
+    'projects ordinary rollback debt while lease release will %s',
+    async (outcome) => {
+      vi.useFakeTimers();
+      let finishRelease!: () => void;
+      const release = vi.fn(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            finishRelease = () =>
+              outcome === 'resolve'
+                ? resolve()
+                : reject(new Error('release failed'));
+          }),
+      );
+      const dispose = vi.fn();
+      const module = moduleWith(
+        [
+          ['a', { stage: async () => ({ dispose }) }],
+          [
+            'b',
+            {
+              stage: async () => {
+                throw new Error('stage failed');
+              },
+            },
+          ],
+        ],
+        { disposerTimeoutMs: 5, onRelease: release },
+      );
+      const candidate = profile(projectA, [
+        contribution('a', 'workspace.a'),
+        contribution('b', 'workspace.b', {
+          requires: [{ capability: 'workspace.a', version: '1.0.0' }],
+        }),
+      ]);
+      try {
+        const applying = module.apply(candidate);
+        await vi.advanceTimersByTimeAsync(6);
+        const result = await applying;
+        expect(result.kind).toBe('failed');
+        expect(result.inspection.pending.length).toBeGreaterThan(0);
+        expect(dispose).toHaveBeenCalledOnce();
+        expect(release).toHaveBeenCalledOnce();
+        await expect(module.apply(candidate)).resolves.toMatchObject({
+          kind: 'pending',
+        });
+        finishRelease();
+        await vi.advanceTimersByTimeAsync(0);
+        await expect(module.retire(projectA)).resolves.toMatchObject({
+          kind: outcome === 'resolve' ? 'retired' : 'pending',
+        });
+        expect(release).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   test.each([
     ['resolve', 'resolve'],

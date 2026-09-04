@@ -1173,7 +1173,9 @@ export function createPluginCompositionModule(options: {
       if (
         !latest.some(
           (candidate) =>
-            candidate.instanceIdentity === pending.instanceIdentity,
+            candidate.instanceIdentity === pending.instanceIdentity &&
+            candidate.status === pending.status &&
+            candidate.reason === pending.reason,
         )
       ) {
         latest.push(pending);
@@ -1687,13 +1689,42 @@ export function createPluginCompositionModule(options: {
 
     const sequence = nextActivationSequence();
     const staged: ActiveContribution[] = [];
+    let rollbackSettlement: Promise<void> | undefined;
+    const settleRollbackOwnership = async () => {
+      if (!rollbackOwner.late && rollbackOwner.prior.length === 0) return;
+      if (!rollbackSettlement) {
+        pendingLifecycle.set(
+          key,
+          planned.plan.selected.map((candidate) =>
+            entry(candidate, 'pending', 'activation-aborted'),
+          ),
+        );
+        // One continuation owns every rollback path and the actual lease
+        // release. Deadlines only bound callers; failure retains admission.
+        rollbackSettlement = Promise.all([
+          ...rollbackOwner.prior,
+          ...(rollbackOwner.late ? [rollbackOwner.late] : []),
+        ])
+          .then(async (outcomes) => {
+            if (outcomes.some((outcome) => outcome !== 'disposed')) return;
+            await beginAuthorizationRelease();
+            pendingLifecycle.delete(key);
+          })
+          .catch(() => {});
+      }
+      if (!rollbackOwner.late) {
+        await outcomeWithin(rollbackSettlement, disposerTimeoutMs);
+      }
+    };
     const abortForCurrentness = async () => {
       const rollback = await disposeReverse(
         staged,
         'rollback',
         key,
         nextGeneration,
+        rollbackOwner.prior,
       );
+      await settleRollbackOwnership();
       recordAttempt(profile.scope, [
         ...planned.plan.selected.map((candidate) =>
           entry(candidate, 'pending', 'authorization-unavailable'),
@@ -1798,6 +1829,7 @@ export function createPluginCompositionModule(options: {
             nextGeneration,
             rollbackOwner.prior,
           );
+          await settleRollbackOwnership();
           const blocked = planned.plan.selected
             .slice(index + 1)
             .map((candidate) =>
@@ -1867,18 +1899,8 @@ export function createPluginCompositionModule(options: {
         inspection: inspect(profile.scope),
       };
     } finally {
-      if (rollbackOwner.late) {
-        // The catch above has now scheduled every prior rollback disposer.
-        // The late stage owns its own disposer settlement, including work
-        // which only starts after apply returns. No independent continuation
-        // may release this shared authorization or clear the admission fence.
-        void Promise.all([...rollbackOwner.prior, rollbackOwner.late])
-          .then(async (outcomes) => {
-            if (outcomes.some((outcome) => outcome !== 'disposed')) return;
-            await beginAuthorizationRelease();
-            pendingLifecycle.delete(key);
-          })
-          .catch(() => {});
+      if (rollbackOwner.late || rollbackOwner.prior.length > 0) {
+        if (!rollbackSettlement) await settleRollbackOwnership();
       } else {
         await releaseAuthorization();
       }
