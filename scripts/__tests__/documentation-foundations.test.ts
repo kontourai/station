@@ -1,7 +1,32 @@
 import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const read = (file: string) => readFileSync(file, 'utf8');
+
+/** Read exactly one named interface, not the text up to its next neighbour. */
+function interfaceFields(text: string, name: string): string[] {
+  const source = ts.createSourceFile(
+    'contract.ts',
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const declarations = source.statements
+    .filter(ts.isInterfaceDeclaration)
+    .filter((declaration) => declaration.name.text === name);
+  if (declarations.length !== 1)
+    throw new Error(`Expected one ${name} interface`);
+  return declarations[0].members.map((member) => {
+    if (
+      !ts.isPropertySignature(member) ||
+      (!ts.isIdentifier(member.name) && !ts.isStringLiteral(member.name))
+    )
+      throw new Error(`Unsupported ${name} member`);
+    return member.name.text;
+  });
+}
 
 describe('documentation foundations', () => {
   it('binds getting-started channel facts, Starters, and review route to their current source owners', () => {
@@ -77,13 +102,7 @@ describe('documentation foundations', () => {
 
   it('keeps the plugin manifest field reference complete against the contract', () => {
     const contract = read('packages/contracts/src/plugin.ts');
-    const manifest = contract.match(
-      /export interface PluginManifest \{([\s\S]*?)\n\}\n\nexport interface PluginOverrideConfig/,
-    )?.[1];
-    expect(manifest).toBeTruthy();
-    const contractFields = [
-      ...(manifest ?? '').matchAll(/^ {2}([A-Za-z][A-Za-z0-9]*)\??:/gm),
-    ].map((match) => match[1]);
+    const contractFields = interfaceFields(contract, 'PluginManifest');
 
     const guide = read('docs/guides/plugins.md');
     const fieldTable = guide.match(
@@ -97,6 +116,36 @@ describe('documentation foundations', () => {
     );
 
     expect([...documentedFields].sort()).toEqual(contractFields.sort());
+  });
+
+  it('extracts only manifest properties across nested types and intervening rejection interfaces', () => {
+    expect(
+      interfaceFields(
+        `
+      export interface PluginManifest {
+        name: string;
+        settings?: { nested: { value: string } };
+        'entrypoint'?: string;
+      }
+      export interface PluginManifestRejection { code: string; reason: string; }
+      export interface InstalledRejectedPlugin { name: string; status: 'rejected'; recovery: unknown; }
+      export interface PluginOverrideConfig { enabled: boolean; }
+    `,
+        'PluginManifest',
+      ),
+    ).toEqual(['name', 'settings', 'entrypoint']);
+  });
+
+  it('refuses missing or merged duplicate manifest declarations instead of vacuous field parity', () => {
+    expect(() =>
+      interfaceFields('export interface Other {}', 'PluginManifest'),
+    ).toThrow('Expected one');
+    expect(() =>
+      interfaceFields(
+        'interface PluginManifest { name: string } interface PluginManifest { added: string }',
+        'PluginManifest',
+      ),
+    ).toThrow('Expected one');
   });
 
   it('defers shared UI explorer, manifest, tokens, themes, and accessibility to Kontour UI', () => {
