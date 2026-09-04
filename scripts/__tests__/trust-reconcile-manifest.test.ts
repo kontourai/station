@@ -124,9 +124,15 @@ describe('Station trust-reconcile manifest', () => {
     // #1459 moved the completion step to a block scalar so the gate can be
     // piped through `tee` (under `set -o pipefail`) for the verdict report.
     // The property this pin exists for is unchanged and is what it still
-    // asserts: the manifest command is invoked exactly once in the completion
-    // workflow, and nowhere in ci.yml.
-    expect(completion.match(/npm run full:regression/g)).toHaveLength(1);
+    // asserts: the manifest command is INVOKED exactly once in the completion
+    // workflow, and nowhere in ci.yml. Line-anchored, because a bare substring
+    // also counts every mention in a comment — and this workflow's comments
+    // discuss the command at length — so a second real invocation could be
+    // added while a comment was deleted and the count would not move. The
+    // negative lookahead keeps `full:regression:raw` out of the count.
+    expect(
+      completion.match(/^\s*npm run full:regression\b(?!:)/gm),
+    ).toHaveLength(1);
     expect(completion).toContain('workflow_call:');
     expect(ci).toContain('id: fast_ci');
   });

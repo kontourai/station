@@ -36,10 +36,21 @@ import { pathToFileURL } from 'node:url';
 
 /**
  * The gate's JSON verdict is the LAST document on stdout and is itself bounded
- * to 8 KiB (`CONTROL_OUTPUT_CAP` in run-verification.mjs). A full-regression
- * log is tens of megabytes of test output, essentially all of it before that
- * document, so only the tail is read: bounded memory, and the bound cannot
- * clip the document it exists to find.
+ * to 8 KiB (`CONTROL_OUTPUT_CAP` in run-verification.mjs).
+ *
+ * On THIS pipeline the captured stdout is small, not "tens of megabytes": the
+ * gate spawns its corpus with `stdio: ['ignore', 'pipe', 'pipe']`
+ * (verification-execution-lifecycle.mjs) and keeps that child output in
+ * digest-addressed redacted artifacts, so all that reaches the job's own
+ * stdout -- and therefore the `tee` this script reads -- is npm's `> pkg@ver
+ * script` banners plus that one bounded document. Kilobytes.
+ *
+ * The tail bound is kept anyway, because this script must not depend on that
+ * staying true: a step that inherits a child's stdout, or a runner change that
+ * folds another stream in, would make the read unbounded again, and the one
+ * thing this reporter may never do is fail to report. Reading only the tail is
+ * bounded memory whatever lands upstream, and 1 MiB cannot clip an 8 KiB
+ * document that is the last thing printed.
  */
 const MAX_INPUT_TAIL_BYTES = 1024 * 1024;
 /** One annotation per distinct failing check; a rail of hundreds is unread. */
@@ -49,13 +60,19 @@ const MAX_ANNOTATION_CHARS = 800;
 const MAX_TAIL_CHARS = 4000;
 
 export function parseArguments(argv) {
-  const options = { stdoutFile: null, summaryFile: null };
+  const options = { stdoutFile: null, summaryFile: null, gateOutcome: null };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--stdout-file')
       options.stdoutFile = argv[++index] ?? null;
     else if (argument === '--summary-file')
       options.summaryFile = argv[++index] ?? null;
+    // The gate step's own `steps.<id>.outcome`, passed in by the workflow.
+    // This script never derives the verdict; the outcome is READ so that a
+    // gate which died before printing anything is reported as a failure
+    // rather than as a parsing curiosity.
+    else if (argument === '--gate-outcome')
+      options.gateOutcome = argv[++index] ?? null;
   }
   return options;
 }
@@ -67,26 +84,64 @@ function readTail(path) {
     const { size } = fstatSync(descriptor);
     const length = Math.min(size, MAX_INPUT_TAIL_BYTES);
     const buffer = Buffer.alloc(length);
-    readSync(descriptor, buffer, 0, length, size - length);
+    // `readSync` is permitted to return fewer bytes than asked for, so a
+    // single call can leave the buffer's tail as zero bytes -- NUL padding
+    // inside the very region the verdict document lives in. Loop until the
+    // request is satisfied or the file ends, and decode only what was read.
+    let read = 0;
+    while (read < length) {
+      const bytes = readSync(
+        descriptor,
+        buffer,
+        read,
+        length - read,
+        size - length + read,
+      );
+      if (bytes <= 0) break;
+      read += bytes;
+    }
     // A tail slice can begin mid-codepoint; `toString` yields one replacement
     // character there, which affects nothing downstream (the JSON document is
     // whole and far from the cut).
-    return buffer.toString('utf8');
+    return buffer.subarray(0, read).toString('utf8');
   } finally {
     closeSync(descriptor);
   }
 }
 
 /**
- * Index of the `}` closing the object that opens at `start`, or -1 when the
- * text holds no balanced object from there. String literals and their escapes
- * are respected so a brace inside a message cannot unbalance the scan.
+ * Bounds on the balanced-object scan below, and they are load-bearing rather
+ * than tidy-minded. Unbounded, `lastJsonDocument` is quadratic on input with
+ * no parsable document: every line-initial `{` scans to the end of the text,
+ * so a 1 MiB tail of them took ~68 seconds locally. The report step declares
+ * `timeout-minutes: 2` and carries no `continue-on-error` (deliberately -- no
+ * step in that workflow has one), so a slow reporter could turn a green gate's
+ * job red. That is the one failure mode this script must not have.
+ *
+ * The document being looked for is itself capped at 8 KiB
+ * (`CONTROL_OUTPUT_CAP` in run-verification.mjs), so a 32 KiB window per
+ * candidate cannot clip it; the whole-pass budget then makes the cost linear
+ * in the input rather than in candidates x length. Candidates are tried
+ * newest-first and the verdict is the LAST thing the gate prints, so a real
+ * document is reached in the first candidate or two and the budget cannot
+ * hide one. Exhausting the budget takes the same path as unparseable input:
+ * the summary says so.
  */
-function matchingBrace(text, start) {
+const MAX_DOCUMENT_SCAN_BYTES = 32 * 1024;
+const MAX_DOCUMENT_SCAN_TOTAL_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Index of the `}` closing the object that opens at `start`, or -1 when the
+ * text holds no balanced object from there within `limit`. String literals and
+ * their escapes are respected so a brace inside a message cannot unbalance the
+ * scan.
+ */
+function matchingBrace(text, start, limit = text.length) {
+  const end = Math.min(text.length, limit);
   let depth = 0;
   let inString = false;
   let escaped = false;
-  for (let index = start; index < text.length; index += 1) {
+  for (let index = start; index < end; index += 1) {
     const character = text[index];
     if (inString) {
       if (escaped) escaped = false;
@@ -119,9 +174,12 @@ export function lastJsonDocument(text) {
     const previous = index === 0 ? '\n' : text[index - 1];
     if (previous === '\n' || previous === '\r') starts.push(index);
   }
+  let budget = MAX_DOCUMENT_SCAN_TOTAL_BYTES;
   for (let candidate = starts.length - 1; candidate >= 0; candidate -= 1) {
+    if (budget <= 0) break;
+    budget -= MAX_DOCUMENT_SCAN_BYTES;
     const start = starts[candidate];
-    const end = matchingBrace(text, start);
+    const end = matchingBrace(text, start, start + MAX_DOCUMENT_SCAN_BYTES);
     if (end < 0) continue;
     let value;
     try {
@@ -151,13 +209,18 @@ function plainText(value) {
  * documents. The result is one line whatever the excerpt contained.
  */
 export function annotationMessage(value) {
-  const text = plainText(value)
+  const plain = plainText(value);
+  // Truncation happens BEFORE encoding, never after: `%0A` is three characters
+  // that mean one, and a cut landing inside one leaves a bare `%` or `%0` that
+  // GitHub reads as a malformed escape rather than the newline it replaced.
+  const clipped =
+    plain.length > MAX_ANNOTATION_CHARS
+      ? `${plain.slice(0, MAX_ANNOTATION_CHARS)}…`
+      : plain;
+  return clipped
     .replace(/%/g, '%25')
     .replace(/\r/g, '%0D')
     .replace(/\n/g, '%0A');
-  return text.length > MAX_ANNOTATION_CHARS
-    ? `${text.slice(0, MAX_ANNOTATION_CHARS)}…`
-    : text;
 }
 
 /** A fence long enough that the fenced content cannot terminate it early. */
@@ -381,10 +444,27 @@ export function main(argv, { log = console.log, warn = console.error } = {}) {
       '[verification-gate-summary] no --summary-file and no GITHUB_STEP_SUMMARY; summary not written',
     );
   }
-  if (!document)
-    log(
-      `::warning title=full-regression::${annotationMessage(unparseableReason ?? 'the gate verdict could not be parsed')}`,
-    );
+  // The annotation is owed whenever the verdict was not STATED, not only when
+  // the capture was unparseable: a fully truncated document (`{ "truncated":
+  // true }`) is a perfectly parsable object carrying no verdict, and used to
+  // produce no annotation at all -- exactly the silence this script exists to
+  // remove.
+  if (verdictOf(document?.summary ?? {}) === null) {
+    const reason =
+      unparseableReason ??
+      'the captured verdict document stated no verdict (`passed` was absent)';
+    // A gate that threw before printing a verdict writes to STDERR and exits
+    // non-zero; this capture is the tee'd STDOUT only, so it holds npm's
+    // banners and nothing else. Reporting that as a `::warning` about parsing
+    // understates a red run, so the gate step's own outcome decides the tier.
+    if (options.gateOutcome && options.gateOutcome !== 'success')
+      log(
+        `::error title=full-regression::${annotationMessage(
+          `the completion gate step reported "${options.gateOutcome}" and left no verdict document: ${reason}. Read the raw step log and the run's full-regression-* artifact (.kontourai/verification-output/, .kontourai/verification-receipts/).`,
+        )}`,
+      );
+    else log(`::warning title=full-regression::${annotationMessage(reason)}`);
+  }
   for (const annotation of annotationsFor(document)) log(annotation);
   return 0;
 }

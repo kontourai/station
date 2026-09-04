@@ -112,6 +112,12 @@ jobs:
           exit 1
 
       - name: Run canonical completion gate
+        # `id` is what lets the report step below read this step's own
+        # outcome. A gate that dies before printing its verdict writes to
+        # stderr and exits non-zero; the tee'd stdout then holds only npm
+        # banners, and without the outcome the report would call that a
+        # parsing problem instead of a failed run.
+        id: gate
         # This command already composes required Veritas repo-governance and
         # the complete profiled Vitest corpus. `test:connected-agents` is a
         # focused subset of that corpus; the former manual CI follow-up was
@@ -137,7 +143,10 @@ jobs:
       - name: Report the completion gate verdict
         if: always()
         timeout-minutes: 2
-        run: node scripts/verification-gate-summary.mjs --stdout-file "$RUNNER_TEMP/full-regression.stdout.log"
+        run: |
+          node scripts/verification-gate-summary.mjs \
+            --stdout-file "$RUNNER_TEMP/full-regression.stdout.log" \
+            --gate-outcome "${{ steps.gate.outcome }}"
 
       - name: Retain exact-SHA completion receipts
         if: always()
