@@ -112,6 +112,20 @@ describe('the operational event envelope', () => {
         delivery: 'projection',
       }),
       event({
+        id: 'evt-plugin-command',
+        type: 'station.plugin-command.execution/v1',
+        scopes: [{ kind: 'plugin', pluginId: 'demo-plugin' }],
+        payload: {
+          schema: 'station.plugin-command.execution/v1',
+          data: {
+            pluginId: 'demo-plugin',
+            commandId: 'demo-plugin.review',
+            decision: 'authorized',
+            outcome: 'admitted',
+          },
+        },
+      }),
+      event({
         id: 'evt-kit',
         type: 'kit.synthetic.check.completed/v1',
         producer: { id: 'synthetic-kit', version: '1.0.0' },

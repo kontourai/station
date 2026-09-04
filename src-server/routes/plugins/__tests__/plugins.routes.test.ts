@@ -1342,6 +1342,24 @@ describe('Plugin Routes', () => {
   // ── GET / — SDK usePluginsQuery reads json.plugins ──
 
   test('GET / returns { plugins } with fields the UI reads', async () => {
+    vi.mocked(readFile).mockResolvedValueOnce(
+      JSON.stringify({
+        ...mockManifest,
+        extensions: {
+          'io.kontourai.station': {
+            schemaVersion: '1.0',
+            commands: [
+              {
+                version: '1.0',
+                id: 'test-plugin.open-plugins',
+                title: 'Open plugins',
+                intent: { kind: 'navigate', surfaceId: 'plugins' },
+              },
+            ],
+          },
+        },
+      }),
+    );
     const app = setup();
     const body = await json(await app.request('/'));
     expect(body.plugins).toBeDefined();
@@ -1354,6 +1372,16 @@ describe('Plugin Routes', () => {
     expect(p).toHaveProperty('description');
     expect(p).toHaveProperty('hasBundle');
     expect(p).toHaveProperty('hasSettings');
+    expect(p.commandContributions).toEqual([
+      expect.objectContaining({ id: 'test-plugin.open-plugins' }),
+    ]);
+    expect(p.commandGeneration).toMatch(/^[a-f0-9]{64}$/);
+    expect(p.commandCapabilities).toEqual({
+      invokeDeclaredOperation: {
+        available: false,
+        reason: 'This plugin does not declare a server operation module.',
+      },
+    });
     expect(p).toHaveProperty('permissions');
     expect(p.permissions).toHaveProperty('declared');
     expect(p.permissions).toHaveProperty('granted');

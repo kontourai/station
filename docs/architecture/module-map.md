@@ -20,6 +20,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | Module | Intent | Primary source |
 | --- | --- | --- |
 | [SurfaceRegistry](#surfaceregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/surface-registry.ts` |
+| [PluginCommandRegistry](#plugincommandregistry) | Project inert plugin actions into the host command palette without creating navigation, shortcut, or execution authority. | `src-ui/src/components/plugin-command-registry.ts` |
 | [InstalledPluginInventory](#installedplugininventory) | Keep valid and rejected installed plugin directories visible from one filesystem-backed inventory. | `src-server/services/plugins/installed-plugin-inventory.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
@@ -66,6 +67,62 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate exact-route owners, duplicate view owners, and duplicate sidebar or palette order slots. It never invokes a label or badge while composing or filtering; locale, branding, and attention state remain render-time inputs. A preview surface stays registered and routable while `getAdvertised` hides it until its named flag is enabled. `hiddenFromNav` removes only the sidebar affordance; route, palette, badge, and header callers remain independent projections. Parameterized Project, layout, task, Agent, connection, and Workspace Pane routes retain their domain parsers. Dynamic Workspace Panes retain their typed availability catalog and join the command palette after static registry projection rather than becoming unvalidated root-route contributions.
 
 **Seam, Implementation, callers, and tests.** The UI shell composes built-in descriptors. `routing.ts` consumes exact routes and semantic management ownership; `ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their ordered projections. Icons are a presentation Adapter keyed by the registry's finite icon vocabulary. Future trusted plugin surface contributions must enter at registry composition and pass the same validation; there is no mutable global `register()` operation or renderer callback in persisted plugin data. Contract coverage is `src-ui/src/app-shell/__tests__/surface-registry.test.ts` plus sidebar, palette, routing, and header suites. **Do not reintroduce:** component-local static destination arrays, route-to-sidebar switch statements, hard-coded badge copy outside the registry, mutable post-construction registration, or treating a contributed renderer declaration as navigation authority.
+
+## PluginCommandRegistry
+
+**Intent and Interface.** `projectPluginPaletteCommands(plugins, context)`
+accepts parsed installed-plugin declarations plus explicit host facts and returns
+ordered palette rows with a total available-or-reason result. The public
+declaration lives under `extensions["io.kontourai.station"].commands` and is
+versioned independently of executable plugin code.
+
+**Contract.** Command ids are plugin-qualified and receive a final `plugin:`
+palette identity. The parser bounds every string and collection, accepts only a
+closed icon, requirement, argument, and intent vocabulary, and rejects unknown
+fields in Station's reserved namespace, unknown intent kinds, wildcard URL
+hosts, duplicate ids, and arguments their intent does not consume. Navigation
+names a currently advertised `SurfaceRegistry` identity, not a route. Composer
+seeding writes a visible draft and has no send operation.
+Collision losers and missing host capabilities stay searchable but unavailable
+with an exact reason. Argument entry and plugin-operation invocation fail
+closed until their dedicated host Adapters exist. Every executable command
+must present its exact normalized declaration generation to the server; the
+server re-reads that installed manifest and durably records actor, target,
+decision, and admitted outcome before the browser performs the local effect.
+The read and receipt append share the plugin lifecycle lock and reject
+physically uncontained manifest paths. Station resolves declared availability
+requirements during admission and repeats device-local context checks at the
+effect boundary.
+After every awaited context check, a command requiring `plugin.server` rereads
+its current content-bound grant under the same durable grants-store mutation
+lease and holds that lease through receipt publication. Composer seeding also
+uses a single-use draft occurrence capability: newer edits, edit-away-and-back,
+attachment/history changes, or chat removal/recreation refuse a delayed seed.
+The receipt never contains composer text or future argument input.
+Hosted multi-tenant execution remains unavailable until this receipt carries
+an exact tenant binding.
+
+**Seam, Implementation, callers, and tests.** The server manifest loader is the
+admission parser. The installed-plugin collection preserves rejected and legacy
+alias visibility, but only canonical directory/manifest identity pairs expose
+commands; `.preview-*` and other hidden staging trees remain excluded. It exposes normalized declarations, their generation,
+and server-derived operation capability. Install preview lists each command as
+a non-skippable package declaration. `CommandPalette` joins the projection
+after its built-in, shortcut-derived, Project, Pane, Agent, and Skill rows are
+known, then calls `PluginCommandExecutionAuthority` for a durable operational-
+event receipt before resolving navigation or composer seeding through existing
+host owners. Update, grant-change, and removal events synchronously clear cached
+command generations before refetch. Pending effects carry that lifecycle epoch
+and are aborted or ignored when the installed generation, grants, or ownership
+is withdrawn. Behavioral coverage lives in
+`src-server/services/plugins/__tests__/plugin-manifest-loader.test.ts`,
+`src-server/services/plugins/__tests__/plugin-command-execution.test.ts`,
+`src-server/routes/plugins/__tests__/plugin-install-inventory.routes.test.ts`,
+`src-ui/src/components/__tests__/plugin-command-registry.test.ts`, and
+`src-ui/src/__tests__/CommandPalette.test.tsx`. **Do not reintroduce:** staging
+trees in installed inventory, raw plugin routes, manifest callbacks or markup,
+plugin-defined shortcuts, client-inferred permission grants, unreceipted local
+effects, auto-sending composer text, or a second navigation registry.
 
 ## InstalledPluginInventory
 

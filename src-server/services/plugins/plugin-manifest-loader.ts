@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
+import { STATION_AGENT_PLUGIN_EXTENSION_ID } from '@kontourai/station-contracts/agent-plugin';
 import { validateOperationalEventScopes } from '@kontourai/station-contracts/operational-event';
 import {
   isCanonicalPluginId,
@@ -9,6 +10,7 @@ import {
 import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
+import { parsePluginCommandContributions } from './plugin-command-contributions.js';
 
 const SUBSCRIPTION_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 const SUBSCRIPTION_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$/;
@@ -112,6 +114,20 @@ export function parsePluginManifest(
       'missing-version',
       'Plugin manifest version must be a non-empty string',
     );
+  }
+  const commandContributions = parsePluginCommandContributions(
+    candidate.extensions,
+    candidate.name,
+  );
+  if (commandContributions.length > 0) {
+    const extensions = candidate.extensions as Record<string, unknown>;
+    const stationExtension = extensions[
+      STATION_AGENT_PLUGIN_EXTENSION_ID
+    ] as Record<string, unknown>;
+    extensions[STATION_AGENT_PLUGIN_EXTENSION_ID] = {
+      ...stationExtension,
+      commands: commandContributions,
+    };
   }
   // archive#4307 review: a declared setting's `key` is a STORE KEY too — it is
   // written into `overrides[plugin].settings` by `PUT /:name/settings` and

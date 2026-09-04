@@ -7,6 +7,8 @@ import { ContextSafetyError } from '../../orchestration/context-safety.js';
 import { DistributionProfileService } from '../distribution-profile-service.js';
 import { readPluginManifestFile } from '../plugin-manifest-loader.js';
 
+const STATION_EXTENSION = 'io.kontourai.station';
+
 describe('plugin-manifest-loader', () => {
   let dir: string;
 
@@ -39,6 +41,177 @@ describe('plugin-manifest-loader', () => {
         name: 'security-helper',
       }),
     );
+  });
+
+  describe('Station command contributions', () => {
+    async function loadCommands(
+      commands: unknown[],
+      manifest: Record<string, unknown> = {},
+    ) {
+      const manifestPath = join(dir, 'plugin.json');
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          name: 'demo-plugin',
+          version: '1.0.0',
+          ...manifest,
+          extensions: {
+            [STATION_EXTENSION]: { schemaVersion: '1.0', commands },
+          },
+        }),
+      );
+      return readPluginManifestFile(manifestPath);
+    }
+
+    const navigateCommand = {
+      version: '1.0',
+      id: 'demo-plugin.open-settings',
+      title: 'Open settings',
+      subtitle: 'Review Station settings',
+      icon: 'plugin',
+      keywords: ['settings', 'review'],
+      requires: ['project'],
+      intent: { kind: 'navigate', surfaceId: 'settings' },
+    };
+
+    test('normalizes a manifest-only command without executable plugin code', async () => {
+      await expect(loadCommands([navigateCommand])).resolves.toMatchObject({
+        extensions: {
+          [STATION_EXTENSION]: {
+            schemaVersion: '1.0',
+            commands: [navigateCommand],
+          },
+        },
+      });
+    });
+
+    test('gives iframe and trusted packages the same inert command shape', async () => {
+      const iframe = await loadCommands([navigateCommand], {
+        entrypoint: 'src/index.tsx',
+      });
+      const trusted = await loadCommands([navigateCommand], {
+        serverModule: 'server.mjs',
+      });
+      expect(iframe.extensions?.[STATION_EXTENSION]).toEqual(
+        trusted.extensions?.[STATION_EXTENSION],
+      );
+    });
+
+    test('accepts commands beside other canonical Station namespace fields', async () => {
+      const manifestPath = join(dir, 'plugin.json');
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          name: 'demo-plugin',
+          version: 'release candidate 1',
+          extensions: {
+            [STATION_EXTENSION]: {
+              schemaVersion: '1.0',
+              title: 'Demo plugin',
+              permissions: ['navigation.dock'],
+              commands: [navigateCommand],
+            },
+          },
+        }),
+      );
+
+      await expect(readPluginManifestFile(manifestPath)).resolves.toMatchObject(
+        {
+          extensions: {
+            [STATION_EXTENSION]: {
+              schemaVersion: '1.0',
+              title: 'Demo plugin',
+              commands: [navigateCommand],
+            },
+          },
+        },
+      );
+    });
+
+    test.each([
+      [
+        'unknown intent',
+        { ...navigateCommand, intent: { kind: 'run-code' } },
+        /intent\.kind is unknown/,
+      ],
+      [
+        'invalid icon',
+        { ...navigateCommand, icon: '<svg onload=alert(1)>' },
+        /icon is invalid/,
+      ],
+      [
+        'excessive title',
+        { ...navigateCommand, title: 'x'.repeat(81) },
+        /title must be trimmed text between 1 and 80/,
+      ],
+      [
+        'hostile URL allowlist',
+        {
+          ...navigateCommand,
+          argument: {
+            kind: 'url',
+            label: 'URL',
+            allowedHosts: ['*.example.com'],
+          },
+        },
+        /allowedHosts\[0\] must be an exact host/,
+      ],
+      [
+        'unused argument',
+        {
+          ...navigateCommand,
+          argument: { kind: 'text', label: 'Query' },
+        },
+        /argument is declared but unused/,
+      ],
+    ])('rejects %s', async (_name, command, error) => {
+      await expect(loadCommands([command])).rejects.toThrow(error);
+    });
+
+    test('rejects duplicate owner-qualified command ids', async () => {
+      await expect(
+        loadCommands([navigateCommand, navigateCommand]),
+      ).rejects.toThrow(/contains duplicate id 'demo-plugin\.open-settings'/);
+    });
+
+    test.each([
+      { schemaVersion: '1.0', commands: [], callback: 'run-me' },
+      { schemaVersion: '1.0', validator: '.*' },
+    ])(
+      'rejects unknown fields in the reserved Station namespace',
+      async (station) => {
+        const manifestPath = join(dir, 'plugin.json');
+        writeFileSync(
+          manifestPath,
+          JSON.stringify({
+            name: 'demo-plugin',
+            version: '1.0.0',
+            extensions: { [STATION_EXTENSION]: station },
+          }),
+        );
+        await expect(readPluginManifestFile(manifestPath)).rejects.toThrow(
+          /Plugin extension 'io\.kontourai\.station' contains unknown field/,
+        );
+      },
+    );
+
+    test('leaves another extension namespace opaque', async () => {
+      const manifestPath = join(dir, 'plugin.json');
+      const opaque = { callback: 'owned elsewhere', version: 7 };
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          name: 'demo-plugin',
+          version: '1.0.0',
+          extensions: { 'example.other-host': opaque },
+        }),
+      );
+      await expect(readPluginManifestFile(manifestPath)).resolves.toMatchObject(
+        {
+          extensions: { 'example.other-host': opaque },
+        },
+      );
+    });
   });
 
   // archive#4307: `manifest.name` is a STORE KEY (plugin-overrides, grants,

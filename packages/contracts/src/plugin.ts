@@ -1,3 +1,7 @@
+import {
+  STATION_AGENT_PLUGIN_EXTENSION_ID,
+  type StationAgentPluginExtensionV1,
+} from './agent-plugin.js';
 import type { KnowledgeNamespaceConfig } from './knowledge.js';
 import type {
   OperationalEventProjection,
@@ -95,6 +99,56 @@ export interface PluginSettingField {
   options?: Array<{ label: string; value: string }>;
   secret?: boolean;
   required?: boolean;
+}
+
+export const PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION =
+  'station.plugin-command-execution/v1' as const;
+
+export type PluginCommandResolvedTarget =
+  | { kind: 'surface'; surfaceId: string }
+  | { kind: 'composer'; sessionId: string };
+
+/** Client-visible host facts bound into admission and rechecked before effect. */
+export interface PluginCommandResolvedContext {
+  activeChatSessionId?: string;
+  projectSlug?: string;
+  sessionId?: string;
+  taskId?: string;
+}
+
+/** Browser intent admitted by the host before a local palette effect. */
+export interface PluginCommandExecutionRequest {
+  schemaVersion: typeof PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION;
+  requestId: string;
+  pluginId: string;
+  pluginVersion: string;
+  commandGeneration: string;
+  commandId: string;
+  target: PluginCommandResolvedTarget;
+  context: PluginCommandResolvedContext;
+}
+
+/** Durable operational-event receipt. No command input or composer text. */
+export interface PluginCommandExecutionReceipt {
+  schemaVersion: typeof PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION;
+  receiptId: string;
+  requestId: string;
+  pluginId: string;
+  pluginVersion: string;
+  commandGeneration: string;
+  commandId: string;
+  target: PluginCommandResolvedTarget;
+  actor: import('./client-origin.js').ClientOriginActor;
+  reportedSurface: import('./client-origin.js').ClientOriginSurface;
+  decision: 'authorized';
+  outcome: 'admitted';
+  recordedAt: string;
+}
+
+/** Other Agent Plugins extension namespaces remain opaque to Station. */
+export interface PluginExtensions {
+  [STATION_AGENT_PLUGIN_EXTENSION_ID]?: StationAgentPluginExtensionV1;
+  [namespace: string]: unknown;
 }
 
 export type PluginOperationalEventProjection = 'metadata' | 'envelope';
@@ -205,6 +259,8 @@ export interface PluginManifest {
   prompts?: { source: string };
   skills?: string[];
   settings?: PluginSettingField[];
+  /** Agent Plugins host overlays. Station reads only its reserved namespace. */
+  extensions?: PluginExtensions;
 }
 
 export type PluginManifestRejectionCode =
@@ -245,13 +301,13 @@ export interface PluginOverrideConfig {
 export type PluginOverrides = Record<string, PluginOverrideConfig>;
 
 export interface ConflictInfo {
-  type: 'agent' | 'workspace' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'command' | 'workspace' | 'pane' | 'provider' | 'tool';
   id: string;
   existingSource?: string;
 }
 
 export interface PluginComponent {
-  type: 'agent' | 'workspace' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'command' | 'workspace' | 'pane' | 'provider' | 'tool';
   id: string;
   detail?: string;
   conflict?: ConflictInfo;

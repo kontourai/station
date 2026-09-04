@@ -16,6 +16,12 @@ Target v1: the closed portable root `plugin.json`. Station host declarations liv
 package locations. The current legacy loader has not completed this migration.
 _Avoid_: package metadata
 
+**Plugin command contribution**:
+A versioned, inert action declared under
+`extensions["io.kontourai.station"].commands` and projected by Station into the
+host command palette.
+_Avoid_: plugin shortcut or plugin callback
+
 **Plugin provider**:
 A server-side contribution from a plugin into a Station provider registry.
 _Avoid_: plugin when only the extension point matters
@@ -74,8 +80,12 @@ _Avoid_: direct execution
 
 ## Relationships
 
-- A plugin can contribute portable skills/MCP and Station-owned registry sources, providers, panes, agents, settings, and knowledge namespaces.
-- A registry item becomes available before it becomes active in any project, agent, or pane composition.
+- A plugin can contribute portable skills/MCP and Station-owned registry sources,
+  providers, panes, agents, settings, and knowledge namespaces.
+- A Plugin command contribution selects a closed host intent; it does not own
+  navigation, shortcuts, validation, rendering, or execution.
+- A registry item becomes available before it becomes active in any project,
+  agent, or pane composition.
 - station-control exposes platform mutations; governed sessions should turn those mutations into receipts.
 - MCP-UI panels are rendered through Station's host, but tools still route through Station-mediated policy and approval.
 
@@ -90,3 +100,26 @@ embedding, or vector database) when possible. `ISchedulerProvider` is a
 server-internal composition interface today, not a plugin registration seam;
 scheduled work is created and managed through the authenticated scheduler
 HTTP/SDK projection.
+
+## Plugin command boundary
+
+Station currently executes two argument-free command intents: navigation to an
+existing host surface and staging visible text in an already-open chat
+composer. Staging never sends model input. Commands that declare an argument or
+a plugin operation remain visible but unavailable with an exact reason until
+their host-owned argument-entry and audited invocation adapters exist.
+
+Argument-free commands execute only after Station revalidates the exact
+installed declaration generation and durably records a content-free admission
+receipt. Preview/staging trees never enter installed inventory. Update,
+permission-change, and removal events withdraw cached command generations
+and retire pending local effects before a fresh installed projection may
+replace them. Admission holds the plugin lifecycle lock across physically
+contained manifest validation and receipt persistence; device-local context is
+rechecked immediately before navigation or composer mutation.
+
+Command ids are owner-qualified (`<plugin-name>.<command-id>`) and enter the
+same final-id collision check as existing host commands. Icons and availability
+requirements use closed Station vocabularies;
+manifest data cannot contain routes, regular expressions, callbacks, markup, or
+shortcut declarations.

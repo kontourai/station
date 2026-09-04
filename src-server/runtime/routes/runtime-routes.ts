@@ -298,6 +298,7 @@ import { StationKitObservabilityRegistry } from '../../services/kits/kit-observa
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
+import type { OperationalEventPublisher } from '../../services/operational-events/operational-event-outbox.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import type { ActionOperationService } from '../../services/operations/action-operation-service.js';
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
@@ -321,6 +322,8 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
+import { createPluginCommandExecutionAuthority } from '../../services/plugins/plugin-command-execution.js';
+import { withPluginCommandServerGrantAdmission } from '../../services/plugins/plugin-permissions.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
 import { DiffCommentService } from '../../services/projects/diff-comment-service.js';
@@ -522,6 +525,8 @@ export interface ConfigureRuntimeRoutesContext {
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
   actionOperations: ActionOperationService;
   orchestrationEventStore?: EventStore;
+  /** Runtime's notification-bearing durable operational-event publisher. */
+  operationalEventPublisher?: OperationalEventPublisher;
   pluginOperationalEventSubscriptions: Pick<
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
     'quiesce'
@@ -2001,6 +2006,58 @@ export function configureRuntimeRoutes(
     '/api/ui',
     createUICommandRoutes(context.eventBus, {
       isHostedDeployment: () => hostedTenantRegistry !== undefined,
+      pluginCommandExecution: createPluginCommandExecutionAuthority({
+        pluginsDir: join(context.configLoader.getProjectHomeDir(), 'plugins'),
+        publisher: context.operationalEventPublisher ??
+          context.orchestrationEventStore?.createOperationalEventPublisher() ?? {
+            append: () => ({ kind: 'unavailable' as const }),
+          },
+        withServerGrant: (pluginId, admit) =>
+          withPluginCommandServerGrantAdmission(
+            context.configLoader.getProjectHomeDir(),
+            pluginId,
+            admit,
+          ),
+        resolveRequirement: ({ requirement, request }) => {
+          if (requirement === 'active-chat') {
+            return request.context.activeChatSessionId &&
+              (request.target.kind !== 'composer' ||
+                request.target.sessionId ===
+                  request.context.activeChatSessionId)
+              ? { kind: 'available' as const }
+              : { kind: 'missing' as const };
+          }
+          if (requirement === 'session') {
+            return request.context.sessionId &&
+              (request.target.kind !== 'composer' ||
+                request.target.sessionId === request.context.sessionId)
+              ? { kind: 'available' as const }
+              : { kind: 'missing' as const };
+          }
+          if (requirement === 'project') {
+            if (!request.context.projectSlug) {
+              return { kind: 'missing' as const };
+            }
+            try {
+              return context.projectService.getProject(
+                request.context.projectSlug,
+              )
+                ? { kind: 'available' as const }
+                : { kind: 'missing' as const };
+            } catch {
+              return { kind: 'missing' as const };
+            }
+          }
+          const task = request.context.taskId
+            ? context.taskGraphService.readTask(request.context.taskId)
+            : null;
+          return task &&
+            (!request.context.projectSlug ||
+              task.projectId === request.context.projectSlug)
+            ? { kind: 'available' as const }
+            : { kind: 'missing' as const };
+        },
+      }),
     }),
   );
   context.app.route(

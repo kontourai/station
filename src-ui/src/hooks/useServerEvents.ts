@@ -8,6 +8,7 @@ import { fetchSSE } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
+import { retirePluginCommandExecutions } from '../components/plugin-command-execution-lifecycle';
 import {
   useApiBase,
   useHostRequestAuthorityScope,
@@ -157,12 +158,15 @@ const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
   [SERVER_EVENTS.SYSTEM_STATUS_CHANGED]: (qc) =>
     qc.invalidateQueries({ queryKey: ['system-status'] }),
   [SERVER_EVENTS.PLUGINS_INSTALLED]: (qc) => {
+    retirePluginCommandExecutions();
     qc.invalidateQueries({ queryKey: ['plugins'] });
     qc.invalidateQueries({ queryKey: ['layouts'] });
     qc.invalidateQueries({ queryKey: ['agents'] });
     reloadPluginRegistry();
   },
   [SERVER_EVENTS.PLUGINS_UPDATED]: (qc) => {
+    retirePluginCommandExecutions();
+    qc.setQueryData?.(['plugins'], []);
     qc.invalidateQueries({ queryKey: ['plugins'] });
     qc.invalidateQueries({ queryKey: ['layouts'] });
     reloadPluginRegistry();
@@ -175,7 +179,16 @@ const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
   // a permission the panel had just reported as removed, until some
   // unrelated reload happened to refresh the registry.
   [SERVER_EVENTS.PLUGINS_GRANTS_CHANGED]: (qc) => {
+    retirePluginCommandExecutions();
+    qc.setQueryData?.(['plugins'], []);
     qc.invalidateQueries({ queryKey: ['plugins'] });
+    reloadPluginRegistry();
+  },
+  [SERVER_EVENTS.PLUGINS_REMOVED]: (qc) => {
+    retirePluginCommandExecutions();
+    qc.setQueryData?.(['plugins'], []);
+    qc.invalidateQueries({ queryKey: ['plugins'] });
+    qc.invalidateQueries({ queryKey: ['layouts'] });
     reloadPluginRegistry();
   },
   [SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE]: (qc) => {
@@ -201,7 +214,10 @@ function invalidateInboxQueries(queryClient: {
 
 export function invalidateQueriesForServerEvent(
   event: string,
-  queryClient: { invalidateQueries: (options: any) => unknown },
+  queryClient: {
+    invalidateQueries: (options: any) => unknown;
+    setQueryData?: (queryKey: readonly unknown[], value: unknown) => unknown;
+  },
 ) {
   EVENT_HANDLERS[event]?.(queryClient);
 }

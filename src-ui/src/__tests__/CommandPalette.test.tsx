@@ -12,7 +12,13 @@ import {
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { commandFrecencyStorage } from '../components/command-frecency-storage';
 import {
@@ -33,14 +39,20 @@ import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
 let agentsMock: any[] = [];
 let projectsMock: any[] = [];
 let skillsMock: any[] = [];
+let pluginsMock: any[] = [];
 let paneCatalogMock: any = {
   descriptors: [],
   instances: [],
   availability: [],
 };
 let selectedProjectLayoutMock: string | null = null;
+let activeChatMock: string | null = null;
+let pathnameMock = '/';
 let messageSearchMock: any = { matches: [], instances: [] };
 const registeredCommand = vi.fn();
+const authorizePluginPaletteCommand = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ receiptId: 'plugin-command-receipt' }),
+);
 let registeredShortcutAvailability: { disabled?: boolean; when?: unknown } = {};
 let registeredShortcutIdentity = {
   id: 'app.registered',
@@ -75,6 +87,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   useAgentsQuery: () => ({ data: agentsMock }),
   useProjectsQuery: () => ({ data: projectsMock }),
   useSkillsQuery: () => ({ data: skillsMock }),
+  usePluginsQuery: () => ({ data: pluginsMock }),
   useMessageSearchQuery: () => ({ data: messageSearchMock }),
   // Pane availability consumes deployment facts through the public SDK; this
   // palette test deliberately keeps that independent query inert.
@@ -102,13 +115,30 @@ const setProjectMock = vi.fn();
 const setDockStateMock = vi.fn();
 
 vi.mock('../contexts/NavigationContext', () => ({
+  navigationStore: {
+    getSnapshot: () => ({
+      activeChat: activeChatMock,
+      pathname: pathnameMock,
+      selectedProject: 'alpha',
+    }),
+  },
   useNavigation: () => ({
     navigate: navigateMock,
     setProject: setProjectMock,
     setDockState: setDockStateMock,
+    activeChat: activeChatMock,
+    pathname: pathnameMock,
     selectedProject: 'alpha',
     selectedProjectLayout: selectedProjectLayoutMock,
   }),
+}));
+
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
+}));
+
+vi.mock('../components/plugin-command-execution', () => ({
+  authorizePluginPaletteCommand,
 }));
 
 vi.mock('../platform/PlatformProfileContext', () => ({
@@ -166,6 +196,7 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
 }));
 
 import { CommandPalette } from '../components/CommandPalette';
+import { retirePluginCommandExecutions } from '../components/plugin-command-execution-lifecycle';
 
 afterEach(() => {
   indexRebuilds.count = 0;
@@ -174,12 +205,16 @@ afterEach(() => {
   setProjectMock.mockReset();
   setDockStateMock.mockReset();
   registeredCommand.mockReset();
+  authorizePluginPaletteCommand.mockClear();
   openHandler = null;
   agentsMock = [];
   projectsMock = [];
   skillsMock = [];
+  pluginsMock = [];
   paneCatalogMock = { descriptors: [], instances: [], availability: [] };
   selectedProjectLayoutMock = null;
+  activeChatMock = null;
+  pathnameMock = '/';
   messageSearchMock = { matches: [], instances: [] };
   registeredShortcutAvailability = {};
   registeredShortcutIdentity = {
@@ -700,6 +735,315 @@ describe('CommandPalette', () => {
     expect(
       screen.getByRole('option', { name: /Run registered command/ }),
     ).toBeTruthy();
+  });
+
+  test('stages a manifest-only plugin command visibly without sending it', async () => {
+    activeChatsStore.initChat('session-plugin-command', {
+      agentSlug: 'station',
+      agentName: 'Station',
+      title: 'Plugin command chat',
+    });
+    activeChatMock = 'session-plugin-command';
+    pluginsMock = [
+      {
+        name: 'demo-plugin',
+        version: '1.0.0',
+        commandGeneration: 'a'.repeat(64),
+        commandContributions: [
+          {
+            version: '1.0',
+            id: 'demo-plugin.review-work',
+            title: 'Review this work',
+            intent: {
+              kind: 'seed-composer',
+              text: 'Review the current work and list actionable findings.',
+            },
+          },
+        ],
+      },
+    ];
+    try {
+      await renderCommandPalette();
+      open();
+      fireEvent.click(screen.getByRole('option', { name: /Review this work/ }));
+
+      await waitFor(() =>
+        expect(
+          activeChatsStore.getSnapshot()['session-plugin-command']?.input,
+        ).toBe('Review the current work and list actionable findings.'),
+      );
+      expect(authorizePluginPaletteCommand).toHaveBeenCalledWith(
+        'http://station.test',
+        {
+          pluginId: 'demo-plugin',
+          pluginVersion: '1.0.0',
+          commandGeneration: 'a'.repeat(64),
+          commandId: 'demo-plugin.review-work',
+          target: {
+            kind: 'composer',
+            sessionId: 'session-plugin-command',
+          },
+          context: {
+            activeChatSessionId: 'session-plugin-command',
+            projectSlug: 'alpha',
+            sessionId: 'session-plugin-command',
+          },
+        },
+        { signal: expect.objectContaining({ aborted: false }) },
+      );
+      expect(
+        JSON.stringify(authorizePluginPaletteCommand.mock.calls[0]?.[1]),
+      ).not.toContain('Review the current work');
+      expect(setDockStateMock).toHaveBeenCalledWith(true);
+      expect(screen.queryByRole('dialog')).toBeNull();
+    } finally {
+      activeChatsStore.removeChat('session-plugin-command');
+    }
+  });
+
+  test.each(['unchanged', 'edited', 'edited-back', 'recreated', 'removed'])(
+    'applies delayed plugin seed only to its unchanged draft: %s',
+    async (change) => {
+      const id = 'session-draft-fence';
+      activeChatsStore.initChat(id, {
+        agentSlug: 'station',
+        agentName: 'Station',
+        title: 'Draft fence chat',
+      });
+      activeChatsStore.updateChat(id, { input: 'Original draft' });
+      activeChatMock = id;
+      pluginsMock = [
+        {
+          name: 'demo-plugin',
+          version: '1.0.0',
+          commandGeneration: 'a'.repeat(64),
+          commandContributions: [
+            {
+              version: '1.0',
+              id: 'demo-plugin.seed',
+              title: 'Seed this draft',
+              intent: { kind: 'seed-composer', text: 'Plugin seed' },
+            },
+          ],
+        },
+      ];
+      let finish!: (receipt: { receiptId: string }) => void;
+      authorizePluginPaletteCommand.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      try {
+        await renderCommandPalette();
+        open();
+        fireEvent.click(
+          screen.getByRole('option', { name: /Seed this draft/ }),
+        );
+        expect(authorizePluginPaletteCommand).toHaveBeenCalledOnce();
+        act(() => {
+          if (change === 'edited' || change === 'edited-back') {
+            activeChatsStore.updateChat(id, { input: 'New user draft' });
+            if (change === 'edited-back')
+              activeChatsStore.updateChat(id, { input: 'Original draft' });
+          } else if (change === 'recreated' || change === 'removed') {
+            activeChatsStore.removeChat(id);
+            if (change === 'recreated') {
+              activeChatsStore.initChat(id, {
+                agentSlug: 'station',
+                agentName: 'Station',
+                title: 'Replacement draft chat',
+              });
+              activeChatsStore.updateChat(id, { input: 'Original draft' });
+            }
+          }
+        });
+        await act(async () => finish({ receiptId: 'receipt-draft' }));
+        expect(activeChatsStore.getSnapshot()[id]?.input).toBe(
+          change === 'unchanged'
+            ? 'Plugin seed'
+            : change === 'edited'
+              ? 'New user draft'
+              : change === 'removed'
+                ? undefined
+                : 'Original draft',
+        );
+        if (change !== 'unchanged')
+          expect(setDockStateMock).not.toHaveBeenCalled();
+      } finally {
+        finish?.({ receiptId: 'cleanup' });
+        activeChatsStore.removeChat(id);
+      }
+    },
+  );
+
+  test('does not advertise a preview-hidden surface through a plugin command', async () => {
+    pluginsMock = [
+      {
+        name: 'demo-plugin',
+        version: '1.0.0',
+        commandGeneration: 'a'.repeat(64),
+        commandContributions: [
+          {
+            version: '1.0',
+            id: 'demo-plugin.open-developer',
+            title: 'Open developer tools',
+            intent: { kind: 'navigate', surfaceId: 'developer' },
+          },
+        ],
+      },
+    ];
+    await renderCommandPalette();
+    open();
+
+    const option = screen.getByRole('option', { name: /Open developer tools/ });
+    expect(option.getAttribute('aria-disabled')).toBe('true');
+    await act(async () => fireEvent.click(option));
+    expect(authorizePluginPaletteCommand).not.toHaveBeenCalled();
+    expect(screen.getByRole('status').textContent).toContain(
+      "Station does not expose the 'developer' destination.",
+    );
+  });
+
+  test('performs no composer effect when durable command admission fails', async () => {
+    activeChatsStore.initChat('session-plugin-refused', {
+      agentSlug: 'station',
+      agentName: 'Station',
+      title: 'Plugin command chat',
+    });
+    activeChatsStore.updateChat('session-plugin-refused', {
+      input: 'Keep this draft.',
+    });
+    activeChatMock = 'session-plugin-refused';
+    pluginsMock = [
+      {
+        name: 'demo-plugin',
+        version: '1.0.0',
+        commandGeneration: 'a'.repeat(64),
+        commandContributions: [
+          {
+            version: '1.0',
+            id: 'demo-plugin.review-work',
+            title: 'Review this work',
+            intent: { kind: 'seed-composer', text: 'Replacement prompt.' },
+          },
+        ],
+      },
+    ];
+    authorizePluginPaletteCommand.mockRejectedValueOnce(
+      new Error('Plugin command was not admitted: generation-changed'),
+    );
+    try {
+      await renderCommandPalette();
+      open();
+      fireEvent.click(screen.getByRole('option', { name: /Review this work/ }));
+
+      await waitFor(() =>
+        expect(
+          screen.getByText(
+            'Plugin command was not admitted: generation-changed',
+          ),
+        ).toBeTruthy(),
+      );
+      expect(
+        activeChatsStore.getSnapshot()['session-plugin-refused']?.input,
+      ).toBe('Keep this draft.');
+      expect(setDockStateMock).not.toHaveBeenCalled();
+    } finally {
+      activeChatsStore.removeChat('session-plugin-refused');
+    }
+  });
+
+  test('does not seed a chat that stopped being active while admission was pending', async () => {
+    activeChatsStore.initChat('session-old', {
+      agentSlug: 'station',
+      agentName: 'Station',
+      title: 'Old chat',
+    });
+    activeChatsStore.initChat('session-new', {
+      agentSlug: 'station',
+      agentName: 'Station',
+      title: 'New chat',
+    });
+    activeChatMock = 'session-old';
+    pluginsMock = [
+      {
+        name: 'demo-plugin',
+        version: '1.0.0',
+        commandGeneration: 'a'.repeat(64),
+        commandContributions: [
+          {
+            version: '1.0',
+            id: 'demo-plugin.review-work',
+            title: 'Review this work',
+            intent: {
+              kind: 'seed-composer',
+              text: 'Do not stage in the old chat.',
+            },
+          },
+        ],
+      },
+    ];
+    let resolve!: (value: { receiptId: string }) => void;
+    authorizePluginPaletteCommand.mockReturnValueOnce(
+      new Promise((settle) => {
+        resolve = settle;
+      }),
+    );
+    try {
+      await renderCommandPalette();
+      open();
+      fireEvent.click(screen.getByRole('option', { name: /Review this work/ }));
+      activeChatMock = 'session-new';
+      await act(async () => resolve({ receiptId: 'receipt-a' }));
+      expect(activeChatsStore.getSnapshot()['session-old']?.input).toBe('');
+      expect(activeChatsStore.getSnapshot()['session-new']?.input).toBe('');
+    } finally {
+      activeChatsStore.removeChat('session-old');
+      activeChatsStore.removeChat('session-new');
+    }
+  });
+
+  test('retires a pending local effect when plugin lifecycle changes', async () => {
+    activeChatsStore.initChat('session-retired', {
+      agentSlug: 'station',
+      agentName: 'Station',
+      title: 'Retired command chat',
+    });
+    activeChatMock = 'session-retired';
+    pluginsMock = [
+      {
+        name: 'demo-plugin',
+        version: '1.0.0',
+        commandGeneration: 'a'.repeat(64),
+        commandContributions: [
+          {
+            version: '1.0',
+            id: 'demo-plugin.review-work',
+            title: 'Review this work',
+            intent: {
+              kind: 'seed-composer',
+              text: 'Do not stage after removal.',
+            },
+          },
+        ],
+      },
+    ];
+    let resolve!: (value: { receiptId: string }) => void;
+    authorizePluginPaletteCommand.mockReturnValueOnce(
+      new Promise((settle) => {
+        resolve = settle;
+      }),
+    );
+    try {
+      await renderCommandPalette();
+      open();
+      fireEvent.click(screen.getByRole('option', { name: /Review this work/ }));
+      retirePluginCommandExecutions();
+      await act(async () => resolve({ receiptId: 'receipt-a' }));
+      expect(activeChatsStore.getSnapshot()['session-retired']?.input).toBe('');
+    } finally {
+      activeChatsStore.removeChat('session-retired');
+    }
   });
 
   test('projects both registered region toggles into the command palette', async () => {

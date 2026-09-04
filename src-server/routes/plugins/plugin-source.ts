@@ -9,6 +9,7 @@ import {
   rmSync,
 } from 'node:fs';
 import { basename, join, resolve, sep } from 'node:path';
+import { STATION_AGENT_PLUGIN_EXTENSION_ID } from '@kontourai/station-contracts/agent-plugin';
 import type {
   InstallResult,
   RegistryItem,
@@ -393,7 +394,15 @@ export function detectPluginConflicts(
     }
   }
 
-  if (!manifest.layout && !manifest.workspacePanes?.length) return conflicts;
+  const commands =
+    manifest.extensions?.[STATION_AGENT_PLUGIN_EXTENSION_ID]?.commands ?? [];
+  if (
+    !manifest.layout &&
+    !manifest.workspacePanes?.length &&
+    commands.length === 0
+  ) {
+    return conflicts;
+  }
   if (!existsSync(pluginsDir)) return conflicts;
 
   for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
@@ -413,8 +422,24 @@ export function detectPluginConflicts(
           existingSource: installedManifest.name,
         });
       }
+      if (installedManifest.name !== manifest.name) {
+        const installedCommandIds = new Set(
+          (
+            installedManifest.extensions?.[STATION_AGENT_PLUGIN_EXTENSION_ID]
+              ?.commands ?? []
+          ).map((command) => command.id),
+        );
+        for (const command of commands) {
+          if (!installedCommandIds.has(command.id)) continue;
+          conflicts.push({
+            type: 'command',
+            id: command.id,
+            existingSource: installedManifest.name,
+          });
+        }
+      }
     } catch (error) {
-      logger.debug('Failed to inspect installed plugin for layout conflict', {
+      logger.debug('Failed to inspect installed plugin contribution conflict', {
         plugin: entry.name,
         error,
       });
