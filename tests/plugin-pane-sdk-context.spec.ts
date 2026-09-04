@@ -74,6 +74,10 @@ test.describe('direct plugin Pane SDK context', () => {
   test.describe.configure({ mode: 'serial', timeout: 180_000 });
 
   test.beforeAll(async () => {
+    // Playwright gives beforeAll its own timeout; describe.configure only
+    // sets the test-body budget. Three real preview/consent/install journeys
+    // must settle before cleanup or any renderer assertion can begin.
+    test.setTimeout(180_000);
     const initiallyInstalled = await installedPluginIds();
     for (const { id } of plugins) {
       if (initiallyInstalled.includes(id)) await removePlugin(id);
@@ -81,11 +85,13 @@ test.describe('direct plugin Pane SDK context', () => {
     await removeProject();
 
     for (const plugin of plugins) {
-      const installed =
-        'source' in plugin
-          ? await installPluginWithConsent(api, plugin.source)
-          : await installRegistryPluginWithConsent(api, plugin.id);
-      expect(installed.success).toBe(true);
+      await test.step(`Preview and install ${plugin.id}`, async () => {
+        const installed =
+          'source' in plugin
+            ? await installPluginWithConsent(api, plugin.source)
+            : await installRegistryPluginWithConsent(api, plugin.id);
+        expect(installed.success).toBe(true);
+      });
     }
     expect(await installedPluginIds()).toEqual(
       expect.arrayContaining(plugins.map(({ id }) => id)),
