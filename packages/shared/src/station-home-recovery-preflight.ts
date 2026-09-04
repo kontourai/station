@@ -4,7 +4,7 @@
  * deliberately not opened. No bootstrap, lease, process launch or writer lives
  * here. Pathname checks detect observed changes, not an atomic filesystem view.
  */
-import { lstatSync, opendirSync, type Stats } from 'node:fs';
+import { constants, lstatSync, opendirSync, type Stats } from 'node:fs';
 import { dirname, join, parse, resolve } from 'node:path';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
@@ -301,6 +301,13 @@ export function inspectStationHomeRecovery(
       try {
         raw = readRegularFileNoFollow(home, path, {
           maxBytes: remaining,
+          // A non-cooperating writer can substitute a FIFO after pathname
+          // checks. Open without waiting for its writer, then let the shared
+          // descriptor checks refuse the non-regular file before any read.
+          openFlags:
+            constants.O_RDONLY |
+            (constants.O_NOFOLLOW ?? 0) |
+            (constants.O_NONBLOCK ?? 0),
           beforeOpen: () => {
             options.hooks?.beforeRead?.(segments.join('/'));
             check(path);

@@ -155,7 +155,9 @@ describe('read-only home recovery preflight', () => {
         String(args[0]),
       );
       expect(args[1]).toBe(
-        fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0),
+        fs.constants.O_RDONLY |
+          (fs.constants.O_NOFOLLOW ?? 0) |
+          (fs.constants.O_NONBLOCK ?? 0),
       );
       return original(...args);
     });
@@ -438,6 +440,135 @@ describe('read-only home recovery preflight', () => {
       codes: ['changed-during-inspection'],
     });
   });
+
+  // POSIX FIFO behaviour is not a Windows proof. Both children are bounded
+  // after an IPC receipt proves that module startup and pathname checks ended.
+  it.skipIf(process.platform === 'win32')(
+    'refuses a real FIFO substituted at openSync; the old blocking flags hang at that same boundary',
+    async () => {
+      async function probe(stripNonblock: boolean) {
+        const home = fixture();
+        const fifo = join(dirname(home), 'prepared-fifo');
+        childProcess.execFileSync('mkfifo', [fifo], {
+          windowsHide: true,
+          timeout: 10_000,
+        });
+        const marker = join(home, STATION_HOME_SCHEMA_FILE);
+        const source = `
+        import fs from 'node:fs';
+        import { syncBuiltinESMExports } from 'node:module';
+        const { inspectStationHomeRecovery } = await import(${JSON.stringify(new URL('../station-home-recovery-preflight.ts', import.meta.url).href)});
+        const original = fs.openSync;
+        const marker = ${JSON.stringify(marker)};
+        fs.openSync = function(path, flags, ...rest) {
+          if (path === marker) {
+            // The spy runs INSIDE the actual open call, after every pre-open
+            // pathname check. Fixture setup supplied this real FIFO earlier.
+            fs.renameSync(${JSON.stringify(fifo)}, marker);
+            const effectiveFlags = ${stripNonblock} ? flags & ~fs.constants.O_NONBLOCK : flags;
+            process.send({ kind: 'opening-fifo', passedFlags: flags, effectiveFlags, fifo: fs.lstatSync(marker).isFIFO() });
+            return original.call(fs, path, effectiveFlags, ...rest);
+          }
+          return original.call(fs, path, flags, ...rest);
+        };
+        syncBuiltinESMExports();
+        const result = inspectStationHomeRecovery({ homeDir: ${JSON.stringify(home)} });
+        process.send({ kind: 'result', result }, () => process.disconnect());
+      `;
+        const child = childProcess.spawn(
+          process.execPath,
+          ['--import', 'tsx', '--input-type=module', '-e', source],
+          {
+            windowsHide: true,
+            stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+            env: {
+              ...process.env,
+              STATION_ROOT: join(dirname(home), 'isolated-station-root'),
+            },
+          },
+        );
+        return await new Promise<{
+          boundary?: {
+            passedFlags: number;
+            effectiveFlags: number;
+            fifo: boolean;
+          };
+          result?: ReturnType<typeof inspectStationHomeRecovery>;
+          timedOut: 'startup' | 'open' | null;
+          code: number | null;
+          stderr: string;
+        }>((resolve, reject) => {
+          let boundary:
+            | { passedFlags: number; effectiveFlags: number; fifo: boolean }
+            | undefined;
+          let result: ReturnType<typeof inspectStationHomeRecovery> | undefined;
+          let timedOut: 'startup' | 'open' | null = null;
+          let stderr = '';
+          let timer = setTimeout(() => {
+            timedOut = 'startup';
+            child.kill('SIGKILL');
+          }, 10_000);
+          child.stderr?.on('data', (chunk) => {
+            stderr = (stderr + String(chunk)).slice(-2048);
+          });
+          child.on('message', (message) => {
+            const value = message as {
+              kind: string;
+              passedFlags: number;
+              effectiveFlags: number;
+              fifo: boolean;
+              result: ReturnType<typeof inspectStationHomeRecovery>;
+            };
+            if (value.kind === 'opening-fifo') {
+              boundary = value;
+              clearTimeout(timer);
+              // The legacy child has no writer and must remain blocked until
+              // killed; the fixed child may return immediately. This is a
+              // deadlock guard, not a latency/performance acceptance threshold.
+              timer = setTimeout(
+                () => {
+                  timedOut = 'open';
+                  child.kill('SIGKILL');
+                },
+                stripNonblock ? 150 : 10_000,
+              );
+            } else if (value.kind === 'result') result = value.result;
+          });
+          child.once('error', (error) => {
+            clearTimeout(timer);
+            reject(error);
+          });
+          child.once('close', (code) => {
+            clearTimeout(timer);
+            resolve({ boundary, result, timedOut, code, stderr });
+          });
+        });
+      }
+      const fixed = await probe(false);
+      expect(fixed.stderr).toBe('');
+      expect(fixed.boundary?.fifo).toBe(true);
+      expect(
+        (fixed.boundary?.passedFlags ?? 0) & fs.constants.O_NONBLOCK,
+      ).not.toBe(0);
+      expect(fixed).toMatchObject({
+        code: 0,
+        timedOut: null,
+        result: {
+          inspection: 'refused',
+          applyAllowed: false,
+          codes: ['changed-during-inspection'],
+        },
+      });
+      const legacy = await probe(true);
+      expect(legacy.boundary?.fifo).toBe(true);
+      expect(
+        (legacy.boundary?.effectiveFlags ?? -1) & fs.constants.O_NONBLOCK,
+      ).toBe(0);
+      expect(legacy.timedOut).toBe('open');
+      expect(legacy.result).toBeUndefined();
+    },
+    45_000,
+  );
   it('refuses a parent swap before any payload can be opened under the new parent', () => {
     const home = fixture();
     registry(home);
