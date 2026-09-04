@@ -64,16 +64,21 @@ describe('Provider System', () => {
       mkdirSync(pluginDir, { recursive: true });
       writeFileSync(join(pluginDir, 'plugin.json'), '{ not json at all');
 
-      const warnings: string[] = [];
+      const warnings: Array<{ message: string; context?: unknown }> = [];
       const result = resolvePluginProviders(pluginsDir, {}, () => true, {
-        warn: (message: string) => warnings.push(message),
+        warn: (message: string, context?: unknown) =>
+          warnings.push({ message, context }),
       });
 
       expect(result.resolved).toEqual([]);
       expect(warnings).toHaveLength(1);
-      // Names the path, so the operator can find the plugin it is about.
-      expect(warnings[0]).toContain('broken-plugin');
-      expect(warnings[0]).toContain('nothing it contributes is loaded');
+      expect(warnings[0]).toEqual({
+        message: 'Installed plugin manifest rejected',
+        context: expect.objectContaining({
+          pluginDirectory: 'broken-plugin',
+          code: 'malformed-json',
+        }),
+      });
     });
 
     it('resolves single plugin with one provider correctly', () => {

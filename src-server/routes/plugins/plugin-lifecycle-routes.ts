@@ -16,6 +16,7 @@ import {
   getPluginRegistryProviders,
   pluginProviderRegistryGeneration,
 } from '../../providers/registries/registry.js';
+import { readRegistryInstallAliases } from '../../providers/registries/registry-install-aliases.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
@@ -224,6 +225,62 @@ async function findOwningPluginRegistryProvider(
     success: false,
     message: `No plugin registry provider owns installed plugin '${name}'`,
   };
+}
+
+function resolvePluginRemovalTarget(
+  name: string,
+  projectHomeDir: string,
+  directPluginExists: boolean,
+):
+  | { success: true; installedName: string }
+  | {
+      success: false;
+      reason:
+        | 'alias-collision'
+        | 'conflicting-targets'
+        | 'not-found'
+        | 'ownership-unavailable';
+      installedName?: string;
+    } {
+  let aliases: ReturnType<typeof readRegistryInstallAliases>;
+  try {
+    // Removal needs the host-owned install record, not a fresh network answer.
+    // A direct local plugin must remain removable while an unrelated registry
+    // is offline, and the durable aliases are already the collision authority
+    // written by registry installation.
+    aliases = readRegistryInstallAliases(projectHomeDir);
+  } catch {
+    return {
+      success: false,
+      reason: 'ownership-unavailable',
+    };
+  }
+
+  const matchingTargets = new Set(
+    Object.entries(aliases)
+      .filter(
+        ([registryId, alias]) =>
+          registryId === name || alias.pluginName === name,
+      )
+      .map(([, alias]) => alias.pluginName),
+  );
+  if (matchingTargets.size > 1) {
+    return {
+      success: false,
+      reason: 'conflicting-targets',
+    };
+  }
+  const [aliasTarget] = matchingTargets;
+  if (directPluginExists && aliasTarget && aliasTarget !== name) {
+    return {
+      success: false,
+      reason: 'alias-collision',
+      installedName: aliasTarget,
+    };
+  }
+  if (aliasTarget) return { success: true, installedName: aliasTarget };
+  if (directPluginExists) return { success: true, installedName: name };
+  return { success: false, reason: 'not-found' };
 }
 
 async function updatePluginFromRegistry(name: string, projectHomeDir: string) {
@@ -683,15 +740,52 @@ export function registerPluginLifecycleRoutes(
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
-    const pluginDir = join(pluginsDir, name);
+    let installedPluginName = name;
+    let pluginDir = join(pluginsDir, name);
     try {
       assertPathInside(pluginsDir, pluginDir, 'Plugin removal target');
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
 
+    const directPluginExists = existsSync(pluginDir);
+    const removalTarget = resolvePluginRemovalTarget(
+      name,
+      projectHomeDir,
+      directPluginExists,
+    );
+    if (!removalTarget.success) {
+      const error =
+        removalTarget.reason === 'alias-collision'
+          ? `Registry plugin '${name}' resolves to installed plugin '${removalTarget.installedName}', but plugin '${name}' also exists`
+          : removalTarget.reason === 'conflicting-targets'
+            ? `Plugin '${name}' has conflicting registry install targets`
+            : removalTarget.reason === 'ownership-unavailable'
+              ? 'Plugin registry ownership is unavailable. Repair config/registry-installs.json before retrying removal.'
+              : 'Plugin not found';
+      return c.json(
+        {
+          success: false,
+          error,
+        },
+        removalTarget.reason === 'not-found' ? 404 : 400,
+      );
+    }
+    installedPluginName = removalTarget.installedName;
+    pluginDir = join(pluginsDir, installedPluginName);
+    try {
+      assertPathInside(pluginsDir, pluginDir, 'Plugin removal target');
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
     if (!existsSync(pluginDir)) {
       return c.json({ success: false, error: 'Plugin not found' }, 404);
+    }
+
+    try {
+      assertExistingPluginRootInside(pluginsDir, pluginDir);
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
     }
 
     try {
@@ -699,27 +793,33 @@ export function registerPluginLifecycleRoutes(
       // fingerprint's subject tree — hold the same per-plugin content lock
       // the consent decision's revalidate → commit span takes, so a grant
       // cannot commit for a plugin being removed underneath it.
-      const mutation = await withPluginContentLock(pluginsDir, name, () =>
-        captureConfigurationMutation(
-          applyConfigurationMutation,
-          async (beginMutation) => {
-            const result = await uninstallInstalledPlugin(name, {
-              agentsDir,
-              beginConfigurationMutation: beginMutation,
-              buildPlugin,
-              eventBus,
-              logger,
-              pluginsDir,
-              projectHomeDir,
-              removeEngineConnections,
-              quiesceEventSubscriptions: quiesceEventSubscriptions
-                ? (plugin) => quiesceEventSubscriptions(plugin)
-                : undefined,
-            });
-            await settleProviderAdapterRetirements?.();
-            return result;
-          },
-        ),
+      const mutation = await withPluginContentLock(
+        pluginsDir,
+        installedPluginName,
+        () =>
+          captureConfigurationMutation(
+            applyConfigurationMutation,
+            async (beginMutation) => {
+              const result = await uninstallInstalledPlugin(
+                installedPluginName,
+                {
+                  agentsDir,
+                  beginConfigurationMutation: beginMutation,
+                  buildPlugin,
+                  eventBus,
+                  logger,
+                  pluginsDir,
+                  projectHomeDir,
+                  removeEngineConnections,
+                  quiesceEventSubscriptions: quiesceEventSubscriptions
+                    ? (plugin) => quiesceEventSubscriptions(plugin)
+                    : undefined,
+                },
+              );
+              await settleProviderAdapterRetirements?.();
+              return result;
+            },
+          ),
       );
       if (mutation.value.success) {
         try {

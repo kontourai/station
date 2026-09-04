@@ -198,6 +198,8 @@ export async function preparePluginProviders(
         const instance = new JsonManifestRegistryProvider(
           modulePath,
           dirname(pluginsDir),
+          undefined,
+          'warn' in logger ? (logger as Pick<Logger, 'warn'>) : undefined,
         );
         prepared.push({
           type: provider.type,

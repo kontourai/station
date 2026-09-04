@@ -14,10 +14,11 @@
  * renders — this is the join, not either half again.
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const refetchPlugins = vi.fn();
+const reloadRejectedPlugin = vi.fn();
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
@@ -55,6 +56,8 @@ function baseViewModel(overrides: Record<string, unknown> = {}) {
     isLoading: false,
     pluginsError: undefined as unknown,
     refetchPlugins,
+    reloadRejectedPending: false,
+    reloadRejectedPlugin,
     items: [],
     layoutAssignment: null,
     loadingProviderDetails: false,
@@ -224,5 +227,97 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
       screen.getByText('Nothing in plugins matches “zzz-does-not-match”'),
     ).toBeTruthy();
     expect(screen.queryByText('Nothing selected')).toBeNull();
+  });
+});
+
+describe('rejected installed plugins', () => {
+  test('renders the exact reason and recovery action without valid-plugin controls', () => {
+    const rejected = {
+      status: 'rejected' as const,
+      name: 'Legacy_Plugin',
+      displayName: 'Legacy_Plugin',
+      rejection: {
+        code: 'invalid-plugin-name' as const,
+        reason:
+          "Plugin manifest name 'Legacy_Plugin' is not a canonical plugin id",
+        recovery: {
+          kind: 'repair-manifest' as const,
+          instruction:
+            'Use a lowercase plugin name, then choose Reload plugins.',
+        },
+      },
+    };
+    viewModel = baseViewModel({
+      plugins: [rejected],
+      filtered: [rejected],
+      items: [
+        {
+          id: 'rejected:Legacy_Plugin',
+          name: 'Legacy_Plugin',
+          subtitle: `Rejected · ${rejected.rejection.reason}`,
+        },
+      ],
+      selectedPlugin: 'rejected:Legacy_Plugin',
+      selected: rejected,
+    });
+
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    expect(screen.getByText('Rejected', { exact: true })).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain(
+      'not a canonical plugin id',
+    );
+    expect(
+      screen.getByText(rejected.rejection.recovery.instruction),
+    ).toBeTruthy();
+    const detail = screen
+      .getByText(
+        'Installed files are present, but Station rejected plugin.json.',
+      )
+      .closest<HTMLElement>('.detail-panel');
+    expect(detail).toBeTruthy();
+    expect(
+      within(detail!).queryByRole('button', { name: 'Remove' }),
+    ).toBeNull();
+    expect(
+      within(detail!).queryByRole('button', { name: /Update/ }),
+    ).toBeNull();
+    screen.getByRole('button', { name: 'Reload plugins' }).click();
+    expect(reloadRejectedPlugin).toHaveBeenCalledOnce();
+  });
+
+  test('renders a failed recovery message on the rejected detail', () => {
+    const rejected = {
+      status: 'rejected' as const,
+      name: 'broken-plugin',
+      displayName: 'broken-plugin',
+      rejection: {
+        code: 'malformed-json' as const,
+        reason: 'plugin.json contains malformed JSON.',
+        recovery: {
+          kind: 'repair-manifest' as const,
+          instruction: 'Repair plugin.json, then choose Reload plugins.',
+        },
+      },
+    };
+    viewModel = baseViewModel({
+      plugins: [rejected],
+      filtered: [rejected],
+      items: [],
+      selectedPlugin: 'rejected:broken-plugin',
+      selected: rejected,
+      message: {
+        type: 'error',
+        text: 'Plugins were not reloaded: registry is still unavailable',
+      },
+    });
+
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    expect(
+      screen.getByText(
+        'Plugins were not reloaded: registry is still unavailable',
+      ),
+    ).toBeTruthy();
   });
 });
