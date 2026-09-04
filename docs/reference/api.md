@@ -2394,10 +2394,17 @@ Installs a plugin from a git URL or local path, including agents, layout config,
   "dependencies": [{ "id": "dep-plugin", "status": "installed" }],
   "permissions": {
     "autoGranted": ["network.fetch"],
-    "pendingConsent": []
+    "pendingConsent": [],
+    "dependencies": [{ "id": "dep-plugin", "pendingConsent": [] }]
   }
 }
 ```
+
+`permissions.dependencies` reports current missing permissions for the actual
+installed transitive dependency graph, after installation and grant binding.
+Unlike preview consent requirements, an already-granted permission is absent
+from this pending list. Older servers may omit it; clients must then report
+dependency approval status as unknown rather than infer it from preview.
 
 ---
 

@@ -14,13 +14,13 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import {
   corruptFile,
   skipIfCannotChmod,
   withUnreadable,
 } from '../../../services/infra/__tests__/helpers/store-faults.js';
 import { ContextSafetyError } from '../../../services/orchestration/context-safety.js';
-import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import { DistributionProfileService } from '../../../services/plugins/distribution-profile-service.js';
 import {
   computePluginContentDigest,
@@ -39,8 +39,8 @@ import { readPluginManifestFile } from '../../../services/plugins/plugin-manifes
 import {
   getPluginGrants,
   grantPermissions,
-  readPluginDependencyOwnership,
   PluginGrantsUnavailableError,
+  readPluginDependencyOwnership,
   readPluginGrantState,
 } from '../../../services/plugins/plugin-permissions.js';
 import { readCurrentWorkspacePaneCatalog } from '../../../services/projects/workspace-pane-catalog.js';
@@ -3457,6 +3457,52 @@ describe('plugin install consent gate (station#4288)', () => {
         ],
       };
     }
+
+    test('reports current dependency approval truth after adoption of an already approved install', async () => {
+      const root = mkdtempSync(
+        join(tmpdir(), 'station-dependency-permission-truth-'),
+      );
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const installDeps = deps(root);
+      const first = await installPluginFromSource(
+        parentSource,
+        [],
+        installDeps,
+        {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        },
+      );
+      expect(first.permissions.dependencies).toEqual([
+        {
+          id: 'shared-providers',
+          pendingConsent: [
+            { permission: 'providers.register', tier: 'trusted' },
+          ],
+        },
+      ]);
+      await grantPermissions(root, 'shared-providers', ['providers.register']);
+      const adopted = await installPluginFromSource(
+        parentSource,
+        [],
+        installDeps,
+        {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        },
+      );
+      expect(readPluginGrantState(root, 'shared-providers').granted).toContain(
+        'providers.register',
+      );
+      expect(adopted.permissions.dependencies).toEqual([
+        { id: 'shared-providers', pendingConsent: [] },
+      ]);
+    });
 
     test('installs relative provider/settings dependencies once with trusted providers pending and cleans owned lifecycle state on uninstall', async () => {
       const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));

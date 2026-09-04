@@ -60,6 +60,7 @@ import {
   readPluginManifestFileSync,
 } from '../../services/plugins/plugin-manifest-loader.js';
 import {
+  getPermissionTier,
   hasGrant,
   type PluginDependencyOwnershipEntry,
   type PluginInstallAuthorityRecord,
@@ -344,6 +345,11 @@ export interface InstalledPluginResult {
      */
     consentGranted: string[];
     pendingConsent: Array<{ permission: string; tier: string }>;
+    /** Current permission truth for the actual installed transitive graph. */
+    dependencies: Array<{
+      id: string;
+      pendingConsent: Array<{ permission: string; tier: string }>;
+    }>;
     /**
      * Permissions this install WITHDREW because it replaced the code they
      * were granted against (archive#4288). Named rather than implied: an
@@ -2233,6 +2239,36 @@ export async function installPluginFromSource(
         );
         await deps.settleProviderAdapterRetirements?.();
 
+        const dependencyPermissions: InstalledPluginResult['permissions']['dependencies'] =
+          [];
+        const inspectedDependencies = new Set<string>([pluginName]);
+        const inspectDependencyPermissions = (
+          installed: PluginManifest,
+        ): void => {
+          for (const dependency of installed.dependencies ?? []) {
+            if (inspectedDependencies.has(dependency.id)) continue;
+            inspectedDependencies.add(dependency.id);
+            assertPluginNameSegment(dependency.id);
+            const dependencyManifest = readPluginManifestFileSync(
+              join(pluginsDir, dependency.id, 'plugin.json'),
+            );
+            dependencyPermissions.push({
+              id: dependency.id,
+              pendingConsent: requiredPermissionsForManifest(dependencyManifest)
+                .filter(
+                  (permission) =>
+                    !hasGrant(projectHomeDir, dependency.id, permission),
+                )
+                .map((permission) => ({
+                  permission,
+                  tier: getPermissionTier(permission),
+                })),
+            });
+            inspectDependencyPermissions(dependencyManifest);
+          }
+        };
+        inspectDependencyPermissions(manifest);
+
         eventBus?.emit('plugins:installed', {
           name: pluginName,
           agents: manifest.agents?.map((agent) => agent.slug) || [],
@@ -2259,6 +2295,7 @@ export async function installPluginFromSource(
             autoGranted,
             consentGranted,
             pendingConsent,
+            dependencies: dependencyPermissions,
             withdrawn: withdrewOnInstall,
           },
         };

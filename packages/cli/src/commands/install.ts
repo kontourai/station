@@ -252,6 +252,10 @@ export async function install(
     plugin: { name: string; version: string };
     permissions?: {
       pendingConsent?: Array<{ permission: string; tier: string }>;
+      dependencies?: Array<{
+        id: string;
+        pendingConsent: Array<{ permission: string; tier: string }>;
+      }>;
     };
   }>(
     parsed,
@@ -296,8 +300,8 @@ export async function install(
       plugin: result.plugin.name,
       ...entry,
     })),
-    ...(previewed.dependencies ?? []).flatMap((dependency) =>
-      (dependency.consent?.pendingConsent ?? [])
+    ...(result.permissions?.dependencies ?? []).flatMap((dependency) =>
+      dependency.pendingConsent
         .filter((entry) => entry.tier === 'trusted')
         .map((entry) => ({ plugin: dependency.id, ...entry })),
     ),
@@ -313,6 +317,17 @@ export async function install(
     }
     console.log(
       '  Finish these reviews on the Station host in the Plugins page.',
+    );
+  } else if (
+    result.permissions?.dependencies === undefined &&
+    (previewed.dependencies ?? []).some((dependency) =>
+      dependency.consent?.pendingConsent.some(
+        (entry) => entry.tier === 'trusted',
+      ),
+    )
+  ) {
+    console.log(
+      `Installed ${result.plugin.name}@${result.plugin.version}, but Station did not report current dependency approval status. Check the Plugins page on the Station host.`,
     );
   } else {
     console.log(

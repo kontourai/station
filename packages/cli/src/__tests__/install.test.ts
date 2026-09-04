@@ -90,6 +90,17 @@ describe('plugin CLI API authority', () => {
         Response.json({
           success: true,
           plugin: { name: 'demo', version: '1.0.0' },
+          permissions: {
+            pendingConsent: [],
+            dependencies: [
+              {
+                id: 'shared-lib',
+                pendingConsent: [
+                  { permission: 'providers.register', tier: 'trusted' },
+                ],
+              },
+            ],
+          },
         }),
       );
     const { install } = await import('../commands/install.js');
@@ -149,56 +160,74 @@ describe('plugin CLI API authority', () => {
     expect(printed).not.toContain('✅ Installed demo@1.0.0 through Station');
   });
 
-  test('reports complete success only when the install response and dependencies have no trusted approvals pending', async () => {
-    authenticatedFetch
-      .mockResolvedValueOnce(
-        Response.json({
-          valid: true,
-          manifest: { name: 'demo', version: '1.0.0' },
-          components: [],
-          conflicts: [],
-          dependencies: [
-            {
-              id: 'shared-lib',
-              status: 'will-install',
-              consent: {
-                permissions: ['network.fetch'],
-                contentDigest: 'sha256:dependency',
-                dependencies: [],
-                pendingConsent: [
-                  { permission: 'network.fetch', tier: 'active' },
-                ],
+  test.each([true, false])(
+    'uses post-install dependency status instead of preview requirements (status available: %s)',
+    async (statusAvailable) => {
+      authenticatedFetch
+        .mockResolvedValueOnce(
+          Response.json({
+            valid: true,
+            manifest: { name: 'demo', version: '1.0.0' },
+            components: [],
+            conflicts: [],
+            dependencies: [
+              {
+                id: 'shared-lib',
+                status: 'will-install',
+                consent: {
+                  permissions: ['providers.register'],
+                  contentDigest: 'sha256:dependency',
+                  dependencies: [],
+                  pendingConsent: [
+                    { permission: 'providers.register', tier: 'trusted' },
+                  ],
+                },
               },
+            ],
+            contentDigest: 'sha256:reviewed',
+            permissions: {
+              required: [],
+              autoGranted: [],
+              pendingConsent: [],
             },
-          ],
-          contentDigest: 'sha256:reviewed',
-          permissions: {
-            required: [],
-            autoGranted: [],
-            pendingConsent: [],
-          },
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          success: true,
-          plugin: { name: 'demo', version: '1.0.0' },
-          permissions: { pendingConsent: [] },
-        }),
+          }),
+        )
+        .mockResolvedValueOnce(
+          Response.json({
+            success: true,
+            plugin: { name: 'demo', version: '1.0.0' },
+            permissions: {
+              pendingConsent: [],
+              ...(statusAvailable
+                ? { dependencies: [{ id: 'shared-lib', pendingConsent: [] }] }
+                : {}),
+            },
+          }),
+        );
+      const { install } = await import('../commands/install.js');
+      vi.mocked(console.log).mockClear();
+
+      await install('/tmp/demo', [], parsed, approve);
+
+      const printed = (
+        console.log as unknown as { mock: { calls: unknown[][] } }
+      ).mock.calls
+        .map((args) => String(args[0]))
+        .join('\n');
+      if (statusAvailable)
+        expect(printed).toContain('✅ Installed demo@1.0.0 through Station');
+      else {
+        expect(printed).toContain(
+          'did not report current dependency approval status',
+        );
+        expect(printed).not.toContain('✅ Installed');
+      }
+      expect(printed).not.toContain('activation is incomplete');
+      expect(printed).not.toContain(
+        'requires host approval for providers.register',
       );
-    const { install } = await import('../commands/install.js');
-    vi.mocked(console.log).mockClear();
-
-    await install('/tmp/demo', [], parsed, approve);
-
-    const printed = (
-      console.log as unknown as { mock: { calls: unknown[][] } }
-    ).mock.calls
-      .map((args) => String(args[0]))
-      .join('\n');
-    expect(printed).toContain('✅ Installed demo@1.0.0 through Station');
-    expect(printed).not.toContain('activation is incomplete');
-  });
+    },
+  );
 
   /**
    * The refusal path, executable. A gate whose rejection branch never runs is
