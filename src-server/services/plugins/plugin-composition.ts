@@ -95,6 +95,8 @@ export type PluginCompositionInspectionReason =
   | 'invalid-contribution'
   | 'authorization-unavailable'
   | 'authorization-denied'
+  | 'authorization-release-pending'
+  | 'authorization-release-failed'
   | 'implementation-unavailable'
   | 'activation-failed'
   | 'activation-aborted'
@@ -883,21 +885,6 @@ function validatePlanAuthorization(
   };
 }
 
-async function settleBestEffortWithin(
-  effect: () => void | Promise<void>,
-  timeoutMs: number,
-): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const operation = Promise.resolve()
-    .then(effect)
-    .catch(() => undefined);
-  const timeout = new Promise<void>((resolve) => {
-    timer = setTimeout(resolve, timeoutMs);
-  });
-  await Promise.race([operation, timeout]);
-  if (timer) clearTimeout(timer);
-}
-
 async function outcomeWithin<T>(
   operation: Promise<T>,
   timeoutMs: number,
@@ -953,14 +940,6 @@ function recognizableAuthorizationRelease(
   } catch {
     return;
   }
-}
-
-async function releaseRecognizableInvalidAuthorization(
-  value: unknown,
-  timeoutMs: number,
-): Promise<void> {
-  const release = recognizableAuthorizationRelease(value);
-  if (release) await settleBestEffortWithin(release, timeoutMs);
 }
 
 function snapshotStagedHandle(value: unknown):
@@ -1035,6 +1014,27 @@ export function createPluginCompositionModule(options: {
     string,
     PluginCompositionInspectionEntry[]
   >();
+  // Actual lease-release operations outlive bounded responses. Tokens prevent
+  // one continuation from clearing another cleanup obligation for this scope.
+  const releaseDebts = new Map<
+    string,
+    Map<
+      symbol,
+      {
+        entries: PluginCompositionInspectionEntry[];
+        release: () => void | Promise<void>;
+        operation?: Promise<void>;
+      }
+    >
+  >();
+  const releaseEntries = (key: string) =>
+    structuredClone(
+      [...(releaseDebts.get(key)?.values() ?? [])].flatMap(
+        (debt) => debt.entries,
+      ),
+    );
+  const hasLifecycleDebt = (key: string) =>
+    pendingLifecycle.has(key) || releaseDebts.has(key);
   const disposalFences = new Map<
     string,
     Map<string, PluginCompositionDisposalFence>
@@ -1056,7 +1056,67 @@ export function createPluginCompositionModule(options: {
       ...applyChains.keys(),
       ...disposalFences.keys(),
       ...pendingLifecycle.keys(),
+      ...releaseDebts.keys(),
     ]);
+  const ownAuthorizationRelease = (
+    key: string,
+    selected: readonly NormalizedContribution[],
+    release: () => void | Promise<void>,
+    generation: number,
+  ) => {
+    const token = Symbol('authorization-release');
+    let operation: Promise<void> | undefined;
+    let bounded: Promise<void> | undefined;
+    const debt: {
+      entries: PluginCompositionInspectionEntry[];
+      release: () => void | Promise<void>;
+      operation?: Promise<void>;
+    } = { entries: [], release };
+    const project = (failed: boolean) => {
+      const debts = releaseDebts.get(key) ?? new Map();
+      debt.entries = selected.map((candidate) =>
+        entry(
+          candidate,
+          failed ? 'failed' : 'pending',
+          failed
+            ? 'authorization-release-failed'
+            : 'authorization-release-pending',
+          generation,
+        ),
+      );
+      debts.set(token, debt);
+      releaseDebts.set(key, debts);
+    };
+    const start = () => {
+      if (!operation) {
+        project(false);
+        operation = Promise.resolve()
+          .then(debt.release)
+          .then(
+            () => {
+              const debts = releaseDebts.get(key);
+              debts?.delete(token);
+              if (debts?.size === 0) releaseDebts.delete(key);
+            },
+            (error) => {
+              project(true);
+              throw error;
+            },
+          );
+        debt.operation = operation;
+        // Late failures are consumed even after the bounded caller returned.
+        void operation.catch(() => {});
+      }
+      return operation;
+    };
+    return {
+      start,
+      within: () => {
+        bounded ??= outcomeWithin(start(), disposerTimeoutMs).then(() => {});
+        return bounded;
+      },
+    };
+  };
   const enqueueScope = <T>(key: string, work: () => Promise<T>): Promise<T> => {
     const prior = applyChains.get(key) ?? Promise.resolve();
     const operation = prior.then(work);
@@ -1173,7 +1233,10 @@ export function createPluginCompositionModule(options: {
     const key = scopeKey(safeScope);
     const generation = active.get(key);
     const latest = [...(attempts.get(key) ?? [])];
-    for (const pending of pendingLifecycle.get(key) ?? []) {
+    for (const pending of [
+      ...(pendingLifecycle.get(key) ?? []),
+      ...releaseEntries(key),
+    ]) {
       if (
         !latest.some(
           (candidate) =>
@@ -1191,7 +1254,8 @@ export function createPluginCompositionModule(options: {
         !failed.some(
           (candidate) =>
             candidate.instanceIdentity === fence.instanceIdentity &&
-            candidate.generation === fence.generation,
+            candidate.generation === fence.generation &&
+            candidate.reason === fence.reason,
         )
       ) {
         failed.push(fence);
@@ -1525,7 +1589,7 @@ export function createPluginCompositionModule(options: {
     profile: PluginCompositionProfile,
   ): Promise<PluginCompositionApplyResult> => {
     const key = scopeKey(profile.scope);
-    if (pendingLifecycle.has(key)) {
+    if (hasLifecycleDebt(key)) {
       return { kind: 'pending', inspection: inspect(profile.scope) };
     }
     const previous = active.get(key);
@@ -1597,8 +1661,18 @@ export function createPluginCompositionModule(options: {
               // the actual late lease, not another bounded wait: only a
               // successful release may reopen scope admission. A hanging or
               // rejected release leaves the existing visible pending debt.
-              if (release) await release();
-              else {
+              if (release) {
+                const releasing = ownAuthorizationRelease(
+                  key,
+                  planned.plan.selected,
+                  release,
+                  nextGeneration,
+                ).start();
+                // Transfer custody synchronously before clearing the wait for
+                // the authorizer. The release token now owns completion truth.
+                pendingLifecycle.delete(key);
+                await releasing;
+              } else {
                 const lateOutcome = validatePlanAuthorization(
                   lateAuthorization,
                   planned.plan.selected,
@@ -1606,8 +1680,8 @@ export function createPluginCompositionModule(options: {
                 // Only a recognized no-lease response proves there is no
                 // cleanup obligation; malformed output cannot prove absence.
                 if (!lateOutcome || lateOutcome.kind === 'granted') return;
+                pendingLifecycle.delete(key);
               }
-              pendingLifecycle.delete(key);
             },
             () => pendingLifecycle.delete(key),
           )
@@ -1620,10 +1694,14 @@ export function createPluginCompositionModule(options: {
     );
     if (authorization?.kind !== 'granted') {
       if (!authorization) {
-        await releaseRecognizableInvalidAuthorization(
-          rawAuthorization,
-          disposerTimeoutMs,
-        );
+        const release = recognizableAuthorizationRelease(rawAuthorization);
+        if (release)
+          await ownAuthorizationRelease(
+            key,
+            planned.plan.selected,
+            release,
+            nextGeneration,
+          ).within();
       }
       const unavailable =
         !authorization || authorization.kind === 'unavailable';
@@ -1643,28 +1721,20 @@ export function createPluginCompositionModule(options: {
       };
     }
 
-    let released = false;
-    let releaseOperation: Promise<void> | undefined;
     // One owner joins every rollback operation for this authorization plan.
     // Disposer deadlines bound responses; they never settle this ownership.
     const rollbackOwner: {
       prior: Promise<'disposed' | 'failed'>[];
       late?: Promise<'disposed' | 'failed'>;
     } = { prior: [] };
-    const beginAuthorizationRelease = () => {
-      releaseOperation ??= Promise.resolve().then(() =>
-        authorization.lease.release(),
-      );
-      return releaseOperation;
-    };
-    const releaseAuthorization = async () => {
-      if (released) return;
-      released = true;
-      await settleBestEffortWithin(
-        beginAuthorizationRelease,
-        disposerTimeoutMs,
-      );
-    };
+    const releaseCustody = ownAuthorizationRelease(
+      key,
+      planned.plan.selected,
+      () => authorization.lease.release(),
+      nextGeneration,
+    );
+    const beginAuthorizationRelease = releaseCustody.start;
+    const releaseAuthorization = releaseCustody.within;
     const authorizationCurrent = () => {
       try {
         return authorization.lease.isCurrent() === true;
@@ -1711,8 +1781,9 @@ export function createPluginCompositionModule(options: {
         ])
           .then(async (outcomes) => {
             if (outcomes.some((outcome) => outcome !== 'disposed')) return;
-            await beginAuthorizationRelease();
+            const releasing = beginAuthorizationRelease();
             pendingLifecycle.delete(key);
+            await releasing;
           })
           .catch(() => {});
       }
@@ -1967,7 +2038,20 @@ export function createPluginCompositionModule(options: {
           }),
         });
       }
-      return enqueueScope(key, () => applyNow(snapshot));
+      return enqueueScope(key, async () => {
+        const result = await applyNow(snapshot);
+        // Early-return inspections can precede finally-owned release work.
+        // Return the actual debt projection after those bounded finalizers.
+        return {
+          ...result,
+          ...(result.kind === 'activated'
+            ? {
+                liveFences: [...result.liveFences, ...releaseEntries(key)],
+              }
+            : {}),
+          inspection: inspect(snapshot.scope),
+        };
+      });
     },
     retire(scope: PluginCompositionScope) {
       const safeScope = snapshotScope(scope);
@@ -2007,10 +2091,13 @@ export function createPluginCompositionModule(options: {
             )
           : [];
         const liveFences = fenceEntries(key);
-        const pending = pendingLifecycle.get(key) ?? [];
+        const pending = [
+          ...(pendingLifecycle.get(key) ?? []),
+          ...releaseEntries(key),
+        ];
         return {
           kind:
-            pendingLifecycle.has(key) || liveFences.length > 0
+            hasLifecycleDebt(key) || liveFences.length > 0
               ? ('pending' as const)
               : ('retired' as const),
           liveFences:

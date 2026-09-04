@@ -1061,8 +1061,19 @@ describe('plugin composition profiles', () => {
       module.apply(
         profile(projectA, [contribution('cache', 'workspace.cache')]),
       ),
-    ).resolves.toMatchObject({ kind: 'activated' });
+    ).resolves.toMatchObject({
+      kind: 'activated',
+      inspection: {
+        active: [expect.objectContaining({ instanceId: 'cache' })],
+        failed: [
+          expect.objectContaining({ reason: 'authorization-release-failed' }),
+        ],
+      },
+    });
     expect(release).toHaveBeenCalledOnce();
+    await expect(module.retire(projectA)).resolves.toMatchObject({
+      kind: 'pending',
+    });
   });
 
   test('bounds a never-settling release and continues prior-generation retirement', async () => {
@@ -1106,7 +1117,151 @@ describe('plugin composition profiles', () => {
     ).resolves.toMatchObject({ kind: 'activated', generation: 2 });
     expect(events).toContain('dispose:first');
     await expect(module.retire(projectA)).resolves.toMatchObject({
+      kind: 'pending',
+      liveFences: [
+        expect.objectContaining({ reason: 'authorization-release-pending' }),
+      ],
+    });
+  });
+
+  test.each(
+    (
+      [
+        'published',
+        'missing-binding',
+        'malformed',
+        'stale',
+        'rollback',
+      ] as const
+    ).flatMap((path) =>
+      (['reject', 'hang'] as const).map((behavior) => ({ path, behavior })),
+    ),
+  )(
+    'retains actual release custody for $path / $behavior without double release',
+    async ({ path, behavior }) => {
+      vi.useFakeTimers();
+      try {
+        let finishRelease!: () => void;
+        const release = vi.fn(() =>
+          behavior === 'reject'
+            ? Promise.reject(new Error('release rejected'))
+            : new Promise<void>((resolve) => {
+                finishRelease = resolve;
+              }),
+        );
+        const implementations = new Map([
+          factory('a', []),
+          factory('b', [], { fail: true }),
+        ]);
+        let calls = 0;
+        const authorize = vi.fn(
+          (input: Parameters<PluginCompositionAuthorizer['authorize']>[0]) => {
+            calls += 1;
+            const granted = grantedPlanAuthorization(input, implementations, {
+              release: calls === 1 ? release : undefined,
+              isCurrent: () => path !== 'stale' || calls > 1,
+            });
+            if (path === 'missing-binding')
+              return { ...granted, lease: { ...granted.lease, bindings: [] } };
+            if (path === 'malformed')
+              return { ...granted, unexpected: true } as never;
+            return granted;
+          },
+        );
+        const module = moduleWith([], {
+          authorizer: { authorize },
+          disposerTimeoutMs: 5,
+          maxRetainedScopes: 1,
+        });
+        const candidate = profile(projectA, [
+          contribution('a', 'workspace.a'),
+          ...(path === 'rollback' ? [contribution('b', 'workspace.b')] : []),
+        ]);
+        const applying = module.apply(candidate);
+        await vi.advanceTimersByTimeAsync(30);
+        const result = await applying;
+        const reason =
+          behavior === 'reject'
+            ? 'authorization-release-failed'
+            : 'authorization-release-pending';
+        expect([
+          ...result.inspection.pending,
+          ...result.inspection.failed,
+        ]).toEqual(
+          expect.arrayContaining([expect.objectContaining({ reason })]),
+        );
+        if (path === 'published') {
+          expect(result.kind).toBe('activated');
+          expect(result.inspection.active).toHaveLength(1);
+        }
+        await expect(module.apply(candidate)).resolves.toMatchObject({
+          kind: 'pending',
+        });
+        expect(authorize).toHaveBeenCalledTimes(1);
+        await expect(module.retire(projectA)).resolves.toMatchObject({
+          kind: 'pending',
+          liveFences: expect.arrayContaining([
+            expect.objectContaining({ reason }),
+          ]),
+        });
+        expect(release).toHaveBeenCalledTimes(1);
+        await expect(
+          module.apply(profile(projectB, [contribution('a', 'workspace.a')])),
+        ).resolves.toMatchObject({ kind: 'refused' });
+        if (behavior === 'hang') {
+          finishRelease();
+          await vi.advanceTimersByTimeAsync(0);
+          await expect(module.retire(projectA)).resolves.toMatchObject({
+            kind: 'retired',
+            liveFences: [],
+          });
+        } else {
+          await expect(module.retire(projectA)).resolves.toMatchObject({
+            kind: 'pending',
+          });
+        }
+        expect(release).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  test('inspection and retirement preserve both lease and disposer failures for the same occurrence', async () => {
+    const release = vi.fn(async () => {
+      throw new Error('release failed');
+    });
+    const dispose = vi.fn(async () => {
+      throw new Error('dispose failed');
+    });
+    const module = moduleWith([['a', { stage: async () => ({ dispose }) }]], {
+      onRelease: release,
+    });
+    const result = await module.apply(
+      profile(projectA, [contribution('a', 'workspace.a')]),
+    );
+    expect(result.kind).toBe('activated');
+    if (result.kind === 'activated') {
+      // Public fence projections are snapshots, not mutable custody records.
+      (result.liveFences[0] as { reason: string }).reason = 'tampered';
+    }
+    const retired = await module.retire(projectA);
+    expect(retired.kind).toBe('pending');
+    expect(retired.inspection.failed.map((item) => item.reason).sort()).toEqual(
+      ['authorization-release-failed', 'disposer-failed'],
+    );
+    expect(release).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  test('a denied no-lease authorization creates no release debt', async () => {
+    const module = moduleWith([], { authorize: () => 'denied' });
+    await expect(
+      module.apply(profile(projectA, [contribution('a', 'workspace.a')])),
+    ).resolves.toMatchObject({ kind: 'failed' });
+    await expect(module.retire(projectA)).resolves.toMatchObject({
       kind: 'retired',
+      liveFences: [],
     });
   });
 
@@ -1207,9 +1362,13 @@ describe('plugin composition profiles', () => {
     });
   });
 
-  test.each(['reject', 'hang'] as const)(
-    'retains admission and visible debt while late authorization release will %s',
-    async (behavior) => {
+  test.each(
+    (['reject', 'hang'] as const).flatMap((behavior) =>
+      [false, true].map((malformed) => ({ behavior, malformed })),
+    ),
+  )(
+    'retains admission and actual release debt for late $behavior / malformed=$malformed',
+    async ({ behavior, malformed }) => {
       vi.useFakeTimers();
       try {
         const events: string[] = [];
@@ -1230,10 +1389,18 @@ describe('plugin composition profiles', () => {
             if (authorizeCalls > 1)
               return grantedPlanAuthorization(input, implementations);
             return new Promise<PluginCompositionAuthorization>((resolve) => {
-              finishAuthorization = () =>
-                resolve(
-                  grantedPlanAuthorization(input, implementations, { release }),
+              finishAuthorization = () => {
+                const granted = grantedPlanAuthorization(
+                  input,
+                  implementations,
+                  { release },
                 );
+                resolve(
+                  malformed
+                    ? ({ ...granted, unexpected: true } as never)
+                    : granted,
+                );
+              };
             });
           },
         );
@@ -1256,7 +1423,15 @@ describe('plugin composition profiles', () => {
           kind: 'pending',
         });
         expect(authorize).toHaveBeenCalledOnce();
-        expect(module.inspect(projectA).pending).toHaveLength(1);
+        const debt = module.inspect(projectA);
+        expect([...debt.pending, ...debt.failed]).toEqual([
+          expect.objectContaining({
+            reason:
+              behavior === 'reject'
+                ? 'authorization-release-failed'
+                : 'authorization-release-pending',
+          }),
+        ]);
         expect(events).toEqual([]);
 
         if (behavior === 'hang') {
