@@ -618,9 +618,10 @@ describe('ChatDockMobileHeader overflow sheet occupant switch (station#520/524)'
     expect(
       await screen.findByRole('menuitem', { name: 'Switch to Home' }),
     ).toBeTruthy();
+    // Activity owns a separate region surface, not an ambient Chat/Home slot.
     expect(
-      screen.getByRole('menuitem', { name: 'Switch to Activity' }),
-    ).toBeTruthy();
+      screen.queryByRole('menuitem', { name: 'Switch to Activity' }),
+    ).toBeNull();
     // Chat is the current occupant of this header — never its own item.
     expect(
       screen.queryByRole('menuitem', { name: 'Switch to Chat' }),
