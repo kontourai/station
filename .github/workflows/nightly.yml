@@ -162,7 +162,10 @@ jobs:
           test -n "$jwt"
           exchange=$(mktemp)
           status=$(curl -sS --max-time 30 -o "$exchange" -w '%{http_code}' -X POST -H 'Accept: application/json' -H "Authorization: Bearer $jwt" 'https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/@kontourai%2fstation-cli')
-          if [ "$status" != 200 ]; then skip "No confirmed npm trusted publisher for @kontourai/station-cli (HTTP $status)."; fi
+          case "$status" in
+            2[0-9][0-9]) ;;
+            *) skip "No confirmed npm trusted publisher for @kontourai/station-cli (HTTP $status)." ;;
+          esac
           node -e 'const x=JSON.parse(require("node:fs").readFileSync(process.argv[1]));if(typeof x.token!=="string"||!x.token)process.exit(1)' "$exchange"
           echo 'trusted_publisher=true' >> "$GITHUB_OUTPUT"
       - id: npm_idempotency
