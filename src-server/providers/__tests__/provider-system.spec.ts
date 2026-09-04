@@ -926,6 +926,73 @@ describe('Provider System', () => {
       }
     });
 
+    it.each(['timeout', 'rejection'] as const)(
+      'retains every source of an all-refused shared adapter after %s',
+      async (failure) => {
+        vi.useFakeTimers();
+        const adapter = new BedrockAdapter();
+        let release!: () => void;
+        const stalled = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const stopAll = vi
+          .spyOn(adapter, 'stopAll')
+          .mockImplementation(() =>
+            failure === 'timeout'
+              ? stalled
+              : Promise.reject(new Error('cleanup refused')),
+          );
+        const outcome = (operation: Promise<void>) =>
+          operation.then(
+            () => 'completed',
+            () => 'failed',
+          );
+        try {
+          const initial = outcome(
+            disposePreparedPluginProviders([
+              {
+                type: 'providerAdapter',
+                source: 'shared-owner-a',
+                provider: adapter,
+              },
+              {
+                type: 'providerAdapter',
+                source: 'shared-owner-b',
+                provider: adapter,
+              },
+            ]),
+          );
+          await vi.advanceTimersByTimeAsync(2_001);
+          expect(await initial).toBe('failed');
+          expect(stopAll).toHaveBeenCalledOnce();
+          const a = outcome(
+            disposeRetainedPreparedPluginProviders('shared-owner-a'),
+          );
+          const b = outcome(
+            disposeRetainedPreparedPluginProviders('shared-owner-b'),
+          );
+          await vi.advanceTimersByTimeAsync(2_001);
+          expect(await a).toBe('failed');
+          expect(await b).toBe('failed');
+          expect(stopAll).toHaveBeenCalledTimes(failure === 'timeout' ? 1 : 2);
+          stopAll.mockResolvedValue(undefined);
+          release();
+          await Promise.all([
+            disposeRetainedPreparedPluginProviders('shared-owner-a'),
+            disposeRetainedPreparedPluginProviders('shared-owner-b'),
+          ]);
+          const calls = stopAll.mock.calls.length;
+          await disposeRetainedPreparedPluginProviders('shared-owner-b');
+          expect(stopAll).toHaveBeenCalledTimes(calls);
+        } finally {
+          stopAll.mockResolvedValue(undefined);
+          release();
+          await disposeRetainedPreparedPluginProviders();
+          vi.useRealTimers();
+        }
+      },
+    );
+
     it('publishes adapter registration revisions for inventory invalidation', () => {
       const revisions: number[] = [];
       const unsubscribe =

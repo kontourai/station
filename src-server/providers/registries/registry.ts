@@ -72,12 +72,12 @@ const retainedPreparedAdapterCleanup = new Map<
 >();
 
 function preparedAdapterCleanup(
-  source: string,
+  sources: ReadonlySet<string>,
   adapter: ProviderAdapterShape,
 ): Promise<void> {
   const retained = retainedPreparedAdapterCleanup.get(adapter);
   if (retained?.state === 'pending') {
-    retained.sources.add(source);
+    for (const source of sources) retained.sources.add(source);
     return retained.cleanup;
   }
 
@@ -85,7 +85,7 @@ function preparedAdapterCleanup(
   // waiter, never the teardown itself: every retry joins this exact promise
   // until it settles. Only a terminal rejection authorizes another attempt.
   const attempt: PreparedAdapterCleanupAttempt = {
-    sources: new Set([...(retained?.sources ?? []), source]),
+    sources: new Set([...(retained?.sources ?? []), ...sources]),
     cleanup: Promise.resolve().then(() => adapter.stopAll()),
     state: 'pending',
   };
@@ -179,15 +179,19 @@ function splitPreparedPluginProviders(
 export async function disposePreparedPluginProviders(
   registrations: PreparedPluginProviderRegistration[],
 ): Promise<void> {
-  const adapters = new Map<ProviderAdapterShape, string>();
+  const adapters = new Map<ProviderAdapterShape, Set<string>>();
   for (const registration of registrations) {
     if (registration.type !== 'providerAdapter') continue;
     const adapter = registration.provider as ProviderAdapterShape;
-    if (!adapters.has(adapter)) adapters.set(adapter, registration.source);
+    const sources = adapters.get(adapter) ?? new Set<string>();
+    sources.add(registration.source);
+    adapters.set(adapter, sources);
   }
   const results = await Promise.allSettled(
-    [...adapters].map(async ([adapter, source]) => {
-      const cleanup = preparedAdapterCleanup(source, adapter);
+    [...adapters].map(async ([adapter, sources]) => {
+      // Deduplicate the teardown, not its owners. All sources must be retained
+      // before plugin cleanup runs so any source-specific drain joins the debt.
+      const cleanup = preparedAdapterCleanup(sources, adapter);
       const settled = await awaitSettlementWithin(
         cleanup,
         PREPARED_ADAPTER_CLEANUP_TIMEOUT_MS,
