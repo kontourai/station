@@ -44,7 +44,7 @@ export type DestinationIconId =
   | 'settings';
 
 /**
- * archive#3313: gates the Developer surfaces' sidebar/palette advertisement.
+ * archive#3313: gates the Developer destinations' sidebar/palette advertisement.
  * Unlike the other `previewFlag` values (server feature-preview ids), this
  * flag is derived from the device setting `developerToolsEnabled` — see
  * `useSurfaceVisibilityFlags`, which composes both sources into the one
@@ -118,7 +118,7 @@ export function createDestinationRegistry(
       const route = definition.route.trim();
       if (!id) throw new Error('Destination id must be nonempty');
       if (!route.startsWith('/')) {
-        throw new Error(`Surface ${id} must use an absolute Station route`);
+        throw new Error(`Destination ${id} must use an absolute Station route`);
       }
       return Object.freeze({
         ...definition,
@@ -157,33 +157,37 @@ export function createDestinationRegistry(
   const paletteSlots = new Set<number>();
   for (const definition of registered) {
     if (byId.has(definition.id)) {
-      throw new Error(`Duplicate surface id: ${definition.id}`);
+      throw new Error(`Duplicate destination id: ${definition.id}`);
     }
     byId.set(definition.id, definition);
     if (definition.sidebar) {
       const slot = `${definition.sidebar.section}:${definition.sidebar.order}`;
       if (sidebarSlots.has(slot)) {
-        throw new Error(`Duplicate sidebar surface order: ${slot}`);
+        throw new Error(`Duplicate sidebar destination order: ${slot}`);
       }
       sidebarSlots.add(slot);
     }
     if (definition.palette) {
       if (paletteSlots.has(definition.palette.order)) {
         throw new Error(
-          `Duplicate command-palette surface order: ${definition.palette.order}`,
+          `Duplicate command-palette destination order: ${definition.palette.order}`,
         );
       }
       paletteSlots.add(definition.palette.order);
     }
     if (definition.view) {
       if (byExactRoute.has(definition.route)) {
-        throw new Error(`Duplicate exact surface route: ${definition.route}`);
+        throw new Error(
+          `Duplicate exact destination route: ${definition.route}`,
+        );
       }
       byExactRoute.set(definition.route, definition.view);
     }
     for (const viewType of definition.managementViewTypes ?? []) {
       if (byManagementView.has(viewType)) {
-        throw new Error(`Duplicate management surface for view: ${viewType}`);
+        throw new Error(
+          `Duplicate management destination for view: ${viewType}`,
+        );
       }
       byManagementView.set(viewType, definition);
     }

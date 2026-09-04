@@ -10,7 +10,7 @@ describe('DestinationRegistry', () => {
   test('drives the exact sidebar and command-palette inventories from one authority', () => {
     // archive#3313 (Settings IA, option A): Settings holds a System slot;
     // Feature Previews is a Settings section (palette deep link only); the
-    // Developer surfaces advertise only with the developer-tools flag on.
+    // Developer destinations advertise only with the developer-tools flag on.
     //
     // UX audit RT-13 / SHELL-08: Agents, Connections and Activity lead as a
     // flat `primary` band. The order below is also the assertion that
@@ -191,7 +191,7 @@ describe('DestinationRegistry', () => {
         { id: 'same', route: '/one', label: () => 'One' },
         { id: 'same', route: '/two', label: () => 'Two' },
       ],
-      /Duplicate surface id/,
+      /Duplicate destination id/,
     ],
     [
       'relative routes',
@@ -214,7 +214,7 @@ describe('DestinationRegistry', () => {
           view: { type: 'settings' },
         },
       ],
-      /Duplicate exact surface route/,
+      /Duplicate exact destination route/,
     ],
     [
       'duplicate sidebar order slots',
@@ -232,7 +232,7 @@ describe('DestinationRegistry', () => {
           sidebar: { section: 'system', order: 1 },
         },
       ],
-      /Duplicate sidebar surface order/,
+      /Duplicate sidebar destination order/,
     ],
     [
       'duplicate command-palette order slots',
@@ -250,7 +250,7 @@ describe('DestinationRegistry', () => {
           palette: { order: 1 },
         },
       ],
-      /Duplicate command-palette surface order/,
+      /Duplicate command-palette destination order/,
     ],
   ] as const)(
     'rejects %s at the composition seam',

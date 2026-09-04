@@ -209,10 +209,11 @@ retired names.
   region it is in.
 - **Surface** — a thing registered to occupy a region, with an id, title,
   icon, keyboard chord and default region (`REGION_SURFACE_REGISTRY`). Chat
-  and Activity are surfaces. "Surface" means this and only this in the UI;
-  the twenty navigable places the palette and sidebar send you to are
-  **destinations** (`APP_DESTINATION_REGISTRY`), and the Kontour product
-  Surface is always written with its product name.
+  and Activity are surfaces. "Surface" means this in the region model and its
+  chrome; older prose still uses the lowercase word for any page or area, and
+  the Kontour product Surface is always written with its product name. The
+  twenty navigable places the palette and sidebar send you to are
+  **destinations** (`APP_DESTINATION_REGISTRY`).
 - **Layout** — a project's named view the sidebar navigates between: Coding,
   Tasks, Session board, or a plugin's (`LayoutConfig`, a server record whose
   `type` selects the renderer). Use **Layout** for the product object and its

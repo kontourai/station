@@ -105,6 +105,8 @@ describe('placement vocabulary (#928)', () => {
       'src-ui/src/regions/region-model.ts',
       'src-server/index.ts',
       'packages/contracts/src/workspace-pane.ts',
+      'scripts/test-impact-manifest.mjs',
+      'tests/e2e-manifest.mjs',
     ]) {
       expect(files, `enumeration lost ${sentinel}`).toContain(sentinel);
     }

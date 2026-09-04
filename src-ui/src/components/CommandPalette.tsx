@@ -133,7 +133,7 @@ export function CommandPalette() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const returnFocusRef = useRef<HTMLElement[]>([]);
-  // archive#3313: previewFlag-gated surfaces (Developer, enabled previews)
+  // archive#3313: previewFlag-gated destinations (Developer, enabled previews)
   // appear here iff their flag is on — same set the sidebar filters with.
   const surfaceVisibilityFlags = useSurfaceVisibilityFlags();
 

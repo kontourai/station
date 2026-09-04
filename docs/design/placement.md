@@ -73,7 +73,8 @@ below is cheap.
 Words that were retired, and why:
 
 - **"Surface" for a navigable destination.** The app-shell registry of twenty
-  routes used the same noun as the region occupants. #928's acceptance
+  destinations (fourteen distinct routes; Settings and Guidance sections share
+  theirs) used the same noun as the region occupants. #928's acceptance
   criteria, the toolbar's accessible labels and the `?surface=` deep link all
   mean region occupant, so that meaning won and the route registry became the
   destination registry. `?surface=activity` keeps its name: it names a region
@@ -93,14 +94,14 @@ implementation name and its CSS classes are pinned by e2e and ratchets),
 `useShowSurface`, `parseSurfaceDeepLink`, and everything under
 `src-ui/src/regions/` (they are about region surfaces).
 
-## What reads what (verified 2026-09-04 on origin/main)
+## What reads what (verified 2026-09-04 against the placement batch (#1462, #1463, #1464 and this change))
 
 A placement declaration is only as real as its reader. This is the reader
 map; anything not listed is a label.
 
 | declaration | vocabulary | readers |
 |---|---|---|
-| `REGION_SURFACE_REGISTRY` | surface ids | `RegionShells`, `RegionModelContext`, the region toolbar, the palette, `useShowSurface` |
+| `REGION_SURFACE_REGISTRY` | surface ids | `RegionModelContext` (direct), `ActivityRegionShell` (direct), the region toolbar and `useRegionSurfaceMenu` via `regionModel.surfaces`, `CommandPalette` via the destination registry's `regionSurface` field |
 | `WorkspacePanePlacement.supportedRegions` | `primary`, `secondary`, `standalone`, `docked` | parse validation; `instantiateWorkspaceComposition` (does a composition slot fit this pane); `isWorkspaceHomeRoleEligibleDescriptor` (`standalone` means "may be a route"); the docked-capability pins (`docked` means "may be a region surface"): `src-ui/src/__tests__/docked-capability-derivation.test.ts` over the built-in descriptor constants and `workspace-pane-known-declarations.test.ts` over the server's inline declarations |
 | `WorkspacePanePlacement.preferredRegion` | same | parse validation and canonical-identity equality only |
 | `WorkspaceCompositionPaneSpec.role` | `navigation`, `content`, `auxiliary`, `inspector` | the composition algorithm groups panes by role: tabs within a role, splits between roles. Runs on real data through the coding file/diff/evidence compositions (behind `workspaceComposition*` layout config controls) and the task room |

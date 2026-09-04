@@ -416,8 +416,41 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
       // first-run tour derives its anchors and paths from it.
       'src-ui/src/app-shell/__tests__/page-frame-registry.test.ts',
       'src-ui/src/components/first-run/__tests__/tour-steps.test.ts',
+      // The placement-vocabulary ratchet (#928) imports no source module, so
+      // `related` can never reach it; it must be named by the files whose
+      // retired spellings it guards.
+      'src-ui/src/__tests__/placement-vocabulary.test.ts',
     ],
-    reason: 'app surface registry declarations (routes, labels, nav, docs)',
+    reason: 'app destination registry declarations (routes, labels, nav, docs)',
+  },
+  {
+    // Same class as the destination registry above: an explicit `tests` list
+    // REPLACES graph selection for this path, so it carries every suite that
+    // imports the region model or its context directly (what `--related`
+    // found at one hop when this entry was written) plus the
+    // placement-vocabulary ratchet, which imports nothing and would
+    // otherwise never be scheduled by a change to the names it pins.
+    pattern: 'src-ui/src/regions/region-model.ts',
+    tests: [
+      'src-ui/src/__tests__/placement-vocabulary.test.ts',
+      'src-ui/src/__tests__/region-model.test.ts',
+      'src-ui/src/__tests__/region-surface-boundary.test.ts',
+      'src-ui/src/__tests__/AppHomeRoute.test.tsx',
+      'src-ui/src/__tests__/CommandPalette.test.tsx',
+      'src-ui/src/__tests__/PaneAwayState.test.tsx',
+      'src-ui/src/__tests__/ProjectLiveWorkSection.test.tsx',
+      'src-ui/src/__tests__/ProjectSidebarNav.test.tsx',
+      'src-ui/src/__tests__/useDockShellChrome.regionSource.test.tsx',
+      'src-ui/src/__tests__/useDockShellChrome.test.ts',
+      'src-ui/src/components/first-run/__tests__/FirstRunFlow.test.tsx',
+      'src-ui/src/components/first-run/__tests__/tour-steps.test.ts',
+      'src-ui/src/components/header/__tests__/OverflowMenu.regions.test.tsx',
+      'src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx',
+      'src-ui/src/contexts/__tests__/RegionModelContext-deep-link.test.tsx',
+      'src-ui/src/workspace-panes/__tests__/DockShellControlParity.test.tsx',
+      'src-ui/src/workspace-panes/__tests__/RegionShellParity.test.tsx',
+    ],
+    reason: 'region model (arrangement, surface registry, placement rules)',
   },
   {
     pattern: 'justfile',
