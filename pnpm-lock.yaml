@@ -122,6 +122,9 @@ importers:
       '@kontourai/station-basis-pane':
         specifier: ^0.3.0
         version: link:packages/basis-pane
+      '@kontourai/station-board-pane':
+        specifier: 0.1.2
+        version: link:packages/board-pane
       '@kontourai/station-connect':
         specifier: ^0.5.1
         version: link:packages/connect

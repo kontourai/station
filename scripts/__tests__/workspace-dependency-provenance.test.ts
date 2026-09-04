@@ -306,3 +306,90 @@ it('rejects disagreement between npm command workspace metadata and pnpm install
     rmSync(fixture, { recursive: true, force: true });
   }
 });
+
+describe('pnpm workspace importer ownership', () => {
+  function fixture(root: string) {
+    const workspaces = ['packages/contracts', 'packages/consumer'];
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({
+        name: 'fixture-root',
+        packageManager: 'pnpm@11.25.0',
+        workspaces,
+        dependencies: { [PACKAGE_NAME]: 'workspace:*' },
+      }),
+    );
+    writeFileSync(
+      join(root, 'pnpm-workspace.yaml'),
+      `packages: ${JSON.stringify(workspaces)}\n`,
+    );
+    const contracts = writeWorkspacePackage(root);
+    const consumer = writeWorkspacePackage(root, {
+      directory: 'packages/consumer',
+      manifest: { name: '@kontourai/consumer', version: '1.0.0' },
+    });
+    linkWorkspacePackage(root, contracts);
+    return { contracts, consumer };
+  }
+
+  it('accepts an unreferenced workspace member without inventing a root dependency link', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-pnpm-provenance-'));
+    try {
+      const { contracts } = fixture(root);
+      const result = assertWorkspacePackageProvenance({ repositoryRoot: root });
+      expect(result.packages).toEqual([
+        expect.objectContaining({
+          name: PACKAGE_NAME,
+          resolvedRoot: realpathSync(contracts),
+          importerRoot: realpathSync(root),
+        }),
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves declared workspace dependencies from each importer and rejects a foreign nested link despite a healthy root link', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-pnpm-provenance-'));
+    const foreign = mkdtempSync(join(tmpdir(), 'station-pnpm-foreign-'));
+    try {
+      const { contracts, consumer } = fixture(root);
+      writeFileSync(
+        join(consumer, 'package.json'),
+        JSON.stringify({
+          name: '@kontourai/consumer',
+          version: '1.0.0',
+          dependencies: { [PACKAGE_NAME]: 'workspace:*' },
+        }),
+      );
+      const nestedLink = linkWorkspacePackage(consumer, contracts);
+      expect(
+        assertWorkspacePackageProvenance({ repositoryRoot: root }).packages,
+      ).toHaveLength(2);
+      rmSync(nestedLink);
+      linkWorkspacePackage(consumer, writeWorkspacePackage(foreign));
+      expect(() =>
+        assertWorkspacePackageProvenance({ repositoryRoot: root }),
+      ).toThrow(`outside the active worktree ${realpathSync(root)}`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(foreign, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a registry copy inside the worktree in place of its declared workspace source', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-pnpm-provenance-'));
+    try {
+      fixture(root);
+      rmSync(join(root, 'node_modules', PACKAGE_NAME));
+      writeWorkspacePackage(root, {
+        directory: `node_modules/${PACKAGE_NAME}`,
+      });
+      expect(() =>
+        assertWorkspacePackageProvenance({ repositoryRoot: root }),
+      ).toThrow('instead of declared workspace');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

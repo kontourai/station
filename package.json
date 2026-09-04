@@ -287,6 +287,7 @@
     "@kontourai/forage": "^0.7.0",
     "@kontourai/relay": "0.6.0",
     "@kontourai/station-basis-pane": "^0.3.0",
+    "@kontourai/station-board-pane": "0.1.2",
     "@kontourai/station-connect": "^0.5.1",
     "@kontourai/station-contracts": "^0.7.0",
     "@kontourai/station-sdk": "^0.7.0",

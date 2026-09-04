@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { readPnpmWorkspace } from './lib/pnpm-lockfile.mjs';
+import { declaredDependencies } from './lib/workspace-dependency-satisfaction.mjs';
 
 export function isPnpmRepository(root) {
   const manifestPath = join(root, 'package.json');
@@ -155,9 +156,28 @@ function resolvePackageFromNodeLookupPaths(resolver, packageName) {
   return null;
 }
 
+function assertWorkspaceTarget({
+  root,
+  packageRoot,
+  directory,
+  name,
+  importer,
+}) {
+  if (!isInside(root, packageRoot))
+    throw new Error(
+      `workspace dependency provenance rejected ${name}: Node resolved ${packageRoot} outside the active worktree ${root}`,
+    );
+  if (packageRoot !== directory)
+    throw new Error(
+      `workspace dependency provenance rejected ${name}: Node resolved ${packageRoot} instead of declared workspace ${directory} from ${importer}`,
+    );
+}
+
 /**
- * Resolves each local package exactly as Node would from the active root and
- * rejects a package whose resolved source lives in another checkout. A plain
+ * Validates every workspace's source ownership, then resolves each declared
+ * local dependency from its importing package. PNPM does not create root
+ * links for unreferenced workspace members. Legacy npm installs did.
+ * Rejects resolution outside the declared workspace source directory. A plain
  * node_modules path check is insufficient because workspace links can be
  * relative to a dependency-owning sibling checkout.
  */
@@ -167,13 +187,57 @@ export function assertWorkspacePackageProvenance({
   resolvePackage,
 } = {}) {
   const root = realpathSync(repositoryRoot);
-  const resolver = createRequire(join(root, 'package.json'));
   const packages = listWorkspacePackageManifests(root);
-  const resolved = packages.map(({ name, directory }) => {
+  const pnpm = isPnpmRepository(root);
+  const byName = new Map(packages.map((entry) => [entry.name, entry]));
+  if (byName.size !== packages.length)
+    throw new Error(
+      'workspace dependency provenance requires unique workspace package names',
+    );
+  const edges = pnpm
+    ? [root, ...packages.map((entry) => entry.directory)].flatMap(
+        (importer) => {
+          const manifest = readJson(join(importer, 'package.json'));
+          const dependencies = declaredDependencies(manifest);
+          const declaredNames = new Set(
+            dependencies.map((entry) => entry.name),
+          );
+          for (const name of Object.keys(manifest.peerDependencies ?? {}))
+            if (!declaredNames.has(name))
+              dependencies.push({
+                name,
+                optional:
+                  manifest.peerDependenciesMeta?.[name]?.optional === true,
+              });
+          return dependencies
+            .filter(({ name }) => byName.has(name))
+            .map(({ name, optional }) => ({
+              ...byName.get(name),
+              importer,
+              optional,
+            }));
+        },
+      )
+    : packages.map((entry) => ({ ...entry, importer: root, optional: false }));
+  const resolved = edges.map(({ name, directory, importer, optional }) => {
+    const resolver = createRequire(join(importer, 'package.json'));
+    const installedManifest = resolvePackageFromNodeLookupPaths(resolver, name);
+    if (optional && !installedManifest) return null;
+    // Node caches entry resolution, including symlink realpaths. Inspect the
+    // current link too so a dependency refresh cannot conceal a foreign link
+    // behind an earlier healthy result in a long-lived verifier.
+    if (installedManifest)
+      assertWorkspaceTarget({
+        root,
+        packageRoot: resolvedPackageRoot(installedManifest, name),
+        directory,
+        name,
+        importer,
+      });
     let entryPath;
     try {
       entryPath = resolvePackage
-        ? resolvePackage(name)
+        ? resolvePackage(name, importer)
         : resolver.resolve(name);
     } catch (entryError) {
       // A CLI-only workspace can deliberately publish no importable package
@@ -189,21 +253,22 @@ export function assertWorkspacePackageProvenance({
         if (packageManifest) entryPath = packageManifest;
         else
           throw new Error(
-            `workspace dependency provenance could not resolve ${name} from ${root}: ${manifestError instanceof Error ? manifestError.message : String(manifestError)} (package entry resolution: ${entryError instanceof Error ? entryError.message : String(entryError)})`,
+            `workspace dependency provenance could not resolve ${name} from ${importer}: ${manifestError instanceof Error ? manifestError.message : String(manifestError)} (package entry resolution: ${entryError instanceof Error ? entryError.message : String(entryError)})`,
           );
       }
     }
     const packageRoot = resolvedPackageRoot(entryPath, name);
-    if (!isInside(root, packageRoot))
-      throw new Error(
-        `workspace dependency provenance rejected ${name}: Node resolved ${packageRoot} outside the active worktree ${root}`,
-      );
+    assertWorkspaceTarget({ root, packageRoot, directory, name, importer });
     return {
       name,
+      ...(pnpm ? { importerRoot: importer } : {}),
       declaredRoot: directory,
       resolvedEntry: realpathSync(entryPath),
       resolvedRoot: packageRoot,
     };
   });
-  return { repositoryRoot: root, packages: resolved };
+  return {
+    repositoryRoot: root,
+    packages: resolved.filter((entry) => entry !== null),
+  };
 }
