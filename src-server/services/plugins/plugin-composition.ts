@@ -1219,6 +1219,7 @@ export function createPluginCompositionModule(options: {
     key: string,
     generation: number,
     phase: 'rollback' | 'retire',
+    settlements?: Promise<'disposed' | 'failed'>[],
   ): Promise<'disposed' | 'failed' | 'timed-out'> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const operation = Promise.resolve()
@@ -1230,6 +1231,7 @@ export function createPluginCompositionModule(options: {
         },
         () => 'failed' as const,
       );
+    settlements?.push(operation);
     const timeout = new Promise<'timed-out'>((resolve) => {
       timer = setTimeout(() => resolve('timed-out'), disposerTimeoutMs);
     });
@@ -1282,11 +1284,18 @@ export function createPluginCompositionModule(options: {
     phase: 'rollback' | 'retire',
     key: string,
     generation: number,
+    settlements?: Promise<'disposed' | 'failed'>[],
   ): Promise<PluginCompositionInspectionEntry[]> => {
     fenceAll(contributions);
     const failures: PluginCompositionInspectionEntry[] = [];
     for (const contribution of [...contributions].reverse()) {
-      const outcome = await disposeOne(contribution, key, generation, phase);
+      const outcome = await disposeOne(
+        contribution,
+        key,
+        generation,
+        phase,
+        settlements,
+      );
       if (outcome === 'disposed') continue;
       failures.push(
         entry(
@@ -1630,7 +1639,12 @@ export function createPluginCompositionModule(options: {
 
     let released = false;
     let releaseOperation: Promise<void> | undefined;
-    let lateStageOwnsAuthorization = false;
+    // One owner joins every rollback operation for this authorization plan.
+    // Disposer deadlines bound responses; they never settle this ownership.
+    const rollbackOwner: {
+      prior: Promise<'disposed' | 'failed'>[];
+      late?: Promise<'disposed' | 'failed'>;
+    } = { prior: [] };
     const beginAuthorizationRelease = () => {
       releaseOperation ??= Promise.resolve().then(() =>
         authorization.lease.release(),
@@ -1732,44 +1746,32 @@ export function createPluginCompositionModule(options: {
             disposerTimeoutMs,
           );
           if (stageOutcome.kind === 'timed-out') {
-            lateStageOwnsAuthorization = true;
             leaseControl.fence();
             pendingLifecycle.set(key, [
               entry(contribution, 'pending', 'activation-aborted'),
             ]);
-            void stageOperation
-              .then(
+            rollbackOwner.late = stageOperation
+              .then<'disposed' | 'failed', 'disposed' | 'failed'>(
                 async (lateHandle) => {
                   const stagedHandle = snapshotStagedHandle(lateHandle);
                   const occurrence = claimOccurrence(
                     leaseControl,
                     stagedHandle,
                   );
-                  if (!occurrence) return;
-                  const disposal = Promise.resolve().then(() =>
-                    occurrence.dispose(),
-                  );
-                  void disposal
-                    .then(beginAuthorizationRelease)
-                    .then(() => pendingLifecycle.delete(key))
-                    .catch(() => {});
+                  if (!occurrence) return 'failed';
+                  const settlements: Promise<'disposed' | 'failed'>[] = [];
                   await disposeOne(
-                    {
-                      ...contribution,
-                      binding,
-                      occurrence: { ...occurrence, dispose: () => disposal },
-                    },
+                    { ...contribution, binding, occurrence },
                     key,
                     nextGeneration,
                     'rollback',
+                    settlements,
                   );
+                  return settlements[0];
                 },
-                async () => {
-                  await beginAuthorizationRelease();
-                  pendingLifecycle.delete(key);
-                },
+                () => 'disposed',
               )
-              .catch(() => {});
+              .catch(() => 'failed' as const);
             throw new Error('plugin composition staging timed out');
           }
           if (stageOutcome.kind === 'rejected') {
@@ -1794,6 +1796,7 @@ export function createPluginCompositionModule(options: {
             'rollback',
             key,
             nextGeneration,
+            rollbackOwner.prior,
           );
           const blocked = planned.plan.selected
             .slice(index + 1)
@@ -1864,7 +1867,21 @@ export function createPluginCompositionModule(options: {
         inspection: inspect(profile.scope),
       };
     } finally {
-      if (!lateStageOwnsAuthorization) await releaseAuthorization();
+      if (rollbackOwner.late) {
+        // The catch above has now scheduled every prior rollback disposer.
+        // The late stage owns its own disposer settlement, including work
+        // which only starts after apply returns. No independent continuation
+        // may release this shared authorization or clear the admission fence.
+        void Promise.all([...rollbackOwner.prior, rollbackOwner.late])
+          .then(async (outcomes) => {
+            if (outcomes.some((outcome) => outcome !== 'disposed')) return;
+            await beginAuthorizationRelease();
+            pendingLifecycle.delete(key);
+          })
+          .catch(() => {});
+      } else {
+        await releaseAuthorization();
+      }
     }
   };
 

@@ -1335,6 +1335,105 @@ describe('plugin composition profiles', () => {
     });
   });
 
+  test.each([
+    ['resolve', 'resolve'],
+    ['resolve', 'reject'],
+    ['reject', 'resolve'],
+    ['reject', 'reject'],
+  ] as const)(
+    'joins the whole rollback plan when late stage %s and prior disposer %s',
+    async (lateOutcome, priorOutcome) => {
+      vi.useFakeTimers();
+      let finishPrior!: () => void;
+      let finishLate!: () => void;
+      const priorDispose = vi.fn(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            finishPrior = () =>
+              priorOutcome === 'resolve'
+                ? resolve()
+                : reject(new Error('prior rollback failed'));
+          }),
+      );
+      const lateDispose = vi.fn();
+      const release = vi.fn();
+      const firstStage = vi.fn(async () => ({ dispose: priorDispose }));
+      const lateStage = vi.fn(
+        () =>
+          new Promise<{ dispose: () => void }>((resolve, reject) => {
+            finishLate = () =>
+              lateOutcome === 'resolve'
+                ? resolve({ dispose: lateDispose })
+                : reject(new Error('late staging failed'));
+          }),
+      );
+      const module = moduleWith(
+        [
+          ['a', { stage: firstStage }],
+          ['b', { stage: lateStage }],
+        ],
+        { disposerTimeoutMs: 5, onRelease: release },
+      );
+      const candidate = profile(projectA, [
+        contribution('a', 'workspace.a'),
+        contribution('b', 'workspace.b', {
+          requires: [{ capability: 'workspace.a', version: '1.0.0' }],
+        }),
+      ]);
+      try {
+        const applying = module.apply(candidate);
+        await vi.advanceTimersByTimeAsync(11);
+        await expect(applying).resolves.toMatchObject({ kind: 'failed' });
+        expect(priorDispose).toHaveBeenCalledOnce();
+        expect(release).not.toHaveBeenCalled();
+
+        finishLate();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(lateDispose).toHaveBeenCalledTimes(
+          lateOutcome === 'resolve' ? 1 : 0,
+        );
+        expect(release).not.toHaveBeenCalled();
+        await expect(module.retire(projectA)).resolves.toMatchObject({
+          kind: 'pending',
+        });
+        await expect(module.apply(candidate)).resolves.toMatchObject({
+          kind: 'pending',
+        });
+        expect(firstStage).toHaveBeenCalledOnce();
+        expect(lateStage).toHaveBeenCalledOnce();
+
+        finishPrior();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(priorDispose).toHaveBeenCalledOnce();
+        if (priorOutcome === 'resolve') {
+          expect(release).toHaveBeenCalledOnce();
+          await expect(module.retire(projectA)).resolves.toMatchObject({
+            kind: 'retired',
+            liveFences: [],
+          });
+        } else {
+          expect(release).not.toHaveBeenCalled();
+          await expect(module.retire(projectA)).resolves.toMatchObject({
+            kind: 'pending',
+          });
+          expect(module.inspect(projectA).failed).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                instanceId: 'a',
+                reason: 'rollback-failed',
+              }),
+            ]),
+          );
+        }
+      } finally {
+        finishLate?.();
+        finishPrior?.();
+        await vi.advanceTimersByTimeAsync(0);
+        vi.useRealTimers();
+      }
+    },
+  );
+
   test.each(['constructor'])(
     'empty selections cannot invent a provider selection for %s',
     async (capability) => {
