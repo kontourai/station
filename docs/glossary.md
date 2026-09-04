@@ -197,29 +197,53 @@ Station on this device**, so trusting one Station never extends to another.
   Forgetting one only removes it from this device."). The glossary is the
   source of truth; the UI is where users actually learn the vocabulary.
 
-## Layout, Pane, Panel
+## Placement: Region, Surface, Layout, Pane, Pane host, Arrangement, Panel
 
-These three words describe different levels of the interface. Do not use them
-as interchangeable names for “the thing on screen.”
+Seven words for seven levels of the interface. Each names exactly one thing
+that exists in source; [`docs/design/placement.md`](design/placement.md) is the
+design record and `src-ui/src/__tests__/placement-vocabulary.test.ts` pins the
+retired names.
 
-- **Layout** — a saved or project-owned workspace composition. A Layout decides
-  which workspace regions exist and how they are arranged. Use **Layout** for
-  the product object and its chooser, editor, sources, and persistence. Ordinary
-  lowercase “layout” can still describe spatial arrangement in developer prose;
-  internal component names such as `SplitPaneLayout` describe implementation,
-  not another product object.
-- **Pane** — one renderable workspace region inside a Layout. A Pane has one
-  placement in the composition and hosts content such as chat, files, terminal,
-  or a plugin contribution. Use **Workspace Pane** when a developer contract
-  needs to distinguish this extension surface from an ordinary UI region.
+- **Region** — a fixed shell slot: `main`, `left`, `right`, `bottom`
+  (`REGION_IDS`). The shell owns regions; nothing placed in one reads which
+  region it is in.
+- **Surface** — a thing registered to occupy a region, with an id, title,
+  icon, keyboard chord and default region (`REGION_SURFACE_REGISTRY`). Chat
+  and Activity are surfaces. "Surface" means this and only this in the UI;
+  the twenty navigable places the palette and sidebar send you to are
+  **destinations** (`APP_DESTINATION_REGISTRY`), and the Kontour product
+  Surface is always written with its product name.
+- **Layout** — a project's named view the sidebar navigates between: Coding,
+  Tasks, Session board, or a plugin's (`LayoutConfig`, a server record whose
+  `type` selects the renderer). Use **Layout** for the product object and its
+  chooser, editor, sources and persistence. Do not use it for the map of
+  which surface sits in which region (that is the arrangement) or for the
+  split/tab tree inside a view (that is a pane host). Lowercase "layout" may
+  still describe spatial arrangement in developer prose, and internal widget
+  names such as `SplitPaneLayout` describe implementation, not another
+  product object.
+- **Pane** — the smallest addressable UI unit; what plugins contribute
+  (`WorkspacePaneDescriptor` and its instances). A pane hosts content such as
+  chat, files, terminal, or a plugin contribution, and knows nothing about
+  where it is. Use **Workspace Pane** when a developer contract needs to
+  distinguish this extension point from an ordinary UI area.
+- **Pane host** — a tree of panes arranged as `split` and `tabs` nodes, inside
+  a region or a layout (`WorkspacePaneHost`; persisted as a
+  `WorkspacePaneHostDocument`). A tab group is a container inside a pane host,
+  not a layout. The legacy plugin `layout.json` `tabs` array maps onto a pane
+  host whose root is one tab group.
+- **Arrangement** — the user's placement choices: which surface occupies
+  which region, each region's size and visibility, and each pane host's tree
+  (`RegionArrangement` for the region half). It is persisted per device: a
+  property of the screen you are sitting at, never of a project or a layout.
 - **Panel** — a bounded visual grouping of controls or information within a
-  page or Pane, such as a Trust panel or inspector panel. A Panel is not a
-  persisted Layout and is not a synonym for a Workspace Pane.
+  page or pane, such as a Trust panel or inspector panel. A Panel is not
+  persisted and is not a synonym for a pane.
 
-> **Composition:** a **Layout contains Panes; a Pane or page may contain
-> Panels**. A list/detail shell may also have lowercase left and detail panes,
-> but those implementation regions do not become saved Workspace Panes unless
-> they participate in the Layout contract.
+> **Composition:** the **shell** has regions; a region holds a **surface**;
+> a surface or a layout holds a **pane host**; a pane host holds **panes** in
+> tab groups and splits; a pane or page may hold **panels**. The user's choices
+> across all of that are the **arrangement**.
 
 ## User-facing labels
 
@@ -231,9 +255,11 @@ as interchangeable names for “the thing on screen.”
 | A configured agent CLI or custom engine | **Engine** (Connections › Engines) |
 | A selectable inference option within a connection | **Model** |
 | This device's saved binding to one Station | **Station** (verbs: Add / Edit / **Forget**) |
-| Saved workspace composition | **Layout** |
-| One renderable region in a Layout | **Pane** (developer contract: **Workspace Pane**) |
-| Visual grouping inside a page or Pane | **Panel** |
+| A project's named view | **Layout** |
+| A place at the edge of the window a surface can occupy | **Region** |
+| A thing that can occupy a region (Chat, Activity) | **Surface** |
+| The smallest addressable unit of workspace UI | **Pane** (developer contract: **Workspace Pane**) |
+| Visual grouping inside a page or pane | **Panel** |
 | Durable work identity | **Task** |
 | Execution episode | **Session** |
 | `missing_prerequisites` | name what's missing (e.g. "AWS credentials required") |
