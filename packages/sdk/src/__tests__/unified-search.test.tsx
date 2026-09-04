@@ -284,3 +284,54 @@ test('direct clients reject absent, invalid or wrong-base scopes before transpor
   }
   expect(fetch).not.toHaveBeenCalled();
 });
+test.each(['cancel', 'remove'] as const)(
+  'a late rejected %s request cannot clear a newer same-key success',
+  async (mode) => {
+    let rejectOld!: (reason: Error) => void;
+    const fetch = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectOld = reject;
+          }),
+      )
+      .mockResolvedValueOnce(response('newer same-key result'));
+    vi.stubGlobal('fetch', fetch);
+    const { client, wrapper } = harness();
+    const hook = renderHook(
+      () => useUnifiedSearchQuery(request, { requestScope: scopeA }),
+      { wrapper },
+    );
+    const queryKey = unifiedSearchQueries.search(request, scopeA).queryKey;
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await client.cancelQueries({ queryKey, exact: true });
+    });
+    if (mode === 'remove')
+      act(() => {
+        client.removeQueries({ queryKey, exact: true });
+      });
+    await act(async () => {
+      await hook.result.current.refetch();
+    });
+    await waitFor(() =>
+      expect(hook.result.current.data?.results[0].title).toBe(
+        'newer same-key result',
+      ),
+    );
+    await act(async () => {
+      rejectOld(new Error('late old transport failure'));
+    });
+    await waitFor(() =>
+      expect(client.getQueryData<any>(queryKey)?.results[0].title).toBe(
+        'newer same-key result',
+      ),
+    );
+    expect(hook.result.current.data?.results[0].title).toBe(
+      'newer same-key result',
+    );
+    hook.unmount();
+    client.clear();
+  },
+);

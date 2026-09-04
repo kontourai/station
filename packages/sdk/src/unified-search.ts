@@ -43,16 +43,23 @@ export function useUnifiedSearchQuery(
     async (signal) => {
       if (!isApiRequestScope(scope))
         throw new Error('Search authority unavailable');
+      // Query identity alone is insufficient: cancellation can start another
+      // fetch on the same Query. Its public promise identifies this retryer.
+      const ownedQuery = client.getQueryCache().find({ queryKey, exact: true });
+      const ownedRequest = ownedQuery?.promise;
       try {
         return await searchStation(scope.apiBase, request, {
           requestScope: scope,
           signal,
         });
       } catch (error) {
-        client
-          .getQueryCache()
-          .find({ queryKey, exact: true })
-          ?.setState({ data: undefined });
+        if (
+          ownedRequest &&
+          ownedQuery?.promise === ownedRequest &&
+          client.getQueryCache().find({ queryKey, exact: true }) === ownedQuery
+        ) {
+          ownedQuery.setState({ data: undefined });
+        }
         throw error;
       }
     },

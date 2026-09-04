@@ -88,6 +88,83 @@ function populate(
 }
 const personal = (user = 'user-a') =>
   sessionReadAuthorityFromRequest(user, undefined, undefined);
+test('EventStore renews only its exact closed source and retired async authorization cannot borrow the successor', async () => {
+  const store = storeAt();
+  populate(store);
+  const oldAuthorization = new SessionAuthorization({
+    eventStore: store,
+    ownerlessSessionAccess: 'deny',
+  });
+  const original = store.createIsolatedTranscriptReads();
+  expect(store.releaseClosedIsolatedTranscriptReads(original)).toBe(false);
+  expect(
+    await oldAuthorization.canReadSessionAsync(
+      'thread-a',
+      personal(),
+      () => true,
+    ),
+  ).toBe(true);
+  let settleOldRead!: (owner: string) => void;
+  const oldRead = vi.spyOn(original, 'readOwner').mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        settleOldRead = resolve;
+      }),
+  );
+  const lateAuthorization = oldAuthorization.canReadSessionAsync(
+    'late-thread',
+    personal(),
+    () => true,
+  );
+  oldAuthorization.stopTranscriptReads();
+  const closing = original.close();
+  // A close request is not proof; until the retained worker reaches closed,
+  // the owner must refuse release. This check observes the real worker phase.
+  expect(original.inspect().phase).toBe('retiring');
+  expect(store.releaseClosedIsolatedTranscriptReads(original)).toBe(false);
+  await closing;
+  await expect.poll(() => original.inspect().phase).toBe('closed');
+  const foreign = createIsolatedTranscriptReads(join(root(), 'missing.sqlite'));
+  readers.push(foreign);
+  await foreign.close();
+  expect(store.releaseClosedIsolatedTranscriptReads(foreign)).toBe(false);
+  expect(store.releaseClosedIsolatedTranscriptReads(original)).toBe(true);
+  const successor = store.createIsolatedTranscriptReads();
+  expect(successor).not.toBe(original);
+  const successorRead = vi.spyOn(successor, 'readOwner');
+  settleOldRead('user-a');
+  expect(await lateAuthorization).toBe(false);
+  oldRead.mockRestore();
+  expect(
+    await oldAuthorization.canReadSessionAsync(
+      'thread-a',
+      personal(),
+      () => true,
+    ),
+  ).toBe(false);
+  expect(
+    await oldAuthorization.canReadSessionAsync(
+      'new-thread',
+      personal(),
+      () => true,
+    ),
+  ).toBe(false);
+  expect(successorRead).not.toHaveBeenCalled();
+  const newAuthorization = new SessionAuthorization({
+    eventStore: store,
+    ownerlessSessionAccess: 'deny',
+  });
+  expect(
+    await newAuthorization.canReadSessionAsync(
+      'thread-a',
+      personal(),
+      () => true,
+    ),
+  ).toBe(true);
+  expect(successorRead).toHaveBeenCalledOnce();
+  await successor.close();
+  expect(store.releaseClosedIsolatedTranscriptReads(original)).toBe(false);
+});
 function syncReads(store: EventStore, authz: SessionAuthorization) {
   return new SessionTranscriptReads({
     canReadSession: (thread, authority) =>

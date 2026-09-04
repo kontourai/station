@@ -22,6 +22,7 @@ export interface IsolatedTranscriptReads
     input: {
       query: string;
       ownerUserId: string;
+      legacyOwnerUserId?: string;
       tenantId?: string;
       projectId?: string;
       limit: number;
@@ -33,12 +34,18 @@ export interface IsolatedTranscriptReads
       threadId: string;
       matchedEventId: string;
       ownerUserId: string;
+      legacyOwnerUserId?: string;
       tenantId?: string;
     },
     signal?: AbortSignal,
   ): Promise<TranscriptMessageOpenFact | null>;
   readSession(
-    input: { threadId: string; ownerUserId: string; tenantId?: string },
+    input: {
+      threadId: string;
+      ownerUserId: string;
+      legacyOwnerUserId?: string;
+      tenantId?: string;
+    },
     signal?: AbortSignal,
   ): Promise<TranscriptSessionOpenFact | null>;
   readOwner(

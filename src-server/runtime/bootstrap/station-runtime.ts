@@ -736,6 +736,7 @@ export class StationRuntime {
   private readonly taskGraphService: TaskGraphService;
   private runtimeSearch?: RuntimeSearch;
   private searchAdmissionStopped = false;
+  private searchRetirementRequired = false;
   private readonly taskDispatchAssignmentClaims: Pick<
     AssignmentClaimService,
     'claim' | 'release' | 'status'
@@ -2721,6 +2722,9 @@ export class StationRuntime {
   }
 
   private async runInitialize(): Promise<void> {
+    // A failed attempt retains its exact readers until both owners prove
+    // retirement. No replacement Orchestration or listener is constructed first.
+    await this.retireFailedSearch();
     // Identity/credential state is a startup invariant. Corrupt or unsafe
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
@@ -2972,6 +2976,10 @@ export class StationRuntime {
   }
 
   private async cleanupFailedInitialization(error: unknown): Promise<never> {
+    if (this.runtimeSearch) {
+      this.searchRetirementRequired = true;
+      this.runtimeSearch.stop();
+    }
     const failures = [error];
     const attempt = async (
       cleanup: (() => void | Promise<void>) | undefined,
@@ -2986,6 +2994,7 @@ export class StationRuntime {
       }
     };
 
+    await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());
     await attempt(() => this.discordGatewayService.stop());
     await attempt(() => this.taskRoomAcceptanceControl?.close());
@@ -3023,6 +3032,17 @@ export class StationRuntime {
       );
     }
     throw error;
+  }
+
+  private async retireFailedSearch(): Promise<void> {
+    if (!this.searchRetirementRequired || !this.runtimeSearch) return;
+    const owned = this.runtimeSearch;
+    owned.stop();
+    const result = await owned.retireAfterFailedInitialization();
+    if (result.state !== 'closed')
+      throw new Error('Failed runtime search readers are still retiring');
+    if (this.runtimeSearch === owned) this.runtimeSearch = undefined;
+    this.searchRetirementRequired = false;
   }
 
   /**

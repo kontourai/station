@@ -76,8 +76,18 @@ export class SessionAuthorization {
   private readonly sessionOwnerCacheMaxEntries: number;
   /** Process-local currentness fence, not a second authorization/owner store. */
   private readGeneration = {};
+  private transcriptReadsClosed = false;
+  private readonly transcriptOwnerRead:
+    | ReturnType<EventStore['createIsolatedTranscriptReads']>
+    | undefined;
 
   constructor(private readonly deps: SessionAuthorizationDeps) {
+    // Bind this owner's exact incarnation; old authorizers cannot borrow a
+    // replacement runtime's worker. In-memory composition creates no worker.
+    this.transcriptOwnerRead =
+      typeof deps.eventStore?.createIsolatedTranscriptReads === 'function'
+        ? deps.eventStore.createIsolatedTranscriptReads()
+        : undefined;
     this.sessionOwnerCacheMaxEntries =
       deps.sessionOwnerCacheMaxEntries ?? SESSION_OWNER_CACHE_MAX_ENTRIES;
     if (
@@ -120,6 +130,27 @@ export class SessionAuthorization {
     return () => generation === this.readGeneration;
   }
 
+  stopTranscriptReads(): void {
+    this.transcriptReadsClosed = true;
+    this.readGeneration = {};
+  }
+
+  /** Fixed read-owner constraints use precisely the existing legacy bridge policy. */
+  transcriptOwnerConstraint(
+    authority: import('@kontourai/station-contracts/tenancy').SessionReadAuthority,
+  ): { ownerUserId: string; legacyOwnerUserId?: string } {
+    const legacy = this.deps.legacyPersonalOwner;
+    return {
+      ownerUserId: authority.userId,
+      ...(this.deps.requireTenantExecutionContext?.() !== true &&
+      isSessionReadAuthority(authority) &&
+      legacy &&
+      this.canReadLegacyPersonalOwner(legacy, authority)
+        ? { legacyOwnerUserId: legacy }
+        : {}),
+    };
+  }
+
   /** Same policy and positive cache; only a cold durable lookup crosses the async seam. */
   async canReadSessionAsync(
     threadId: string,
@@ -128,7 +159,7 @@ export class SessionAuthorization {
     signal?: AbortSignal,
   ): Promise<boolean> {
     const sameGeneration = this.captureReadCurrentness();
-    if (!current()) return false;
+    if (this.transcriptReadsClosed || !current()) return false;
     let needsOwner = false;
     const preflight = this.canReadWithOwner(threadId, scope, () => {
       needsOwner = true;
@@ -151,11 +182,9 @@ export class SessionAuthorization {
   private async readOwnerAsync(threadId: string, signal?: AbortSignal) {
     // Source authority is constructor-bound, exactly like the synchronous path;
     // a per-call caller cannot substitute a function that invents owner facts.
-    if (!this.deps.eventStore)
+    if (this.transcriptReadsClosed || !this.transcriptOwnerRead)
       throw new Error('Session owner read unavailable');
-    return this.deps.eventStore
-      .createIsolatedTranscriptReads()
-      .readOwner(threadId, signal);
+    return this.transcriptOwnerRead.readOwner(threadId, signal);
   }
 
   /**

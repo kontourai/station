@@ -1,7 +1,6 @@
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod/v3';
 import type { RuntimeSearch } from '../services/search/runtime-search.js';
 import { unifiedSearchReads } from '../telemetry/metrics.js';
@@ -71,34 +70,41 @@ export function createSearchRoutes(
     c.header('Cache-Control', 'private, no-store');
     await next();
   });
-  app.use('*', bodyLimit({ maxSize: 12 * 1024 }));
   const context = (request: Request) => ({
     authority: options.readAuthorityForRequest(request),
     current: () => options.isRequestPrincipalCurrent(request),
     signal: request.signal,
   });
-  app.post('/', validate(requestSchema), async (c) => {
-    if (!search || !options.isRequestPrincipalCurrent(c.req.raw))
-      return c.json({ success: false, error: 'Search unavailable' }, 503);
-    const result = await search.search(getBody(c), context(c.req.raw));
-    unifiedSearchReads.add(1, { operation: 'search', outcome: result.state });
-    if (!options.isRequestPrincipalCurrent(c.req.raw))
-      return c.json({ success: false, error: 'Search unavailable' }, 503);
-    if (result.state === 'invalid')
-      return c.json({ success: false, error: 'Invalid search request' }, 400);
-    return c.json({ success: true, data: result });
-  });
-  app.post('/resolve-open', validate(openSchema), async (c) => {
-    if (!search || !options.isRequestPrincipalCurrent(c.req.raw))
-      return c.json({ success: false, error: 'Search unavailable' }, 503);
-    const result = await search.open(getBody(c), context(c.req.raw));
-    unifiedSearchReads.add(1, {
-      operation: 'resolve-open',
-      outcome: result.state,
-    });
-    if (!options.isRequestPrincipalCurrent(c.req.raw))
-      return c.json({ success: false, error: 'Search unavailable' }, 503);
-    return c.json({ success: true, data: result });
-  });
+  app.post(
+    '/',
+    validate(requestSchema, { maxBodyBytes: 12 * 1024 }),
+    async (c) => {
+      if (!search || !options.isRequestPrincipalCurrent(c.req.raw))
+        return c.json({ success: false, error: 'Search unavailable' }, 503);
+      const result = await search.search(getBody(c), context(c.req.raw));
+      unifiedSearchReads.add(1, { operation: 'search', outcome: result.state });
+      if (!options.isRequestPrincipalCurrent(c.req.raw))
+        return c.json({ success: false, error: 'Search unavailable' }, 503);
+      if (result.state === 'invalid')
+        return c.json({ success: false, error: 'Invalid search request' }, 400);
+      return c.json({ success: true, data: result });
+    },
+  );
+  app.post(
+    '/resolve-open',
+    validate(openSchema, { maxBodyBytes: 12 * 1024 }),
+    async (c) => {
+      if (!search || !options.isRequestPrincipalCurrent(c.req.raw))
+        return c.json({ success: false, error: 'Search unavailable' }, 503);
+      const result = await search.open(getBody(c), context(c.req.raw));
+      unifiedSearchReads.add(1, {
+        operation: 'resolve-open',
+        outcome: result.state,
+      });
+      if (!options.isRequestPrincipalCurrent(c.req.raw))
+        return c.json({ success: false, error: 'Search unavailable' }, 503);
+      return c.json({ success: true, data: result });
+    },
+  );
   return app;
 }

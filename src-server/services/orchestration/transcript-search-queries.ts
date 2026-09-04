@@ -17,6 +17,7 @@ export function queryTranscriptMessages(
   options: {
     query: string;
     ownerUserId: string;
+    legacyOwnerUserId?: string;
     tenantId?: string;
     projectId?: string;
     limit: number;
@@ -39,10 +40,7 @@ export function queryTranscriptMessages(
   // A punctuation-only query must not degrade into an owner-wide match.
   if (!contentTerms && !cjkTerms) return [];
   const matchTerms = [
-    ftsColumnPhrase(
-      'owner_scope_key',
-      messageOwnerScopeKey(options.ownerUserId),
-    ),
+    `(${[options.ownerUserId, ...(options.legacyOwnerUserId ? [options.legacyOwnerUserId] : [])].map((owner) => ftsColumnPhrase('owner_scope_key', messageOwnerScopeKey(owner))).join(' OR ')})`,
   ];
   if (options.tenantId) {
     matchTerms.splice(
@@ -84,7 +82,7 @@ export function queryTranscriptMessages(
            LEFT JOIN provider_session_state p
              ON p.thread_id = s.thread_id
           WHERE orchestration_message_search_v3 MATCH ?
-            AND h.owner_user_id = ?
+            AND h.owner_user_id IN (?, ?)
             AND (? IS NULL OR h.tenant_id = ?)
             AND (? IS NULL OR h.project_slug = ?)
           ORDER BY bm25(orchestration_message_search_v3) +
@@ -96,6 +94,7 @@ export function queryTranscriptMessages(
     .all(
       matchTerms.join(' AND '),
       options.ownerUserId,
+      options.legacyOwnerUserId ?? null,
       options.tenantId ?? null,
       options.tenantId ?? null,
       options.projectId ?? null,
@@ -142,17 +141,19 @@ export function queryTranscriptSession(
   options: {
     threadId: string;
     ownerUserId: string;
+    legacyOwnerUserId?: string;
     tenantId?: string;
   },
 ): { conversationId: string; projectSlug?: string } | null {
   const row = db
     .prepare(`SELECT thread_id, CASE WHEN length(CAST(project_slug AS BLOB)) <= 256 THEN project_slug END AS project_slug,
     coalesce(length(CAST(project_slug AS BLOB)), 0) > 256 AS oversized
-    FROM orchestration_conversation_history WHERE thread_id = ? AND owner_user_id = ?
+    FROM orchestration_conversation_history WHERE thread_id = ? AND owner_user_id IN (?, ?)
       AND (? IS NULL OR tenant_id = ?) LIMIT 1`)
     .get(
       options.threadId,
       options.ownerUserId,
+      options.legacyOwnerUserId ?? null,
       options.tenantId ?? null,
       options.tenantId ?? null,
     ) as
@@ -174,6 +175,7 @@ export function queryTranscriptMessage(
     threadId: string;
     matchedEventId: string;
     ownerUserId: string;
+    legacyOwnerUserId?: string;
     tenantId?: string;
   },
 ): {
@@ -193,13 +195,14 @@ export function queryTranscriptMessage(
     FROM orchestration_message_search_v3 s
     INNER JOIN orchestration_conversation_history h ON h.thread_id = s.thread_id
     INNER JOIN orchestration_events matched ON matched.thread_id = s.thread_id AND matched.id = s.event_id
-    WHERE s.thread_id = ? AND s.event_id = ? AND h.owner_user_id = ?
+    WHERE s.thread_id = ? AND s.event_id = ? AND h.owner_user_id IN (?, ?)
       AND ((s.role = 'user' AND matched.method = 'turn.started') OR (s.role = 'assistant' AND matched.method = 'turn.completed'))
       AND (? IS NULL OR h.tenant_id = ?) LIMIT 1`)
     .get(
       options.threadId,
       options.matchedEventId,
       options.ownerUserId,
+      options.legacyOwnerUserId ?? null,
       options.tenantId ?? null,
       options.tenantId ?? null,
     ) as

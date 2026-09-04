@@ -107,7 +107,7 @@ export function createIsolatedSessionTranscriptSearch(
           {
             query,
             limit,
-            ownerUserId: authority.userId,
+            ...authorization.transcriptOwnerConstraint(authority),
             ...(authority.mode === 'hosted'
               ? { tenantId: authority.tenantExecutionContext!.tenantId }
               : {}),
@@ -146,7 +146,7 @@ export function createIsolatedSessionTranscriptSearch(
           const target = await source.readSession(
             {
               threadId: sessionId,
-              ownerUserId: authority.userId,
+              ...authorization.transcriptOwnerConstraint(authority),
               ...(authority.mode === 'hosted'
                 ? { tenantId: authority.tenantExecutionContext!.tenantId }
                 : {}),
@@ -195,7 +195,7 @@ export function createIsolatedSessionTranscriptSearch(
             {
               threadId: sessionId,
               matchedEventId,
-              ownerUserId: authority.userId,
+              ...authorization.transcriptOwnerConstraint(authority),
               ...(authority.mode === 'hosted'
                 ? { tenantId: authority.tenantExecutionContext!.tenantId }
                 : {}),

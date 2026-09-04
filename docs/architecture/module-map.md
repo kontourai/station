@@ -187,6 +187,21 @@ until a fresh successful read. Real owner+Hono tests live in
 same-origin epoch replacement. CommandPalette/UI, additional source kinds, and
 supported-platform responsiveness qualification remain deferred.
 
+Search routes bind the same exact ingress principal and home-possession fact
+as conversation reads, not the server's OS display alias. A streaming bounded
+validator preserves the authenticated Request object and its WeakMap bindings.
+The single SessionAuthorization owner derives at most one legacy owner bridge,
+only for a personal local-operator authority with home possession; SQL groups
+the canonical/legacy owner postings before tenant/project/content filters and
+the result limit. Paired, WhoIs, hosted, and remote-operator-only authorities
+cannot claim the bridge. Final parent authorization still checks each result.
+Failed initialization synchronously fences the captured runtime search, then
+retains both retirement capabilities until actual closed proof. EventStore can
+release only that identical closed source, never pending/replaced/closing
+storage. Retry constructs a fresh Orchestration reader; old wrappers and old
+async authorizers remain stopped and cannot borrow its worker. No broad provider
+shutdown or source replacement is inferred from a failed search cleanup.
+
 ## DesktopStartupReadiness
 
 **Intent and Interface.** `startup_readiness::transition` is the pure native authority for one main-window startup epoch. Its ticket binds `generation`, stable `instanceId`, per-child `bootId`, and `apiBase`; the native host reveals only after its authenticated proof commits the ticket currently published by the desktop-owned sidecar **and** the exact main WebView commits a post-React-layout mount. Tauri's native page-start signal permits identity proof but is not renderer readiness. Activation requests defer while waiting or failed and reveal after ready; readiness never re-hides an already-ready window.

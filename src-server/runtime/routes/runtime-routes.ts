@@ -1606,6 +1606,8 @@ export function configureRuntimeRoutes(
   context.app.use('/agents/*', bindConversationReadAuthority);
   context.app.use('/api/conversations', bindConversationReadAuthority);
   context.app.use('/api/conversations/*', bindConversationReadAuthority);
+  context.app.use('/api/search', bindConversationReadAuthority);
+  context.app.use('/api/search/*', bindConversationReadAuthority);
   context.app.route(
     '/agents',
     createAgentRoutes(
@@ -1836,7 +1838,7 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/search',
     createSearchRoutes(context.runtimeSearch, {
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       isRequestPrincipalCurrent,
     }),
   );

@@ -115,6 +115,7 @@ async function fixture(hosted = false) {
     });
   }
   return {
+    orchestration,
     graph,
     store,
     search,
@@ -271,6 +272,27 @@ describe('runtime search HTTP composition', () => {
     expect(await f.search.close()).toEqual({ state: 'closed' });
     expect(close).toHaveBeenCalledTimes(2);
   });
+  test('failed-init retirement captures its exact Orchestration and remembers closed transcript custody while Tasks wait', async () => {
+    const f = await fixture();
+    const substituted = vi
+      .spyOn(
+        f.orchestration,
+        'retireIsolatedTranscriptSearchAfterFailedInitialization',
+      )
+      .mockResolvedValue({ state: 'closed' });
+    vi.spyOn(f.tasks, 'close').mockResolvedValueOnce({ state: 'winding-down' });
+    expect(await f.search.retireAfterFailedInitialization()).toEqual({
+      state: 'winding-down',
+    });
+    expect(substituted).not.toHaveBeenCalled();
+    const successor = f.store.createIsolatedTranscriptReads();
+    expect(await f.search.retireAfterFailedInitialization()).toEqual({
+      state: 'closed',
+    });
+    expect(f.store.createIsolatedTranscriptReads()).toBe(successor);
+    expect(successor.inspect().phase).toBe('idle');
+  });
+
   test('read-shaped POSTs match Task read scope without authorizing future mutation paths', () => {
     expect(requiredPairingScope('POST', '/api/search')).toBe(
       requiredPairingScope('GET', '/api/tasks'),

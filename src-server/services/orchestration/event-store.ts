@@ -3364,6 +3364,22 @@ export class EventStore {
     return this.isolatedTranscriptReads;
   }
 
+  /** Failed-init ownership handoff only; pending cleanup never permits renewal. */
+  releaseClosedIsolatedTranscriptReads(
+    expected: IsolatedTranscriptReads,
+  ): boolean {
+    if (
+      this.messageSearchBackfillClosed ||
+      this.storeClosed ||
+      expected.inspect().phase !== 'closed'
+    )
+      return false;
+    if (this.isolatedTranscriptReads === undefined) return true;
+    if (this.isolatedTranscriptReads !== expected) return false;
+    this.isolatedTranscriptReads = undefined;
+    return true;
+  }
+
   searchConversationMessages(
     options: Parameters<typeof queryTranscriptMessages>[1],
   ) {

@@ -1064,6 +1064,10 @@ export class OrchestrationService {
   private isolatedTranscriptSearch?: ReturnType<
     SessionTranscriptReads['createIsolatedSearch']
   >;
+  private isolatedTranscriptSource?: ReturnType<
+    EventStore['createIsolatedTranscriptReads']
+  >;
+  private isolatedTranscriptRetired = false;
   private transcriptSearchStopped = false;
   /** Event paging & stream replay (epic archive#4024, archive#4155). */
   private readonly sessionEventReads: SessionEventReads;
@@ -2382,6 +2386,7 @@ export class OrchestrationService {
 
   async shutdown(): Promise<void> {
     this.transcriptSearchStopped = true;
+    this.sessionAuthz.stopTranscriptReads();
     const transcriptRetirement = this.isolatedTranscriptSearch?.close();
     // Revoke private native-output scopes before any provider cleanup. A
     // stop/retirement rejection must not leave a callback capable of
@@ -3304,7 +3309,7 @@ export class OrchestrationService {
 
   /**
    * Compose once after runtime initialization, never as request-time bootstrap.
-   * No HTTP/UI caller is wired. Branded authority remains with this same
+   * Runtime search routes use this owner. Branded authority remains with this same
    * SessionAuthorization instance; EventStore owns worker shutdown custody.
    */
   createIsolatedTranscriptSearch() {
@@ -3316,12 +3321,34 @@ export class OrchestrationService {
       throw new Error(
         'Initialize an EventStore-backed runtime before composing transcript reads',
       );
-    this.isolatedTranscriptSearch ??= this.transcriptReads.createIsolatedSearch(
-      this.transcriptReadEventStore.createIsolatedTranscriptReads(),
-      this.sessionAuthz,
-      () => !this.transcriptSearchStopped && this.sessionAttachmentSettled,
-    );
+    if (!this.isolatedTranscriptSearch) {
+      this.isolatedTranscriptSource =
+        this.transcriptReadEventStore.createIsolatedTranscriptReads();
+      this.isolatedTranscriptSearch = this.transcriptReads.createIsolatedSearch(
+        this.isolatedTranscriptSource,
+        this.sessionAuthz,
+        () => !this.transcriptSearchStopped && this.sessionAttachmentSettled,
+      );
+    }
     return this.isolatedTranscriptSearch;
+  }
+
+  /** Narrow failed-initialization cleanup; does not stop providers or discard their work. */
+  async retireIsolatedTranscriptSearchAfterFailedInitialization(): Promise<{
+    state: 'closed' | 'winding-down' | 'incomplete';
+  }> {
+    this.transcriptSearchStopped = true;
+    this.sessionAuthz.stopTranscriptReads();
+    if (this.isolatedTranscriptRetired) return { state: 'closed' };
+    if (!this.isolatedTranscriptSearch || !this.isolatedTranscriptSource)
+      return { state: 'closed' };
+    const result = await this.isolatedTranscriptSearch.close();
+    if (result.state !== 'closed') return result;
+    this.isolatedTranscriptRetired =
+      this.transcriptReadEventStore?.releaseClosedIsolatedTranscriptReads(
+        this.isolatedTranscriptSource,
+      ) === true;
+    return { state: this.isolatedTranscriptRetired ? 'closed' : 'incomplete' };
   }
 
   /**

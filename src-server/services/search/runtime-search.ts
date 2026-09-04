@@ -25,10 +25,18 @@ export interface SearchReadContext {
 export function createRuntimeSearch(input: {
   stationId: string;
   tasks: Pick<TaskGraphService, 'createPersonalSearchReader'>;
-  transcripts: Pick<OrchestrationService, 'createIsolatedTranscriptSearch'>;
+  transcripts: Pick<
+    OrchestrationService,
+    | 'createIsolatedTranscriptSearch'
+    | 'retireIsolatedTranscriptSearchAfterFailedInitialization'
+  >;
 }) {
   const tasks = input.tasks.createPersonalSearchReader(input.stationId);
   const transcripts = input.transcripts.createIsolatedTranscriptSearch();
+  const retireTranscripts =
+    input.transcripts.retireIsolatedTranscriptSearchAfterFailedInitialization.bind(
+      input.transcripts,
+    );
   let closed = false;
   const active = new Set<AbortController>();
   const current = (context: SearchReadContext) => {
@@ -78,6 +86,31 @@ export function createRuntimeSearch(input: {
     close() {
       this.stop();
       return tasks.close();
+    },
+    async retireAfterFailedInitialization(): Promise<{
+      state: 'closed' | 'winding-down' | 'incomplete';
+    }> {
+      this.stop();
+      const results = await Promise.allSettled([
+        tasks.close(),
+        retireTranscripts(),
+      ]);
+      if (
+        results.every(
+          (result) =>
+            result.status === 'fulfilled' && result.value.state === 'closed',
+        )
+      )
+        return { state: 'closed' };
+      return {
+        state: results.some(
+          (result) =>
+            result.status === 'fulfilled' &&
+            result.value.state === 'winding-down',
+        )
+          ? 'winding-down'
+          : 'incomplete',
+      };
     },
     search(
       request: UnifiedSearchRequest,

@@ -8,6 +8,7 @@ export type TranscriptReadRequest =
       id: number;
       query: string;
       ownerUserId: string;
+      legacyOwnerUserId?: string;
       tenantId?: string;
       projectId?: string;
       limit: number;
@@ -18,6 +19,7 @@ export type TranscriptReadRequest =
       threadId: string;
       matchedEventId: string;
       ownerUserId: string;
+      legacyOwnerUserId?: string;
       tenantId?: string;
     }
   | {
@@ -25,6 +27,7 @@ export type TranscriptReadRequest =
       id: number;
       threadId: string;
       ownerUserId: string;
+      legacyOwnerUserId?: string;
       tenantId?: string;
     }
   | { type: 'session-owner'; id: number; threadId: string };
@@ -82,7 +85,14 @@ export function transcriptMessageRequest(
 ): TranscriptReadRequest | null {
   const fields = exact(
     input,
-    ['query', 'ownerUserId', 'tenantId', 'projectId', 'limit'],
+    [
+      'query',
+      'ownerUserId',
+      'legacyOwnerUserId',
+      'tenantId',
+      'projectId',
+      'limit',
+    ],
     ['query', 'ownerUserId', 'limit'],
   );
   return fields
@@ -96,7 +106,13 @@ export function transcriptMessageOpenRequest(
 ): TranscriptReadRequest | null {
   const fields = exact(
     input,
-    ['threadId', 'matchedEventId', 'ownerUserId', 'tenantId'],
+    [
+      'threadId',
+      'matchedEventId',
+      'ownerUserId',
+      'legacyOwnerUserId',
+      'tenantId',
+    ],
     ['threadId', 'matchedEventId', 'ownerUserId'],
   );
   return fields
@@ -109,7 +125,7 @@ export function transcriptSessionOpenRequest(
 ): TranscriptReadRequest | null {
   const fields = exact(
     input,
-    ['threadId', 'ownerUserId', 'tenantId'],
+    ['threadId', 'ownerUserId', 'legacyOwnerUserId', 'tenantId'],
     ['threadId', 'ownerUserId'],
   );
   return fields
@@ -127,6 +143,7 @@ export function parseTranscriptReadRequest(
       'id',
       'query',
       'ownerUserId',
+      'legacyOwnerUserId',
       'tenantId',
       'projectId',
       'limit',
@@ -139,6 +156,12 @@ export function parseTranscriptReadRequest(
     !request ||
     !Number.isSafeInteger(request.id) ||
     (request.id as number) < 1
+  )
+    return null;
+  if (
+    request.legacyOwnerUserId !== undefined &&
+    (!boundedTaskText(request.legacyOwnerUserId, 256) ||
+      request.tenantId !== undefined)
   )
     return null;
   if (request.type === 'session-owner') {

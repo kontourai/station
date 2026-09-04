@@ -104,6 +104,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Actual authenticated search routes include Task/transcript worker owners.
+  'src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts',
   // Hono routes composed with the real Task and transcript worker owners.
   'src-server/services/search/__tests__/runtime-search.test.ts',
   'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
