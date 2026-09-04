@@ -150,7 +150,7 @@
       },
       "macos": {
         "state": "configured",
-        "buildJob": "nightly-native-cohort.yml#stage-macos",
+        "buildJob": "nightly-native-stage.yml#stage-macos",
         "testLane": "nightly.yml#test-gate plus cohort admission and notarized artifact checks",
         "publicationTarget": "rolling GitHub prerelease nightly-desktop",
         "updateAuthority": "signed Tauri Nightly updater feed",
@@ -187,7 +187,7 @@
       },
       "android": {
         "state": "configured",
-        "buildJob": "nightly-native-cohort.yml#stage-android",
+        "buildJob": "nightly-native-stage.yml#stage-android",
         "testLane": "nightly.yml#test-gate plus cohort admission and signed AAB identity checks",
         "publicationTarget": "Google Play Internal io.kontourai.station.nightly",
         "updateAuthority": "Google Play Internal testing track",
@@ -198,7 +198,7 @@
       },
       "ios": {
         "state": "configured",
-        "buildJob": "nightly-native-cohort.yml#deliver-ios",
+        "buildJob": "nightly-native-stage.yml#stage-ios",
         "iconSource": "src-desktop/icons/nightly/icon.png",
         "testLane": "nightly exact-SHA gate plus signed IPA/profile/package checks",
         "publicationTarget": "TestFlight for io.kontourai.station.nightly",
