@@ -1990,6 +1990,127 @@ describe('plugin composition profiles', () => {
     ).resolves.toMatchObject({ kind: 'activated' });
   });
 
+  test('capacity refusal transiently projects every selected and shadowed contribution', async () => {
+    const authorize = vi.fn(async () => 'granted' as const);
+    const module = moduleWith(
+      [factory('chosen', []), factory('other', []), factory('independent', [])],
+      { maxRetainedScopes: 1, authorize },
+    );
+    await module.apply(
+      profile(projectA, [contribution('chosen', 'workspace.cache')]),
+    );
+    const requested = profile(
+      projectB,
+      [
+        contribution('chosen', 'workspace.cache'),
+        contribution('other', 'workspace.cache'),
+        contribution('independent', 'workspace.index'),
+      ],
+      { 'workspace.cache': 'chosen' },
+    );
+
+    const refused = await module.apply(requested);
+
+    expect(refused.kind).toBe('refused');
+    expect(
+      refused.inspection.pending.map((item) => [item.instanceId, item.reason]),
+    ).toEqual([
+      ['chosen', 'scope-capacity'],
+      ['independent', 'scope-capacity'],
+    ]);
+    expect(refused.inspection.shadowed.map((item) => item.instanceId)).toEqual([
+      'other',
+    ]);
+    expect(authorize).toHaveBeenCalledTimes(1);
+    expect(module.inspect(projectB)).toMatchObject({
+      active: [],
+      pending: [],
+      failed: [],
+      shadowed: [],
+    });
+    await module.retire(projectA);
+    await expect(module.apply(requested)).resolves.toMatchObject({
+      kind: 'activated',
+    });
+  });
+
+  test.each(['rejecting', 'never-settling'] as const)(
+    'retirement stays pending while a %s disposer retains its fence',
+    async (behavior) => {
+      const dispose = vi.fn(() =>
+        behavior === 'rejecting'
+          ? Promise.reject(new Error('disposal failed'))
+          : new Promise<void>(() => {}),
+      );
+      const module = moduleWith(
+        [['cache', { stage: async () => ({ dispose }) }]],
+        {
+          disposerTimeoutMs: 5,
+          maxRetainedScopes: 1,
+        },
+      );
+      await module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      );
+      const reason =
+        behavior === 'rejecting' ? 'disposer-failed' : 'disposer-timeout';
+      await expect(module.retire(projectA)).resolves.toMatchObject({
+        kind: 'pending',
+        liveFences: [expect.objectContaining({ reason })],
+        inspection: {
+          active: [],
+          failed: [expect.objectContaining({ reason })],
+        },
+      });
+      await expect(module.retire(projectA)).resolves.toMatchObject({
+        kind: 'pending',
+      });
+      expect(dispose).toHaveBeenCalledTimes(1);
+      await expect(
+        module.apply(
+          profile(projectB, [contribution('cache', 'workspace.cache')]),
+        ),
+      ).resolves.toMatchObject({ kind: 'refused' });
+    },
+  );
+
+  test('retirement reports completion only after its late disposer settles', async () => {
+    let finish!: () => void;
+    const module = moduleWith(
+      [
+        [
+          'cache',
+          {
+            stage: async () => ({
+              dispose: () =>
+                new Promise<void>((resolve) => {
+                  finish = resolve;
+                }),
+            }),
+          },
+        ],
+      ],
+      { disposerTimeoutMs: 5, maxRetainedScopes: 1 },
+    );
+    await module.apply(
+      profile(projectA, [contribution('cache', 'workspace.cache')]),
+    );
+    await expect(module.retire(projectA)).resolves.toMatchObject({
+      kind: 'pending',
+    });
+    finish();
+    await vi.waitFor(() => expect(module.inspect(projectA).failed).toEqual([]));
+    await expect(module.retire(projectA)).resolves.toMatchObject({
+      kind: 'retired',
+      liveFences: [],
+    });
+    await expect(
+      module.apply(
+        profile(projectB, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({ kind: 'activated' });
+  });
+
   test('unknown retirement does not consume retained-scope capacity', async () => {
     const module = moduleWith([factory('cache', [])], {
       maxRetainedScopes: 1,

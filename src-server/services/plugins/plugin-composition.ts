@@ -84,6 +84,7 @@ export type PluginCompositionInspectionStatus =
 
 export type PluginCompositionInspectionReason =
   | 'staging'
+  | 'scope-capacity'
   | 'missing-dependency'
   | 'incompatible-version'
   | 'cross-scope-dependency'
@@ -738,6 +739,7 @@ export interface PluginCompositionModule {
     profile: PluginCompositionProfile,
   ): Promise<PluginCompositionApplyResult>;
   inspect(scope: PluginCompositionScope): PluginCompositionInspection;
+  /** Pending retains lifecycle/disposal obligations; retired has no cleanup debt. */
   retire(scope: PluginCompositionScope): Promise<{
     readonly kind: 'retired' | 'refused' | 'pending';
     readonly liveFences: readonly PluginCompositionInspectionEntry[];
@@ -1063,10 +1065,12 @@ export function createPluginCompositionModule(options: {
       () => undefined,
     );
     applyChains.set(key, settled);
-    void settled.then(() => {
+    // Complete this operation's admission bookkeeping before its caller can
+    // act on a retirement receipt and immediately reuse the freed capacity.
+    // A queued successor owns the map entry and must not be removed here.
+    return operation.finally(() => {
       if (applyChains.get(key) === settled) applyChains.delete(key);
     });
-    return operation;
   };
 
   const nextActivationSequence = () => {
@@ -1928,9 +1932,39 @@ export function createPluginCompositionModule(options: {
         !retainedScopeKeys().has(key) &&
         retainedScopeKeys().size >= maxRetainedScopes
       ) {
+        // Refusal is observable without admitting or retaining this scope.
+        // Planning is bounded and inert: it preserves selected/shadowed rows
+        // and any validation failures without authorizing or staging anything.
+        const requested = plan(snapshot);
+        const entries =
+          requested.kind === 'ready'
+            ? [
+                ...requested.plan.selected.map((candidate) =>
+                  entry(candidate, 'pending', 'scope-capacity'),
+                ),
+                ...requested.plan.shadowed,
+              ]
+            : requested.entries.map((candidate) =>
+                candidate.status === 'pending'
+                  ? { ...candidate, reason: 'scope-capacity' as const }
+                  : candidate,
+              );
         return Promise.resolve({
           kind: 'refused' as const,
-          inspection: inspect(snapshot.scope),
+          inspection: cloneInspection({
+            scope: snapshot.scope,
+            generation: 0,
+            active: [],
+            pending: entries.filter(
+              (candidate) => candidate.status === 'pending',
+            ),
+            failed: entries.filter(
+              (candidate) => candidate.status === 'failed',
+            ),
+            shadowed: entries.filter(
+              (candidate) => candidate.status === 'shadowed',
+            ),
+          }),
         });
       }
       return enqueueScope(key, () => applyNow(snapshot));
@@ -1975,9 +2009,10 @@ export function createPluginCompositionModule(options: {
         const liveFences = fenceEntries(key);
         const pending = pendingLifecycle.get(key) ?? [];
         return {
-          kind: pendingLifecycle.has(key)
-            ? ('pending' as const)
-            : ('retired' as const),
+          kind:
+            pendingLifecycle.has(key) || liveFences.length > 0
+              ? ('pending' as const)
+              : ('retired' as const),
           liveFences:
             liveFences.length > 0 || pending.length > 0
               ? [...liveFences, ...pending]
