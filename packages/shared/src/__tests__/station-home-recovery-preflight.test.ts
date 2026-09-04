@@ -97,6 +97,65 @@ afterEach(() => {
 });
 
 describe('read-only home recovery preflight', () => {
+  it('represents a clean selected-field registry observation without granting apply authority', () => {
+    const home = fixture();
+    registry(home, [{ id: 'codex', runtimeConnectionId: 'codex' }]);
+    const assertNoEffects = forbidEffects();
+    expect(inspectStationHomeRecovery({ homeDir: home })).toMatchObject({
+      inspection: 'observed',
+      codes: [],
+      applyAllowed: false,
+      migration: 'not-implemented',
+    });
+    assertNoEffects();
+  });
+
+  it.each(['registry', 'connection', 'source', 'default'])(
+    'reports actual uninspected %s fields without returning their values',
+    (location) => {
+      const home = fixture();
+      const connection = { id: 'codex', source: { kind: 'native' } };
+      const agent = {
+        id: 'codex',
+        kind: 'engine-connection',
+        engineConnectionId: 'codex',
+      };
+      const data = {
+        version: 1,
+        revision: 0,
+        engineConnections: [connection],
+        defaultAgents: [{ id: 'station', kind: 'station' }, agent],
+      };
+      const target =
+        location === 'registry'
+          ? data
+          : location === 'connection'
+            ? connection
+            : location === 'source'
+              ? connection.source
+              : agent;
+      Object.assign(target, { uninspected: 'synthetic-private' });
+      put(home, 'config/agent-registry.json', data);
+      const plan = inspectStationHomeRecovery({ homeDir: home });
+      expect(plan.codes).toContain('additional-fields-not-inspected');
+      expect(plan.inspection).toBe('partial');
+      expect(JSON.stringify(plan)).not.toContain('synthetic-private');
+    },
+  );
+
+  it('reports a missing default Agent for an otherwise valid Engine connection', () => {
+    const home = fixture();
+    put(home, 'config/agent-registry.json', {
+      version: 1,
+      revision: 0,
+      engineConnections: [{ id: 'codex' }],
+      defaultAgents: [{ id: 'station', kind: 'station' }],
+    });
+    const plan = inspectStationHomeRecovery({ homeDir: home });
+    expect(plan.codes).toContain('identity-conflict');
+    expect(plan.inspection).toBe('partial');
+  });
+
   it('observes v1 without bootstrapping a missing registry or relaxing startup', () => {
     const home = fixture();
     const assertNoEffects = forbidEffects();

@@ -368,6 +368,13 @@ export function inspectStationHomeRecovery(
         add('additional-fields-not-inspected');
       } else if (store === 'registry') {
         sawRegistry = true;
+        const noteUninspectedFields = (
+          object: Record<string, unknown>,
+          inspected: readonly string[],
+        ) => {
+          if (Object.keys(object).some((key) => !inspected.includes(key)))
+            add('additional-fields-not-inspected');
+        };
         shape(
           (data.version === 1 || data.version === 2) &&
             Number.isSafeInteger(data.revision) &&
@@ -407,9 +414,19 @@ export function inspectStationHomeRecovery(
                   typeof source.plugin === 'string' &&
                   source.plugin.length > 0),
             );
+            noteUninspectedFields(
+              source,
+              source.kind === 'plugin-acp' ? ['kind', 'plugin'] : ['kind'],
+            );
           }
+          noteUninspectedFields(connection, [
+            'id',
+            'runtimeConnectionId',
+            'source',
+          ]);
         }
         const defaults = new Set<string>();
+        const defaultConnections = new Set<string>();
         let stationDefaults = 0;
         for (const item of data.defaultAgents as unknown[]) {
           shape(record(item));
@@ -420,16 +437,23 @@ export function inspectStationHomeRecovery(
           if (agent.kind === 'station') {
             shape(agent.id === 'station');
             stationDefaults++;
+            noteUninspectedFields(agent, ['id', 'kind']);
           } else {
             shape(
               agent.kind === 'engine-connection' &&
                 clean(agent.engineConnectionId),
             );
             if (agent.id !== agent.engineConnectionId) add('identity-conflict');
+            if (defaultConnections.has(agent.engineConnectionId as string))
+              add('identity-conflict');
+            defaultConnections.add(agent.engineConnectionId as string);
             refs.push(agent.engineConnectionId as string);
+            noteUninspectedFields(agent, ['id', 'kind', 'engineConnectionId']);
           }
         }
         if (stationDefaults !== 1) add('identity-conflict');
+        for (const id of connections)
+          if (!defaultConnections.has(id)) add('identity-conflict');
         if (data.declinedEngineConnections !== undefined) {
           shape(
             Array.isArray(data.declinedEngineConnections) &&
@@ -438,7 +462,13 @@ export function inspectStationHomeRecovery(
           for (const id of data.declinedEngineConnections as string[])
             if (connections.has(id)) add('identity-conflict');
         }
-        add('additional-fields-not-inspected');
+        noteUninspectedFields(data, [
+          'version',
+          'revision',
+          'engineConnections',
+          'defaultAgents',
+          'declinedEngineConnections',
+        ]);
       } else if (store === 'agents') {
         if (data.execution !== undefined) {
           shape(record(data.execution));

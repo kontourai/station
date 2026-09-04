@@ -86,6 +86,32 @@ it('explains unopened payloads, non-atomic observation, and absent apply authori
   expect(text).not.toContain(home);
 });
 
+it('returns exit zero for a clean selected-field observation without authorizing recovery', async () => {
+  const home = homeFixture();
+  fs.mkdirSync(join(home, 'config'));
+  fs.writeFileSync(
+    join(home, 'config/agent-registry.json'),
+    JSON.stringify({
+      version: 1,
+      revision: 0,
+      engineConnections: [{ id: 'codex' }],
+      defaultAgents: [
+        { id: 'station', kind: 'station' },
+        { id: 'codex', kind: 'engine-connection', engineConnectionId: 'codex' },
+      ],
+    }),
+  );
+  const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+  process.exitCode = undefined;
+  await runCli(['home', 'recovery-plan', `--home=${home}`, '--json']);
+  expect(process.exitCode ?? 0).toBe(0);
+  expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({
+    inspection: 'observed',
+    applyAllowed: false,
+    migration: 'not-implemented',
+  });
+});
+
 it('does not configure remote HTTP requests for a local observation', async () => {
   const home = homeFixture();
   vi.stubEnv('STATION_REQUEST_TIMEOUT_MS', 'synthetic-private-invalid-timeout');
