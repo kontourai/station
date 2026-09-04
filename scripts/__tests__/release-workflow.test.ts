@@ -274,8 +274,12 @@ describe('frozen stable client-build provenance', () => {
     );
     expect(initialize.run).toContain('station_iOS/Info.plist');
     expect(initialize.run).toContain('gen/apple/station_iOS/Info.plist');
-    expect(initialize.run).toContain(
-      'ensure-ios-privacy-manifest-resource.mjs gen/apple/project.yml',
+    // The signing template is derived from this spec, and Tauri re-renders
+    // that template on the second init before the preserved manifest exists
+    // again, so the resource must NOT be registered here (Nightly
+    // 33904147780: xcodegen failed on the missing path).
+    expect(initialize.run).not.toContain(
+      'ensure-ios-privacy-manifest-resource.mjs',
     );
     const regenerate = namedStep(
       delivery,
@@ -294,9 +298,10 @@ describe('frozen stable client-build provenance', () => {
     );
     expect(run).toContain('station_iOS/Info.plist');
     expect(run).toContain('gen/apple/station_iOS/Info.plist');
-    expect(run).toContain(
-      'ensure-ios-privacy-manifest-resource.mjs gen/apple/project.yml',
-    );
+    const ensure =
+      'node ../scripts/ensure-ios-privacy-manifest-resource.mjs gen/apple/project.yml';
+    const regen =
+      'xcodegen generate --spec gen/apple/project.yml --project gen/apple';
     // The regeneration deletes gen/apple, so the gitignored provenance
     // resource must be staged again afterwards or IPA verification fails.
     const restage =
@@ -306,6 +311,24 @@ describe('frozen stable client-build provenance', () => {
       run.indexOf('rm -rf gen/apple'),
     );
     expect(run).toContain('test -s gen/apple/assets/station-build.json');
+    // The manifest is registered only after the preserved file is restored,
+    // and the Xcode project is regenerated from the amended spec only after
+    // every directory the spec names exists (init ran xcodegen without the
+    // resource, and `tauri ios build` reuses the generated project).
+    const secondInit = run.indexOf('npx tauri ios init');
+    const restore = run.indexOf('ditto "$preserved/$item" "gen/apple/$item"');
+    expect(restore).toBeGreaterThan(secondInit);
+    expect(run.indexOf(ensure)).toBeGreaterThan(restore);
+    expect(run.indexOf(regen)).toBeGreaterThan(run.indexOf(restage));
+    expect(run.indexOf(regen)).toBeGreaterThan(run.indexOf(ensure));
+    expect(run).toContain(
+      "grep -Fq 'PrivacyInfo.xcprivacy' gen/apple/station.xcodeproj/project.pbxproj",
+    );
+    expect(
+      run.indexOf(
+        "grep -Fq 'PrivacyInfo.xcprivacy' gen/apple/station.xcodeproj",
+      ),
+    ).toBeGreaterThan(run.indexOf(regen));
   });
 
   it('records the stable desktop timestamp as a verified common manifest, not an architecture-specific proxy', () => {
