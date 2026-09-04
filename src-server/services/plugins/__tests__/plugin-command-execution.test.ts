@@ -148,8 +148,14 @@ describe('plugin command execution authority', () => {
         },
         publisher: {
           append(event) {
-            events.push(event);
-            return { kind: 'appended', journalSequence: events.length, event };
+            const validated = validateOperationalEventEnvelope(event);
+            if (!validated.ok) throw new Error('Invalid admission event');
+            events.push(validated.event);
+            return {
+              kind: 'appended',
+              journalSequence: events.length,
+              event: validated.event,
+            };
           },
         },
       });

@@ -246,7 +246,14 @@ export function CommandPalette() {
   const { data: projects = [] } = useProjectsQuery();
   const { data: skills = [] } = useSkillsQuery();
   const pluginsQuery = usePluginsQuery();
-  const plugins = pluginsQuery.isError ? [] : (pluginsQuery.data ?? []);
+  // Rejected inventory rows carry no executable plugin identity.
+  const plugins = useMemo(
+    () =>
+      pluginsQuery.isError
+        ? []
+        : (pluginsQuery.data ?? []).filter((plugin) => !('status' in plugin)),
+    [pluginsQuery.isError, pluginsQuery.data],
+  );
   const pluginsRef = useRef(plugins);
   pluginsRef.current = plugins;
   // SHELL-19: the palette used to advertise "Switch to session 1" … "Switch to
