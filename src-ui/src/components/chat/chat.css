@@ -99,7 +99,8 @@
   border: 0;
 }
 
-.app-toolbar__regions > legend {
+.app-toolbar__regions > legend,
+.app-toolbar__overflow-regions > legend {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -253,6 +254,23 @@
 }
 
 .app-toolbar__overflow-menu button + button {
+  border-top: 1px solid var(--border-primary);
+}
+
+/* The coarse-device region rows (#917) sit in their own fieldset, the ancestor
+   `menuitemcheckbox` requires. `min-inline-size` because a fieldset's default
+   is `min-content`, which would let a long surface title widen the menu. */
+.app-toolbar__overflow-regions {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+/* The fieldset breaks the `button + button` adjacency above, so the section
+   draws its own leading separator. It is only ever rendered after the menu's
+   plain rows, never first. */
+.app-toolbar__overflow-regions > button:first-of-type {
   border-top: 1px solid var(--border-primary);
 }
 

@@ -4,23 +4,17 @@ import {
   useRegionModel,
   useRegionModelOptional,
 } from '../../contexts/RegionModelContext';
-import {
-  availablePlacements,
-  useDockSlotDevice,
-} from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import {
   DOCK_REGION_IDS,
-  firstFreeDockRegion,
-  foldedDockRegion,
-  occupiedDockRegion,
   type RegionId,
   type RegisteredSurface,
   regionLabel,
 } from '../../regions/region-model';
 import type { DockMode } from '../../types';
 import './HeaderMenu.css';
+import { useRegionSurfaceMenu } from './useRegionSurfaceMenu';
 
 const DOCK_WHEN = { not: 'composerFocused' } as const;
 
@@ -144,67 +138,24 @@ function ToolbarMenu({
 function ConnectedRegionToolbarControls() {
   const {
     regions,
-    lastShownRegion,
     surfaces,
-    setRegion,
     placeSurface: placeSurfaceInModel,
   } = useRegionModel();
-  const available = availablePlacements(useDockSlotDevice());
-  const bottomOnly = available.length === 1;
-  const surfaceList = [...surfaces.values()];
+  const {
+    available,
+    bottomOnly,
+    commandsInOverflowMenu,
+    surfaceList,
+    toggleSurface,
+    menuItems,
+  } = useRegionSurfaceMenu();
   const availableRegions = DOCK_REGION_IDS.filter((id) =>
     available.includes(id),
   );
   const [menuRegion, setMenuRegion] = useState<DockMode | null>(null);
   const [menuAnchorRight, setMenuAnchorRight] = useState(8);
-  const foldedRegion = foldedDockRegion(regions, lastShownRegion);
   const menuOccupant = menuRegion && regions[menuRegion].occupant;
   const menuLabel = menuRegion && regionLabel(menuRegion);
-
-  const showSurfaceAlone = useCallback(
-    (surfaceId: string, regionId: DockMode) => {
-      placeSurfaceInModel(surfaceId, regionId);
-      for (const id of DOCK_REGION_IDS) {
-        if (id !== regionId) setRegion(id, { visible: false });
-      }
-      setRegion(regionId, { visible: true });
-    },
-    [placeSurfaceInModel, setRegion],
-  );
-
-  const toggleSurface = useCallback(
-    (surface: RegisteredSurface) => {
-      const occupied = occupiedDockRegion(regions, surface.id);
-      if (!occupied) {
-        if (bottomOnly) showSurfaceAlone(surface.id, surface.defaultRegion);
-        else {
-          const destination = firstFreeDockRegion(
-            regions,
-            surface.defaultRegion,
-          );
-          if (destination) placeSurfaceInModel(surface.id, destination);
-        }
-        return;
-      }
-      if (bottomOnly) {
-        if (occupied === foldedRegion && regions[occupied].visible) {
-          setRegion(occupied, { visible: false });
-        } else {
-          showSurfaceAlone(surface.id, occupied);
-        }
-        return;
-      }
-      setRegion(occupied, { visible: !regions[occupied].visible });
-    },
-    [
-      bottomOnly,
-      foldedRegion,
-      placeSurfaceInModel,
-      regions,
-      setRegion,
-      showSurfaceAlone,
-    ],
-  );
 
   const openMenu = useCallback((id: DockMode, trigger: HTMLButtonElement) => {
     setMenuAnchorRight(
@@ -222,16 +173,28 @@ function ConnectedRegionToolbarControls() {
     [availableRegions, placeSurfaceInModel, surfaces],
   );
 
+  const shortcuts = surfaceList.map((surface) => (
+    <RegionShortcut
+      key={surface.id}
+      surface={surface}
+      onToggle={() => toggleSurface(surface)}
+    />
+  ));
+
+  // #917: where the `⋯` overflow menu exists, it takes the region commands and
+  // this row renders NO control at all. The 44px button plus its gap is
+  // exactly what pushed the Settings gear off a 402px viewport once the
+  // fieldset stopped packing below its contents, and a region button in that
+  // row is what the connection button was colliding with in the first place.
+  // An empty fieldset is not good enough — it still costs its own box and its
+  // legend — so nothing is rendered here but the chords, which are `null`
+  // elements. `commandsInOverflowMenu`, not `bottomOnly`: see the hook.
+  if (commandsInOverflowMenu) return <>{shortcuts}</>;
+
   return (
     <fieldset className="app-toolbar__regions">
       <legend>Regions</legend>
-      {surfaceList.map((surface) => (
-        <RegionShortcut
-          key={surface.id}
-          surface={surface}
-          onToggle={() => toggleSurface(surface)}
-        />
-      ))}
+      {shortcuts}
       {bottomOnly ? (
         <button
           type="button"
@@ -296,20 +259,7 @@ function ConnectedRegionToolbarControls() {
           dismissLabel="Close regions menu"
           anchorRight={menuAnchorRight}
           onClose={() => setMenuRegion(null)}
-          items={surfaceList.map((surface) => {
-            const occupied = occupiedDockRegion(regions, surface.id);
-            const pressed = Boolean(
-              occupied &&
-                occupied === foldedRegion &&
-                regions[occupied].visible,
-            );
-            return {
-              key: surface.id,
-              label: `${pressed ? 'Hide' : 'Show'} ${surface.title}`,
-              checked: pressed,
-              onSelect: () => toggleSurface(surface),
-            };
-          })}
+          items={menuItems}
         />
       ) : menuRegion ? (
         <ToolbarMenu

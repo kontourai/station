@@ -18,6 +18,9 @@ const harness = vi.hoisted(() => ({
   setRegion: vi.fn(),
   placeSurface: vi.fn(),
   bottomOnly: false,
+  // The `⋯` overflow button only exists under the mobile media query, so a
+  // coarse device is not automatically one whose commands can move there.
+  isMobile: false,
   shortcuts: new Map<
     string,
     {
@@ -66,7 +69,7 @@ vi.mock('../../../contexts/NavigationContext', () => ({
 }));
 
 vi.mock('../../../hooks/useIsMobile', () => ({
-  useIsMobile: () => false,
+  useIsMobile: () => harness.isMobile,
   useDockSlotDevice: () => ({
     viewportWidth: harness.bottomOnly ? 390 : 1024,
     coarsePointer: harness.bottomOnly,
@@ -111,6 +114,7 @@ describe('RegionToolbarControls', () => {
     harness.setRegion.mockReset();
     harness.placeSurface.mockReset();
     harness.bottomOnly = false;
+    harness.isMobile = false;
     harness.shortcuts.clear();
   });
 
@@ -247,8 +251,8 @@ describe('RegionToolbarControls', () => {
     expect(regionsRule).not.toMatch(/min-width:\s*0/);
   });
 
-  test('a menu still open when the window narrows into the coarse layout is reported as expanded', () => {
-    const { rerender } = render(<RegionToolbarControls />);
+  test('narrowing into the phone layout takes the whole control away and strands no open menu', () => {
+    const { container, rerender } = render(<RegionToolbarControls />);
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Choose a surface for Left region' }),
@@ -256,20 +260,62 @@ describe('RegionToolbarControls', () => {
     expect(screen.queryByRole('menu')).not.toBeNull();
 
     // `useDockSlotDevice` re-reads on resize, so the coarse branch can take
-    // over with a menu already open and portalled.
+    // over with a menu already open and portalled. That portal lives on
+    // `document.body`, so an unmount that forgot it would leave a menu
+    // floating over the app with nothing left to dismiss it.
     harness.bottomOnly = true;
+    harness.isMobile = true;
     rerender(<RegionToolbarControls />);
 
-    expect(screen.queryByRole('menu')).not.toBeNull();
-    expect(
-      screen
-        .getByRole('button', { name: 'Regions' })
-        .getAttribute('aria-expanded'),
-    ).toBe('true');
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.body.querySelectorAll('button')).toHaveLength(0);
+    expect(container.querySelector('fieldset')).toBeNull();
   });
 
-  test('a bottom-only device offers all surfaces through one Regions menu and makes either surface the sole visible region', () => {
+  test('a phone renders no region control in the toolbar row at all (#917)', () => {
     harness.bottomOnly = true;
+    harness.isMobile = true;
+    const { container } = render(<RegionToolbarControls />);
+
+    // The whole point: the row gives its 44px back. Not an empty fieldset —
+    // that still costs its own box and its legend — and not a hidden button.
+    // The commands live in the `⋯` overflow menu instead.
+    expect(container.querySelector('fieldset')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Regions' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Regions' })).toBeNull();
+    // Including anything portalled out of the component.
+    expect(document.body.querySelectorAll('button')).toHaveLength(0);
+  });
+
+  test('the chords still fold surfaces on a phone that has no toolbar control', () => {
+    harness.bottomOnly = true;
+    harness.isMobile = true;
+    render(<RegionToolbarControls />);
+
+    // ⌘D: Chat occupies the visible folded region, so its chord hides it.
+    harness.shortcuts.get('dock.toggle')?.handler();
+    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
+      visible: false,
+    });
+
+    harness.setRegion.mockClear();
+    // ⌘⇧A: Activity is unplaced, and the coarse rule is to show it ALONE
+    // rather than open a second visible region beside Chat.
+    harness.shortcuts.get('activity.toggle')?.handler();
+    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
+    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
+      visible: false,
+    });
+    expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: true });
+  });
+
+  test('a coarse device too wide to be mobile keeps the folded Regions menu in the toolbar', () => {
+    // A tablet in landscape is bottom-only (`availablePlacements` says so for
+    // ANY coarse pointer) but does NOT match the mobile media query, so
+    // chat.css never displays the `⋯` button. Moving its region commands there
+    // would leave it with no route to them at all, so the toolbar keeps them.
+    harness.bottomOnly = true;
+    harness.isMobile = false;
     const { rerender } = render(<RegionToolbarControls />);
 
     const group = screen.getByRole('group', { name: 'Regions' });
@@ -304,12 +350,6 @@ describe('RegionToolbarControls', () => {
     harness.regions.bottom.visible = false;
     rerender(<RegionToolbarControls />);
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
-    expect(
-      screen.getByRole('menuitemcheckbox', { name: 'Show Chat' }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole('menuitemcheckbox', { name: 'Show Activity' }),
-    ).toBeTruthy();
     fireEvent.click(
       screen.getByRole('menuitemcheckbox', { name: 'Show Activity' }),
     );
@@ -318,13 +358,6 @@ describe('RegionToolbarControls', () => {
       visible: false,
     });
     expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: true });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
-    fireEvent.click(
-      screen.getByRole('menuitemcheckbox', { name: 'Show Chat' }),
-    );
-    expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: false });
-    expect(harness.setRegion).toHaveBeenCalledWith('bottom', { visible: true });
 
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
     const backdrop = screen.getByRole('button', {

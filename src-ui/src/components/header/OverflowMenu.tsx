@@ -1,13 +1,54 @@
 import { ConnectionStatusDot } from '@kontourai/station-connect';
 import type { ComponentProps } from 'react';
 import { createPortal } from 'react-dom';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { nativePlatformPromise } from '../../platform/native';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import './HeaderMenu.css';
+import { useRegionSurfaceMenu } from './useRegionSurfaceMenu';
 
 type ConnectionStatus = ComponentProps<typeof ConnectionStatusDot>['status'];
+
+/**
+ * #917: where the `⋯` button is rendered, the region commands live here rather
+ * than in the toolbar row, whose width budget could not hold a 44px region
+ * control and still keep the Settings gear on a 402px viewport. The hook, not
+ * this component, decides which devices those are.
+ *
+ * Split into its own component so the hook that reads the region model is only
+ * called where a `RegionModelProvider` is known to be above it — the overflow
+ * menu itself is rendered in tests and stories without one.
+ *
+ * A `fieldset` with a clipped `legend`, the same grouping the toolbar's own
+ * region controls use: its implicit `group` role is the ancestor ARIA requires
+ * for `menuitemcheckbox`, and the legend is what names the section. The rest
+ * of this menu is plain buttons and stays that way.
+ */
+function RegionMenuSection({ onClose }: { onClose: () => void }) {
+  const { commandsInOverflowMenu, menuItems } = useRegionSurfaceMenu();
+  if (!commandsInOverflowMenu) return null;
+  return (
+    <fieldset className="app-toolbar__overflow-regions">
+      <legend>Regions</legend>
+      {menuItems.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          role="menuitemcheckbox"
+          aria-checked={item.checked}
+          onClick={() => {
+            onClose();
+            item.onSelect();
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </fieldset>
+  );
+}
 
 interface OverflowMenuProps {
   isOpen: boolean;
@@ -32,6 +73,7 @@ export function OverflowMenu({
 }: OverflowMenuProps) {
   const menuRef = useMenuFocus<HTMLDivElement>(isOpen, onClose);
   const { isDesktop } = usePlatformProfile();
+  const hasRegionModel = useRegionModelOptional() !== null;
   if (!isOpen) return null;
   const openDesktopTrayMenu =
     onOpenDesktopTrayMenu ??
@@ -154,6 +196,11 @@ export function OverflowMenu({
           </svg>
           Help
         </button>
+        {/* Appended, not prepended: every row above keeps the position the
+            banner-overlap note describes, and the region rows are the ones a
+            phone user reaches for repeatedly, so they sit closest to the
+            thumb. */}
+        {hasRegionModel && <RegionMenuSection onClose={onClose} />}
       </div>
     </>,
     document.body,
