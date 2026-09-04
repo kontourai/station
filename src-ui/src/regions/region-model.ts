@@ -159,6 +159,36 @@ export function placeSurface(
   return next;
 }
 
+export function revealSurface(
+  layout: RegionLayout,
+  surfaceId: string,
+  preferred: DockRegionId,
+): { layout: RegionLayout; region: DockRegionId } {
+  const occupied = occupiedDockRegion(layout, surfaceId);
+  if (occupied) {
+    return {
+      layout: updateRegion(layout, occupied, { visible: true }),
+      region: occupied,
+    };
+  }
+  const region = firstFreeDockRegion(layout, preferred) ?? preferred;
+  return { layout: placeSurface(layout, surfaceId, region), region };
+}
+
+export function showSurfaceAlone(
+  layout: RegionLayout,
+  surfaceId: string,
+  preferred: DockRegionId,
+): { layout: RegionLayout; region: DockRegionId } {
+  const revealed = revealSurface(layout, surfaceId, preferred);
+  let next = revealed.layout;
+  for (const id of DOCK_REGION_IDS) {
+    if (id !== revealed.region)
+      next = updateRegion(next, id, { visible: false });
+  }
+  return { layout: next, region: revealed.region };
+}
+
 export function dockMirrorDiff(
   previous: RegionLayout,
   next: RegionLayout,

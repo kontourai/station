@@ -70,6 +70,7 @@ export * from './session-outputs.js';
 export * from './spatial-board.js';
 export * from './starter-work.js';
 export * from './station-profile.js';
+export * from './surface-deep-link.js';
 export * from './system-status.js';
 export * from './task-basis.js';
 export * from './task-graph.js';

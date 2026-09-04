@@ -10,8 +10,29 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 // its own test (useSurfaceVisibilityFlags.test.ts); here it is a controllable
 // set so these tests pin what the nav DOES with the flags it is given.
 const flagsState = vi.hoisted(() => ({ flags: new Set<string>() }));
+const regionState = vi.hoisted(() => ({
+  showSurface: vi.fn(),
+  activityVisible: false,
+}));
 vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () => flagsState.flags,
+}));
+vi.mock('../contexts/RegionModelContext', () => ({
+  useRegionModelOptional: () => ({
+    regions: {
+      main: { visible: true, size: 0, occupant: null },
+      left: { visible: false, size: 400, occupant: null },
+      right: {
+        visible: regionState.activityVisible,
+        size: 400,
+        occupant: 'activity',
+      },
+      bottom: { visible: true, size: 320, occupant: 'chat' },
+    },
+  }),
+}));
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => regionState.showSurface,
 }));
 
 import { routeTransitionStore } from '../app-shell/route-transition-store';
@@ -21,6 +42,8 @@ import { ProjectSidebarNav } from '../components/project-sidebar/ProjectSidebarN
 describe('ProjectSidebarNav', () => {
   beforeEach(() => {
     flagsState.flags = new Set();
+    regionState.showSurface.mockReset();
+    regionState.activityVisible = false;
     routeTransitionStore.clearPending(routeTransitionStore.getSnapshot() ?? '');
   });
 
@@ -112,7 +135,7 @@ describe('ProjectSidebarNav', () => {
     expect(navigate).toHaveBeenCalledWith('/guidance');
 
     fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
-    expect(navigate).toHaveBeenCalledWith('/activity');
+    expect(regionState.showSurface).toHaveBeenCalledWith('activity');
   });
 
   test('is expanded by default on Home and is keyboard-operable', () => {
@@ -146,7 +169,6 @@ describe('ProjectSidebarNav', () => {
     ['/guidance?tab=commands', 'Guidance'],
     ['/guidance?tab=skills', 'Guidance'],
     ['/agents', 'Agents'],
-    ['/activity', 'Activity'],
   ])('highlights the owning row for canonical path %s', (path, label) => {
     render(
       <ProjectSidebarNav
@@ -159,6 +181,22 @@ describe('ProjectSidebarNav', () => {
     expect(screen.getByRole('button', { name: label }).className).toContain(
       'sidebar__nav-btn--active',
     );
+  });
+
+  test('highlights Activity from visible region occupancy, independent of route', () => {
+    regionState.activityVisible = true;
+    render(
+      <ProjectSidebarNav
+        collapsed={false}
+        isMobile={false}
+        navigate={vi.fn()}
+        activePath="/registry"
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Activity' }).className,
+    ).toContain('sidebar__nav-btn--active');
   });
 
   test('shows and highlights Developer only while the developer-tools flag is enabled (station#3313)', () => {

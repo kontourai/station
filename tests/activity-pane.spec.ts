@@ -43,7 +43,7 @@ const AMBIENT_DOCK_STORAGE_KEY =
 
 test.describe('Activity pane standalone placement', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/activity');
+    await page.goto('/?surface=activity');
     await expect(
       page.getByRole('heading', { level: 1, name: 'Activity' }),
     ).toBeVisible({ timeout: 10_000 });
@@ -119,7 +119,7 @@ test.describe('Activity pane at 390x844', () => {
   test('renders, docks and stays inside the phone viewport', async ({
     page,
   }) => {
-    await page.goto('/activity');
+    await page.goto('/?surface=activity');
     await expect(
       page.getByRole('heading', { level: 1, name: 'Activity' }),
     ).toBeVisible({ timeout: 10_000 });

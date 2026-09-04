@@ -6,6 +6,7 @@ import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import WebSocket from 'ws';
 import { discordGatewayEvents } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
@@ -466,7 +467,7 @@ function isCanonicalTurnCompletedEvent(
 }
 
 function stationSessionPointer(sessionId: string): string {
-  return `/activity?session=${encodeURIComponent(sessionId)}`;
+  return activityDeepLink({ sessionId });
 }
 
 const DISCORD_MESSAGE_MAX_CHARS = 2_000;
