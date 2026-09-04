@@ -661,13 +661,16 @@ export function dependencyAuditDecision({
   }
 }
 
+/** @type {(command: string, args: string[], options: import('node:child_process').ExecFileOptionsWithStringEncoding, callback: (error: import('node:child_process').ExecFileException | null, stdout: string, stderr: string) => void) => import('node:child_process').ChildProcess} */
+const executeAuditFile = execFile;
+
 export function runAuditAttempt(
   scope,
   cwd,
   productionOnly,
   {
     attempt = 1,
-    execute = execFile,
+    execute = executeAuditFile,
     diagnosticsRoot = path.join(
       REPO_ROOT,
       '.kontourai/verification-output/dependency-audit',

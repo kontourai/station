@@ -48,10 +48,10 @@ const audit = {
     },
   },
 };
-function runner(script: string, timeout?: number) {
+function runner(script: string, timeout?: number, command = process.execPath) {
   return vi.fn((_command, _args, options, callback) =>
     execFile(
-      process.execPath,
+      command,
       ['-e', script],
       {
         ...options,
@@ -138,7 +138,7 @@ describe('dependency audit attempt diagnostics', () => {
   it('retains timeout attempt evidence before the ordinary retry and never invents phase completion', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const root = temporary();
-    const executions = [];
+    const executions: ReturnType<typeof runner>[] = [];
     const result = await withAuditRetries('shared', (attempt: number) => {
       const execute =
         attempt === 1
@@ -219,13 +219,11 @@ describe('dependency audit attempt diagnostics', () => {
 
   it('records a real spawn failure without changing its rejected outcome', async () => {
     const root = temporary();
-    const execute = (_command, _args, options, callback) =>
-      execFile(
-        path.join(root, 'missing-executable'),
-        [],
-        { ...options, windowsHide: true },
-        callback,
-      );
+    const execute = runner(
+      '',
+      undefined,
+      path.join(root, 'missing-executable'),
+    );
     await expect(
       runAuditAttempt('root', root, false, { execute, diagnosticsRoot: root }),
     ).rejects.toThrow('failed to execute');
@@ -248,7 +246,7 @@ describe('dependency audit attempt diagnostics', () => {
       diagnostics.consume(
         'npm timing metavuln:packument:private Completed in 999999999ms\n',
       );
-    diagnostics.settle({ status: 0, signal: null });
+    diagnostics.settle({ status: 0, signal: null, operationalCode: undefined });
     const record = records(root, 'terminal')[0];
     expect(record.captureTruncated).toBe(true);
     expect(record.metavulnerability.packument).toEqual({
@@ -276,7 +274,7 @@ describe('dependency audit attempt diagnostics', () => {
     diagnostics.consume(`token=${'s'.repeat(3000)}`);
     diagnostics.consume('npm timing audit Completed in 99ms\n');
     diagnostics.consume('npm timing auditReport:init Completed in 1ms\n');
-    diagnostics.settle({ status: 0, signal: null });
+    diagnostics.settle({ status: 0, signal: null, operationalCode: undefined });
     const record = records(root, 'terminal')[0];
     expect(record.captureTruncated).toBe(true);
     expect(record.completedTimersMs).toEqual({
