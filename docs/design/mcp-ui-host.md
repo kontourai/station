@@ -30,15 +30,102 @@ internal configuration uses only the canonical `stdio`, `sse`, and
 raw catalog, resource content, structured tool results, negotiated protocol
 version, and server capabilities.
 
-One live Station-owned connection per configured integration serves:
+For the default framework, the live Station-owned connection is reused for:
 
 - agent tools, adapted into the agent framework only at the final boundary;
 - MCP Apps catalog and resource reads; and
 - View-initiated resource and tool requests.
 
 When an installed integration is not attached to an active agent, `MCPService`
-uses the same adapter for a short-lived connection. Station never creates a
-second persistent protocol owner through the agent framework.
+uses the same adapter for a short-lived connection. The Strands harness keeps
+its existing SDK-specific client; its cleanup capability is retained by the
+same runtime-local custody owner, not a second integration registry.
+Its SDK client is not reused as an Apps protocol client; an Apps request may
+therefore hold a separate transient connection under that same custody owner.
+
+### Local handle custody and its limits
+
+Each runtime holds one `MCPLocalConnectionCustody`. Managed loaders, probes,
+transient Apps, OAuth continuations, and tenant-native clients reserve a claim
+before asynchronous configuration/secret lookup or SDK connection. The full
+prepared client/transport handle is retained before connect and discovery;
+constructor partial failure also leaves any already-created transport owned.
+Tenant-native publication pools are qualified by the runtime owner.
+
+Reset and explicit integration replacement synchronously fence old claims.
+Reset reports `localCleanup` with `scope: local-sdk-handles`, a retained count,
+and `settled`, `pending`, or `failed`; maps are cleared only after settlement.
+The internal `inspectLocalConnections()` observation contains phases/counts,
+not integration names, argv, endpoints, credentials, or underlying errors.
+Pending cleanup is joined across retries. A rejected cleanup can be retried
+only after that exact attempt settles. Late connection/discovery cannot publish
+or make an old facade usable again; a final close follows actual late work.
+An unresolved retired claim blocks new admission for that integration.
+Other integration identities remain usable during an integration-specific
+mutation. The owner bounds retained claims (256 by default) and caller cleanup
+waits (one second by default), not the lifetime of the retained cleanup promise.
+The runtime injects the same local mutation callback into the existing secret
+binding service; binding configuration writes wait for the affected local
+handles before committing, without changing the binding grant authority.
+
+OAuth consent is an explicit full-handle handoff: an initial authorization
+response does not close the transport needed by `finishAuth`. Exchange remains
+under custody, and replacement cannot commit while its old local work remains
+outstanding. Stale callbacks cannot return an authorized current projection.
+The claim retains the whole completion scope, including bound-state reads and
+state removal before SDK `finishAuth`. A closed SDK handle is not sufficient
+to prune a pending credential operation. Cleanup runs outside the owned scope
+to avoid waiting on itself; local inspection counts these retained operations.
+
+This is only the first local tranche of #1409. SDK close fulfillment does **not**
+prove that a stdio process, SDK-internal negotiation child, descendant process,
+or remote effect has drained. This owner is neither a shared-home lease nor a
+package/installation-generation retirement authority. External file edits and
+another runtime are not made atomic by its JavaScript fences. Native child
+supervision, shared-home admission, and the exclusive package/data mutation
+lease remain required before #1377 can safely update/remove package data.
+This change does not authorize or wire destructive package retirement.
+
+### Shared package admission evidence (control-plane prerequisite)
+
+`EventStore.createPackageMcpAdmissionJournal()` composes one package-MCP
+metadata owner on its already-open home SQLite handle. It opens no second
+database and inherits, rather than strengthens, EventStore's filesystem and
+durability boundary. The fixed table stores only host installation observations,
+incarnations, purpose/owner claims and retirement requests: no integration
+definitions, argv, endpoints, credentials or PLUGIN_DATA contents.
+
+An installation-owner event explicitly supplies the previous incarnation and
+content digest; recording a replacement mints a fresh incarnation even for
+identical bytes. This is a metadata observation, never permission to mutate
+package files. Reservation and retirement serialize in a SQLite transaction.
+An effect boundary must commit before SDK construction or external invocation;
+lost commit acknowledgement returns unavailable and never permits invocation.
+Only the exact returned capability that has not crossed/uncertainly attempted
+that boundary can release its no-effect reservation. SDK close settlement is
+recorded separately and keeps possible effects retained. There is no TTL,
+dead-parent cleanup, PID-only takeover, or arbitrary claim deletion API.
+
+Every inspection has `mutationAllowed: false`, including zero claims and a
+homogeneous current process population. `compatibility-unproved` remains until
+a boot-understood crash-safe barrier exists; possible native/descendant/remote
+effects add `external-effect-unproved`. Neither a package-specific mutex nor a
+current runtime roster stops a legacy binary from joining after a crash.
+The impact read can prove recorded package history, but an absent record is
+`unclassified`, not evidence that a package is unrelated or safe to delete.
+
+This prerequisite is not yet connected to all MCP entry points or package
+mutation owners. The Agent-Plugins package/data owner in #1377 is the planned
+refusal seam before its first backup/copy/delete; unrelated legacy plugin
+lifecycle remains outside this guarantee. No current declaration absence or
+inert test receipt authorizes destructive work. Real two-process SQLite tests
+prove claim/fence serialization, retained crash debt, incarnation ABA and
+unknown-commit refusal, not native containment, remote cancellation or physical
+platform compatibility. No home-schema upgrade or operator recovery is run.
+In particular, the legacy registry install/uninstall routes still invoke
+provider effects and write/delete integration configuration directly. Those
+writers belong to the remaining package-retirement work; they are not covered
+by this local service-entrypoint guarantee.
 
 Modern servers start with core discovery and automatic negotiation. Existing
 servers fall back to the legacy initialize exchange only when the transport

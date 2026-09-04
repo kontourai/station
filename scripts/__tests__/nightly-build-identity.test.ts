@@ -546,13 +546,18 @@ describe('the nightly workflow keeps its promises', () => {
     resolve(import.meta.dirname, '../../.github/workflows/nightly.yml'),
     'utf8',
   );
-  const workflow = readFileSync(
-    resolve(
-      import.meta.dirname,
-      '../../.github/workflows/nightly-native-cohort.yml',
-    ),
-    'utf8',
-  );
+  // The native work is two reusable phases (#1453): staging, then the
+  // publishing cohort. `nightly.yml` runs them in that order, so ordering
+  // pins across a build and its later promotion read the two sources joined
+  // in run order.
+  const workflow = ['nightly-native-stage.yml', 'nightly-native-cohort.yml']
+    .map((name) =>
+      readFileSync(
+        resolve(import.meta.dirname, '../../.github/workflows', name),
+        'utf8',
+      ),
+    )
+    .join('\n');
 
   it('is scheduled daily rather than triggered by pushes', () => {
     // The whole point of the channel: "nightly" is a claim about cadence.
@@ -676,7 +681,17 @@ describe('the nightly workflow keeps its promises', () => {
     const validationStep = nightlyJob.slice(validation, decide);
     expect(workflow).toContain('rebuild_index:');
     expect(workflow).toContain('build: $' + '{{ steps.decide.outputs.build }}');
-    expect(workflow).not.toContain('inputs.build');
+    // The dispatch surface never takes a boolean `build`; the staging phase
+    // decides it, and the publishing cohort only receives that decision as a
+    // required string input (#1453).
+    const stageSource = workflow.slice(
+      0,
+      workflow.indexOf('\nname: Nightly native cohort'),
+    );
+    expect(stageSource).not.toContain('inputs.build');
+    expect(workflow).toContain(
+      "description: The staging phase's exact `build` output",
+    );
     expect(validationStep).toContain(
       'NIGHTLY_REBUILD_INDEX: $' + '{{ inputs.rebuild_index }}',
     );
@@ -876,13 +891,18 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     resolve(import.meta.dirname, '../../.github/workflows/nightly.yml'),
     'utf8',
   );
-  const workflow = readFileSync(
-    resolve(
-      import.meta.dirname,
-      '../../.github/workflows/nightly-native-cohort.yml',
-    ),
-    'utf8',
-  );
+  // The native work is two reusable phases (#1453): staging, then the
+  // publishing cohort. `nightly.yml` runs them in that order, so ordering
+  // pins across a build and its later promotion read the two sources joined
+  // in run order.
+  const workflow = ['nightly-native-stage.yml', 'nightly-native-cohort.yml']
+    .map((name) =>
+      readFileSync(
+        resolve(import.meta.dirname, '../../.github/workflows', name),
+        'utf8',
+      ),
+    )
+    .join('\n');
   const jobStart = workflow.indexOf('\n  stage-macos:');
   // Bounded to the NEXT top-level (2-space-indented) job key, not EOF: a
   // future job appended after this one must not silently leak its steps
@@ -940,6 +960,15 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     const notarize = build;
     expect(notarize).toContain('--release-tag nightly-desktop');
     expect(notarize).toContain('--bundle-id io.kontourai.station.nightly');
+    // Nightly, and only Nightly, buys wall-clock time by overlapping the two
+    // notarization waits; its disk image therefore encloses an application
+    // whose ticket Gatekeeper resolves online rather than from a local staple.
+    // The flag has to be on the invocation itself, not merely in the step.
+    const notarizeInvocations = notarize
+      .split('\n')
+      .filter((line) => line.includes('macos-notarized-artifacts.mjs'));
+    expect(notarizeInvocations).toHaveLength(1);
+    expect(notarizeInvocations[0]).toContain(' --overlap-notarization ');
     expect(notarize).toContain('CFBundleShortVersionString');
     expect(notarize).toContain('CFBundleIdentifier');
     expect(notarize).toContain('macos-signing-readiness.mjs unlock');
@@ -1127,9 +1156,7 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
       ),
     );
     expect(ledgerStep).toContain('--channel nightly-desktop');
-    expect(ledgerStep).toContain(
-      '--sha "$' + '{{ needs.plan-cohort.outputs.source_sha }}"',
-    );
+    expect(ledgerStep).toContain('--sha "$' + '{{ inputs.source_sha }}"');
     expect(ledgerStep).not.toMatch(/git rev-parse/);
     expect(ledgerStep).not.toContain('continue-on-error');
   });

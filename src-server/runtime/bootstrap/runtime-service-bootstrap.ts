@@ -2,6 +2,7 @@ import type { EventEmitter } from 'node:events';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import type { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { FileTerminalHistoryStore } from '../../adapters/file-terminal-history-store.js';
 import { NodePtyAdapter } from '../../adapters/node-pty-adapter.js';
@@ -88,6 +89,7 @@ interface RuntimeServiceBootstrapContext {
   agentTools: Map<string, any[]>;
   agentHooks: Map<string, IAgentHooks>;
   mcpConfigs: Map<string, any>;
+  mcpCustody: MCPLocalConnectionCustody;
   mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>;
   integrationMetadata: Map<
     string,
@@ -211,6 +213,11 @@ export function createRuntimeServiceBundle(
       secretBindingAdministration,
       context.configLoader,
       context.logger,
+      async (id, operation) => {
+        const result = await context.mcpCustody.mutate(id, operation);
+        context.mcpConfigs.delete(id);
+        return result;
+      },
     );
 
   const mcpService =
@@ -235,6 +242,7 @@ export function createRuntimeServiceBundle(
       context.port,
       secretBindingAdministration,
       secretBindingAdministration,
+      context.mcpCustody,
     );
 
   const layoutService =

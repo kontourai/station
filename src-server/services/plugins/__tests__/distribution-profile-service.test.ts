@@ -398,6 +398,35 @@ describe('DistributionProfileService', () => {
     ).toEqual([{ id: 'g1', label: 'Stand up', prompt: 'x' }]);
   });
 
+  // #1446. Every example plugin layout omits `type`; defaulting it to 'chat'
+  // made the app treat each installed example as the full-viewport Chat
+  // placement and unmount its ambient regions. The definition carries the
+  // author's own word when present and 'custom' — the manual create route's
+  // default — when absent.
+  test('a plugin layout without a type resolves as custom, and a declared type is kept', () => {
+    const projectHome = home();
+    writePlugin(projectHome, 'typeless-layout', 'typeless');
+    const typedDir = writePlugin(projectHome, 'typed-layout', 'typed');
+    writeFileSync(
+      join(typedDir, 'layout.json'),
+      JSON.stringify({
+        name: 'typed-layout',
+        slug: 'typed',
+        type: 'session-board',
+        tabs: [],
+      }),
+    );
+    const service = new DistributionProfileService(projectHome);
+
+    expect(
+      service.resolveForApply('plugin:typeless-layout:typeless').definition
+        .type,
+    ).toBe('custom');
+    expect(
+      service.resolveForApply('plugin:typed-layout:typed').definition.type,
+    ).toBe('session-board');
+  });
+
   test('reads a disabled installed plugin descriptor without authorizing application', () => {
     const projectHome = home();
     writePlugin(projectHome, 'disabled-layout', 'disabled');

@@ -23,6 +23,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [WorkspacePaneHostContributions](#workspacepanehostcontributions) | Bind package-level Pane-host actions and explicit Agent selection without treating Pane requirements as routing authority. | `src-server/services/plugins/workspace-pane-host-contributions.ts` |
 | [WorkspacePaneHostAdmission](#workspacepanehostadmission) | Admit one captured package action at the existing foreground invocation boundary. | `src-server/services/plugins/workspace-pane-host-admission.ts` |
 | [InstalledPluginInventory](#installedplugininventory) | Keep valid and rejected installed plugin directories visible from one filesystem-backed inventory. | `src-server/services/plugins/installed-plugin-inventory.ts` |
+| [PackageMcpAdmissionJournal](#packagemcpadmissionjournal) | Retain package-incarnation admission evidence without inventing destructive retirement authority. | `src-server/services/plugins/package-mcp-admission.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
@@ -86,6 +87,34 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 **Contract.** Admission linearizes at the irreversible provider invocation, not when its Promise later settles. The existing plugin-content full-effect lease is acquired outside Session coordination. At the final start call, and before the existing turn `beginInvocation`/provider call, the Project revision read guard precedes the short Agent identity guard. These guards recheck the exact Project, Agent bytes/owner, installation digest and body binding, then synchronously invoke and return a boxed Promise; Project/Agent locks release before network settlement. The identity lock never spans an awaited provider operation. Reentrant installed-content changes are checked again, not hidden by the outer lease. After invocation, existing receipts retain accepted/pending/unknown effect truth; policy change cannot turn that into cancellation or permission to replay. Captured Agent, Project, credential, presentation and stall-window inputs are passed through the existing resolver rather than rereading ambient replacements.
 
 **Seam, Implementation, callers, and tests.** `ProjectFileTransactions` owns the additive exact-revision read guard; `capturePluginAgentInvocation` reuses the canonical Agent parser and identity mutation lock; installation and admission share one plugin-Agent marker parser. Prompt-file discovery remains the in-place command-skill source with bounded invocation reads. `OrchestrationService` and the existing foreground tool adapter accept the server-only capability, never public JSON. The first prerequisite has no route, UI, example conversion or runtime registration caller. Its controlled-provider tests exercise actual Session commands, turn invocation and EventStore receipt/event readback, including pending-resolution and final-boundary races. Native Agent relays that cannot consume the captured spec, explicit non-plugin Agent references, and worktree provisioning remain unavailable in this first slice; none silently substitutes another execution path. This is not Agent Plugins namespace activation or migration completion. **Do not reintroduce:** a content lock acquired inside Session coordination, a network await while holding the Agent identity lock, label/colon inference for registered prompts, mutable captured snapshots, first-required-Agent defaults, raw database authority or an automatic retry after possible invocation.
+
+## PackageMcpAdmissionJournal
+
+**Intent and Interface.** EventStore composes one journal on its existing SQLite
+handle. Host installation observations mint exact incarnation identities;
+`reserve` retains a pre-effect claim, `enterEffectBoundary` is one-way, and
+`requestRetirement` fences new admission for that package. The returned claim
+alone may release a proved never-started reservation. SDK settlement retains
+possible effects, and foreign, crashed or PID-reused owners are never pruned.
+
+**Contract.** State, generations and claims are bounded; corrupt or oversized
+metadata and uncertain commit acknowledgement fail closed. No filesystem path,
+integration definition or secret is duplicated. `inspectMutationImpact` reports
+positive recorded history or unclassified/unavailable, never a negative safety
+proof. Every inspection says `mutationAllowed: false`: compatibility and
+native/descendant/remote terminal proofs are absent. No destructive permit API
+exists. This is shared control-plane evidence, not a supervisor or sandbox.
+
+**Seam and tests.** EventStore owns schema/open/transaction lifetime and exposes
+the memoized journal before later runtime service composition. The MCP and
+Agent-Plugins mutation entry-point wiring remains a subsequent tranche. Two
+real EventStore processes in `package-mcp-admission.test.ts` cover concurrent
+reservation/fencing, owner crash, exact no-effect release, same-content
+incarnation ABA, commit uncertainty and fixed-capacity refusal. See
+[MCP UI host](../design/mcp-ui-host.md#shared-package-admission-evidence-control-plane-prerequisite).
+**Do not reintroduce:** new database opens, bare SDK-close drain receipts,
+dead-parent/TTL release, declaration absence as historical proof, or a mutable
+caller flag that upgrades this evidence into package deletion authority.
 
 ## InstalledPluginInventory
 
