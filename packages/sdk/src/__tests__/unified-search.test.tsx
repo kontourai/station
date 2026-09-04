@@ -40,17 +40,15 @@ test('exact message page uses mandatory captured scope and rejects substituted i
     contentRevision: 'a'.repeat(64),
     offset: 0,
   };
-  const fetch = vi
-    .fn()
-    .mockImplementation(
-      async () =>
-        new Response(
-          JSON.stringify({
-            success: true,
-            data: { state: 'available', page: validPage },
-          }),
-        ),
-    );
+  const fetch = vi.fn().mockImplementation(
+    async () =>
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: { state: 'available', page: validPage },
+        }),
+      ),
+  );
   vi.stubGlobal('fetch', fetch);
   await expect(
     readSearchMessage(scopeA.apiBase, input, options),
