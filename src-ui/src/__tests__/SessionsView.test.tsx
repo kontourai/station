@@ -4195,6 +4195,29 @@ describe('SessionsView', () => {
     // another row is that row's own reveal: reporting it would clear a routed
     // `focus=evidence` that was never delivered, and the intent's own session
     // would then land without its evidence region.
+    test('the standalone route keeps a routed focus another row did not consume', async () => {
+      sessions = [
+        flatSession({ threadId: 'other', displayTitle: 'Other work' }),
+      ];
+      window.history.replaceState({}, '', '/activity?session=done&focus=evidence');
+      // No `onFocusConsumed`: the standalone route consumes the routed focus
+      // by clearing the URL param rather than reporting it upward.
+      renderView('done', 'evidence', 1);
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Evidence for Other work' }),
+      );
+
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByTestId('session-evidence-region'),
+        ),
+      );
+      expect(new URLSearchParams(window.location.search).get('focus')).toBe(
+        'evidence',
+      );
+    });
+
     test('activating Evidence on another row does not report the routed focus consumed', async () => {
       sessions = [
         flatSession({ threadId: 'other', displayTitle: 'Other work' }),

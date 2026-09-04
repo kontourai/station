@@ -459,8 +459,13 @@ export function SessionsView({
     (threadId: string) => {
       evidenceRevealTokenRef.current += 1;
       setEvidenceReveal({ threadId, token: evidenceRevealTokenRef.current });
+      // Only the routed session's own activation consumes the routed focus.
+      // Another row's Evidence click is that row's reveal; reporting or
+      // clearing it would discard a `focus=evidence` that was never
+      // delivered, and the pending route selection is rebuilt without it.
+      if (threadId !== sessionId) return;
       if (!onFocusConsumed) updateParams({ focus: null });
-      else if (threadId === sessionId) onFocusConsumed();
+      else onFocusConsumed();
     },
     [onFocusConsumed, sessionId, updateParams],
   );
