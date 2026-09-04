@@ -1,3 +1,4 @@
+import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { describe, expect, test, vi } from 'vitest';
 import { createMCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
 import { createRuntimeInitializationDeps } from '../runtime-initialize-deps.js';
@@ -65,6 +66,7 @@ describe('createRuntimeInitializationDeps', () => {
       memoryAdapters: new Map([['default', { kind: 'memory' }]]),
       agentTools: new Map([['default', [{ name: 'tool' }]]]),
       agentSpecs: new Map([['default', { slug: 'default' } as any]]),
+      mcpCustody: new MCPLocalConnectionCustody(),
       mcpConfigs: new Map([['server', { kind: 'mcp' }]]),
       mcpConnectionStatus: new Map([['server', { connected: true }]]),
       integrationMetadata: new Map([['server', { type: 'mcp' }]]),

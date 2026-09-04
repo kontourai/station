@@ -208,6 +208,7 @@ export interface InitializeRuntimeDeps {
   agentTools: Map<string, unknown>;
   agentSpecs: Map<string, AgentSpec>;
   mcpConfigs: Map<string, unknown>;
+  mcpCustody: import('@kontourai/station-shared/mcp').MCPLocalConnectionCustody;
   mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>;
   integrationMetadata: Map<
     string,
@@ -833,6 +834,7 @@ export async function initializeRuntime(
             port,
             provenanceGeneration!,
             deps.integrationSecretResolver,
+            deps.mcpCustody,
           ),
         guardTools: deps.guardDefaultAgentTools,
         activeAgents: activeAgents as any,

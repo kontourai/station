@@ -22,7 +22,22 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 // MCP-UI reads use Station's raw adapter connection, never the lossy VoltAgent
 // client. When no agent currently owns the integration, the service opens a
 // transient adapter connection; mock it so that fallback is deterministic.
-vi.mock('@kontourai/station-shared/mcp', () => ({ connectMCP: vi.fn() }));
+vi.mock('@kontourai/station-shared/mcp', async (original) => {
+  const actual =
+    await original<typeof import('@kontourai/station-shared/mcp')>();
+  const { fixtureMCPCustody } = await import(
+    '../../../test-support/mcp-custody-fixture.js'
+  );
+  const connectMCP = vi.fn();
+  return {
+    ...actual,
+    connectMCP,
+    MCPLocalConnectionCustody: fixtureMCPCustody(
+      actual.MCPLocalConnectionCustody,
+      connectMCP,
+    ),
+  };
+});
 
 const { MCPService, StoredEnvMigrationError, openSystemBrowser } = await import(
   '../mcp-service.js'
@@ -1265,9 +1280,7 @@ describe('MCPService', () => {
           'mcp-1',
           `http://127.0.0.1:4130/integrations/mcp-1/oauth/callback?code=one&state=${issuedState}`,
         ),
-      ).rejects.toThrow(
-        'OAuth tool server endpoint changed during authorization exchange',
-      );
+      ).rejects.toThrow('MCP local connection custody is stale');
       expect((await loader.loadIntegration('mcp-1')).endpoint).toBe(endpointB);
       expect((await loader.loadIntegration('mcp-1')).probe).toMatchObject({
         authorization: { state: 'never-authorized' },
@@ -1329,7 +1342,7 @@ describe('MCPService', () => {
           'mcp-1',
           `http://127.0.0.1:4131/integrations/mcp-1/oauth/callback?code=one&state=${issuedState}`,
         ),
-      ).resolves.toMatchObject({ endpoint: endpointA });
+      ).rejects.toMatchObject({ state: 'stale' });
       await endpointMutation;
 
       const persisted = await loader.loadIntegration('mcp-1');
