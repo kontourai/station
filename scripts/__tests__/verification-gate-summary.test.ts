@@ -14,6 +14,11 @@ import { renderBounded } from '../run-verification.mjs';
 // script: the encoding boundary it owns is a property of the string, and a
 // spawned run can only observe it through an excerpt long enough to truncate.
 import { annotationMessage } from '../verification-gate-summary.mjs';
+import {
+  ORDINARY_SHARD_PHASE_ID,
+  ORDINARY_SHARD_STDERR,
+  ORDINARY_SHARD_STDOUT,
+} from './fixtures/full-regression-shard-capture.mjs';
 
 const script = resolve(import.meta.dirname, '../verification-gate-summary.mjs');
 const roots: string[] = [];
@@ -246,6 +251,62 @@ describe('verification gate summary', () => {
     expect(summary).toContain('ActionOperationsHeader.test.tsx');
     expect(summary).toContain('### Failing test files');
     expect(summary).toContain('Redacted stdout tail');
+  });
+
+  test('names the failing test file for a shard whose FAIL block was on stderr (#1471)', () => {
+    // The regression this closes: Nightly 33904147780 produced exactly one
+    // annotation — "the completion gate reported failed with no causal
+    // excerpt; read the full-regression artifact" — for a run whose failing
+    // file was named in its own captured stderr. The two streams below are a
+    // real phase capture, folded the way the completion collector folds a
+    // phase's output into the parent's.
+    const phase = `\n[completion:${ORDINARY_SHARD_PHASE_ID}]\n`;
+    const root = workspace();
+    const capture = join(root, 'full-regression.stdout.log');
+    writeFileSync(
+      capture,
+      capturedStdout(
+        failingLog,
+        verdictDocument({
+          stdout: `${phase}${ORDINARY_SHARD_STDOUT}`,
+          stderr: `${phase}${ORDINARY_SHARD_STDERR}`,
+          status: 'failed',
+          exitCode: 1,
+          counts: {
+            executed: 2959,
+            passed: 2956,
+            failed: 3,
+            infrastructureErrors: 0,
+          },
+          passed: false,
+        }),
+      ),
+    );
+
+    const { status, stdout, summary } = runSummary(root, [
+      '--stdout-file',
+      capture,
+    ]);
+
+    expect(status).toBe(0);
+    const annotations = errorAnnotations(stdout);
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0].startsWith('::error title=full-regression::')).toBe(
+      true,
+    );
+    expect(annotations[0]).toContain(
+      'scripts/__tests__/android-channel-release-generation.test.ts',
+    );
+    // The generic "no causal excerpt" fallback is what this run used to get.
+    expect(annotations[0]).not.toContain('no causal excerpt');
+    // One line, and no terminal control bytes reach the annotations rail.
+    expect(annotations[0]).not.toContain('\r');
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: proving the escape bytes are gone is the assertion.
+    expect(annotations[0]).not.toMatch(/\u001B\[/);
+    expect(summary).toContain('### Causal excerpts');
+    expect(summary).toContain(
+      'scripts/__tests__/android-channel-release-generation.test.ts',
+    );
   });
 
   test('states what it could not parse for garbage input rather than failing or staying silent', () => {

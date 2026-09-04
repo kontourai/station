@@ -384,6 +384,31 @@ function findCausalDiagnostic(
 const FAIL_LINE = /^\s*(?:❯\s*)?FAIL\s+\S+/;
 
 /**
+ * ANSI SGR/CSI sequences, which sit BEFORE the first visible character of a
+ * coloured line and therefore defeat every `^`-anchored matcher here.
+ *
+ * station#1471: vitest colours its failure banner
+ * (`ESC[41m ESC[1m FAIL ESC[22m ESC[49m <file> > <test>`) whenever it
+ * writes to a terminal, and GitHub Actions is one. A hosted nightly's failing
+ * shard therefore produced a perfectly well-formed `FAIL` line that
+ * `FAIL_LINE` could not see, so the run reported an ambient log line from a
+ * PASSING test as its cause and the annotation rail said no causal excerpt
+ * existed at all. The bytes are kept as captured -- the excerpt stays
+ * byte-faithful to the artifact beside it -- and only the MATCH is taken
+ * against the stripped text.
+ */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching the terminal escape byte is exactly the job.
+const ANSI_SEQUENCE = /\u001B\[[0-9;?]*[ -/]*[@-~]/g;
+
+function withoutAnsi(line) {
+  return String(line).replace(ANSI_SEQUENCE, '');
+}
+
+function isFailLine(line) {
+  return FAIL_LINE.test(withoutAnsi(line));
+}
+
+/**
  * Every line in `lines` that names a failing check (a vitest `FAIL <file>`
  * line, or -- station#4249 -- the same-shaped `FAIL <lane>` marker the
  * completion-mode typecheck/docs aggregate runners print per failing
@@ -396,11 +421,42 @@ function allFailLines(lines) {
   const seen = new Set();
   const matches = [];
   for (const line of lines) {
-    if (!FAIL_LINE.test(line) || seen.has(line)) continue;
+    if (!isFailLine(line) || seen.has(line)) continue;
     seen.add(line);
     matches.push(line);
   }
   return matches;
+}
+
+/** A vitest/playwright test file, never a `FAIL <lane>` aggregate marker. */
+const FAIL_LINE_TEST_FILE =
+  /^\s*(?:❯\s*)?FAIL\s+(\S*\/\S*\.(?:test|spec)\.[cm]?[jt]sx?)\b/;
+
+/**
+ * The test FILES named by the `FAIL <file> > <test>` lines in a captured
+ * stream, in document order, deduplicated.
+ *
+ * Exported because `run-verification.mjs` needs the same extraction against
+ * the persisted stdout/stderr artifacts: a completion-phase parent's receipt
+ * carries phase records, not the per-execution diagnostics attachment that
+ * `failedCheckTestFiles` is otherwise derived from, so without this the one
+ * field that says WHERE to look was empty on exactly the runs that most
+ * needed it (station#1471).
+ *
+ * Deliberately no per-file count: a capture is a bounded prefix and a
+ * persisted stream can be a tail, so a count derived from it would be a
+ * number nothing guarantees. The names are what end the investigation.
+ */
+export function failedTestFilesFromCapture(text) {
+  const seen = new Set();
+  const files = [];
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    const match = FAIL_LINE_TEST_FILE.exec(withoutAnsi(line));
+    if (!match || seen.has(match[1])) continue;
+    seen.add(match[1]);
+    files.push(match[1]);
+  }
+  return files;
 }
 
 /**
@@ -476,6 +532,10 @@ function allCausalExcerpts({
 }) {
   const scopedFailLines = allFailLines(scopedStdout);
   if (scopedFailLines.length) return scopedFailLines;
+  // Mirrors the singular chain's station#1471 ordering: a runner's own FAIL
+  // lines, on whichever stream carried them, before any generic diagnostic.
+  const stderrFailLines = allFailLines(stderrLines);
+  if (stderrFailLines.length) return stderrFailLines;
   if (failureSection >= 0) {
     const scoped = findAllCausalDiagnostics(
       scopedStdout.slice(failureSection + 1),
@@ -487,8 +547,6 @@ function allCausalExcerpts({
     allowWarningFallback,
   });
   if (unscoped.length) return unscoped;
-  const stderrFailLines = allFailLines(stderrLines);
-  if (stderrFailLines.length) return stderrFailLines;
   const stderrDiagnostics = findAllCausalDiagnostics(stderrLines, {
     preferLast: true,
     allowWarningFallback,
@@ -615,8 +673,7 @@ export function summarizeVerificationOutput({
   // excerpt when present. Ambient stderr (app logs) previously matched the
   // generic diagnostic pattern first and masked the real failure
   // (station#2591).
-  const failLineIn = (candidates) =>
-    candidates.find((line) => FAIL_LINE.test(line));
+  const failLineIn = (candidates) => candidates.find(isFailLine);
   // Hoisted above the causal scan (it also gates `failingStep` further down,
   // where it was originally computed) because a PASSING run must not report a
   // cause at all. It is one conjunct of `observedClean` below; `failingStep`
@@ -657,34 +714,58 @@ export function summarizeVerificationOutput({
   // Attributable evidence outranks unattributable evidence. A candidate from
   // the scoped stdout provably came from the failing step; a stderr candidate
   // only probably did.
-  const firstCausalExcerpt =
+  //
+  // station#1471 moves the STDERR fail-line probe up here, directly behind
+  // stdout's, ahead of every generic diagnostic. A `FAIL <file> > <test>`
+  // line is not unattributable evidence that merely correlates with the
+  // failure: it IS the failure, named by the runner that observed it. Leaving
+  // it below `findCausalDiagnostic(scopedStdout)` meant a hosted shard whose
+  // FAIL block goes to stderr (vitest writes its failure banner there)
+  // reported an ambient `SyntaxError` log line emitted by a PASSING test in
+  // the same shard as the cause. Attributability still orders everything
+  // else; it does not outrank a runner's own verdict.
+  const causalCandidate =
     failLineIn(scopedStdout) ??
+    failLineIn(stderrLines) ??
     (failureSection >= 0
       ? findCausalDiagnostic(scopedStdout.slice(failureSection + 1), {
           allowWarningFallback,
         })
       : null) ??
     findCausalDiagnostic(scopedStdout, { allowWarningFallback }) ??
-    failLineIn(stderrLines) ??
     findCausalDiagnostic(stderrLines, {
       preferLast: true,
       allowWarningFallback,
     }) ??
     (lines.length === 1 && /parser/i.test(terminal.status) ? lines[0] : null);
+  // station#1471: the EXCERPT is rendered for a reader, so the terminal colour
+  // bytes come off here — after selection (which needs the captured line) and
+  // after `causeStream` below (which identifies the source stream by looking
+  // the captured line up in `scopedStdout`). Leaving them in spent summary
+  // budget on escape sequences and put an unprintable prefix in front of the
+  // file name in the one field that says what broke. The artifact beside it
+  // still holds the bytes exactly as captured.
+  const normalizeExcerpt = (value) =>
+    typeof value === 'string' ? withoutAnsi(value) : value;
+  const firstCausalExcerpt = normalizeExcerpt(causalCandidate);
   // station#4249: the plural companion, derived from the SAME branch that won
   // above (see `allCausalExcerpts`'s doc comment for why the two can never
   // disagree about their head element). Computed unconditionally -- it is
   // cheap pure text scanning -- but only ever rendered into the summary when
   // `firstCausalExcerpt` itself made the byte budget (below), so its presence
   // never outruns the field it extends.
-  const causalExcerptsObserved = allCausalExcerpts({
-    scopedStdout,
-    stderrLines,
-    failureSection,
-    terminal,
-    lines,
-    allowWarningFallback,
-  });
+  const causalExcerptsObserved = [
+    ...new Set(
+      allCausalExcerpts({
+        scopedStdout,
+        stderrLines,
+        failureSection,
+        terminal,
+        lines,
+        allowWarningFallback,
+      }).map(normalizeExcerpt),
+    ),
+  ];
   // Emitted ONLY when the excerpt came from stderr, which is the case a reader
   // needs warning about: stderr carries no step markers, so that excerpt was
   // chosen by severity and position rather than attributed to the failing
@@ -696,7 +777,7 @@ export function summarizeVerificationOutput({
   // where carrying it cost the run its `finalTally`: a caveat that displaces
   // measured truth is a bad trade.
   const causeStream =
-    firstCausalExcerpt && !scopedStdout.includes(firstCausalExcerpt)
+    causalCandidate && !scopedStdout.includes(causalCandidate)
       ? 'stderr'
       : null;
   // What this computes, stated as narrowly as it is true: the last npm step

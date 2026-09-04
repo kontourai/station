@@ -1,11 +1,15 @@
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { coordinateVerification } from '../lib/verification-coordinator.mjs';
 import { createOwnedRunner } from '../lib/verification-execution-lifecycle.mjs';
+import { buildHostPressureSample } from '../lib/verification-host-pressure.mjs';
 import {
   persistPlaywrightAttachments,
   persistVerificationOutput,
+  summarizeVerificationOutput,
 } from '../lib/verification-reporter.mjs';
 import { reportExecution } from '../lib/verification-terminal-receipt.mjs';
 import {
@@ -18,6 +22,13 @@ import {
   renderBounded,
   runVerificationCli,
 } from '../run-verification.mjs';
+import {
+  ORDINARY_SHARD_FAILING_TEST_FILE,
+  ORDINARY_SHARD_PHASE_ID,
+  ORDINARY_SHARD_STDERR,
+  ORDINARY_SHARD_STDOUT,
+} from './fixtures/full-regression-shard-capture.mjs';
+import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
 describe('verification status projection', () => {
   test('overrides a forged owner marker for a normal nested ci-fast exit 80 through lifecycle and receipt reporting', async () => {
@@ -75,6 +86,156 @@ describe('verification status projection', () => {
       expect(reported.summary).toMatchObject({
         firstCausalExcerpt: `verification execution infrastructure error: ${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}`,
       });
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
+  test('surfaces a failing phase FAIL line from its stderr in the parent verdict (#1471)', async () => {
+    // Drives the REAL fold: `coordinateVerification` runs the canonical
+    // full-regression phase sequence, the completion collector folds each
+    // phase's two streams into the parent capture, `reportExecution` persists
+    // and summarizes them, and `renderBounded` prints the verdict document the
+    // hosted gate step reads. The only seam is `phaseRunner`, which replays a
+    // real Nightly shard capture instead of executing the corpus.
+    //
+    // The captures are the discriminating part. Vitest's `FAIL <file> > <test>`
+    // banner is on STDERR; STDOUT ends at the totals and carries an ambient
+    // `SyntaxError` a PASSING test in the same shard logged. In Nightly
+    // 33904147780 that ambient line outranked the runner's own verdict and the
+    // annotation rail reported no causal excerpt at all.
+    const root = mkdtempSync(join(tmpdir(), 'station-1471-parent-'));
+    const worktree = join(root, 'worktree');
+    mkdirSync(worktree);
+    const phaseCalls: string[] = [];
+    try {
+      const result = await coordinateVerification({
+        laneId: 'full-regression',
+        root,
+        cwd: worktree,
+        collectProvenance: () => ({
+          repositoryId: 'a'.repeat(64),
+          worktree,
+          headSha: 'b'.repeat(40),
+          workspaceDigest: createHash('sha256')
+            .update('fold-phase-stderr')
+            .digest('hex'),
+          environmentDigest: 'e'.repeat(64),
+          dependencyDigest: 'c'.repeat(64),
+          nodeVersion: process.version,
+          toolchain: 'npm@fixture',
+          toolchainIdentity: FIXTURE_TOOLCHAIN_IDENTITY,
+          platform: process.platform,
+          arch: process.arch,
+        }),
+        hostCpuSampler: async () =>
+          buildHostPressureSample({
+            busyPercent: 40,
+            cpuCount: 4,
+            sampleMs: 500,
+            sampledAt: Date.now(),
+            threshold: 85,
+            source: 'override',
+            load1: 4,
+            loadPerCpu: 1,
+          }),
+        phaseRunner: async ({ phase }: { phase: { id: string } }) => {
+          phaseCalls.push(phase.id);
+          return phase.id === ORDINARY_SHARD_PHASE_ID
+            ? {
+                status: 1,
+                output: {
+                  stdout: { text: ORDINARY_SHARD_STDOUT },
+                  stderr: { text: ORDINARY_SHARD_STDERR },
+                },
+              }
+            : { status: 0 };
+        },
+      } as never);
+      expect(phaseCalls).toContain(ORDINARY_SHARD_PHASE_ID);
+      expect(result.receipt.terminal.passed).toBe(false);
+
+      const document = JSON.parse(renderBounded(result));
+      expect(document.summary.firstCausalExcerpt).toMatch(
+        /FAIL\s+scripts\/__tests__\/android-channel-release-generation\.test\.ts/,
+      );
+      expect(document.summary.failedCheckTestFiles).toContain(
+        ORDINARY_SHARD_FAILING_TEST_FILE,
+      );
+      // Why the stderr fold is load-bearing rather than a nicety: the stdout
+      // tail, which is all the document carried before, never held the block.
+      expect(document.summary.failedCheckRedactedStdoutTail).not.toMatch(
+        /FAIL\s+scripts\//,
+      );
+      // The document the hosted step prints is capped whatever else changes.
+      expect(Buffer.byteLength(renderBounded(result))).toBeLessThanOrEqual(
+        8 * 1024,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps the causal excerpt when the verdict envelope overflows its cap (#1471)', () => {
+    // The hosted nightly's document was over cap, and the over-cap envelope
+    // carried the tail and the counts but dropped `firstCausalExcerpt` — so
+    // the gate step annotated "no causal excerpt" for a run whose cause the
+    // summary had correctly identified. The overflow is driven here by a long
+    // real-shaped `slowItems` set, which is what pushed the real one over.
+    const worktree = mkdtempSync(join(tmpdir(), 'station-1471-cap-'));
+    const key = 'e'.repeat(64);
+    try {
+      const duration = ORDINARY_SHARD_STDOUT.split('\n').find((line) =>
+        line.includes('Duration'),
+      );
+      const stdout = [
+        ORDINARY_SHARD_STDOUT,
+        ...Array.from({ length: 40 }, (_, index) =>
+          String(duration).replace('100.38s', `${100 + index}.38s`),
+        ),
+      ].join('\n');
+      const counts = {
+        executed: 1,
+        passed: 0,
+        failed: 1,
+        infrastructureErrors: 0,
+      };
+      const cleanup = { status: 'passed', survivingOwnedChildren: 0 };
+      const persisted = persistVerificationOutput({
+        root: worktree,
+        requestKey: key,
+        stdout,
+        stderr: ORDINARY_SHARD_STDERR,
+      });
+      const rendered = renderBounded({
+        disposition: 'executed',
+        request: { key, laneId: 'full-regression' },
+        // The real producer, not a hand-written idea of its shape.
+        summary: summarizeVerificationOutput({
+          stdout,
+          stderr: ORDINARY_SHARD_STDERR,
+          terminal: { status: 'failed', exitCode: 1, truncated: false },
+          counts,
+          cleanup,
+        }),
+        receipt: {
+          request: { key, worktree },
+          terminal: { status: 'failed', exitCode: 1, passed: false },
+          counts,
+          cleanup,
+          artifacts: persisted.artifacts,
+        },
+      });
+      expect(Buffer.byteLength(rendered)).toBeLessThanOrEqual(8 * 1024);
+      const document = JSON.parse(rendered);
+      // Only meaningful while this really is the over-cap path.
+      expect(document.truncated).toBe(true);
+      expect(document.summary.firstCausalExcerpt).toMatch(
+        /FAIL\s+scripts\/__tests__\/android-channel-release-generation\.test\.ts/,
+      );
+      expect(document.summary.failedCheckTestFiles).toContain(
+        ORDINARY_SHARD_FAILING_TEST_FILE,
+      );
     } finally {
       rmSync(worktree, { recursive: true, force: true });
     }
