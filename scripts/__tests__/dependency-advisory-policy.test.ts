@@ -702,4 +702,26 @@ describe('dependency advisory policy', { timeout: 20_000 }, () => {
       'npm audit operational response for shared (exit 1): {"code":"E503","summary":"registry unavailable"}',
     );
   });
+
+  it('reports the registry reason npm puts outside its error envelope', () => {
+    // Captured verbatim from `npm audit --json --registry=http://127.0.0.1:9`
+    // (exit 1): the reason is a top-level `message` and the error envelope's
+    // own fields are empty strings, so quoting `error` alone reports
+    // `{"summary":"","detail":""}` and names nothing (#1403).
+    expect(() =>
+      parseAuditCommandResult('root', {
+        status: 1,
+        signal: null,
+        error: undefined,
+        stdout: JSON.stringify({
+          message:
+            'request to http://127.0.0.1:9/-/npm/v1/security/advisories/bulk failed, reason: connect ECONNREFUSED 127.0.0.1:9',
+          error: { summary: '', detail: '' },
+        }),
+        stderr: 'npm error audit endpoint returned an error',
+      }),
+    ).toThrow(
+      'npm audit operational response for root (exit 1): {"message":"request to http://127.0.0.1:9/-/npm/v1/security/advisories/bulk failed, reason: connect ECONNREFUSED 127.0.0.1:9","error":{"summary":"","detail":""}}',
+    );
+  });
 });
