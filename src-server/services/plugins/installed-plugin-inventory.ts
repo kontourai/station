@@ -8,6 +8,7 @@ import type {
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import type { Logger } from '../../utils/logger.js';
 import { ContextSafetyError } from '../orchestration/context-safety.js';
+import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
 import {
   PluginManifestValidationError,
   readPluginManifestFileSync,
@@ -191,7 +192,23 @@ export function scanInstalledPluginInventory(
     (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
   );
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    if (
+      (!entry.isDirectory() && !entry.isSymbolicLink()) ||
+      entry.name.startsWith('.')
+    )
+      continue;
+    if (entry.isSymbolicLink()) {
+      try {
+        resolveInstalledPluginRoot(pluginsDir, entry.name);
+      } catch (error) {
+        inventory.push({
+          state: 'rejected',
+          directoryName: entry.name,
+          rejection: describePluginManifestRejection(error),
+        });
+        continue;
+      }
+    }
     const manifestPath = join(pluginsDir, entry.name, 'plugin.json');
     if (!existsSync(manifestPath)) {
       const missing = rejection(

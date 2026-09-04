@@ -1529,6 +1529,8 @@ export function configureRuntimeRoutes(
       context.eventBus,
       {
         consentChannel: context.consentChannel,
+        packageMcpJournal:
+          context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
         applyConfigurationMutation: context.applyAgentConfigurationMutation,
         refreshKitObservability: () =>
           kitObservabilityRegistry.discoverInstalled([
@@ -1575,6 +1577,8 @@ export function configureRuntimeRoutes(
       context.reloadSkillsAndAgents,
       context.skillService,
       {
+        packageMcpJournal:
+          context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
         applyConfigurationMutation: context.applyAgentConfigurationMutation,
         approveKitOperatorAction: (candidate) =>
           context.approvalRegistry.register(

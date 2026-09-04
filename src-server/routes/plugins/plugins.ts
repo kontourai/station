@@ -1,3 +1,4 @@
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 /**
  * Plugin Routes — top-level composer for plugin discovery, install, and public bridge routes.
  */
@@ -38,6 +39,7 @@ export function createPluginRoutes(
   logger: Logger,
   eventBus?: EventBus,
   runtime?: {
+    packageMcpJournal?: PackageMcpAdmissionJournal;
     /** archive#3677: the distinct-origin consent surface (host approvals). */
     consentChannel?: ConsentChannelService;
     applyConfigurationMutation: AgentConfigurationMutationRunner;
@@ -164,6 +166,7 @@ export function createPluginRoutes(
     consentChannel: runtime?.consentChannel,
   });
   registerPluginLifecycleRoutes(app, {
+    packageMcpJournal: runtime?.packageMcpJournal,
     agentsDir,
     buildPlugin: (pluginDir, name) => buildPlugin(pluginDir, name, logger),
     eventBus,
@@ -184,6 +187,7 @@ export function createPluginRoutes(
     projectHomeDir,
   });
   registerPluginInstallRoutes(app, {
+    packageMcpJournal: runtime?.packageMcpJournal,
     agentsDir,
     applyConfigurationMutation: runtime?.applyConfigurationMutation,
     eventBus,

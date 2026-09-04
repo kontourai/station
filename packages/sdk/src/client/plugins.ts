@@ -5,7 +5,7 @@ import type {
 import { type ClientRequestOptions, getJson } from './http';
 
 export type InstalledPluginRecord =
-  | (PluginManifest & { hasBundle?: boolean })
+  | (PluginManifest & { hasBundle?: boolean; retainedOnRemoval?: boolean })
   | RejectedInstalledPluginRecord;
 
 const REJECTION_CODES = new Set([
@@ -150,7 +150,10 @@ export async function listPlugins(
       }
       if ('status' in record) return true;
       return (
-        typeof record.name !== 'string' || typeof record.version !== 'string'
+        typeof record.name !== 'string' ||
+        typeof record.version !== 'string' ||
+        (record.retainedOnRemoval !== undefined &&
+          typeof record.retainedOnRemoval !== 'boolean')
       );
     })
   ) {

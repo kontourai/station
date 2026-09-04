@@ -32,6 +32,8 @@ export interface PackageMcpInstallation {
   readonly pluginId: string;
   readonly incarnation: string;
   readonly contentDigest: string;
+  readonly materialization?: string;
+  readonly dataScope?: string;
 }
 type RuntimeOwner = {
   id: string;
@@ -51,6 +53,8 @@ type Generation = {
   pluginId: string;
   incarnation: string;
   contentDigest: string;
+  materialization?: string;
+  dataScope?: string;
   current: boolean;
   claims: Claim[];
   retirement?: Retirement;
@@ -81,10 +85,31 @@ export interface PackageMcpClaim {
 }
 export interface PackageMcpRetirement {
   inspect(): PackageMcpInspection;
+  /** Withdraws routing only; retained code/data and external claims remain. */
+  withdraw(): Transition;
+  replace(input: {
+    contentDigest: string;
+    materialization: string;
+    dataScope: string;
+  }):
+    | { state: 'recorded'; installation: PackageMcpInstallation }
+    | { state: 'stale' | 'unavailable' };
   /** Withdraws this request only; it neither drains nor deletes a claim/package. */
   cancel(): Transition;
 }
 export interface PackageMcpAdmissionJournal {
+  history(pluginId: string):
+    | {
+        state: 'observed';
+        generations: Array<{
+          installation: PackageMcpInstallation;
+          selected: boolean;
+          possibleEffects: number;
+          reserved: number;
+          reclamation: 'not-proven';
+        }>;
+      }
+    | { state: 'unavailable' };
   /** Positive historical scope only. Unclassified is NOT proof of unrelatedness. */
   inspectMutationImpact(pluginId: string): {
     scope: 'recorded-package-history' | 'unclassified' | 'unavailable';
@@ -96,6 +121,8 @@ export interface PackageMcpAdmissionJournal {
     pluginId: string;
     contentDigest: string;
     previous: PackageMcpInstallation | null;
+    materialization?: string;
+    dataScope?: string;
   }):
     | { state: 'recorded'; installation: PackageMcpInstallation }
     | { state: 'stale' | 'blocked' | 'unavailable' };
@@ -165,6 +192,8 @@ function validJournal(value: unknown): value is Journal {
         'pluginId',
         'incarnation',
         'contentDigest',
+        'materialization',
+        'dataScope',
         'current',
         'claims',
         'retirement',
@@ -175,6 +204,12 @@ function validJournal(value: unknown): value is Journal {
       generations.has(generation.incarnation) ||
       typeof generation.contentDigest !== 'string' ||
       !DIGEST.test(generation.contentDigest) ||
+      (generation.materialization !== undefined &&
+        (typeof generation.materialization !== 'string' ||
+          !UUID.test(generation.materialization))) ||
+      (generation.dataScope !== undefined &&
+        (typeof generation.dataScope !== 'string' ||
+          !UUID.test(generation.dataScope))) ||
       typeof generation.current !== 'boolean' ||
       !Array.isArray(generation.claims)
     )
@@ -321,7 +356,14 @@ export function createPackageMcpAdmissionJournal(
     ref: PackageMcpInstallation,
   ): Generation | undefined {
     if (
-      !record(ref, ['journalId', 'pluginId', 'incarnation', 'contentDigest']) ||
+      !record(ref, [
+        'journalId',
+        'pluginId',
+        'incarnation',
+        'contentDigest',
+        'materialization',
+        'dataScope',
+      ]) ||
       ref.journalId !== journalId
     )
       return;
@@ -329,7 +371,9 @@ export function createPackageMcpAdmissionJournal(
       (generation) =>
         generation.pluginId === ref.pluginId &&
         generation.incarnation === ref.incarnation &&
-        generation.contentDigest === ref.contentDigest,
+        generation.contentDigest === ref.contentDigest &&
+        generation.materialization === ref.materialization &&
+        generation.dataScope === ref.dataScope,
     );
   }
   function ref(generation: Generation): PackageMcpInstallation {
@@ -338,6 +382,10 @@ export function createPackageMcpAdmissionJournal(
       pluginId: generation.pluginId,
       incarnation: generation.incarnation,
       contentDigest: generation.contentDigest,
+      ...(generation.materialization
+        ? { materialization: generation.materialization }
+        : {}),
+      ...(generation.dataScope ? { dataScope: generation.dataScope } : {}),
     });
   }
   function fenced(state: Journal, pluginId: string) {
@@ -380,6 +428,26 @@ export function createPackageMcpAdmissionJournal(
     };
   }
   const journal: PackageMcpAdmissionJournal = {
+    history(pluginId) {
+      const loaded = read();
+      if (!isCanonicalPluginId(pluginId) || !loaded || loaded.id !== journalId)
+        return { state: 'unavailable' };
+      return {
+        state: 'observed',
+        generations: loaded.value.generations
+          .filter((item) => item.pluginId === pluginId)
+          .map((item) => ({
+            installation: ref(item),
+            selected: item.current,
+            possibleEffects: item.claims.filter(
+              (claim) => claim.state !== 'reserved',
+            ).length,
+            reserved: item.claims.filter((claim) => claim.state === 'reserved')
+              .length,
+            reclamation: 'not-proven',
+          })),
+      };
+    },
     inspectMutationImpact(pluginId) {
       const loaded = read();
       if (!isCanonicalPluginId(pluginId) || !loaded || loaded.id !== journalId)
@@ -411,8 +479,17 @@ export function createPackageMcpAdmissionJournal(
       if (
         !accepting ||
         !capturedOwner ||
-        !record(input, ['pluginId', 'contentDigest', 'previous']) ||
+        !record(input, [
+          'pluginId',
+          'contentDigest',
+          'previous',
+          'materialization',
+          'dataScope',
+        ]) ||
         !isCanonicalPluginId(input.pluginId) ||
+        (input.materialization !== undefined &&
+          !UUID.test(input.materialization)) ||
+        (input.dataScope !== undefined && !UUID.test(input.dataScope)) ||
         !DIGEST.test(input.contentDigest)
       )
         return { state: 'unavailable' as const };
@@ -433,6 +510,10 @@ export function createPackageMcpAdmissionJournal(
         const generation: Generation = {
           pluginId: input.pluginId,
           incarnation: randomUUID(),
+          ...(input.materialization
+            ? { materialization: input.materialization }
+            : {}),
+          ...(input.dataScope ? { dataScope: input.dataScope } : {}),
           contentDigest: input.contentDigest,
           current: true,
           claims: [],
@@ -552,6 +633,60 @@ export function createPackageMcpAdmissionJournal(
         state: 'fenced' as const,
         retirement: Object.freeze({
           inspect: () => inspect(captured),
+          replace(input: {
+            contentDigest: string;
+            materialization: string;
+            dataScope: string;
+          }) {
+            if (
+              !DIGEST.test(input.contentDigest) ||
+              !UUID.test(input.materialization) ||
+              !UUID.test(input.dataScope)
+            )
+              return { state: 'unavailable' as const };
+            const result = transaction((state) => {
+              const generation = find(state, captured);
+              if (
+                !generation?.current ||
+                generation.retirement?.id !== id ||
+                !sameOwner(generation.retirement.owner, capturedOwner)
+              )
+                return { state: 'stale' as const };
+              if (state.generations.length >= MAX_GENERATIONS)
+                return { state: 'unavailable' as const };
+              generation.current = false;
+              delete generation.retirement;
+              const next: Generation = {
+                pluginId: generation.pluginId,
+                incarnation: randomUUID(),
+                contentDigest: input.contentDigest,
+                materialization: input.materialization,
+                dataScope: input.dataScope,
+                current: true,
+                claims: [],
+              };
+              state.generations.push(next);
+              return { state: 'recorded' as const, installation: ref(next) };
+            });
+            return result.state === 'committed' ? result.result : result;
+          },
+          withdraw(): Transition {
+            const result = transaction((state) => {
+              const generation = find(state, captured);
+              if (
+                !generation?.current ||
+                generation.retirement?.id !== id ||
+                !sameOwner(generation.retirement.owner, capturedOwner)
+              )
+                return 'stale' as const;
+              generation.current = false;
+              delete generation.retirement;
+              return 'applied' as const;
+            });
+            return result.state === 'committed'
+              ? { state: result.result }
+              : result;
+          },
           cancel(): Transition {
             const result = transaction((state) => {
               const generation = find(state, captured);

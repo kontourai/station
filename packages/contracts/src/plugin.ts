@@ -302,3 +302,12 @@ export interface PluginPreview {
   components: PluginComponent[];
   conflicts: ConflictInfo[];
 }
+/** Opaque installation authority observation, distinct from package bytes. */
+export interface PluginInstallationRevision {
+  readonly scope: string;
+  readonly installation: string;
+  readonly generation: string;
+  readonly artifact: { readonly digest: string };
+  readonly materialization: string;
+  readonly dataScope: string;
+}

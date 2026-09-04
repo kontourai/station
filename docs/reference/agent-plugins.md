@@ -96,8 +96,12 @@ The loader supports stdio and Streamable HTTP. It reports and skips SSE,
 invalid Skills, and invalid individual server entries at their narrow failure
 boundaries. Stdio children receive persistent per-plugin `PLUGIN_DATA`, exact
 `PLUGIN_ROOT`, the plugin root as default cwd, and single-pass expansion of
-only those two placeholders. Uninstall removes that plugin's data after the
-rest of the uninstall transaction has settled.
+only those two placeholders. Code updates select a retained materialization
+while preserving the same independently scoped data directory. Removal
+withdraws future contributions and retains code/data; it does not claim that
+unmanaged descendants or remote work have ended. The separate
+[installation lifecycle](../design/plugin-installation-lifecycle.md) defines
+expected-revision publication, explicit reset, and reclamation limits.
 
 Recognized Agent Plugins take this path during directory or git installation.
 The old manifest parser remains only as an explicit compatibility fallback for

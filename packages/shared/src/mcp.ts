@@ -21,6 +21,7 @@ import {
 } from './mcp-local-custody.js';
 
 export {
+  bindMCPDefinitionAdmission,
   type MCPLocalClaim,
   type MCPLocalCleanup,
   MCPLocalConnectionCustody,

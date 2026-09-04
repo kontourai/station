@@ -24,6 +24,7 @@ import {
   withUnreadable,
 } from '../../../services/infra/__tests__/helpers/store-faults.js';
 import { ContextSafetyError } from '../../../services/orchestration/context-safety.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
 import { AgentPluginLoader } from '../../../services/plugins/agent-plugin-loader.js';
 import { DistributionProfileService } from '../../../services/plugins/distribution-profile-service.js';
 import {
@@ -111,6 +112,7 @@ vi.mock('../../../providers/registries/registry.js', () => ({
 }));
 
 const cleanupDirs: string[] = [];
+const packageStores: EventStore[] = [];
 
 function logger() {
   return {
@@ -214,6 +216,7 @@ async function dependencyApproval(
 }
 
 afterEach(async () => {
+  for (const store of packageStores.splice(0)) store.close();
   vi.clearAllMocks();
   getPluginRegistryProviders.mockReturnValue([]);
   installIntegration.mockResolvedValue({ message: 'missing', success: false });
@@ -1054,7 +1057,13 @@ describe('installPluginFromSource', () => {
       JSON.stringify({ id: 'legacy-tool', command: 'node' }),
     );
 
-    await installPluginFromSource(sourceDir, [], deps(root));
+    const store = new EventStore(join(root, 'events.sqlite'));
+    packageStores.push(store);
+    const portableDeps = {
+      ...deps(root),
+      packageMcpJournal: store.createPackageMcpAdmissionJournal(),
+    };
+    await installPluginFromSource(sourceDir, [], portableDeps);
 
     expect(existsSync(join(root, 'plugins', 'acme.tools', 'plugin.json'))).toBe(
       true,
@@ -1068,8 +1077,11 @@ describe('installPluginFromSource', () => {
     expect(existsSync(join(root, 'integrations'))).toBe(false);
     writeFileSync(join(installed!.dataRoot, 'state.json'), 'preserved');
 
-    await uninstallInstalledPlugin('acme.tools', deps(root));
-    expect(existsSync(installed!.dataRoot)).toBe(false);
+    await uninstallInstalledPlugin('acme.tools', portableDeps);
+    expect(existsSync(installed!.dataRoot)).toBe(true);
+    expect(readFileSync(join(installed!.dataRoot, 'state.json'), 'utf8')).toBe(
+      'preserved',
+    );
     expect(existsSync(join(root, 'integrations'))).toBe(false);
   });
 
@@ -1106,7 +1118,7 @@ describe('installPluginFromSource', () => {
     );
   });
 
-  test('removes historically owned Agent Plugin data after a transition to legacy format', async () => {
+  test('retains historically owned Agent Plugin data after a transition to legacy format', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-plugin-data-transition-'));
     cleanupDirs.push(root);
     const pluginDir = join(root, 'plugins', 'format-switch');
@@ -1118,13 +1130,15 @@ describe('installPluginFromSource', () => {
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(join(dataDir, 'prior-portable-state'), 'preserved');
 
-    await uninstallInstalledPlugin('format-switch', deps(root));
+    await expect(
+      uninstallInstalledPlugin('format-switch', deps(root)),
+    ).rejects.toThrow('migrate');
 
-    expect(existsSync(pluginDir)).toBe(false);
-    expect(existsSync(dataDir)).toBe(false);
+    expect(existsSync(pluginDir)).toBe(true);
+    expect(existsSync(dataDir)).toBe(true);
   });
 
-  test('rolls back uninstall instead of reporting success when staged data deletion fails', async () => {
+  test('refuses pre-incarnation uninstall before any data cleanup', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-plugin-data-cleanup-'));
     cleanupDirs.push(root);
     const pluginDir = join(root, 'plugins', 'cleanup-test');
@@ -1141,11 +1155,8 @@ describe('installPluginFromSource', () => {
       uninstallInstalledPlugin('cleanup-test', {
         ...deps(root),
         eventBus,
-        removeStagedAgentPluginData: () => {
-          throw new Error('injected staged data deletion failure');
-        },
       }),
-    ).rejects.toThrow('injected staged data deletion failure');
+    ).rejects.toThrow('migrate');
 
     expect(eventBus.emit).not.toHaveBeenCalledWith(
       'plugins:removed',

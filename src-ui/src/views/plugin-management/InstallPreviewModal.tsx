@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Checkbox } from '../../components/Checkbox';
 import { CheckGlyph, WarningGlyph } from '../../components/icons/Glyph';
 import {
@@ -20,8 +21,9 @@ export function InstallPreviewModal({
   installPending: boolean;
   onClose: () => void;
   onToggleSkip: (key: string) => void;
-  onConfirm: () => void;
+  onConfirm: (dataPolicy?: 'preserve' | 'retain-and-reset') => void;
 }) {
+  const [resetData, setResetData] = useState(false);
   const hasBlockingConflict = previewData.components.some(
     (component) => component.skippable === false && !!component.conflict,
   );
@@ -164,6 +166,18 @@ export function InstallPreviewModal({
             </div>
           </div>
         )}
+        {previewData.existingDataScope && (
+          <div>
+            <p>Existing plugin data will be preserved.</p>
+            <Checkbox
+              checked={resetData}
+              onChange={() => setResetData((value) => !value)}
+              disabled={installPending}
+            >
+              Start with new data and retain the current data separately
+            </Checkbox>
+          </div>
+        )}
         <ResponsiveSurfaceActions className="plugins__preview-actions">
           <button
             type="button"
@@ -175,10 +189,20 @@ export function InstallPreviewModal({
           <button
             type="button"
             className="plugins__install-btn"
-            onClick={onConfirm}
+            onClick={() =>
+              onConfirm(
+                previewData.existingDataScope && resetData
+                  ? 'retain-and-reset'
+                  : 'preserve',
+              )
+            }
             disabled={installPending || hasBlockingConflict}
           >
-            {installPending ? 'Installing...' : 'Confirm Install'}
+            {installPending
+              ? 'Installing...'
+              : resetData
+                ? 'Confirm Install with New Data'
+                : 'Confirm Install'}
           </button>
         </ResponsiveSurfaceActions>
       </div>

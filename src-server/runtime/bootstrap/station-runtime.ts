@@ -885,6 +885,8 @@ export class StationRuntime {
 
       const agentPluginLoader = new AgentPluginLoader({
         projectHomeDir,
+        journal: () =>
+          this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
         report: (report) =>
           this.logger?.warn('Agent Plugin component was not loaded', report),
       });

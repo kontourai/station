@@ -1,5 +1,5 @@
 import { cpSync, existsSync, lstatSync, realpathSync, rmSync } from 'node:fs';
-import { isAbsolute, join, relative } from 'node:path';
+import { basename, isAbsolute, join, relative } from 'node:path';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import {
   SERVER_EVENTS,
@@ -17,12 +17,14 @@ import { getPluginRegistryProviders } from '../../providers/registries/registry.
 import { readRegistryInstallAliases } from '../../providers/registries/registry-install-aliases.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   forgetPluginContentDigest,
   PLUGIN_TREE_COPY,
   withPluginContentLock,
 } from '../../services/plugins/plugin-content-integrity.js';
+import { resolveInstalledPluginRoot } from '../../services/plugins/plugin-incarnation.js';
 import {
   readPluginManifestFileSync,
   readPluginManifestFileWithFormat,
@@ -47,7 +49,9 @@ import {
   assertPluginNameSegment,
   capturePersistedAgentOwnership,
   ensureCanonicalRegistryInstallAliases,
+  installPluginFromSource,
   removePluginOwnedIntegrations,
+  resolvePluginRegistryInstall,
   synchronizePluginAgentDefinitions,
   uninstallInstalledPlugin,
 } from './plugin-install-shared.js';
@@ -59,6 +63,7 @@ import {
 } from './plugin-public-server.js';
 
 interface PluginLifecycleRouteDeps {
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: {
     emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
@@ -90,7 +95,11 @@ function assertExistingPluginRootInside(
   assertPathInside(pluginsDir, pluginDir, 'Plugin update target');
   if (!existsSync(pluginDir)) return;
   if (lstatSync(pluginDir).isSymbolicLink()) {
-    throw new Error('Plugin update target cannot be a symbolic link');
+    if (
+      resolveInstalledPluginRoot(pluginsDir, basename(pluginDir))?.kind !==
+      'incarnation'
+    )
+      throw new Error('Plugin update target cannot be a symbolic link');
   }
   const pluginsRoot = realpathSync(pluginsDir);
   const pluginRoot = realpathSync(pluginDir);
@@ -444,6 +453,76 @@ export function registerPluginLifecycleRoutes(
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
 
+    const installedRoot = resolveInstalledPluginRoot(
+      pluginsDir,
+      installedPluginName,
+    );
+    if (installedRoot?.kind === 'incarnation') {
+      try {
+        const registryInstall = registryOwner?.success
+          ? await resolvePluginRegistryInstall(registryOwner.registryId)
+          : null;
+        const source = registryOwner?.success
+          ? registryInstall?.source
+          : (
+              await execGit(['remote', 'get-url', 'origin'], {
+                cwd: installedRoot.packageRoot,
+                timeout: 30000,
+              })
+            ).stdout.trim();
+        if (!source)
+          return c.json(
+            {
+              success: false,
+              error:
+                'This package has no update source. Preview and install the new version from its source.',
+            },
+            409,
+          );
+        const mutation = await captureConfigurationMutation(
+          applyConfigurationMutation,
+          async (beginMutation) =>
+            installPluginFromSource(
+              source,
+              [],
+              {
+                agentsDir,
+                pluginsDir,
+                projectHomeDir,
+                logger,
+                buildPlugin,
+                packageMcpJournal: deps.packageMcpJournal,
+                beginConfigurationMutation: beginMutation,
+                eventBus,
+              },
+              {
+                ...(registryOwner?.success
+                  ? {
+                      registryId: registryOwner.registryId,
+                      registryKey: registryInstall!.registryKey,
+                    }
+                  : {}),
+                consent: {
+                  kind: 'no-operator-decision',
+                  caller: 'portable package update',
+                },
+                dataPolicy: 'preserve',
+                expectedPluginName: installedPluginName,
+              },
+            ),
+          { rediscoverSkills: true },
+        );
+        return c.json(
+          {
+            ...mutation.value,
+            ...configurationActivationPayload(mutation.activation),
+          },
+          configurationMutationStatus(mutation.activation, 200),
+        );
+      } catch (error) {
+        return c.json({ success: false, error: errorMessage(error) }, 409);
+      }
+    }
     const gitDir = join(pluginDir, '.git');
     const isGitPlugin = existsSync(gitDir);
     if (!isGitPlugin && !registryOwner) {
@@ -808,6 +887,7 @@ export function registerPluginLifecycleRoutes(
         async (beginMutation) => {
           const result = await uninstallInstalledPlugin(installedPluginName, {
             agentsDir,
+            packageMcpJournal: deps.packageMcpJournal,
             beginConfigurationMutation: beginMutation,
             buildPlugin,
             eventBus,

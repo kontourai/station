@@ -1,3 +1,5 @@
+import type { PluginInstallationRevision } from '@kontourai/station-contracts/plugin';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 /**
  * Registry Routes — browse, install, and uninstall agents and tools
  * from pluggable registry providers.
@@ -53,6 +55,7 @@ import {
 } from './plugin-install-shared.js';
 
 interface RegistryRouteDeps {
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   applyConfigurationMutation?: AgentConfigurationMutationRunner;
   approveKitOperatorAction?: (
     candidate: StationKitMutationCandidate,
@@ -103,6 +106,7 @@ export function createRegistryRoutes(
     deps?.layoutCatalog ?? new DistributionProfileService(projectHomeDir);
   const pluginInstallDeps = deps
     ? {
+        packageMcpJournal: deps.packageMcpJournal,
         agentsDir: join(projectHomeDir, 'agents'),
         buildPlugin: async (pluginDir: string, name: string) => {
           const { buildPlugin } = await import('./plugin-bundles.js');
@@ -662,6 +666,8 @@ export function createRegistryRoutes(
     c: Context,
     body: {
       id: string;
+      dataPolicy?: 'preserve' | 'retain-and-reset';
+      expectedInstallation?: PluginInstallationRevision | null;
       skip?: string[];
       consent?: {
         permissions: string[];
@@ -676,7 +682,13 @@ export function createRegistryRoutes(
       };
     },
   ) => {
-    const { id, skip, consent: consentBody } = body;
+    const {
+      id,
+      skip,
+      consent: consentBody,
+      dataPolicy,
+      expectedInstallation,
+    } = body;
     if (!pluginInstallDeps) {
       return c.json(
         { success: false, message: 'Plugin install dependencies unavailable' },
@@ -723,6 +735,8 @@ export function createRegistryRoutes(
               registryId: id,
               registryKey: registryInstall.registryKey,
               consent,
+              dataPolicy,
+              expectedInstallation,
             },
           );
           await deps?.settleProviderAdapterRetirements?.();

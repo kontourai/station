@@ -30,8 +30,12 @@ import {
   computePluginContentDigest,
   withPluginContentLock,
 } from '../../services/plugins/plugin-content-integrity.js';
+import { resolveInstalledPluginRoot } from '../../services/plugins/plugin-incarnation.js';
 import { derivePluginConsentBasis } from '../../services/plugins/plugin-install-consent.js';
-import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
+import {
+  readPluginManifestFileSync,
+  readPluginManifestFileSyncWithFormat,
+} from '../../services/plugins/plugin-manifest-loader.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
 import { execGit } from '../../utils/git-exec.js';
@@ -838,6 +842,19 @@ async function validateAndBuildInstalledDependency(
 ): Promise<void> {
   await withPluginContentLock(pluginsDir, dependencyId, async () => {
     const manifest = readInstalledDependencyManifest(pluginsDir, dependencyId);
+    const format = readPluginManifestFileSyncWithFormat(
+      join(pluginsDir, dependencyId, 'plugin.json'),
+    ).format;
+    if (format === 'agent-plugin-1.0') {
+      if (
+        resolveInstalledPluginRoot(pluginsDir, dependencyId)?.kind !==
+        'incarnation'
+      )
+        throw new Error(
+          `Portable dependency '${dependencyId}' needs migration through its installation owner`,
+        );
+      return;
+    }
     assertDependencyLifecycleSupported(
       dependencyId,
       join(pluginsDir, dependencyId),
@@ -1017,10 +1034,13 @@ export async function installPluginDependency(
       );
       if ('error' in result) return { success: false, error: result.error };
       const { tempDir } = result;
-      const depManifest = readPluginManifestFileSync(
-        join(tempDir, 'plugin.json'),
-      ) as PluginManifest;
+      const { manifest: depManifest, format } =
+        readPluginManifestFileSyncWithFormat(join(tempDir, 'plugin.json'));
       try {
+        if (format === 'agent-plugin-1.0')
+          throw new Error(
+            `Install portable dependency '${dependency.id}' through Plugins before installing its parent; the legacy dependency copy path cannot own its lifecycle`,
+          );
         if ((depManifest.name || dependency.id) !== dependency.id) {
           throw new Error(
             `Plugin dependency '${dependency.id}' source manifest name does not match`,

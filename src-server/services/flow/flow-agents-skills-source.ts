@@ -30,6 +30,8 @@ export type CanonicalSkillSourceLabel =
 export interface CanonicalSkillSource {
   /** Directory whose children are `<skill-name>/SKILL.md` folders. */
   root: string;
+  /** Captured first-party source generation, checked at disclosure time. */
+  isCurrent?: () => boolean;
   /** Source label surfaced in skill listings (e.g. 'flow-agents'). */
   label: CanonicalSkillSourceLabel;
   /** Version of the providing package, when known. */

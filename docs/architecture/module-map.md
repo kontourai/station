@@ -128,8 +128,11 @@ native/descendant/remote terminal proofs are absent. No destructive permit API
 exists. This is shared control-plane evidence, not a supervisor or sandbox.
 
 **Seam and tests.** EventStore owns schema/open/transaction lifetime and exposes
-the memoized journal before later runtime service composition. The MCP and
-Agent-Plugins mutation entry-point wiring remains a subsequent tranche. Two
+the memoized journal before later runtime service composition. `PluginInstallationService` composes asynchronous installation-state and
+materialization backends; the local implementation reuses this journal. Portable
+loader definitions carry captured admission into existing MCP custody, and
+portable install/remove routes publish or withdraw generation selection while
+retaining old code and the independent data scope. Two
 real EventStore processes in `package-mcp-admission.test.ts` cover concurrent
 reservation/fencing, owner crash, exact no-effect release, same-content
 incarnation ABA, commit uncertainty and fixed-capacity refusal. See

@@ -23,6 +23,10 @@ import {
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
 import {
+  bindMCPDefinitionAdmission,
+  MCPLocalCustodyError,
+} from '@kontourai/station-shared/mcp';
+import {
   frontmatterToProperties,
   parseFrontmatter,
   validateSkillContent,
@@ -31,6 +35,13 @@ import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020.js';
 import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
 import type { CanonicalSkillSource } from '../flow/flow-agents-skills-source.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
+import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
+import { computePluginContentDigest } from './plugin-content-integrity.js';
+import {
+  PluginIncarnationError,
+  pluginIncarnationIsCurrent,
+  resolveInstalledPluginRoot,
+} from './plugin-incarnation.js';
 
 const MAX_CONFIGURATION_BYTES = 2 * 1024 * 1024;
 const CORE_MANIFEST_FIELDS = new Set([
@@ -95,6 +106,7 @@ export interface AgentPluginLoaderOptions {
   /** Test/packaging seam for locating schemas relative to the server module. */
   schemaModuleUrl?: string;
   report?: (report: AgentPluginLoadReport) => void;
+  journal?: () => PackageMcpAdmissionJournal;
 }
 
 export type AgentPluginLoadOutcome =
@@ -349,7 +361,7 @@ export class AgentPluginLoader {
   private readonly validateMcpServer: ValidateFunction;
   private readonly validateStationExtension: ValidateFunction;
 
-  constructor(options: AgentPluginLoaderOptions) {
+  constructor(private readonly options: AgentPluginLoaderOptions) {
     this.projectHomeDir = realpathSync(resolve(options.projectHomeDir));
     this.pluginsDir = join(this.projectHomeDir, 'plugins');
     this.reportSink = options.report;
@@ -426,10 +438,14 @@ export class AgentPluginLoader {
     );
     let dataRoot: string;
     try {
-      dataRoot = resolveAgentPluginDataDirectory(
-        this.projectHomeDir,
-        manifest.name,
-      ).directory;
+      const installed = existsSync(this.pluginsDir)
+        ? resolveInstalledPluginRoot(this.pluginsDir, manifest.name)
+        : null;
+      dataRoot =
+        installed?.kind === 'incarnation' && installed.packageRoot === root
+          ? installed.dataRoot!
+          : resolveAgentPluginDataDirectory(this.projectHomeDir, manifest.name)
+              .directory;
     } catch (error) {
       this.emit(reports, {
         level: 'error',
@@ -448,6 +464,68 @@ export class AgentPluginLoader {
       reports,
       options.provisionData !== false,
     );
+    if (existsSync(this.pluginsDir)) {
+      const installed = resolveInstalledPluginRoot(
+        this.pluginsDir,
+        manifest.name,
+      );
+      if (installed?.packageRoot === root) {
+        for (const tool of tools)
+          bindMCPDefinitionAdmission(tool, (purpose) => {
+            if (installed.kind !== 'incarnation')
+              throw new PluginIncarnationError('migration-required');
+            const journal = this.options.journal?.();
+            const current = journal?.currentInstallation(manifest.name);
+            if (
+              !journal ||
+              current?.state !== 'observed' ||
+              current.installation.materialization !== installed.generation ||
+              current.installation.dataScope !== installed.dataScope ||
+              !pluginIncarnationIsCurrent(
+                this.pluginsDir,
+                manifest.name,
+                installed,
+              )
+            )
+              throw new MCPLocalCustodyError('stale');
+            if (
+              computePluginContentDigest(
+                dirname(root),
+                root.split(sep).at(-1)!,
+              ) !== current.installation.contentDigest
+            )
+              throw new MCPLocalCustodyError('stale');
+            const reserved = journal.reserve(current.installation, purpose);
+            if (reserved.state !== 'reserved')
+              throw new MCPLocalCustodyError('stale');
+            const shared = reserved.claim;
+            const isCurrent = () =>
+              shared.isCurrent() &&
+              pluginIncarnationIsCurrent(
+                this.pluginsDir,
+                manifest.name,
+                installed,
+              );
+            return {
+              isCurrent,
+              enter() {
+                if (
+                  !isCurrent() ||
+                  shared.enterEffectBoundary().state !== 'applied'
+                )
+                  throw new MCPLocalCustodyError('stale');
+              },
+              settle(started) {
+                const result = started
+                  ? shared.observeLocalSettlement()
+                  : shared.releaseNotStarted();
+                if (result.state !== 'applied' && result.state !== 'stale')
+                  throw new MCPLocalCustodyError('failed');
+              },
+            };
+          });
+      }
+    }
     return {
       ok: true,
       plugin: {
@@ -509,6 +587,29 @@ export class AgentPluginLoader {
         const plugin = loadedByRoot.get(root);
         return {
           root: join(root, 'skills'),
+          isCurrent: () => {
+            try {
+              if (
+                resolveInstalledPluginRoot(this.pluginsDir, directoryName)
+                  ?.packageRoot !== root
+              )
+                return false;
+              const journal = this.options.journal?.();
+              if (!journal) return true;
+              const current = journal.currentInstallation(directoryName);
+              return (
+                current.state === 'observed' &&
+                journal.inspect(current.installation).state === 'observed' &&
+                (
+                  journal.inspect(current.installation) as {
+                    admission?: string;
+                  }
+                ).admission === 'open'
+              );
+            } catch {
+              return false;
+            }
+          },
           label: `agent-plugin:${directoryName}` as const,
           ...(plugin?.manifest.version
             ? { version: plugin.manifest.version }
@@ -531,10 +632,21 @@ export class AgentPluginLoader {
     return readdirSync(this.pluginsDir, { withFileTypes: true })
       .sort((a, b) => a.name.localeCompare(b.name))
       .flatMap((entry) => {
-        if (!entry.isDirectory() || !isCanonicalPluginId(entry.name)) {
+        if (
+          (!entry.isDirectory() && !entry.isSymbolicLink()) ||
+          !isCanonicalPluginId(entry.name)
+        ) {
           return [];
         }
-        const root = join(this.pluginsDir, entry.name);
+        let root: string;
+        try {
+          root = resolveInstalledPluginRoot(
+            this.pluginsDir,
+            entry.name,
+          )!.packageRoot;
+        } catch {
+          return [];
+        }
         return this.hasAgentPluginSchema(root)
           ? [{ directoryName: entry.name, root }]
           : [];
@@ -912,11 +1024,17 @@ export class AgentPluginLoader {
           throw new Error('unsupported MCP transport');
         }
         if (provisionData) {
-          dataRoot = resolveAgentPluginDataDirectory(
-            this.projectHomeDir,
-            manifest.name,
-            { provision: true },
-          ).directory;
+          const installed = existsSync(this.pluginsDir)
+            ? resolveInstalledPluginRoot(this.pluginsDir, manifest.name)
+            : null;
+          dataRoot =
+            installed?.kind === 'incarnation' && installed.packageRoot === root
+              ? installed.dataRoot!
+              : resolveAgentPluginDataDirectory(
+                  this.projectHomeDir,
+                  manifest.name,
+                  { provision: true },
+                ).directory;
           accessSync(dataRoot, fsConstants.W_OK);
         }
         const resolvedData = provisionData

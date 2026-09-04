@@ -1,9 +1,11 @@
 import type {
   PermissionTier,
+  PluginInstallationRevision,
   RejectedInstalledPluginRecord,
 } from '@kontourai/station-contracts/plugin';
 
 export interface ReadyPlugin {
+  retainedOnRemoval?: boolean;
   name: string;
   displayName: string;
   version: string;
@@ -61,6 +63,8 @@ export interface GitInfo {
 }
 
 export interface PreviewData {
+  installationRevision?: PluginInstallationRevision | null;
+  existingDataScope?: boolean;
   valid: boolean;
   error?: string;
   manifest?: ReadyPlugin;

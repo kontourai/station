@@ -1,5 +1,4 @@
 import { execFile as execFileCb } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
 import {
   cpSync,
   existsSync,
@@ -7,13 +6,13 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { PluginInstallationRevision } from '@kontourai/station-contracts/plugin';
 import {
   type PermissionTier,
   type PluginInstallResult,
@@ -45,7 +44,7 @@ import {
   writeRegistryInstallAliases,
 } from '../../providers/registries/registry-install-aliases.js';
 import { ContextSafetyError } from '../../services/orchestration/context-safety.js';
-import { resolveAgentPluginDataDirectory } from '../../services/plugins/agent-plugin-loader.js';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   computePluginContentDigest,
@@ -55,11 +54,16 @@ import {
   withPluginContentLock,
 } from '../../services/plugins/plugin-content-integrity.js';
 import {
+  PluginIncarnationError,
+  resolveInstalledPluginRoot,
+} from '../../services/plugins/plugin-incarnation.js';
+import {
   assertPluginInstallConsent,
   derivePluginConsentBasis,
   findPluginConsentRefusedError,
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
+import { createLocalPluginInstallationService } from '../../services/plugins/plugin-installation-local.js';
 import {
   readPluginManifestFile,
   readPluginManifestFileSync,
@@ -152,18 +156,6 @@ function assertNoSymlinkTree(
     if (entry.isDirectory()) {
       assertNoSymlinkTree(root, child, label);
     }
-  }
-}
-
-function assertAgentPluginDataStaging(root: string, candidate: string): void {
-  const rootInfo = lstatSync(root);
-  if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) {
-    throw new Error('Agent Plugin data root must be a real directory');
-  }
-  assertExistingPathInside(root, candidate, 'Agent Plugin staged data');
-  const info = lstatSync(candidate);
-  if (info.isSymbolicLink() || !info.isDirectory()) {
-    throw new Error('Agent Plugin staged data must be a real directory');
   }
 }
 
@@ -322,6 +314,7 @@ export interface PluginLifecycleEventBus {
 }
 
 export interface PluginInstallSharedDeps {
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: PluginLifecycleEventBus;
   logger: Logger;
@@ -332,8 +325,6 @@ export interface PluginInstallSharedDeps {
   settleProviderAdapterRetirements?: () => Promise<void>;
   reconcileEngineConnections?: (plugin: string) => Promise<void>;
   removeEngineConnections?: (plugin: string) => Promise<void>;
-  /** Fault-injection seam; production uses recursive filesystem removal. */
-  removeStagedAgentPluginData?: (path: string) => void;
   quiesceEventSubscriptions?: (
     pluginName: string,
   ) => Promise<{ release(): void }>;
@@ -1949,6 +1940,9 @@ export async function installPluginFromSource(
   options?: {
     registryId?: string;
     registryKey?: string;
+    dataPolicy?: 'preserve' | 'retain-and-reset';
+    expectedPluginName?: string;
+    expectedInstallation?: PluginInstallationRevision | null;
     /**
      * The operator's pre-install decision (archive#4288). Omitted means no
      * decision was taken — which is not the same as "none was needed", and is
@@ -1998,6 +1992,11 @@ export async function installPluginFromSource(
       await readPluginManifestFileWithFormat(join(tempDir, 'plugin.json'));
     const isAgentPlugin = manifestFormat === 'agent-plugin-1.0';
     const pluginName = manifest.name || tempName;
+    if (
+      options?.expectedPluginName &&
+      options.expectedPluginName !== pluginName
+    )
+      throw new Error('Plugin identity cannot change during update');
     assertPluginNameSegment(pluginName);
     // The identity itself, not just its shape as a path segment: Station
     // mounts its own routes at some literal first segments on `/api/plugins`,
@@ -2086,6 +2085,76 @@ export async function installPluginFromSource(
       options?.registryKey,
       pluginName,
     );
+    if (isAgentPlugin) {
+      if (!deps.packageMcpJournal)
+        throw new Error(
+          'Package installation authority is unavailable; use a running Station instance.',
+        );
+      return await withPluginContentLock(pluginsDir, pluginName, async () => {
+        const current = resolveInstalledPluginRoot(pluginsDir, pluginName);
+        if (current?.kind === 'legacy')
+          throw new PluginIncarnationError('migration-required');
+        const digest = computePluginContentDigest(
+          dirname(tempDir),
+          basename(tempDir),
+        );
+        if (!digest) throw new Error('Staged package digest is unavailable');
+        const service = createLocalPluginInstallationService(
+          pluginsDir,
+          deps.packageMcpJournal!,
+          tempDir,
+        );
+        if (
+          options?.dataPolicy === 'retain-and-reset' &&
+          options.expectedInstallation === undefined
+        )
+          throw new Error(
+            'Preview the current installation before starting with new data',
+          );
+        const expected =
+          options?.expectedInstallation !== undefined
+            ? options.expectedInstallation
+            : await service.inspect(pluginName);
+        deps.beginConfigurationMutation?.();
+        const lifecycle = await service.install({
+          installation: pluginName,
+          expected,
+          artifact: { digest },
+          data: options?.dataPolicy,
+        });
+        if (options?.registryId && options.registryKey)
+          rememberRegistryInstall(
+            projectHomeDir,
+            options.registryId,
+            options.registryKey,
+            pluginName,
+          );
+        eventBus?.emit('plugins:installed', { name: pluginName, agents: [] });
+        pluginInstalls.add(1, { plugin: pluginName });
+        return {
+          success: true as const,
+          plugin: {
+            name: pluginName,
+            version: manifest.version,
+            hasBundle: false,
+            agents: [],
+          },
+          tools: [],
+          dependencies: [],
+          permissions: {
+            autoGranted: [],
+            consentGranted: [],
+            pendingConsent: [],
+            dependencies: [],
+            withdrawn: [],
+          },
+          lifecycle,
+        };
+      });
+    }
+    const selectedRoot = resolveInstalledPluginRoot(pluginsDir, pluginName);
+    if (selectedRoot?.kind === 'incarnation')
+      throw new PluginIncarnationError('migration-required');
     const existingManifest = existsSync(join(pluginDir, 'plugin.json'))
       ? await readManifestForRemoval(
           join(pluginDir, 'plugin.json'),
@@ -2646,7 +2715,7 @@ export async function installPluginFromSource(
 export async function uninstallInstalledPlugin(
   name: string,
   deps: PluginInstallSharedDeps,
-): Promise<{ success: true }> {
+): Promise<{ success: true; lifecycle?: unknown }> {
   const release = await acquireFileMutationLockAsync(
     join(deps.projectHomeDir, 'plugin-install-publication.mutation'),
   );
@@ -2667,7 +2736,7 @@ async function uninstallPluginUnderPublication(
   name: string,
   deps: PluginInstallSharedDeps,
   installedPluginName: string,
-): Promise<{ success: true }> {
+): Promise<{ success: true; lifecycle?: unknown }> {
   const { agentsDir, eventBus, logger, pluginsDir, projectHomeDir } = deps;
   const pluginDir = join(pluginsDir, installedPluginName);
   // The selected installed directory is the uninstall identity. A mutable
@@ -2683,9 +2752,6 @@ async function uninstallPluginUnderPublication(
   let backupRoot: string | null = null;
   let removedDependencyBackups: RemovedDependencyBackup[] = [];
   const ownershipHandoffs: PluginDependencyOwnershipHandoff[] = [];
-  let stagedAgentPluginData: string | null = null;
-  let backedUpAgentPluginData: string | null = null;
-  let agentPluginDataDirectory: string | null = null;
   let isAgentPlugin = false;
   try {
     const raw = JSON.parse(
@@ -2702,6 +2768,34 @@ async function uninstallPluginUnderPublication(
     installedPluginName,
     logger,
   );
+  const selectedRoot = resolveInstalledPluginRoot(pluginsDir, pluginName);
+  if (isAgentPlugin || selectedRoot?.kind === 'incarnation') {
+    if (manifest.name !== pluginName)
+      throw new Error(
+        'Installed plugin manifest identity does not match its directory',
+      );
+    if (selectedRoot?.kind !== 'incarnation')
+      throw new PluginIncarnationError('migration-required');
+    if (!deps.packageMcpJournal)
+      throw new Error(
+        'Package installation authority is unavailable; use a running Station instance.',
+      );
+    const service = createLocalPluginInstallationService(
+      pluginsDir,
+      deps.packageMcpJournal,
+    );
+    const current = await service.inspect(pluginName);
+    if (!current)
+      throw new Error('Package installation authority is unavailable');
+    deps.beginConfigurationMutation?.();
+    const lifecycle = await service.withdraw(current);
+    await removePluginHostRecord(projectHomeDir, pluginName);
+    eventBus?.emit('plugins:removed', { name: pluginName, retained: true });
+    pluginUninstalls.add(1, { plugin: pluginName });
+    return { success: true, lifecycle };
+  }
+  if (existsSync(join(projectHomeDir, 'agent-plugin-data', pluginName)))
+    throw new PluginIncarnationError('migration-required');
   // Destructive dependency cleanup reads only Station's host-owned install
   // authority. The parent manifest and every file in its mutable tree are
   // untrusted uninstall inputs and cannot mint ownership over another plugin.
@@ -2709,25 +2803,6 @@ async function uninstallPluginUnderPublication(
     projectHomeDir,
     installedPluginName,
   );
-  if ((manifest.name || installedPluginName) !== installedPluginName) {
-    throw new Error(
-      'Installed plugin manifest identity does not match its directory',
-    );
-  }
-  // Presence under Station's dedicated data root is durable historical
-  // ownership. A supported package may transition to the legacy manifest
-  // format during update, but that must not orphan data on later uninstall.
-  const hasHistoricalAgentPluginData = existsSync(
-    join(projectHomeDir, 'agent-plugin-data', pluginName),
-  );
-  if (isAgentPlugin || hasHistoricalAgentPluginData) {
-    // Preflight before quiescence or any plugin mutation. The same authority is
-    // re-read immediately around each later data rename/delete boundary.
-    agentPluginDataDirectory = resolveAgentPluginDataDirectory(
-      projectHomeDir,
-      pluginName,
-    ).directory;
-  }
   const eventSubscriptionQuiescence =
     (await deps.quiesceEventSubscriptions?.(pluginName)) ?? null;
   let serverQuiescence: PluginPublicServerQuiescence;
@@ -2764,14 +2839,7 @@ async function uninstallPluginUnderPublication(
     // Last: throws typed on a corrupt grants store, before which every other
     // backup element is already complete.
     backupPluginDurableState(projectHomeDir, backupRoot, pluginName);
-    if (agentPluginDataDirectory && existsSync(agentPluginDataDirectory)) {
-      backedUpAgentPluginData = join(backupRoot, 'agent-plugin-data');
-      cpSync(
-        agentPluginDataDirectory,
-        backedUpAgentPluginData,
-        PLUGIN_TREE_COPY,
-      );
-    }
+
     backupComplete = true;
 
     if (manifest.agents) {
@@ -2817,30 +2885,7 @@ async function uninstallPluginUnderPublication(
       name === installedPluginName ? undefined : name,
     );
     await removePluginHostRecord(projectHomeDir, pluginName);
-    if (agentPluginDataDirectory) {
-      const { root: dataRoot, directory: dataDir } =
-        resolveAgentPluginDataDirectory(projectHomeDir, pluginName);
-      if (existsSync(dataDir)) {
-        stagedAgentPluginData = join(
-          dataRoot,
-          `.removed-${pluginName}-${randomUUID()}`,
-        );
-        renameSync(dataDir, stagedAgentPluginData);
-      }
-    }
-    if (stagedAgentPluginData) {
-      const { root: dataRoot } = resolveAgentPluginDataDirectory(
-        projectHomeDir,
-        pluginName,
-      );
-      assertAgentPluginDataStaging(dataRoot, stagedAgentPluginData);
-      if (deps.removeStagedAgentPluginData) {
-        deps.removeStagedAgentPluginData(stagedAgentPluginData);
-      } else {
-        rmSync(stagedAgentPluginData, { recursive: true, force: true });
-      }
-      stagedAgentPluginData = null;
-    }
+
     eventBus?.emit('plugins:removed', { name: pluginName });
     pluginUninstalls.add(1, { plugin: pluginName });
     logger.info('Plugin removed', { plugin: pluginName });
@@ -2875,19 +2920,7 @@ async function uninstallPluginUnderPublication(
           backupRoot,
         );
         await restorePluginDurableState(projectHomeDir, backupRoot);
-        if (backedUpAgentPluginData && existsSync(backedUpAgentPluginData)) {
-          const { root: dataRoot, directory: dataDir } =
-            resolveAgentPluginDataDirectory(projectHomeDir, pluginName);
-          if (stagedAgentPluginData && existsSync(stagedAgentPluginData)) {
-            assertAgentPluginDataStaging(dataRoot, stagedAgentPluginData);
-            rmSync(stagedAgentPluginData, { recursive: true, force: true });
-          }
-          if (existsSync(dataDir)) {
-            rmSync(dataDir, { recursive: true, force: true });
-          }
-          cpSync(backedUpAgentPluginData, dataDir, PLUGIN_TREE_COPY);
-          stagedAgentPluginData = null;
-        }
+
         await synchronizePluginAgentDefinitions({
           agentsDir,
           pluginDir,
