@@ -64,6 +64,43 @@ function runner(script: string, timeout?: number, command = process.execPath) {
 }
 
 describe('dependency audit attempt diagnostics', () => {
+  it('captures actual npm and Node versions using the runner flags on a non-network command', async () => {
+    const root = temporary();
+    const npmCli = process.env.npm_execpath;
+    if (!npmCli || !existsSync(npmCli))
+      throw new Error('Run through the repository npm test:focused entry');
+    let actualVersion = '';
+    const execute = vi.fn((_command, args, options, callback) =>
+      execFile(
+        process.execPath,
+        [
+          npmCli,
+          '--version',
+          ...args.filter(
+            (arg: string) =>
+              arg === '--timing' ||
+              arg.startsWith('--loglevel=') ||
+              arg.startsWith('--logs-'),
+          ),
+        ],
+          { ...options, encoding: 'utf8', windowsHide: true },
+        (error, stdout, stderr) => {
+          actualVersion = stdout.trim();
+          callback(error, stdout, stderr);
+        },
+      ),
+    );
+    // npm --version is deliberately not an audit document. Parsing still
+    // refuses it; only the real child version/diagnostic path is under test.
+    await expect(
+      runAuditAttempt('sdk', root, false, { execute, diagnosticsRoot: root }),
+    ).rejects.toThrow('parseable JSON');
+    const terminal = records(root, 'terminal')[0];
+    expect(actualVersion).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(terminal.npmVersion).toBe(actualVersion);
+    expect(terminal.childNodeVersion).toBe(process.version);
+  });
+
   it('executes the child seam, preserving full/production arguments and audit result', async () => {
     const root = temporary();
     const execute = runner(`
@@ -97,7 +134,7 @@ describe('dependency audit attempt diagnostics', () => {
     });
     expect(args).toContain('--logs-max=0');
     expect(args).toContain('--timing');
-    expect(args).toContain('--loglevel=http');
+    expect(args).toContain('--loglevel=info');
     const rawLogs = args
       .find((arg: string) => arg.startsWith('--logs-dir='))
       .slice('--logs-dir='.length);

@@ -176,7 +176,7 @@ export function createAuditAttemptDiagnostics({
     args: privateLogs
       ? [
           '--timing',
-          '--loglevel=http',
+          '--loglevel=info',
           '--logs-max=0',
           `--logs-dir=${privateLogs}`,
         ]

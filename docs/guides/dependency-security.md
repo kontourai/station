@@ -47,6 +47,8 @@ Each actual audit attempt retains bounded, structured phase diagnostics under
 facts distinguish interrupted work from settled children; retries keep distinct
 identities. Completed npm phase timings, bulk response status/duration, actual
 tool versions and child elapsed/status are observations, not policy verdicts.
+The child uses npm's info log level so actual version messages and HTTP timing
+messages are both emitted; the narrower HTTP level suppresses version messages.
 Missing phase completion is unknown, not zero. Package names, raw URLs, config,
 advisory payloads and npm debug output are never copied into these artifacts.
 Private npm timing files are removed after child settlement; a hard interruption
