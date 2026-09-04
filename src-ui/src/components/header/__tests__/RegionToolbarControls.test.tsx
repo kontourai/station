@@ -271,6 +271,21 @@ describe('RegionToolbarControls', () => {
     expect(screen.queryByRole('menu')).toBeNull();
     expect(document.body.querySelectorAll('button')).toHaveLength(0);
     expect(container.querySelector('fieldset')).toBeNull();
+
+    // Going back the other way: the overflow branch returns before the menu
+    // markup, so it unmounts the portal without closing the menu. If the state
+    // survived, widening would re-open a menu the user never reopened and
+    // `useMenuFocus` would pull focus into it.
+    harness.bottomOnly = false;
+    harness.isMobile = false;
+    rerender(<RegionToolbarControls />);
+
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Choose a surface for Left region' })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
   });
 
   test('a phone renders no region control in the toolbar row at all (#917)', () => {

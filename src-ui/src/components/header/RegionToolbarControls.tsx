@@ -153,6 +153,13 @@ function ConnectedRegionToolbarControls() {
     available.includes(id),
   );
   const [menuRegion, setMenuRegion] = useState<DockMode | null>(null);
+  useEffect(() => {
+    // Closing, not just not-rendering: the overflow branch below returns before
+    // the menu markup, which unmounts the portal while leaving this state set.
+    // Widening back would then re-open a menu the user never reopened, and
+    // `useMenuFocus` would pull focus into it.
+    if (commandsInOverflowMenu) setMenuRegion(null);
+  }, [commandsInOverflowMenu]);
   const [menuAnchorRight, setMenuAnchorRight] = useState(8);
   const menuOccupant = menuRegion && regions[menuRegion].occupant;
   const menuLabel = menuRegion && regionLabel(menuRegion);
