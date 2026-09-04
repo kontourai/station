@@ -327,21 +327,18 @@ function firstRunWrites(writes: Record<string, unknown>[]): FirstRunRecord[] {
     .filter((record): record is FirstRunRecord => Boolean(record));
 }
 
-/**
- * The "About you" step's own Skip, and only it.
- *
- * `{ name: 'Skip' }` is a substring match, and since archive#3656 the shell renders
- * a `Skip to content` control as the document's first focusable element (the
- * tour's `Skip the tour` is a third). A bare name is therefore a strict-mode
- * violation that fires on every load, not a flake. Scoped to the step AND
- * exact, so it names one control for the same reason the step does
- * (archive#3877).
- */
-function skipAboutYou(page: Page) {
-  return page
+/** Finish the questions through the primary action and reach the real picker. */
+async function startFirstChat(page: Page) {
+  await page
     .getByTestId('first-run-about-you')
-    .getByRole('button', { name: 'Skip', exact: true })
+    .getByRole('button', { name: 'Start your first chat', exact: true })
     .click();
+  await expect(
+    page.getByRole('dialog', { name: 'New Chat', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Skip the tour', exact: true }),
+  ).toHaveCount(0);
 }
 
 function engineRow(page: Page, engineId: string) {
@@ -656,7 +653,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
     await page.getByTestId('first-run-engines-retry').click();
 
     await expect(page.getByTestId('first-run-about-you')).toBeVisible();
-    await skipAboutYou(page);
+    await startFirstChat(page);
     await expect
       .poll(() => firstRunWrites(configWrites).map((record) => record.status))
       .toEqual(['completed']);
@@ -695,7 +692,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     // Finishing the questions is what completes the run, and it is the ONLY
     // thing that writes `completed`.
-    await skipAboutYou(page);
+    await startFirstChat(page);
     await expect(page.getByTestId('first-run-about-you')).toHaveCount(0);
     await expect
       .poll(() => firstRunWrites(configWrites).map((r) => r.status))
@@ -1070,3 +1067,47 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(page.getByText('Step 1 of 2')).toBeVisible();
   });
 });
+
+for (const viewport of [
+  { label: 'desktop', width: 1280, height: 900 },
+  { label: 'mobile', width: 390, height: 844 },
+]) {
+  test(`first useful chat completion on ${viewport.label}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await patchExternalEngines(page, []);
+    await pinAgentCatalog(page);
+    const writes = await pinFirstRun(page, { status: 'pending' });
+    await pinTelemetryDisclosure(page, { acknowledged: true });
+    await page.goto('/');
+    const engines = page.getByTestId('first-run-engines');
+    await expect(engines).toBeVisible({ timeout: 20_000 });
+    await engines
+      .getByRole('button', { name: 'Continue', exact: true })
+      .click();
+    await expect(
+      page.locator(
+        '[data-testid="first-run-about-you"], [data-testid="engine-picker"]',
+      ),
+    ).toBeVisible();
+    if (await page.getByTestId('engine-picker').isVisible()) {
+      await page.getByRole('button', { name: 'Dismiss engine picker' }).click();
+    }
+    const questions = page.getByTestId('first-run-about-you');
+    await expect(questions).toBeVisible();
+    await questions
+      .getByRole('button', { name: 'Start your first chat' })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: testInfo.outputPath(`first-chat-choice-${viewport.label}.png`),
+    });
+    await startFirstChat(page);
+    await expect
+      .poll(() => firstRunWrites(writes).map((record) => record.status))
+      .toEqual(['completed']);
+    await page.screenshot({
+      path: testInfo.outputPath(`first-chat-picker-${viewport.label}.png`),
+    });
+  });
+}

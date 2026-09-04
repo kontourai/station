@@ -70,6 +70,17 @@ Choose the simplest path for what you want to do:
 | Use an existing agent engine | A supported engine Provider and its External agent |
 | Use a hosted model through Station | A hosted Model Provider and a Station agent |
 
+## Start Your First Chat
+
+At the end of first-run setup, choose **Start your first chat**. Station saves
+any personalization answers you selected, then opens New Chat. Unanswered
+questions add no profile. A failed save keeps setup open so you can retry.
+
+New Chat lets you choose an Agent, Model, and workspace. It shows loading,
+connection errors, or setup actions when a choice is not ready. Opening it does
+not send a message. **Take the tour** is an optional alternative that saves the
+same selected answers before showing Station's key surfaces.
+
 ## Start Your First Task
 
 When Home offers **Start your first task**, it appears only after the durable
