@@ -1208,9 +1208,7 @@ async function setupReturnFixture(page: Page) {
     },
   );
   await page.goto('/');
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event('station:open-new-chat')),
-  );
+  await page.getByRole('button', { name: /^(New chat|Start a chat)$/ }).click();
   const modal = page.getByRole('dialog', { name: 'New Chat', exact: true });
   await expect(modal).toBeVisible();
   await modal.locator('.new-chat-modal__context-button').click();

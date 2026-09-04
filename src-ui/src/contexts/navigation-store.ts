@@ -17,6 +17,15 @@ import {
 } from '../workspace-panes/openFilePreviewIntent';
 import { parseSurfaceDeepLink } from './surface-deep-link';
 
+/** An exact temporary return location, owned and restored by this navigator. */
+export type NavigationLocation = Readonly<{ pathname: string; search: string }>;
+
+function canonicalSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  params.sort();
+  return params.toString();
+}
+
 export type NavigationState = {
   pathname: string;
   selectedAgent: string | null;
@@ -490,6 +499,32 @@ class NavigationStore {
   private notify = () => {
     this.listeners.forEach((listener) => listener());
   };
+
+  captureLocation(): NavigationLocation {
+    return {
+      pathname: window.location.pathname,
+      search: window.location.search,
+    };
+  }
+
+  isCurrentLocation(location: NavigationLocation): boolean {
+    return (
+      window.location.pathname === location.pathname &&
+      canonicalSearch(window.location.search) ===
+        canonicalSearch(location.search)
+    );
+  }
+
+  restoreLocation(location: NavigationLocation): void {
+    const captured = new URLSearchParams(location.search);
+    const clear: Record<string, null> = {};
+    for (const key of new URLSearchParams(window.location.search).keys()) {
+      if (!captured.has(key)) clear[key] = null;
+    }
+    // Keep exact Pane paths, tabs, and query selections through the same
+    // guarded navigation path. A Project-only projection cannot restore them.
+    this.navigate(`${location.pathname}${location.search}`, clear);
+  }
 
   navigate(pathname: string, params?: Record<string, string | null>) {
     const target = parseNavigationTarget(pathname, window.location.href);

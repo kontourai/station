@@ -194,6 +194,7 @@ export function NewChatModal({
     selectedContext,
     contextSearch,
     agentSearch,
+    revalidateSelection: returnedFromSetup,
   });
   const {
     isGlobal,
@@ -210,6 +211,14 @@ export function NewChatModal({
   const setupReturn = useNewChatSetupReturn({
     authority: requestAuthority,
     onCancel: onClose,
+    revalidate: async () => {
+      if (refreshSetup) await refreshSetup();
+      else
+        await Promise.allSettled([
+          refetchAgentConnections?.(),
+          refetchModelConnections?.(),
+        ]);
+    },
     onResume: () => {
       setReturnedFromSetup(true);
       const slug = preservedAgentSlug.current;
@@ -228,11 +237,6 @@ export function NewChatModal({
         setSelectFeedback(
           'The workspace you selected is no longer available. Choose a workspace to continue.',
         );
-      }
-      if (refreshSetup) refreshSetup();
-      else {
-        void refetchAgentConnections?.();
-        void refetchModelConnections?.();
       }
     },
   });

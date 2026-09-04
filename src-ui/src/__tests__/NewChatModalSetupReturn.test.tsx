@@ -140,6 +140,23 @@ function BannerControls() {
     </>
   );
 }
+function ModalHarness(props: Parameters<typeof NewChatModal>[0]) {
+  const [open, setOpen] = useState(true);
+  return (
+    <>
+      {open ? (
+        <NewChatModal
+          {...props}
+          onClose={() => {
+            setOpen(false);
+            props.onClose();
+          }}
+        />
+      ) : null}
+      <BannerControls />
+    </>
+  );
+}
 function harness(props: Partial<Parameters<typeof NewChatModal>[0]> = {}) {
   const onSelect = vi.fn();
   const onClose = vi.fn();
@@ -151,23 +168,13 @@ function harness(props: Partial<Parameters<typeof NewChatModal>[0]> = {}) {
     onClose,
     requestAuthority: authority,
   };
-  const view = render(
-    <>
-      <NewChatModal {...defaults} {...props} />
-      <BannerControls />
-    </>,
-  );
+  const view = render(<ModalHarness {...defaults} {...props} />);
   return {
     ...view,
     onSelect,
     onClose,
     update: (next: Partial<Parameters<typeof NewChatModal>[0]>) =>
-      view.rerender(
-        <>
-          <NewChatModal {...defaults} {...props} {...next} />
-          <BannerControls />
-        </>,
-      ),
+      view.rerender(<ModalHarness {...defaults} {...props} {...next} />),
   };
 }
 async function openSetup() {
@@ -403,4 +410,66 @@ test('return waits for the owning setup form navigation guard', async () => {
   } finally {
     unregister();
   }
+});
+
+test('refetch promises fence immediate interaction before fetching notifications', async () => {
+  const view = harness();
+  await openSetup();
+  view.update({ agents: [READY] });
+  const settle: Array<() => void> = [];
+  refetch.mockImplementation(
+    () => new Promise<void>((resolve) => settle.push(resolve)),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
+  expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+  expect(view.onSelect).not.toHaveBeenCalled();
+  await waitFor(() => expect(settle).toHaveLength(2));
+  await act(async () => {
+    settle[0]();
+  });
+  expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+  await act(async () => {
+    settle[1]();
+  });
+  await screen.findByRole('dialog', { name: 'New Chat' });
+  expect(view.onSelect).not.toHaveBeenCalled();
+});
+
+test('cancel during revalidation retires the pending continuation', async () => {
+  const view = harness();
+  await openSetup();
+  const settle: Array<() => void> = [];
+  refetch.mockImplementation(
+    () => new Promise<void>((resolve) => settle.push(resolve)),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
+  await waitFor(() => expect(settle).toHaveLength(2));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel return' }));
+  await act(async () => {
+    settle.forEach((resolve) => resolve());
+  });
+  expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+  expect(view.onClose).toHaveBeenCalledTimes(1);
+  expect(view.onSelect).not.toHaveBeenCalled();
+});
+
+test('restores an exact non-default Pane path, tab and query selection', async () => {
+  act(() =>
+    navigationStore.navigate(
+      '/projects/alpha/layouts/coding/panes/pane%3Abuiltin%3Acoding%3Afile-browser/files-1?tab=diff&agent=assistant&pane=review-pane&paneScope=alpha&custom=selected',
+    ),
+  );
+  const origin = navigationStore.captureLocation();
+  harness();
+  await openSetup();
+  act(() =>
+    navigationStore.updateParams({
+      view: 'provider-settings',
+      custom: 'changed',
+    }),
+  );
+  await returnToChat();
+  expect(navigationStore.isCurrentLocation(origin)).toBe(true);
+  expect(new URLSearchParams(window.location.search).get('view')).toBeNull();
+  expect(new URLSearchParams(window.location.search).get('tab')).toBe('diff');
 });

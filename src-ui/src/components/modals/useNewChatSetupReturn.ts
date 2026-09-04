@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { BANNER_PRIORITY, bannerStore } from '../../contexts/banner-store';
 import {
-  type NavigationState,
+  type NavigationLocation,
   navigationStore,
 } from '../../contexts/navigation-store';
 
@@ -11,11 +11,11 @@ export type NewChatSetupAuthority = ReturnType<
 >;
 
 type SetupJourney = {
-  origin: NavigationState;
+  origin: NavigationLocation;
   target: string;
   authority: NonNullable<NewChatSetupAuthority>;
   entered: boolean;
-  returnRequested?: boolean;
+  revalidating?: boolean;
 };
 
 function isRepairRoute(path: string, target: string) {
@@ -29,16 +29,18 @@ export function useNewChatSetupReturn({
   authority,
   onCancel,
   onResume,
+  revalidate,
 }: {
   authority: NewChatSetupAuthority;
   onCancel: () => void;
   onResume: () => void;
+  revalidate: () => Promise<unknown>;
 }) {
   const id = `chrome:new-chat:setup-return:${useId()}`;
   const [journey, setJourney] = useState<SetupJourney | null>(null);
   const current = useRef<SetupJourney | null>(null);
-  const callbacks = useRef({ onCancel, onResume });
-  callbacks.current = { onCancel, onResume };
+  const callbacks = useRef({ onCancel, onResume, revalidate });
+  callbacks.current = { onCancel, onResume, revalidate };
 
   const cancel = useCallback(() => {
     if (!current.current) return;
@@ -56,31 +58,36 @@ export function useNewChatSetupReturn({
         cancel();
         return;
       }
-      if (
-        restoreRoute &&
-        navigationStore.getSnapshot().pathname !== pending.origin.pathname
-      ) {
-        pending.returnRequested = true;
-        const origin = pending.origin;
-        // Project navigation remains owned by the canonical Layout/Project seam.
-        if (origin.selectedProject && origin.selectedProjectLayout) {
-          navigationStore.setLayout(
-            origin.selectedProject,
-            origin.selectedProjectLayout,
-          );
-        } else if (origin.selectedProject) {
-          navigationStore.setProject(origin.selectedProject);
-        } else {
-          navigationStore.navigate(origin.pathname);
-        }
-        // A dirty setup form may defer navigation. Keep the picker suspended
-        // until the canonical navigation store actually admits the return.
+      if (restoreRoute && !navigationStore.isCurrentLocation(pending.origin)) {
+        navigationStore.restoreLocation(pending.origin);
+        // A dirty setup form can defer the exact path/query restoration.
         return;
       }
-      current.current = null;
-      setJourney(null);
-      bannerStore.dismiss(id, { reason: 'system' });
-      callbacks.current.onResume();
+      if (pending.revalidating) return;
+      const checking = { ...pending, revalidating: true };
+      current.current = checking;
+      setJourney(checking);
+      // Query refetch promises are the admission barrier. Do not expose the
+      // picker in the interval before batched query observers report fetching.
+      void Promise.resolve()
+        .then(() => callbacks.current.revalidate())
+        .then(
+          () => {
+            if (current.current !== checking) return;
+            if (!checking.authority.isCurrent()) {
+              cancel();
+              return;
+            }
+            current.current = null;
+            setJourney(null);
+            bannerStore.dismiss(id, { reason: 'system' });
+            callbacks.current.onResume();
+          },
+          () => {
+            // An unexpected revalidation rejection cannot admit stale choices.
+            if (current.current === checking) cancel();
+          },
+        );
     },
     [cancel, id],
   );
@@ -89,7 +96,7 @@ export function useNewChatSetupReturn({
     (target: string) => {
       if (!authority?.isCurrent()) return false;
       const next = {
-        origin: navigationStore.getSnapshot(),
+        origin: navigationStore.captureLocation(),
         target,
         authority,
         entered: false,
@@ -118,13 +125,19 @@ export function useNewChatSetupReturn({
       priority: BANNER_PRIORITY.setup,
       tone: 'info',
       userInitiated: true,
-      message: 'Your New Chat choices are waiting while you finish setup.',
+      message: journey.revalidating
+        ? 'Checking chat setup before returning.'
+        : 'Your New Chat choices are waiting while you finish setup.',
       actions: [
-        {
-          label: 'Return to New Chat',
-          variant: 'primary',
-          onClick: () => resume(true),
-        },
+        ...(!journey.revalidating
+          ? [
+              {
+                label: 'Return to New Chat',
+                variant: 'primary' as const,
+                onClick: () => resume(true),
+              },
+            ]
+          : []),
         { label: 'Cancel return', onClick: cancel },
       ],
       dismissible: false,
@@ -143,20 +156,13 @@ export function useNewChatSetupReturn({
         cancel();
         return;
       }
-      const location = navigationStore.getSnapshot();
-      const path = location.pathname;
-      if (
-        pending.returnRequested &&
-        pending.origin.selectedProject &&
-        location.selectedProject === pending.origin.selectedProject &&
-        location.selectedProjectLayout === pending.origin.selectedProjectLayout
-      ) {
+      if (navigationStore.isCurrentLocation(pending.origin)) {
         resume(false);
         return;
       }
+      const path = navigationStore.getSnapshot().pathname;
       if (isRepairRoute(path, pending.target)) return;
-      if (path === pending.origin.pathname) resume(false);
-      else cancel();
+      cancel();
     });
     return () => {
       unsubscribe();

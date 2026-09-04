@@ -142,18 +142,44 @@ export function useNewChatSelectionModel({
   selectedContext,
   contextSearch = '',
   agentSearch = '',
+  revalidateSelection = false,
 }: {
   agents: AgentData[];
   projects: ProjectMetadata[];
   selectedContext: string;
   contextSearch?: string;
   agentSearch?: string;
+  revalidateSelection?: boolean;
 }) {
   const { selectedProject: activeLayoutProject, selectedProjectLayout } =
     useNavigation();
   const appConfig = useConfig();
   const agentCatalog = useAgentsQuery();
   const projectCatalog = useProjectsQuery();
+  const qualifiedAgents = useMemo(
+    () =>
+      revalidateSelection
+        ? agents.flatMap((agent) => {
+            const current = agentCatalog.data?.find(
+              (candidate) => candidate.slug === agent.slug,
+            );
+            return current ? [current] : [];
+          })
+        : agents,
+    [agents, agentCatalog.data, revalidateSelection],
+  );
+  const qualifiedProjects = useMemo(
+    () =>
+      revalidateSelection
+        ? projects.flatMap((project) => {
+            const current = (
+              projectCatalog.data as ProjectMetadata[] | undefined
+            )?.find((candidate) => candidate.slug === project.slug);
+            return current ? [current] : [];
+          })
+        : projects,
+    [projects, projectCatalog.data, revalidateSelection],
+  );
   const { data: layout } = useProjectLayoutQuery(
     activeLayoutProject || '',
     selectedProjectLayout || '',
@@ -233,8 +259,8 @@ export function useNewChatSelectionModel({
     [agentConnections],
   );
   const modalAgents = useMemo(() => {
-    if (!providerManagedExecution) return agents;
-    return agents.map((agent) =>
+    if (!providerManagedExecution) return qualifiedAgents;
+    return qualifiedAgents.map((agent) =>
       supportsProviderManagedBinding(agent, agentConnections)
         ? {
             ...agent,
@@ -257,7 +283,12 @@ export function useNewChatSelectionModel({
           }
         : agent,
     );
-  }, [agents, agentConnections, managedRuntime?.id, providerManagedExecution]);
+  }, [
+    qualifiedAgents,
+    agentConnections,
+    managedRuntime?.id,
+    providerManagedExecution,
+  ]);
   const providerManagedAgentSlugs = useMemo(
     () =>
       providerManagedExecution
@@ -280,7 +311,7 @@ export function useNewChatSelectionModel({
     () =>
       buildNewChatModalViewModel({
         agents: modalAgents,
-        projects,
+        projects: qualifiedProjects,
         agentConnections,
         selectedContext,
         contextSearch,
@@ -305,7 +336,7 @@ export function useNewChatSelectionModel({
       layout?.icon,
       layout?.name,
       modalAgents,
-      projects,
+      qualifiedProjects,
       providerManagedAgentSlugs,
       selectedContext,
       selectedProjectConfig?.agents,
@@ -431,14 +462,15 @@ export function useNewChatSelectionModel({
       selectedProjectQuery.isFetching ||
       agentCatalog.catalogState === 'reconciling',
   );
-  const refreshSetup = () => {
-    void refetchAgentConnections();
-    void refetchModelConnections();
-    void refreshACPConnections();
-    void agentCatalog.refetch();
-    void projectCatalog.refetch();
-    if (selectedProjectSlug) void selectedProjectQuery.refetch();
-  };
+  const refreshSetup = () =>
+    Promise.allSettled([
+      refetchAgentConnections(),
+      refetchModelConnections(),
+      refreshACPConnections(),
+      agentCatalog.refetch(),
+      projectCatalog.refetch(),
+      ...(selectedProjectSlug ? [selectedProjectQuery.refetch()] : []),
+    ]);
   return {
     viewModel,
     defaultSelection,

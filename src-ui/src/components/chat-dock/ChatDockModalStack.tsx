@@ -166,7 +166,6 @@ export function ChatDockModalStack({
             isOpen: showSessionPicker,
             agents,
             projects,
-            requestAuthority,
             activeConversationIds: sessions
               .map((s) => s.conversationId)
               .filter(Boolean) as string[],
