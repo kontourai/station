@@ -9,6 +9,7 @@ import {
   classifyGitRange,
   DEPENDENCY_SCOPE_ROOTS,
 } from './classify-ci-change.mjs';
+import { createAuditAttemptDiagnostics } from './lib/dependency-audit-diagnostics.mjs';
 
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 const RESIDUAL_SEVERITIES = new Set(['moderate', 'low']);
@@ -689,42 +690,84 @@ export function dependencyAuditDecision({
   }
 }
 
-function runAuditAttempt(scope, cwd, productionOnly) {
+/** @type {(command: string, args: string[], options: import('node:child_process').ExecFileOptionsWithStringEncoding, callback: (error: import('node:child_process').ExecFileException | null, stdout: string, stderr: string) => void) => import('node:child_process').ChildProcess} */
+const executeAuditFile = execFile;
+
+export function runAuditAttempt(
+  scope,
+  cwd,
+  productionOnly,
+  {
+    attempt = 1,
+    execute = executeAuditFile,
+    diagnosticsRoot = path.join(
+      REPO_ROOT,
+      '.kontourai/verification-output/dependency-audit',
+    ),
+  } = {},
+) {
   const args = ['audit', '--json'];
   if (productionOnly) args.push('--omit=dev');
   if (scope !== 'root') args.push('--workspaces=false');
+  const diagnostics = createAuditAttemptDiagnostics({
+    scope,
+    reachability: productionOnly ? 'production' : 'full',
+    attempt,
+    outputRoot: diagnosticsRoot,
+    timeoutMs: AUDIT_TIMEOUT_MS,
+  });
+  args.push(...diagnostics.args);
   return new Promise((resolveAudit, rejectAudit) => {
-    execFile(
-      'npm',
-      args,
-      {
-        cwd,
-        encoding: 'utf8',
-        maxBuffer: 50 * 1024 * 1024,
-        timeout: AUDIT_TIMEOUT_MS,
-      },
-      (error, stdout, stderr) => {
-        const status = error
-          ? typeof error.code === 'number'
-            ? error.code
-            : null
-          : 0;
-        try {
-          resolveAudit(
-            parseAuditCommandResult(scope, {
-              error:
-                error && status === null && !error.signal ? error : undefined,
-              status,
-              signal: error?.signal ?? null,
-              stdout,
-              stderr,
-            }),
-          );
-        } catch (parseError) {
-          rejectAudit(parseError);
-        }
-      },
-    );
+    diagnostics.startChild();
+    let child;
+    try {
+      child = execute(
+        'npm',
+        args,
+        {
+          cwd,
+          encoding: 'utf8',
+          maxBuffer: 50 * 1024 * 1024,
+          timeout: AUDIT_TIMEOUT_MS,
+          windowsHide: true,
+        },
+        (error, stdout, stderr) => {
+          const status = error
+            ? typeof error.code === 'number'
+              ? error.code
+              : null
+            : 0;
+          diagnostics.settle({
+            status,
+            signal: error?.signal ?? null,
+            operationalCode: error?.code,
+          });
+          try {
+            resolveAudit(
+              parseAuditCommandResult(scope, {
+                error:
+                  error && status === null && !error.signal ? error : undefined,
+                status,
+                signal: error?.signal ?? null,
+                stdout,
+                stderr,
+              }),
+            );
+          } catch (parseError) {
+            rejectAudit(parseError);
+          }
+        },
+      );
+    } catch (error) {
+      diagnostics.settle({
+        status: null,
+        signal: null,
+        operationalCode: error?.code,
+      });
+      rejectAudit(error);
+      return;
+    }
+    child.stderr?.on('data', (chunk) => diagnostics.consume(chunk));
   });
 }
 
@@ -736,7 +779,7 @@ export async function withAuditRetries(
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await operation();
+      return await operation(attempt);
     } catch (error) {
       lastError = error;
       if (attempt < attempts)
@@ -757,8 +800,8 @@ function runAudit(scope, cwd, productionOnly = false) {
   } catch {
     throw new Error(`committed lockfile is missing for ${scope}: ${lockfile}`);
   }
-  return withAuditRetries(scope, () =>
-    runAuditAttempt(scope, cwd, productionOnly),
+  return withAuditRetries(scope, (attempt) =>
+    runAuditAttempt(scope, cwd, productionOnly, { attempt }),
   );
 }
 
