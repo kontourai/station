@@ -10,10 +10,12 @@ import type {
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import {
   useACPConnectionsQuery,
+  useAgentsQuery,
   useEngineConnectionsQuery,
   useModelConnectionsQuery,
   useProjectLayoutQuery,
   useProjectQuery,
+  useProjectsQuery,
 } from '@kontourai/station-sdk';
 import { useCallback, useMemo, useState } from 'react';
 import {
@@ -150,6 +152,8 @@ export function useNewChatSelectionModel({
   const { selectedProject: activeLayoutProject, selectedProjectLayout } =
     useNavigation();
   const appConfig = useConfig();
+  const agentCatalog = useAgentsQuery();
+  const projectCatalog = useProjectsQuery();
   const { data: layout } = useProjectLayoutQuery(
     activeLayoutProject || '',
     selectedProjectLayout || '',
@@ -158,36 +162,46 @@ export function useNewChatSelectionModel({
   const {
     data: agentConnections = [],
     isLoading: runtimeLoading,
+    isFetching: runtimeFetching,
     error: runtimeError,
     refetch: refetchAgentConnections,
   } = useEngineConnectionsQuery() as {
     data?: AgentConnectionView[];
     isLoading?: boolean;
+    isFetching?: boolean;
     error?: unknown;
     refetch: () => unknown;
   };
   const {
     data: modelConnections = [],
     isLoading: modelsLoading,
+    isFetching: modelsFetching,
     error: modelsError,
     refetch: refetchModelConnections,
   } = useModelConnectionsQuery() as {
     data?: ConnectionConfig[];
     isLoading?: boolean;
+    isFetching?: boolean;
     error?: unknown;
     refetch: () => unknown;
   };
-  const { data: acpConnections = [], refetch: refreshACPConnections } =
-    useACPConnectionsQuery() as {
-      data?: ACPSelectionConnection[];
-      refetch: () => Promise<unknown>;
-    };
+  const {
+    data: acpConnections = [],
+    refetch: refreshACPConnections,
+    isFetching: acpFetching,
+    error: acpError,
+  } = useACPConnectionsQuery() as {
+    data?: ACPSelectionConnection[];
+    isFetching?: boolean;
+    error?: unknown;
+    refetch: () => Promise<unknown>;
+  };
   const selectedProjectSlug =
     selectedContext !== GLOBAL_CONTEXT ? selectedContext : null;
-  const { data: selectedProjectConfig } = useProjectQuery(
-    selectedProjectSlug ?? '',
-    { enabled: !!selectedProjectSlug },
-  ) as {
+  const selectedProjectQuery = useProjectQuery(selectedProjectSlug ?? '', {
+    enabled: !!selectedProjectSlug,
+  });
+  const { data: selectedProjectConfig } = selectedProjectQuery as {
     data?: {
       agents?: AgentId[];
       defaultProviderId?: string;
@@ -401,6 +415,30 @@ export function useNewChatSelectionModel({
     };
   };
 
+  const setupError =
+    runtimeError ??
+    modelsError ??
+    acpError ??
+    agentCatalog.error ??
+    projectCatalog.error ??
+    selectedProjectQuery.error;
+  const setupFetching = Boolean(
+    runtimeFetching ||
+      modelsFetching ||
+      acpFetching ||
+      agentCatalog.isFetching ||
+      projectCatalog.isFetching ||
+      selectedProjectQuery.isFetching ||
+      agentCatalog.catalogState === 'reconciling',
+  );
+  const refreshSetup = () => {
+    void refetchAgentConnections();
+    void refetchModelConnections();
+    void refreshACPConnections();
+    void agentCatalog.refetch();
+    void projectCatalog.refetch();
+    if (selectedProjectSlug) void selectedProjectQuery.refetch();
+  };
   return {
     viewModel,
     defaultSelection,
@@ -411,6 +449,13 @@ export function useNewChatSelectionModel({
     selectedProjectConfig,
     runtimeLoading,
     modelsLoading,
+    runtimeFetching,
+    modelsFetching,
+    setupFetching,
+    projectCatalogResolved:
+      projectCatalog.isSuccess && !projectCatalog.isFetching,
+    setupError,
+    refreshSetup,
     // archive#771: both flow into a single `flatList.length === 0` gate in
     // `NewChatModal` that previously only checked `runtimeLoading ||
     // modelsLoading` — a settled error rendered as "Nothing to chat with

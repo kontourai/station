@@ -81,6 +81,19 @@ connection errors, or setup actions when a choice is not ready. Opening it does
 not send a message. **Take the tour** is an optional alternative that saves the
 same selected answers before showing Station's key surfaces.
 
+### Finish setup and return
+
+If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
+Connections**, use that action to open the owning setup page. The picker steps
+aside while keeping your chosen workspace, Agent, Model, and selected context.
+Use **Return to New Chat** when finished, or browser Back to return to the page
+you left. Station rechecks setup before you choose an Agent; returning sends no
+message. If a choice was removed or access changed, choose an available option.
+
+**Cancel return**, opening a fresh New Chat, navigating elsewhere, changing
+Stations or authorization, and reloading the page end this temporary return
+flow. Connection changes you already saved remain saved.
+
 ## Start Your First Task
 
 When Home offers **Start your first task**, it appears only after the durable

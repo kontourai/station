@@ -1121,3 +1121,201 @@ for (const viewport of [
     });
   });
 }
+
+async function setupReturnFixture(page: Page) {
+  let ready = false;
+  let deletedProject = false;
+  const projects = [
+    {
+      slug: 'setup-alpha',
+      name: 'Setup Alpha',
+      workingDirectory: '/fixture/alpha',
+      layoutCount: 0,
+    },
+    {
+      slug: 'setup-beta',
+      name: 'Setup Beta',
+      workingDirectory: '/fixture/beta',
+      layoutCount: 0,
+    },
+  ];
+  await patchExternalEngines(page, ENGINE_MIX);
+  await pinFirstRun(page, {
+    status: 'completed',
+    completedAt: '2026-09-04T00:00:00Z',
+  });
+  await pinTelemetryDisclosure(page, { acknowledged: true });
+  await page.route(
+    (url) => url.pathname === AGENTS_PATH,
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: [
+            {
+              slug: 'setup-assistant',
+              name: 'Setup Assistant',
+              available: ready,
+              model: 'fixture-model',
+              modelOptions: [{ id: 'fixture-model', name: 'Fixture Model' }],
+              ...(!ready
+                ? {
+                    unavailableReason: 'Connect a Model to continue',
+                    unavailableFix: { kind: 'model-connection' },
+                  }
+                : {}),
+            },
+          ],
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/projects',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: projects.filter(
+            (project) => !deletedProject || project.slug !== 'setup-beta',
+          ),
+        }),
+      }),
+  );
+  await page.route(
+    (url) => /^\/api\/projects\/setup-(alpha|beta)$/.test(url.pathname),
+    (route) => {
+      const slug = new URL(route.request().url()).pathname.split('/').pop();
+      const missing = deletedProject && slug === 'setup-beta';
+      return route.fulfill({
+        status: missing ? 404 : 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          missing
+            ? { success: false, error: 'Project no longer available' }
+            : {
+                success: true,
+                data: {
+                  ...projects.find((project) => project.slug === slug),
+                  agents: ['setup-assistant'],
+                },
+              },
+        ),
+      });
+    },
+  );
+  await page.goto('/');
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event('station:open-new-chat')),
+  );
+  const modal = page.getByRole('dialog', { name: 'New Chat', exact: true });
+  await expect(modal).toBeVisible();
+  await modal.locator('.new-chat-modal__context-button').click();
+  await page.locator('[data-context-value="setup-beta"]').click();
+  await expect(
+    modal.getByRole('button', { name: 'Workspace: Setup Beta' }),
+  ).toBeVisible();
+  return {
+    modal,
+    repair: () => {
+      ready = true;
+    },
+    deleteProject: () => {
+      deletedProject = true;
+    },
+  };
+}
+
+for (const viewport of [
+  { label: 'desktop', width: 1280, height: 900 },
+  { label: 'mobile', width: 390, height: 844 },
+]) {
+  test(`New Chat setup return preserves choices on ${viewport.label}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    const fixture = await setupReturnFixture(page);
+    await fixture.modal
+      .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
+      .click();
+    await expect(fixture.modal).toHaveCount(0);
+    await expect(page).toHaveURL(/\/connections/);
+    const returnButton = page.getByRole('button', {
+      name: 'Return to New Chat',
+      exact: true,
+    });
+    await expect(returnButton).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath(`setup-return-banner-${viewport.label}.png`),
+      animations: 'disabled',
+    });
+    // The fixture models an externally completed provider setup. Returning
+    // must refetch the canonical catalog rather than trust its earlier row.
+    fixture.repair();
+    await returnButton.click();
+    await expect(fixture.modal).toHaveCSS('opacity', '1');
+    await expect(
+      fixture.modal.getByRole('button', { name: 'Workspace: Setup Beta' }),
+    ).toBeVisible();
+    await expect(
+      fixture.modal.locator('[data-agent-slug="setup-assistant"]'),
+    ).toBeEnabled();
+    await expect(
+      page.getByRole('button', { name: 'Return to New Chat', exact: true }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath(`setup-return-picker-${viewport.label}.png`),
+      animations: 'disabled',
+    });
+  });
+}
+
+test('New Chat setup return supports Back, cancellation and deleted Project disclosure', async ({
+  page,
+}) => {
+  const fixture = await setupReturnFixture(page);
+  await fixture.modal
+    .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Return to New Chat', exact: true }),
+  ).toBeVisible();
+  await page.goBack();
+  await expect(fixture.modal).toBeVisible();
+  await expect(
+    fixture.modal.getByRole('button', { name: 'Workspace: Setup Beta' }),
+  ).toBeVisible();
+  await fixture.modal
+    .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
+    .click();
+  fixture.deleteProject();
+  await page
+    .getByRole('button', { name: 'Return to New Chat', exact: true })
+    .click();
+  await expect(fixture.modal.getByRole('alert')).toContainText(
+    'workspace you selected is no longer available',
+  );
+  await expect(
+    fixture.modal.getByRole('button', { name: 'Workspace: Select workspace' }),
+  ).toBeVisible();
+  await fixture.modal
+    .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Cancel return', exact: true })
+    .click();
+  await expect(fixture.modal).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Return to New Chat', exact: true }),
+  ).toHaveCount(0);
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event('station:open-new-chat')),
+  );
+  await expect(fixture.modal).toBeVisible();
+  await expect(
+    fixture.modal.getByRole('button', { name: 'Workspace: No workspace' }),
+  ).toBeVisible();
+});
