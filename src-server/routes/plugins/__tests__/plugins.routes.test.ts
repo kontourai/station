@@ -199,6 +199,9 @@ vi.mock('node:fs', async (importOriginal) => {
     rmSync: vi.fn(),
     cpSync: vi.fn(),
     writeFileSync: vi.fn(),
+    // Alias removal now uses the canonical atomic writer. This unit fixture
+    // mocks its staging write too, so publishing must not touch real /tmp.
+    renameSync: vi.fn(),
   };
 });
 
@@ -1254,7 +1257,9 @@ describe('Plugin Routes', () => {
 
     const response = await app.request('/demo', { method: 'DELETE' });
 
-    expect(response.status).toBe(200);
+    expect(response.status, JSON.stringify(await json(response.clone()))).toBe(
+      200,
+    );
     expect(vi.mocked(rmSync)).toHaveBeenCalledWith(
       '/tmp/project/plugins/actual-plugin',
       { recursive: true, force: true },
