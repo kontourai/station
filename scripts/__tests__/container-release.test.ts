@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { dirname, relative, resolve, sep } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { validatePackagedReleaseManifest } from '../../packages/cli/src/commands/lifecycle.js';
 import {
@@ -598,10 +598,16 @@ describe('container source contract', () => {
         /from\s+'(\.[^']+\.mjs)'|import\s+'(\.[^']+\.mjs)'/g,
       )) {
         const specifier = match[1] ?? match[2];
+        // POSIX separators: `relative()` yields `scripts\\lib\\x.mjs` on
+        // Windows, while COPY sources are Dockerfile literals and always
+        // forward-slashed, so an unnormalised lookup can never match there.
+        // The Windows portable floor caught this on the first push.
         const repoRelative = relative(
           root,
           resolve(dirname(resolve(root, current)), specifier),
-        );
+        )
+          .split(sep)
+          .join('/');
         required.add(repoRelative);
         queue.push(repoRelative);
       }
