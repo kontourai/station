@@ -57,6 +57,7 @@ import {
   describeLoaderFailure,
   isLoaderProgrammingFailure,
   loaderErrorClass,
+  loaderStackFrames,
 } from './tool-load-failure.js';
 
 /**
@@ -224,6 +225,12 @@ async function createMCPTools(
   custody: MCPLocalConnectionCustody,
   claim: MCPLocalClaim,
   retain: () => void,
+  /**
+   * Mirrors `retain`: a one-way signal back to the per-tool loop, so the loop
+   * learns what THIS call did rather than inferring it from a runtime-wide map
+   * a concurrent agent load also writes (#1486).
+   */
+  onFailureRecorded: () => void,
 ): Promise<Tool<any>[]> {
   const mcpKey = toolId;
 
@@ -327,6 +334,12 @@ async function createMCPTools(
         connected: false,
         error: publicMCPConnectionError(toolId, errorClass),
       });
+      // Tell the caller's catch that THIS iteration already classified the
+      // failure at the seam that still held the original error — it can say
+      // "did not respond in time" where the catch, which only sees the wrapped
+      // ToolServerOperationError, would recompose the generic reachability
+      // line (#1486).
+      onFailureRecorded();
       mcpLifecycle.add(1, { event: 'error', server: toolId });
       throw publicError;
     }
@@ -455,23 +468,27 @@ type AgentToolLoadPhase = 'preconnect' | 'connect';
  * earlier reload, or nothing at all. Every failed iteration now leaves a
  * `{ connected: false }` entry.
  *
- * The one status this does NOT overwrite is a failure THIS iteration already
+ * The one status this does NOT overwrite is a failure THIS CALL already
  * recorded: `createMCPTools` classifies at the connect seam, where it still has
  * the original error and can say "did not respond in time" rather than the
  * generic reachability line the catch would recompose from the wrapped
- * `ToolServerOperationError`. Identity against the entry observed at the top of
- * the iteration is what separates that from a stale entry.
+ * `ToolServerOperationError`.
+ *
+ * `alreadyRecorded` comes from `createMCPTools`'s `onFailureRecorded` callback,
+ * NOT from inspecting the map. An earlier revision compared the entry's
+ * identity against the one observed at the top of the iteration, which is
+ * wrong: `mcpConnectionStatus` is runtime-wide and shared across agents, so a
+ * CONCURRENT agent load failing on the same integration mid-iteration would
+ * change that identity and make this branch preserve a record this call never
+ * made. A callback can only fire for this call.
  */
 function recordFailedToolLoadStatus(
   mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>,
   toolId: string,
-  statusAtEntry: { connected: boolean; error?: string } | undefined,
+  alreadyRecorded: boolean,
   status: { connected: boolean; error?: string },
 ): void {
-  const recorded = mcpConnectionStatus.get(toolId);
-  const recordedThisIteration =
-    recorded !== statusAtEntry && recorded?.connected === false;
-  if (recordedThisIteration) return;
+  if (alreadyRecorded) return;
   mcpConnectionStatus.set(toolId, status);
 }
 
@@ -510,11 +527,10 @@ export async function loadAgentTools(
     // and configuration. The built-in vended-tool branch never leaves this
     // phase, so a throw from it cannot be a connection outcome.
     let phase: AgentToolLoadPhase = 'preconnect';
-    // Identity of the entry as this iteration began. `createMCPTools` records
-    // its own, more specific failure status at the connect seam; comparing
-    // identity is how the catch tells that apart from a status left over by an
-    // EARLIER load, which is the staleness this fix exists to end.
-    const statusAtEntry = mcpConnectionStatus.get(entry);
+    // Set only by `createMCPTools`'s own connect-seam failure record, through a
+    // callback rather than by inspecting the runtime-wide status map (see
+    // `recordFailedToolLoadStatus`).
+    let failureRecordedByConnectSeam = false;
     try {
       const toolId = entry;
       claim = custody.acquire(toolId, 'managed');
@@ -549,6 +565,9 @@ export async function loadAgentTools(
           claim,
           () => {
             retained = true;
+          },
+          () => {
+            failureRecordedByConnectSeam = true;
           },
         );
         const enabledTools = mcpTools.filter(
@@ -588,13 +607,18 @@ export async function loadAgentTools(
           errorClass: loaderErrorClass(error),
           messageWithheld,
           // Withheld means withheld: `error.stack` opens with the message, so
-          // the object itself cannot ride into the log store either.
-          ...(messageWithheld ? {} : { error }),
+          // the object itself cannot ride into the log store either. The call
+          // FRAMES are program text and are what locate the corrupt file.
+          ...(messageWithheld
+            ? { stackFrames: loaderStackFrames(error) }
+            : { error }),
         });
-        recordFailedToolLoadStatus(mcpConnectionStatus, entry, statusAtEntry, {
-          connected: false,
-          error: detail,
-        });
+        recordFailedToolLoadStatus(
+          mcpConnectionStatus,
+          entry,
+          failureRecordedByConnectSeam,
+          { connected: false, error: detail },
+        );
       } else {
         const errorClass = classifyMCPError(error);
         const publicError = publicMCPConnectionError(entry, errorClass);
@@ -604,10 +628,12 @@ export async function loadAgentTools(
           errorClass,
           error: publicError,
         });
-        recordFailedToolLoadStatus(mcpConnectionStatus, entry, statusAtEntry, {
-          connected: false,
-          error: publicError,
-        });
+        recordFailedToolLoadStatus(
+          mcpConnectionStatus,
+          entry,
+          failureRecordedByConnectSeam,
+          { connected: false, error: publicError },
+        );
       }
     } finally {
       if (claim && !retained) await custody.release(claim);

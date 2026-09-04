@@ -1,3 +1,4 @@
+import assert from 'node:assert';
 import { describe, expect, test } from 'vitest';
 import {
   StationOwnedToolServerError,
@@ -7,33 +8,47 @@ import {
   describeLoaderFailure,
   isLoaderMessageDataDerived,
   isLoaderProgrammingFailure,
+  LOADER_FAILURE_CLASS_LIMIT,
   LOADER_FAILURE_DETAIL_LIMIT,
+  LOADER_WITHHELD_STATUS_REASON,
   loaderErrorClass,
+  loaderErrorName,
   loaderFailureLabel,
+  loaderStackFrames,
 } from '../tool-load-failure.js';
 
 /**
  * These cover the pure classification only. The decision that matters in
  * production is TWO-part — phase AND class — and the phase half lives in the
  * loaders, so the seam that actually reports a failure is exercised through
- * `loadAgentTools` in mcp-manager.test.ts. This file pins the vocabulary those
- * loaders share (#1486), including the arms an integration test can only reach
- * one at a time.
+ * `loadAgentTools` in mcp-manager.test.ts. This file pins the vocabulary
+ * (#1486), including the arms an integration test can only reach one at a time.
  */
 describe('shared tool-load failure classification', () => {
-  test('names the class of an Error and the type of a thrown non-Error', () => {
+  test('separates the raw name used for matching from the bounded display class', () => {
+    expect(loaderErrorName(new TypeError('x'))).toBe('TypeError');
     expect(loaderErrorClass(new TypeError('x'))).toBe('TypeError');
-    expect(
-      loaderErrorClass(
-        Object.assign(new Error('x'), { name: 'AssertionError' }),
-      ),
-    ).toBe('AssertionError');
+    // A non-Error has no name to match on; only the display form describes it.
+    expect(loaderErrorName('boom')).toBe('');
     expect(loaderErrorClass('boom')).toBe('non-error:string');
     expect(loaderFailureLabel('boom')).toBe('Non-Error thrown (string)');
-    expect(loaderFailureLabel(new RangeError('x'))).toBe('RangeError');
+
+    // `name` is a writable own property, so the DISPLAY form is flattened and
+    // bounded like any other surfaced text — while the RAW form, which the
+    // decision sets look up, is left exactly as thrown. Bounding the matching
+    // form would silently stop it matching a set entry.
+    const hostile = Object.assign(new Error('m'), {
+      name: `Evil\nName ${'x'.repeat(200)}`,
+    });
+    expect(loaderErrorName(hostile)).toBe(hostile.name);
+    const displayed = loaderErrorClass(hostile);
+    expect(displayed).toHaveLength(LOADER_FAILURE_CLASS_LIMIT);
+    expect(displayed.endsWith('… (truncated)')).toBe(true);
+    expect(displayed.startsWith('Evil Name ')).toBe(true);
+    expect(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(displayed)).toBe(false);
   });
 
-  test('escapes redaction only for runtime program-defect classes and non-Errors', () => {
+  test('escapes redaction only for runtime program-defect classes, Node validation codes, and non-Errors', () => {
     for (const error of [
       new TypeError('x'),
       new ReferenceError('x'),
@@ -45,8 +60,12 @@ describe('shared tool-load failure classification', () => {
         name: 'AssertionError',
         code: 'ERR_ASSERTION',
       }),
-      // Node's assert throws with the code but tests sometimes see only one of
-      // the two markers; either alone is enough.
+      // Node's own argument validation rides on plain TypeError/RangeError and
+      // is invisible to the NAME set — these must escape by CODE.
+      Object.assign(new TypeError('x'), { code: 'ERR_INVALID_ARG_TYPE' }),
+      Object.assign(new TypeError('x'), { code: 'ERR_INVALID_ARG_VALUE' }),
+      Object.assign(new RangeError('x'), { code: 'ERR_OUT_OF_RANGE' }),
+      // A code-only carrier whose class says nothing still escapes.
       Object.assign(new Error('x'), { code: 'ERR_ASSERTION' }),
       'thrown string',
       undefined,
@@ -64,6 +83,8 @@ describe('shared tool-load failure classification', () => {
       new StationOwnedToolServerError('policy refused'),
       // A DOMException-style custom class is not a runtime program defect.
       Object.assign(new Error('x'), { name: 'AbortError' }),
+      // A non-string code is not a code.
+      Object.assign(new Error('x'), { code: 42 }),
     ]) {
       expect({
         error: loaderErrorClass(error),
@@ -72,18 +93,23 @@ describe('shared tool-load failure classification', () => {
     }
   });
 
-  test('withholds the message of classes whose text is composed from the data examined', () => {
+  test('withholds the message of classes AND codes whose text is composed from the data examined', () => {
     expect(isLoaderMessageDataDerived(new SyntaxError('x'))).toBe(true);
     expect(
       isLoaderMessageDataDerived(
         Object.assign(new Error('x'), { name: 'AssertionError' }),
       ),
     ).toBe(true);
-    expect(
-      isLoaderMessageDataDerived(
-        Object.assign(new Error('x'), { code: 'ERR_ASSERTION' }),
-      ),
-    ).toBe(true);
+    for (const code of [
+      'ERR_ASSERTION',
+      'ERR_INVALID_ARG_TYPE',
+      'ERR_INVALID_ARG_VALUE',
+      'ERR_OUT_OF_RANGE',
+    ]) {
+      expect(
+        isLoaderMessageDataDerived(Object.assign(new TypeError('x'), { code })),
+      ).toBe(true);
+    }
     expect(isLoaderMessageDataDerived('thrown string')).toBe(true);
 
     expect(isLoaderMessageDataDerived(new TypeError('x'))).toBe(false);
@@ -91,6 +117,31 @@ describe('shared tool-load failure classification', () => {
     expect(isLoaderMessageDataDerived(new RangeError('x'))).toBe(false);
     expect(isLoaderMessageDataDerived(new EvalError('x'))).toBe(false);
     expect(isLoaderMessageDataDerived(new URIError('x'))).toBe(false);
+  });
+
+  test("withholds a real Node argument-validation TypeError's inspected value", () => {
+    // The live shape the CODE set exists for, produced by Node rather than
+    // hand-built: argument validation embeds util.inspect of the value it
+    // rejected into the message of an ORDINARY TypeError. `name` is
+    // 'TypeError', which the name set waves straight through — only the code
+    // distinguishes it, and without that the value would be surfaced.
+    const canary = 987654321;
+    let thrown: unknown;
+    try {
+      Buffer.from(canary as unknown as string);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(loaderErrorName(thrown)).toBe('TypeError');
+    expect((thrown as { code?: string }).code).toBe('ERR_INVALID_ARG_TYPE');
+    expect((thrown as Error).message).toContain(String(canary));
+
+    const report = describeLoaderFailure(thrown);
+    expect(report).toEqual({
+      detail: `${LOADER_WITHHELD_STATUS_REASON} (TypeError)`,
+      messageWithheld: true,
+    });
+    expect(report.detail).not.toContain(String(canary));
   });
 
   test('surfaces class and message for a program-text class', () => {
@@ -108,7 +159,7 @@ describe('shared tool-load failure classification', () => {
     });
   });
 
-  test('surfaces class alone for a data-derived message, dropping the text', () => {
+  test('surfaces the withheld reason and class alone for a data-derived message', () => {
     const secret = 'sekr';
     let parsed: SyntaxError | undefined;
     try {
@@ -121,23 +172,27 @@ describe('shared tool-load failure classification', () => {
     expect(parsed?.message).toContain(`"${secret}"`);
 
     const report = describeLoaderFailure(parsed);
-    expect(report).toEqual({ detail: 'SyntaxError', messageWithheld: true });
+    expect(report).toEqual({
+      detail: `${LOADER_WITHHELD_STATUS_REASON} (SyntaxError)`,
+      messageWithheld: true,
+    });
     expect(report.detail).not.toContain(secret);
 
     expect(describeLoaderFailure('raw-thrown-value')).toEqual({
-      detail: 'Non-Error thrown (string)',
+      detail: `${LOADER_WITHHELD_STATUS_REASON} (Non-Error thrown (string))`,
       messageWithheld: true,
     });
   });
 
-  test('flattens control and format characters and bounds the detail to the total limit', () => {
-    // U+200B is a format character (Cf): invisible in a status field, but a
-    // separator once flattened.
+  test('flattens controls, format and separator characters, and bounds the detail to the total limit', () => {
+    // U+200B is a format character (Cf) and U+2028 a LINE separator (Zl):
+    // invisible or layout-breaking in a status field, separators once
+    // flattened. Zl/Zp are not Cc/Cf and need their own classes in the regex.
     const flattened = describeLoaderFailure(
-      new TypeError('head\nline\ttwo\u200Bthree'),
+      new TypeError('head\nline\ttwo​three four five'),
     );
-    expect(flattened.detail).toBe('TypeError: head line two three');
-    expect(/[\p{Cc}\p{Cf}]/u.test(flattened.detail)).toBe(false);
+    expect(flattened.detail).toBe('TypeError: head line two three four five');
+    expect(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(flattened.detail)).toBe(false);
 
     const bounded = describeLoaderFailure(new RangeError('x'.repeat(500)));
     expect(bounded.detail).toHaveLength(LOADER_FAILURE_DETAIL_LIMIT);
@@ -152,5 +207,34 @@ describe('shared tool-load failure classification', () => {
     );
     expect(exact.detail).toHaveLength(LOADER_FAILURE_DETAIL_LIMIT);
     expect(exact.detail).not.toContain('truncated');
+  });
+
+  test('keeps only frame-shaped stack lines the multi-line message does not itself contain', () => {
+    const canary = 'assertion-actual-canary';
+    let thrown: Error | undefined;
+    try {
+      assert.strictEqual(canary, 'expected-value');
+    } catch (error) {
+      thrown = error as Error;
+    }
+    // A real AssertionError message spans several lines, so `slice(1)` on the
+    // stack would leak the rest of it.
+    expect(thrown?.message.split('\n').length).toBeGreaterThan(1);
+    expect(thrown?.message).toContain(canary);
+
+    const frames = loaderStackFrames(thrown);
+    expect(frames?.length).toBeGreaterThan(0);
+    expect(frames?.every((frame) => frame.startsWith('at '))).toBe(true);
+    expect(frames?.join('\n')).not.toContain(canary);
+
+    // A message that embeds a frame-shaped line cannot smuggle it through.
+    const smuggler = new SyntaxError('leaked\n    at SECRET (file.js:1:1)');
+    smuggler.stack = `SyntaxError: ${smuggler.message}\n    at real (real.js:2:2)`;
+    expect(loaderStackFrames(smuggler)).toEqual(['at real (real.js:2:2)']);
+
+    expect(loaderStackFrames('not an error')).toBeUndefined();
+    const stackless = new TypeError('x');
+    stackless.stack = undefined;
+    expect(loaderStackFrames(stackless)).toBeUndefined();
   });
 });
