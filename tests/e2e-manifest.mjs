@@ -381,7 +381,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // temporary home, then removes it and reloads before yielding the server.
     'tests/plugin-rejection-visibility.spec.ts',
     'tests/plugin-system.spec.ts',
-    'tests/plugin-enterprise-dependency-lifecycle.spec.ts',
+    'tests/plugin-dependency-lifecycle.spec.ts',
     'tests/survey-review-workbench.spec.ts',
     'tests/fieldwork-review.spec.ts',
     'tests/plugin-dev-hot-reload.spec.ts',
@@ -1015,13 +1015,13 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
-    path: 'tests/plugin-enterprise-dependency-lifecycle.spec.ts',
+    path: 'tests/plugin-dependency-lifecycle.spec.ts',
     bucket: 'product',
     surface: 'Plugins',
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Clean-home Enterprise plugin install through preview-bound dependency consent, server-issued Project Pane placement, and owned dependency lifecycle cleanup. Dashboard output remains explicitly NOT_VERIFIED until #1371 composes the canonical plugin Pane SDK context.',
+      'Test-only managed API fixture proves preview-bound dependency consent, inactive provider/settings projection, and individual owned-plugin cleanup. It is not Enterprise rendering, registry-alias retirement, or external-effect drain proof.',
     exceptions: [],
   },
   {

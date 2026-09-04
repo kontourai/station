@@ -210,7 +210,7 @@ describe('e2e manifest', () => {
       'tests/plugin-preview.spec.ts',
       'tests/plugin-rejection-visibility.spec.ts',
       'tests/plugin-system.spec.ts',
-      'tests/plugin-enterprise-dependency-lifecycle.spec.ts',
+      'tests/plugin-dependency-lifecycle.spec.ts',
       'tests/survey-review-workbench.spec.ts',
       'tests/fieldwork-review.spec.ts',
       'tests/plugin-dev-hot-reload.spec.ts',
