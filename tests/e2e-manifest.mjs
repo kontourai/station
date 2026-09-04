@@ -1021,7 +1021,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Test-only managed API fixture proves preview-bound dependency consent, inactive provider/settings projection, and individual owned-plugin cleanup. It is not Enterprise rendering, registry-alias retirement, or external-effect drain proof.',
+      'Test-only managed API fixture proves preview-bound dependency consent, pending provider-permission/settings projection, and individual owned-plugin cleanup. It is not provider non-execution, Enterprise rendering, registry-alias retirement, or external-effect drain proof.',
     exceptions: [],
   },
   {

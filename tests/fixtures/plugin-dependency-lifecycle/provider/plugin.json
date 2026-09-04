@@ -1,7 +1,7 @@
 {
   "name": "dependency-provider-fixture",
   "version": "1.0.0",
-  "displayName": "Inactive Dependency Provider Fixture",
+  "displayName": "Dependency Provider Fixture",
   "settings": [
     { "key": "fixtureLabel", "label": "Fixture label", "type": "text" }
   ],

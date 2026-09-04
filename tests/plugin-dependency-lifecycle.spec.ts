@@ -33,7 +33,7 @@ test.describe
       await authenticatedRequest.delete(`${API}/api/plugins/${PROVIDER}`);
     });
 
-    test('preview-bound install retains inactive provider settings and removes each owned plugin', async ({
+  test('preview-bound install projects pending provider permission and removes each owned plugin', async ({
       authenticatedRequest,
     }) => {
       const preview = await previewPluginForInstall(API, SOURCE);
@@ -75,8 +75,8 @@ test.describe
           ]),
         },
       });
-      // The fixture provider factory throws if invoked: a mistaken activation
-      // cannot pass this successful install with a pending trusted permission.
+    // This asserts declared permission/settings projection only. The throwing
+    // fixture factory is not an invocation receipt: a loader could catch it.
       const settings = await authenticatedRequest.get(
         `${API}/api/plugins/${PROVIDER}/settings`,
       );
