@@ -85,6 +85,43 @@ another runtime are not made atomic by its JavaScript fences. Native child
 supervision, shared-home admission, and the exclusive package/data mutation
 lease remain required before #1377 can safely update/remove package data.
 This change does not authorize or wire destructive package retirement.
+
+### Shared package admission evidence (control-plane prerequisite)
+
+`EventStore.createPackageMcpAdmissionJournal()` composes one package-MCP
+metadata owner on its already-open home SQLite handle. It opens no second
+database and inherits, rather than strengthens, EventStore's filesystem and
+durability boundary. The fixed table stores only host installation observations,
+incarnations, purpose/owner claims and retirement requests: no integration
+definitions, argv, endpoints, credentials or PLUGIN_DATA contents.
+
+An installation-owner event explicitly supplies the previous incarnation and
+content digest; recording a replacement mints a fresh incarnation even for
+identical bytes. This is a metadata observation, never permission to mutate
+package files. Reservation and retirement serialize in a SQLite transaction.
+An effect boundary must commit before SDK construction or external invocation;
+lost commit acknowledgement returns unavailable and never permits invocation.
+Only the exact returned capability that has not crossed/uncertainly attempted
+that boundary can release its no-effect reservation. SDK close settlement is
+recorded separately and keeps possible effects retained. There is no TTL,
+dead-parent cleanup, PID-only takeover, or arbitrary claim deletion API.
+
+Every inspection has `mutationAllowed: false`, including zero claims and a
+homogeneous current process population. `compatibility-unproved` remains until
+a boot-understood crash-safe barrier exists; possible native/descendant/remote
+effects add `external-effect-unproved`. Neither a package-specific mutex nor a
+current runtime roster stops a legacy binary from joining after a crash.
+The impact read can prove recorded package history, but an absent record is
+`unclassified`, not evidence that a package is unrelated or safe to delete.
+
+This prerequisite is not yet connected to all MCP entry points or package
+mutation owners. The Agent-Plugins package/data owner in #1377 is the planned
+refusal seam before its first backup/copy/delete; unrelated legacy plugin
+lifecycle remains outside this guarantee. No current declaration absence or
+inert test receipt authorizes destructive work. Real two-process SQLite tests
+prove claim/fence serialization, retained crash debt, incarnation ABA and
+unknown-commit refusal, not native containment, remote cancellation or physical
+platform compatibility. No home-schema upgrade or operator recovery is run.
 In particular, the legacy registry install/uninstall routes still invoke
 provider effects and write/delete integration configuration directly. Those
 writers belong to the remaining package-retirement work; they are not covered
