@@ -125,7 +125,7 @@ describe('clean Android channel release generation', () => {
 
   it.each([
     ['release', '.github/workflows/release.yml'],
-    ['nightly', '.github/workflows/nightly-native-cohort.yml'],
+    ['nightly', '.github/workflows/nightly-native-stage.yml'],
   ])(
     'orders %s reset, init, signing, bootstrap, build, and signature proof',
     (_lane, path) => {
@@ -164,7 +164,7 @@ describe('clean Android channel release generation', () => {
 
   it('installs and resolves pinned Android build tools for nightly artifact verification', () => {
     const nightly = readFileSync(
-      '.github/workflows/nightly-native-cohort.yml',
+      '.github/workflows/nightly-native-stage.yml',
       'utf8',
     );
     expect(nightly).toContain("ANDROID_BUILD_TOOLS_VERSION: '36.0.0'");
@@ -231,7 +231,7 @@ describe('clean Android channel release generation', () => {
 
   it('uploads signed nightly artifacts before strict AAB signature verification', () => {
     const nightly = readFileSync(
-      '.github/workflows/nightly-native-cohort.yml',
+      '.github/workflows/nightly-native-stage.yml',
       'utf8',
     );
     const build = nightly.indexOf(

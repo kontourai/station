@@ -1314,6 +1314,7 @@ describe('verification coordinator', () => {
       cwd: worktree,
       collectProvenance: () => worktreeProvenance(worktree, 'ci-equivalent'),
       hostCpuSampler: healthySampler(),
+      heartbeatMs: 1,
       phaseRunner: async ({ phase }: { phase: { id: string } }) => {
         phaseCalls += 1;
         return { status: 0, output: { stdout: { text: phase.id } } };
@@ -1348,6 +1349,7 @@ describe('verification coordinator', () => {
       collectProvenance: () =>
         worktreeProvenance(worktree, 'checkpointed-full-regression'),
       hostCpuSampler: healthySampler(),
+      heartbeatMs: 1,
       phaseRunner: async ({ phase }: { phase: { id: string } }) => {
         calls.push(`${attempt}:${phase.id}`);
         return {
@@ -2362,6 +2364,7 @@ setInterval(() => {
         cwd: worktree,
         collectProvenance: () => worktreeProvenance(worktree, 'phase-stderr'),
         hostCpuSampler: healthySampler(),
+        heartbeatMs: 1,
         phaseRunner: async ({ phase }: { phase: { id: string } }) => ({
           status: 0,
           output: {
@@ -2413,6 +2416,7 @@ setInterval(() => {
         collectProvenance: () =>
           worktreeProvenance(worktree, `phase-integrity-${_name}`),
         hostCpuSampler: healthySampler(),
+        heartbeatMs: 1,
         phaseRunner: async ({ phase }: { phase: { id: string } }) => {
           calls.push(`${attempt}:${phase.id}`);
           return {
@@ -2467,6 +2471,7 @@ setInterval(() => {
       collectProvenance: () =>
         worktreeProvenance(worktree, 'phase-cleanup-checkpoint'),
       hostCpuSampler: healthySampler(),
+      heartbeatMs: 1,
       phaseRunner: async ({ phase }: { phase: { id: string } }) => {
         calls.push(`${attempt}:${phase.id}`);
         return {
@@ -2519,6 +2524,7 @@ setInterval(() => {
       collectProvenance: () =>
         worktreeProvenance(worktree, 'malformed-phase-checkpoint'),
       hostCpuSampler: healthySampler(),
+      heartbeatMs: 1,
       phaseRunner: async ({ phase }: { phase: { id: string } }) => {
         executedPhases.push(phase.id);
         return { status: 0 };

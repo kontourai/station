@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { BaseSequencer } from 'vitest/node';
 import config from '../../vitest.config';
 import { PROCESS_HEAVY_MAX_WORKERS } from '../run-vitest-corpus.mjs';
@@ -61,10 +61,29 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true });
 });
 
+// One repository discovery for the whole file. Every no-argument
+// `discoverVitestResourceGroups()` shells out to `vitest list --filesOnly`
+// and then re-proves the compact ordinary selection with a second `vitest
+// list`; twelve cases each paid both (6-13s apiece inside the two-worker
+// process-heavy pool), and the answer cannot differ between them because
+// none of these cases mutates the tree. Cases that discover a synthetic
+// root still call the functions directly with their own options.
+let repositoryDiscovery: {
+  readonly files: readonly string[];
+  readonly groups: ReturnType<typeof discoverVitestResourceGroups>;
+};
+
+beforeAll(() => {
+  repositoryDiscovery = Object.freeze({
+    files: discoverVitestFiles(),
+    groups: discoverVitestResourceGroups(),
+  });
+}, 70_000);
+
 describe('Vitest resource manifest', () => {
   it('partitions Vitest discovery exactly once with no omitted files', () => {
-    const discovered = discoverVitestFiles();
-    const groups = discoverVitestResourceGroups();
+    const discovered = repositoryDiscovery.files;
+    const groups = repositoryDiscovery.groups;
     const classified = Object.values(groups).flat();
 
     expect(classified).toHaveLength(discovered.length);
@@ -80,7 +99,10 @@ describe('Vitest resource manifest', () => {
     // calls the installed selector itself—not a reimplementation—so changes
     // in discovery count or Vitest shard semantics force an explicit mapping
     // review instead of silently moving #1156's failing slice elsewhere.
-    const ordinary = discoverVitestResourceGroups().ordinary;
+    const ordinary = repositoryDiscovery.groups.ordinary;
+    // Every assertion below is relative to `ordinary.length`, so an empty
+    // corpus would satisfy all of them; pin the floor independently.
+    expect(ordinary.length).toBeGreaterThan(0);
     const eighths = await Promise.all(
       Array.from({ length: 8 }, (_, index) =>
         ordinaryShardFiles(ordinary, index + 1, 8),
@@ -121,20 +143,20 @@ describe('Vitest resource manifest', () => {
       .filter(Boolean);
     expect(trackedConnectTests.length).toBeGreaterThan(0);
 
-    const discovered = discoverVitestFiles();
+    const discovered = repositoryDiscovery.files;
     const connectFiles = discovered.filter((file) =>
       file.startsWith('packages/connect/'),
     );
     expect([...connectFiles].sort()).toEqual([...trackedConnectTests].sort());
 
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     for (const file of connectFiles) {
       expect(groups.ordinary).toContain(file);
     }
   }, 70_000);
 
   it('keeps every current direct child-process importer out of ordinary', () => {
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     for (const file of PROCESS_HEAVY_VITEST_FILES) {
       expect(groups.processHeavy).toContain(file);
     }
@@ -151,7 +173,7 @@ describe('Vitest resource manifest', () => {
 
   it('classifies the policy documentation reader exactly once as shared output', () => {
     const policyReader = 'scripts/__tests__/verification-policy-gate.test.ts';
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     expect(
       SHARED_OUTPUT_VITEST_FILES.filter((file) => file === policyReader),
     ).toEqual([policyReader]);
@@ -164,7 +186,7 @@ describe('Vitest resource manifest', () => {
   }, 70_000);
 
   it('keeps reviewed indirect and host-resource seams in the two-worker group', () => {
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
 
     expect(PROCESS_HEAVY_MAX_WORKERS).toBe(2);
     expect(PROCESS_HEAVY_VITEST_FILES).toEqual(
@@ -181,7 +203,7 @@ describe('Vitest resource manifest', () => {
   it('classifies runtime bootstrap exactly once as process heavy', () => {
     const file =
       'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts';
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     expect(groups.processHeavy.filter((entry) => entry === file)).toEqual([
       file,
     ]);
@@ -192,7 +214,7 @@ describe('Vitest resource manifest', () => {
 
   it('classifies Play-upload ownership exactly once as process exclusive', () => {
     const file = 'scripts/__tests__/play-upload-retry.test.ts';
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     expect(groups.processExclusive.filter((entry) => entry === file)).toEqual([
       file,
     ]);
@@ -204,7 +226,7 @@ describe('Vitest resource manifest', () => {
   it('classifies the credential DDL proof exactly once in its exclusive phase', () => {
     const file =
       'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts';
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     expect(CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES).toEqual([file]);
     expect(
       groups.credentialLedgerExclusive.filter((entry) => entry === file),
@@ -217,7 +239,7 @@ describe('Vitest resource manifest', () => {
 
   it('classifies the verification coordinator exactly once in its exclusive phase', () => {
     const file = 'scripts/__tests__/verification-coordinator.test.ts';
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     expect(COORDINATOR_EXCLUSIVE_VITEST_FILES).toEqual([file]);
     expect(
       groups.coordinatorExclusive.filter((entry) => entry === file),
@@ -245,7 +267,7 @@ describe('Vitest resource manifest', () => {
   });
 
   it('proves the compact ordinary selection matches exactly and stays below Windows argv limits', () => {
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     const excludes = ordinaryVitestExcludes();
     expect(excludes).toContain(`${DOGFOOD_RECONCILE_PREFIX}*.test.ts`);
     expect(excludes).toContain(`${DOGFOOD_RECONCILE_PREFIX}/**`);
