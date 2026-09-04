@@ -13,7 +13,7 @@ export interface ForegroundInvocationAdmission {
   readonly project: ProjectConfig;
   readonly message: string;
   invoke<R>(
-    phase: 'start' | 'turn',
+    phase: 'start' | 'turn' | 'native-relay',
     actual: {
       threadId: string;
       agentId: unknown;

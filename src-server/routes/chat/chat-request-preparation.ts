@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { TurnProvenanceContextInjection } from '@kontourai/station-contracts/turn-provenance-context';
 import type { RuntimeContext } from '../../runtime/types.js';
@@ -44,6 +45,8 @@ interface PrepareChatRequestContext {
   input: string | ChatMessage[];
   options: Record<string, any>;
   projectSlug?: string;
+  /** Internal captured invocation only; never populated from public JSON. */
+  capturedProject?: ProjectConfig;
   /** Test seam; defaults to the shared service. */
   agentPolicyService?: AgentPolicyService;
 }
@@ -184,9 +187,9 @@ export async function prepareChatRequest(
   // composed exactly like the feedback guidelines above. Fail-open.
   if (context.projectSlug) {
     try {
-      const project = context.ctx.storageAdapter.getProject(
-        context.projectSlug,
-      );
+      const project =
+        context.capturedProject ??
+        context.ctx.storageAdapter.getProject(context.projectSlug);
       // EXPAND: this reaches flowAgentsRoot(cwd) -> statSync, and the opt-in
       // check is FAIL-OPEN — a `~/…` path threw, was read as "not opted in", and
       // Flow-Agents steering was silently never injected into any chat context

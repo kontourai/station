@@ -617,6 +617,7 @@ export function createWorkspacePaneHostContribution(input: {
           label: action.label,
           ...(action.icon ? { icon: action.icon } : {}),
           presentation: action.presentation,
+          ...(action.intent.agent ? { agent: action.intent.agent } : {}),
           availability:
             index >= 0
               ? availableAgents[index]!.state

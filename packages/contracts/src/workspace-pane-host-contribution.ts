@@ -69,6 +69,8 @@ export interface WorkspacePaneHostCompositionProjection {
     readonly label: string;
     readonly icon?: string;
     readonly presentation: 'action' | 'skill-prompt';
+    /** Fixed action binding takes precedence over the host selection. */
+    readonly agent?: WorkspacePaneHostAgentRef;
     readonly availability: WorkspacePaneHostAgentResolution['state'];
   }[];
   readonly agentSelection: {
@@ -105,3 +107,56 @@ export type WorkspacePaneHostActionDispatchResult =
         | 'owner-retired';
     }
   | { readonly state: 'unavailable' };
+
+/** Bounded host diagnostics; never filesystem/provider exception text. */
+export const WORKSPACE_PANE_HOST_ACTION_UNAVAILABLE_REASONS = [
+  'permission-required',
+  'authorization-changed',
+  'agent-restricted',
+  'agent-unavailable',
+  'shared-workspace-required',
+  'installation-changed',
+  'host-unavailable',
+] as const;
+export type WorkspacePaneHostActionUnavailableReason =
+  (typeof WORKSPACE_PANE_HOST_ACTION_UNAVAILABLE_REASONS)[number];
+
+export interface WorkspacePaneHostActionCatalog {
+  readonly projectSlug: string;
+  readonly support: 'supported';
+  /** False when the bounded inventory cannot establish declaration absence. */
+  readonly complete: boolean;
+  readonly contributions: readonly {
+    readonly projection: WorkspacePaneHostCompositionProjection;
+    readonly reason?: WorkspacePaneHostActionUnavailableReason;
+  }[];
+}
+
+export interface WorkspacePaneHostActionPrepareRequest {
+  readonly pluginId: string;
+  readonly installationGeneration: string;
+  readonly actionKey: string;
+  /** Explicit choice from this exact package's available set, never an ambient Agent. */
+  readonly selectedAgent?: WorkspacePaneHostAgentRef;
+}
+
+export type WorkspacePaneHostActionPreparation =
+  | { readonly state: 'prepared'; readonly ticket: string }
+  | {
+      readonly state: 'unavailable';
+      readonly reason: WorkspacePaneHostActionUnavailableReason;
+    };
+
+export type WorkspacePaneHostActionExecution =
+  | {
+      readonly state: 'accepted';
+      readonly conversationId: string;
+      readonly sessionId: string;
+      readonly turnId: string;
+    }
+  | {
+      readonly state: 'unavailable';
+      readonly reason: WorkspacePaneHostActionUnavailableReason;
+    }
+  /** Includes spent/expired tickets: never infer no effect or automatically replay. */
+  | { readonly state: 'indeterminate' };

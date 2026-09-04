@@ -1775,3 +1775,27 @@ superseded host binding from being attributed to the current native connection.
 It is intentionally separate from `requestAuthority`: a valid authenticated
 recovery may advance credential generation while its host binding remains live.
 Ordinary unscoped SDK calls do not gain a host binding requirement.
+
+### Package host actions
+
+Import `useWorkspacePaneHostActionsQuery` and `useWorkspacePaneHostActionMutation`
+from `@kontourai/station-sdk/workspace-pane`. The query projects a Project's
+installed package actions and exact installation-bound available/default Agents.
+The mutation accepts the package id, opaque installation generation, opaque
+action key, and an optional explicit Agent reference from that package's
+available set. Fixed action bindings always take precedence. There are no
+physical package paths in this API.
+
+The portable client exports `getWorkspacePaneHostActions`,
+`prepareWorkspacePaneHostAction`, and `executeWorkspacePaneHostAction` from
+`@kontourai/station-sdk/client`. Preparation returns a short-lived, actor- and
+Project-bound one-shot ticket. Execution consumes it before any provider work.
+Do not store or log tickets, and never retry execution automatically. An
+`indeterminate` result means work may have started; use existing Activity and
+conversation evidence to inspect it. An accepted result carries distinct
+conversation, execution-session, and provider-turn identities.
+
+Host actions require the package's current `agents.invoke` permission. They use
+captured Project and Agent authority at provider invocation and cannot substitute
+an ambient Agent, override a fixed action, or revive a retired installation.
+This slice supports native Station Agents and externally connected Agents in shared Project workspaces. Native execution preserves the existing configured Agent and model; a private relay capability verifies its runtime generation and repeats admission immediately before the native model call. Worktree provisioning remains explicitly unavailable.

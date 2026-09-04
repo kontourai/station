@@ -13,26 +13,37 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import { WORKSPACE_PANE_HOST_CONTRIBUTION_VERSION } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { readJson } from '../../../__test-utils__/read-json.js';
 import { saveAgentConfig } from '../../../domain/config-loader-agents.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { PLUGIN_AGENT_OWNER_FILE } from '../../../domain/plugin-agent-ownership.js';
 import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
+import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
+import { createChatRoutes } from '../../../routes/chat/chat.js';
+import { createWorkspacePaneHostActionRoutes } from '../../../routes/orchestration/workspace-pane-host-actions.js';
+import { INTERNAL_NATIVE_FOREGROUND_HEADER } from '../../../runtime/conversation/native-foreground-invocation.js';
+import { createRuntimeWorkspacePaneHostActions } from '../../../runtime/routes/workspace-pane-host-actions.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import type { ForegroundInvocationAdmission } from '../../orchestration/foreground-invocation-admission.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../orchestration/session-agent-resolution.js';
 import { withPluginContentLock } from '../plugin-content-integrity.js';
+import { grantPermissions, revokeAllGrants } from '../plugin-permissions.js';
 import { createWorkspacePaneHostAdmission } from '../workspace-pane-host-admission.js';
 
 const pluginId = 'admission-proof';
@@ -263,7 +274,360 @@ describe('Workspace Pane host invocation admission', () => {
     await service?.shutdown();
     store?.close();
     rmSync(home, { recursive: true, force: true });
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
+
+  test('real host HTTP action uses production foreground composition and exact provider receipt once', async () => {
+    vi.stubEnv('STATION_API_BASE', 'http://pane-host.test');
+    vi.stubEnv('STATION_INTERNAL_API_TOKEN', 'pane-host-fixture-token');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+        const url = String(input);
+        const data = url.endsWith('/.well-known/station/v1')
+          ? { environmentId: 'environment-current' }
+          : url.endsWith('/api/connections/claude')
+            ? {
+                success: true,
+                data: {
+                  id: 'claude',
+                  kind: 'agent',
+                  type: 'claude',
+                  enabled: true,
+                  status: 'ready',
+                  capabilities: ['agent-runtime'],
+                  config: { provider: 'claude' },
+                },
+              }
+            : undefined;
+        if (!data) throw new Error(`Unexpected fixture request ${url}`);
+        return new Response(JSON.stringify(data), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }),
+    );
+    await grantPermissions(home, pluginId, ['agents.invoke']);
+    const principal = humanPrincipal('test', 'pane-owner', 'Pane owner');
+    const actor = {
+      principal,
+      isCurrent: () => true,
+      readAuthority: sessionReadAuthorityFromRequest(
+        principal.id,
+        undefined,
+        undefined,
+      ),
+    };
+    const actions = createRuntimeWorkspacePaneHostActions({
+      projectHomeDir: home,
+      projects: storage,
+      orchestration: service,
+      getConnection: async (id) => ({
+        id,
+        name: 'Controlled connection',
+        kind: 'agent',
+        type: 'claude',
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+        config: { provider: 'claude' },
+        prerequisites: [],
+      }),
+    });
+    const app = createWorkspacePaneHostActionRoutes({
+      service: actions,
+      actorFor: () => actor,
+    });
+    const catalog = await readJson(
+      await app.request(`/${projectSlug}/catalog`),
+    );
+    const projection = catalog.data.contributions[0].projection;
+    const preparation = await readJson(
+      await app.request(`/${projectSlug}/prepare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...projection.owner,
+          actionKey: projection.actions.find(
+            (action: { id: string }) => action.id === 'registered',
+          ).key,
+        }),
+      }),
+    );
+    expect(preparation.data.state).toBe('prepared');
+    const execute = () =>
+      app.request(`/${projectSlug}/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket: preparation.data.ticket }),
+      });
+    const [first, second] = await Promise.all([execute(), execute()]);
+    const result = (await readJson(first)).data;
+    expect(result).toMatchObject({ state: 'accepted' });
+    expect((await readJson(second)).data).toEqual({ state: 'indeterminate' });
+    expect(start).toHaveBeenCalledOnce();
+    expect(start.mock.calls[0]![0]).toMatchObject({
+      agent: { slug, systemPrompt: spec.prompt },
+      metadata: { agentSlug: slug, projectSlug, userId: principal.id },
+    });
+    expect(send).toHaveBeenCalledOnce();
+    expect(
+      send.mock.calls[0]![0].displayInput ?? send.mock.calls[0]![0].input,
+    ).toBe('Exact registered body.');
+    await expect
+      .poll(async () =>
+        (
+          await service.readSession(
+            result.sessionId,
+            INTERNAL_SESSION_READ_SCOPE,
+          )
+        )?.events.some(
+          (event) =>
+            event.method === 'turn.started' && event.turnId === result.turnId,
+        ),
+      )
+      .toBe(true);
+  });
+
+  async function nativeHostProof(
+    options: {
+      beforeModel?: () => Promise<void>;
+      dropCompanionMarker?: boolean;
+      waitForModel?: Promise<void>;
+    } = {},
+  ) {
+    const nativeSpec: AgentSpec = {
+      name: 'Native captured assistant',
+      prompt: 'Keep these native instructions.',
+      model: 'controlled-native-model',
+    };
+    writeFileSync(
+      join(home, 'agents', slug, 'agent.json'),
+      JSON.stringify(nativeSpec),
+    );
+    writeFileSync(
+      join(pluginDir, 'agents', slug, 'agent.json'),
+      JSON.stringify(nativeSpec),
+    );
+    await grantPermissions(home, pluginId, ['agents.invoke']);
+    vi.stubEnv('STATION_API_BASE', 'http://pane-native.test');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: Parameters<typeof fetch>[0]) => {
+        if (!String(url).endsWith('/.well-known/station/v1'))
+          throw new Error('Unexpected native proof network request');
+        return new Response(
+          JSON.stringify({ environmentId: 'environment-current' }),
+        );
+      }),
+    );
+    const streamText = vi.fn(
+      async (_input: unknown, _context: Record<string, unknown>) => {
+        await options.waitForModel;
+        return {
+          fullStream: (async function* () {
+            yield { type: 'text-delta', text: 'Controlled native answer.' };
+            yield { type: 'finish', finishReason: 'stop' };
+          })(),
+          text: Promise.resolve('Controlled native answer.'),
+          usage: Promise.resolve(undefined),
+          finishReason: Promise.resolve('stop'),
+        };
+      },
+    );
+    const activeAgent = {
+      getMemory: () => null,
+      streamText,
+      model: { modelId: 'controlled-native-model' },
+    };
+    let beforeModelCalled = false;
+    const memory = {
+      getConversation: async () => {
+        if (!beforeModelCalled) {
+          beforeModelCalled = true;
+          await options.beforeModel?.();
+        }
+        return { id: 'native-proof', title: 'Native proof' };
+      },
+      createConversation: async () => {},
+      addMessage: async () => {},
+      updateConversation: async () => {},
+      getMessages: async () => [],
+      getConversations: async () => [],
+    };
+    const ctx = {
+      activeAgents: new Map([[slug, activeAgent]]),
+      agentSpecs: new Map([[slug, nativeSpec]]),
+      storageAdapter: storage,
+      appConfig: {},
+      configLoader: {
+        getProjectHomeDir: () => home,
+        getLaunchabilityRevision: () => 0,
+      },
+      providerService: {
+        getLaunchabilityRevision: () => 0,
+        listProviderConnections: () => [],
+      },
+      knowledgeService: {
+        getInjectContext: async () => null,
+        getRAGContextDetailed: async () => null,
+      },
+      feedbackService: {
+        getRatings: () => [],
+        getBehaviorGuidelinesDetailed: () => null,
+      },
+      getAgentConfigurationRevision: () => 0,
+      commitAgentConfigurationRead: async (
+        _revision: number,
+        operation: () => Promise<unknown>,
+      ) => operation(),
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      toolNameMapping: new Map(),
+      approvalRegistry: {},
+      agentHooksMap: new Map(),
+      memoryAdapters: new Map([[slug, memory]]),
+      agentStatus: new Map(),
+      agentStats: new Map(),
+      agentTools: new Map(),
+      metricsLog: [],
+      orchestrationEventStore: store,
+    };
+    const chat = createChatRoutes(ctx as never);
+    nativeAdapter = new StationAgentAdapter({
+      apiBase: 'http://pane-native.test',
+      hasAgent: () => true,
+      approvalRegistry: { has: () => false, resolve: () => false } as never,
+      eventBus: new EventBus(),
+      fetch: async (url, init) => {
+        const headers = new Headers(init?.headers);
+        if (options.dropCompanionMarker)
+          headers.delete(INTERNAL_NATIVE_FOREGROUND_HEADER);
+        return chat.request(
+          new URL(String(url)).pathname.replace('/api/agents', ''),
+          { ...init, headers },
+        );
+      },
+    });
+    const principal = humanPrincipal('test', 'native-owner', 'Native owner');
+    const actor = {
+      principal,
+      isCurrent: () => true,
+      readAuthority: sessionReadAuthorityFromRequest(
+        principal.id,
+        undefined,
+        undefined,
+      ),
+    };
+    const actions = createRuntimeWorkspacePaneHostActions({
+      projectHomeDir: home,
+      projects: storage,
+      orchestration: service,
+      getConnection: async () => null,
+      nativeAgentAvailable: () => true,
+    });
+    const app = createWorkspacePaneHostActionRoutes({
+      service: actions,
+      actorFor: () => actor,
+    });
+    const catalog = await readJson(
+      await app.request(`/${projectSlug}/catalog`),
+    );
+    const projection = catalog.data.contributions[0].projection;
+    const prepared = await readJson(
+      await app.request(`/${projectSlug}/prepare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...projection.owner,
+          actionKey: projection.actions.find(
+            (action: { id: string }) => action.id === 'registered',
+          ).key,
+        }),
+      }),
+    );
+    expect(prepared.data.state).toBe('prepared');
+    return {
+      streamText,
+      ctx,
+      execute: async () =>
+        (
+          await readJson(
+            await app.request(`/${projectSlug}/execute`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ticket: prepared.data.ticket }),
+            }),
+          )
+        ).data,
+    };
+  }
+
+  test('captured native action reaches existing native model once and releases grants before settlement', async () => {
+    const settled = deferred();
+    const proof = await nativeHostProof({ waitForModel: settled.promise });
+    try {
+      const result = await proof.execute();
+      expect(result).toMatchObject({ state: 'accepted' });
+      expect(proof.streamText).toHaveBeenCalledOnce();
+      expect(proof.streamText).toHaveBeenCalledWith(
+        expect.stringContaining('Exact registered body.'),
+        expect.objectContaining({
+          userId: humanPrincipal('test', 'native-owner', 'Native owner').id,
+        }),
+      );
+      await revokeAllGrants(home, pluginId);
+      settled.resolve();
+      await expect
+        .poll(async () =>
+          (
+            await service.readSession(
+              result.sessionId,
+              INTERNAL_SESSION_READ_SCOPE,
+            )
+          )?.events.some(
+            (event) =>
+              event.method === 'turn.completed' &&
+              event.turnId === result.turnId,
+          ),
+        )
+        .toBe(true);
+      expect((await proof.execute()).state).toBe('indeterminate');
+      expect(proof.streamText).toHaveBeenCalledOnce();
+    } finally {
+      settled.resolve();
+    }
+  });
+
+  test.each([
+    'agent-edit',
+    'permission-revocation',
+    'runtime-replacement',
+    'stripped-companion',
+  ] as const)(
+    'native final provider admission refuses %s without ambient fallback',
+    async (change) => {
+      let proof: Awaited<ReturnType<typeof nativeHostProof>>;
+      proof = await nativeHostProof({
+        dropCompanionMarker: change === 'stripped-companion',
+        beforeModel: async () => {
+          if (change === 'agent-edit')
+            await saveAgentConfig(home, slug, {
+              name: 'Changed',
+              prompt: 'Replacement native instructions.',
+            });
+          if (change === 'permission-revocation')
+            await revokeAllGrants(home, pluginId);
+          if (change === 'runtime-replacement')
+            proof.ctx.activeAgents.set(slug, {
+              ...proof.ctx.activeAgents.get(slug)!,
+              streamText: vi.fn(),
+            });
+        },
+      });
+      expect((await proof.execute()).state).not.toBe('accepted');
+      expect(proof.streamText).not.toHaveBeenCalled();
+    },
+  );
 
   async function dispatch(admission: ForegroundInvocationAdmission) {
     const threadId = `pane-thread-${++counter}`;

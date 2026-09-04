@@ -1361,3 +1361,30 @@ module.exports = () => ({
   "providers": [{ "type": "branding", "module": "./providers/branding.js" }]
 }
 ```
+
+### Actions that belong to the workspace host
+
+Declare package-wide actions once in `plugin.json.workspacePaneHost`, using
+`version: "station.workspace-pane-host-contribution/v1"`. A Project's direct and
+placed Pane views display the same host action bar, outside the individual Pane.
+Use `agentSelection.availableAgents` and an optional explicit `defaultAgent` to
+choose the package's Agents. An `own-plugin-agent` reference contains a clean
+`agentId`; Station supplies installation ownership. `requiredAgents` only checks
+availability and never selects an Agent.
+
+An action's `intent` is either literal `prompt` data or an exact own-package
+`plugin-prompt` id. Label text is never treated as a prompt or routing address.
+An action may fix its own Agent; that binding takes precedence over the host
+selector. Grant `agents.invoke` in Library, configure the Agent's external
+connection, and make the Agent available in the Project before running it.
+
+The host confirms that a conversation was accepted and offers **Open
+conversation**. If delivery is uncertain, inspect Activity; the host does not
+retry a possibly started action. Revoked permissions, changed packages, missing
+Agents, and unavailable execution modes remain visible failures.
+
+The demo, enterprise, coding, getting-started, and knowledge-docs examples each
+include an explicit old-to-new behavior table. Their package-global declarations
+are migrated; tab-local actions remain local. Existing persisted Layout records
+are not rewritten, and this does not claim the entire structural Layout
+migration is complete.

@@ -1,0 +1,5 @@
+{
+  "name": "Host Action Echo",
+  "prompt": "Answer the user's message.",
+  "execution": { "agentConnectionId": "muse" }
+}

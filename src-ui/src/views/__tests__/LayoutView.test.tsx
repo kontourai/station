@@ -12,6 +12,16 @@ const layoutQueryState = vi.hoisted(() => ({
 }));
 const refetchLayoutMock = vi.hoisted(() => vi.fn());
 const navigateMock = vi.hoisted(() => vi.fn());
+const hostQuery = vi.hoisted(() => ({
+  isSuccess: true,
+  data: {
+    complete: true,
+    contributions: [] as Array<{ projection: { owner: { pluginId: string } } }>,
+  },
+}));
+vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
+  useWorkspacePaneHostActionsQuery: () => hostQuery,
+}));
 const StationHttpError = vi.hoisted(
   () =>
     class StationHttpError extends Error {
@@ -91,6 +101,46 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     layoutQueryState.isLoading = false;
     layoutQueryState.error = undefined;
     renderedLayout.value = undefined;
+    hostQuery.isSuccess = true;
+    hostQuery.data.contributions = [];
+  });
+
+  test('package host contribution withdraws duplicate legacy global controls while keeping tab-local actions', () => {
+    const local = { type: 'prompt', label: 'Local', data: 'Local body' };
+    layoutQueryState.data = {
+      slug: 'demo',
+      name: 'Demo',
+      config: {
+        plugin: 'demo-plugin',
+        tabs: [
+          { id: 'one', label: 'One', component: 'demo', actions: [local] },
+        ],
+        actions: [{ type: 'prompt', label: 'Global', data: 'Global body' }],
+        globalSkills: [{ id: 'hello', label: 'Hello', prompt: 'Hello body' }],
+      },
+    };
+    hostQuery.data.contributions = [
+      { projection: { owner: { pluginId: 'demo-plugin' } } },
+    ];
+    render(<LayoutView projectSlug="one" layoutSlug="demo" />);
+    expect(renderedLayout.value.actions).toEqual([]);
+    expect(renderedLayout.value.globalSkills).toEqual([]);
+    expect(renderedLayout.value.tabs[0].actions).toEqual([local]);
+  });
+
+  test('unknown host capability does not briefly activate a persisted plugin global action', () => {
+    layoutQueryState.data = {
+      slug: 'demo',
+      name: 'Demo',
+      config: {
+        plugin: 'demo-plugin',
+        tabs: [],
+        actions: [{ type: 'prompt', label: 'Global', data: 'Global body' }],
+      },
+    };
+    hostQuery.isSuccess = false;
+    render(<LayoutView projectSlug="one" layoutSlug="demo" />);
+    expect(renderedLayout.value.actions).toEqual([]);
   });
 
   /**

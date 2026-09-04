@@ -8,6 +8,7 @@ import {
   type AuthorizedTurnCorrelation,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import type { NativeForegroundRelayCompanion } from '../../runtime/conversation/native-foreground-invocation.js';
 import * as StreamOrchestrator from '../../runtime/conversation/stream-orchestrator.js';
 import { stripOutputDeclarationHandles } from '../../runtime/native-output-declaration.js';
 import {
@@ -19,6 +20,7 @@ import {
   type RuntimeConfigurationLease,
   requireCurrentRuntimeConfiguration,
   requireStableRuntimeConfigurationAcross,
+  runtimeConfigurationLeaseIsCurrent,
 } from '../../runtime/plugins/runtime-configuration-lease.js';
 import { InjectableStream } from '../../runtime/streaming/InjectableStream.js';
 import type { RuntimeContext } from '../../runtime/types.js';
@@ -103,6 +105,8 @@ interface StreamPrimaryAgentChatArgs {
   turnCorrelation?: AuthorizedTurnCorrelation;
   /** Private native-output capability from the authenticated internal relay. */
   nativeOutputGrant?: NativeOutputTurnContext;
+  nativeForeground?: NativeForegroundRelayCompanion;
+  nativeRuntimeAgent?: unknown;
 }
 
 export function logDebugChatImages(
@@ -157,6 +161,8 @@ export function streamPrimaryAgentChat({
   projectSlug,
   turnCorrelation,
   nativeOutputGrant,
+  nativeForeground,
+  nativeRuntimeAgent,
 }: StreamPrimaryAgentChatArgs): Response {
   c.header('Content-Type', 'text/event-stream');
   c.header('Cache-Control', 'no-cache');
@@ -447,7 +453,20 @@ export function streamPrimaryAgentChat({
       }
 
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
-      result = await agent.streamText(finalInput, operationContext);
+      result = nativeForeground
+        ? await nativeForeground.invoke(
+            {
+              get spec() {
+                return ctx.agentSpecs.get(slug);
+              },
+              isCurrent: () =>
+                !c.req.raw.signal.aborted &&
+                runtimeConfigurationLeaseIsCurrent(ctx, configurationLease) &&
+                ctx.activeAgents.get(slug) === nativeRuntimeAgent,
+            },
+            () => agent.streamText(finalInput, operationContext),
+          )
+        : await agent.streamText(finalInput, operationContext);
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       ctx.agentStatus.set(slug, 'running');
 
@@ -696,7 +715,13 @@ export function streamPrimaryAgentChat({
   };
 
   return stream(c, (streamWriter) => {
-    const write = () => writeStream(streamWriter);
+    const write = async () => {
+      try {
+        return await writeStream(streamWriter);
+      } finally {
+        nativeForeground?.refuse();
+      }
+    };
     const correlated = () =>
       turnCorrelation
         ? runWithAuthorizedTurnCorrelation(turnCorrelation, write)

@@ -1,7 +1,9 @@
 import { lstatSync } from 'node:fs';
 import { join } from 'node:path';
+import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import { agentAvailableInProject } from '@kontourai/station-contracts/project-reference-integrity';
+import type { WorkspacePaneHostAgentRef } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { capturePluginAgentInvocation } from '../../domain/config-loader-agents.js';
 import { readRegularFileNoFollow } from '../../domain/home-schema-gate.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
@@ -26,6 +28,12 @@ import { parsePluginManifest } from './plugin-manifest-loader.js';
 export function createWorkspacePaneHostAdmission(input: {
   projectHomeDir: string;
   projects: Pick<IStorageAdapter, 'projectRevision'>;
+  nativeAgentAvailable?(agentId: string, spec: AgentSpec): boolean;
+  /** Production grant gate wraps the short final Project/Agent admission. */
+  withInvocationPermission?<T>(
+    pluginId: string,
+    invoke: () => Promise<T>,
+  ): Promise<T>;
 }) {
   const projectHomeDir = input.projectHomeDir;
   const projectRevisionFor = input.projects.projectRevision.bind(
@@ -37,6 +45,8 @@ export function createWorkspacePaneHostAdmission(input: {
       pluginId: string;
       projectSlug: string;
       actionId: string;
+      installationGeneration?: string;
+      selectedAgent?: WorkspacePaneHostAgentRef;
     }) {
       const { pluginId, projectSlug, actionId } = request;
       if (!isCanonicalPluginId(pluginId))
@@ -68,11 +78,28 @@ export function createWorkspacePaneHostAdmission(input: {
         const action = contribution?.actions.find(
           (candidate) => candidate.id === actionId,
         );
+        const selected = request.selectedAgent;
+        const sameAgent = (
+          left: WorkspacePaneHostAgentRef,
+          right: WorkspacePaneHostAgentRef,
+        ) => left.kind === right.kind && left.agentId === right.agentId;
+        if (
+          selected &&
+          (!contribution?.agentSelection.availableAgents.some((candidate) =>
+            sameAgent(candidate, selected),
+          ) ||
+            (action?.intent.agent && !sameAgent(action.intent.agent, selected)))
+        )
+          throw new ForegroundInvocationUnavailableError();
         const agent =
-          action?.intent.agent ?? contribution?.agentSelection.defaultAgent;
+          action?.intent.agent ??
+          selected ??
+          contribution?.agentSelection.defaultAgent;
         if (
           manifest.name !== pluginId ||
           !digest ||
+          (request.installationGeneration !== undefined &&
+            request.installationGeneration !== digest) ||
           !action ||
           !agent ||
           agent.kind !== 'own-plugin-agent' ||
@@ -102,14 +129,14 @@ export function createWorkspacePaneHostAdmission(input: {
         );
         const agentSpec = agentSnapshot.read();
         if (
-          !agentSpec.execution?.agentConnectionId ||
+          (!agentSpec.execution?.agentConnectionId &&
+            !input.nativeAgentAvailable?.(agent.agentId, agentSpec)) ||
           !agentAvailableInProject(projectSlug, project.agents, {
             slug: agent.agentId,
             project: agentSpec.project,
           })
         ) {
-          // Native Agent execution rereads mutable runtime definitions after
-          // the relay boundary. Until it can consume this snapshot, refuse.
+          // Native mode requires the production captured-runtime bridge.
           throw new ForegroundInvocationUnavailableError();
         }
         let message: string;
@@ -136,6 +163,7 @@ export function createWorkspacePaneHostAdmission(input: {
         let active = false;
         let thread: string | undefined;
         let turnInvoked = false;
+        let nativeRelayInvoked = false;
         const admission: ForegroundInvocationAdmission = Object.freeze({
           agentId: agent.agentId,
           get agentSpec() {
@@ -146,39 +174,54 @@ export function createWorkspacePaneHostAdmission(input: {
           },
           message,
           async invoke<R>(
-            phase: 'start' | 'turn',
+            phase: 'start' | 'turn' | 'native-relay',
             actual: Parameters<ForegroundInvocationAdmission['invoke']>[1],
             effect: () => Promise<R>,
           ): Promise<R> {
             if (!active) throw new ForegroundInvocationUnavailableError();
-            const invoked = await withCurrentProject(async (current) =>
-              agentSnapshot.invokeIfCurrent(() => {
-                if (
-                  !active ||
-                  computePluginContentDigest(pluginsDir, pluginId) !== digest ||
-                  current.id !== project.id ||
-                  current.slug !== projectSlug ||
-                  !agentAvailableInProject(current.slug, current.agents, {
-                    slug: agent.agentId,
-                    project: agentSpec.project,
-                  }) ||
-                  actual.agentId !== agent.agentId ||
-                  actual.projectSlug !== projectSlug ||
-                  !actual.threadId ||
-                  (phase === 'start'
-                    ? thread !== undefined
-                    : thread !== actual.threadId ||
-                      turnInvoked ||
-                      actual.message !== message)
+            const invokeWithProject = () =>
+              withCurrentProject(async (current) =>
+                agentSnapshot.invokeIfCurrent(() => {
+                  if (
+                    !active ||
+                    computePluginContentDigest(pluginsDir, pluginId) !==
+                      digest ||
+                    current.id !== project.id ||
+                    current.slug !== projectSlug ||
+                    !agentAvailableInProject(current.slug, current.agents, {
+                      slug: agent.agentId,
+                      project: agentSpec.project,
+                    }) ||
+                    actual.agentId !== agent.agentId ||
+                    actual.projectSlug !== projectSlug ||
+                    !actual.threadId ||
+                    (phase === 'native-relay' &&
+                      (Boolean(agentSpec.execution?.agentConnectionId) ||
+                        nativeRelayInvoked)) ||
+                    (phase === 'turn' &&
+                      !agentSpec.execution?.agentConnectionId &&
+                      !nativeRelayInvoked) ||
+                    (phase === 'start'
+                      ? thread !== undefined
+                      : thread !== actual.threadId ||
+                        turnInvoked ||
+                        actual.message !== message)
+                  )
+                    throw new ForegroundInvocationUnavailableError();
+                  if (phase === 'start') thread = actual.threadId;
+                  else if (phase === 'native-relay') nativeRelayInvoked = true;
+                  else turnInvoked = true;
+                  // Box the Promise: Project and Agent mutation locks release
+                  // after the synchronous invocation, BEFORE provider settlement.
+                  return { pending: effect() };
+                }),
+              );
+            const invoked = input.withInvocationPermission
+              ? await input.withInvocationPermission(
+                  pluginId,
+                  invokeWithProject,
                 )
-                  throw new ForegroundInvocationUnavailableError();
-                if (phase === 'start') thread = actual.threadId;
-                else turnInvoked = true;
-                // Box the Promise: Project and Agent mutation locks release
-                // after the synchronous invocation, BEFORE provider settlement.
-                return { pending: effect() };
-              }),
-            );
+              : await invokeWithProject();
             return invoked.pending;
           },
         });

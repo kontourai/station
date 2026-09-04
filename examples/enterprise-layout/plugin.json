@@ -2,7 +2,7 @@
   "name": "enterprise-layout",
   "version": "1.0.0",
   "displayName": "Enterprise Layout",
-  "description": "Calendar, CRM, and notes layout — demonstrates multi-provider plugin architecture",
+  "description": "Calendar, CRM, and notes layout \u2014 demonstrates multi-provider plugin architecture",
   "entrypoint": "src/index.tsx",
   "capabilities": ["chat", "navigation", "agents"],
   "permissions": ["navigation.dock", "agents.invoke"],
@@ -33,10 +33,43 @@
   },
   "knowledge": {
     "namespaces": [
-      { "id": "notes", "label": "Meeting Notes", "behavior": "rag" }
+      {
+        "id": "notes",
+        "label": "Meeting Notes",
+        "behavior": "rag"
+      }
     ]
   },
   "dependencies": [
-    { "id": "shared-providers", "source": "../shared-providers" }
-  ]
+    {
+      "id": "shared-providers",
+      "source": "../shared-providers"
+    }
+  ],
+  "workspacePaneHost": {
+    "version": "station.workspace-pane-host-contribution/v1",
+    "actions": [
+      {
+        "id": "daily",
+        "label": "Daily Overview",
+        "presentation": "action",
+        "intent": {
+          "kind": "plugin-prompt",
+          "promptId": "daily"
+        }
+      }
+    ],
+    "agentSelection": {
+      "availableAgents": [
+        {
+          "kind": "own-plugin-agent",
+          "agentId": "enterprise-assistant"
+        }
+      ],
+      "defaultAgent": {
+        "kind": "own-plugin-agent",
+        "agentId": "enterprise-assistant"
+      }
+    }
+  }
 }

@@ -1245,6 +1245,25 @@ export function hasGrantOrThrow(
 }
 
 /**
+ * Short invocation admission, never a lease spanning provider settlement.
+ * The callback must return a boxed Promise when it begins asynchronous work.
+ * Use inside the installed-content lease and before Project/Agent locks.
+ */
+export async function withPluginPermissionInvocation<T>(
+  projectHomeDir: string,
+  pluginName: string,
+  permission: string,
+  invoke: () => Promise<T>,
+): Promise<T> {
+  return grantsStore(projectHomeDir).withReadLease(async () => {
+    if (!hasGrantOrThrow(projectHomeDir, pluginName, permission)) {
+      throw new Error('The required plugin permission is unavailable.');
+    }
+    return invoke();
+  });
+}
+
+/**
  * Non-throwing enforcement predicate (e.g. the runtime plugin loader, where a
  * throw would abort provider loading for every plugin): when the store is
  * unavailable it DENIES, loudly — an error-level log naming the grants path —

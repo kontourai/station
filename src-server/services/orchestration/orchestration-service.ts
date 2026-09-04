@@ -102,6 +102,10 @@ import {
   createAuthorizedTurnCorrelation,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import {
+  createNativeForegroundRelay,
+  runWithNativeForegroundRelay,
+} from '../../runtime/conversation/native-foreground-invocation.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import {
   requiredMissingPrerequisites,
@@ -2208,8 +2212,12 @@ export class OrchestrationService {
     if (
       admission &&
       (agentSlug !== admission.agentId ||
-        !sessionDeliveryChannels(input.provider) ||
-        !this.options.resolveSessionAgent)
+        (input.provider === 'station-agent') !==
+          !admission.agentSpec.execution?.agentConnectionId ||
+        (input.provider === 'station-agent'
+          ? Boolean(admission.agentSpec.execution?.agentConnectionId)
+          : !sessionDeliveryChannels(input.provider) ||
+            !this.options.resolveSessionAgent))
     )
       throw new ForegroundInvocationUnavailableError();
     const captured = admission
@@ -4492,6 +4500,28 @@ export class OrchestrationService {
                           );
                         }
                       }
+                      const nativeForeground =
+                        adapter.provider === 'station-agent' &&
+                        internal?.foregroundInvocationAdmission
+                          ? createNativeForegroundRelay(
+                              internal.foregroundInvocationAdmission,
+                              {
+                                threadId: turnInput.threadId,
+                                userId: accountId!,
+                                modelId: turnInput.modelId,
+                                clientTurnId: turnInput.clientTurnId,
+                                ambientContext: turnInput.ambientContext,
+                              },
+                            )
+                          : undefined;
+                      if (nativeForeground && !turnCorrelation)
+                        throw new ForegroundInvocationUnavailableError();
+                      const sendAdapter = () =>
+                        nativeForeground
+                          ? runWithNativeForegroundRelay(nativeForeground, () =>
+                              adapter.sendTurn(turnInput),
+                            )
+                          : adapter.sendTurn(turnInput);
                       const accepted = await withTenantExecutionContext(
                         context?.tenantExecutionContext ?? boundTenant,
                         () =>
@@ -4502,11 +4532,11 @@ export class OrchestrationService {
                                   nativeOutputRelay
                                     ? runWithNativeOutputRelayCompanion(
                                         nativeOutputRelay,
-                                        () => adapter.sendTurn(turnInput),
+                                        sendAdapter,
                                       )
-                                    : adapter.sendTurn(turnInput),
+                                    : sendAdapter(),
                               )
-                            : adapter.sendTurn(turnInput),
+                            : sendAdapter(),
                       );
                       providerAccepted = true;
                       // The provider has now named the exact turn. Publish a
@@ -4563,7 +4593,9 @@ export class OrchestrationService {
                   };
                   return internal?.foregroundInvocationAdmission
                     ? internal.foregroundInvocationAdmission.invoke(
-                        'turn',
+                        adapter.provider === 'station-agent'
+                          ? 'native-relay'
+                          : 'turn',
                         {
                           threadId: turnInput.threadId,
                           // `sendTurn` carries no Agent/Project fields. The

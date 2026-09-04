@@ -7,6 +7,7 @@ import {
   useProjectLayoutQuery,
   useProjectQuery,
 } from '@kontourai/station-sdk';
+import { useWorkspacePaneHostActionsQuery } from '@kontourai/station-sdk/workspace-pane';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ErrorState } from '../components/state';
@@ -80,6 +81,17 @@ export function LayoutView({
   // forever, so launches stay refused rather than failing open.
   const { data: projectConfig, isSuccess: projectConfigReady } =
     useProjectQuery(projectSlug);
+  const hostActions = useWorkspacePaneHostActionsQuery(projectSlug);
+  const packageId = layoutData?.config?.plugin;
+  // The host bar owns declared package-global actions. Keep unknown capability
+  // reads inactive instead of briefly activating a stale persisted legacy path.
+  const hostOwnsGlobalActions =
+    typeof packageId === 'string' &&
+    (!hostActions.isSuccess ||
+      !hostActions.data.complete ||
+      hostActions.data.contributions.some(
+        ({ projection }) => projection.owner.pluginId === packageId,
+      ));
   const projectAgentFilterAgents = projectConfig?.agents;
   const projectAgentFilter: ProjectAgentFilterState = useMemo(
     () =>
@@ -121,10 +133,13 @@ export function LayoutView({
           actions: (t.actions ?? []).map(annotateAgentRef),
           skills: (t.skills ?? []).map(annotateAgentRef),
         })),
-        globalSkills: (layoutData.config?.globalSkills ?? []).map(
-          annotateAgentRef,
-        ),
-        actions: layoutData.config?.actions?.map(annotateAgentRef),
+        globalSkills: (hostOwnsGlobalActions
+          ? []
+          : (layoutData.config?.globalSkills ?? [])
+        ).map(annotateAgentRef),
+        actions: hostOwnsGlobalActions
+          ? []
+          : layoutData.config?.actions?.map(annotateAgentRef),
         defaultAgent: layoutData.config?.defaultAgent,
         availableAgents: layoutData.config?.availableAgents,
         // Host-owned, read-only metadata used by the builtin standard-view

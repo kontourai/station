@@ -16,8 +16,10 @@ import { resolveMaxSteps } from '../../constants.js';
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
   readAuthorizedTurnCorrelationHandoff,
+  readNativeForegroundRelayCompanion,
   readNativeOutputRelayCompanion,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import { INTERNAL_NATIVE_FOREGROUND_HEADER } from '../../runtime/conversation/native-foreground-invocation.js';
 import {
   captureRuntimeConfigurationLease,
   RuntimeConfigurationConflictError,
@@ -31,6 +33,7 @@ import {
 } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
+import { ForegroundInvocationUnavailableError } from '../../services/orchestration/foreground-invocation-admission.js';
 import { chatErrors } from '../../telemetry/metrics.js';
 import {
   INTERNAL_API_TOKEN_HEADER,
@@ -121,6 +124,24 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
     const nativeOutputRelay = trustedRelay
       ? readNativeOutputRelayCompanion(relayHandoff)
       : undefined;
+    const nativeForegroundHeader = c.req.header(
+      INTERNAL_NATIVE_FOREGROUND_HEADER,
+    );
+    const nativeForeground = trustedRelay
+      ? readNativeForegroundRelayCompanion(relayHandoff)
+      : undefined;
+    if (
+      (nativeForegroundHeader || nativeForeground) &&
+      (!nativeForeground ||
+        !turnCorrelation ||
+        nativeForegroundHeader !== relayHandoff)
+    ) {
+      nativeForeground?.refuse();
+      return c.json(
+        { success: false, error: 'The captured native action is unavailable.' },
+        409,
+      );
+    }
 
     try {
       const {
@@ -129,6 +150,13 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         options: rawOptions = {},
         projectSlug,
       } = getBody(c);
+      nativeForeground?.assertRequest({
+        agentId: slug,
+        projectSlug,
+        input,
+        options: rawOptions,
+        ambientContext,
+      });
       const configurationLease = captureRuntimeConfigurationLease(ctx);
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       const nativeOutputGrant = nativeOutputRelay?.issueForRuntimeConfiguration(
@@ -148,6 +176,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         input,
         options: rawOptions,
         projectSlug,
+        capturedProject: nativeForeground?.project,
       });
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       const ragContext = preparedRagContext;
@@ -162,6 +191,8 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         slug,
       });
       let agent = runtimeAgent.agent;
+      if (nativeForeground && !agent)
+        throw new ForegroundInvocationUnavailableError();
       let overrideAlreadyHandled = false;
       if (!agent) {
         if (modelOverride) {
@@ -251,8 +282,20 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         dedupStore: getChatTurnDedupStore(ctx.orchestrationEventStore),
         turnCorrelation,
         ...(nativeOutputGrant ? { nativeOutputGrant } : {}),
+        ...(nativeForeground
+          ? { nativeForeground, nativeRuntimeAgent: runtimeAgent.agent }
+          : {}),
       });
     } catch (error: unknown) {
+      nativeForeground?.refuse();
+      if (nativeForeground)
+        return c.json(
+          {
+            success: false,
+            error: 'The captured native action is unavailable.',
+          },
+          409,
+        );
       ctx.logger.error('Chat error', { error });
       chatErrors.add(1, { agent: slug, plugin });
       const errMsg = errorMessage(error);
