@@ -3,7 +3,13 @@
  * The smoke-live runner selects Muse's no-network echo provider only in its
  * attested disposable home. No route interception or live paid model is used.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -175,7 +181,10 @@ test('installed host default Agent action completes one real echo turn and expos
     ),
   );
   const imagePath = join(evidenceRoot, 'connected-host-action.png');
-  await page.screenshot({ path: imagePath });
+  await page.screenshot({
+    path: testInfo.outputPath('connected-host-action.png'),
+  });
+  copyFileSync(testInfo.outputPath('connected-host-action.png'), imagePath);
   await testInfo.attach('connected-host-action-receipt', {
     path: receiptPath,
     contentType: 'application/json',

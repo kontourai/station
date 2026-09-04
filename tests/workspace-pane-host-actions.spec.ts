@@ -4,7 +4,7 @@
  * effects. Real HTTP→foreground→provider execution is covered by the server
  * controlled-provider seam test, not claimed from this interception.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -163,7 +163,10 @@ for (const width of [1280, 390]) {
       mkdirSync(evidenceRoot, { recursive: true });
       const evidenceName = `host-actions-${width}-${path.includes('/panes/') ? 'direct' : 'placed'}`;
       const imagePath = join(evidenceRoot, `${evidenceName}.png`);
-      await bar.screenshot({ path: imagePath });
+      await bar.screenshot({
+        path: testInfo.outputPath(`${evidenceName}.png`),
+      });
+      copyFileSync(testInfo.outputPath(`${evidenceName}.png`), imagePath);
       await testInfo.attach(evidenceName, {
         path: imagePath,
         contentType: 'image/png',
