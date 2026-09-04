@@ -226,7 +226,8 @@ function artifactAttestationClaim(p, records, value) {
   )
     fail('artifactAttestationClaim authority or repository is invalid');
   if (
-    !result.workflowRef.endsWith(`@${p.sourceSha}`) ||
+    result.workflowRef !==
+      `.github/workflows/nightly-native-stage.yml@${p.sourceSha}` ||
     result.runId !== p.workflowRunId
   )
     fail(

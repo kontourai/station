@@ -27,11 +27,19 @@
  * 1. THE CONNECTION CHIP MUST BE IN A NEWS-CARRYING STATE, AND THE RUN MUST
  *    KNOW WHICH ONE. Connected (and idle) render dot-only at ~44px, because
  *    `chat.css` hides `.app-toolbar__conn-state` for those two states under
- *    the mobile breakpoint. A news-carrying state renders that span at its
- *    reserved `min-width: 116px` and the chip measures 151px — which is what
- *    pushes the actions cluster past the viewport edge. EVERY defect in this
+ *    the mobile breakpoint. A news-carrying state renders that span, and the
+ *    chip grows by however wide the span is allowed to be — which is what
+ *    pushed the actions cluster past the viewport edge. EVERY defect in this
  *    class only exists in the wide state, and two independent lanes have each
  *    measured this toolbar in the CONNECTED state and concluded it fits.
+ *
+ *    That span's width is NOT a constant, and this comment deliberately does
+ *    not name one. It was `min-width: 116px` (chip 151px) when the defects in
+ *    this class shipped; #1424 replaced that at the mobile breakpoint with
+ *    `min-width: 0; max-width: 85px`. Anything written here is a transcription
+ *    that goes stale the next time the row's budget is re-derived, so the
+ *    suite reads the computed value live (`connectionStateMaxWidth`) and this
+ *    text describes the mechanism instead.
  *
  *    "A news state" is a class, though, and a precondition satisfied by the
  *    cheapest member of a class is the same trap one level down. So each case
@@ -204,15 +212,24 @@ const TOOLBAR_WIDTHS: ReadonlyArray<{
  * trap this list exists to close.
  *
  * MEASURED, because the reason for driving more than one is not what it looks
- * like. Every news label is SHORTER than the span's reserved `min-width:116px`
- * — intrinsic widths in the live DM Sans face at this size: "Awaiting
+ * like. Intrinsic widths in the live DM Sans face at this size: "Awaiting
  * approval" 100.23px, "Needs re-pairing" 95.94px, "Can't connect" 78.75px,
- * "Reconnecting" 77.70px, "Pair" 21.06px — so the span renders at exactly
- * 116px and the chip at exactly 151px in ALL of them. Label length does not
- * change the geometry today; the reservation absorbs it. (A raw-label
- * comparison suggests otherwise — 79px vs 125px — but that is the text width
- * before the reservation and the mobile `max-width:120px` clamp apply, which
- * is a component-fixture reading, not this page's.)
+ * "Reconnecting" 77.70px, "Pair" 21.06px. Whether label length changes the
+ * geometry depends on where the span's bounds sit relative to those numbers,
+ * and that has already moved once: under the `min-width: 116px` reservation
+ * these defects shipped with, every label was shorter than the floor, so the
+ * span rendered at 116px and the chip at 151px in all of them; under #1424's
+ * mobile `max-width: 85px`, the two longest are clipped to the ceiling and
+ * the shorter ones render at their own width.
+ *
+ * What survives both regimes — and the reason this pair is worth driving — is
+ * that the two longest labels land on the SAME width as each other in either
+ * one, so neither case can mask a regression in the other. The suite
+ * re-derives that from live measurements on every run rather than trusting
+ * this paragraph, and fails naming the label if it stops holding. (A
+ * raw-label comparison suggests otherwise — 79px vs 125px — but that is the
+ * text width before the span's bounds apply, which is a component-fixture
+ * reading, not this page's.)
  *
  * So this pair is not two different widths; it is two different MECHANISMS
  * reaching the wide chip, one of which cannot mask a regression in the other,

@@ -42,6 +42,12 @@ const expectedDependencies = new Map(
       'pane-declaration',
     'src-server/telemetry/metrics.ts': 'operation-receipt',
     'src-ui/src/app-shell/ProjectLayoutRenderer.tsx': 'aggregate-host',
+    // #1446: the aggregate host's dispatch decision (which renderer a
+    // project layout reaches — the Coding host, a registry entry, or the
+    // declared-tabs view) extracted into a pure module so `App.tsx` can read
+    // the same derivation without importing the host or its renderers. It
+    // renders nothing and grants nothing; it is the host's own branch table.
+    'src-ui/src/app-shell/project-layout-kind.ts': 'aggregate-host',
     'src-ui/src/app-shell/codingFileCompositionTelemetry.ts':
       'operation-receipt',
     'src-ui/src/app-shell/codingDiffCompositionTelemetry.ts':
