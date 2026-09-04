@@ -10,6 +10,10 @@ import { summarizeVerificationOutput } from '../lib/verification-reporter.mjs';
 // `run-verification.mjs` prints. A hand-written fixture would prove only that
 // the script parses the fixture (#1715's fixture-vs-reality gap).
 import { renderBounded } from '../run-verification.mjs';
+// `annotationMessage` is asserted directly as well as through the spawned
+// script: the encoding boundary it owns is a property of the string, and a
+// spawned run can only observe it through an excerpt long enough to truncate.
+import { annotationMessage } from '../verification-gate-summary.mjs';
 
 const script = resolve(import.meta.dirname, '../verification-gate-summary.mjs');
 const roots: string[] = [];
@@ -129,8 +133,11 @@ const passingStderr = [
   'Checked 5565 files. Found 3 warnings.',
 ].join('\n');
 
-// The runner interleaves both streams into one step log, which is what the
-// summary script actually reads.
+// The script reads the TEE'D STDOUT only -- `full-regression.stdout.log` is
+// the right-hand side of `npm run full:regression | tee ...`, so stderr never
+// reaches it. This fixture concatenates the two anyway, which is strictly
+// harder than reality: it puts the tolerated warning lines directly in front
+// of the parser, where the withdrawn fallback would have found them.
 const passingLog = [passingStdout, passingStderr].join('\n');
 
 const failingLog = [
@@ -318,5 +325,163 @@ describe('verification gate summary', () => {
     expect(status).toBe(0);
     expect(summary).toContain('❌ did not pass');
     expect(errorAnnotations(stdout)).toHaveLength(2);
+  });
+
+  // The report step declares `timeout-minutes: 2` and carries no
+  // `continue-on-error`, so a slow reporter turns a GREEN gate's job red.
+  // Unbounded, the balanced-object scan is quadratic on exactly this input --
+  // every line-initial `{` scanning to the end of the text -- and a 1 MiB tail
+  // took ~68 seconds. The deadline here is two orders of magnitude under the
+  // step's own, so the assertion still discriminates on a loaded host.
+  test('reports within seconds on a 1 MiB tail of unbalanced line-initial braces', () => {
+    const root = workspace();
+    const capture = join(root, 'full-regression.stdout.log');
+    // 2 bytes per line, so ~524k candidate opens, none of which ever closes.
+    writeFileSync(capture, '{\n'.repeat(512 * 1024));
+
+    const startedAt = Date.now();
+    const { status, stdout, summary } = runSummary(root, [
+      '--stdout-file',
+      capture,
+    ]);
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(status).toBe(0);
+    // The unparseable path is the one taken: this asserts the scan gave up and
+    // said so, not merely that it returned quickly.
+    expect(summary).toContain('no JSON verdict document was found');
+    expect(stdout).toContain('::warning title=full-regression::');
+    expect(elapsedMs).toBeLessThan(5000);
+  });
+
+  // A gate that throws before printing a verdict writes to stderr and exits
+  // non-zero (run-verification.mjs's own catch), so the tee'd stdout holds npm
+  // banners and nothing else. `::warning` about parsing understates that.
+  test('escalates to ::error when the gate step failed and left no verdict', () => {
+    const root = workspace();
+    const capture = join(root, 'full-regression.stdout.log');
+    writeFileSync(
+      capture,
+      [
+        '> @kontourai/station-core@0.0.0 full:regression',
+        '> node scripts/run-verification.mjs request full-regression',
+        'npm error code ELIFECYCLE',
+      ].join('\n'),
+    );
+
+    const { status, stdout, summary } = runSummary(root, [
+      '--stdout-file',
+      capture,
+      '--gate-outcome',
+      'failure',
+    ]);
+
+    expect(status).toBe(0);
+    const annotations = errorAnnotations(stdout);
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toContain('"failure"');
+    expect(annotations[0]).toContain('no verdict document');
+    expect(annotations[0]).toContain('full-regression-*');
+    // The tier moved; the reporter still never decides the verdict.
+    expect(summary).toContain('unparseable');
+  });
+
+  test('stays a ::warning for the same unparseable capture when the gate SUCCEEDED', () => {
+    const root = workspace();
+    const capture = join(root, 'full-regression.stdout.log');
+    writeFileSync(
+      capture,
+      ['npm error code ELIFECYCLE', 'not json { at all', '}{'].join('\n'),
+    );
+
+    const { status, stdout } = runSummary(root, [
+      '--stdout-file',
+      capture,
+      '--gate-outcome',
+      'success',
+    ]);
+
+    expect(status).toBe(0);
+    expect(errorAnnotations(stdout)).toEqual([]);
+    expect(stdout).toContain('::warning title=full-regression::');
+  });
+
+  // A document whose every semantic field was dropped by its own byte cap is
+  // parsable and truthy, and carries no verdict. Keying the annotation on the
+  // document's ABSENCE left this case silent -- the exact silence #1459 exists
+  // to remove.
+  test('annotates a fully truncated document, which is present but states no verdict', () => {
+    const root = workspace();
+    const capture = join(root, 'full-regression.stdout.log');
+    writeFileSync(
+      capture,
+      capturedStdout('', JSON.stringify({ truncated: true }, null, 2)),
+    );
+
+    const { status, stdout, summary } = runSummary(root, [
+      '--stdout-file',
+      capture,
+    ]);
+
+    expect(status).toBe(0);
+    expect(stdout).toContain('::warning title=full-regression::');
+    expect(stdout).toContain('stated no verdict');
+    expect(summary).toContain('⚠️ verdict not stated in the captured document');
+    expect(summary).toContain('truncated by its own byte cap');
+  });
+
+  // `renderBounded` falls back to the receipt's own fields when the result
+  // carries no `summary` -- the shape a reused/joined disposition prints
+  // (`boundedControlResult` in run-verification.mjs). `summary.terminal` is
+  // then the terminal OBJECT rather than a status string.
+  test('reads the terminal status from a receipt-shaped summary with no string terminal', () => {
+    const root = workspace();
+    const capture = join(root, 'full-regression.stdout.log');
+    const counts = {
+      executed: 4225,
+      passed: 4225,
+      failed: 0,
+      infrastructureErrors: 0,
+    };
+    const document = renderBounded({
+      disposition: 'reused',
+      request: { key: requestKey, laneId: 'full-regression' },
+      receipt: {
+        terminal: { status: 'completed', exitCode: 0, passed: true },
+        counts,
+        cleanup,
+        artifacts: [],
+        request: { key: requestKey },
+      },
+    });
+    // The precondition the branch exists for: no string terminal to read.
+    expect(typeof JSON.parse(document).summary.terminal).toBe('object');
+    writeFileSync(capture, capturedStdout('', document));
+
+    const { status, stdout, summary } = runSummary(root, [
+      '--stdout-file',
+      capture,
+    ]);
+
+    expect(status).toBe(0);
+    expect(errorAnnotations(stdout)).toEqual([]);
+    expect(summary).toContain('✅ passed');
+    expect(summary).toContain('Terminal status: `completed`');
+    expect(summary).toContain('Disposition: `reused`');
+  });
+
+  // GitHub reads `%0A` as one newline; a cut landing inside it leaves a bare
+  // `%` or `%0`, which is a malformed escape rather than the newline it
+  // replaced. Truncating the plain text first is what makes that impossible.
+  test('truncates an over-long excerpt before percent-encoding, never inside an escape', () => {
+    const boundary = `${'a'.repeat(799)}\n${'b'.repeat(64)}`;
+
+    const message = annotationMessage(boundary);
+
+    expect(message.endsWith('…')).toBe(true);
+    // Every `%` in the result introduces a complete two-digit escape.
+    expect(message).not.toMatch(/%(?![0-9A-Fa-f]{2})/);
+    expect(message).toContain('%0A');
+    expect(message).not.toContain('b');
   });
 });

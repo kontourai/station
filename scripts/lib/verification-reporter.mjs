@@ -631,9 +631,27 @@ export function summarizeVerificationOutput({
   // that had no cause to report. An ERROR-tier diagnostic is still reported
   // if one is somehow present on a pass -- that is a genuine contradiction
   // worth surfacing, not noise to suppress.
-  const allowWarningFallback = !(
-    terminal.status === 'completed' && !exitedNonZero
-  );
+  //
+  // What follows is NOT the receipt's verdict and must not be read as one.
+  // `classifyTerminal` (verification-receipt.mjs) additionally requires stable
+  // provenance and the full counts identity (`executed > 0`, `passed ===
+  // executed`), neither of which this function is given. It is deliberately a
+  // conservative UNDER-approximation of that pass predicate: every input it
+  // can see must be clean before the fallback is withdrawn, so anything it
+  // cannot see can only leave the fallback in place. A run this thinks is
+  // clean but the receipt fails therefore still reports its warning; a run
+  // with a failed count, a failed cleanup, or a surviving owned child keeps
+  // its cause even though the status says `completed`.
+  const cleanupStatus =
+    typeof cleanup.status === 'string' ? cleanup.status : null;
+  const observedClean =
+    terminal.status === 'completed' &&
+    !exitedNonZero &&
+    counts.failed === 0 &&
+    counts.infrastructureErrors === 0 &&
+    (cleanupStatus === 'passed' || cleanupStatus === 'not_required') &&
+    (cleanup.survivingOwnedChildren ?? 0) === 0;
+  const allowWarningFallback = !observedClean;
   // Attributable evidence outranks unattributable evidence. A candidate from
   // the scoped stdout provably came from the failing step; a stderr candidate
   // only probably did.

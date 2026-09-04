@@ -713,6 +713,63 @@ describe('verification reporter', () => {
     expect(failed.causalExcerpts).toEqual([failed.firstCausalExcerpt]);
   });
 
+  // #1459 review: the withdrawal above is keyed on a CONSERVATIVE reading of
+  // the run, not on `terminal.status` alone. `classifyTerminal` also requires
+  // clean counts, clean cleanup and no surviving owned child before it calls a
+  // run passed, so a capture that says `completed` with a failed cleanup is a
+  // run that FAILED — and withdrawing its only reported cause would leave the
+  // reader with a red verdict and nothing at all naming why.
+  test('keeps the warnings-only fallback when cleanup failed despite a completed status (#1459)', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 lint:check',
+        '> biome check .',
+      ].join('\n'),
+      stderr: [
+        'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
+        '  ! The assignment should not be in an expression.',
+        'Checked 5565 files. Found 3 warnings.',
+      ].join('\n'),
+      terminal: { status: 'completed', exitCode: 0, truncated: false },
+      counts: {
+        executed: 4225,
+        passed: 4213,
+        failed: 0,
+        infrastructureErrors: 0,
+      },
+      cleanup: { status: 'failed', survivingOwnedChildren: 2 },
+      maxBytes: 2048,
+    });
+    expect(summary.firstCausalExcerpt).toContain('noAssignInExpressions');
+  });
+
+  // The counts half of the same predicate: a failed test with a zero exit code
+  // is a contradiction, and it is the failure — not the zero — that decides
+  // whether this run had a cause to report.
+  test('keeps the warnings-only fallback when the counts report a failure despite exit 0 (#1459)', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 lint:check',
+        '> biome check .',
+      ].join('\n'),
+      stderr: [
+        'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
+        '  ! The assignment should not be in an expression.',
+        'Checked 5565 files. Found 3 warnings.',
+      ].join('\n'),
+      terminal: { status: 'completed', exitCode: 0, truncated: false },
+      counts: {
+        executed: 4225,
+        passed: 4212,
+        failed: 1,
+        infrastructureErrors: 0,
+      },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(summary.firstCausalExcerpt).toContain('noAssignInExpressions');
+  });
+
   // station#4249: `causalExcerpts` is the plural companion that lets a run
   // report every distinct failure it actually observed, not only the first.
   describe('causalExcerpts (station#4249)', () => {
