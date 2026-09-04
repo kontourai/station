@@ -27,6 +27,7 @@ import {
   openChatIdentitiesSnapshot,
   openChatsStore,
 } from '../contexts/open-chats-store';
+import { useShowSurface } from '../contexts/useShowSurface';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useLocale } from '../i18n/LocaleContext';
@@ -109,6 +110,7 @@ const SearchIcon = (
 );
 
 export function CommandPalette() {
+  const showSurface = useShowSurface();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -390,10 +392,14 @@ export function CommandPalette() {
         label: surface.label(),
         group: 'Navigation',
         keywords: surface.keywords ? [...surface.keywords] : undefined,
-        run: () =>
-          params
-            ? navigate(surface.route, { ...params })
-            : navigate(surface.route),
+        run: () => {
+          if (surface.regionSurface) {
+            showSurface(surface.regionSurface);
+            return;
+          }
+          if (params) navigate(surface.route, { ...params });
+          else navigate(surface.route);
+        },
       });
     }
 
@@ -618,6 +624,7 @@ export function CommandPalette() {
     settingsCommands,
     settingsLocaleFormatter,
     locale,
+    showSurface,
   ]);
 
   const ranked = useMemo(

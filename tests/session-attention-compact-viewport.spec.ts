@@ -76,7 +76,7 @@ test('needs_input attention answer field stays genuinely visible once the viewpo
               createdAt: '2026-07-28T09:04:00.000Z',
               updatedAt: '2026-07-28T09:05:00.000Z',
               sessionId: threadId,
-              openHref: `/activity?session=${encodeURIComponent(threadId)}`,
+              openHref: `/?surface=activity&session=${encodeURIComponent(threadId)}`,
               source: { threadId },
             },
           ],
@@ -103,7 +103,7 @@ test('needs_input attention answer field stays genuinely visible once the viewpo
     });
   });
 
-  await page.goto(`/activity?session=${encodeURIComponent(threadId)}`);
+  await page.goto(`/?surface=activity&session=${encodeURIComponent(threadId)}`);
   const detail = page.getByTestId('session-detail');
   await detail.waitFor({ state: 'visible' });
 
@@ -225,7 +225,7 @@ test('failed session keeps its title and status badge visible once the viewport 
     });
   });
 
-  await page.goto(`/activity?session=${encodeURIComponent(threadId)}`);
+  await page.goto(`/?surface=activity&session=${encodeURIComponent(threadId)}`);
   const detail = page.getByTestId('session-detail');
   await detail.waitFor({ state: 'visible' });
 

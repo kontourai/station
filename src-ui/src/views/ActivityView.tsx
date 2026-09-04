@@ -7,7 +7,6 @@ import { useConfig } from '../contexts/ConfigContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { availablePlacements, useDockSlotDevice } from '../hooks/useIsMobile';
 import {
-  DOCK_REGION_IDS,
   foldedDockRegion,
   occupiedDockRegion,
   regionLabel,
@@ -75,16 +74,7 @@ export function ActivityView({
             : `the ${regionLabel(activityRegion)} region`
         }
         regionVisible={activityIsShown}
-        onShowPane={() => {
-          if (bottomOnly) {
-            regionModel.placeSurface('activity', activityRegion);
-            for (const id of DOCK_REGION_IDS) {
-              if (id !== activityRegion)
-                regionModel.setRegion(id, { visible: false });
-            }
-          }
-          regionModel.setRegion(activityRegion, { visible: true });
-        }}
+        onShowPane={() => regionModel.showSurface('activity')}
       />
     );
   }

@@ -1,4 +1,9 @@
-import { type ComponentType, createContext, useContext } from 'react';
+import {
+  type ComponentType,
+  createContext,
+  useContext,
+  useEffect,
+} from 'react';
 import { ChatDock } from '../components/chat-dock/ChatDock';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
@@ -71,6 +76,15 @@ export function RegionShells({
 }) {
   const model = useRegionModelOptional();
   const bottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
+  // This component IS "a region surface can render right now": App mounts it
+  // only while `showAmbientChatDock` holds, and a Chat workspace layout owns
+  // the whole view instead. Registering from here — rather than handing the
+  // model a copy of App's predicate — is what keeps the two from drifting;
+  // the deleted navigation fallback this restores was guarded on a condition
+  // that could never fire (#928). `useShowSurface` navigates while nothing is
+  // registered, so a commanded reveal is never dropped on the floor.
+  const registerRegionSurfaceHost = model?.registerRegionSurfaceHost;
+  useEffect(() => registerRegionSurfaceHost?.(), [registerRegionSurfaceHost]);
   if (!model)
     return (
       <ChatDock

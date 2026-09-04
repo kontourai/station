@@ -1268,7 +1268,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
           },
         ],
       });
-      await page.goto('/activity?session=task-first-home');
+      await page.goto('/?surface=activity&session=task-first-home');
 
       const detail = page.getByTestId('session-detail');
       await expect(detail).toBeVisible();
@@ -1353,7 +1353,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
           },
         ],
       });
-      await page.goto('/activity?session=task-first-home');
+      await page.goto('/?surface=activity&session=task-first-home');
 
       const statusLine = page
         .getByTestId('session-detail')
@@ -1380,7 +1380,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     }) => {
       const commands: Array<Record<string, unknown>> = [];
       await mockTaskFirstHome(page, { commands });
-      await page.goto('/activity');
+      await page.goto('/?surface=activity');
 
       const coordinator = page.getByTestId('delegated-task-coordinator');
       await expect(coordinator).toBeVisible();

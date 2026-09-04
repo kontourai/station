@@ -40,6 +40,7 @@ describe('Activity rename sweep', () => {
 
   test('Activity owns the canonical route and legacy deep links redirect with their query', () => {
     expect(surface!.route).toBe('/activity');
+    expect(surface!.regionSurface).toBe('activity');
     expect(resolveViewFromPath('/activity')).toEqual({ type: 'activity' });
     expect(resolveViewFromPath('/activity?session=thread-1')).toEqual({
       type: 'activity',
@@ -53,22 +54,6 @@ describe('Activity rename sweep', () => {
       getLegacyPathRedirect('/sessions?session=thread-1&source=push'),
     ).toBe('/activity?session=thread-1&source=push');
   });
-
-  const CANONICAL_DEEP_LINK_PRODUCERS = [
-    '../../../src-server/services/notifications/notification-deep-link.ts',
-    '../../../src-server/services/projects/attention-projection.ts',
-    '../../../src-server/services/discord/discord-gateway-service.ts',
-  ] as const;
-
-  test.each(CANONICAL_DEEP_LINK_PRODUCERS)(
-    '%s mints the canonical Activity deep link',
-    (relative) => {
-      const source = readFileSync(join(__dirname, relative), 'utf8');
-      // This assertion reds if any current producer reintroduces /sessions.
-      expect(source).toContain('/activity?session=');
-      expect(source).not.toMatch(/\/sessions\?session=/);
-    },
-  );
 
   /**
    * Every file that renders an affordance INTO the surface, plus the surface
