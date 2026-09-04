@@ -10,7 +10,21 @@ The SDK wraps core app contexts and exposes them through stable React hooks, UI 
 
 ## Setup
 
-Plugins are automatically wrapped in `SDKProvider` by the runtime. No manual setup required. For layout plugins, use `LayoutProvider` instead — it also sets the layout context for agent resolution.
+Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
+by the host, on both direct routes and placed Pane hosts. No plugin-side mock
+provider is required. Project identity comes from the server-issued Pane
+occurrence, not ambient navigation or a parsed URL.
+
+The host binds plugin header attribution to each provider boundary. It never
+installs whichever plugin rendered last as global request identity. Header
+attribution is not an authorization grant. `useSDK()` exposes that bound
+identity; the pure `getPluginHeaders` utility is available on the existing
+`@kontourai/station-sdk/client` entry. Legacy imperative calls without a bound
+identity remain unqualified.
+
+`LayoutProvider` is a compatibility wrapper over the supplied SDK context. It
+does not infer Agent prefixes or select a default Agent. Layout-global actions
+and default-Agent migration remain separately tracked by #1372.
 
 ```tsx
 // Core app wraps your plugin automatically:
@@ -18,7 +32,7 @@ Plugins are automatically wrapped in `SDKProvider` by the runtime. No manual set
   <YourPlugin />
 </SDKProvider>
 
-// Workspace plugins use LayoutProvider:
+// Compatibility wrapper for an explicitly supplied legacy context:
 <LayoutProvider sdk={sdkContextValue} layout={layoutConfig}>
   <YourWorkspacePlugin />
 </LayoutProvider>
@@ -49,13 +63,9 @@ Returns a single agent by slug.
 const agent = useAgent('my-agent');
 ```
 
-#### `useResolveAgent(agentSlug: string): string`
-
-Resolves a short agent name to a fully-qualified slug using the current layout context. Returns the slug unchanged if it already contains `:`.
-
-```tsx
-const resolved = useResolveAgent('my-agent'); // → 'sa-agent:my-agent'
-```
+Agent operations take explicit canonical Agent IDs. A Layout or Pane slug does
+not supply an Agent prefix or a default execution binding; the former
+`useResolveAgent` description is not a supported current hook contract.
 
 ---
 
@@ -1028,7 +1038,8 @@ Injects the SDK context into a plugin tree. Used by the runtime — plugins don'
 
 ### `LayoutProvider`
 
-Wraps a layout plugin with SDK context and sets the layout for agent resolution.
+Compatibility wrapper over an explicitly supplied SDK context. It does not
+publish ambient plugin identity or infer Agent identity from a Layout slug.
 
 ```tsx
 <LayoutProvider sdk={sdkContextValue} layout={layoutConfig}>

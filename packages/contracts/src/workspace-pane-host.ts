@@ -14,7 +14,11 @@ import { MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH } from './workspace-pane-lay
 export const WORKSPACE_PANE_HOST_DOCUMENT_VERSION = '1.1' as const;
 export const MAX_WORKSPACE_PANE_HOST_PANES = 24;
 export const MAX_WORKSPACE_PANE_HOST_TREE_DEPTH = 6;
-const MAX_WORKSPACE_PANE_HOST_BOUND_CONTEXT_FIELDS = 7;
+const MAX_WORKSPACE_PANE_HOST_BOUND_CONTEXT_FIELDS = 10;
+// Existing catalog snapshot: contribution (object + 4 fields), source identity
+// (object + 3 fields), provenance (object + 2 mutually exclusive owner fields).
+const MAX_WORKSPACE_PANE_HOST_CONTRIBUTION_ITEMS = 5 + 4 + 3;
+const MAX_WORKSPACE_PANE_HOST_INPUT_STRING_LENGTH = 1_024;
 const MAX_WORKSPACE_PANE_HOST_DOCUMENT_PROPERTIES = 7;
 const MAX_WORKSPACE_PANE_HOST_TASK_SCOPE_PROPERTIES = 4;
 const MAX_WORKSPACE_PANE_HOST_INSTANCE_PROPERTIES = 5;
@@ -25,8 +29,9 @@ const MAX_WORKSPACE_PANE_HOST_SPLITS = MAX_WORKSPACE_PANE_HOST_TAB_GROUPS - 1;
 /**
  * Maximum object/property work of an accepted document:
  * document (8) + Task scope (5) + instances array (25) + 24 full instances
- * (24 * (instance 6 + bound context 7)) + 24 tab groups/ID arrays (168) +
- * 23 collapsed splits (184) = 702. A 24-leaf tree can still reach depth six.
+ * (24 * (instance 6 + bound context 11 + contribution graph 12)) + 24 tab
+ * groups/ID arrays (168) + 23 collapsed splits (184) = 1086.
+ * A 24-leaf tree can still reach depth six.
  */
 export const MAX_WORKSPACE_PANE_HOST_RECOVERY_INPUT_ITEMS =
   1 +
@@ -39,7 +44,8 @@ export const MAX_WORKSPACE_PANE_HOST_RECOVERY_INPUT_ITEMS =
     (1 +
       MAX_WORKSPACE_PANE_HOST_INSTANCE_PROPERTIES +
       1 +
-      MAX_WORKSPACE_PANE_HOST_BOUND_CONTEXT_FIELDS) +
+      MAX_WORKSPACE_PANE_HOST_BOUND_CONTEXT_FIELDS +
+      MAX_WORKSPACE_PANE_HOST_CONTRIBUTION_ITEMS) +
   MAX_WORKSPACE_PANE_HOST_TAB_GROUPS *
     (1 + MAX_WORKSPACE_PANE_HOST_TAB_GROUP_PROPERTIES) +
   MAX_WORKSPACE_PANE_HOST_TAB_GROUPS +
@@ -273,6 +279,11 @@ function hasSafeDataGraph(
   seen = new Set<object>(),
   budget = { work: 0 },
 ): boolean {
+  // Bound strings before the canonical pane parser snapshots them. Scalar
+  // identities retain their stricter 128-unit bound below; provenance may
+  // contain a source URI rather than an identity segment.
+  if (typeof value === 'string')
+    return value.length <= MAX_WORKSPACE_PANE_HOST_INPUT_STRING_LENGTH;
   if (value === null || typeof value !== 'object') return true;
   if (seen.has(value)) return false;
   seen.add(value);
@@ -299,6 +310,11 @@ function hasSafeDataGraph(
       (key) => !Array.isArray(value) || key !== 'length',
     );
     if (
+      keys.some(
+        (key) =>
+          typeof key !== 'string' ||
+          key.length > MAX_WORKSPACE_PANE_HOST_INPUT_STRING_LENGTH,
+      ) ||
       keys.length > MAX_WORKSPACE_PANE_HOST_RECOVERY_INPUT_ITEMS ||
       budget.work + keys.length > MAX_WORKSPACE_PANE_HOST_RECOVERY_INPUT_ITEMS
     )
@@ -505,7 +521,10 @@ export function createWorkspacePaneHostBaselineDocument(
   scope: WorkspacePaneHostScope,
   instances: readonly WorkspacePaneInstance[],
 ): WorkspacePaneHostDocumentV1 | null {
-  const accepted = instances.filter(isBoundedWorkspacePaneInstance);
+  const accepted = instances.flatMap((instance) => {
+    const parsed = parseBoundedWorkspacePaneInstance(instance);
+    return parsed ? [parsed] : [];
+  });
   const first = accepted[0];
   if (!isWorkspacePaneHostIdentitySegment(id) || !first) return null;
   return {
@@ -527,12 +546,22 @@ function knownInstanceMap(
   instances: readonly WorkspacePaneInstance[],
 ): Map<string, WorkspacePaneInstance> {
   return new Map(
-    instances
-      .filter((instance) => isBoundedWorkspacePaneInstance(instance))
-      .map((instance) => [instance.instanceId, instance]),
+    instances.flatMap((instance) => {
+      const parsed = parseBoundedWorkspacePaneInstance(instance);
+      return parsed ? [[parsed.instanceId, parsed] as const] : [];
+    }),
   );
 }
 
+function parseBoundedWorkspacePaneInstance(
+  value: unknown,
+): WorkspacePaneInstance | null {
+  if (!hasSafeDataGraph(value)) return null;
+  const parsed = parseWorkspacePaneInstance(value);
+  return parsed && isBoundedWorkspacePaneInstance(parsed) ? parsed : null;
+}
+
+/** Receives the canonical parsed instance, including validated catalog provenance. */
 function isBoundedWorkspacePaneInstance(
   instance: WorkspacePaneInstance,
 ): boolean {
@@ -542,8 +571,9 @@ function isBoundedWorkspacePaneInstance(
     !isWorkspacePaneHostIdentitySegment(instance.stateKey)
   )
     return false;
-  return Object.values(instance.boundContext ?? {}).every((value) =>
-    isWorkspacePaneHostIdentitySegment(value),
+  return Object.entries(instance.boundContext ?? {}).every(
+    ([key, value]) =>
+      key === 'contribution' || isWorkspacePaneHostIdentitySegment(value),
   );
 }
 

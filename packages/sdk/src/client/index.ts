@@ -1,10 +1,11 @@
 /**
  * `@kontourai/station-sdk/client` — a React-free entry point (#167).
  *
- * Every export under this barrel (and every module it re-exports from) is
- * pure `fetch()`-based, takes `apiBase` as an explicit plain-string
+ * HTTP operations under this barrel are pure `fetch()`-based and take
+ * `apiBase` as an explicit plain-string
  * parameter (never the module-level `_apiBase`/`_setApiBase` singleton used
- * by the SDK's hook surface), and never imports `react`, `react-dom`,
+ * by the SDK's hook surface). Pure header utilities also receive their
+ * attribution explicitly. This graph never imports `react`, `react-dom`,
  * `@tanstack/react-query`, a `.tsx` file, or a `.css` file, nor reaches back
  * into `../hooks*`, `../providers`, `../components/*`, or `../layout/*`.
  * This is what lets `packages/cli` (a `tsx`-run Node process) and
@@ -65,6 +66,7 @@ export {
 export * from './integrations';
 export * from './knowledge';
 export * from './orchestration';
+export { getPluginHeaders } from './plugin-headers';
 export * from './plugins';
 export * from './project-task-rooms';
 export * from './projects';

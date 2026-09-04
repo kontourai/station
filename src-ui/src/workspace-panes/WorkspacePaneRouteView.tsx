@@ -13,6 +13,7 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { LayoutRenderer } from '../layouts';
 import { getBuiltinWorkspacePaneRenderer } from './builtinWorkspacePaneRegistry';
 import { trackMcpAppDisplayModeDecision } from './mcpAppDisplayModeTelemetry';
+import { PluginWorkspacePaneSDKBoundary } from './PluginWorkspacePaneSDKBoundary';
 import { useResolvedWorkspacePaneCatalog } from './resolvedWorkspacePaneCatalog';
 import { WorkspacePaneAvailabilityList } from './WorkspacePaneAvailabilityList';
 import { WorkspacePaneFrame } from './WorkspacePaneFrame';
@@ -347,6 +348,41 @@ export function WorkspacePaneRouteView({
       component: selectedRenderer.renderer,
       actions: entry.descriptor.actions,
     };
+    const paneLayout = {
+      name: entry.descriptor.name,
+      slug: boundInstance.instanceId,
+      tabs: [selectedTab],
+    };
+    const renderer = (
+      <LayoutRenderer
+        componentId={selectedRenderer.renderer}
+        trustedPluginLayout={trustedPluginLayout ?? undefined}
+        layout={paneLayout}
+        activeTab={selectedTab}
+        activeTabId={selectedTab.id}
+        onMcpUiResolution={handleMcpUiResolution}
+        mcpUiResolutionIdentity={currentMcpResolutionFingerprint}
+        mcpUiPaneIdentity={{
+          descriptorId: boundInstance.descriptorId,
+          instanceId: boundInstance.instanceId,
+          stateKey: boundInstance.stateKey,
+        }}
+        onMcpUiDisplayModeDecision={trackMcpAppDisplayModeDecision}
+      />
+    );
+    const owningPluginName =
+      trustedPluginLayout &&
+      boundInstance.boundContext?.contribution?.provenance.origin === 'plugin'
+        ? boundInstance.boundContext.contribution.provenance.pluginId
+        : undefined;
+    if (trustedPluginLayout && (!owningPluginName || !catalog.projectSlug)) {
+      return (
+        <ErrorState
+          title="Workspace pane unavailable"
+          description="Station could not bind this plugin pane to its owning Project and plugin."
+        />
+      );
+    }
     return (
       <section
         className="project-page project-page__workspace-pane-route"
@@ -357,25 +393,20 @@ export function WorkspacePaneRouteView({
             instanceId={boundInstance.instanceId}
             paneName={entry.descriptor.name}
           >
-            <LayoutRenderer
-              componentId={selectedRenderer.renderer}
-              trustedPluginLayout={trustedPluginLayout ?? undefined}
-              layout={{
-                name: entry.descriptor.name,
-                slug: boundInstance.instanceId,
-                tabs: [selectedTab],
-              }}
-              activeTab={selectedTab}
-              activeTabId={selectedTab.id}
-              onMcpUiResolution={handleMcpUiResolution}
-              mcpUiResolutionIdentity={currentMcpResolutionFingerprint}
-              mcpUiPaneIdentity={{
-                descriptorId: boundInstance.descriptorId,
-                instanceId: boundInstance.instanceId,
-                stateKey: boundInstance.stateKey,
-              }}
-              onMcpUiDisplayModeDecision={trackMcpAppDisplayModeDecision}
-            />
+            {trustedPluginLayout ? (
+              // The server-issued catalog Project id matches this occurrence
+              // above, and the slug comes from that same Project record. Reuse
+              // the ONE SDK composition; do not create parallel authorities.
+              <PluginWorkspacePaneSDKBoundary
+                layout={paneLayout}
+                projectSlug={catalog.projectSlug!}
+                pluginName={owningPluginName!}
+              >
+                {renderer}
+              </PluginWorkspacePaneSDKBoundary>
+            ) : (
+              renderer
+            )}
           </WorkspacePaneFrame>
         </div>
       </section>
