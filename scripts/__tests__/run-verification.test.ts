@@ -127,6 +127,14 @@ describe('verification status projection', () => {
       // non-passing phase, so this region is always upstream of the failing
       // one in the folded capture -- and a plain `.find` over the parent's
       // stderr reaches it first and attributes the run to an innocent file.
+      //
+      // These option NAMES are not checked. `coordinateVerification` is `.mjs`
+      // under `checkJs: false`, so tsc infers nothing useful about its
+      // parameter and a typo here compiles clean -- verified by probing a
+      // misspelled `root`, which raised no error. That matters most for
+      // `phaseRunner`: misspell it and the coordinator executes the REAL phase
+      // commands. The `phaseCalls` assertions below are what actually prove
+      // the seam was taken, so keep them.
       const result = await coordinateVerification({
         laneId: 'full-regression',
         root,
