@@ -218,10 +218,6 @@ function App() {
       }
       const path = getPathForView(view);
       if (path) {
-        if (view.type === 'activity') {
-          navigate('/activity', { session: view.sessionId ?? null });
-          return;
-        }
         navigate(path);
       }
     },

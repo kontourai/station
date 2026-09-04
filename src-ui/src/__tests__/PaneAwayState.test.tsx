@@ -17,8 +17,8 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 const selection = vi.hoisted(() => ({
-  // The shape HomeView/ActivityView admit as "builtin selected": pane
-  // selection is not what these tests exercise, so it stays permissive.
+  // The shape HomeView admits as "builtin selected": pane selection is not
+  // what these tests exercise, so it stays permissive.
   result: {
     state: 'selected',
     candidate: {
@@ -34,6 +34,7 @@ const regionOccupant = vi.hoisted(() => ({
   lastShownRegion: 'right' as 'right' | 'bottom',
   setRegion: vi.fn(),
   placeSurface: vi.fn(),
+  showSurface: vi.fn(),
 }));
 
 vi.mock('../contexts/RegionModelContext', async (importOriginal) => {
@@ -61,6 +62,7 @@ vi.mock('../contexts/RegionModelContext', async (importOriginal) => {
             lastShownRegion: regionOccupant.lastShownRegion,
             setRegion: regionOccupant.setRegion,
             placeSurface: regionOccupant.placeSurface,
+            showSurface: regionOccupant.showSurface,
           }
         : null,
   };
@@ -94,10 +96,6 @@ vi.mock('../views/home/useWorkspaceHomeRole', () => ({
   useRevokeWorkspaceHomeRole: () => () => undefined,
 }));
 
-vi.mock('../views/activity/ActivityWorkspacePane', () => ({
-  ActivityWorkspacePane: () => <div data-testid="activity-surface" />,
-}));
-
 // station#520: real `useIsMobile()` is correctly "desktop" in jsdom's
 // default (unmocked matchMedia) environment — the posture-aware copy tests
 // below flip this to exercise the phone branch without depending on a real
@@ -118,7 +116,6 @@ vi.mock('../hooks/useIsMobile', async (importOriginal) => {
 import { WORKSPACE_ACTIVITY_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-activity-pane';
 import { WORKSPACE_HOME_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-home-pane';
 import { workspacePaneHostSuppliableContexts } from '@kontourai/station-contracts/workspace-pane-host';
-import { ActivityView } from '../views/ActivityView';
 import { HomeView } from '../views/HomeView';
 import {
   type WorkspacePaneDockAction,
@@ -133,6 +130,7 @@ beforeEach(() => {
   regionOccupant.lastShownRegion = 'right';
   regionOccupant.setRegion.mockReset();
   regionOccupant.placeSurface.mockReset();
+  regionOccupant.showSurface.mockReset();
 });
 
 function publishedAction(
@@ -152,14 +150,6 @@ function renderHome(action: WorkspacePaneDockAction | null) {
   return render(
     <WorkspacePaneDockContext.Provider value={action}>
       <HomeView continuation={null} onNavigate={() => {}} />
-    </WorkspacePaneDockContext.Provider>,
-  );
-}
-
-function renderActivity(action: WorkspacePaneDockAction | null) {
-  return render(
-    <WorkspacePaneDockContext.Provider value={action}>
-      <ActivityView apiBase="http://test.local" />
     </WorkspacePaneDockContext.Provider>,
   );
 }
@@ -200,68 +190,14 @@ test("Home's away action asks the HOST to undock — it owns no dock semantics",
   expect(undock).toHaveBeenCalledTimes(1);
 });
 
-test('Activity ignores the ambient dock occupant — the region model is its only away-state authority (#928)', () => {
-  // No host publishes Activity as an ambient occupant any more; a stale
-  // publication must not resurrect the retired "in the dock" away state.
-  renderActivity(publishedAction(WORKSPACE_ACTIVITY_PANE_INSTANCE.instanceId));
-  expect(screen.queryByText('Activity is in the dock')).toBeNull();
-  expect(screen.getByTestId('activity-surface')).not.toBeNull();
-});
-
-test('Activity renders its pane when the occupant is someone else or absent', () => {
-  renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
-  expect(screen.queryByText('Activity is in the dock')).toBeNull();
-  expect(screen.getByTestId('activity-surface')).not.toBeNull();
-});
-
-test('Activity route points at its occupied region without mounting a second pane', () => {
-  regionOccupant.activity = true;
-  renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
-
-  expect(screen.getByText('Activity is in the Right region')).not.toBeNull();
-  expect(
-    screen.getByText('This pane is currently open in the right region.'),
-  ).not.toBeNull();
-  expect(screen.queryByTestId('activity-surface')).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Show Activity' })).toBeNull();
-  expect(
-    screen.queryByRole('button', { name: 'Bring it back here' }),
-  ).toBeNull();
-});
-
-test('desktop: a hidden Activity region offers a working Show Activity action', () => {
-  regionOccupant.activity = true;
-  regionOccupant.activityVisible = false;
-  renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
-
-  expect(
-    screen.getByText('Activity is hidden from the Right region'),
-  ).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
-  expect(regionOccupant.setRegion).toHaveBeenCalledWith('right', {
-    visible: true,
-  });
-});
-
-test('coarse device: hidden Activity offers a working action for the rendered bottom bar', () => {
-  mobileFlag.isMobile = true;
-  regionOccupant.activity = true;
-  regionOccupant.activityVisible = false;
-  regionOccupant.lastShownRegion = 'bottom';
-  renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
-
-  expect(
-    screen.getByText('Activity is hidden from the bottom bar'),
-  ).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
-  expect(regionOccupant.placeSurface).toHaveBeenCalledWith('activity', 'right');
-  expect(regionOccupant.setRegion).toHaveBeenCalledWith('bottom', {
-    visible: false,
-  });
-  expect(regionOccupant.setRegion).toHaveBeenCalledWith('right', {
-    visible: true,
-  });
-});
+// #928 slice C: Activity's route placement is gone, so there is no second
+// copy for an away state to replace and no route left to point at its
+// occupied region. `WorkspacePaneAwayState` survives for Home, which still
+// has a standalone placement; the Activity half of this file went with the
+// placement rather than being restated against a host that cannot be "away"
+// from itself. What remains of the region-fold behaviour it drove — hiding
+// and re-showing an occupied Activity region on a coarse device — is asserted
+// against the region shells themselves in `RegionShellParity.test.tsx`.
 
 /* ------------------------------------------------------------------ *
  * station#520 part 2: posture-aware away-state copy. "Docked at the edge

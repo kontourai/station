@@ -36,7 +36,7 @@ test.describe('Notifications hierarchy', () => {
         body: 'Workspace Agent wants to use fs.read.',
         createdAt: now,
         updatedAt: now,
-        openHref: '/activity?session=thread-approval',
+        openHref: '/?surface=activity&session=thread-approval',
         source: {
           notificationId: 'notif-1',
           notificationSource: 'approval-inbox',
@@ -52,7 +52,7 @@ test.describe('Notifications hierarchy', () => {
         title: 'Input needed',
         createdAt: now,
         updatedAt: now,
-        openHref: '/activity?session=thread-input',
+        openHref: '/?surface=activity&session=thread-input',
         source: { threadId: 'thread-input' },
       },
       {
@@ -62,7 +62,7 @@ test.describe('Notifications hierarchy', () => {
         body: 'Workspace Agent wants to use git.status.',
         createdAt: now,
         updatedAt: now,
-        openHref: '/activity?session=thread-approval-two',
+        openHref: '/?surface=activity&session=thread-approval-two',
         source: {
           notificationId: 'notif-2',
           notificationSource: 'approval-inbox',
@@ -75,7 +75,7 @@ test.describe('Notifications hierarchy', () => {
         title: 'Review pending',
         createdAt: now,
         updatedAt: now,
-        openHref: '/activity?session=thread-review',
+        openHref: '/?surface=activity&session=thread-review',
         source: { threadId: 'thread-review' },
       },
     ];
@@ -274,10 +274,10 @@ test.describe('Notifications hierarchy', () => {
       .filter({ hasText: 'Input needed' });
     await expect(
       reviewCard.getByRole('link', { name: 'Open session' }),
-    ).toHaveAttribute('href', '/activity?session=thread-review');
+    ).toHaveAttribute('href', '/?surface=activity&session=thread-review');
     await expect(
       inputCard.getByRole('link', { name: 'Open session' }),
-    ).toHaveAttribute('href', '/activity?session=thread-input');
+    ).toHaveAttribute('href', '/?surface=activity&session=thread-input');
     expect(
       await page
         .locator('body')
@@ -344,7 +344,7 @@ test.describe('Notifications hierarchy', () => {
       fullPage: true,
     });
     await reviewCard.getByRole('link', { name: 'Open session' }).click();
-    await expect(page).toHaveURL(/\/activity\?session=thread-review$/);
+    await expect(page).toHaveURL(/\/$/);
   });
 });
 
@@ -384,7 +384,7 @@ test.describe('Failed-session notifications on a phone (#3203)', () => {
         title: LONG_TITLE,
         body: LONG_REASON,
         sessionId: 'thread-a',
-        openHref: '/activity?session=thread-a',
+        openHref: '/?surface=activity&session=thread-a',
         source: { threadId: 'thread-a' },
         engine: 'claude',
         agent: 'staging-release-reviewer',
@@ -394,7 +394,7 @@ test.describe('Failed-session notifications on a phone (#3203)', () => {
         title: 'Migrate the invoice table',
         body: 'Engine exited with code 1',
         sessionId: 'thread-b',
-        openHref: '/activity?session=thread-b',
+        openHref: '/?surface=activity&session=thread-b',
         source: { threadId: 'thread-b' },
         engine: 'codex',
       }),
@@ -402,7 +402,7 @@ test.describe('Failed-session notifications on a phone (#3203)', () => {
         id: 'session-failed:thread-c',
         title: 'Draft the release notes',
         sessionId: 'thread-c',
-        openHref: '/activity?session=thread-c',
+        openHref: '/?surface=activity&session=thread-c',
         source: { threadId: 'thread-c' },
         engine: 'claude',
       }),

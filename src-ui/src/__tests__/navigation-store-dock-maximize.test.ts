@@ -7,7 +7,7 @@ import { navigationStore } from '../contexts/navigation-store';
 
 /**
  * `lastDockMaximized` exists so a mobile round trip through a closed dock
- * (e.g. following a delegated task into `/activity` and back via the task
+ * (e.g. following a delegated task into another surface and back via the task
  * switcher) can restore the dock's maximize preference even though a closed
  * dock's `maximize` URL param is always cleared by design (archive#795 — see
  * the field doc on `NavigationStore`). These tests drive the real singleton
@@ -80,7 +80,7 @@ describe('navigationStore dock maximize memory', () => {
     expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
 
-    navigationStore.navigate('/activity', { session: 'task-1' });
+    navigationStore.navigate('/agents', { session: 'task-1' });
 
     const afterNavigate = navigationStore.getSnapshot();
     expect(afterNavigate.isDockOpen).toBe(false);
@@ -90,13 +90,15 @@ describe('navigationStore dock maximize memory', () => {
     expect(navigationStore.lastDockMaximized).toBe(true);
   });
 
-  // archive#1284 (MED): useChatDockActiveChatSync's
-  // cold-path fallback navigates to /activity with { chat: null, dock: null,
-  // session: <id> } specifically because navigate otherwise PRESERVES
-  // every unlisted param -- a dock-targeting deep link (archive#1284)
-  // already stamps dock=open on the URL the dead pointer came from, so
-  // omitting dock: null here would land on /activity?dock=open and force
-  // the dock open and empty on a page with nothing to show in it.
+  // archive#1284 (MED): useChatDockActiveChatSync's cold-path fallback
+  // navigated away with { chat: null, dock: null, session: <id> }
+  // specifically because navigate otherwise PRESERVES every unlisted param --
+  // a dock-targeting deep link (archive#1284) already stamps dock=open on the
+  // URL the dead pointer came from, so omitting dock: null would land on
+  // <destination>?dock=open and force the dock open and empty on a page with
+  // nothing to show in it. The destination is incidental here (#928 retired
+  // the /activity route the fallback used to name); what is asserted is the
+  // param hygiene across any route change.
   test('the cold-path-fallback navigate call clears dock=open inherited from the dead deep link', () => {
     window.history.replaceState(
       {},
@@ -106,7 +108,7 @@ describe('navigationStore dock maximize memory', () => {
     navigationStore.navigate('/', {});
     expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
 
-    navigationStore.navigate('/activity', {
+    navigationStore.navigate('/agents', {
       chat: null,
       dock: null,
       session: 'dead-thread',
@@ -124,7 +126,7 @@ describe('navigationStore dock maximize memory', () => {
       false,
       navigationStore.getSnapshot().isDockMaximized,
     );
-    navigationStore.navigate('/activity', { session: 'task-1' });
+    navigationStore.navigate('/agents', { session: 'task-1' });
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
 
     // What `focusSession` (useChatDockActions.ts) does on return.
@@ -136,7 +138,7 @@ describe('navigationStore dock maximize memory', () => {
   });
 
   // archive#1298 (archive#1312): ChatDock's archive#1298 collapse-on-navigate
-  // seams (an inbox row falling back to `/activity`, the project-context
+  // seams (an inbox row falling back to another surface, the project-context
   // badge, a delegation toast) keep the dock OPEN the whole time — there is
   // no close-then-reopen round trip for `setDockState(open, false)`'s
   // `lastDockMaximized` clobber to survive. `collapseMaximizedDock` is the
@@ -167,7 +169,7 @@ describe('navigationStore dock maximize memory', () => {
     test('a later focusSession-style restore still returns to Full after a collapse-on-navigate', () => {
       navigationStore.setDockState(true, true);
       navigationStore.collapseMaximizedDock();
-      navigationStore.navigate('/activity', { session: 'task-1' });
+      navigationStore.navigate('/agents', { session: 'task-1' });
       expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
 
       // What `focusSession` (useChatDockActions.ts) does when the user

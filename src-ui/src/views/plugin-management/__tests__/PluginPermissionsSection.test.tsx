@@ -154,7 +154,7 @@ test('a held permission shows its REAL tier, not a cautious default (station#381
   expect(screen.queryByText('Trusted')).toBeNull();
 });
 
-test('the hint does not promise immediacy the system cannot deliver (station#3822)', () => {
+test('the hint projects retirement and retry truth instead of stale reload behavior', () => {
   render(
     <PluginPermissionsSection
       granted={[{ permission: 'plugin.server', tier: 'trusted' }]}
@@ -164,12 +164,9 @@ test('the hint does not promise immediacy the system cannot deliver (station#382
       onReviewPermissions={vi.fn()}
     />,
   );
-  // The first version said "takes effect immediately", which is false while
-  // a registered provider keeps serving and in-flight work finishes.
-  expect(screen.queryByText(/takes effect immediately/i)).toBeNull();
-  expect(
-    screen.getByText(/keeps running until the plugin reloads/i),
-  ).toBeTruthy();
+  expect(screen.getByText(/retires registered providers/i)).toBeTruthy();
+  expect(screen.getByText(/needs a retry/i)).toBeTruthy();
+  expect(screen.queryByText(/until the plugin reloads/i)).toBeNull();
 });
 
 /**

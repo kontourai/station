@@ -868,6 +868,16 @@ Removes an installed plugin. Invalidates plugins and layouts caches on success.
 
 Saves plugin settings and invalidates that plugin's settings cache on success.
 
+### `useRevokePluginPermissionMutation()`
+
+Durably withdraws plugin permissions and returns the effective `granted` set
+plus runtime `reconciliation` truth. `completed` means the affected runtime
+generation retired; `winding-down` names an owned continuation; `superseded`
+means a newer grant/install generation won; and `incomplete` names stages that
+need another idempotent revoke attempt. Station's Plugins surface uses that
+same mutation for its **Check cleanup** and **Retry cleanup** actions; retrying
+preserves the complete pending lifecycle-permission vector.
+
 ### `usePluginProviderToggleMutation()`
 
 Toggles plugin provider overrides (enable/disable specific providers).

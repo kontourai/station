@@ -23,6 +23,21 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 const clearPluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProvidersForSource = vi.hoisted(() => vi.fn());
+const replacePluginProvidersForSourceGeneration = vi.hoisted(() =>
+  vi.fn(async () => 'activated' as const),
+);
+const pluginProviderSourceGeneration = vi.hoisted(() => vi.fn(() => 1));
+const retirePluginProvidersForSourceGeneration = vi.hoisted(() =>
+  vi.fn(async () => 'retired' as const),
+);
+const withPluginProviderSourceGeneration = vi.hoisted(() =>
+  vi.fn(
+    async (_source: string, _generation: number, operation: () => unknown) => ({
+      kind: 'applied' as const,
+      value: await operation(),
+    }),
+  ),
+);
 const agentRegistryProvider = vi.hoisted(() => ({
   install: vi.fn().mockResolvedValue({ success: true }),
   listAvailable: vi.fn().mockResolvedValue([]),
@@ -44,9 +59,15 @@ const pluginRegistryProviderEntries = vi.hoisted<
   Array<{ provider: any; source: string }>
 >(() => []);
 vi.mock('../../../providers/registries/registry.js', () => ({
+  disposePreparedPluginProviders: vi.fn(async () => {}),
   clearPluginProviders,
   replacePluginProviders,
   replacePluginProvidersForSource,
+  replacePluginProvidersForSourceGeneration,
+  pluginProviderSourceGeneration,
+  pluginProviderRegistryGeneration: vi.fn(() => 1),
+  retirePluginProvidersForSourceGeneration,
+  withPluginProviderSourceGeneration,
   getAgentRegistryProvider: vi.fn().mockReturnValue(agentRegistryProvider),
   getIntegrationRegistryProvider: vi
     .fn()
@@ -55,7 +76,11 @@ vi.mock('../../../providers/registries/registry.js', () => ({
 }));
 
 const loadPluginProviders = vi.hoisted(() => vi.fn().mockResolvedValue(0));
-vi.mock('../plugin-loader.js', () => ({ loadPluginProviders }));
+const preparePluginProviders = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+vi.mock('../plugin-loader.js', () => ({
+  loadPluginProviders,
+  preparePluginProviders,
+}));
 
 // The scanner the install/lifecycle routes actually call. It used to be
 // `plugin-prompt-generation.js`, which was DELETED with the copy-into-a-store
@@ -98,6 +123,19 @@ const snapshotPluginGrantEntry = vi.hoisted(() =>
 );
 const restorePluginGrantEntry = vi.hoisted(() => vi.fn());
 vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
+  withPluginProviderGrantSnapshot: vi.fn(
+    async (_home: string, resolve: () => unknown) => ({
+      snapshot: 'fixture-grant-snapshot',
+      value: resolve(),
+    }),
+  ),
+  withPluginProviderGrantsPublication: vi.fn(
+    async (
+      _home: string,
+      names: string[],
+      publish: (granted: Set<string>) => unknown,
+    ) => publish(new Set(names)),
+  ),
   getPermissionTier: vi.fn().mockReturnValue('standard'),
   getPluginGrants: vi.fn().mockReturnValue(['network']),
   grantPermissions: vi.fn(),
@@ -344,7 +382,10 @@ describe('Plugin Routes', () => {
     const body = await json(await app.request('/reload', { method: 'POST' }));
 
     expect(body).toEqual({ success: true, loaded: 0 });
-    expect(replacePluginProviders).toHaveBeenCalledWith([]);
+    expect(replacePluginProviders).toHaveBeenCalledWith(
+      [],
+      expect.any(Function),
+    );
   });
 
   test('rejects a plugin identity change and restores the prior provider source', async () => {

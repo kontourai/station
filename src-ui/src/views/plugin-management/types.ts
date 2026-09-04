@@ -110,6 +110,10 @@ export interface PluginUpdateSummary {
 export interface PluginMessage {
   type: 'success' | 'error';
   text: string;
+  action?: {
+    label: string;
+    invoke(): void;
+  };
 }
 
 /** Installed permission truth, never inferred from a pre-install preview. */

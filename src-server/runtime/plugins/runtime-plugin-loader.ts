@@ -65,51 +65,46 @@ export async function loadRuntimePluginProviders(
 ): Promise<void> {
   const pluginsDir = join(context.projectHomeDir, 'plugins');
 
-  const { replacePluginProviders } = await import(
-    '../../providers/registries/registry.js'
-  );
-  if (!existsSync(pluginsDir)) {
-    await replacePluginProviders([]);
-    return;
-  }
-
   const { resolvePluginProviders } = await import(
     '../../providers/resolver.js'
   );
-  const { preparePluginProviderGeneration } = await import(
-    '../../providers/plugin-provider-loader.js'
-  );
-
-  const overrides = await context.loadPluginOverrides();
-  const { resolved, conflicts } = resolvePluginProviders(
-    pluginsDir,
-    overrides,
-    // Fail-closed, non-throwing: when the grants store is unavailable this
-    // DENIES the grant for every plugin and logs at error level, rather than
-    // aborting provider loading wholesale or silently allowing (archive#1835).
-    (pluginName) =>
-      hasGrant(
-        context.projectHomeDir,
-        pluginName,
-        'providers.register',
-        context.logger,
-      ),
-    context.logger,
-  );
-
-  for (const conflict of conflicts) {
-    context.logger.warn(
-      'Provider conflict — multiple plugins provide singleton type',
-      {
-        type: conflict.type,
-        layout: conflict.layout,
-        candidates: conflict.candidates,
-      },
-    );
-  }
-
+  const {
+    capturePluginProviderGeneration,
+    preparePluginProviderGeneration,
+    publishPluginProviderGeneration,
+  } = await import('../../providers/plugin-provider-loader.js');
   let prepared: Awaited<ReturnType<typeof preparePluginProviderGeneration>>;
   try {
+    const overrides = await context.loadPluginOverrides();
+    const {
+      basis,
+      candidates: { resolved, conflicts },
+    } = await capturePluginProviderGeneration(context.projectHomeDir, () =>
+      existsSync(pluginsDir)
+        ? resolvePluginProviders(
+            pluginsDir,
+            overrides,
+            (pluginName) =>
+              hasGrant(
+                context.projectHomeDir,
+                pluginName,
+                'providers.register',
+                context.logger,
+              ),
+            context.logger,
+          )
+        : { resolved: [], conflicts: [] },
+    );
+    for (const conflict of conflicts) {
+      context.logger.warn(
+        'Provider conflict — multiple plugins provide singleton type',
+        {
+          type: conflict.type,
+          layout: conflict.layout,
+          candidates: conflict.candidates,
+        },
+      );
+    }
     prepared = await preparePluginProviderGeneration(
       pluginsDir,
       resolved.map((entry) => ({
@@ -129,7 +124,7 @@ export async function loadRuntimePluginProviders(
       })),
       context.logger,
     );
-    await replacePluginProviders(prepared);
+    prepared = await publishPluginProviderGeneration(basis, prepared);
   } catch (error) {
     const failure = error as {
       pluginName?: unknown;

@@ -19,6 +19,7 @@
  * authenticated consent session, and revalidates the target immediately
  * before granting.
  */
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
@@ -42,6 +43,7 @@ import {
   computePluginContentDigest,
   withPluginContentLock,
 } from '../../services/plugins/plugin-content-integrity.js';
+import type { PluginGrantReconciliationService } from '../../services/plugins/plugin-grant-reconciliation.js';
 import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   assertGrantablePermissions,
@@ -65,6 +67,7 @@ interface PluginHostApprovalRouteDeps {
    * rest of Station stays usable (owner decision 3).
    */
   consentChannel?: ConsentChannelService;
+  grantReconciliation?: PluginGrantReconciliationService;
 }
 
 /**
@@ -330,11 +333,33 @@ export function registerPluginHostApprovalRoutes(
         // `changed` binding withdraws everything else the plugin held, so the
         // broadcast carries what was actually derived rather than leaving
         // every listener to assume an approval only ever adds.
+        const reconciled = deps.grantReconciliation
+          ? await deps.grantReconciliation.reconcile({
+              pluginName,
+              permissions: [...new Set([...normalized, ...outcome.withdrawn])],
+            })
+          : {
+              status: 'incomplete' as const,
+              operationId: randomUUID(),
+              generation: 0,
+              failures: ['runtime-unavailable'] as const,
+            };
+        const reconciliation = {
+          status: reconciled.status,
+          operationId: reconciled.operationId,
+          generation: reconciled.generation,
+          ...('effects' in reconciled ? { effects: reconciled.effects } : {}),
+          ...('failures' in reconciled
+            ? { failures: reconciled.failures }
+            : {}),
+        };
         deps.eventBus?.emit(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
           name: pluginName,
           granted: outcome.granted,
           withdrawn: outcome.withdrawn,
+          reconciliation,
         });
+        return reconciliation;
       },
     });
     if (!created.ok) {
@@ -373,7 +398,11 @@ export function registerPluginHostApprovalRoutes(
     }
     return c.json({
       success: true,
-      approval: { id: approval.id, status: approval.status },
+      approval: {
+        id: approval.id,
+        status: approval.status,
+        ...(approval.effect ? { reconciliation: approval.effect } : {}),
+      },
     });
   });
 }

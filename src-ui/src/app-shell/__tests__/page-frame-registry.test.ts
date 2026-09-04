@@ -28,7 +28,6 @@ const ROUTES: NavigationView[] = [
   { type: 'plugins' },
   { type: 'registry' },
   { type: 'review-queue' },
-  { type: 'activity' },
   { type: 'developer' },
   { type: 'schedule' },
   { type: 'settings' },
@@ -144,7 +143,6 @@ describe('page-frame registry', () => {
       'connections-tools',
       'plugins',
       'review-queue',
-      'activity',
       'guidance',
     ] as const) {
       const spec = resolvePageFrame({ type } as NavigationView);

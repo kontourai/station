@@ -96,6 +96,17 @@ vi.mock('../../../providers/registries/registry.js', () => ({
   getPluginRegistryProviders,
   getSkillRegistryProviders: () => [],
   replacePluginProvidersForSource,
+  pluginProviderSourceGeneration: () => 0,
+  replacePluginProvidersForSourceGeneration: async (
+    source: string,
+    _generation: number,
+    registrations: unknown[],
+    isCurrent: () => boolean,
+  ) => {
+    if (!isCurrent()) return 'superseded';
+    await replacePluginProvidersForSource(source, registrations);
+    return 'activated';
+  },
 }));
 
 const cleanupDirs: string[] = [];

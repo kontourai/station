@@ -8,6 +8,7 @@ import {
   resolveViewFromPath,
 } from '../../../app-shell/routing';
 import { APP_SURFACE_REGISTRY } from '../../../app-shell/surface-registry';
+import { REGION_SURFACE_REGISTRY } from '../../../regions/region-model';
 import {
   FIRST_RUN_ANCHOR_ATTRIBUTE,
   FIRST_RUN_TOUR_STEPS,
@@ -27,11 +28,31 @@ import {
  * pointing at a stale string while the test keeps passing on a copy of it.
  */
 describe('first-run tour anchors resolve to canonical routes', () => {
+  test('every declared region surface is registered', () => {
+    for (const step of FIRST_RUN_TOUR_STEPS) {
+      if ('surface' in step && step.surface)
+        expect(REGION_SURFACE_REGISTRY.has(step.surface)).toBe(true);
+    }
+    for (const surface of APP_SURFACE_REGISTRY.getPalette()) {
+      if (surface.regionSurface)
+        expect(REGION_SURFACE_REGISTRY.has(surface.regionSurface)).toBe(true);
+    }
+  });
   test.each(FIRST_RUN_TOUR_STEPS)(
     'step $id derives a serializable canonical path',
     (step) => {
-      expect(tourStepPath(step)).toBe(getPathForView(step.view));
-      expect(tourStepPath(step)).not.toBeNull();
+      // A shell-owned surface step is revealed, not navigated to, and #928
+      // left Activity with no `NavigationView` to name at all — so a null
+      // path there is the contract, and a non-null one would mean the step
+      // had gone back to spelling a route.
+      if ('view' in step) {
+        expect('surface' in step).toBe(false);
+        expect(tourStepPath(step)).toBe(getPathForView(step.view));
+        expect(tourStepPath(step)).not.toBeNull();
+      } else {
+        expect('surface' in step && step.surface).toBeTruthy();
+        expect(tourStepPath(step)).toBeNull();
+      }
     },
   );
 
@@ -42,14 +63,16 @@ describe('first-run tour anchors resolve to canonical routes', () => {
       // Non-null here means `getLegacyPathRedirect` recognised the path as a
       // retired name it must rewrite — i.e. the tour is spelling a legacy
       // route.
-      expect(getLegacyPathRedirect(path!)).toBeNull();
+      if (path) expect(getLegacyPathRedirect(path)).toBeNull();
     },
   );
 
   test.each(FIRST_RUN_TOUR_STEPS)(
     'step $id round-trips back to the view it declared',
     (step) => {
-      expect(resolveViewFromPath(tourStepPath(step)!)).toEqual(step.view);
+      const path = tourStepPath(step);
+      if (path && 'view' in step)
+        expect(resolveViewFromPath(path)).toEqual(step.view);
     },
   );
 
@@ -110,7 +133,12 @@ describe('first-run tour anchors resolve to canonical routes', () => {
       //     table is a value, so the test asks it rather than its source text.
       const literal = `${FIRST_RUN_ANCHOR_ATTRIBUTE}="${step.anchor}"`;
       const propLiteral = `firstRunAnchor="${step.anchor}"`;
-      const framedAnchor = resolvePageFrame(step.view)?.firstRunAnchor;
+      // A shell-owned surface step has no route, so no frame can declare its
+      // anchor — only the two source-literal channels above are open to it.
+      const framedAnchor =
+        'view' in step
+          ? resolvePageFrame(step.view)?.firstRunAnchor
+          : undefined;
       expect(
         sources.includes(literal) ||
           sources.includes(propLiteral) ||

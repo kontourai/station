@@ -29,8 +29,11 @@ not something inferred from Linux or macOS.
 npm run audit:policy
 ```
 
-The command runs full-graph and `npm audit --omit=dev --json` production checks
-in all three scopes. It fails for every
+The command runs full-graph and `npm audit --omit=dev --json` production checks.
+Run locally it covers all three scopes. In CI, pull-request, push and
+merge-queue runs cover the scopes whose dependency inputs the change touched
+(see below); the scheduled scan always covers all three, which is what makes it
+a backstop rather than a second copy of the same narrowing. It fails for every
 critical or high advisory that is not fixed or exactly matched by a current
 exception, and for every production moderate or low advisory that is not
 exactly matched by a current residual record. It also fails for malformed,
@@ -38,6 +41,22 @@ expired, duplicate, severity-mismatched, or unused records. Blocking audit
 records must resolve through an acyclic `via` graph to concrete advisory
 identities, and npm's blocking metadata counts must match the records. Audit
 subprocess signals and operational exit statuses also fail closed.
+
+Each actual audit attempt retains bounded, structured phase diagnostics under
+`.kontourai/verification-output/dependency-audit/`. Separate started and terminal
+facts distinguish interrupted work from settled children; retries keep distinct
+identities. Completed npm phase timings, bulk response status/duration, actual
+tool versions and child elapsed/status are observations, not policy verdicts.
+The child uses npm's info log level so actual version messages and HTTP timing
+messages are both emitted; the narrower HTTP level suppresses version messages.
+Missing phase completion is unknown, not zero. Package names, raw URLs, config,
+advisory payloads and npm debug output are never copied into these artifacts.
+Private npm timing files are removed after child settlement; a hard interruption
+may leave them in the operating system's temporary directory, outside upload
+roots. CI and scheduled scans retain the bounded diagnostics even after failure.
+This instrumentation does not change scan scopes, concurrency, retries,
+deadlines, or the advisory floor. Missing diagnostic storage is reported without
+changing the audit outcome.
 
 ## Local CodeQL SARIF policy
 
@@ -162,10 +181,32 @@ owner reviews the tracking issue and expiry date on every dependency PR. Extend
 an expiry only with fresh evidence in that issue. Remove the exception in the
 same change that fixes the advisory: unused entries deliberately fail CI.
 
-Dependabot and human pull requests run the identical `npm run audit:policy`
-step in the fast CI job. A Dependabot update is complete only after the same
-lock inspection, policy pass, and compatibility gates required for a manual
-update.
+Dependabot and human pull requests run the same `npm run audit:policy` step in
+the fast CI job. A Dependabot update is complete only after the same lock
+inspection, policy pass, and compatibility gates required for a manual update.
+
+That step audits the scopes whose dependency inputs the change touched, not all
+three every time (#1417). This narrowing applies to `pull_request`,
+`pull_request_target`, `merge_group` and `push` events only -- the scheduled
+`dependency-advisory` workflow runs on `schedule`, so it always audits all
+three. A change to the root lockfile audits `root`; a change
+to `packages/sdk/package.json` audits `sdk`; anything the mapping cannot
+attribute -- a workspace that is not itself an audited scope, any `.npmrc`, the
+exceptions file -- audits all three, as does any classification that fails
+closed. What this trades away is the incidental re-audit of untouched scopes
+that a dependency-touching PR used to perform: an advisory newly disclosed
+against a scope nobody edited is caught by the scheduled
+`dependency-advisory` workflow within a day rather than by the next unrelated
+pull request. It was never caught by a PR that touched no dependency input at
+all, because the step skips entirely in that case.
+
+The delta is small but it is not zero, and it is not only dev dependencies.
+`packages/shared`'s closure is a subset of the root closure, and almost all of
+what `packages/sdk` adds is its dev graph -- but a standalone package lockfile
+can pin a PRODUCTION dependency at a version the root closure does not carry,
+and `npm audit --omit=dev` at the root cannot see that version. When a
+root-scoped pull request is the only audit a change receives, that is the gap
+the daily scan is covering.
 
 ## 2026-07 critical/high disposition
 
