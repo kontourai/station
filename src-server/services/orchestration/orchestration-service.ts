@@ -2220,7 +2220,12 @@ export class OrchestrationService {
       captured?.spec,
     );
     const resolved = this.options.resolveSessionAgent
-      ? await this.options.resolveSessionAgent(withCredentialProfile, captured)
+      ? captured
+        ? await this.options.resolveSessionAgent(
+            withCredentialProfile,
+            captured,
+          )
+        : await this.options.resolveSessionAgent(withCredentialProfile)
       : withCredentialProfile;
     const unavailableReason = sessionAgentStartUnavailableReason({
       provider: input.provider,
