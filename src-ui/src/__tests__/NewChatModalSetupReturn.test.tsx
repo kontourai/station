@@ -387,9 +387,12 @@ test('return waits for the owning setup form navigation guard', async () => {
   harness();
   await openSetup();
   let continueNavigation: (() => void) | undefined;
-  const unregister = navigationStore.registerNavigationGuard((proceed) => {
-    continueNavigation = proceed;
-  });
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol('setup form'),
+    (proceed) => {
+      continueNavigation = proceed;
+    },
+  );
   try {
     fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
     expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
