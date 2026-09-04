@@ -656,6 +656,12 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
   if (options.dmgOnly !== undefined && options.dmgOnly !== true)
     throw new Error('DMG-only mode must be explicitly enabled.');
   const dmgOnly = options.dmgOnly === true;
+  if (
+    options.overlapNotarization !== undefined &&
+    options.overlapNotarization !== true
+  )
+    throw new Error('Overlapped notarization must be explicitly enabled.');
+  const overlapNotarization = options.overlapNotarization === true;
   const identity = need(options.identity, 'identity');
   const key = need(options.notaryKey, 'notaryKey');
   const keyId = need(options.notaryKeyId, 'notaryKeyId');
@@ -815,15 +821,26 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         app,
       ]);
     };
+    const stapleAndAdmitApp = async () => {
+      await command('application stapling', 'xcrun', [
+        'stapler',
+        'staple',
+        app,
+      ]);
+      await validateAndAssessApp();
+    };
     // Each `notarytool submit --wait` costs the release five to six minutes,
-    // and the two submissions are independent of one another. Start the
-    // application submission here and let the disk image be staged, created,
-    // signed, and admitted while that submission waits, so the two service
-    // waits overlap instead of running back to back. The disk image therefore
-    // encloses a signed but not-yet-stapled application: Gatekeeper resolves
-    // that application's own ticket online, and the disk image carries its own
-    // stapled ticket. Nothing is stapled until both submissions are accepted.
-    let appNotarization;
+    // and the two submissions are independent of one another. By default the
+    // application submission is joined and stapled here, before the disk image
+    // is staged, so the image encloses an application carrying its own local
+    // ticket and an offline user who copies it out of the image is unaffected.
+    // `overlapNotarization` trades that away for wall-clock time: the
+    // application submission stays in flight while the disk image is staged,
+    // created, signed, and admitted, so the two service waits overlap, and the
+    // image then encloses a signed but not-yet-stapled application whose own
+    // ticket Gatekeeper resolves online. Only the Nightly channel accepts that
+    // trade; nothing is stapled until every submission is accepted either way.
+    let pendingAppNotarization;
     if (dmgOnly) {
       // A DMG-only run receives an application another run already notarized
       // and stapled; its ticket must be present before this run images it.
@@ -835,12 +852,17 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         ['-c', '-k', '--sequesterRsrc', '--keepParent', app, zip],
         LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
       );
-      appNotarization = submit(command, zip, key, keyId, issuer, logger);
+      const appNotarization = submit(command, zip, key, keyId, issuer, logger);
       pendingNotarizations.push(appNotarization);
       // The join below is the only consumer of this outcome. Retain a no-op
       // handler so a rejection arriving while the disk image is still being
       // prepared cannot surface as an unhandled rejection.
       appNotarization.catch(() => {});
+      if (overlapNotarization) pendingAppNotarization = appNotarization;
+      else {
+        await appNotarization;
+        await stapleAndAdmitApp();
+      }
     }
     fs.mkdirSync(dmgRoot, { recursive: true });
     await command(
@@ -907,23 +929,18 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     const dmgNotarization = submit(command, dmg, key, keyId, issuer, logger);
     pendingNotarizations.push(dmgNotarization);
     dmgNotarization.catch(() => {});
-    // Both submissions must be accepted. Settling both first keeps a rejection
-    // of either one terminal without abandoning the other mid-upload, and the
-    // first rejection is rethrown unchanged.
+    // Every outstanding submission must be accepted. Settling them all first
+    // keeps a rejection of either one terminal without abandoning the other
+    // mid-upload, and the first rejection is rethrown unchanged.
     for (const outcome of await Promise.allSettled(
-      appNotarization === undefined
+      pendingAppNotarization === undefined
         ? [dmgNotarization]
-        : [appNotarization, dmgNotarization],
+        : [pendingAppNotarization, dmgNotarization],
     ))
       if (outcome.status === 'rejected') throw outcome.reason;
-    if (!dmgOnly) {
-      await command('application stapling', 'xcrun', [
-        'stapler',
-        'staple',
-        app,
-      ]);
-      await validateAndAssessApp();
-    }
+    // Only an overlapped run still owes the application its staple; the
+    // default already joined and stapled it before the disk image was staged.
+    if (pendingAppNotarization !== undefined) await stapleAndAdmitApp();
     await command('DMG stapling', 'xcrun', ['stapler', 'staple', dmg]);
     await command('DMG staple validation', 'xcrun', [
       'stapler',
@@ -1038,13 +1055,15 @@ export function parseMacosNotarizedArtifactsCli(argv) {
     '--bundle-id',
     '--deadline-epoch',
   ]);
+  // Bare switches take no value: a following token is read as the next flag
+  // name, so `--dmg-only true` still fails the unique --name value check.
+  const booleanFlags = new Set(['--dmg-only', '--overlap-notarization']);
   const raw = {};
   for (let index = 0; index < argv.length; ) {
     const name = argv[index];
-    if (name === '--dmg-only') {
-      if (raw['--dmg-only'])
-        throw new Error('Expected unique --name value arguments.');
-      raw['--dmg-only'] = true;
+    if (booleanFlags.has(name)) {
+      if (raw[name]) throw new Error('Expected unique --name value arguments.');
+      raw[name] = true;
       index += 1;
       continue;
     }
@@ -1072,6 +1091,8 @@ export function parseMacosNotarizedArtifactsCli(argv) {
     bundleId: raw['--bundle-id'],
     deadlineEpoch: raw['--deadline-epoch'],
     dmgOnly: raw['--dmg-only'] === true ? true : undefined,
+    overlapNotarization:
+      raw['--overlap-notarization'] === true ? true : undefined,
   };
 }
 

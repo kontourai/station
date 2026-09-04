@@ -140,6 +140,12 @@ reconciles the provider/final-attestation/app-token/ledger/tag facts and
 explicitly removes the lock; automation never clears it. Recovery records the
 promotion-fence ref/outcome but never deletes the fence, so a failed recovery
 lock write still leaves the original pre-effect fence blocking the next plan.
+macOS staging passes `--overlap-notarization`, so the two `notarytool submit
+--wait` waits run concurrently: the Nightly disk image encloses a signed but
+not-yet-stapled application, whose own ticket Gatekeeper resolves online, while
+the disk image and the updater archive's application both carry stapled
+tickets. Preview and stable releases keep the serial staple-then-package order,
+so an application copied out of one of their disk images validates offline.
 The independently published CLI remains outside this cohort. The Nightly Android and macOS matrix cells have
 `requiredForPromotion: true` and an atomic cohort availability policy; this is
 only an available configured subset, and fleet/CLI completion remains

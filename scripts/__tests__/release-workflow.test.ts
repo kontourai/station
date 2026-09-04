@@ -997,6 +997,10 @@ describe('native release workflow topology', () => {
     expect(seal.run).toContain(
       `--deadline-epoch "\${{ steps.macos_release_deadline.outputs.epoch }}"`,
     );
+    // Preview and stable keep the serial staple-then-package order, so an
+    // application copied out of the disk image carries its own local ticket.
+    // Only the Nightly cohort opts into the overlapped notarization waits.
+    expect(seal.run).not.toContain('--overlap-notarization');
     expect(seal.env).toMatchObject({
       APPLE_API_KEY_ID: `\${{ secrets.APPLE_API_KEY_ID }}`,
       APPLE_API_ISSUER_ID: `\${{ secrets.APPLE_API_ISSUER_ID }}`,

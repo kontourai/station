@@ -379,7 +379,7 @@ jobs:
           app=$(find src-desktop/target/aarch64-apple-darwin/release/bundle/macos -maxdepth 1 -type d -name '*.app' -print -quit); test -n "$app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" = "$bundle_version"
           notary_key="$RUNNER_TEMP/station-notary-api-key.p8"; printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"; chmod 600 "$notary_key"
-          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir cohort-macos --release-tag nightly-desktop --architecture aarch64 --bundle-id io.kontourai.station.nightly --deadline-epoch "${{ steps.macos_cohort_deadline.outputs.epoch }}"
+          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir cohort-macos --release-tag nightly-desktop --architecture aarch64 --bundle-id io.kontourai.station.nightly --overlap-notarization --deadline-epoch "${{ steps.macos_cohort_deadline.outputs.epoch }}"
           archive=cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz
           manifest_path=$(tar -tzf "$archive" | grep '/Contents/Resources/dist-server/station-build.json$')
           test "$(printf '%s\n' "$manifest_path" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
