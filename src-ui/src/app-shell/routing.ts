@@ -156,16 +156,21 @@ export function getLegacyPathRedirect(path: string): string | null {
   // route that no longer resolves.
   //
   // The target is MINTED by the contracts builder that every producer uses
-  // (`activityDeepLink`, also the source of notification `metadata.link`, the
+  // (`activityDeepLink`, also the source of a notification's `openHref`, the
   // web-push click target and Discord's completion line), so the redirect
   // cannot drift from the shape those links already carry — including its
   // rule that `focus` without a session means nothing and is dropped.
   //
   // Only `session` and `focus` survive: those are the whole payload the
   // retired route ever read, and the canonical deep link has no place to put
-  // anything else. Any other query a stored link carried (`source=push`,
-  // an inherited `dock=open`) is dropped here rather than pasted onto `/`,
-  // where it would describe a route that is not this one.
+  // anything else. This narrows what a stored link can carry through, and
+  // the narrowing is unobserved rather than free: no producer has ever put
+  // another param on these two paths (`dock`/`chat` are minted only on
+  // `/projects/<slug>` and `/`, and the service worker appends nothing), so
+  // there is no live link this drops anything from. `dock` in particular
+  // WOULD survive a plain navigation — it is shell-scoped
+  // (`SHELL_SCOPED_QUERY_PARAMS`) and deliberately outlives a route change —
+  // so if a producer ever starts minting it here, this is the line to widen.
   //
   // Trailing slash for the same reason `/tasks/` and `/review/` carry one:
   // an exact-lookup table 404s the copy-mangled spelling otherwise.

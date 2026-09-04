@@ -394,8 +394,11 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     // only read when something asks this surface for a path — and what it
     // hands back has to be one that works.
     //
-    // No `view`: `view` is what registers an EXACT route, and registering one
-    // here would make `/?surface=activity` resolve as a pathname. No
+    // No `view`: `view` registers an EXACT route, and Activity no longer has
+    // a view to register. (It would not resolve if it did — `byExactRoute` is
+    // keyed on the raw route string and only ever looked up with a
+    // query-stripped path, so this key could never match. A dead map entry,
+    // not a resolving pathname.) No
     // `managementViewTypes` either, for the same reason the union no longer
     // has an `activity` member. `sessions` remains a palette keyword for
     // muscle memory.
