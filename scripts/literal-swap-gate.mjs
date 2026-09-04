@@ -23,6 +23,14 @@
  * common. Blocking would punish the honest case as loudly as the smuggled one,
  * so this prints and exits 0. It is a reading aid for review, not a gate that
  * decides. `--strict` exits 1 for a caller that wants to enforce it.
+ *
+ * Run it directly:
+ *   node scripts/literal-swap-gate.mjs [--base <ref>] [--range <commit>] [--strict]
+ *
+ * There is deliberately no npm alias yet. Adding one edits package.json, which
+ * `classify-ci-change.mjs` counts as a dependency input, forcing the full live
+ * advisory scan on every CI attempt -- a cost unrelated to this gate. The alias
+ * is a follow-up for when the npm advisory registry is healthy.
  */
 
 import { execFileSync } from 'node:child_process';
