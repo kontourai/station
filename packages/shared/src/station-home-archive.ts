@@ -34,6 +34,11 @@ import {
   type StationHomeLifecycleHooks,
 } from './station-home-lifecycle.js';
 import {
+  type DetachedRecoveryRecord,
+  prepareDetachedRecoveryCandidate,
+  type StationHomeRecoveryCandidatePlan,
+} from './station-home-recovery-candidate.js';
+import {
   canonicalStationHome,
   ensureStationHomeSchemaSync,
   readStationHomeSchemaVersion,
@@ -132,6 +137,101 @@ export class StationHomeArchiveError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(`STATION_HOME_ARCHIVE_UNAVAILABLE: ${message}`, options);
     this.name = 'StationHomeArchiveError';
+  }
+}
+
+/**
+ * Fixture-first, inert staging under the archive owner. This is not a backup,
+ * migration, restore, forensic capture, or proof against hostile path swaps.
+ * It accepts detached bytes, never a source home, and emits no active stores.
+ */
+export function stageStationHomeRecoveryCandidate(options: {
+  declaredSourceSchemaVersion: 1;
+  records: readonly DetachedRecoveryRecord[];
+  outputDir: string;
+  /** Private fault seam, not an import/publish authorization callback. */
+  beforeStageCommit?: () => void;
+}): StationHomeRecoveryCandidatePlan {
+  const prepared = prepareDetachedRecoveryCandidate(
+    options.records,
+    options.declaredSourceSchemaVersion,
+  );
+  const outputDir = resolve(options.outputDir);
+  const parent = dirname(outputDir);
+  let staging: string | undefined;
+  try {
+    if (existsSync(outputDir)) fail('detached recovery output already exists');
+    const parentInfo = lstatSync(parent);
+    if (!parentInfo.isDirectory() || parentInfo.isSymbolicLink())
+      fail('detached recovery output parent is unsafe');
+    staging = join(parent, `.station-recovery-candidate-${randomUUID()}.tmp`);
+    mkdirSync(staging, { mode: 0o700 });
+    const evidence = join(staging, 'inert-evidence');
+    mkdirSync(evidence, { mode: 0o700 });
+    for (const payload of prepared.payloads) {
+      const target = join(evidence, `${payload.reference}.payload`);
+      writeFileSync(target, payload.bytes, { flag: 'wx', mode: 0o600 });
+      syncFile(target);
+    }
+    const manifest = join(staging, 'recovery-candidate.json');
+    const planBytes = Buffer.from(
+      `${JSON.stringify(prepared.plan, null, 2)}\n`,
+    );
+    writeFileSync(manifest, planBytes, { flag: 'wx', mode: 0o600 });
+    syncFile(manifest);
+    syncDirectoryTree(staging);
+    options.beforeStageCommit?.();
+    // A candidate is an exact inert tree, never a partial ordinary home.
+    // These observed checks are not an atomic hostile-filesystem boundary.
+    const entries = readdirSync(staging).sort();
+    const evidenceInfo = lstatSync(evidence);
+    if (
+      entries.length !== 2 ||
+      entries[0] !== 'inert-evidence' ||
+      entries[1] !== 'recovery-candidate.json' ||
+      !evidenceInfo.isDirectory() ||
+      evidenceInfo.isSymbolicLink()
+    )
+      fail('detached recovery staging changed');
+    if (readdirSync(evidence).length !== prepared.payloads.length)
+      fail('detached recovery evidence changed');
+    for (const item of [
+      { target: manifest, bytes: planBytes },
+      ...prepared.payloads.map((payload) => ({
+        target: join(evidence, `${payload.reference}.payload`),
+        bytes: payload.bytes,
+      })),
+    ]) {
+      const info = lstatSync(item.target);
+      if (
+        !info.isFile() ||
+        info.isSymbolicLink() ||
+        info.nlink !== 1 ||
+        info.size !== item.bytes.length ||
+        (process.platform !== 'win32' && (info.mode & 0o777) !== 0o600) ||
+        hashFile(item.target) !==
+          createHash('sha256').update(item.bytes).digest('hex')
+      )
+        fail('detached recovery evidence changed');
+    }
+    if (existsSync(outputDir))
+      fail('detached recovery output changed during staging');
+    renameSync(staging, outputDir);
+    fsyncDirectorySync(parent);
+    return prepared.plan;
+  } catch {
+    // Public errors contain no parser excerpts, input bytes, or nested cause.
+    return fail(
+      'detached recovery staging is unavailable; inert output may remain',
+    );
+  } finally {
+    if (staging) {
+      try {
+        rmSync(staging, { recursive: true, force: true });
+      } catch {
+        /* Failed staging stays inert, never a bootable home. */
+      }
+    }
   }
 }
 
