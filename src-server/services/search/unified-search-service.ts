@@ -486,7 +486,8 @@ function providerKey(
   ]);
 }
 
-function clonePage(
+/** Internal shared decoder for provider and isolated read-owner boundaries. */
+export function parseUnifiedSearchProviderPage(
   value: unknown,
   owner: UnifiedSearchOwner,
   limit: number,
@@ -895,7 +896,7 @@ export class UnifiedSearchService {
         aborted,
       ]);
       requireWithinDeadline();
-      const normalized = clonePage(
+      const normalized = parseUnifiedSearchProviderPage(
         page,
         provider.descriptor.owner,
         UNIFIED_SEARCH_LIMITS.resultsPerProvider,

@@ -180,6 +180,43 @@ async function buildDesktopResourceFixture(root: string) {
   expect(
     existsSync(join(serverOutput, 'project-task-room-working-state-worker.js')),
   ).toBe(true);
+  // Execute the shipped Task worker from an unrelated cwd with the real
+  // staged runtime dependencies. Presence alone would not prove resolution.
+  const taskReaderProbe = join(serverOutput, 'task-search-reader-probe.mjs');
+  await esbuild.build({
+    entryPoints: [
+      join(repoRoot, 'src-server/services/search/isolated-task-search.ts'),
+    ],
+    outfile: taskReaderProbe,
+    bundle: true,
+    platform: 'node',
+    target: 'node24',
+    format: 'esm',
+  });
+  const taskProbe = await execFileAsync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
+    import { pathToFileURL } from 'node:url';
+    const { createIsolatedTaskSearch } = await import(pathToFileURL(${JSON.stringify(taskReaderProbe)}));
+    const reader = createIsolatedTaskSearch({
+      storePath: ${JSON.stringify(join(root, 'uncreated-task-home', 'task-graph.json'))}, stationId:'packaged-station'
+    });
+    try {
+      const reply = await reader.provider.search({version:'station.unified-search/v1',query:'parser',limit:8},new AbortController().signal);
+      process.stdout.write(JSON.stringify(reply));
+    } finally { await reader.close(); }
+  `,
+    ],
+    { cwd: root, encoding: 'utf8', timeout: 15_000, windowsHide: true },
+  );
+  expect(JSON.parse(taskProbe.stdout)).toEqual({
+    version: 'station.unified-search/v1',
+    state: 'available',
+    results: [],
+  });
   // jsonc-parser's CommonJS UMD `main` entry loads these files with dynamic
   // relative requires. A single-file dist-server cannot carry those sibling
   // modules, so rejecting the emitted shape here makes this packaging failure

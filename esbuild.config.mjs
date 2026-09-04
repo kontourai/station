@@ -112,6 +112,12 @@ await Promise.all([
     ],
     outfile: `${serverDir}/project-task-room-history-worker.js`,
   }),
+  // The fixed first-party Task reader uses the same relative packaged path.
+  esbuild.build({
+    ...shared,
+    entryPoints: ['./src-server/services/search/task-search-worker.ts'],
+    outfile: `${serverDir}/task-search-worker.js`,
+  }),
   // The private document worker is loaded via import.meta.url at runtime too.
   // Ship it beside the history worker: source-only availability passes dev
   // tests while a packaged server otherwise fails its first room request.

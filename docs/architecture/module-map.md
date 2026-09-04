@@ -111,6 +111,25 @@ resource graph, sibling-repository scraping, provider-supplied owner stamping,
 unauthorized hit/count projection, cached-snippet authority, inferred identity,
 unbounded fan-out, or a second command-palette registry.
 
+**Task-only isolation prerequisite (#1413).** `TaskGraphService.createPersonalSearchReader(stationId)`
+binds one explicit-lifecycle reader to that owner's canonical file. Its fixed
+worker operation reuses TaskGraph validation, ordering, and JsonFileStore's
+missing-primary `.previous` recovery; corrupt primary data never falls back.
+The worker reads at most 8 MiB (oversize is unavailable, not empty), scans the
+existing bounded Task window, and transfers only a bounded provider page.
+One request may execute; there is no queue. The two-second deadline includes
+worker startup. Deadline/cancellation fences result acceptance and retains the
+exact worker until exit/termination is confirmed. An uncertain or rejected
+cleanup occupies the slot; `inspect()` reports retiring/incomplete and bounded
+`close()` reports winding-down/incomplete. Repeated close joins pending cleanup
+and retries only settled rejection. The owner must close the reader. This is
+trusted first-party CPU isolation, not a hostile-plugin security sandbox, and
+is not a host-wide pool or a new authorization authority. Do not allocate one
+reader per request. No runtime caller is wired; transcript reads, their cold
+authorization-cache reads, and supported-platform responsiveness qualification
+remain open. Existing arbitrary Provider callbacks remain in-process and do
+not acquire an isolation guarantee from this Task-only slice.
+
 ## DesktopStartupReadiness
 
 **Intent and Interface.** `startup_readiness::transition` is the pure native authority for one main-window startup epoch. Its ticket binds `generation`, stable `instanceId`, per-child `bootId`, and `apiBase`; the native host reveals only after its authenticated proof commits the ticket currently published by the desktop-owned sidecar **and** the exact main WebView commits a post-React-layout mount. Tauri's native page-start signal permits identity proof but is not renderer readiness. Activation requests defer while waiting or failed and reveal after ready; readiness never re-hides an already-ready window.
