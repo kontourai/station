@@ -1,3 +1,4 @@
+import { Button } from '../../components/Button';
 import { Empty } from '../../components/state';
 import type { Plugin, PluginMessage, PluginUpdateSummary } from './types';
 
@@ -32,13 +33,9 @@ export function PluginEmptyState({
         <div className={`plugins__message plugins__message--${message.type}`}>
           <span>{message.text}</span>
           {message.action && (
-            <button
-              type="button"
-              className="editor-btn"
-              onClick={message.action.invoke}
-            >
+            <Button onClick={message.action.invoke}>
               {message.action.label}
-            </button>
+            </Button>
           )}
         </div>
       )}

@@ -3,6 +3,7 @@ import type {
   PluginProviderDetail,
   PluginSettingField,
 } from '@kontourai/station-sdk';
+import { Button } from '../../components/Button';
 import { DetailHeader } from '../../components/DetailHeader';
 import { Skeleton } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
@@ -153,13 +154,9 @@ export function PluginDetailPanel({
         <div className={`plugins__message plugins__message--${message.type}`}>
           <span>{message.text}</span>
           {message.action && (
-            <button
-              type="button"
-              className="editor-btn"
-              onClick={message.action.invoke}
-            >
+            <Button onClick={message.action.invoke}>
               {message.action.label}
-            </button>
+            </Button>
           )}
         </div>
       )}
