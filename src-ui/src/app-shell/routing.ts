@@ -1,3 +1,4 @@
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 import type { DeveloperTab, NavigationView } from '../types';
 import {
@@ -27,6 +28,17 @@ true satisfies DeveloperTabsExhaustive;
 export function isDeveloperTab(value: string): value is DeveloperTab {
   return (DEVELOPER_TABS as readonly string[]).includes(value);
 }
+
+/**
+ * The spellings that used to mount Activity's standalone placement. Retired
+ * as a route (#928), permanent as a URL.
+ */
+const RETIRED_ACTIVITY_PATHS = new Set([
+  '/activity',
+  '/activity/',
+  '/sessions',
+  '/sessions/',
+]);
 
 export function getLegacyPathRedirect(path: string): string | null {
   const queryIndex = path.indexOf('?');
@@ -134,13 +146,42 @@ export function getLegacyPathRedirect(path: string): string | null {
     if (redirect) return redirect;
   }
 
+  // #928: Activity has no standalone placement any more — it is a region
+  // surface, revealed by the shell rather than rendered by a route. The URL
+  // still has to work (`docs/design/pane-or-shell.md`: converting a surface
+  // must not break a URL), so both retired spellings land on the surface's
+  // canonical deep link instead of 404ing. `/sessions` was already a
+  // permanent redirect boundary for persisted notifications and old Discord
+  // messages (archive#3280); it now points one hop further rather than at a
+  // route that no longer resolves.
+  //
+  // The target is MINTED by the contracts builder that every producer uses
+  // (`activityDeepLink`, also the source of notification `metadata.link`, the
+  // web-push click target and Discord's completion line), so the redirect
+  // cannot drift from the shape those links already carry — including its
+  // rule that `focus` without a session means nothing and is dropped.
+  //
+  // Only `session` and `focus` survive: those are the whole payload the
+  // retired route ever read, and the canonical deep link has no place to put
+  // anything else. Any other query a stored link carried (`source=push`,
+  // an inherited `dock=open`) is dropped here rather than pasted onto `/`,
+  // where it would describe a route that is not this one.
+  //
+  // Trailing slash for the same reason `/tasks/` and `/review/` carry one:
+  // an exact-lookup table 404s the copy-mangled spelling otherwise.
+  if (RETIRED_ACTIVITY_PATHS.has(pathname)) {
+    const params = new URLSearchParams(search);
+    const sessionId = params.get('session')?.trim();
+    if (!sessionId) return activityDeepLink();
+    return activityDeepLink({
+      sessionId,
+      ...(params.get('focus') === 'evidence'
+        ? { focus: 'evidence' as const }
+        : {}),
+    });
+  }
+
   const exactRedirects: Readonly<Record<string, string>> = {
-    // archive#3280: Activity is canonical before v1. Existing notification
-    // and Discord deep links remain valid through this permanent redirect.
-    // Both spellings: hand-typed and copy-mangled links commonly carry a
-    // trailing slash, and an exact-lookup table would 404 it
-    '/sessions': '/activity',
-    '/sessions/': '/activity',
     '/monitoring': '/developer/telemetry',
     '/sys/monitoring': '/developer/telemetry',
     '/sys/schedule': '/schedule',
@@ -148,15 +189,16 @@ export function getLegacyPathRedirect(path: string): string | null {
     '/tools': '/connections/tools',
     // #765 D2: there is no task-collection view — a Task is only ever opened
     // by id (`/tasks/:id`), and task lists live inside their project surfaces
-    // and on Home. Redirecting the bare path (both spellings, like
-    // '/sessions' above) sends a hand-typed or truncated URL to the surface
+    // and on Home. Redirecting the bare path (both spellings, like the
+    // retired Activity paths above) sends a hand-typed or truncated URL to the surface
     // that does list tasks instead of a "No view matches /tasks" 404. Task
     // deep links are exact-lookup-safe: `/tasks/<id>` never matches here.
     '/tasks': '/',
     '/tasks/': '/',
     // #765 residue (D2 class): the nav item says "Review" but the canonical
     // route is '/review-queue', so the hand-typed short spelling 404'd.
-    // Both spellings, like '/sessions' above. Exact-only is safe: no view
+    // Both spellings, like the retired Activity paths above. Exact-only is
+    // safe: no view
     // ever mounts under a '/review/<id>' deep link.
     '/review': '/review-queue',
     '/review/': '/review-queue',
@@ -261,16 +303,6 @@ export function resolveViewFromPath(
       return { type: 'registry', tab: tabSegment };
     }
     return { type: 'registry' };
-  }
-  if (path === '/activity') {
-    const params = new URLSearchParams(search);
-    const sessionId = params.get('session')?.trim();
-    if (!sessionId) return { type: 'activity' };
-    // `focus=evidence` is a one-shot intent that only means anything when it
-    // names a session; any other value is ignored rather than carried.
-    return params.get('focus') === 'evidence'
-      ? { type: 'activity', sessionId, focus: 'evidence' }
-      : { type: 'activity', sessionId };
   }
   if (path.startsWith('/plugins/')) {
     return { type: 'plugins' };
@@ -495,10 +527,6 @@ export function getPathForView(view: NavigationView): string | null {
       return view.tab ? `/registry/${view.tab}` : '/registry';
     case 'review-queue':
       return '/review-queue';
-    case 'activity':
-      return view.sessionId
-        ? `/activity?session=${encodeURIComponent(view.sessionId)}${view.focus === 'evidence' ? '&focus=evidence' : ''}`
-        : '/activity';
     case 'connections':
       return '/connections';
     case 'connections-models':
@@ -599,8 +627,6 @@ export function getParentView(view: NavigationView): NavigationView | null {
       return { type: 'project', slug: view.projectSlug };
     case 'task':
       return { type: 'home' };
-    case 'activity':
-      return view.sessionId ? { type: 'activity' } : { type: 'home' };
     case 'registry':
       return view.tab ? { type: 'registry' } : { type: 'home' };
     default:

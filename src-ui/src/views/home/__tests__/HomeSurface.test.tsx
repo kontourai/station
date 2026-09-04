@@ -1,8 +1,17 @@
 /** @vitest-environment jsdom */
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { HomeSurface } from '../HomeSurface';
 import type { HomeWorkItem } from '../home-view-model';
+
+// #928: Home reveals Activity as a region surface rather than navigating to a
+// route, and `useShowSurface` reads the region model through a provider this
+// file does not mount. The double is what the assertions below read.
+const showSurface = vi.hoisted(() => vi.fn());
+vi.mock('../../../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurface,
+}));
+
+import { HomeSurface } from '../HomeSurface';
 
 const NOW = Date.now();
 const min = (n: number) => NOW - n * 60_000;
@@ -65,7 +74,10 @@ function renderHome(
 }
 
 describe('HomeSurface composition', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    showSurface.mockClear();
+  });
 
   test('keeps the page heading and the guided actions', () => {
     renderHome({
@@ -255,15 +267,21 @@ describe('HomeSurface composition', () => {
 });
 
 describe('HomeSurface: what is clickable', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    showSurface.mockClear();
+  });
 
-  test('View Activity goes to Activity, and promises nothing more', () => {
+  test('View Activity reveals the Activity surface, and promises nothing more', () => {
     const { onNavigate } = renderHome({
       workItems: [item('a', 'Some work', 'Station', 3, 'Running')],
     });
     const recent = screen.getByRole('region', { name: 'Recent work' });
     within(recent).getByRole('button', { name: 'View Activity' }).click();
-    expect(onNavigate).toHaveBeenCalledWith({ type: 'activity' });
+    // No session: a generic "show me Activity", so no intent is minted and
+    // nothing routes (#928 — there is no Activity route left to route to).
+    expect(showSurface).toHaveBeenCalledWith('activity');
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   test('a chart bar opens the newest item in that bucket', () => {

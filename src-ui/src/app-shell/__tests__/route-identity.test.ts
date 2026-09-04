@@ -75,16 +75,6 @@ const REPLAYS: Array<[string, NavigationView, NavigationView]> = [
     },
   ],
   [
-    'a different session',
-    { type: 'activity', sessionId: 's1' },
-    { type: 'activity', sessionId: 's2' },
-  ],
-  [
-    'the Activity list vs one session',
-    { type: 'activity' },
-    { type: 'activity', sessionId: 's1' },
-  ],
-  [
     'a different task',
     { type: 'task', taskId: 't1' },
     { type: 'task', taskId: 't2' },
@@ -189,7 +179,6 @@ describe('routeIdentity', () => {
       { type: 'guidance' },
       { type: 'registry' },
       { type: 'developer' },
-      { type: 'activity' },
       { type: 'settings' },
       { type: 'schedule' },
       { type: 'profile' },
@@ -226,20 +215,16 @@ describe('routeSurfaceIdentity', () => {
     expect(routeSurfaceIdentity(engines)).not.toBe(routeSurfaceIdentity(tools));
   });
 
-  test('does not broaden surface identity to ACP, new agents, or Activity', () => {
+  test('does not broaden surface identity to ACP or new agents', () => {
     const acpNew = {
       type: 'connections-engine-new',
       providerId: 'p1',
     } as const;
     const agentNew = { type: 'agent-new' } as const;
     const agentEdit = { type: 'agent-edit', slug: 'a' } as const;
-    const activity = { type: 'activity' } as const;
-    const session = { type: 'activity', sessionId: 's1' } as const;
 
     expect(routeSurfaceIdentity(acpNew)).toBe(routeIdentity(acpNew));
     expect(routeSurfaceIdentity(agentNew)).toBe(routeIdentity(agentNew));
     expect(routeSurfaceIdentity(agentEdit)).toBe(routeIdentity(agentEdit));
-    expect(routeSurfaceIdentity(activity)).toBe(routeIdentity(activity));
-    expect(routeSurfaceIdentity(session)).toBe(routeIdentity(session));
   });
 });

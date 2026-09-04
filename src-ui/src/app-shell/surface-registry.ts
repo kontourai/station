@@ -1,3 +1,4 @@
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import type { NavigationView } from '../types';
 
 /**
@@ -382,12 +383,24 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     palette: { order: 75, params: { view: 'feature-previews' } },
   },
   {
-    // Activity's canonical identity and route are `activity` and `/activity`.
-    // getLegacyPathRedirect permanently redirects prior `/sessions` deep links
-    // (including persisted notifications and old Discord messages), preserving
-    // their query. `sessions` remains a palette keyword for muscle memory.
+    // #928: Activity is a REGION surface — it has no standalone placement and
+    // therefore no route of its own to resolve. `route` still has to be an
+    // absolute Station path (the registry refuses anything else), and the one
+    // honest value is the surface's canonical deep link: minted by the same
+    // `activityDeepLink` builder the server-side producers use, it is where
+    // `/activity` and `/sessions` now redirect and it really does open this
+    // surface. `regionSurface` short-circuits both advertised entry points
+    // (the palette and the sidebar row call `showSurface`), so the field is
+    // only read when something asks this surface for a path — and what it
+    // hands back has to be one that works.
+    //
+    // No `view`: `view` is what registers an EXACT route, and registering one
+    // here would make `/?surface=activity` resolve as a pathname. No
+    // `managementViewTypes` either, for the same reason the union no longer
+    // has an `activity` member. `sessions` remains a palette keyword for
+    // muscle memory.
     id: 'activity',
-    route: '/activity',
+    route: activityDeepLink(),
     regionSurface: 'activity',
     label: () => 'Activity',
     keywords: ['activity', 'sessions', 'monitor', 'events'],
@@ -397,7 +410,6 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     sidebar: primary(30),
     palette: { order: 65 },
     managementGroup: 'activity',
-    managementViewTypes: ['activity'],
   },
   {
     // archive#3313: settings-gated ("Enable developer tools", a device

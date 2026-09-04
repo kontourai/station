@@ -17,11 +17,11 @@ import { selectClientWorkspacePaneRenderer } from '../workspacePaneRendererSelec
 
 describe('Activity is a Workspace Pane like any other', () => {
   test('the builtin registry resolves the canonical Activity descriptor', () => {
-    // ActivityView mounts `ActivityWorkspacePane` directly rather than
-    // through this lookup, to keep the registry's component table off the
-    // route chunk (Home's reasoning). This only proves that the registry
-    // resolves Activity's canonical descriptor; route-to-component
-    // attribution is covered at the route.
+    // `ActivityRegionShell` mounts `ActivityWorkspacePane` directly rather
+    // than through this lookup, to keep the registry's component table off
+    // the eager chunk (Home's reasoning). This only proves that the registry
+    // resolves Activity's canonical descriptor; placement-to-component
+    // attribution is covered at the placement.
     expect(
       getBuiltinWorkspacePaneRenderer(WORKSPACE_ACTIVITY_PANE_DESCRIPTOR),
     ).not.toBeNull();

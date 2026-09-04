@@ -1,19 +1,20 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { describe, expect, test } from 'vitest';
 import {
   getLegacyPathRedirect,
-  getPathForView,
   resolveViewFromPath,
 } from '../app-shell/routing';
 import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
 import { resolveClientOriginActor } from '../utils/clientOrigin';
 
 /**
- * archive#3280: Activity owns the canonical `activity` identity and
- * `/activity` route. Prior `/sessions` URLs are a permanent redirect boundary:
- * persisted notifications and old Discord messages remain reachable without a
- * store migration, while every current producer mints the canonical path.
+ * archive#3280: Activity owns the canonical `activity` identity. #928 retired
+ * its `/activity` route, so BOTH prior spellings are now the permanent
+ * redirect boundary: persisted notifications and old Discord messages remain
+ * reachable without a store migration, while every current producer mints the
+ * canonical deep link.
  */
 describe('Activity rename sweep', () => {
   const surface = APP_SURFACE_REGISTRY.get('activity');
@@ -38,21 +39,22 @@ describe('Activity rename sweep', () => {
     expect(palette!.keywords).toContain('sessions');
   });
 
-  test('Activity owns the canonical route and legacy deep links redirect with their query', () => {
-    expect(surface!.route).toBe('/activity');
+  test('Activity is a region surface whose retired routes still resolve', () => {
+    // #928: no standalone placement, so the registry's `route` is the
+    // canonical deep link rather than a path the resolver mounts. The two
+    // retired spellings redirect onto it, carrying the only payload either
+    // one ever had.
+    expect(surface!.route).toBe(activityDeepLink());
     expect(surface!.regionSurface).toBe('activity');
-    expect(resolveViewFromPath('/activity')).toEqual({ type: 'activity' });
-    expect(resolveViewFromPath('/activity?session=thread-1')).toEqual({
-      type: 'activity',
-      sessionId: 'thread-1',
-    });
-    expect(getPathForView({ type: 'activity', sessionId: 'thread-1' })).toBe(
-      '/activity?session=thread-1',
+    expect(surface!.view).toBeUndefined();
+    expect(resolveViewFromPath(surface!.route)).toEqual({ type: 'home' });
+    // These reds if routing.ts loses the permanent redirect entry.
+    expect(getLegacyPathRedirect('/activity?session=thread-1')).toBe(
+      activityDeepLink({ sessionId: 'thread-1' }),
     );
-    // This assertion reds if routing.ts loses the permanent redirect entry.
     expect(
       getLegacyPathRedirect('/sessions?session=thread-1&source=push'),
-    ).toBe('/activity?session=thread-1&source=push');
+    ).toBe(activityDeepLink({ sessionId: 'thread-1' }));
   });
 
   /**
