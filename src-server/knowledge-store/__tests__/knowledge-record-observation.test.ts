@@ -21,7 +21,9 @@ describe('registered owner source observation (no HTTP exposure)', () => {
   let persistence: FileStorageAdapter;
   let provider: KnowledgeStoreProvider;
   let policy: KnowledgeRecordObservationPolicy;
-  const authority = Object.freeze({ testOwner: 'private fixture capability' });
+  const authority: Readonly<{ testOwner: string }> = Object.freeze({
+    testOwner: 'private fixture capability',
+  });
   let rootDefinition: {
     id: string;
     scope: { kind: 'personal' };
