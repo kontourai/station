@@ -847,10 +847,21 @@ describe('scoped audit policy composition', () => {
       loadEvent: () => ({
         pull_request: { base: { sha: 'a' }, head: { sha: 'b' } },
       }),
-      classifyRange: () =>
-        classifyChangedPaths(
+      // The event uses synthetic identities; compose the real path classifier
+      // below, but substitute the merge-base Git I/O just like the event I/O.
+      resolveMergeBase: ({ before, after }) => {
+        expect({ before, after }).toEqual({ before: 'a', after: 'b' });
+        return 'fixture-merge-base';
+      },
+      classifyRange: ({ before, after }) => {
+        expect({ before, after }).toEqual({
+          before: 'fixture-merge-base',
+          after: 'b',
+        });
+        return classifyChangedPaths(
           scopes.map((scope) => `packages/${scope}/package-lock.json`),
-        ),
+        );
+      },
     });
     const selected = selectAuditScopes(decision);
     expect(selected.map((entry) => entry.scope)).toEqual(scopes);
