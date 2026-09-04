@@ -4199,7 +4199,11 @@ describe('SessionsView', () => {
       sessions = [
         flatSession({ threadId: 'other', displayTitle: 'Other work' }),
       ];
-      window.history.replaceState({}, '', '/activity?session=done&focus=evidence');
+      window.history.replaceState(
+        {},
+        '',
+        '/activity?session=done&focus=evidence',
+      );
       // No `onFocusConsumed`: the standalone route consumes the routed focus
       // by clearing the URL param rather than reporting it upward.
       renderView('done', 'evidence', 1);
