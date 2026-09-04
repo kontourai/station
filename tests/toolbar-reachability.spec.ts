@@ -24,17 +24,24 @@
  * THE TWO THINGS THAT MAKE THIS GUARD REAL, both of which it asserts as
  * preconditions rather than assuming:
  *
- * 1. THE CONNECTION CHIP MUST BE IN A NEWS-CARRYING STATE. Connected (and
- *    idle) render dot-only at ~44px, because `chat.css` hides
- *    `.app-toolbar__conn-state` for those two states under the mobile
- *    breakpoint. A news-carrying state ("Can't connect", "Reconnecting",
- *    "Needs re-pairing", "Awaiting approval") renders that span with its
- *    reserved `min-width: 116px`, and the chip measures ~151px — which is
- *    what pushes the actions cluster past the viewport edge. EVERY defect in
- *    this class only exists in the wide state, and two independent lanes have
- *    each measured this toolbar in the connected state and concluded it fits.
- *    So this spec fails loudly if it finds itself in the narrow state instead
- *    of quietly measuring a chip that proves nothing.
+ * 1. THE CONNECTION CHIP MUST BE IN A NEWS-CARRYING STATE, AND THE RUN MUST
+ *    KNOW WHICH ONE. Connected (and idle) render dot-only at ~44px, because
+ *    `chat.css` hides `.app-toolbar__conn-state` for those two states under
+ *    the mobile breakpoint. A news-carrying state renders that span at its
+ *    reserved `min-width: 116px` and the chip measures 151px — which is what
+ *    pushes the actions cluster past the viewport edge. EVERY defect in this
+ *    class only exists in the wide state, and two independent lanes have each
+ *    measured this toolbar in the CONNECTED state and concluded it fits.
+ *
+ *    "A news state" is a class, though, and a precondition satisfied by the
+ *    cheapest member of a class is the same trap one level down. So each case
+ *    below drives ONE NAMED state and pins the exact modifier class it got,
+ *    and `assertToolbarPreconditions` additionally measures every
+ *    news-carrying label in the chip's live font and asserts they all fit
+ *    inside the span it measured. That is what makes a run over two states a
+ *    measurement of the widest chip any of the five can produce, by
+ *    derivation rather than by assertion — and it fails loudly, naming the
+ *    label, the day someone adds copy that no longer fits.
  *
  * 2. THE INVENTORY MUST NOT BE EMPTY OR HALF-EMPTY. A hit test over zero
  *    controls passes forever. `assertToolbarPreconditions` requires four
@@ -96,18 +103,30 @@ const PHONE = {
 } as const;
 
 /**
- * `HeaderActions` renders `app-toolbar__conn--${connState}`. These are the
- * states whose label survives the mobile breakpoint — i.e. every state except
- * `connected` and `idle`, which `chat.css` renders dot-only.
+ * Every visible `connStateLabel` (`HeaderActions.tsx`) for a state whose text
+ * survives the mobile breakpoint — i.e. all but `connected`/`idle`, which
+ * `chat.css` renders dot-only.
+ *
+ * This list is not decoration. `assertToolbarPreconditions` measures each of
+ * these in the chip's own live font and asserts they ALL fit inside the span
+ * it just measured, which is what turns "this run drove one news state" into
+ * "this run measured the widest the chip can be in any of them". Add a state's
+ * label here when you add the state, or the derivation silently stops covering
+ * it.
  */
-const NEWS_CARRYING_CONN_STATE =
-  /app-toolbar__conn--(error|connecting|needs-credential|awaiting-approval|needs-repair)(\s|$)/;
+const NEWS_CARRYING_LABELS = [
+  'Reconnecting', // connecting
+  "Can't connect", // error
+  'Pair', // needs-credential
+  'Awaiting approval', // awaiting-approval
+  'Needs re-pairing', // needs-repair
+] as const;
 
 /**
- * `.app-toolbar__conn-state` reserves `min-width: 116px` (chat.css), and is
- * `display: none` — width 0 — in the two dot-only states. Anything at or above
- * this floor is the wide chip and nothing else can be; the margin below 116 is
- * for sub-pixel layout only, not for admitting a narrower state.
+ * `.app-toolbar__conn-state` is `display: none` — width 0 — in the two
+ * dot-only states, and reserves `min-width: 116px` otherwise. Anything at or
+ * above this floor is the wide chip; the margin below 116 is for sub-pixel
+ * layout only, not for admitting a narrower state.
  */
 const NEWS_CARRYING_STATE_MIN_WIDTH_PX = 110;
 
@@ -125,38 +144,50 @@ const REQUIRED_CONTROL_KEYS = [
 ] as const;
 
 /**
- * The reason the two narrowest cases below are skipped. It is about the
- * LAYOUT, not about the width: both widths are fully supported phone widths
- * and the assertion is correct at both.
+ * WHY 390 AND 360 ARE SKIPPED, AND WHY FOR DIFFERENT REASONS.
  *
  * `.app-toolbar__actions` is `flex-shrink: 0`, so the toolbar row's content
- * width is viewport-INDEPENDENT (~421px in a news-carrying connection state,
- * with the brand already bottomed out as the only shrinking member). The
- * Settings gear therefore occupies x=377..421 at every width here, and its
- * centre (x≈399) falls outside any viewport narrower than 399px — the row
- * clips rather than reflowing. Measured on this branch's base (bcf0be788):
- * reachable at 412 and 402, unreachable at 390 and at 360.
+ * width is viewport-INDEPENDENT (the brand is the only shrinking member and it
+ * has already bottomed out). On this branch's base the row ends at x≈421 and
+ * the Settings gear occupies x=377..421 at EVERY width, so its centre (x≈399)
+ * falls outside any viewport narrower than 399px — the row clips rather than
+ * reflowing. Measured: reachable at 412 and 402, unreachable at 390 and 360.
+ *
+ * Both are supported phone widths and the assertion is correct at both. They
+ * differ in what it would take to make them pass, which is why they carry
+ * different reasons rather than one shared string: #1401's partial fix moves
+ * the gear to 340..384, which clears 390 — but not 360, where the row is
+ * over-subscribed no matter how short the label is.
  */
-const SETTINGS_UNREACHABLE_SKIP_REASON =
-  '#1401 — this assertion is CORRECT at this width and fails on pristine main ' +
-  'today: the Settings gear (x=377..421, centre x≈399) has its centre outside ' +
-  'any viewport narrower than 399px, because `.app-toolbar__actions` is ' +
-  'flex-shrink:0 and the row clips instead of reflowing. The width is ' +
-  'supported; the layout is what is wrong. Un-skip this case in #1401’s own ' +
-  'fix PR — it is the check that proves the fix.';
+const SETTINGS_CLIPPED_AT_390 =
+  '#1401 — CORRECT at this width and red on pristine main today: the Settings ' +
+  'gear (x=377..421, centre x≈399) has its centre outside a 390px viewport, ' +
+  'because `.app-toolbar__actions` is flex-shrink:0 and the row clips instead ' +
+  'of reflowing. 390 is a fully supported width and there is nothing wrong ' +
+  'with asserting it — the layout is what is wrong. THIS CASE IS UN-SKIPPABLE ' +
+  'BY #1401’s FIX: PR #1424 moves the gear to 340..384, which clears 390 (and ' +
+  '412). Un-skip it there — it is the check that proves that fix.';
+
+const ROW_OVERSUBSCRIBED_AT_360 =
+  '#1401 — CORRECT at this width and red on pristine main today, but NOT ' +
+  'fixed by #1401’s partial fix and not un-skippable with it. At 360 the row ' +
+  'is over-subscribed independently of the connection label: a hamburger plus ' +
+  'four 44px controls plus the chip does not fit in 360px at all, so no ' +
+  'amount of narrowing makes every control reachable. Closing it needs a ' +
+  'control to LEAVE the toolbar, which is an open product decision. Keep this ' +
+  'skipped until that decision is made, then un-skip it as the proof.';
 
 /**
  * Every width this guard knows about, widest first. A width with no
  * `skipReason` is ENFORCED with zero tolerance: any visible control there that
  * is not reachable at its own centre fails the suite.
  *
- * 412 is the `android` Playwright project's own viewport (Pixel 7). 402 is a
- * second real Android width above the #1401 threshold, and it matters that
- * there are TWO enforced widths: a single one cannot notice a defect that only
- * appears in a narrow band. 390 and 360 are present-but-skipped rather than
- * absent so the coverage stays visible in every run's output and #1401's fix
- * can un-skip them in one line, instead of the coverage living only in an
- * issue.
+ * 412 is the Pixel 7's own viewport. 402 is a second real Android width above
+ * the #1401 threshold, and it matters that there are TWO enforced widths: a
+ * single one cannot notice a defect confined to a narrow band. 390 and 360 are
+ * present-but-skipped rather than absent so the coverage stays visible in
+ * every run's output and can be un-skipped in one line, instead of living only
+ * in an issue.
  */
 const TOOLBAR_WIDTHS: ReadonlyArray<{
   width: number;
@@ -164,8 +195,84 @@ const TOOLBAR_WIDTHS: ReadonlyArray<{
 }> = [
   { width: 412, skipReason: null },
   { width: 402, skipReason: null },
-  { width: 390, skipReason: SETTINGS_UNREACHABLE_SKIP_REASON },
-  { width: 360, skipReason: SETTINGS_UNREACHABLE_SKIP_REASON },
+  { width: 390, skipReason: SETTINGS_CLIPPED_AT_390 },
+  { width: 360, skipReason: ROW_OVERSUBSCRIBED_AT_360 },
+];
+
+/**
+ * The news-carrying connection states this guard drives, each through the real
+ * health-coordinator path, and each PINNED by the exact modifier class it must
+ * produce. Driving "a news state" and accepting whichever one arrives is the
+ * trap this list exists to close.
+ *
+ * MEASURED, because the reason for driving more than one is not what it looks
+ * like. Every news label is SHORTER than the span's reserved `min-width:116px`
+ * — intrinsic widths in the live DM Sans face at this size: "Awaiting
+ * approval" 100.23px, "Needs re-pairing" 95.94px, "Can't connect" 78.75px,
+ * "Reconnecting" 77.70px, "Pair" 21.06px — so the span renders at exactly
+ * 116px and the chip at exactly 151px in ALL of them. Label length does not
+ * change the geometry today; the reservation absorbs it. (A raw-label
+ * comparison suggests otherwise — 79px vs 125px — but that is the text width
+ * before the reservation and the mobile `max-width:120px` clamp apply, which
+ * is a component-fixture reading, not this page's.)
+ *
+ * So this pair is not two different widths; it is two different MECHANISMS
+ * reaching the wide chip, one of which cannot mask a regression in the other,
+ * plus a named state in the failure output either way. The claim that they
+ * cover the whole class is carried by `newsLabelWidths` in the preconditions,
+ * not by this list's length.
+ */
+const NEWS_STATES: ReadonlyArray<{
+  id: string;
+  /** The `app-toolbar__conn--*` modifier this drive must produce, exactly. */
+  modifier: string;
+  drive: (page: Page) => Promise<void>;
+}> = [
+  {
+    // Refusing the public handshake the health coordinator probes with
+    // (`probeServerConnection`, src-ui/src/lib/serverHealth.ts) is the real
+    // "host stopped answering" path through the real state machine. Only that
+    // one endpoint is refused — `/api/system/status` and the rest of the app
+    // keep working — so this is the toolbar a user with an unreachable
+    // Station actually sees. Preferred over `context.setOffline(true)`, which
+    // only affects requests the coordinator has yet to make and was observed
+    // still reading `Connected` 12s later.
+    id: 'error ("Can\'t connect")',
+    modifier: 'app-toolbar__conn--error',
+    drive: async (page) => {
+      await page.route(`**${PUBLIC_STATION_HANDSHAKE_PATH}*`, (route) =>
+        route.abort('connectionrefused'),
+      );
+    },
+  },
+  {
+    id: 'needs-repair ("Needs re-pairing")',
+    modifier: 'app-toolbar__conn--needs-repair',
+    // The REAL handshake, with only the identity field removed, so every other
+    // check in `probeServerConnection` passes on the server's own live answer
+    // (schema version, auth scheme, transports, and the compatibility verdict,
+    // which fails closed when that block is absent) and the probe reaches its
+    // identity branch on genuine data. The stored e2e profile pins no expected
+    // environmentId, so the reachable branch is `typeof environmentId !==
+    // 'string'` — an answer that cannot prove which Station it is — rather
+    // than a value mismatch. Same classification, `identity-mismatch`.
+    drive: async (page) => {
+      await page.route(`**${PUBLIC_STATION_HANDSHAKE_PATH}*`, async (route) => {
+        const response = await route.fetch();
+        let body: Record<string, unknown>;
+        try {
+          body = (await response.json()) as Record<string, unknown>;
+        } catch {
+          // Not JSON: hand back exactly what the server said rather than
+          // inventing a handshake. The state assertion then fails loudly
+          // instead of this drive silently becoming a different test.
+          return route.fulfill({ response });
+        }
+        delete body.environmentId;
+        return route.fulfill({ response, json: body });
+      });
+    },
+  },
 ];
 
 interface MeasuredControl {
@@ -188,6 +295,12 @@ interface ToolbarMeasurement {
   connectionStateText: string | null;
   connectionStateWidth: number | null;
   connectionChipWidth: number | null;
+  /**
+   * Intrinsic text width of every `NEWS_CARRYING_LABELS` entry, measured in
+   * the chip label's own computed font on this page. `null` when the span is
+   * absent (a dot-only chip), which precondition 1 fails on first.
+   */
+  newsLabelWidths: Record<string, number> | null;
   /** `(pointer: coarse)` — what decides the region-control fold (#917). */
   coarsePointer: boolean;
   /** The app's own mobile breakpoint, copied from `chat.css` verbatim. */
@@ -202,7 +315,7 @@ interface ToolbarMeasurement {
  * re-render could have straddled.
  */
 async function measureToolbarControls(page: Page): Promise<ToolbarMeasurement> {
-  return page.evaluate(() => {
+  return page.evaluate((newsLabels: readonly string[]) => {
     const CONTROL_SELECTOR =
       'button, a[href], [role="button"], [role="link"], input, select, textarea, summary';
 
@@ -262,6 +375,41 @@ async function measureToolbarControls(page: Page): Promise<ToolbarMeasurement> {
         style.visibility !== 'hidden' &&
         Number(style.opacity) !== 0
       );
+    };
+
+    /**
+     * The intrinsic width each news-carrying label WOULD take, rendered with
+     * the live chip label's own computed typography (the self-hosted DM Sans
+     * face at its real size/weight/letter-spacing) rather than a guess.
+     *
+     * Measured off-layout in a clone that drops the width constraints, so this
+     * reports the text's own width rather than the clamped box's — the whole
+     * point is to compare "what the copy needs" against "what the box gives".
+     */
+    const measureNewsLabelWidths = (
+      labelElement: HTMLElement | null | undefined,
+    ): Record<string, number> | null => {
+      if (!labelElement) return null;
+      const style = getComputedStyle(labelElement);
+      const probe = document.createElement('span');
+      probe.style.font = style.font;
+      probe.style.fontFamily = style.fontFamily;
+      probe.style.fontSize = style.fontSize;
+      probe.style.fontWeight = style.fontWeight;
+      probe.style.letterSpacing = style.letterSpacing;
+      probe.style.whiteSpace = 'nowrap';
+      probe.style.position = 'absolute';
+      probe.style.visibility = 'hidden';
+      probe.style.minWidth = '0';
+      probe.style.maxWidth = 'none';
+      document.body.append(probe);
+      const widths: Record<string, number> = {};
+      for (const label of newsLabels) {
+        probe.textContent = label;
+        widths[label] = round(probe.getBoundingClientRect().width);
+      }
+      probe.remove();
+      return widths;
     };
 
     const toolbar = document.querySelector<HTMLElement>('.app-toolbar');
@@ -346,6 +494,7 @@ async function measureToolbarControls(page: Page): Promise<ToolbarMeasurement> {
         ? rectOf(connectionState).width
         : null,
       connectionChipWidth: connection ? rectOf(connection).width : null,
+      newsLabelWidths: measureNewsLabelWidths(connectionState),
       coarsePointer: window.matchMedia('(pointer: coarse)').matches,
       // Byte-for-byte the query `chat.css` uses for its mobile branch. If this
       // is false the page is being styled as a desktop and every measurement
@@ -356,7 +505,7 @@ async function measureToolbarControls(page: Page): Promise<ToolbarMeasurement> {
       maxTouchPoints: navigator.maxTouchPoints,
       controls,
     };
-  });
+  }, NEWS_CARRYING_LABELS);
 }
 
 function renderInventory(measurement: ToolbarMeasurement): string {
@@ -383,7 +532,10 @@ function renderInventory(measurement: ToolbarMeasurement): string {
  * Each of these fails LOUDLY: a guard that cannot establish its own
  * preconditions must red, not pass over an empty or narrow-state toolbar.
  */
-function assertToolbarPreconditions(measurement: ToolbarMeasurement): void {
+function assertToolbarPreconditions(
+  measurement: ToolbarMeasurement,
+  expectedModifier: string,
+): void {
   const context = renderInventory(measurement);
 
   expect(
@@ -411,20 +563,49 @@ function assertToolbarPreconditions(measurement: ToolbarMeasurement): void {
       `\n${context}`,
   ).toBe(true);
 
-  // The news-carrying connection state — precondition 1. Asserted two
-  // independent ways: the state modifier class the component writes, and the
-  // measured width of the label span, which is 0 in every dot-only state.
+  // Precondition 1 — the wide chip, in the exact state this case drove.
+  //
+  // (a) The named state, not merely "some news state". A drive that silently
+  //     landed somewhere else would still satisfy a class-level check while
+  //     measuring a chip nobody chose.
   expect(
-    measurement.connectionClass ?? '',
-    `the connection chip is not in a news-carrying state, so this measurement ` +
-      `would be of the dot-only chip and could not reproduce any defect in ` +
-      `this class\n${context}`,
-  ).toMatch(NEWS_CARRYING_CONN_STATE);
+    (measurement.connectionClass ?? '').split(/\s+/),
+    `this case drives ${expectedModifier}, but the chip is in a different ` +
+      `state — the drive did not do what it claims, so the measurement is of ` +
+      `an unchosen state (and, if it is connected/idle, of the dot-only chip ` +
+      `that cannot reproduce any defect in this class)\n${context}`,
+  ).toContain(expectedModifier);
+
+  // (b) The label span is actually rendered wide. Independent of (a): the
+  //     class is what the component wrote, this is what the browser laid out.
   expect(
     measurement.connectionStateWidth ?? 0,
     `.app-toolbar__conn-state is narrower than its reserved 116px min-width, ` +
       `so the chip is not in its wide state\n${context}`,
   ).toBeGreaterThanOrEqual(NEWS_CARRYING_STATE_MIN_WIDTH_PX);
+
+  // (c) THE DERIVATION that makes driving two states a statement about all
+  //     five. Every news-carrying label, measured in this chip's own live
+  //     font, fits inside the span just measured — so no state this guard did
+  //     NOT drive could have produced a wider chip, and the geometry checked
+  //     below is the worst case for the whole class rather than for whichever
+  //     member happened to be cheapest to reach.
+  //
+  //     When this fires, the guard has not found a layout bug; it has found
+  //     that its own coverage claim expired. The remedy is to drive the state
+  //     that owns the offending label and assert it directly.
+  const measuredSpan = measurement.connectionStateWidth ?? 0;
+  const overflowing = Object.entries(measurement.newsLabelWidths ?? {})
+    .filter(([, width]) => width > measuredSpan)
+    .map(([label, width]) => `${label} needs ${width}px`);
+  expect(
+    overflowing,
+    `a news-carrying connection label no longer fits inside the ` +
+      `${measuredSpan}px label span this run measured, so driving ` +
+      `${expectedModifier} no longer measures the widest chip the class can ` +
+      `produce and this guard's coverage claim is stale. Drive the state that ` +
+      `owns the label below and assert it directly (see NEWS_STATES)\n${context}`,
+  ).toEqual([]);
 
   // A non-empty, complete inventory — precondition 2.
   const keys = measurement.controls.map((control) => control.key);
@@ -457,24 +638,18 @@ function assertReachability(measurement: ToolbarMeasurement): void {
 }
 
 /**
- * Puts the app into a news-carrying connection state by refusing the public
- * handshake the health coordinator probes with (`probeServerConnection` in
- * `src-ui/src/lib/serverHealth.ts`), which is the real "host stopped
- * answering" path through the real state machine.
+ * The health coordinator keeps probing on its own retry ladder after a test
+ * body returns, so a route handler can be mid-`route.fetch` when Playwright
+ * tears the page down. That surfaces as `route.fetch: Test ended` and fails
+ * the RUN while every test in it reported green — an exit code disagreeing
+ * with its own summary, which is the worst shape a suite can have.
  *
- * Registered BEFORE the first navigation so the coordinator's opening probe
- * already fails and the chip never renders its connected width — rather than
- * `context.setOffline(true)` on a loaded page, which only affects requests the
- * coordinator has yet to make and was observed still reading `Connected` 12s
- * later. Only this one endpoint is refused: `/api/system/status` and the rest
- * of the app keep working, so the toolbar under test is the one a user with an
- * unreachable Station actually sees.
+ * Draining the handlers first is the documented remedy; `ignoreErrors` is
+ * correct here because a probe abandoned at teardown carries no verdict.
  */
-async function refuseStationHandshake(page: Page): Promise<void> {
-  await page.route(`**${PUBLIC_STATION_HANDSHAKE_PATH}*`, (route) =>
-    route.abort('connectionrefused'),
-  );
-}
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+});
 
 for (const { width, skipReason } of TOOLBAR_WIDTHS) {
   const suffix = skipReason ? ' (skipped — #1401)' : '';
@@ -488,30 +663,40 @@ for (const { width, skipReason } of TOOLBAR_WIDTHS) {
 
     // `#1401` is in the describe title as well as the annotation so the reason
     // is legible in a plain terminal reporter, which prints skipped tests by
-    // title only.
+    // title only. The two skipped widths carry DIFFERENT reasons; see them.
     if (skipReason) test.skip(true, skipReason);
 
-    test('every visible app-toolbar control is reachable at its own centre', async ({
-      page,
-    }) => {
-      await refuseStationHandshake(page);
-      await page.goto('/');
-      await dismissSetupLauncher(page);
+    for (const state of NEWS_STATES) {
+      test(`every visible app-toolbar control is reachable at its own centre — ${state.id}`, async ({
+        page,
+      }) => {
+        // Registered BEFORE the first navigation so the coordinator's opening
+        // probe already resolves to this state and the chip never renders its
+        // connected width at all.
+        await state.drive(page);
+        await page.goto('/');
+        await dismissSetupLauncher(page);
 
-      const toolbar = page.locator('.app-toolbar');
-      await expect(toolbar).toBeVisible({ timeout: 15_000 });
+        const toolbar = page.locator('.app-toolbar');
+        await expect(toolbar).toBeVisible({ timeout: 15_000 });
 
-      const connection = page.locator('[data-testid="app-toolbar-connection"]');
-      await expect(connection).toBeVisible({ timeout: 15_000 });
-      // The coordinator retries a failed probe on a 500ms floor, so this
-      // settles quickly; the generous ceiling is for a loaded CI host.
-      await expect(connection).toHaveClass(NEWS_CARRYING_CONN_STATE, {
-        timeout: 30_000,
+        const connection = page.locator(
+          '[data-testid="app-toolbar-connection"]',
+        );
+        await expect(connection).toBeVisible({ timeout: 15_000 });
+        // The coordinator retries a failed probe on a 500ms floor, so this
+        // settles quickly; the generous ceiling is for a loaded CI host. This
+        // waits for the EXACT state, so a drive that reaches a different one
+        // times out here naming what it wanted rather than measuring on.
+        await expect(connection).toHaveClass(
+          new RegExp(`(^|\\s)${state.modifier}(\\s|$)`),
+          { timeout: 30_000 },
+        );
+
+        const measurement = await measureToolbarControls(page);
+        assertToolbarPreconditions(measurement, state.modifier);
+        assertReachability(measurement);
       });
-
-      const measurement = await measureToolbarControls(page);
-      assertToolbarPreconditions(measurement);
-      assertReachability(measurement);
-    });
+    }
   });
 }
