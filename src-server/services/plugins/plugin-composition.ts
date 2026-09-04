@@ -915,10 +915,9 @@ async function outcomeWithin<T>(
   return outcome;
 }
 
-async function releaseRecognizableInvalidAuthorization(
+function recognizableAuthorizationRelease(
   value: unknown,
-  timeoutMs: number,
-): Promise<void> {
+): (() => void | Promise<void>) | undefined {
   try {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return;
     const prototype = Object.getPrototypeOf(value);
@@ -948,13 +947,18 @@ async function releaseRecognizableInvalidAuthorization(
       typeof release.value !== 'function'
     )
       return;
-    await settleBestEffortWithin(
-      () => Reflect.apply(release.value, rawLease, []),
-      timeoutMs,
-    );
+    return () => Reflect.apply(release.value, rawLease, []);
   } catch {
-    // Invalid authority output is unavailable regardless of release behavior.
+    return;
   }
+}
+
+async function releaseRecognizableInvalidAuthorization(
+  value: unknown,
+  timeoutMs: number,
+): Promise<void> {
+  const release = recognizableAuthorizationRelease(value);
+  if (release) await settleBestEffortWithin(release, timeoutMs);
 }
 
 function snapshotStagedHandle(value: unknown):
@@ -1023,6 +1027,12 @@ export function createPluginCompositionModule(options: {
   const active = new Map<string, ActiveGeneration>();
   const attempts = new Map<string, PluginCompositionInspectionEntry[]>();
   const applyChains = new Map<string, Promise<void>>();
+  // A deadline releases the queue, not ownership of still-running host work.
+  // Hold one scope admission fence until late authorization/staging settles.
+  const pendingLifecycle = new Map<
+    string,
+    PluginCompositionInspectionEntry[]
+  >();
   const disposalFences = new Map<
     string,
     Map<string, PluginCompositionDisposalFence>
@@ -1043,6 +1053,7 @@ export function createPluginCompositionModule(options: {
       ...attempts.keys(),
       ...applyChains.keys(),
       ...disposalFences.keys(),
+      ...pendingLifecycle.keys(),
     ]);
   const enqueueScope = <T>(key: string, work: () => Promise<T>): Promise<T> => {
     const prior = applyChains.get(key) ?? Promise.resolve();
@@ -1157,7 +1168,17 @@ export function createPluginCompositionModule(options: {
     }
     const key = scopeKey(safeScope);
     const generation = active.get(key);
-    const latest = attempts.get(key) ?? [];
+    const latest = [...(attempts.get(key) ?? [])];
+    for (const pending of pendingLifecycle.get(key) ?? []) {
+      if (
+        !latest.some(
+          (candidate) =>
+            candidate.instanceIdentity === pending.instanceIdentity,
+        )
+      ) {
+        latest.push(pending);
+      }
+    }
     const failed = latest.filter((candidate) => candidate.status === 'failed');
     for (const fence of fenceEntries(key)) {
       if (
@@ -1486,6 +1507,9 @@ export function createPluginCompositionModule(options: {
     profile: PluginCompositionProfile,
   ): Promise<PluginCompositionApplyResult> => {
     const key = scopeKey(profile.scope);
+    if (pendingLifecycle.has(key)) {
+      return { kind: 'pending', inspection: inspect(profile.scope) };
+    }
     const previous = active.get(key);
     const nextGeneration = (previous?.generation ?? 0) + 1;
     const planned = plan(profile);
@@ -1540,12 +1564,34 @@ export function createPluginCompositionModule(options: {
     } else {
       rawAuthorization = { kind: 'unavailable' };
       if (authorizationOutcome.kind === 'timed-out') {
+        pendingLifecycle.set(
+          key,
+          planned.plan.selected.map((candidate) =>
+            entry(candidate, 'pending', 'authorization-unavailable'),
+          ),
+        );
         void authorizationOperation
-          .then((lateAuthorization) =>
-            releaseRecognizableInvalidAuthorization(
-              lateAuthorization,
-              disposerTimeoutMs,
-            ),
+          .then(
+            async (lateAuthorization) => {
+              const release =
+                recognizableAuthorizationRelease(lateAuthorization);
+              // The caller's deadline already elapsed. This continuation owns
+              // the actual late lease, not another bounded wait: only a
+              // successful release may reopen scope admission. A hanging or
+              // rejected release leaves the existing visible pending debt.
+              if (release) await release();
+              else {
+                const lateOutcome = validatePlanAuthorization(
+                  lateAuthorization,
+                  planned.plan.selected,
+                );
+                // Only a recognized no-lease response proves there is no
+                // cleanup obligation; malformed output cannot prove absence.
+                if (!lateOutcome || lateOutcome.kind === 'granted') return;
+              }
+              pendingLifecycle.delete(key);
+            },
+            () => pendingLifecycle.delete(key),
           )
           .catch(() => {});
       }
@@ -1675,6 +1721,10 @@ export function createPluginCompositionModule(options: {
             disposerTimeoutMs,
           );
           if (stageOutcome.kind === 'timed-out') {
+            leaseControl.fence();
+            pendingLifecycle.set(key, [
+              entry(contribution, 'pending', 'activation-aborted'),
+            ]);
             void stageOperation
               .then(async (lateHandle) => {
                 const stagedHandle = snapshotStagedHandle(lateHandle);
@@ -1687,7 +1737,8 @@ export function createPluginCompositionModule(options: {
                   'rollback',
                 );
               })
-              .catch(() => {});
+              .catch(() => {})
+              .finally(() => pendingLifecycle.delete(key));
             throw new Error('plugin composition staging timed out');
           }
           if (stageOutcome.kind === 'rejected') {

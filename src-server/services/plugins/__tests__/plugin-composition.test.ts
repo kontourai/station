@@ -1159,6 +1159,7 @@ describe('plugin composition profiles', () => {
   test('bounds a stalled authorizer and releases a late lease', async () => {
     const implementation = new Map([factory('cache', [])]);
     const release = vi.fn();
+    let authorizeCalls = 0;
     let finishAuthorization!: () => void;
     let authorizationInput!: Parameters<
       PluginCompositionAuthorizer['authorize']
@@ -1167,6 +1168,7 @@ describe('plugin composition profiles', () => {
       disposerTimeoutMs: 5,
       authorizer: {
         authorize(input) {
+          authorizeCalls += 1;
           authorizationInput = input;
           return new Promise<PluginCompositionAuthorization>((resolve) => {
             finishAuthorization = () =>
@@ -1189,6 +1191,15 @@ describe('plugin composition profiles', () => {
     ).resolves.toMatchObject({ kind: 'pending' });
     expect(authorizationInput.scope).toEqual(projectA);
 
+    await module.retire(projectA);
+    await expect(
+      module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({ kind: 'pending' });
+    expect(authorizeCalls).toBe(1);
+    expect(module.inspect(projectA).pending).toHaveLength(1);
+
     finishAuthorization();
     await vi.waitFor(() => expect(release).toHaveBeenCalledOnce());
     await expect(module.retire(projectA)).resolves.toMatchObject({
@@ -1196,12 +1207,82 @@ describe('plugin composition profiles', () => {
     });
   });
 
+  test.each(['reject', 'hang'] as const)(
+    'retains admission and visible debt while late authorization release will %s',
+    async (behavior) => {
+      vi.useFakeTimers();
+      try {
+        const events: string[] = [];
+        const implementations = new Map([factory('cache', events)]);
+        let finishAuthorization!: () => void;
+        let finishRelease!: () => void;
+        const release = vi.fn(() =>
+          behavior === 'reject'
+            ? Promise.reject(new Error('late release failed'))
+            : new Promise<void>((resolve) => {
+                finishRelease = resolve;
+              }),
+        );
+        let authorizeCalls = 0;
+        const authorize = vi.fn(
+          (input: Parameters<PluginCompositionAuthorizer['authorize']>[0]) => {
+            authorizeCalls += 1;
+            if (authorizeCalls > 1)
+              return grantedPlanAuthorization(input, implementations);
+            return new Promise<PluginCompositionAuthorization>((resolve) => {
+              finishAuthorization = () =>
+                resolve(
+                  grantedPlanAuthorization(input, implementations, { release }),
+                );
+            });
+          },
+        );
+        const module = moduleWith([], {
+          disposerTimeoutMs: 5,
+          authorizer: { authorize },
+        });
+        const candidate = profile(projectA, [
+          contribution('cache', 'workspace.cache'),
+        ]);
+        const applying = module.apply(candidate);
+        await vi.advanceTimersByTimeAsync(6);
+        await expect(applying).resolves.toMatchObject({ kind: 'pending' });
+        finishAuthorization();
+        await vi.advanceTimersByTimeAsync(20);
+        expect(release).toHaveBeenCalledOnce();
+
+        await module.retire(projectA);
+        await expect(module.apply(candidate)).resolves.toMatchObject({
+          kind: 'pending',
+        });
+        expect(authorize).toHaveBeenCalledOnce();
+        expect(module.inspect(projectA).pending).toHaveLength(1);
+        expect(events).toEqual([]);
+
+        if (behavior === 'hang') {
+          finishRelease();
+          await vi.advanceTimersByTimeAsync(0);
+          await expect(module.apply(candidate)).resolves.toMatchObject({
+            kind: 'activated',
+          });
+          expect(authorize).toHaveBeenCalledTimes(2);
+          expect(events).toEqual(['stage:cache']);
+          await module.retire(projectA);
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   test('bounds stalled staging and disposes a late fenced handle', async () => {
     const dispose = vi.fn();
+    let stageCalls = 0;
     let finishStage!: () => void;
     let occurrenceCurrent: (() => boolean) | undefined;
     const implementation: PluginCompositionFactory = {
       stage(input) {
+        stageCalls += 1;
         occurrenceCurrent = input.occurrence.isCurrent;
         return new Promise((resolve) => {
           finishStage = () => resolve({ dispose });
@@ -1222,6 +1303,15 @@ describe('plugin composition profiles', () => {
       ),
     ).resolves.toMatchObject({ kind: 'failed' });
     expect(occurrenceCurrent?.()).toBe(false);
+
+    await module.retire(projectA);
+    await expect(
+      module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({ kind: 'pending' });
+    expect(stageCalls).toBe(1);
+    expect(module.inspect(projectA).pending).toHaveLength(1);
 
     finishStage();
     await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
