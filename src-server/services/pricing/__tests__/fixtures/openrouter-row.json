@@ -1,15 +1,9 @@
 {
   "architecture": {
-    "input_modalities": [
-      "text",
-      "image",
-      "file"
-    ],
+    "input_modalities": ["text", "image", "file"],
     "instruct_type": null,
     "modality": "text+image+file->text",
-    "output_modalities": [
-      "text"
-    ],
+    "output_modalities": ["text"],
     "tokenizer": "Claude"
   },
   "benchmarks": {
