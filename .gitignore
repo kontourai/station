@@ -1,4 +1,6 @@
 node_modules/
+.station-dependency-install/
+.station-dependency-record-*/
 dist/
 dist-pages/
 dist-ui/
