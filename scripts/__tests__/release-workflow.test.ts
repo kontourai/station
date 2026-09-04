@@ -1021,7 +1021,7 @@ describe('native release workflow topology', () => {
     );
     expect(embeddedSealing).toBeLessThan(
       macosArtifacts.indexOf(
-        'await submit(command, zip, key, keyId, issuer, logger);',
+        'appNotarization = submit(command, zip, key, keyId, issuer, logger);',
       ),
     );
     expect(macosArtifacts).toContain("receipt.status !== 'Accepted'");

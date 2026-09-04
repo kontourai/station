@@ -678,6 +678,7 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
   const dmg = join(assets, `${prefix}.dmg`);
   const updater = join(assets, `${prefix}.app.tar.gz`);
   let detachNeeded = false;
+  const pendingNotarizations = [];
   try {
     const embeddedCommand = (
       phase,
@@ -800,32 +801,47 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         entitlementOutput.stderr !== `${entitlementDiagnostic}\n`)
     )
       throw new Error('Outer app has unexpected entitlements.');
-    if (!dmgOnly) {
+    const validateAndAssessApp = async () => {
+      await command('application staple validation', 'xcrun', [
+        'stapler',
+        'validate',
+        app,
+      ]);
+      await command('application Gatekeeper assessment', 'spctl', [
+        '--assess',
+        '--type',
+        'execute',
+        '--verbose=4',
+        app,
+      ]);
+    };
+    // Each `notarytool submit --wait` costs the release five to six minutes,
+    // and the two submissions are independent of one another. Start the
+    // application submission here and let the disk image be staged, created,
+    // signed, and admitted while that submission waits, so the two service
+    // waits overlap instead of running back to back. The disk image therefore
+    // encloses a signed but not-yet-stapled application: Gatekeeper resolves
+    // that application's own ticket online, and the disk image carries its own
+    // stapled ticket. Nothing is stapled until both submissions are accepted.
+    let appNotarization;
+    if (dmgOnly) {
+      // A DMG-only run receives an application another run already notarized
+      // and stapled; its ticket must be present before this run images it.
+      await validateAndAssessApp();
+    } else {
       await command(
         'application notarization archive',
         'ditto',
         ['-c', '-k', '--sequesterRsrc', '--keepParent', app, zip],
         LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
       );
-      await submit(command, zip, key, keyId, issuer, logger);
-      await command('application stapling', 'xcrun', [
-        'stapler',
-        'staple',
-        app,
-      ]);
+      appNotarization = submit(command, zip, key, keyId, issuer, logger);
+      pendingNotarizations.push(appNotarization);
+      // The join below is the only consumer of this outcome. Retain a no-op
+      // handler so a rejection arriving while the disk image is still being
+      // prepared cannot surface as an unhandled rejection.
+      appNotarization.catch(() => {});
     }
-    await command('application staple validation', 'xcrun', [
-      'stapler',
-      'validate',
-      app,
-    ]);
-    await command('application Gatekeeper assessment', 'spctl', [
-      '--assess',
-      '--type',
-      'execute',
-      '--verbose=4',
-      app,
-    ]);
     fs.mkdirSync(dmgRoot, { recursive: true });
     await command(
       'DMG staging',
@@ -888,7 +904,26 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         `DMG designated requirement query failed with status ${dmgRequirement.status}.`,
       );
     assertKontourDeveloperIdRequirement(dmgRequirement);
-    await submit(command, dmg, key, keyId, issuer, logger);
+    const dmgNotarization = submit(command, dmg, key, keyId, issuer, logger);
+    pendingNotarizations.push(dmgNotarization);
+    dmgNotarization.catch(() => {});
+    // Both submissions must be accepted. Settling both first keeps a rejection
+    // of either one terminal without abandoning the other mid-upload, and the
+    // first rejection is rethrown unchanged.
+    for (const outcome of await Promise.allSettled(
+      appNotarization === undefined
+        ? [dmgNotarization]
+        : [appNotarization, dmgNotarization],
+    ))
+      if (outcome.status === 'rejected') throw outcome.reason;
+    if (!dmgOnly) {
+      await command('application stapling', 'xcrun', [
+        'stapler',
+        'staple',
+        app,
+      ]);
+      await validateAndAssessApp();
+    }
     await command('DMG stapling', 'xcrun', ['stapler', 'staple', dmg]);
     await command('DMG staple validation', 'xcrun', [
       'stapler',
@@ -980,6 +1015,12 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         // Preserve the primary failure; cleanup is only best-effort here.
       }
     }
+    // A failure between starting a submission and the join above would leave
+    // that submission uploading a scratch archive this cleanup is about to
+    // delete. Both promises already carry handlers, so settling them only
+    // bounds the surviving child processes; each remains bounded by the
+    // notary command timeout and the release deadline.
+    await Promise.allSettled(pendingNotarizations);
     fs.rmSync(root, { recursive: true, force: true });
   }
 }
