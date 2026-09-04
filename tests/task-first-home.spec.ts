@@ -1001,9 +1001,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
     );
   });
 
-  // #1180: `/activity` is one of the routes where `SplitPaneLayout`'s mobile
-  // detail sheet marks `PageFrame`'s route frame `inert` (PageFrame.tsx:155)
-  // while it is open. `DelegationLauncher` is a hand-rolled overlay (no
+  // #1180: the Activity surface is one of the places where `SplitPaneLayout`'s
+  // mobile detail sheet marks the frame around it `inert` (PageFrame.tsx:155)
+  // while it is open. (station#928 retired the `/activity` route; the surface
+  // is reached by its canonical deep link, which is what this navigates to.) `DelegationLauncher` is a hand-rolled overlay (no
   // `ResponsiveDialogSurface`), rendered as a plain sibling of
   // `SplitPaneLayout` in `SessionsView`. Its own trigger ("Delegate subtask")
   // lives in the list pane, which a phone hides the instant a session's
@@ -1022,7 +1023,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
   }) => {
     await installVisualViewportFixture(page);
     await mockTaskFirstHome(page);
-    await page.goto('/activity');
+    await page.goto('/?surface=activity');
 
     await page.getByRole('button', { name: /task first home/i }).click();
     await expect(page.getByTestId('session-detail')).toBeVisible();

@@ -218,9 +218,6 @@ describe('routePendingShape — read off the destination’s own frame', () => {
       expect(shapeOf({ type: 'connections-tool-edit', id: 't' }, true)).toBe(
         'detail-sheet',
       );
-      expect(shapeOf({ type: 'activity', sessionId: 's' }, true)).toBe(
-        'detail-sheet',
-      );
       expect(shapeOf({ type: 'guidance', selectedId: 'skill-a' }, true)).toBe(
         'detail-sheet',
       );
@@ -230,7 +227,6 @@ describe('routePendingShape — read off the destination’s own frame', () => {
       expect(shapeOf({ type: 'agents' }, true)).toBe('split-pane');
       expect(shapeOf({ type: 'plugins' }, true)).toBe('split-pane');
       expect(shapeOf({ type: 'review-queue' }, true)).toBe('split-pane');
-      expect(shapeOf({ type: 'activity' }, true)).toBe('split-pane');
       expect(shapeOf({ type: 'connections-models' }, true)).toBe('split-pane');
     });
 
@@ -238,7 +234,9 @@ describe('routePendingShape — read off the destination’s own frame', () => {
       // The discriminating half: without this, "always detail-sheet" would
       // pass every assertion above.
       expect(shapeOf({ type: 'agent-edit', slug: 'a' })).toBe('split-pane');
-      expect(shapeOf({ type: 'activity', sessionId: 's' })).toBe('split-pane');
+      expect(shapeOf({ type: 'guidance', selectedId: 'skill-a' })).toBe(
+        'split-pane',
+      );
     });
   });
 

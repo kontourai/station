@@ -1,9 +1,12 @@
 /**
  * E2E: Activity as a Workspace Pane (epic archive#4142 M3, archive#3193).
  *
- * `/activity` is the STANDALONE PLACEMENT of the Activity pane — the sessions
- * surface reached through the pane path, which is what puts a real
- * "Dock this pane" in the page header. Docking replaces the ambient Chat
+ * `/?surface=activity` is the canonical deep link to the Activity pane — the
+ * sessions surface reached through the pane path, which is what puts a real
+ * "Dock this pane" in the page header. (station#928 retired the `/activity`
+ * route; `getLegacyPathRedirect` sends it here, and the redirect itself is
+ * covered by `src-ui/src/__tests__/app-routing.test.ts` rather than by a
+ * browser journey.) Docking replaces the ambient Chat
  * occupant with the same pane occurrence, the choice survives a reload
  * through the persisted ambient document, and the dock header's occupant
  * picker (M5) returns the slot to Chat — Chat as one entry of the derived
@@ -41,7 +44,7 @@ function dockOccupantTrigger(page: Page, name: string) {
 const AMBIENT_DOCK_STORAGE_KEY =
   'station:workspace-pane-host:v2:ambient:chat-dock';
 
-test.describe('Activity pane standalone placement', () => {
+test.describe('Activity pane deep link', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?surface=activity');
     await expect(
@@ -49,7 +52,7 @@ test.describe('Activity pane standalone placement', () => {
     ).toBeVisible({ timeout: 10_000 });
   });
 
-  test('the /activity route renders the sessions surface with a real dock action', async ({
+  test('the Activity deep link renders the sessions surface with a real dock action', async ({
     page,
   }) => {
     // The split-pane surface is present (its list region carries the
@@ -127,7 +130,7 @@ test.describe('Activity pane at 390x844', () => {
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
-      'the activity route must not push the phone document sideways',
+      'the Activity deep link must not push the phone document sideways',
     ).toBe(true);
     await page
       .locator('#station-main')

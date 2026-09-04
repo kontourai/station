@@ -86,7 +86,6 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     body: 'fill',
   },
   'review-queue': SPLIT_PANE,
-  activity: SPLIT_PANE,
 
   // 'Developer' is not self-referential here — the title is the active tab
   // ('Logs'/'System'/'Telemetry'/'Memory'/'Archive'), so the eyebrow is a

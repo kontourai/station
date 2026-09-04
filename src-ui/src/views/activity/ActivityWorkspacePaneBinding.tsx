@@ -7,13 +7,14 @@ import { createContext, type ReactNode, useContext } from 'react';
  * data, so a renderer's live inputs reach it through context owned by the
  * placement that has them, read by the renderer that needs them. For
  * Activity those inputs are the API base its session queries and mutations
- * are addressed to, and the deep-linked intent. BOTH placements carry that
- * intent: the standalone `/activity` route reads it off the URL
- * (`AppViewContent` → `ActivityView`) and the region placement receives it as
- * a region-model surface intent (`ActivityRegionShell`); only the region's
- * repeat-activation fields below are its alone. A routed selection is
- * presentation state of a placement, never pane identity, which is why it
- * lives here and not on the occurrence.
+ * are addressed to, and the deep-linked intent. Since #928 retired the
+ * standalone `/activity` route, the region placement is the only one that
+ * carries that intent — it receives it as a region-model surface intent
+ * (`ActivityRegionShell`), which is also why the repeat-activation fields
+ * below are its alone. The Developer archive embed (`ArchiveTab`) supplies
+ * the API base and nothing else. A routed selection is presentation state of
+ * a placement, never pane identity, which is why it lives here and not on
+ * the occurrence.
  *
  * Unlike Home's, the context lives in its own module rather than beside the
  * renderer: the ambient dock host must provide this binding for a docked
@@ -31,8 +32,8 @@ export interface ActivityWorkspacePaneBinding {
   focusHint?: 'evidence';
   /**
    * Monotonic activation identity, including repeated intents for the same
-   * session. Region placement only: the standalone route re-mounts on each
-   * navigation, so it has no repeat to distinguish.
+   * session. Supplied by the region placement, which is the only one that
+   * delivers an intent at all.
    */
   intentToken?: number;
   /** Region placement only, for the same reason as `intentToken`. */

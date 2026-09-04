@@ -393,9 +393,31 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'Starter documentation runtime source',
   },
   {
+    // An explicit `tests` list REPLACES graph selection for a path
+    // (`selectChangedVerification`: `hasExplicitBoundary` suppresses the
+    // `src-ui/**` `related` edge), so this entry is the WHOLE selection for
+    // the surface registry — a documentation test alone, while every suite
+    // that reads the registry as a value went unscheduled. The registry is a
+    // data table, not a module with behaviour, so `--related` would not have
+    // found most of these anyway: they assert what it DECLARES.
     pattern: 'src-ui/src/app-shell/surface-registry.ts',
-    tests: ['scripts/__tests__/documentation-foundations.test.ts'],
-    reason: 'Review Queue documentation route source',
+    tests: [
+      'scripts/__tests__/documentation-foundations.test.ts',
+      // Route/label/deep-link declarations read straight off the registry.
+      'src-ui/src/__tests__/activity-rename-sweep.test.ts',
+      'src-ui/src/__tests__/app-routing.test.ts',
+      'src-ui/src/__tests__/notifications-reachable.test.ts',
+      'src-ui/src/__tests__/developer-reachable.test.ts',
+      // The palette and sidebar are generated FROM the registry, so a
+      // definition change is a change to what they advertise.
+      'src-ui/src/__tests__/CommandPalette.test.tsx',
+      'src-ui/src/__tests__/ProjectSidebarNav.test.tsx',
+      // Frame fallback titles are taken from the registry's labels, and the
+      // first-run tour derives its anchors and paths from it.
+      'src-ui/src/app-shell/__tests__/page-frame-registry.test.ts',
+      'src-ui/src/components/first-run/__tests__/tour-steps.test.ts',
+    ],
+    reason: 'app surface registry declarations (routes, labels, nav, docs)',
   },
   {
     pattern: 'justfile',

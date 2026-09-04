@@ -15,6 +15,19 @@ import {
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import type { ToolDef } from './index.js';
 import {
+  MCPLocalConnectionCustody,
+  MCPLocalCustodyError,
+} from './mcp-local-custody.js';
+
+export {
+  type MCPLocalClaim,
+  type MCPLocalCleanup,
+  MCPLocalConnectionCustody,
+  MCPLocalCustodyError,
+  type MCPLocalPurpose,
+} from './mcp-local-custody.js';
+
+import {
   type ClaudeDesktopConfig,
   normalizeMcpToolDef,
 } from './portability.js';
@@ -71,6 +84,29 @@ export interface MCPConnection {
   negotiation: MCPNegotiation;
   close: () => Promise<void>;
   disconnect: () => Promise<void>;
+  /** Present on owned connections; false after a local retirement fence. */
+  isUsable?: () => boolean;
+  localState?: () => ReturnType<MCPPreparedConnection['inspect']>;
+}
+
+/** Local SDK resources only. Never a child-process or remote-effect drain receipt. */
+export interface MCPPreparedConnection {
+  connect(): Promise<MCPConnection>;
+  retainForOAuth(): void;
+  finishAuth(params: URLSearchParams): Promise<void>;
+  close(): Promise<void>;
+  inspect(): {
+    phase:
+      | 'prepared'
+      | 'connecting'
+      | 'connected'
+      | 'failed'
+      | 'oauth'
+      | 'closing'
+      | 'close-failed'
+      | 'closed';
+    pendingOperations: number;
+  };
 }
 
 export interface MCPNegotiation {
@@ -105,69 +141,285 @@ const MCP_APPS_MIME_TYPE = 'text/html;profile=mcp-app';
  * Create an MCP client from a tool definition.
  * Returns the connected client with its tool catalog.
  */
+export function prepareMCPConnection(
+  def: ToolDef,
+  opts?: MCPManagerOptions,
+  isCurrent: () => boolean = () => true,
+): MCPPreparedConnection {
+  const normalized = normalizeTransportConfig(def);
+  // Normalization is effect-free. The caller owns this handle before either
+  // constructor runs, including a partial constructor/observer failure.
+  let transport: Transport | undefined;
+  let client: Client | undefined;
+  let phase: ReturnType<MCPPreparedConnection['inspect']>['phase'] = 'prepared';
+  let retired = false;
+  let activity = 0;
+  const pending = new Set<Promise<void>>();
+  let connecting: Promise<MCPConnection> | undefined;
+  let closing: Promise<void> | undefined;
+  const current = () => !retired && isCurrent() === true;
+  const assertCurrent = () => {
+    if (!current())
+      throw new Error('MCP local connection is no longer current');
+  };
+  function track<T>(operation: () => T): T {
+    let settle!: () => void;
+    const settled = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    pending.add(settled);
+    activity++;
+    const finish = () => {
+      activity++;
+      pending.delete(settled);
+      settle();
+    };
+    try {
+      const value = operation();
+      if (value && typeof (value as { then?: unknown }).then === 'function')
+        return Promise.resolve(value).finally(finish) as T;
+      finish();
+      return value;
+    } catch (error) {
+      finish();
+      throw error;
+    }
+  }
+  // SDK-internal close calls and our close use the same exact in-flight
+  // promise. Later activity requires another close; rejection is retryable
+  // only after that close actually settled, never by overlapping it.
+  function closeOnce(operation: () => Promise<void>) {
+    let flight: Promise<void> | undefined;
+    let unsettled = false;
+    let successful = false;
+    let closedActivity = -1;
+    return () => {
+      if (flight && (unsettled || (successful && closedActivity === activity)))
+        return flight;
+      unsettled = true;
+      successful = false;
+      closedActivity = activity;
+      flight = Promise.resolve()
+        .then(operation)
+        .then(
+          () => {
+            successful = true;
+          },
+          (error) => {
+            throw error;
+          },
+        )
+        .finally(() => {
+          unsettled = false;
+        });
+      return flight;
+    };
+  }
+  let closeTransport = async () => {};
+  let closeClient = async () => {};
+  async function closePair() {
+    const results = await Promise.allSettled([closeClient(), closeTransport()]);
+    if (results.some((result) => result.status === 'rejected'))
+      throw new Error('MCP local SDK cleanup did not settle successfully');
+  }
+  const handle: MCPPreparedConnection = {
+    inspect: () => ({ phase, pendingOperations: pending.size }),
+    connect() {
+      assertCurrent();
+      if (connecting) return connecting;
+      phase = 'connecting';
+      connecting = track(() =>
+        Promise.resolve().then(async () => {
+          try {
+            assertCurrent();
+            transport = createMCPTransport(normalized, opts?.authProvider);
+            const rawTransport = transport;
+            const originalTransportClose =
+              rawTransport.close.bind(rawTransport);
+            const physicalClose = closeOnce(originalTransportClose);
+            rawTransport.close = physicalClose;
+            // SDK stdio negotiation temporarily wraps close to cancel its probe.
+            // Preserve that hook without making the wrapper recurse into itself.
+            let currentTransportClose = physicalClose;
+            closeTransport = () => currentTransportClose();
+            const guardedTransport = new Proxy(rawTransport, {
+              get(target, property) {
+                if (property === 'close') return currentTransportClose;
+                if (property === 'constructor') return target.constructor;
+                const value = Reflect.get(target, property, target);
+                if (typeof value !== 'function') return value;
+                return (...args: unknown[]) => {
+                  // SDK negotiation may close/restart a transport. Once retired,
+                  // no later start/send may resurrect that local handle.
+                  assertCurrent();
+                  return track(() => {
+                    const result = Reflect.apply(value, target, args);
+                    if (
+                      result &&
+                      typeof (result as { then?: unknown }).then === 'function'
+                    )
+                      return Promise.resolve(result).then((settled) => {
+                        assertCurrent();
+                        return settled;
+                      });
+                    assertCurrent();
+                    return result;
+                  });
+                };
+              },
+              set(target, property, value) {
+                if (property === 'close') {
+                  currentTransportClose = value;
+                  return true;
+                }
+                return Reflect.set(target, property, value, target);
+              },
+            });
+            client = new Client(
+              { name: 'station', version: '0.1.0' },
+              {
+                capabilities: {
+                  extensions: {
+                    [MCP_APPS_EXTENSION_ID]: {
+                      mimeTypes: [MCP_APPS_MIME_TYPE],
+                    },
+                  },
+                },
+                versionNegotiation: {
+                  mode: 'auto',
+                  ...(def.timeouts?.startupMs
+                    ? { probe: { timeoutMs: def.timeouts.startupMs } }
+                    : {}),
+                },
+              },
+            );
+            const rawClient = client;
+            const originalClose = rawClient.close.bind(rawClient);
+            closeClient = closeOnce(originalClose);
+            rawClient.close = closeClient;
+            opts?.onTransport?.(guardedTransport);
+            assertCurrent();
+            await rawClient.connect(guardedTransport);
+            assertCurrent();
+            opts?.onStatus?.(def.id, 'connected');
+            const negotiation = describeNegotiation(rawClient);
+            opts?.onNegotiated?.(def.id, negotiation);
+
+            // Discover tools
+            assertCurrent();
+            const result = await rawClient.listTools();
+            assertCurrent();
+            const tools: MCPToolInfo[] = (result.tools || []).map((t) => ({
+              name: `${def.id}_${t.name}`,
+              originalName: t.name,
+              serverId: def.id,
+              description: t.description,
+              inputSchema: t.inputSchema,
+              _meta: isRecord((t as { _meta?: unknown })._meta)
+                ? (t as { _meta: Record<string, unknown> })._meta
+                : undefined,
+              ui: extractMCPToolUIMetadata(t),
+            }));
+
+            const guardedClient = new Proxy(rawClient, {
+              get(target, property) {
+                if (property === 'close') return handle.close;
+                if (property === 'constructor') return target.constructor;
+                const value = Reflect.get(target, property, target);
+                if (typeof value !== 'function') return value;
+                return (...args: unknown[]) => {
+                  assertCurrent();
+                  if (phase !== 'connected')
+                    throw new Error('MCP local connection is unavailable');
+                  return track(() => Reflect.apply(value, target, args));
+                };
+              },
+              set: (target, property, value) =>
+                Reflect.set(target, property, value, target),
+            });
+            phase = 'connected';
+            return {
+              client: guardedClient,
+              serverId: def.id,
+              tools,
+              negotiation,
+              close: handle.close,
+              disconnect: handle.close,
+              isUsable: () => current() && phase === 'connected',
+              localState: handle.inspect,
+            };
+          } catch (error) {
+            if (!retired) phase = 'failed';
+            opts?.onStatus?.(def.id, 'failed', 'Tool server connection failed');
+            throw error;
+          }
+        }),
+      );
+      return connecting;
+    },
+    retainForOAuth() {
+      assertCurrent();
+      if (phase !== 'failed' || !transport || !('finishAuth' in transport))
+        throw new Error('MCP OAuth continuation is unavailable');
+      phase = 'oauth';
+    },
+    async finishAuth(params) {
+      assertCurrent();
+      if (phase !== 'oauth' || !transport || !('finishAuth' in transport))
+        throw new Error('MCP OAuth continuation is unavailable');
+      await track(() =>
+        (
+          transport as Transport & {
+            finishAuth(value: URLSearchParams): Promise<void>;
+          }
+        ).finishAuth(params),
+      );
+      assertCurrent();
+    },
+    close() {
+      retired = true;
+      if (phase === 'closed') return Promise.resolve();
+      if (closing) return closing;
+      phase = 'closing';
+      closing = (async () => {
+        const before = activity;
+        await closePair();
+        // A timeout outside this promise does not release custody. In
+        // particular late connect/discovery must finish before the final close.
+        while (pending.size) await Promise.all([...pending]);
+        if (activity !== before) await closePair();
+        phase = 'closed';
+      })().catch((error) => {
+        phase = 'close-failed';
+        closing = undefined;
+        throw error;
+      });
+      return closing;
+    },
+  };
+  return handle;
+}
+
+/** Compatibility helper; supported owners use prepareMCPConnection before awaiting. */
 export async function connectMCP(
   def: ToolDef,
   opts?: MCPManagerOptions,
 ): Promise<MCPConnection> {
-  const normalized = normalizeTransportConfig(def);
-  const transport = createMCPTransport(normalized, opts?.authProvider);
-  opts?.onTransport?.(transport);
-  const client = new Client(
-    { name: 'station', version: '0.1.0' },
-    {
-      capabilities: {
-        extensions: {
-          [MCP_APPS_EXTENSION_ID]: {
-            mimeTypes: [MCP_APPS_MIME_TYPE],
-          },
-        },
-      },
-      versionNegotiation: {
-        mode: 'auto',
-        ...(def.timeouts?.startupMs
-          ? { probe: { timeoutMs: def.timeouts.startupMs } }
-          : {}),
-      },
-    },
-  );
-
+  const prepared = prepareMCPConnection(def, opts);
   try {
-    await client.connect(transport);
-    opts?.onStatus?.(def.id, 'connected');
-  } catch (err: unknown) {
-    opts?.onStatus?.(def.id, 'failed', 'Tool server connection failed');
-    throw err;
+    return await prepared.connect();
+  } catch (error) {
+    // Keep the failed call pending while cleanup is pending. A rejected cleanup
+    // carries the prepared handle non-enumerably for explicit caller recovery.
+    try {
+      await prepared.close();
+    } catch {
+      const failure = new Error('MCP local SDK cleanup failed');
+      Object.defineProperty(failure, 'localConnection', { value: prepared });
+      throw failure;
+    }
+    throw error;
   }
-
-  const negotiation = describeNegotiation(client);
-  opts?.onNegotiated?.(def.id, negotiation);
-
-  // Discover tools
-  const result = await client.listTools();
-  const tools: MCPToolInfo[] = (result.tools || []).map((t) => ({
-    name: `${def.id}_${t.name}`,
-    originalName: t.name,
-    serverId: def.id,
-    description: t.description,
-    inputSchema: t.inputSchema,
-    _meta: isRecord((t as { _meta?: unknown })._meta)
-      ? (t as { _meta: Record<string, unknown> })._meta
-      : undefined,
-    ui: extractMCPToolUIMetadata(t),
-  }));
-
-  return {
-    client,
-    serverId: def.id,
-    tools,
-    negotiation,
-    close: async () => {
-      await client.close();
-    },
-    disconnect: async () => {
-      await client.close();
-    },
-  };
 }
 
 function describeNegotiation(client: Client): MCPNegotiation {
@@ -241,6 +493,7 @@ export async function callTool(
  */
 export class MCPManager {
   private connections = new Map<string, MCPConnection>();
+  private readonly custody = new MCPLocalConnectionCustody();
   private opts: MCPManagerOptions;
 
   constructor(opts: MCPManagerOptions = {}) {
@@ -253,8 +506,15 @@ export class MCPManager {
       defs
         .filter((d) => d.kind === 'mcp')
         .map(async (def) => {
-          const conn = await connectMCP(def, this.opts);
-          this.connections.set(def.id, conn);
+          const claim = this.custody.acquire(def.id, 'managed');
+          try {
+            const conn = await claim.connect(def, this.opts);
+            if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+            this.connections.set(def.id, conn);
+          } catch (error) {
+            await claim.close().catch(() => undefined);
+            throw error;
+          }
         }),
     );
     for (const r of results) {
@@ -266,7 +526,9 @@ export class MCPManager {
 
   /** Get all discovered tools across all connections. */
   listTools(): MCPToolInfo[] {
-    return Array.from(this.connections.values()).flatMap((c) => c.tools);
+    return Array.from(this.connections.values())
+      .filter((c) => c.isUsable?.() !== false)
+      .flatMap((c) => c.tools);
   }
 
   /** Call a tool by its prefixed name (e.g., "my-server_list_items"). */
@@ -276,6 +538,7 @@ export class MCPManager {
   ): Promise<any> {
     // Find which connection owns this tool
     for (const conn of this.connections.values()) {
+      if (conn.isUsable?.() === false) continue;
       const tool = conn.tools.find((t) => t.name === prefixedName);
       if (tool) return callTool(conn, prefixedName, args);
     }
@@ -284,14 +547,15 @@ export class MCPManager {
 
   /** Get connection for a specific server. */
   getConnection(serverId: string): MCPConnection | undefined {
-    return this.connections.get(serverId);
+    const connection = this.connections.get(serverId);
+    return connection?.isUsable?.() === false ? undefined : connection;
   }
 
   /** Shut down all connections. */
   async closeAll(): Promise<void> {
-    await Promise.allSettled(
-      Array.from(this.connections.values()).map((c) => c.close()),
-    );
+    const result = await this.custody.reset();
+    if (result.state !== 'settled')
+      throw new MCPLocalCustodyError(result.state);
     this.connections.clear();
   }
 }
