@@ -149,7 +149,8 @@ function isBroadCopySource(src: string): boolean {
 const ALLOWED_RUNTIME_COPY_SOURCES = new Set([
   '/app/node_modules',
   '/app/package.json',
-  '/app/package-lock.json',
+  '/app/pnpm-lock.yaml',
+  '/app/pnpm-workspace.yaml',
   '/app/station',
   '/app/.station-release.json',
   '/app/packages',
@@ -330,14 +331,11 @@ describe('container source contract', () => {
       expect(dockerfile).toContain(
         `COPY ${workspace}/package.json ${workspace}/`,
       );
-    for (const lock of [
-      'packages/sdk/package-lock.json',
-      'packages/shared/package-lock.json',
-      'schemas/dependency-lifecycle-allowlist.schema.json',
-    ])
-      expect(dockerfile).toContain(`COPY ${lock}`);
+    expect(dockerfile).toContain(
+      'COPY schemas/dependency-lifecycle-allowlist.schema.json',
+    );
     expect(dockerfile).toMatch(
-      /COPY scripts\/node-runtime-contract\.mjs scripts\/dependency-lifecycle\.mjs scripts\/\s+COPY scripts\/lib\/dependency-lifecycle-policy\.mjs scripts\/lib\/workspace-dependency-satisfaction\.mjs scripts\/lib\/\s+RUN npm run dependencies:ci/,
+      /COPY scripts\/node-runtime-contract\.mjs scripts\/dependency-lifecycle\.mjs scripts\/\s+COPY scripts\/lib\/dependency-lifecycle-policy\.mjs scripts\/lib\/workspace-dependency-satisfaction\.mjs scripts\/lib\/pnpm-lockfile\.mjs scripts\/lib\/\s+RUN npm run dependencies:ci/,
     );
     expect(runtimeStage).not.toContain('g++ make python3');
     // Runtime dependencies must come from the manifest-only install stage.

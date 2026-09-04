@@ -1,14 +1,17 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
+import { pnpmInvocation, resolveNpmCli } from '../dependency-lifecycle.mjs';
 
 const dirs: string[] = [];
 afterEach(() =>
@@ -29,12 +32,13 @@ function runGate(root: string) {
   );
 }
 
-test('version pipeline pins lock regeneration and the real gate rejects then recovers stale workspace metadata', () => {
-  const rootScript = JSON.parse(
+test('managed version pipeline repairs stale pnpm locks offline without pnpm on PATH', () => {
+  const sourceManifest = JSON.parse(
     readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
-  ).scripts['version-packages'];
+  );
+  const rootScript = sourceManifest.scripts['version-packages'];
   expect(rootScript).toBe(
-    'changeset version && npm install --package-lock-only --ignore-scripts --force && npm run dependencies:check && npm run lockfile-sync:gate',
+    'changeset version && npm run dependencies:lock && npm run dependencies:check && npm run lockfile-sync:gate',
   );
   expect(
     readFileSync(
@@ -47,8 +51,77 @@ test('version pipeline pins lock regeneration and the real gate rejects then rec
   dirs.push(root);
   mkdirSync(join(root, 'packages', 'a'), { recursive: true });
   mkdirSync(join(root, 'packages', 'b'), { recursive: true });
+  const packageManager = sourceManifest.packageManager;
+  writeFileSync(
+    join(root, 'pnpm-workspace.yaml'),
+    `packages: [packages/a, packages/b]\nlinkWorkspacePackages: true\nstrictPeerDependencies: true\nstoreDir: ${JSON.stringify(join(root, 'store'))}\n`,
+  );
+  const npmCli = resolveNpmCli();
+  const bin = join(root, 'bin');
+  mkdirSync(bin);
+  if (process.platform === 'win32') {
+    copyFileSync(process.execPath, join(bin, 'node.exe'));
+    writeFileSync(
+      join(bin, 'npm.cmd'),
+      `@"${process.execPath}" "${npmCli}" %*\r\n`,
+    );
+  } else {
+    symlinkSync(process.execPath, join(bin, 'node'));
+    symlinkSync(npmCli, join(bin, 'npm'));
+  }
+  const systemBin =
+    process.platform === 'win32'
+      ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32')
+      : undefined;
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PATH: [bin, systemBin].filter(Boolean).join(delimiter),
+    CI: 'true',
+    npm_config_offline: 'true',
+    npm_config_script_shell:
+      process.platform === 'win32'
+        ? (process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe')
+        : '/bin/sh',
+    npm_execpath: npmCli,
+  };
+  // Windows environment keys are case-insensitive; remove the original Path
+  // spelling so child_process cannot choose it over the isolated PATH.
+  for (const key of Object.keys(env))
+    if (key !== 'PATH' && key.toLowerCase() === 'path') delete env[key];
+  const absentPnpm = spawnSync('pnpm', ['--version'], {
+    cwd: root,
+    env,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  expect((absentPnpm.error as NodeJS.ErrnoException | undefined)?.code).toBe(
+    'ENOENT',
+  );
+  const sourceRunner = join(process.cwd(), 'scripts/dependency-lifecycle.mjs');
+  const quotedRunner =
+    process.platform === 'win32'
+      ? `"${sourceRunner}"`
+      : `'${sourceRunner.replaceAll("'", "'\\''")}'`;
+  const scripts = {
+    'dependencies:lock': sourceManifest.scripts['dependencies:lock'].replace(
+      'scripts/dependency-lifecycle.mjs',
+      quotedRunner,
+    ),
+  };
+  const invocation = pnpmInvocation({ cwd: process.cwd(), env });
+  const repairStep = rootScript.split(' && ')[1].split(' ');
+  expect(repairStep.shift()).toBe('npm');
+  const repair = () =>
+    execFileSync(process.execPath, [npmCli, ...repairStep], {
+      cwd: root,
+      encoding: 'utf8',
+      windowsHide: true,
+      env,
+    });
   writeJson(join(root, 'package.json'), {
     name: 'fixture-root',
+    packageManager,
+    scripts,
     version: '1.0.0',
     private: true,
     workspaces: ['packages/a', 'packages/b'],
@@ -70,20 +143,13 @@ test('version pipeline pins lock regeneration and the real gate rejects then rec
 
   // No registry dependencies exist in this fixture; this creates its lock
   // entirely locally and proves the exact release repair stays network-free.
-  execFileSync(
-    'npm',
-    [
-      'install',
-      '--package-lock-only',
-      '--ignore-scripts',
-      '--force',
-      '--no-audit',
-    ],
-    { cwd: root, windowsHide: true },
-  );
+  repair();
+  expect(runGate(root)).toContain('Lockfile sync gate:');
 
   writeJson(join(root, 'package.json'), {
     name: 'fixture-root',
+    packageManager,
+    scripts,
     version: '1.0.0',
     private: true,
     workspaces: ['packages/a', 'packages/b'],
@@ -110,21 +176,82 @@ test('version pipeline pins lock regeneration and the real gate rejects then rec
     failure = error as { stderr?: string };
   }
   expect(failure).toBeDefined();
-  expect(failure?.stderr).toContain('root dependencies.fixture-a');
-  expect(failure?.stderr).toContain('packages/a version');
+  expect(failure?.stderr).toContain('. dependencies.fixture-a.specifier');
   expect(failure?.stderr).toContain('packages/b devDependencies.fixture-a');
-  expect(failure?.stderr).toContain('packages/b peerDependencies.fixture-a');
 
-  execFileSync(
-    'npm',
-    [
-      'install',
-      '--package-lock-only',
-      '--ignore-scripts',
-      '--force',
-      '--no-audit',
-    ],
-    { cwd: root, windowsHide: true },
-  );
+  let frozenFailure: { stdout?: string } | undefined;
+  try {
+    execFileSync(
+      invocation.command,
+      [
+        ...invocation.args,
+        'install',
+        '--lockfile-only',
+        '--ignore-scripts',
+        '--frozen-lockfile',
+        '--offline',
+        '--store-dir',
+        join(root, 'store'),
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        windowsHide: true,
+        env,
+      },
+    );
+  } catch (error) {
+    frozenFailure = error as { stdout?: string };
+  }
+  expect(frozenFailure?.stdout).toContain('ERR_PNPM_OUTDATED_LOCKFILE');
+  repair();
   expect(runGate(root)).toContain('Lockfile sync gate:');
+});
+
+test('the real pnpm gate rejects competing root and workspace npm locks but permits standalone examples', () => {
+  const root = mkdtempSync(join(tmpdir(), 'station-competing-lock-'));
+  dirs.push(root);
+  const workspaces = ['packages/sdk', 'packages/shared'];
+  writeJson(join(root, 'package.json'), {
+    name: 'fixture-root',
+    packageManager: 'pnpm@11.25.0',
+    workspaces,
+  });
+  writeFileSync(
+    join(root, 'pnpm-workspace.yaml'),
+    `packages: ${JSON.stringify(workspaces)}\n`,
+  );
+  writeJson(join(root, 'pnpm-lock.yaml'), {
+    lockfileVersion: '9.0',
+    importers: { '.': {}, 'packages/sdk': {}, 'packages/shared': {} },
+    packages: {},
+    snapshots: {},
+  });
+  for (const workspace of workspaces) {
+    mkdirSync(join(root, workspace), { recursive: true });
+    writeJson(join(root, workspace, 'package.json'), {
+      name: workspace.replace('/', '-'),
+      version: '1.0.0',
+    });
+  }
+  mkdirSync(join(root, 'examples/standalone'), { recursive: true });
+  writeJson(join(root, 'examples/standalone/package-lock.json'), {
+    lockfileVersion: 3,
+    packages: {},
+  });
+  expect(runGate(root)).toContain('Lockfile sync gate:');
+  for (const workspace of ['.', ...workspaces]) {
+    const path = join(root, workspace, 'package-lock.json');
+    writeJson(path, { lockfileVersion: 3, packages: {} });
+    let failure: { stderr?: string } | undefined;
+    try {
+      runGate(root);
+    } catch (error) {
+      failure = error as { stderr?: string };
+    }
+    expect(failure?.stderr).toContain(`${workspace} package-lock.json`);
+    expect(failure?.stderr).toContain('competing npm lockfile');
+    rmSync(path);
+    expect(runGate(root)).toContain('Lockfile sync gate:');
+  }
 });

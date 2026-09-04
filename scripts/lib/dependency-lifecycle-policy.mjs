@@ -5,17 +5,20 @@ import {
   copyFileSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   statSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import { readPnpmLockfile } from './pnpm-lockfile.mjs';
 
 export const LIFECYCLE_LOCKS = Object.freeze([
   { scope: 'root', path: 'package-lock.json' },
   { scope: 'sdk', path: 'packages/sdk/package-lock.json' },
   { scope: 'shared', path: 'packages/shared/package-lock.json' },
+  { scope: 'root', path: 'pnpm-lock.yaml' },
 ]);
 
 const DECISIONS = new Set(['execute', 'deny']);
@@ -189,12 +192,124 @@ export function readLifecycleLocks(
   root = process.cwd(),
   readFile = readFileSync,
 ) {
-  return LIFECYCLE_LOCKS.flatMap((descriptor) =>
+  if (lstatOrNull(resolve(root, 'pnpm-lock.yaml')))
+    return readPnpmLifecycleNodes(root);
+  const manifestPath = resolve(root, 'package.json');
+  if (
+    lstatOrNull(resolve(root, 'pnpm-workspace.yaml')) ||
+    (lstatOrNull(manifestPath) &&
+      JSON.parse(readFile(manifestPath, 'utf8')).packageManager?.startsWith(
+        'pnpm@',
+      ))
+  )
+    throw new Error('dependency lockfile is missing: pnpm-lock.yaml');
+  return LIFECYCLE_LOCKS.filter((descriptor) =>
+    descriptor.path.endsWith('.json'),
+  ).flatMap((descriptor) =>
     collectLifecycleNodes(
       JSON.parse(readFile(resolve(root, descriptor.path), 'utf8')),
       descriptor,
     ),
   );
+}
+
+/** Inventory physical hoisted packages before any reviewed hook executes.
+ * pnpm's lock does not enumerate lifecycle commands, so lock-only approval
+ * cannot discover new hooks. The inert installed manifests are authoritative
+ * for hook discovery; the lock remains authoritative for package integrity.
+ */
+export function readPnpmLifecycleNodes(root) {
+  const lock = readPnpmLockfile(root);
+  const policy = JSON.parse(
+    readFileSync(
+      resolve(root, 'config/dependency-lifecycle-allowlist.json'),
+      'utf8',
+    ),
+  );
+  const nodes = new Map();
+  const knownNative = new Set(
+    policy.entries
+      .filter((entry) => entry.hooks.length === 0)
+      .map((entry) => `${entry.name}@${entry.version}`),
+  );
+  const nodeFor = (name, version, path) => {
+    const meta = lock.packages[`${name}@${version}`];
+    if (!meta?.resolution?.integrity)
+      throw new Error(
+        `installed lifecycle package is not integrity-locked: ${name}@${version}`,
+      );
+    return {
+      scope: 'root',
+      lock: 'pnpm-lock.yaml',
+      path,
+      name,
+      version,
+      integrity: meta.resolution.integrity,
+      optional: Boolean(meta.os?.length || meta.cpu?.length),
+      platform: { os: meta.os ?? [], cpu: meta.cpu ?? [] },
+      purl: npmPurl(name, version),
+    };
+  };
+  const visited = new Set();
+  const scan = (directory) => {
+    if (!lstatOrNull(directory)) return;
+    assertNoRedirectedPath(root, directory, 'lifecycle inventory');
+    if (visited.has(directory)) return;
+    visited.add(directory);
+    for (const child of readdirSync(directory, { withFileTypes: true })) {
+      if (child.name.startsWith('.')) continue;
+      const packageRoot = join(directory, child.name);
+      if (child.name.startsWith('@')) {
+        scan(packageRoot);
+        continue;
+      }
+      // Workspace links carry Station-owned scripts and are not dependencies.
+      // Other linked dependencies are unsupported by the hoisted contract.
+      if (child.isSymbolicLink()) {
+        const target = realpathSync(packageRoot);
+        const rel = relative(realpathSync(root), target).split(sep).join('/');
+        if (Object.keys(lock.importers).includes(rel) && rel !== '.') continue;
+        throw new Error(
+          `lifecycle inventory is redirected by a symlink or junction: ${packageRoot}`,
+        );
+      }
+      if (!child.isDirectory()) continue;
+      const manifestPath = join(packageRoot, 'package.json');
+      if (!lstatOrNull(manifestPath)) continue;
+      assertNoRedirectedPath(
+        packageRoot,
+        manifestPath,
+        'installed package manifest',
+      );
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      if (
+        [...LIFECYCLE_HOOKS].some(
+          (hook) => typeof manifest.scripts?.[hook] === 'string',
+        ) ||
+        knownNative.has(`${manifest.name}@${manifest.version}`) ||
+        lstatOrNull(join(packageRoot, 'binding.gyp'))
+      ) {
+        const path = relative(root, packageRoot).split(sep).join('/');
+        const node = nodeFor(manifest.name, manifest.version, path);
+        nodes.set(path, node);
+      }
+      scan(join(packageRoot, 'node_modules'));
+    }
+  };
+  scan(resolve(root, 'node_modules'));
+  for (const importer of Object.keys(lock.importers)) {
+    if (importer === '.') continue;
+    const directory = resolve(root, importer, 'node_modules');
+    assertNoRedirectedPath(root, directory, 'workspace lifecycle inventory');
+    scan(directory);
+  }
+  // A platform-excluded approval remains checkable from lock metadata even
+  // when pnpm correctly did not materialize that package on this machine.
+  for (const entry of policy.entries) {
+    if (nodes.has(entry.path) || platformMatches(entry)) continue;
+    nodes.set(entry.path, nodeFor(entry.name, entry.version, entry.path));
+  }
+  return [...nodes.values()].sort((a, b) => a.path.localeCompare(b.path));
 }
 
 function exactKeys(value, keys) {
@@ -425,7 +540,7 @@ export function platformMatches(
 export function resolvedPackagePath(root, entry) {
   const lockRoot = resolve(
     root,
-    entry.lock === 'package-lock.json'
+    entry.lock === 'package-lock.json' || entry.lock === 'pnpm-lock.yaml'
       ? '.'
       : entry.lock.slice(0, -'/package-lock.json'.length),
   );
@@ -440,7 +555,7 @@ export function installedPackagePath(root, entry) {
     );
   const lockRoot = resolve(
     root,
-    entry.lock === 'package-lock.json'
+    entry.lock === 'package-lock.json' || entry.lock === 'pnpm-lock.yaml'
       ? '.'
       : entry.lock.slice(0, -'/package-lock.json'.length),
   );
@@ -545,6 +660,18 @@ export function optionalPackageMayBeAbsent(
   platform = process.platform,
   arch = process.arch,
 ) {
+  if (entry.lock === 'pnpm-lock.yaml') {
+    const meta =
+      readPnpmLockfile(root).packages[`${entry.name}@${entry.version}`];
+    return Boolean(
+      meta &&
+        !platformMatches(
+          { platform: { os: meta.os ?? [], cpu: meta.cpu ?? [] } },
+          platform,
+          arch,
+        ),
+    );
+  }
   const node = readLifecycleLocks(root).find(
     (candidate) => nodeIdentity(candidate) === nodeIdentity(entry),
   );

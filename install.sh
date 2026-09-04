@@ -734,7 +734,8 @@ mkdir -p "$extract_root"
 tar -xzf "$archive" -C "$extract_root"
 candidate="$extract_root/station"
 [ -x "$candidate/station" ] || fail 'release archive is missing the Station launcher'
-[ -f "$candidate/package-lock.json" ] || fail 'release archive is missing package-lock.json'
+[ -f "$candidate/pnpm-lock.yaml" ] || fail 'release archive is missing pnpm-lock.yaml'
+[ -f "$candidate/pnpm-workspace.yaml" ] || fail 'release archive is missing pnpm-workspace.yaml'
 [ -f "$candidate/.station-release.json" ] || fail 'release archive is missing provenance'
 candidate_identity="$(node -e '
   const fs = require("node:fs");

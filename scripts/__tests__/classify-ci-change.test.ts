@@ -6,6 +6,18 @@ import {
 } from '../classify-ci-change.mjs';
 
 describe('exact CI change classification', () => {
+  test.each([
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    'patches/dependency.patch',
+  ])('audits all workspaces for shared dependency input %s', (path) => {
+    expect(classifyChangedPaths([path])).toMatchObject({
+      heavy: true,
+      container: true,
+      dependencies: true,
+      dependencyScopes: ['root', 'sdk', 'shared'],
+    });
+  });
   test('schedules heavy lanes when a runtime file follows more than 300 docs files', () => {
     const paths = [
       ...Array.from({ length: 350 }, (_, index) => `docs/page-${index}.md`),

@@ -15,6 +15,11 @@ import {
   selectAuditScopes,
   withAuditRetries,
 } from '../dependency-advisory-policy.mjs';
+import {
+  collectPnpmAudits,
+  normalizePnpmAudit,
+} from '../lib/pnpm-advisory.mjs';
+import { pnpmDependencyGraph } from '../lib/pnpm-dependency-graph.mjs';
 
 const NOW = new Date('2026-07-10T00:00:00.000Z');
 
@@ -888,7 +893,8 @@ describe('selectAuditScopes', () => {
     for (const cwd of Object.values(byScope)) {
       expect(path.isAbsolute(cwd)).toBe(true);
       expect(cwd).not.toContain('..');
-      expect(existsSync(path.join(cwd, 'package-lock.json'))).toBe(true);
+      expect(existsSync(path.join(cwd, 'package.json'))).toBe(true);
+      expect(existsSync(path.join(process.cwd(), 'pnpm-lock.yaml'))).toBe(true);
     }
   });
 });
@@ -1016,5 +1022,151 @@ describe('runPolicyCli reports the range it decided from (#1442)', () => {
     expect(text).toContain('no range');
     // A placeholder that reads like a range is the failure mode this guards.
     expect(text).not.toMatch(/[0-9a-f]{8}\.\.[0-9a-f]{8}/);
+  });
+});
+
+describe('pnpm lock-backed advisory projection', () => {
+  const lock = () => ({
+    importers: {
+      '.': {
+        dependencies: { lib: { version: '1.0.0(peer@2.0.0)' } },
+        devDependencies: { tool: { version: '1.0.0' } },
+      },
+      'packages/sdk': { dependencies: { lib: { version: '2.0.0' } } },
+      'packages/shared': { dependencies: {} },
+    },
+    packages: {
+      'lib@1.0.0': {},
+      'lib@2.0.0': {},
+      'tool@1.0.0': {},
+      'peer@2.0.0': {},
+    },
+    snapshots: {
+      'lib@1.0.0(peer@2.0.0)': { dependencies: { peer: '2.0.0' } },
+      'lib@2.0.0': {},
+      'tool@1.0.0': {},
+      'peer@2.0.0': {},
+    },
+  });
+  const response = () => ({
+    advisories: {
+      one: {
+        module_name: 'lib',
+        severity: 'high',
+        github_advisory_id: 'GHSA-abcd-1234-5678',
+        findings: [{ version: '1.0.0', paths: ['.>lib'] }],
+      },
+      two: {
+        module_name: 'tool',
+        severity: 'moderate',
+        github_advisory_id: 'GHSA-efgh-1234-5678',
+        findings: [{ version: '1.0.0', paths: ['.>tool'] }],
+      },
+    },
+    metadata: {
+      vulnerabilities: { info: 0, low: 0, moderate: 1, high: 1, critical: 0 },
+    },
+  });
+
+  it('uses one registry response for all selected scopes and both reachability views', async () => {
+    const run = vi.fn(async () => response());
+    const audits = await collectPnpmAudits(
+      [{ scope: 'root' }, { scope: 'sdk' }, { scope: 'shared' }],
+      { root: '/fixture', run, graph: pnpmDependencyGraph(lock()) },
+    );
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(audits).toHaveLength(6);
+    const full = audits.find(
+      (a) => a.scope === 'root' && a.reachability === 'full',
+    )!;
+    const prod = audits.find(
+      (a) => a.scope === 'root' && a.reachability === 'production',
+    )!;
+    expect(Object.keys(full.audit.vulnerabilities)).toEqual(['lib', 'tool']);
+    expect(Object.keys(prod.audit.vulnerabilities)).toEqual(['lib']);
+    expect(prod.resolvedVersions['lib@1.0.0(peer@2.0.0)']).toBe('1.0.0');
+    expect(
+      audits
+        .filter((a) => a.scope === 'sdk')
+        .every((a) => Object.keys(a.audit.vulnerabilities).length === 0),
+    ).toBe(true);
+    const result = evaluateAuditPolicy(
+      audits,
+      { version: 2, exceptions: [], residuals: [] },
+      NOW,
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it('fails closed for malformed or truncated advisory records', () => {
+    const bad = response();
+    bad.metadata.vulnerabilities.high = 0;
+    expect(() =>
+      normalizePnpmAudit(bad, pnpmDependencyGraph(lock()), '.', true),
+    ).toThrow(/count/);
+    expect(() =>
+      normalizePnpmAudit(
+        { advisories: {} },
+        pnpmDependencyGraph(lock()),
+        '.',
+        true,
+      ),
+    ).toThrow();
+  });
+
+  it('rejects a missing dependency snapshot instead of dropping it from production', () => {
+    const bad = lock();
+    delete (bad.snapshots as Record<string, unknown>)['peer@2.0.0'];
+    expect(() => pnpmDependencyGraph(bad).closure('.', true)).toThrow(
+      /Unresolved dependency/,
+    );
+  });
+
+  it('follows workspace links but excludes that workspace development dependencies', () => {
+    const linked = lock();
+    (linked.importers['.'].dependencies as Record<string, unknown>).sdk = {
+      version: 'link:packages/sdk',
+    };
+    const graph = pnpmDependencyGraph(linked);
+    expect(graph.closure('.', true).has('lib@2.0.0')).toBe(true);
+    (linked.importers['.'].dependencies as Record<string, unknown>).sdk = {
+      version: 'link:../other',
+    };
+    expect(() => pnpmDependencyGraph(linked).closure('.', true)).toThrow(
+      /Escaping/,
+    );
+  });
+});
+
+describe('pnpm workspace-wide root audit coverage', () => {
+  it('includes a vulnerable production dependency owned only by an unlinked CLI workspace', () => {
+    const graph = pnpmDependencyGraph({
+      importers: {
+        '.': {},
+        'packages/cli': {
+          dependencies: { native: { version: '1.0.0' } },
+          devDependencies: { tool: { version: '1.0.0' } },
+        },
+      },
+      packages: { 'native@1.0.0': {}, 'tool@1.0.0': {} },
+      snapshots: { 'native@1.0.0': {}, 'tool@1.0.0': {} },
+    });
+    const raw = {
+      advisories: {
+        issue: {
+          module_name: 'native',
+          severity: 'high',
+          github_advisory_id: 'GHSA-abcd-1234-5678',
+          findings: [{ version: '1.0.0', paths: ['packages/cli>native'] }],
+        },
+      },
+      metadata: {
+        vulnerabilities: { info: 0, low: 0, moderate: 0, high: 1, critical: 0 },
+      },
+    };
+    expect(
+      normalizePnpmAudit(raw, graph, '.', true).audit.metadata.vulnerabilities
+        .high,
+    ).toBe(1);
   });
 });

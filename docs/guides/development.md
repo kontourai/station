@@ -60,8 +60,9 @@ The org-wide pnpm direction and Station's migration work are tracked in
 [issue #516](https://github.com/kontourai/station/issues/516). A sibling
 repository's migration does not change this checkout's install contract.
 Check the root lockfile, package metadata, and `scripts/dependency-lifecycle.mjs`
-before choosing an installer. This revision uses `package-lock.json` and the
-managed npm lifecycle above. The migration must update those inputs, native
+before choosing an installer. This revision uses `pnpm-lock.yaml` and the
+managed pnpm lifecycle above. `npm run` remains the script interface; it does
+not select npm dependency storage. The migration must update those inputs, native
 hooks and patches, verification identity, packaging, CI, and this guide together.
 
 The npm download cache does not share installed dependency trees between
@@ -150,12 +151,12 @@ workspace packages that cannot be resolved from the registry, and keeps the
 published ones pinned to the in-repo source rather than the last release. Add a
 new example there when its tests are part of the root verification corpus and
 it owns dependencies that the root install must provide. Root-managed examples
-use the repository's `package-lock.json`; do not add a second lock inside the
+use the repository's `pnpm-lock.yaml`; do not add a second lock inside the
 example.
 
 ### Dependency install deadline
 
-The dependency bootstrap gives the inert `npm ci`/`npm install` step a finite
+The dependency bootstrap gives the inert pnpm install step a finite
 deadline — twenty minutes on Windows, ten minutes elsewhere — so a wedged
 install fails instead of hanging forever. That default is not a claim about the
 slowest supported machine. A cold 1552-package install takes about eleven
@@ -346,7 +347,7 @@ PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test tests/<spec>.spec.ts
 
 Every Playwright spec must be assigned to exactly one bucket in `tests/e2e-manifest.mjs`.
 
-Dependency updates must also pass the multi-lock advisory floor. See
+Dependency updates must also pass the workspace advisory floor. See
 [Dependency security](dependency-security.md) for the root, SDK, and shared lock
 workflow, production-reachability interpretation, and exception contract.
 

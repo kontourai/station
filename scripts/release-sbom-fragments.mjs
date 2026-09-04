@@ -79,7 +79,9 @@ export function cyclonedxComponents(input, ecosystem, source = 'input') {
     )
       throw new Error(`${source} has an invalid component group`);
     const hashes = component.hashes?.filter(
-      (hash) => hash?.alg === 'SHA-256' && /^[a-f0-9]{64}$/.test(hash.content),
+      (hash) =>
+        (hash?.alg === 'SHA-256' && /^[a-f0-9]{64}$/.test(hash.content)) ||
+        (hash?.alg === 'SHA-512' && /^[a-f0-9]{128}$/.test(hash.content)),
     );
     const licenses = component.licenses
       ?.map((item) => item?.license?.id)
@@ -98,6 +100,15 @@ export function cyclonedxComponents(input, ecosystem, source = 'input') {
           : component.purl,
       ...(hashes?.length ? { hashes } : {}),
       ...(licenses?.length ? { licenses } : {}),
+      ...(component.properties?.some(
+        (property) => property?.name === 'station:pnpm-patch-hash',
+      )
+        ? {
+            properties: component.properties.filter(
+              (property) => property?.name === 'station:pnpm-patch-hash',
+            ),
+          }
+        : {}),
     };
   });
 }

@@ -2,6 +2,19 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { readPnpmWorkspace } from './lib/pnpm-lockfile.mjs';
+
+export function isPnpmRepository(root) {
+  const manifestPath = join(root, 'package.json');
+  const manager = existsSync(manifestPath)
+    ? readJson(manifestPath).packageManager
+    : '';
+  return (
+    manager?.startsWith('pnpm@') ||
+    existsSync(join(root, 'pnpm-workspace.yaml')) ||
+    existsSync(join(root, 'pnpm-lock.yaml'))
+  );
+}
 
 function readJson(path) {
   try {
@@ -45,11 +58,29 @@ export function listWorkspacePackageManifests(repositoryRoot) {
   const root = realpathSync(repositoryRoot);
   const rootManifest = readJson(join(root, 'package.json'));
   const declared = rootManifest.workspaces;
-  const patterns = Array.isArray(declared)
+  let patterns = Array.isArray(declared)
     ? declared
     : Array.isArray(declared?.packages)
       ? declared.packages
       : null;
+  if (isPnpmRepository(root)) {
+    const configured = readPnpmWorkspace(root).packages;
+    if (
+      !Array.isArray(configured) ||
+      configured.some((item) => typeof item !== 'string')
+    )
+      throw new Error(
+        'workspace dependency provenance requires pnpm workspace packages',
+      );
+    if (
+      JSON.stringify([...configured].sort()) !==
+      JSON.stringify([...(patterns ?? [])].sort())
+    )
+      throw new Error(
+        'workspace dependency provenance requires package.json workspaces to match pnpm-workspace.yaml packages',
+      );
+    patterns = configured;
+  }
   if (!patterns?.length)
     throw new Error(
       'workspace dependency provenance found no declared workspaces',

@@ -56,7 +56,8 @@ function makeFixtureArchive(
   const fakeBin = join(root, 'fake-bin');
   const log = join(root, 'station.log');
   mkdirSync(source, { recursive: true });
-  writeFileSync(join(source, 'package-lock.json'), '{}\n');
+  writeFileSync(join(source, 'pnpm-lock.yaml'), '{}\n');
+  writeFileSync(join(source, 'pnpm-workspace.yaml'), 'packages: []\n');
   writeFileSync(
     join(source, '.station-release.json'),
     `${JSON.stringify({

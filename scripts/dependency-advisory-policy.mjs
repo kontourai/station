@@ -10,6 +10,7 @@ import {
   DEPENDENCY_SCOPE_ROOTS,
 } from './classify-ci-change.mjs';
 import { createAuditAttemptDiagnostics } from './lib/dependency-audit-diagnostics.mjs';
+import { collectPnpmAudits } from './lib/pnpm-advisory.mjs';
 
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 const RESIDUAL_SEVERITIES = new Set(['moderate', 'low']);
@@ -824,6 +825,14 @@ export function collectAudits(
   auditRunner = runAudit,
   versionResolver = resolvedVersions,
 ) {
+  if (
+    auditRunner === runAudit &&
+    readJson(
+      path.join(REPO_ROOT, 'package.json'),
+      'manifest',
+    ).packageManager?.startsWith('pnpm@')
+  )
+    return collectPnpmAudits(scopes, { root: REPO_ROOT });
   const requests = scopes.flatMap(({ scope, cwd }) => [
     { scope, cwd, reachability: 'full', productionOnly: false },
     { scope, cwd, reachability: 'production', productionOnly: true },

@@ -31,7 +31,9 @@ on:
       - 'scripts/__tests__/ios-simulator-runtime-smoke.test.ts'
       - 'tests/ios-runtime-smoke/**'
       - 'package.json'
-      - 'package-lock.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
   workflow_dispatch:
 
 permissions:
@@ -68,7 +70,7 @@ jobs:
           relevant=false
           while IFS= read -r changed; do
             case "$changed" in
-              .github/workflows/build-ios.yml|src-desktop/*|src-ui/*|packages/connect/*|packages/contracts/*|packages/sdk/*|scripts/ios-simulator-runtime-smoke.mjs|scripts/__tests__/ios-simulator-runtime-smoke.test.ts|tests/ios-runtime-smoke/*|package.json|package-lock.json)
+              .github/workflows/build-ios.yml|src-desktop/*|src-ui/*|packages/connect/*|packages/contracts/*|packages/sdk/*|scripts/ios-simulator-runtime-smoke.mjs|scripts/__tests__/ios-simulator-runtime-smoke.test.ts|tests/ios-runtime-smoke/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|patches/*)
                 relevant=true
                 break
                 ;;
@@ -87,6 +89,10 @@ jobs:
           persist-credentials: false
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable

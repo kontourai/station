@@ -6,7 +6,8 @@
   "type": "module",
   "engines": {
     "node": "24.x",
-    "npm": ">=10"
+    "npm": ">=10",
+    "pnpm": "11.x"
   },
   "workspaces": [
     "packages/contracts",
@@ -85,7 +86,7 @@
     "builder-delivery-viewer-import:gate": "node scripts/builder-delivery-viewer-import-gate.mjs",
     "native-platform:ratchet": "node scripts/native-platform-boundary.mjs",
     "plugin-scaffold:public-deps": "node scripts/plugin-scaffold-public-dependencies.mjs",
-    "release:static": "node scripts/product-version.mjs --check && node scripts/release-platform-matrix.mjs && npx biome check config/mobile-ios-capability-allowlist.json config/release-platform-matrix.json scripts/product-version.mjs scripts/release-platform-matrix.mjs scripts/app-store-connect-receipt.mjs scripts/release-artifacts.mjs scripts/release-availability.mjs scripts/release-availability-driver.mjs scripts/generate-release-sboms.mjs scripts/release-container-platform-digests.mjs scripts/release-container-sbom-source.mjs scripts/release-sbom-context.mjs scripts/release-sbom-fragments.mjs scripts/release-sbom-predicates.mjs scripts/lib/release-artifacts.mjs scripts/lib/release-sbom-generation.mjs scripts/lib/release-sboms.mjs scripts/native-update-feed.mjs scripts/check-ios-store-profile.mjs scripts/check-mobile-package.mjs scripts/ecosystem-manifest.mjs scripts/ecosystem-publish-boundary.sh scripts/exercise-ecosystem-packaging-dry-run.sh scripts/__tests__/product-version.test.ts scripts/__tests__/release-platform-matrix.test.ts scripts/__tests__/app-store-connect-receipt.test.ts scripts/__tests__/native-release-promotion.test.ts scripts/__tests__/release-artifacts.test.ts scripts/__tests__/release-availability.test.ts scripts/__tests__/release-availability-driver.test.ts scripts/__tests__/release-sbom-generation.test.ts scripts/__tests__/release-sboms.test.ts scripts/__tests__/release-workflow.test.ts scripts/__tests__/ecosystem-manifest.test.ts scripts/__tests__/check-ios-store-profile.test.ts scripts/__tests__/native-update-feed.test.ts scripts/__tests__/check-mobile-package.test.ts scripts/__tests__/publish-mobile-feed-transaction.test.ts scripts/__tests__/container-release.test.ts && vitest run scripts/__tests__/product-version.test.ts scripts/__tests__/release-platform-matrix.test.ts scripts/__tests__/app-store-connect-receipt.test.ts scripts/__tests__/native-release-promotion.test.ts scripts/__tests__/release-artifacts.test.ts scripts/__tests__/release-availability.test.ts scripts/__tests__/release-availability-driver.test.ts scripts/__tests__/release-sbom-generation.test.ts scripts/__tests__/release-sboms.test.ts scripts/__tests__/release-workflow.test.ts scripts/__tests__/release-ring-workflow.test.ts scripts/__tests__/ecosystem-manifest.test.ts scripts/__tests__/check-ios-store-profile.test.ts scripts/__tests__/native-update-feed.test.ts scripts/__tests__/check-mobile-package.test.ts scripts/__tests__/publish-mobile-feed-transaction.test.ts scripts/__tests__/container-release.test.ts",
+    "release:static": "node scripts/product-version.mjs --check && node scripts/release-platform-matrix.mjs && npx biome check scripts/generate-pnpm-sbom.mjs scripts/lib/pnpm-dependency-graph.mjs config/mobile-ios-capability-allowlist.json config/release-platform-matrix.json scripts/product-version.mjs scripts/release-platform-matrix.mjs scripts/app-store-connect-receipt.mjs scripts/release-artifacts.mjs scripts/release-availability.mjs scripts/release-availability-driver.mjs scripts/generate-release-sboms.mjs scripts/release-container-platform-digests.mjs scripts/release-container-sbom-source.mjs scripts/release-sbom-context.mjs scripts/release-sbom-fragments.mjs scripts/release-sbom-predicates.mjs scripts/lib/release-artifacts.mjs scripts/lib/release-sbom-generation.mjs scripts/lib/release-sboms.mjs scripts/native-update-feed.mjs scripts/check-ios-store-profile.mjs scripts/check-mobile-package.mjs scripts/ecosystem-manifest.mjs scripts/ecosystem-publish-boundary.sh scripts/exercise-ecosystem-packaging-dry-run.sh scripts/__tests__/product-version.test.ts scripts/__tests__/release-platform-matrix.test.ts scripts/__tests__/app-store-connect-receipt.test.ts scripts/__tests__/native-release-promotion.test.ts scripts/__tests__/release-artifacts.test.ts scripts/__tests__/release-availability.test.ts scripts/__tests__/release-availability-driver.test.ts scripts/__tests__/release-sbom-generation.test.ts scripts/__tests__/release-sboms.test.ts scripts/__tests__/release-workflow.test.ts scripts/__tests__/ecosystem-manifest.test.ts scripts/__tests__/check-ios-store-profile.test.ts scripts/__tests__/native-update-feed.test.ts scripts/__tests__/check-mobile-package.test.ts scripts/__tests__/publish-mobile-feed-transaction.test.ts scripts/__tests__/container-release.test.ts && vitest run scripts/__tests__/product-version.test.ts scripts/__tests__/release-platform-matrix.test.ts scripts/__tests__/app-store-connect-receipt.test.ts scripts/__tests__/native-release-promotion.test.ts scripts/__tests__/release-artifacts.test.ts scripts/__tests__/release-availability.test.ts scripts/__tests__/release-availability-driver.test.ts scripts/__tests__/release-sbom-generation.test.ts scripts/__tests__/release-sboms.test.ts scripts/__tests__/release-workflow.test.ts scripts/__tests__/release-ring-workflow.test.ts scripts/__tests__/ecosystem-manifest.test.ts scripts/__tests__/check-ios-store-profile.test.ts scripts/__tests__/native-update-feed.test.ts scripts/__tests__/check-mobile-package.test.ts scripts/__tests__/publish-mobile-feed-transaction.test.ts scripts/__tests__/container-release.test.ts",
     "conduit:conformance:generate": "tsx scripts/generate-runtime-conformance.mjs",
     "conduit:conformance:check": "npx biome check scripts/generate-runtime-conformance.mjs && tsx scripts/generate-runtime-conformance.mjs --check",
     "workspace-pane:conformance": "tsx scripts/workspace-pane-conformance.ts",
@@ -228,7 +229,7 @@
     "tauri:docs": "node scripts/tauri-context.mjs",
     "volt": "volt",
     "changeset": "changeset",
-    "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts --force && npm run dependencies:check && npm run lockfile-sync:gate",
+    "version-packages": "changeset version && npm run dependencies:lock && npm run dependencies:check && npm run lockfile-sync:gate",
     "publish-packages": "changeset publish",
     "test:coverage": "node scripts/run-verification.mjs request test-coverage",
     "test:coverage:raw": "vitest run --coverage --maxWorkers=1 --exclude='scripts/__tests__/station-dogfood-reconcile*.test.ts' && npm run test:dogfood-reconcile",
@@ -254,7 +255,8 @@
     "gate:evidence-check-execution": "node scripts/evidence-check-execution-gate.mjs",
     "gate:test-import-existence": "node scripts/test-import-existence-gate.mjs",
     "gate:ci-change-classifier": "vitest run scripts/__tests__/classify-ci-change.test.ts scripts/__tests__/ci-workflow-contract.test.ts",
-    "typecheck:examples": "tsc --noEmit -p examples/minimal-layout/tsconfig.json && tsc --noEmit -p examples/shared-providers/tsconfig.json && tsc --noEmit -p examples/knowledge-library/tsconfig.json && tsc --noEmit -p examples/meeting-notes/tsconfig.json"
+    "typecheck:examples": "tsc --noEmit -p examples/minimal-layout/tsconfig.json && tsc --noEmit -p examples/shared-providers/tsconfig.json && tsc --noEmit -p examples/knowledge-library/tsconfig.json && tsc --noEmit -p examples/meeting-notes/tsconfig.json",
+    "dependencies:lock": "node scripts/dependency-lifecycle.mjs lock"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.4.0",
@@ -350,52 +352,6 @@
     "zod": "^4.4.3",
     "zod-to-json-schema": "^3.25.2"
   },
-  "overrides": {
-    "adm-zip": "^0.6.0",
-    "axios": "^1.18.1",
-    "express-rate-limit": "^8.3.1",
-    "fast-uri": "^3.1.6",
-    "form-data": "^4.0.6",
-    "gaxios": "^7.3.0",
-    "lodash": "^4.18.1",
-    "node-forge": "^1.4.0",
-    "qs": "^6.16.0",
-    "router": {
-      "path-to-regexp": "^8.4.2"
-    },
-    "anymatch": {
-      "picomatch": "^2.3.2"
-    },
-    "micromatch": {
-      "picomatch": "^2.3.2"
-    },
-    "gray-matter": {
-      "js-yaml": "^3.15.1"
-    },
-    "read-yaml-file": {
-      "js-yaml": "^3.15.1"
-    },
-    "readdirp": {
-      "picomatch": "^2.3.2"
-    },
-    "socket.io-parser": "^4.2.7",
-    "minimatch@^10.0.0": {
-      "brace-expansion": "^5.0.9"
-    },
-    "brace-expansion@^2.0.2": "^2.1.4",
-    "js-yaml@^4.1.0": "^4.3.1",
-    "js-yaml@^4.1.1": "^4.3.1",
-    "nanoid": "^3.3.18",
-    "engine.io-client": "^6.6.6",
-    "@strands-agents/sdk": {
-      "@anthropic-ai/sdk": "$@anthropic-ai/sdk",
-      "@opentelemetry/exporter-trace-otlp-http": "$@opentelemetry/exporter-trace-otlp-http",
-      "@opentelemetry/exporter-metrics-otlp-http": "$@opentelemetry/exporter-metrics-otlp-http"
-    },
-    "@ai-sdk/provider-utils": {
-      "undici": "^6.28.0"
-    }
-  },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@biomejs/biome": "^2.5.11",
@@ -423,7 +379,8 @@
     "esbuild": "^0.28.1",
     "fallow": "^3.19.0",
     "js-tiktoken": "1.0.21",
-    "patch-package": "^8.0.1",
+    "node-gyp": "11.5.0",
+    "object-hash": "3.0.0",
     "pngjs": "^7.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -434,8 +391,10 @@
     "vite": "^7.3.6",
     "vitest": "4.1.11",
     "wait-on": "^9.1.0",
+    "yaml": "2.9.0",
     "yauzl": "^3.4.0",
     "yazl": "^3.3.1"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@11.25.0"
 }

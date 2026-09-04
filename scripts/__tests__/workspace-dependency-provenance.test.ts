@@ -285,3 +285,24 @@ describe('workspace dependency provenance preflight', () => {
     }
   });
 });
+
+it('rejects disagreement between npm command workspace metadata and pnpm installation workspaces', () => {
+  const fixture = mkdtempSync(join(tmpdir(), 'station-pnpm-workspaces-'));
+  try {
+    writeWorktree(fixture);
+    writeFileSync(
+      join(fixture, 'pnpm-workspace.yaml'),
+      'packages: [packages/other]\n',
+    );
+    expect(() => listWorkspacePackageManifests(fixture)).toThrow(
+      'workspaces to match pnpm-workspace.yaml',
+    );
+    writeFileSync(
+      join(fixture, 'pnpm-workspace.yaml'),
+      'packages: [packages/contracts]\n',
+    );
+    expect(listWorkspacePackageManifests(fixture)).toHaveLength(1);
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});

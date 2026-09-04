@@ -64,6 +64,7 @@ category.
 - [pane-or-shell.md](pane-or-shell.md) — Pane or shell: the criterion
 - [plugin-authority-model.md](plugin-authority-model.md) — The plugin authority model: contributions, loci, and where consent belongs
 - [plugin-knowledge-store-contributions.md](plugin-knowledge-store-contributions.md) — Plugin-contributed Knowledge stores
+- [pnpm-workspace-installation.md](pnpm-workspace-installation.md) — pnpm workspace installation
 - [portable-project-identity.md](portable-project-identity.md) — Design: portable Project identity — remote-keyed resources, per-Station bindings
 - [principals.md](principals.md) — Design: Principals — what "people" means in Station, and when it changes
 - [project-task-room-history.md](project-task-room-history.md) — Project/Task room history
