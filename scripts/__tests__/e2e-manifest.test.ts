@@ -208,6 +208,7 @@ describe('e2e manifest', () => {
       'tests/device-pairing-mobile.spec.ts',
       'tests/connection-lost-access-request.spec.ts',
       'tests/plugin-preview.spec.ts',
+      'tests/plugin-rejection-visibility.spec.ts',
       'tests/plugin-system.spec.ts',
       'tests/survey-review-workbench.spec.ts',
       'tests/fieldwork-review.spec.ts',
