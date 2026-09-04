@@ -123,12 +123,10 @@ const NEWS_CARRYING_LABELS = [
 ] as const;
 
 /**
- * `.app-toolbar__conn-state` is `display: none` — width 0 — in the two
- * dot-only states, and reserves `min-width: 116px` otherwise. Anything at or
- * above this floor is the wide chip; the margin below 116 is for sub-pixel
- * layout only, not for admitting a narrower state.
+ * Sub-pixel tolerance when comparing two independently laid-out widths.
+ * Layout reports values like 84.99993896484375 for an 85px box.
  */
-const NEWS_CARRYING_STATE_MIN_WIDTH_PX = 110;
+const SUBPIXEL_TOLERANCE_PX = 0.01;
 
 /**
  * Controls that must appear in the measured inventory before any verdict is
@@ -226,6 +224,13 @@ const NEWS_STATES: ReadonlyArray<{
   id: string;
   /** The `app-toolbar__conn--*` modifier this drive must produce, exactly. */
   modifier: string;
+  /**
+   * Exactly one entry is the state whose chip is at least as wide as any
+   * news-carrying state could render. That entry carries the coverage claim
+   * for the whole class, checked against live label measurements in
+   * `assertToolbarPreconditions`; the others deliberately do not.
+   */
+  coversClassMaximum: boolean;
   drive: (page: Page) => Promise<void>;
 }> = [
   {
@@ -239,6 +244,10 @@ const NEWS_STATES: ReadonlyArray<{
     // still reading `Connected` 12s later.
     id: 'error ("Can\'t connect")',
     modifier: 'app-toolbar__conn--error',
+    // The shortest news label (78.75px). Not the class maximum, and after
+    // #1424 measurably narrower than one — which is exactly why driving only
+    // this state is not enough.
+    coversClassMaximum: false,
     drive: async (page) => {
       await page.route(`**${PUBLIC_STATION_HANDSHAKE_PATH}*`, (route) =>
         route.abort('connectionrefused'),
@@ -248,6 +257,13 @@ const NEWS_STATES: ReadonlyArray<{
   {
     id: 'needs-repair ("Needs re-pairing")',
     modifier: 'app-toolbar__conn--needs-repair',
+    // 95.94px of text — second-longest after "Awaiting approval" (100.23px),
+    // but both exceed the span's `max-width` ceiling after #1424 and both sit
+    // under the reservation before it, so this state's chip is exactly as wide
+    // as that one's either way. The assertion re-derives that from live
+    // measurements on every run rather than trusting this comment, and fires
+    // if it ever stops holding.
+    coversClassMaximum: true,
     // The REAL handshake, with only the identity field removed, so every other
     // check in `probeServerConnection` passes on the server's own live answer
     // (schema version, auth scheme, transports, and the compatibility verdict,
@@ -303,6 +319,14 @@ interface ToolbarMeasurement {
   newsLabelWidths: Record<string, number> | null;
   /** `(pointer: coarse)` — what decides the region-control fold (#917). */
   coarsePointer: boolean;
+  /**
+   * The label span's computed `max-width` in px, or `null` for `none` — the
+   * ceiling past which the copy ellipsises and the box grows no further. Read
+   * from the page rather than transcribed, because it is a live CSS value
+   * that changes (#1424 takes it from 120px to 85px) and a transcribed copy
+   * would quietly go stale.
+   */
+  connectionStateMaxWidth: number | null;
   /** The app's own mobile breakpoint, copied from `chat.css` verbatim. */
   mobileBreakpoint: boolean;
   maxTouchPoints: number;
@@ -495,6 +519,14 @@ async function measureToolbarControls(page: Page): Promise<ToolbarMeasurement> {
         : null,
       connectionChipWidth: connection ? rectOf(connection).width : null,
       newsLabelWidths: measureNewsLabelWidths(connectionState),
+      connectionStateMaxWidth: (() => {
+        if (!connectionState) return null;
+        const declared = getComputedStyle(connectionState).maxWidth;
+        const parsed = Number.parseFloat(declared);
+        return declared === 'none' || Number.isNaN(parsed)
+          ? null
+          : round(parsed);
+      })(),
       coarsePointer: window.matchMedia('(pointer: coarse)').matches,
       // Byte-for-byte the query `chat.css` uses for its mobile branch. If this
       // is false the page is being styled as a desktop and every measurement
@@ -535,6 +567,7 @@ function renderInventory(measurement: ToolbarMeasurement): string {
 function assertToolbarPreconditions(
   measurement: ToolbarMeasurement,
   expectedModifier: string,
+  coversClassMaximum: boolean,
 ): void {
   const context = renderInventory(measurement);
 
@@ -576,13 +609,21 @@ function assertToolbarPreconditions(
       `that cannot reproduce any defect in this class)\n${context}`,
   ).toContain(expectedModifier);
 
-  // (b) The label span is actually rendered wide. Independent of (a): the
-  //     class is what the component wrote, this is what the browser laid out.
+  // (b) The label span is actually laid out. Independent of (a): the class is
+  //     what the component wrote, this is what the browser did with it.
+  //     `chat.css` gives the span `display: none` in exactly the two dot-only
+  //     states, so zero width IS the dot-only chip. Deliberately not a pixel
+  //     threshold: an earlier revision of this required >=110px, which encoded
+  //     the 116px reservation of the day and would have reddened this guard on
+  //     #1424 — a change that narrows the span to <=85px without making the
+  //     chip any less news-carrying. The strength here comes from (a) and (c),
+  //     which are tied to mechanisms rather than to a number.
   expect(
     measurement.connectionStateWidth ?? 0,
-    `.app-toolbar__conn-state is narrower than its reserved 116px min-width, ` +
-      `so the chip is not in its wide state\n${context}`,
-  ).toBeGreaterThanOrEqual(NEWS_CARRYING_STATE_MIN_WIDTH_PX);
+    `.app-toolbar__conn-state has zero width, which is the dot-only chip — ` +
+      `chat.css hides this span for connected/idle, and a measurement of it ` +
+      `cannot reproduce any defect in this class\n${context}`,
+  ).toBeGreaterThan(0);
 
   // (c) THE DERIVATION that makes driving two states a statement about all
   //     five. Every news-carrying label, measured in this chip's own live
@@ -594,18 +635,35 @@ function assertToolbarPreconditions(
   //     When this fires, the guard has not found a layout bug; it has found
   //     that its own coverage claim expired. The remedy is to drive the state
   //     that owns the offending label and assert it directly.
+  // Only the state DESIGNATED as the class maximum carries this claim. The
+  // others are deliberately narrower — that is the point of driving more than
+  // one — so asserting it of every case would red the `error` case the moment
+  // #1424 lands and the labels stop being equal-width.
+  if (!coversClassMaximum) return;
   const measuredSpan = measurement.connectionStateWidth ?? 0;
-  const overflowing = Object.entries(measurement.newsLabelWidths ?? {})
-    .filter(([, width]) => width > measuredSpan)
-    .map(([label, width]) => `${label} needs ${width}px`);
+  const ceiling =
+    measurement.connectionStateMaxWidth ?? Number.POSITIVE_INFINITY;
+  const widest = Object.entries(measurement.newsLabelWidths ?? {}).reduce(
+    (best, entry) => (entry[1] > best[1] ? entry : best),
+    ['<none>', 0] as [string, number],
+  );
+  // What the widest label would actually lay the span out to: its own text
+  // width, capped by `max-width` (past which the copy ellipsises and the box
+  // stops growing). Comparing against the raw text width instead would red
+  // whenever a label is merely ellipsised — true of two labels the moment
+  // #1424 lands — which is a clamp doing its job, not a coverage gap.
+  const widestReachableSpan = Math.min(widest[1], ceiling);
   expect(
-    overflowing,
-    `a news-carrying connection label no longer fits inside the ` +
-      `${measuredSpan}px label span this run measured, so driving ` +
-      `${expectedModifier} no longer measures the widest chip the class can ` +
-      `produce and this guard's coverage claim is stale. Drive the state that ` +
-      `owns the label below and assert it directly (see NEWS_STATES)\n${context}`,
-  ).toEqual([]);
+    measuredSpan + SUBPIXEL_TOLERANCE_PX,
+    `${expectedModifier} is designated as the widest news-carrying state, but ` +
+      `it measured a ${measuredSpan}px label span while '${widest[0]}' would ` +
+      `lay out to ${widestReachableSpan}px (text ${widest[1]}px, capped by ` +
+      `max-width ${ceiling}px). Some state this suite does not drive renders a ` +
+      `WIDER chip, so the geometry checked below is not the worst case for the ` +
+      `class and this guard's coverage claim is stale. Drive the state that ` +
+      `owns that label and move the designation to it (see NEWS_STATES)` +
+      `\n${context}`,
+  ).toBeGreaterThanOrEqual(widestReachableSpan);
 
   // A non-empty, complete inventory — precondition 2.
   const keys = measurement.controls.map((control) => control.key);
@@ -635,6 +693,19 @@ function assertReachability(measurement: ToolbarMeasurement): void {
     `toolbar control(s) unreachable at their own centre at ` +
       `${measurement.viewportWidth}px\n${context}`,
   ).toEqual([]);
+}
+
+// The coverage claim above is carried by exactly one entry. Losing it (or
+// duplicating it) would silently drop the class-maximum check while every test
+// still passed, so it fails collection instead of failing quietly.
+const CLASS_MAXIMUM_STATES = NEWS_STATES.filter(
+  (state) => state.coversClassMaximum,
+);
+if (CLASS_MAXIMUM_STATES.length !== 1) {
+  throw new Error(
+    `exactly one NEWS_STATES entry must set coversClassMaximum; found ` +
+      `${CLASS_MAXIMUM_STATES.length} (${CLASS_MAXIMUM_STATES.map((state) => state.id).join(', ') || 'none'})`,
+  );
 }
 
 /**
@@ -694,7 +765,11 @@ for (const { width, skipReason } of TOOLBAR_WIDTHS) {
         );
 
         const measurement = await measureToolbarControls(page);
-        assertToolbarPreconditions(measurement, state.modifier);
+        assertToolbarPreconditions(
+          measurement,
+          state.modifier,
+          state.coversClassMaximum,
+        );
         assertReachability(measurement);
       });
     }
