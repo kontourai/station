@@ -20,10 +20,11 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { RegionShells } from '../../app-shell/RegionShells';
 import { DockShell } from '../../components/chat-dock/DockShell';
+import { OverflowMenu } from '../../components/header/OverflowMenu';
 import { RegionToolbarControls } from '../../components/header/RegionToolbarControls';
 import {
   KeyboardShortcutsProvider,
@@ -35,6 +36,7 @@ import {
   RegionModelProvider,
   useRegionModel,
 } from '../../contexts/RegionModelContext';
+import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { DOCK_REGION_IDS, foldedDockRegion } from '../../regions/region-model';
 import type { DockMode } from '../../types';
@@ -162,7 +164,32 @@ const PRE_REFACTOR_CAPTURE: readonly {
   },
 ];
 
+/**
+ * jsdom ships no `matchMedia`, so `useIsMobile` — the single source of truth
+ * for the media query that decides whether chat.css displays the `⋯` button —
+ * would report "not mobile" at every width and the phone tests below would
+ * exercise the wrong branch. Only that one query is evaluated; anything else
+ * answers false, which is what the absent implementation already meant.
+ */
+function installMobileMatchMedia() {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: query === MOBILE_MEDIA_QUERY && window.innerWidth <= 768,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
 beforeEach(() => {
+  installMobileMatchMedia();
   Object.defineProperty(globalThis.navigator, 'locks', {
     configurable: true,
     value: {
@@ -188,6 +215,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   resetDockPlacementState('/', { dock: null });
   delete (globalThis.navigator as { locks?: unknown }).locks;
+  delete (window as { matchMedia?: unknown }).matchMedia;
 });
 
 /** Same seam as `DockShellControlParity.test.tsx` — see its docblock. */
@@ -241,6 +269,47 @@ function currentRegionModel(): ReturnType<typeof useRegionModel> {
   return regionModel;
 }
 
+/**
+ * The `⋯` overflow menu, mounted the way `HeaderActions` mounts it. Since
+ * #917 it is where a coarse device's region commands live, so the phone tests
+ * below drive Show/Hide through here rather than through a toolbar control
+ * that no longer exists at those widths.
+ */
+function OverflowMenuHost() {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="More actions"
+        onClick={() => setIsOpen(true)}
+      >
+        ⋯
+      </button>
+      <OverflowMenu
+        isOpen={isOpen}
+        connStatus="connected"
+        userInitials="ST"
+        onClose={() => setIsOpen(false)}
+        onOpenConnections={vi.fn()}
+        onOpenHelp={vi.fn()}
+        onOpenProfile={vi.fn()}
+      />
+    </>
+  );
+}
+
+/**
+ * Show/Hide a surface the way a phone user does: `⋯`, then the row. Scoped to
+ * the menu's own region group — a shell header can carry the same label.
+ */
+function selectRegionCommand(name: string) {
+  fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+  const group = document.querySelector('.app-toolbar__overflow-regions');
+  if (!group) throw new Error('the overflow menu rendered no region rows');
+  fireEvent.click(within(group as HTMLElement).getByRole('button', { name }));
+}
+
 function Providers({ children }: { children: React.ReactNode }) {
   return (
     <KeyboardShortcutsProvider>
@@ -249,6 +318,7 @@ function Providers({ children }: { children: React.ReactNode }) {
           <ShortcutProbe />
           <RegionModelProbe />
           <RegionToolbarControls />
+          <OverflowMenuHost />
           {children}
         </RegionModelProvider>
       </NavigationProvider>
@@ -678,35 +748,29 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       document.querySelector('section[aria-label="Activity"]'),
     ).not.toBeNull();
     expect(document.querySelectorAll('#chat-dock')).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Show Chat' }));
+    // #917: at this width the toolbar renders no region control at all, so the
+    // `⋯` menu below is the only route. Asserted here so a regression that
+    // brings the fieldset back cannot hide behind the commands still working.
+    expect(document.querySelector('.app-toolbar__regions')).toBeNull();
+    selectRegionCommand('Show Chat');
     await waitFor(() =>
       expect(document.querySelectorAll('#chat-dock')).toHaveLength(1),
     );
     expect(shells()).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
+    selectRegionCommand('Show Activity');
     await waitFor(() =>
       expect(
         document.querySelector('section[aria-label="Activity"]'),
       ).not.toBeNull(),
     );
     expect(shells()).toHaveLength(1);
-    fireEvent.click(
-      within(screen.getByRole('group', { name: 'Regions' })).getByRole(
-        'button',
-        { name: 'Hide Activity' },
-      ),
-    );
+    selectRegionCommand('Hide Activity');
     await waitFor(() =>
       expect(
         document.querySelector('section[aria-label="Activity"]'),
       ).toBeNull(),
     );
-    fireEvent.click(
-      within(screen.getByRole('group', { name: 'Regions' })).getByRole(
-        'button',
-        { name: 'Show Activity' },
-      ),
-    );
+    selectRegionCommand('Show Activity');
     await waitFor(() =>
       expect(
         document.querySelector('section[aria-label="Activity"]'),
