@@ -320,6 +320,31 @@ describe('plugin composition profiles', () => {
     },
   );
 
+  test('byte refusal does not expose a malformed profile whose later configuration property is an accessor', async () => {
+    const getter = vi.fn(() => {
+      throw new Error('must not evaluate');
+    });
+    const configuration = { a: 'x'.repeat(70_000) };
+    Object.defineProperty(configuration, 'z', {
+      enumerable: true,
+      get: getter,
+    });
+    const result = await moduleWith([]).apply(
+      profile(projectA, [
+        contribution('cache', 'workspace.cache', { configuration }),
+      ]),
+    );
+    expect(result).toMatchObject({
+      kind: 'refused',
+      inspection: {
+        scope: { kind: 'project', projectId: 'invalid' },
+        failed: [],
+        pending: [],
+      },
+    });
+    expect(getter).not.toHaveBeenCalled();
+  });
+
   test('a timed-out stage returning an exact borrowed handle releases only its own authorization after settlement', async () => {
     vi.useFakeTimers();
     try {

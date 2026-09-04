@@ -273,12 +273,15 @@ interface ConfigurationBudget {
   nodes: number;
   bytes: number;
   exceededBytes: boolean;
+  /** Bounded topology validation after byte refusal; no sorting/copying/scalar scan. */
+  validateOnly?: boolean;
 }
 
 function consumeConfigurationBytes(
   budget: ConfigurationBudget,
   bytes: number,
 ): boolean {
+  if (budget.validateOnly) return true;
   if (bytes > MAX_CONFIGURATION_BYTES - budget.bytes) {
     budget.exceededBytes = true;
     return false;
@@ -292,6 +295,7 @@ function consumeConfigurationString(
   value: string,
   budget: ConfigurationBudget,
 ): boolean {
+  if (budget.validateOnly) return true;
   // UTF-16 length is a lower bound on escaped UTF-8 bytes. Reject huge inputs
   // in constant work before scanning, sorting keys, or serializing anything.
   if (value.length > MAX_CONFIGURATION_BYTES - budget.bytes - 2) {
@@ -395,7 +399,7 @@ function canonicalConfiguration(
           budget,
         );
         if (normalized === undefined) return undefined;
-        output.push(normalized);
+        if (!budget.validateOnly) output.push(normalized);
       }
       return output;
     } catch {
@@ -421,8 +425,9 @@ function canonicalConfiguration(
       )
         return undefined;
     }
-    const output: Record<string, PluginCompositionJson> = Object.create(null);
-    for (const key of keys.sort()) {
+    const output: Record<string, PluginCompositionJson> | undefined =
+      budget.validateOnly ? undefined : Object.create(null);
+    for (const key of budget.validateOnly ? keys : keys.sort()) {
       if (key === '__proto__' || key === 'prototype' || key === 'constructor') {
         return undefined;
       }
@@ -439,9 +444,9 @@ function canonicalConfiguration(
         budget,
       );
       if (normalized === undefined) return undefined;
-      output[key] = normalized;
+      if (output) output[key] = normalized;
     }
-    return output;
+    return output ?? null;
   } catch {
     return undefined;
   }
@@ -629,6 +634,16 @@ function snapshotContribution(
   if (
     !requires ||
     (configuration === undefined && !configurationBudget.exceededBytes)
+  )
+    return;
+  if (
+    configuration === undefined &&
+    canonicalConfiguration(record.configuration, 0, {
+      nodes: 0,
+      bytes: 0,
+      exceededBytes: false,
+      validateOnly: true,
+    }) === undefined
   )
     return;
   const snapshot: PluginCompositionContribution = {
