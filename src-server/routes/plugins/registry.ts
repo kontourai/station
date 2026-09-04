@@ -304,16 +304,28 @@ export function createRegistryRoutes(
           500,
         );
       }
-      const removed = await uninstallInstalledPlugin(
-        item.plugin,
-        pluginInstallDeps,
+      const mutation = await captureConfigurationMutation(
+        deps?.applyConfigurationMutation,
+        async (beginMutation) =>
+          uninstallInstalledPlugin(item.plugin!, {
+            ...pluginInstallDeps,
+            beginConfigurationMutation: beginMutation,
+          }),
+        { rediscoverSkills: true },
       );
       registryOps.add(1, {
         operation: 'remove-layout',
         source: 'plugin',
-        outcome: removed.success ? 'success' : 'failed',
+        outcome: mutation.value.success ? 'success' : 'failed',
       });
-      return c.json(removed, removed.success ? 200 : 500);
+      return c.json(
+        {
+          ...mutation.value,
+          success: mutation.activation?.status !== 'pending',
+          ...configurationActivationPayload(mutation.activation),
+        },
+        configurationMutationStatus(mutation.activation, 200),
+      );
     } catch (error: unknown) {
       registryOps.add(1, { operation: 'remove-layout', outcome: 'rejected' });
       return c.json({ success: false, error: errorMessage(error) }, 400);
@@ -400,6 +412,7 @@ export function createRegistryRoutes(
               await deps?.settleProviderAdapterRetirements?.();
               return removed;
             },
+            { rediscoverSkills: true },
           );
           if (mutation.value.success) {
             try {
@@ -706,6 +719,7 @@ export function createRegistryRoutes(
           await deps?.settleProviderAdapterRetirements?.();
           return installed;
         },
+        { rediscoverSkills: true },
       );
       if (mutation.value.success) {
         try {
@@ -817,6 +831,7 @@ export function createRegistryRoutes(
           await deps?.settleProviderAdapterRetirements?.();
           return removed;
         },
+        { rediscoverSkills: true },
       );
       if (mutation.value.success) {
         try {

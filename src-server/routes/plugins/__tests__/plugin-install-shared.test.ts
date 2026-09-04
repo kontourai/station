@@ -435,6 +435,93 @@ describe('installPluginFromSource', () => {
     expect(existsSync(join(root, 'integrations'))).toBe(false);
   });
 
+  test('refuses a manifest and installed-directory identity mismatch before uninstall mutation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-plugin-owner-mismatch-'));
+    cleanupDirs.push(root);
+    const mismatched = join(root, 'plugins', 'plugin-a');
+    const owner = join(root, 'plugins', 'plugin-b');
+    writePlugin(mismatched, {
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'plugin-b',
+    });
+    writePlugin(owner, {
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'plugin-b',
+    });
+    const ownerData = join(root, 'agent-plugin-data', 'plugin-b');
+    mkdirSync(ownerData, { recursive: true });
+    writeFileSync(join(ownerData, 'owner-marker'), 'plugin-b');
+    const quiesceEventSubscriptions = vi.fn();
+
+    await expect(
+      uninstallInstalledPlugin('plugin-a', {
+        ...deps(root),
+        quiesceEventSubscriptions,
+      }),
+    ).rejects.toThrow(/identity does not match its directory/);
+
+    expect(quiesceEventSubscriptions).not.toHaveBeenCalled();
+    expect(existsSync(mismatched)).toBe(true);
+    expect(existsSync(owner)).toBe(true);
+    expect(readFileSync(join(ownerData, 'owner-marker'), 'utf8')).toBe(
+      'plugin-b',
+    );
+  });
+
+  test('removes historically owned Agent Plugin data after a transition to legacy format', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-plugin-data-transition-'));
+    cleanupDirs.push(root);
+    const pluginDir = join(root, 'plugins', 'format-switch');
+    writePlugin(pluginDir, {
+      name: 'format-switch',
+      version: '2.0.0',
+    });
+    const dataDir = join(root, 'agent-plugin-data', 'format-switch');
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(join(dataDir, 'prior-portable-state'), 'preserved');
+
+    await uninstallInstalledPlugin('format-switch', deps(root));
+
+    expect(existsSync(pluginDir)).toBe(false);
+    expect(existsSync(dataDir)).toBe(false);
+  });
+
+  test('rolls back uninstall instead of reporting success when staged data deletion fails', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-plugin-data-cleanup-'));
+    cleanupDirs.push(root);
+    const pluginDir = join(root, 'plugins', 'cleanup-test');
+    writePlugin(pluginDir, {
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'cleanup-test',
+    });
+    const dataDir = join(root, 'agent-plugin-data', 'cleanup-test');
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(join(dataDir, 'state'), 'must-survive');
+    const eventBus = { emit: vi.fn() };
+
+    await expect(
+      uninstallInstalledPlugin('cleanup-test', {
+        ...deps(root),
+        eventBus,
+        removeStagedAgentPluginData: () => {
+          throw new Error('injected staged data deletion failure');
+        },
+      }),
+    ).rejects.toThrow('injected staged data deletion failure');
+
+    expect(eventBus.emit).not.toHaveBeenCalledWith(
+      'plugins:removed',
+      expect.anything(),
+    );
+    expect(existsSync(pluginDir)).toBe(true);
+    expect(readFileSync(join(dataDir, 'state'), 'utf8')).toBe('must-survive');
+    expect(
+      readdirSync(join(root, 'agent-plugin-data')).filter((name) =>
+        name.startsWith('.removed-'),
+      ),
+    ).toEqual([]);
+  });
+
   test.runIf(process.platform !== 'win32')(
     'refuses Agent Plugin uninstall through a symlinked data ancestor without touching external data',
     async () => {

@@ -640,6 +640,7 @@ export function registerPluginLifecycleRoutes(
                 eventSubscriptionQuiescence?.release();
               }
             },
+            { rediscoverSkills: true },
           ),
       );
       if (mutation.value.success) {
@@ -723,6 +724,7 @@ export function registerPluginLifecycleRoutes(
             await settleProviderAdapterRetirements?.();
             return result;
           },
+          { rediscoverSkills: true },
         ),
       );
       if (mutation.value.success) {
@@ -846,6 +848,7 @@ export function registerPluginLifecycleRoutes(
           await settleProviderAdapterRetirements?.();
           return { success: true as const, loaded: prepared.length };
         },
+        { rediscoverSkills: true },
       );
       if (mutation.value.success) {
         try {

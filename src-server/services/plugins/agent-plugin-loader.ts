@@ -30,6 +30,7 @@ import {
 import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020.js';
 import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
 import type { CanonicalSkillSource } from '../flow/flow-agents-skills-source.js';
+import { assertSafeContextText } from '../orchestration/context-safety.js';
 
 const MAX_CONFIGURATION_BYTES = 2 * 1024 * 1024;
 const CORE_MANIFEST_FIELDS = new Set([
@@ -398,7 +399,12 @@ export class AgentPluginLoader {
         if (!isInside(root, resolvedManifest)) {
           throw new Error('plugin.json resolves outside the plugin root');
         }
-        rawManifest = JSON.parse(readBoundedRegularFile(resolvedManifest));
+        const manifestText = readBoundedRegularFile(resolvedManifest);
+        assertSafeContextText(manifestText, {
+          profile: 'hidden-only',
+          source: 'Agent Plugin manifest',
+        });
+        rawManifest = JSON.parse(manifestText);
       } catch (error) {
         this.emit(reports, {
           level: 'error',

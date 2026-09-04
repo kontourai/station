@@ -444,6 +444,7 @@ export function registerPluginInstallRoutes(
           );
           return installed;
         },
+        { rediscoverSkills: true },
       );
       if (mutation.value.success) {
         try {

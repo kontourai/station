@@ -331,7 +331,10 @@ import { createRuntimeInitializationDeps } from './runtime-initialize-deps.js';
 import { rebuildOrClearRuntimeProjections } from './runtime-projection-recovery.js';
 import { createRuntimeServiceBundle } from './runtime-service-bootstrap.js';
 import { shutdownRuntimeServices } from './runtime-shutdown.js';
-import { checkOllamaAvailability } from './runtime-startup.js';
+import {
+  checkOllamaAvailability,
+  getActiveRuntimeProjectSlug,
+} from './runtime-startup.js';
 import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
   stationControlRuntimeIdentity,
@@ -429,6 +432,9 @@ export class StationRuntime {
   private agentConfigurationMutationQueue: Promise<void> = Promise.resolve();
   private agentConfigurationPersistenceQueue: Promise<void> = Promise.resolve();
   private agentConfigurationPersistenceRevision = 0;
+  /** Installed-plugin Skill source generation requested versus loaded. */
+  private pluginSkillSourceRevision = 0;
+  private loadedPluginSkillSourceRevision = 0;
   /**
    * Bumped every time an activation is abandoned at its deadline
    * (archive#3622). It is part of the generation snapshot every reload
@@ -1230,7 +1236,9 @@ export class StationRuntime {
    * Reload agents from disk
    */
   async reloadAgents(): Promise<void> {
-    await this.mutateAgentConfiguration(() => this.reloadAgentsFromDisk());
+    await this.mutateAgentConfiguration(() =>
+      this.reloadConfigurationFromDisk(),
+    );
   }
 
   private async recoverRuntimeProjections(
@@ -1240,7 +1248,7 @@ export class StationRuntime {
       rebuildOrClearRuntimeProjections(
         () => {
           resetIntegrationState();
-          return this.reloadAgentsFromDisk();
+          return this.reloadConfigurationFromDisk();
         },
         () => {
           resetIntegrationState();
@@ -1355,6 +1363,10 @@ export class StationRuntime {
         const beginMutation = () => {
           if (mutationBegan) return;
           mutationBegan = true;
+          if (options?.rediscoverSkills) {
+            this.pluginSkillSourceRevision =
+              (this.pluginSkillSourceRevision ?? 0) + 1;
+          }
           this.agentConfigurationPersistenceRevision =
             (this.agentConfigurationPersistenceRevision ?? 0) + 1;
           this.loadedProviderLaunchabilityRevision = null;
@@ -1413,6 +1425,10 @@ export class StationRuntime {
         const beginMutation = () => {
           if (mutationBegan) return;
           mutationBegan = true;
+          if (options?.rediscoverSkills) {
+            this.pluginSkillSourceRevision =
+              (this.pluginSkillSourceRevision ?? 0) + 1;
+          }
           this.agentConfigurationRevision += 1;
         };
         let result: T | undefined;
@@ -1438,7 +1454,7 @@ export class StationRuntime {
               agentSlug,
               agentSlug
                 ? this.reloadPersistedAgentFromDisk(agentSlug)
-                : this.reloadAgentsFromDisk(),
+                : this.reloadConfigurationFromDisk(),
             );
             const outcome =
               await this.awaitActivationWithinDeadline(activating);
@@ -1821,13 +1837,15 @@ export class StationRuntime {
       // claim there is nothing to do.
       if (
         this.runtimeConfigurationSourcesAreLoaded() &&
+        (this.loadedPluginSkillSourceRevision ?? 0) ===
+          (this.pluginSkillSourceRevision ?? 0) &&
         !this.agentsAwaitingReconciliation?.size
       ) {
         return false;
       }
       this.agentConfigurationRevision += 1;
       try {
-        await this.reloadAgentsFromDisk();
+        await this.reloadConfigurationFromDisk();
       } finally {
         this.agentConfigurationRevision += 1;
       }
@@ -2122,6 +2140,26 @@ export class StationRuntime {
   }
 
   /**
+   * Full configuration activation plus any retained installed-plugin Skill
+   * discovery obligation. The revision comparison makes a failed activation
+   * retry discovery and prevents an older abandoned pass from clearing a newer
+   * plugin mutation's obligation.
+   */
+  private async reloadConfigurationFromDisk(): Promise<void> {
+    const requestedSkillRevision = this.pluginSkillSourceRevision ?? 0;
+    if (
+      (this.loadedPluginSkillSourceRevision ?? 0) !== requestedSkillRevision
+    ) {
+      await this.skillService.discoverSkills(
+        this.configLoader.getProjectHomeDir(),
+        getActiveRuntimeProjectSlug(this.storageAdapter),
+      );
+    }
+    await this.reloadAgentsFromDisk();
+    this.loadedPluginSkillSourceRevision = requestedSkillRevision;
+  }
+
+  /**
    * Applies one persisted agent definition without rebuilding every managed
    * agent or rebinding the default model. Agent CRUD writes do not alter the
    * provider/app-config generations, so the broad reload is both unnecessary
@@ -2131,7 +2169,7 @@ export class StationRuntime {
     const configurationBefore = this.captureAgentConfigurationRevisions();
     const target = await this.resolvePersistedAgentReloadTarget(slug);
     if (target.kind === 'reload-all') {
-      await this.reloadAgentsFromDisk();
+      await this.reloadConfigurationFromDisk();
       return;
     }
     const transaction = this.beginPersistedAgentActivationTransaction(slug);
@@ -2697,6 +2735,8 @@ export class StationRuntime {
         createVoltAgentInstance: async (slug) =>
           this.createVoltAgentInstance(slug),
       });
+      this.loadedPluginSkillSourceRevision =
+        this.pluginSkillSourceRevision ?? 0;
     });
   }
 

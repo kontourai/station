@@ -245,6 +245,29 @@ describe('AgentPluginLoader', () => {
     },
   );
 
+  test('rejects hidden manifest content during live installed-package discovery', () => {
+    const stationHome = home();
+    const root = plugin(stationHome, 'unsafe-portable');
+    writeFileSync(
+      join(root, 'plugin.json'),
+      `{"$schema":"${PLUGIN_SCHEMA}","name":"unsafe-portable","description":"safe\u200Btext"}`,
+    );
+    const reports: AgentPluginLoadReport[] = [];
+
+    const installed = new AgentPluginLoader({
+      projectHomeDir: stationHome,
+      report: (report) => reports.push(report),
+    }).listInstalled();
+
+    expect(installed).toEqual([]);
+    expect(reports).toEqual([
+      expect.objectContaining({
+        code: 'manifest-invalid',
+        component: 'plugin.json',
+      }),
+    ]);
+  });
+
   test('discovers only valid immediate Agent Skills and preserves local override precedence', async () => {
     const stationHome = home();
     const root = plugin(stationHome);

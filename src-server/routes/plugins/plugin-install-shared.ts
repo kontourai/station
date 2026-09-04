@@ -310,6 +310,8 @@ export interface PluginInstallSharedDeps {
   settleProviderAdapterRetirements?: () => Promise<void>;
   reconcileEngineConnections?: (plugin: string) => Promise<void>;
   removeEngineConnections?: (plugin: string) => Promise<void>;
+  /** Fault-injection seam; production uses recursive filesystem removal. */
+  removeStagedAgentPluginData?: (path: string) => void;
   quiesceEventSubscriptions?: (
     pluginName: string,
   ) => Promise<{ release(): void }>;
@@ -1750,6 +1752,8 @@ export async function uninstallInstalledPlugin(
 
   let backupRoot: string | null = null;
   let stagedAgentPluginData: string | null = null;
+  let backedUpAgentPluginData: string | null = null;
+  let agentPluginDataDirectory: string | null = null;
   let isAgentPlugin = false;
   try {
     const raw = JSON.parse(
@@ -1766,11 +1770,25 @@ export async function uninstallInstalledPlugin(
     installedPluginName,
     logger,
   );
-  const pluginName = manifest.name || name;
-  if (isAgentPlugin) {
+  if ((manifest.name || installedPluginName) !== installedPluginName) {
+    throw new Error(
+      'Installed plugin manifest identity does not match its directory',
+    );
+  }
+  const pluginName = installedPluginName;
+  // Presence under Station's dedicated data root is durable historical
+  // ownership. A supported package may transition to the legacy manifest
+  // format during update, but that must not orphan data on later uninstall.
+  const hasHistoricalAgentPluginData = existsSync(
+    join(projectHomeDir, 'agent-plugin-data', pluginName),
+  );
+  if (isAgentPlugin || hasHistoricalAgentPluginData) {
     // Preflight before quiescence or any plugin mutation. The same authority is
     // re-read immediately around each later data rename/delete boundary.
-    resolveAgentPluginDataDirectory(projectHomeDir, pluginName);
+    agentPluginDataDirectory = resolveAgentPluginDataDirectory(
+      projectHomeDir,
+      pluginName,
+    ).directory;
   }
   const eventSubscriptionQuiescence =
     (await deps.quiesceEventSubscriptions?.(
@@ -1810,6 +1828,14 @@ export async function uninstallInstalledPlugin(
     // Last: throws typed on a corrupt grants store, before which every other
     // backup element is already complete.
     backupPluginDurableState(projectHomeDir, backupRoot, pluginName);
+    if (agentPluginDataDirectory && existsSync(agentPluginDataDirectory)) {
+      backedUpAgentPluginData = join(backupRoot, 'agent-plugin-data');
+      cpSync(
+        agentPluginDataDirectory,
+        backedUpAgentPluginData,
+        PLUGIN_TREE_COPY,
+      );
+    }
     backupComplete = true;
 
     if (manifest.agents) {
@@ -1843,7 +1869,7 @@ export async function uninstallInstalledPlugin(
       manifest.name || installedPluginName,
       name,
     );
-    if (isAgentPlugin) {
+    if (agentPluginDataDirectory) {
       const { root: dataRoot, directory: dataDir } =
         resolveAgentPluginDataDirectory(projectHomeDir, pluginName);
       if (existsSync(dataDir)) {
@@ -1854,24 +1880,22 @@ export async function uninstallInstalledPlugin(
         renameSync(dataDir, stagedAgentPluginData);
       }
     }
+    if (stagedAgentPluginData) {
+      const { root: dataRoot } = resolveAgentPluginDataDirectory(
+        projectHomeDir,
+        pluginName,
+      );
+      assertAgentPluginDataStaging(dataRoot, stagedAgentPluginData);
+      if (deps.removeStagedAgentPluginData) {
+        deps.removeStagedAgentPluginData(stagedAgentPluginData);
+      } else {
+        rmSync(stagedAgentPluginData, { recursive: true, force: true });
+      }
+      stagedAgentPluginData = null;
+    }
     eventBus?.emit('plugins:removed', { name: pluginName });
     pluginUninstalls.add(1, { plugin: pluginName });
     logger.info('Plugin removed', { plugin: pluginName });
-    if (stagedAgentPluginData) {
-      try {
-        const { root: dataRoot } = resolveAgentPluginDataDirectory(
-          projectHomeDir,
-          pluginName,
-        );
-        assertAgentPluginDataStaging(dataRoot, stagedAgentPluginData);
-        rmSync(stagedAgentPluginData, { recursive: true, force: true });
-      } catch (error) {
-        logger.warn('Removed plugin data awaits cleanup', {
-          plugin: pluginName,
-          error: errorMessage(error),
-        });
-      }
-    }
     return { success: true };
   } catch (error) {
     // Only a COMPLETE backup may drive the delete-and-restore rollback; an
@@ -1894,11 +1918,17 @@ export async function uninstallInstalledPlugin(
           backupRoot,
         );
         await restorePluginDurableState(projectHomeDir, backupRoot);
-        if (stagedAgentPluginData && existsSync(stagedAgentPluginData)) {
+        if (backedUpAgentPluginData && existsSync(backedUpAgentPluginData)) {
           const { root: dataRoot, directory: dataDir } =
             resolveAgentPluginDataDirectory(projectHomeDir, pluginName);
-          assertAgentPluginDataStaging(dataRoot, stagedAgentPluginData);
-          renameSync(stagedAgentPluginData, dataDir);
+          if (stagedAgentPluginData && existsSync(stagedAgentPluginData)) {
+            assertAgentPluginDataStaging(dataRoot, stagedAgentPluginData);
+            rmSync(stagedAgentPluginData, { recursive: true, force: true });
+          }
+          if (existsSync(dataDir)) {
+            rmSync(dataDir, { recursive: true, force: true });
+          }
+          cpSync(backedUpAgentPluginData, dataDir, PLUGIN_TREE_COPY);
           stagedAgentPluginData = null;
         }
         await synchronizePluginAgentDefinitions({
