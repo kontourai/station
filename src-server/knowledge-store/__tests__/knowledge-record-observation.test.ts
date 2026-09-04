@@ -460,12 +460,13 @@ describe('registered owner source observation (no HTTP exposure)', () => {
     });
   });
 
-  test.each(['missing', 'corrupt', 'duplicate'])(
+  test.each(['missing', 'corrupt', 'duplicate', 'non-array'])(
     'handles %s root registry explicitly',
     (kind) => {
       if (kind === 'missing') fs.unlinkSync(registryPath);
       if (kind === 'corrupt') fs.writeFileSync(registryPath, '{');
       if (kind === 'duplicate') writeRegistry([rootDefinition, rootDefinition]);
+      if (kind === 'non-array') writeRegistry({ roots: [rootDefinition] });
       expect(observe()).toEqual({
         state: kind === 'missing' ? 'missing' : 'corrupt',
       });

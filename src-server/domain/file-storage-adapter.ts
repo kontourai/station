@@ -388,7 +388,8 @@ export class FileStorageAdapter implements IStorageAdapter {
       throw new KnowledgeObservationRefusal('corrupt');
     }
     assertObservationTreeBudget(value);
-    if (!Array.isArray(value) || value.length > 1024) {
+    if (!Array.isArray(value)) throw new KnowledgeObservationRefusal('corrupt');
+    if (value.length > 1024) {
       throw new KnowledgeObservationRefusal('over-budget');
     }
     let roots: KnowledgeStoreRoot[];
