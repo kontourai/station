@@ -140,6 +140,219 @@ function moduleWith(
 }
 
 describe('plugin composition profiles', () => {
+  test.each(['reject', 'hang'] as const)(
+    'an empty replacement exposes scope-level %s release debt after retiring the prior generation',
+    async (behavior) => {
+      vi.useFakeTimers();
+      try {
+        const events: string[] = [];
+        const implementations = new Map([factory('cache', events)]);
+        let finishRelease!: () => void;
+        const release = vi.fn(() =>
+          behavior === 'reject'
+            ? Promise.reject(new Error('release failed'))
+            : new Promise<void>((resolve) => {
+                finishRelease = resolve;
+              }),
+        );
+        const authorize = vi.fn(
+          (input: Parameters<PluginCompositionAuthorizer['authorize']>[0]) =>
+            grantedPlanAuthorization(input, implementations, {
+              release: input.contributions.length ? undefined : release,
+            }),
+        );
+        const module = moduleWith([], {
+          authorizer: { authorize },
+          disposerTimeoutMs: 5,
+        });
+        const previous = profile(projectA, [
+          contribution('cache', 'workspace.cache'),
+        ]);
+        await expect(module.apply(previous)).resolves.toMatchObject({
+          kind: 'activated',
+        });
+        const replacing = module.apply(profile(projectA, []));
+        await vi.advanceTimersByTimeAsync(10);
+        const result = await replacing;
+        const diagnostic = {
+          generation: 2,
+          status: behavior === 'reject' ? 'failed' : 'pending',
+          reason:
+            behavior === 'reject'
+              ? 'authorization-release-failed'
+              : 'authorization-release-pending',
+        };
+        expect(result.kind).toBe('activated');
+        expect(result.inspection.scopeLifecycle).toEqual([diagnostic]);
+        (
+          result.inspection.scopeLifecycle![0] as { generation: number }
+        ).generation = 99;
+        expect(module.inspect(projectA).scopeLifecycle).toEqual([diagnostic]);
+        expect(result.inspection.active).toEqual([]);
+        expect(result.inspection.pending).toEqual([]);
+        expect(result.inspection.failed).toEqual([]);
+        expect(events).toEqual(['stage:cache', 'dispose:cache']);
+        expect(await module.retire(projectA)).toMatchObject({
+          kind: 'pending',
+          inspection: { scopeLifecycle: [diagnostic] },
+        });
+        await expect(module.apply(previous)).resolves.toMatchObject({
+          kind: 'pending',
+        });
+        expect(authorize).toHaveBeenCalledTimes(2);
+        expect(release).toHaveBeenCalledOnce();
+        if (behavior === 'hang') {
+          finishRelease();
+          await vi.advanceTimersByTimeAsync(0);
+          expect(module.inspect(projectA).scopeLifecycle).toBeUndefined();
+          await expect(module.retire(projectA)).resolves.toMatchObject({
+            kind: 'retired',
+          });
+          await expect(module.apply(previous)).resolves.toMatchObject({
+            kind: 'activated',
+          });
+          await module.retire(projectA);
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  test('empty-plan authorization timeout transfers visible scope debt to its late lease release', async () => {
+    vi.useFakeTimers();
+    try {
+      let finishAuthorization!: () => void;
+      let finishRelease!: () => void;
+      const release = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finishRelease = resolve;
+          }),
+      );
+      const authorize = vi.fn(
+        (input: Parameters<PluginCompositionAuthorizer['authorize']>[0]) =>
+          new Promise<PluginCompositionAuthorization>((resolve) => {
+            finishAuthorization = () =>
+              resolve(grantedPlanAuthorization(input, new Map(), { release }));
+          }),
+      );
+      const module = moduleWith([], {
+        authorizer: { authorize },
+        disposerTimeoutMs: 5,
+      });
+      const applying = module.apply(profile(projectA, []));
+      await vi.advanceTimersByTimeAsync(6);
+      await expect(applying).resolves.toMatchObject({
+        kind: 'pending',
+        inspection: {
+          scopeLifecycle: [
+            {
+              generation: 1,
+              status: 'pending',
+              reason: 'authorization-unavailable',
+            },
+          ],
+        },
+      });
+      finishAuthorization();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(module.inspect(projectA).scopeLifecycle).toEqual([
+        {
+          generation: 1,
+          status: 'pending',
+          reason: 'authorization-release-pending',
+        },
+      ]);
+      await expect(module.retire(projectA)).resolves.toMatchObject({
+        kind: 'pending',
+      });
+      await expect(module.apply(profile(projectA, []))).resolves.toMatchObject({
+        kind: 'pending',
+      });
+      expect(authorize).toHaveBeenCalledOnce();
+      finishRelease();
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(module.retire(projectA)).resolves.toMatchObject({
+        kind: 'retired',
+      });
+      expect(module.inspect(projectA).scopeLifecycle).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('an empty profile still needs authorization to replace the active generation', async () => {
+    const events: string[] = [];
+    let allow = true;
+    const module = moduleWith([factory('cache', events)], {
+      authorize: () => (allow ? 'granted' : 'denied'),
+    });
+    await module.apply(
+      profile(projectA, [contribution('cache', 'workspace.cache')]),
+    );
+    allow = false;
+    await expect(module.apply(profile(projectA, []))).resolves.toMatchObject({
+      kind: 'failed',
+    });
+    expect(module.inspect(projectA).active).toHaveLength(1);
+    expect(events).toEqual(['stage:cache']);
+    await module.retire(projectA);
+  });
+
+  test.each(['object', 'remaining-budget', 'array-properties'] as const)(
+    'rejects oversized %s configuration before sorting or descriptor traversal',
+    async (shape) => {
+      const wide = Object.fromEntries(
+        Array.from(
+          { length: shape === 'remaining-budget' ? 3000 : 9000 },
+          (_, index) => [`wide-${index}`, 0],
+        ),
+      );
+      const array = Object.assign([], wide);
+      const configuration =
+        shape === 'object'
+          ? wide
+          : shape === 'array-properties'
+            ? array
+            : { a: Array(6000).fill(0), b: wide };
+      const sort = Array.prototype.sort;
+      const descriptors = Object.getOwnPropertyDescriptors;
+      let wideSorts = 0;
+      let wideDescriptorReads = 0;
+      const sorting = vi
+        .spyOn(Array.prototype, 'sort')
+        .mockImplementation(function (this: unknown[], compare) {
+          if (typeof this[0] === 'string' && this[0].startsWith('wide-'))
+            wideSorts += 1;
+          return Reflect.apply(sort, this, [compare]);
+        });
+      const reading = vi
+        .spyOn(Object, 'getOwnPropertyDescriptors')
+        .mockImplementation((value) => {
+          if (value === array) wideDescriptorReads += 1;
+          return descriptors(value);
+        });
+      const authorize = vi.fn(() => ({ kind: 'denied' as const }));
+      try {
+        const module = moduleWith([], { authorizer: { authorize } });
+        await expect(
+          module.apply(
+            profile(projectA, [
+              contribution('cache', 'workspace.cache', { configuration }),
+            ]),
+          ),
+        ).resolves.toMatchObject({ kind: 'refused' });
+        expect(wideSorts).toBe(0);
+        expect(wideDescriptorReads).toBe(0);
+        expect(authorize).not.toHaveBeenCalled();
+      } finally {
+        sorting.mockRestore();
+        reading.mockRestore();
+      }
+    },
+  );
+
   test('isolates stable contribution instances by Project and configuration generation', async () => {
     const events: string[] = [];
     const module = moduleWith([factory('cache', events)]);

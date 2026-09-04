@@ -127,6 +127,14 @@ export interface PluginCompositionInspection {
   readonly pending: readonly PluginCompositionInspectionEntry[];
   readonly failed: readonly PluginCompositionInspectionEntry[];
   readonly shadowed: readonly PluginCompositionInspectionEntry[];
+  /** Scope-owned cleanup with no selected contribution to attribute it to. */
+  readonly scopeLifecycle?: readonly PluginCompositionScopeLifecycleEntry[];
+}
+
+export interface PluginCompositionScopeLifecycleEntry {
+  readonly generation: number;
+  readonly status: 'pending' | 'failed';
+  readonly reason: PluginCompositionInspectionReason;
 }
 
 export type PluginCompositionApplyResult =
@@ -285,6 +293,8 @@ function canonicalConfiguration(
     try {
       if (
         value.length > MAX_CONFIGURATION_NODES - budget.nodes ||
+        Reflect.ownKeys(value).length >
+          MAX_CONFIGURATION_NODES - budget.nodes + 1 ||
         Object.getOwnPropertySymbols(value).length > 0
       ) {
         return undefined;
@@ -324,17 +334,22 @@ function canonicalConfiguration(
   try {
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return undefined;
-    if (Object.getOwnPropertySymbols(value).length > 0) return undefined;
-    const names = Object.getOwnPropertyNames(value);
-    const keys = Object.keys(value);
-    if (names.length !== keys.length) return undefined;
+    const names = Reflect.ownKeys(value);
+    if (names.length > MAX_CONFIGURATION_NODES - budget.nodes) return undefined;
+    if (names.some((key) => typeof key !== 'string')) return undefined;
+    const keys = names as string[];
     const output: Record<string, PluginCompositionJson> = Object.create(null);
     for (const key of keys.sort()) {
       if (key === '__proto__' || key === 'prototype' || key === 'constructor') {
         return undefined;
       }
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (!descriptor || !('value' in descriptor)) return undefined;
+      if (
+        !descriptor ||
+        !('value' in descriptor) ||
+        descriptor.enumerable !== true
+      )
+        return undefined;
       const normalized = canonicalConfiguration(
         descriptor.value,
         depth + 1,
@@ -1012,8 +1027,23 @@ export function createPluginCompositionModule(options: {
   // Hold one scope admission fence until late authorization/staging settles.
   const pendingLifecycle = new Map<
     string,
-    PluginCompositionInspectionEntry[]
+    {
+      entries: PluginCompositionInspectionEntry[];
+      scopeLifecycle?: PluginCompositionScopeLifecycleEntry;
+    }
   >();
+  const retainPendingLifecycle = (
+    key: string,
+    entries: PluginCompositionInspectionEntry[],
+    generation: number,
+    reason: PluginCompositionInspectionReason,
+  ) =>
+    pendingLifecycle.set(key, {
+      entries,
+      ...(entries.length === 0
+        ? { scopeLifecycle: { generation, status: 'pending' as const, reason } }
+        : {}),
+    });
   // Actual lease-release operations outlive bounded responses. Tokens prevent
   // one continuation from clearing another cleanup obligation for this scope.
   const releaseDebts = new Map<
@@ -1024,6 +1054,7 @@ export function createPluginCompositionModule(options: {
         entries: PluginCompositionInspectionEntry[];
         release: () => void | Promise<void>;
         operation?: Promise<void>;
+        scopeLifecycle?: PluginCompositionScopeLifecycleEntry;
       }
     >
   >();
@@ -1071,6 +1102,7 @@ export function createPluginCompositionModule(options: {
       entries: PluginCompositionInspectionEntry[];
       release: () => void | Promise<void>;
       operation?: Promise<void>;
+      scopeLifecycle?: PluginCompositionScopeLifecycleEntry;
     } = { entries: [], release };
     // Acquisition owns the lease even if rollback disposal fails before
     // release can start. Keep the actual capability strongly reachable now;
@@ -1090,6 +1122,15 @@ export function createPluginCompositionModule(options: {
           generation,
         ),
       );
+      if (selected.length === 0) {
+        debt.scopeLifecycle = {
+          generation,
+          status: failed ? 'failed' : 'pending',
+          reason: failed
+            ? 'authorization-release-failed'
+            : 'authorization-release-pending',
+        };
+      }
       debts.set(token, debt);
       releaseDebts.set(key, debts);
     };
@@ -1240,7 +1281,7 @@ export function createPluginCompositionModule(options: {
     const generation = active.get(key);
     const latest = [...(attempts.get(key) ?? [])];
     for (const pending of [
-      ...(pendingLifecycle.get(key) ?? []),
+      ...(pendingLifecycle.get(key)?.entries ?? []),
       ...releaseEntries(key),
     ]) {
       if (
@@ -1267,6 +1308,15 @@ export function createPluginCompositionModule(options: {
         failed.push(fence);
       }
     }
+    const scopeLifecycle = [
+      pendingLifecycle.get(key)?.scopeLifecycle,
+      ...[...(releaseDebts.get(key)?.values() ?? [])].map(
+        (debt) => debt.scopeLifecycle,
+      ),
+    ].filter(
+      (diagnostic): diagnostic is PluginCompositionScopeLifecycleEntry =>
+        diagnostic !== undefined,
+    );
     return cloneInspection({
       scope: safeScope,
       generation: generation?.generation ?? 0,
@@ -1274,6 +1324,7 @@ export function createPluginCompositionModule(options: {
       pending: latest.filter((candidate) => candidate.status === 'pending'),
       failed,
       shadowed: latest.filter((candidate) => candidate.status === 'shadowed'),
+      ...(scopeLifecycle.length > 0 ? { scopeLifecycle } : {}),
     });
   };
 
@@ -1652,11 +1703,13 @@ export function createPluginCompositionModule(options: {
     } else {
       rawAuthorization = { kind: 'unavailable' };
       if (authorizationOutcome.kind === 'timed-out') {
-        pendingLifecycle.set(
+        retainPendingLifecycle(
           key,
           planned.plan.selected.map((candidate) =>
             entry(candidate, 'pending', 'authorization-unavailable'),
           ),
+          nextGeneration,
+          'authorization-unavailable',
         );
         void authorizationOperation
           .then(
@@ -1773,11 +1826,13 @@ export function createPluginCompositionModule(options: {
     const settleRollbackOwnership = async () => {
       if (!rollbackOwner.late && rollbackOwner.prior.length === 0) return;
       if (!rollbackSettlement) {
-        pendingLifecycle.set(
+        retainPendingLifecycle(
           key,
           planned.plan.selected.map((candidate) =>
             entry(candidate, 'pending', 'activation-aborted'),
           ),
+          nextGeneration,
+          'activation-aborted',
         );
         // One continuation owns every rollback path and the actual lease
         // release. Deadlines only bound callers; failure retains admission.
@@ -1859,9 +1914,12 @@ export function createPluginCompositionModule(options: {
           );
           if (stageOutcome.kind === 'timed-out') {
             leaseControl.fence();
-            pendingLifecycle.set(key, [
-              entry(contribution, 'pending', 'activation-aborted'),
-            ]);
+            retainPendingLifecycle(
+              key,
+              [entry(contribution, 'pending', 'activation-aborted')],
+              nextGeneration,
+              'activation-aborted',
+            );
             rollbackOwner.late = stageOperation
               .then<'disposed' | 'failed', 'disposed' | 'failed'>(
                 async (lateHandle) => {
@@ -2098,7 +2156,7 @@ export function createPluginCompositionModule(options: {
           : [];
         const liveFences = fenceEntries(key);
         const pending = [
-          ...(pendingLifecycle.get(key) ?? []),
+          ...(pendingLifecycle.get(key)?.entries ?? []),
           ...releaseEntries(key),
         ];
         return {
