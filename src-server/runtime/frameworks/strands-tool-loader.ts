@@ -10,6 +10,8 @@ import { createMCPToolProvenanceGeneration } from '../../services/orchestration/
 import {
   captureToolServerOperationFailure,
   requireToolServerResult,
+  StationOwnedToolServerError,
+  ToolServerOperationError,
 } from '../../services/plugins/tool-server-oauth.js';
 import { establishMcpSecretChild } from '../../services/secrets/mcp-secret-child-env.js';
 import {
@@ -138,6 +140,92 @@ async function nativeStationControlClient(
   return entry.creation;
 }
 
+/**
+ * How far a per-tool load got before it threw. Only `connect` has spoken to a
+ * tool server, so only `connect` can be carrying remote text.
+ */
+type StrandsToolLoadPhase = 'preconnect' | 'connect';
+
+/**
+ * #1485: the per-tool catch is the single failure seam for every phase of a
+ * tool load, but only one of those phases connects to anything. Passing every
+ * throw through `captureToolServerOperationFailure` relabels it
+ * `Tool server connection failed` — a connection outcome asserted for a path
+ * that never connected, which is what reported #1482's `TypeError` on the
+ * built-in vended-tool branch as a tool-server failure.
+ *
+ * Redaction is the default and stays the default (#1428 routes genuine
+ * provider/transport/auth failures here precisely so remote text never reaches
+ * a log or `mcpConnectionStatus`). A throw escapes redaction only when BOTH:
+ *
+ *  1. it was raised before this iteration attempted a connection
+ *     (`phase === 'preconnect'`) — every throw from the connect / listTools /
+ *     callTool path stays redacted, whatever its class, because its message can
+ *     be built from remote data; and
+ *  2. its shape is one only a defect in Station's own code or configuration
+ *     produces: a thrown non-`Error` value, or an `Error` named `TypeError`,
+ *     `ReferenceError`, `RangeError`, `SyntaxError`, `EvalError`, `URIError`,
+ *     `AssertionError`, or carrying Node's `ERR_ASSERTION` code.
+ *
+ * Anything else preconnect — a custody error, a config-loader failure, a plain
+ * `Error` — keeps today's redacted message, so no path that used to be bounded
+ * becomes unbounded.
+ */
+const LOADER_PROGRAMMING_ERROR_NAMES = new Set([
+  'AssertionError',
+  'EvalError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'TypeError',
+  'URIError',
+]);
+
+/** Station-owned text only; bounded so one huge message cannot bloat status. */
+const LOADER_FAILURE_DETAIL_LIMIT = 300;
+
+function loaderErrorClass(error: unknown): string {
+  if (error instanceof Error) {
+    return error.name || error.constructor?.name || 'Error';
+  }
+  return `non-error:${typeof error}`;
+}
+
+function isLoaderProgrammingFailure(error: unknown): boolean {
+  // A tool server can only ever reach this seam by throwing an Error; a thrown
+  // non-Error is Station's own code failing to throw properly.
+  if (!(error instanceof Error)) return true;
+  // Already bounded, Station-owned vocabulary — capture returns these as-is.
+  if (
+    error instanceof ToolServerOperationError ||
+    error instanceof StationOwnedToolServerError
+  ) {
+    return false;
+  }
+  if (LOADER_PROGRAMMING_ERROR_NAMES.has(loaderErrorClass(error))) return true;
+  return (error as { code?: unknown }).code === 'ERR_ASSERTION';
+}
+
+function printableLoaderValue(value: unknown): string {
+  try {
+    return String(value);
+  } catch {
+    return '[unprintable value]';
+  }
+}
+
+function describeLoaderFailure(error: unknown): string {
+  const detail =
+    error instanceof Error
+      ? error.message
+        ? `${loaderErrorClass(error)}: ${error.message}`
+        : loaderErrorClass(error)
+      : `Non-Error thrown (${typeof error}): ${printableLoaderValue(error)}`;
+  return detail.length > LOADER_FAILURE_DETAIL_LIMIT
+    ? `${detail.slice(0, LOADER_FAILURE_DETAIL_LIMIT)}… (truncated)`
+    : detail;
+}
+
 type StrandsToolLoadOptions = Pick<
   CreateAgentOptions,
   | 'configLoader'
@@ -246,6 +334,9 @@ export async function loadStrandsTools(options: {
   for (const toolId of spec.tools.mcpServers) {
     let claim: MCPLocalClaim | undefined;
     let retained = false;
+    // #1485: everything up to the connection attempt is Station's own code and
+    // configuration. The built-in vended-tool branch never leaves this phase.
+    let phase: StrandsToolLoadPhase = 'preconnect';
     try {
       claim = opts.mcpCustody.acquire(toolId, 'managed');
       const toolDef = await opts.configLoader.loadIntegration(toolId);
@@ -280,6 +371,10 @@ export async function loadStrandsTools(options: {
         continue;
       }
 
+      // From here on this iteration talks to a tool server, and every value it
+      // handles may be derived from that server's response. Whatever throws
+      // below keeps #1428's redaction.
+      phase = 'connect';
       let client = state.mcpClients.get(toolId);
       let mcpTools: Awaited<ReturnType<McpClient['listTools']>>;
       if (!client) {
@@ -410,21 +505,39 @@ export async function loadStrandsTools(options: {
         count: mcpTools.length,
       });
     } catch (error) {
-      const safeError = captureToolServerOperationFailure(
-        error,
-        'connect',
-        toolId,
-        opts.logger,
-      );
-      opts.logger.error('Failed to load MCP tool via Strands', {
-        agent: slug,
-        toolId,
-        error: safeError,
-      });
-      opts.mcpConnectionStatus.set(toolId, {
-        connected: false,
-        error: safeError.message,
-      });
+      if (phase === 'preconnect' && isLoaderProgrammingFailure(error)) {
+        // Never connected, and the shape is one only Station's own code or
+        // configuration produces: report the real class, do not assert a
+        // connection outcome that was never observed (#1485).
+        const detail = describeLoaderFailure(error);
+        opts.logger.error('Failed to load agent tool before any connection', {
+          agent: slug,
+          toolId,
+          failure: 'loader',
+          errorClass: loaderErrorClass(error),
+          error,
+        });
+        opts.mcpConnectionStatus.set(toolId, {
+          connected: false,
+          error: detail,
+        });
+      } else {
+        const safeError = captureToolServerOperationFailure(
+          error,
+          'connect',
+          toolId,
+          opts.logger,
+        );
+        opts.logger.error('Failed to load MCP tool via Strands', {
+          agent: slug,
+          toolId,
+          error: safeError,
+        });
+        opts.mcpConnectionStatus.set(toolId, {
+          connected: false,
+          error: safeError.message,
+        });
+      }
     } finally {
       if (claim && !retained) await opts.mcpCustody.release(claim);
     }

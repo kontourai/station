@@ -8,6 +8,7 @@ import {
   currentNativeOutputCallScope,
   runWithNativeOutputTurnContext,
 } from '../../native-output-turn-grant.js';
+import { createBuiltinVendedToolDef } from '../../tools/vended-tool-compat.js';
 import {
   applyStrandsAvailableToolFilter,
   createStrandsFunctionTools,
@@ -545,5 +546,189 @@ describe('loadStrandsTools', () => {
       type: 'mcp',
       toolCount: 1,
     });
+  });
+
+  /**
+   * #1485. The built-in vended-tool branch opens no connection, so a throw
+   * raised on it cannot be a connection outcome. These three cover the whole
+   * classification: preconnect programming error, preconnect thrown non-Error,
+   * and a genuine connect-path failure that must stay redacted.
+   */
+  function custodyBrokenFor(
+    brokenId: string,
+    thrown: () => never,
+    real = new MCPLocalConnectionCustody(),
+  ) {
+    return {
+      acquire: (id: string, purpose: 'managed') =>
+        id === brokenId ? thrown() : real.acquire(id, purpose),
+      release: (claim: unknown) => real.release(claim as never),
+      releaseClaims: (claims: unknown[]) => real.releaseClaims(claims as never),
+      // The ONE cast: production supplies a real custody owner, and the point
+      // of this fixture is a loader option that is broken in a way the type
+      // system would otherwise refuse to express (#1482's actual shape — the
+      // loader dereferences `opts.mcpCustody.acquire` with no guard).
+    } as unknown as MCPLocalConnectionCustody;
+  }
+
+  test('reports a preconnect TypeError on the built-in path with its own class and keeps loading the rest (#1485)', async () => {
+    const mcpConnectionStatus = new Map();
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const notebook = createBuiltinVendedToolDef('notebook');
+    // The ONE cast: `{ acquire: undefined }` is the option shape #1482 hit in
+    // production, and the type system exists to forbid exactly it.
+    const brokenOption = { acquire: undefined } as unknown as {
+      acquire: (id: string, purpose: string) => never;
+    };
+
+    const tools = await loadStrandsTools({
+      slug: 'agent-a',
+      spec: {
+        tools: { mcpServers: ['broken-builtin', 'notebook'], available: ['*'] },
+      } as any,
+      opts: {
+        mcpCustody: custodyBrokenFor('broken-builtin', () =>
+          brokenOption.acquire('broken-builtin', 'managed'),
+        ),
+        configLoader: {
+          loadIntegration: vi.fn().mockResolvedValue(notebook),
+        } as any,
+        mcpConnectionStatus,
+        integrationMetadata: new Map(),
+        toolNameMapping: new Map(),
+        toolNameReverseMapping: new Map(),
+        logger,
+      },
+      state: { mcpClients: new Map(), agentMcpClients: new Map() },
+    });
+
+    const status = mcpConnectionStatus.get('broken-builtin');
+    expect(status.connected).toBe(false);
+    expect(status.error).toMatch(/^TypeError: /);
+    expect(status.error).not.toContain('Tool server connection failed');
+    expect(logger.error).toHaveBeenCalledWith(
+      'Failed to load agent tool before any connection',
+      expect.objectContaining({
+        toolId: 'broken-builtin',
+        failure: 'loader',
+        errorClass: 'TypeError',
+        error: expect.any(TypeError),
+      }),
+    );
+    // The throw must not escape the per-tool loop: the sibling built-in tool
+    // still loads.
+    expect(tools.map((tool) => tool.name)).toEqual(['notebook']);
+    expect(mcpConnectionStatus.get('notebook')).toEqual({ connected: true });
+  });
+
+  test('reports a thrown non-Error on the built-in path instead of swallowing it (#1485)', async () => {
+    const mcpConnectionStatus = new Map();
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    await expect(
+      loadStrandsTools({
+        slug: 'agent-a',
+        spec: {
+          tools: { mcpServers: ['broken-builtin'], available: ['*'] },
+        } as any,
+        opts: {
+          // A non-Error throw is the case under test, not an accident.
+          mcpCustody: custodyBrokenFor('broken-builtin', () => {
+            throw 'builtin-loader-string-throw' as unknown as Error;
+          }),
+          configLoader: {
+            loadIntegration: vi
+              .fn()
+              .mockResolvedValue(createBuiltinVendedToolDef('notebook')),
+          } as any,
+          mcpConnectionStatus,
+          integrationMetadata: new Map(),
+          toolNameMapping: new Map(),
+          toolNameReverseMapping: new Map(),
+          logger,
+        },
+        state: { mcpClients: new Map(), agentMcpClients: new Map() },
+      }),
+    ).resolves.toEqual([]);
+
+    expect(mcpConnectionStatus.get('broken-builtin')).toEqual({
+      connected: false,
+      error: 'Non-Error thrown (string): builtin-loader-string-throw',
+    });
+    expect(logger.error).toHaveBeenCalledWith(
+      'Failed to load agent tool before any connection',
+      expect.objectContaining({
+        failure: 'loader',
+        errorClass: 'non-error:string',
+      }),
+    );
+  });
+
+  test('keeps a genuine connect-path failure redacted, whatever its class (#1485)', async () => {
+    const canary = 'remote-listtools-provider-canary';
+    const mcpConnectionStatus = new Map();
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    // A provider-derived TypeError raised by the connect/listTools path: the
+    // class is one the preconnect rule would surface, so this is the case that
+    // proves phase — not class alone — gates the redaction #1428 installed.
+    strandsMcpTestState.rejectNextListTools = new TypeError(
+      `upstream rejected ${canary}`,
+    );
+
+    await expect(
+      loadStrandsTools({
+        slug: 'agent-a',
+        spec: {
+          tools: { mcpServers: ['demoServer'], available: ['*'] },
+        } as any,
+        opts: {
+          mcpCustody: new MCPLocalConnectionCustody(),
+          configLoader: {
+            loadIntegration: vi.fn().mockResolvedValue({
+              id: 'demoServer',
+              kind: 'mcp',
+              transport: 'stdio',
+              command: 'demo',
+              args: [],
+            }),
+          } as any,
+          mcpConnectionStatus,
+          integrationMetadata: new Map(),
+          toolNameMapping: new Map(),
+          toolNameReverseMapping: new Map(),
+          logger,
+        },
+        state: { mcpClients: new Map(), agentMcpClients: new Map() },
+      }),
+    ).resolves.toEqual([]);
+
+    expect(mcpConnectionStatus.get('demoServer')).toEqual({
+      connected: false,
+      error: 'Tool server connection failed',
+    });
+    expect(
+      JSON.stringify([
+        ...logger.debug.mock.calls,
+        ...logger.info.mock.calls,
+        ...logger.warn.mock.calls,
+        ...logger.error.mock.calls,
+        [...mcpConnectionStatus],
+      ]),
+    ).not.toContain(canary);
   });
 });
