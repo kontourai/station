@@ -81,6 +81,10 @@ the approved narrower local extension corrects that conclusion.
 2. Support only registered built-in `kit-default-store` roots via a separate
    construction-free observation port of `KnowledgeFileTransactions`, never
    `adapterFor`, ordinary `get`, read-repair, root bootstrap, or plugin adapters.
+   Writer and observer use one metadata-only coordination-root resolver. The
+   policy home is only an expected-owner assertion: a mismatch or a later
+   runtime-home change refuses observation before open and at final recheck.
+   It cannot move observation into a different lock namespace.
    Bound the real root registry and source file; validate exact filename/id and
    shared format/schema. Check identities before/after reading and refuse known
    journals/locks without opening their payloads or probing/reaping an owner.

@@ -51,6 +51,20 @@ function knowledgeLockIdentity(
     .digest('hex');
 }
 
+/** The writer owns this namespace. An observer may assert, never select, it. */
+function knowledgeCoordinationLocation(expectedHome?: string): {
+  home: string;
+  directory: string;
+} {
+  // The existing runtime resolver only checks path metadata/admission. It does
+  // not prepare a home, acquire a lease, read payloads or repair anything.
+  const home = resolve(resolveHomeDir());
+  if (expectedHome !== undefined && expectedHome !== home) {
+    throw new KnowledgeObservationRefusal('unavailable');
+  }
+  return { home, directory: join(home, COORDINATION_DIRECTORY) };
+}
+
 /**
  * Separate, zero-write observation port of this owner. Does not construct the
  * mutating coordinator or promise its locked-read atomic visibility. A vanished
@@ -72,16 +86,20 @@ export function observeExactKnowledgeRecordFile(
   ) {
     throw new KnowledgeObservationRefusal('unavailable');
   }
+  const owner = knowledgeCoordinationLocation(stationHome);
   const recheckRoot = observeDirectoryChain(root);
-  const recheckHome = observeDirectoryChain(stationHome);
+  const recheckHome = observeDirectoryChain(owner.home);
   const rootInfo = lstatSync(root);
-  const coordinationRoot = join(stationHome, COORDINATION_DIRECTORY);
+  const coordinationRoot = owner.directory;
   const recheckCoordination = observeDirectoryChain(coordinationRoot, true);
   const lockPath = join(
     coordinationRoot,
     `${knowledgeLockIdentity(root, rootInfo.dev, rootInfo.ino)}.lock`,
   );
   const check = () => {
+    // Re-check even after the final host authorization: runtime-home changes
+    // cannot silently move this observation away from the writer's namespace.
+    knowledgeCoordinationLocation(stationHome);
     recheckRoot();
     recheckHome();
     recheckCoordination();
@@ -197,10 +215,7 @@ export class KnowledgeFileTransactions {
       // root itself may be writable while its parent is intentionally read
       // only, and a stable root identity keeps distinct adjacent roots from
       // sharing a lock name.
-      const coordinationRoot = join(
-        resolve(resolveHomeDir()),
-        COORDINATION_DIRECTORY,
-      );
+      const coordinationRoot = knowledgeCoordinationLocation().directory;
       mkdirSync(coordinationRoot, { recursive: true, mode: 0o700 });
       const coordinationInfo = lstatSync(coordinationRoot);
       if (

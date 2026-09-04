@@ -55,6 +55,7 @@ export interface KnowledgeRootObservation {
  * The host must re-evaluate the exact root/record on each synchronous call.
  */
 export interface KnowledgeRecordObservationPolicy {
+  /** Expected writer-home binding only; cannot select another lock namespace. */
   readonly stationHome: string;
   authorize(
     target: Readonly<{ rootId: string; recordId: string }>,

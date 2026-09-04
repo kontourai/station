@@ -42,9 +42,43 @@ test('observes the real writer lock and prepared/committed journal without inter
     stationHome: home,
     authorize: () => 'allowed',
   });
+  const otherHome = join(fixture, 'other-home');
+  fs.mkdirSync(otherHome);
+  const misboundProvider = new KnowledgeStoreProvider(
+    new FileStorageAdapter(home),
+    {
+      stationHome: otherHome,
+      authorize: () => 'allowed',
+    },
+  );
+  fs.writeFileSync(
+    join(root, 'records', 'record-1.md'),
+    serializeMarkdown(
+      {
+        id: 'record-1',
+        type: 'raw',
+        title: 'Before publication',
+        category: 'feedback',
+        provenance: { agent: 'fixture' },
+        created_at: '2026-09-01T00:00:00Z',
+        updated_at: '2026-09-01T00:00:00Z',
+      },
+      'Existing source',
+    ),
+  );
+  let alternateHomeOutcome: string | undefined;
   const during: Array<{ phase: string; result: unknown }> = [];
   const writer = new KnowledgeFileTransactions(root, {
     afterLockAcquired: () => {
+      // The real writer holds its actual owner lock; no journal exists yet.
+      expect(
+        fs.existsSync(join(root, '.station-knowledge-transaction.json')),
+      ).toBe(false);
+      alternateHomeOutcome = misboundProvider.observeExactRecord(
+        'root:fixture',
+        'record-1',
+        null,
+      ).state;
       during.push({
         phase: 'lock',
         result: provider.observeExactRecord('root:fixture', 'record-1', null),
@@ -80,6 +114,7 @@ test('observes the real writer lock and prepared/committed journal without inter
       result: { state: 'busy' },
     })),
   );
+  expect(['busy', 'unavailable']).toContain(alternateHomeOutcome);
   expect(
     provider.observeExactRecord('root:fixture', 'record-1', null).state,
   ).toBe('observed');

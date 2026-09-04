@@ -70,6 +70,7 @@ describe('registered owner source observation (no HTTP exposure)', () => {
       fs.mkdtempSync(join(tmpdir(), 'station-observation-')),
     );
     home = join(fixture, 'home');
+    vi.stubEnv('STATION_HOME', home);
     root = join(fixture, 'store');
     fs.mkdirSync(join(home, 'config'), { recursive: true });
     fs.mkdirSync(join(root, 'records'), { recursive: true });
@@ -101,6 +102,7 @@ describe('registered owner source observation (no HTTP exposure)', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     syncBuiltinESMExports();
+    vi.unstubAllEnvs();
     fs.rmSync(fixture, { recursive: true, force: true });
   });
 
@@ -369,6 +371,20 @@ describe('registered owner source observation (no HTTP exposure)', () => {
       },
     });
     expect(observe()).toEqual({ state: 'unavailable' });
+  });
+
+  test('runtime writer-home change at final authorization withholds source without bootstrapping the other home', () => {
+    const alternate = join(fixture, 'alternate-home');
+    let count = 0;
+    provider = new KnowledgeStoreProvider(persistence, {
+      stationHome: home,
+      authorize: () => {
+        if (++count === 3) vi.stubEnv('STATION_HOME', alternate);
+        return 'allowed';
+      },
+    });
+    expect(observe()).toEqual({ state: 'unavailable' });
+    expect(fs.existsSync(alternate)).toBe(false);
   });
 
   test.each(['leaf', 'records', 'root', 'registry'])(
