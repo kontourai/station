@@ -639,6 +639,29 @@ describe('persisted detail remains authoritative while the collection reconciles
     expect(result.current.selectedAgent?.name).toBe('Fresh Writer');
   });
 
+  test('a newer exact detail establishes authority during a later background fetch', () => {
+    state.selectedId = 'writer';
+    state.detail = agent({ slug: 'writer', name: 'Cached Writer' });
+    state.detailDataUpdatedAt = 1;
+    state.detailFetchedAfterMount = false;
+    state.detailFetching = true;
+    const { result, rerender } = render();
+    expect(result.current.selectedAgent).toBeUndefined();
+
+    act(() => {
+      state.detail = agent({ slug: 'writer', name: 'Fresh Writer' });
+      state.detailDataUpdatedAt = 2;
+      // Catalog reconciliation can invalidate this query immediately after a
+      // successful response. The newer exact data remains valid authority
+      // while that subsequent fetch is active.
+      state.detailFetching = true;
+      rerender();
+    });
+
+    expect(result.current.selectedAgent?.name).toBe('Fresh Writer');
+    expect(result.current.isLoading).toBe(false);
+  });
+
   test('a cancelled fetch cannot promote unchanged cached detail', () => {
     state.selectedId = 'writer';
     state.detail = agent({ slug: 'writer', name: 'Cached Writer' });

@@ -463,9 +463,28 @@ Per `local-merge-readiness.md`, extended by measured practice:
   `git checkout <sha> -- <dir>` does not delete files newer than that commit,
   so it reads the same count everywhere.
 
-### 5.1 Hosted CI is unavailable through 2026-09-01 (owner decision)
+### 5.1 The hosted-CI outage has ENDED — this section's authorizations are retired
 
-GitHub Actions is in an account-level billing outage. Jobs terminate in
+**Status as of 2026-08-31 22:00Z: hosted CI is executing normally.** Observed
+directly rather than assumed: a 12m59s `Windows PR portable floor` and a 9m58s
+`CodeQL` run on #1058, `merge_group` builds completing per entry, and thirteen
+pull requests merged through the queue in one evening.
+
+So the two standing authorizations below are **withdrawn**:
+
+- **Do NOT merge on local `ci:fast` alone.** Required checks run and are the
+  arbiter again. Local evidence supplements them; it no longer replaces them.
+- **`gh pr checks` reporting nothing now means something is wrong**, not that
+  the outage is swallowing it. Investigate rather than proceeding.
+
+The rest of this section is retained as the historical record of the outage and
+of what it cost, because the failure mode it documents — absence of signal
+rendering identically to success — recurs whenever a gate is skipped, path-
+filtered, or unselected, and that has not gone away. See §5.2.
+
+**The original entry, for the record:**
+
+GitHub Actions was in an account-level billing outage. Jobs terminate in
 seconds having executed **zero steps**, with the annotation "The job was not
 started because recent account payments have failed or your spending limit
 needs to be increased." The owner has decided not to clear it before
