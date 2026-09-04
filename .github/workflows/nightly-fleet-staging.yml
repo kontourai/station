@@ -11,6 +11,7 @@ permissions: { contents: read, attestations: write, id-token: write }
 
 jobs:
   fleet-plan:
+    name: Plan portable staging
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha }}
     runs-on: ubuntu-22.04
     outputs:
@@ -21,7 +22,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ inputs.source_sha }}", fetch-depth: 0, persist-credentials: false }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc }
+        with: { node-version-file: .nvmrc, cache: npm }
       - run: npm run dependencies:ci
       - id: source
         name: Bind staging to the current main event SHA
@@ -43,6 +44,7 @@ jobs:
           echo "plan_digest=$digest" >> "$GITHUB_OUTPUT"
 
   portable:
+    name: Package portable server
     needs: fleet-plan
     if: ${{ needs.fleet-plan.result == 'success' }}
     runs-on: ubuntu-22.04
@@ -51,7 +53,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.fleet-plan.outputs.source_sha }}", fetch-depth: 0, persist-credentials: false }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc }
+        with: { node-version-file: .nvmrc, cache: npm }
       - run: npm run dependencies:ci && npm run build:connect
       - name: Package and verify the exact-SHA portable staging archive
         run: |
@@ -75,6 +77,7 @@ jobs:
         with: { name: "nightly-fleet-portable-${{ github.run_id }}", path: fleet-assets/*, if-no-files-found: error, retention-days: 14 }
 
   admit-fleet:
+    name: Admit portable bytes
     needs: [fleet-plan, portable]
     if: ${{ always() && !cancelled() && needs.fleet-plan.result == 'success' && needs.portable.result == 'success' }}
     runs-on: ubuntu-22.04
@@ -87,7 +90,7 @@ jobs:
       # siblings; on the runner's default Node with no node_modules the first
       # Nightly to reach this leg died with ERR_MODULE_NOT_FOUND (ajv).
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc }
+        with: { node-version-file: .nvmrc, cache: npm }
       - run: npm run dependencies:ci
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: { name: "nightly-fleet-portable-${{ github.run_id }}", path: staged }

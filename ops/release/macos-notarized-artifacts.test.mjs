@@ -117,6 +117,135 @@ function fixture({
   };
 }
 
+function isSubmission(program, args, extension) {
+  return (
+    program === 'xcrun' &&
+    args[0] === 'notarytool' &&
+    args[1] === 'submit' &&
+    args.some((argument) => argument.endsWith(extension))
+  );
+}
+
+/**
+ * Records, for every scratch-root removal, how many notarization submissions
+ * were still in flight at the moment the release deleted the archives those
+ * submissions upload. `outstandingSubmissions` is what the cleanup contract
+ * turns on: a removal observed with a pending submission means a notarytool
+ * child outlived the file it was sending.
+ */
+function withSubmissionSettlementRecording(release, state) {
+  const baseRmSync = release.fs.rmSync;
+  state.startedSubmissions = 0;
+  state.settledSubmissions = 0;
+  state.removals = [];
+  release.fs.rmSync = (file, options) => {
+    state.removals.push({
+      file,
+      outstandingSubmissions:
+        state.startedSubmissions - state.settledSubmissions,
+    });
+    return baseRmSync(file, options);
+  };
+  return (promise) => {
+    state.startedSubmissions += 1;
+    const settle = () => {
+      state.settledSubmissions += 1;
+    };
+    promise.then(settle, settle);
+    return promise;
+  };
+}
+
+/**
+ * Withholds the application notarization receipt until the DMG submission has
+ * actually been invoked, so the two submissions can only both complete when
+ * they overlap. A release that waits for the application receipt before it
+ * creates and submits the DMG cannot reach that resolution; the bounded guard
+ * turns that into a named failure rather than a hang.
+ */
+function withOverlappedSubmissions(
+  release,
+  {
+    applicationReceipt,
+    dmgReceipt,
+    applicationSettlesLast = false,
+    dmgSettlesLast = false,
+  } = {},
+) {
+  const baseRun = release.run;
+  const state = { applicationSettled: false, dmgSettled: false };
+  const trackSubmission = withSubmissionSettlementRecording(release, state);
+  let observeDmgSubmission;
+  let guardTimer;
+  const dmgSubmissionStarted = new Promise((resolve) => {
+    observeDmgSubmission = resolve;
+  });
+  const guard = new Promise((_resolve, reject) => {
+    guardTimer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            'the DMG submission never started while the application submission was still waiting',
+          ),
+        ),
+      750,
+    );
+  });
+  release.run = (program, args, options) => {
+    if (isSubmission(program, args, '.zip')) {
+      const observed = baseRun(program, args, options);
+      const settleApplication = () => {
+        state.applicationSettled = true;
+        state.dmgPendingAtApplicationOutcome = !state.dmgSettled;
+        return applicationReceipt ?? observed;
+      };
+      return trackSubmission(
+        Promise.race([
+          dmgSubmissionStarted.then(
+            () =>
+              applicationSettlesLast
+                ? // Keep the application submission genuinely in flight past
+                  // the DMG outcome, so a removal that races it is visible.
+                  new Promise((resolve) => {
+                    setTimeout(() => resolve(settleApplication()), 20);
+                  })
+                : settleApplication(),
+          ),
+          guard,
+        ]),
+      );
+    }
+    if (isSubmission(program, args, '.dmg')) {
+      const observed = baseRun(program, args, options);
+      observeDmgSubmission();
+      state.applicationPendingAtDmgOutcome = !state.applicationSettled;
+      const receipt = dmgReceipt ?? observed;
+      if (!dmgSettlesLast) {
+        state.dmgSettled = true;
+        return trackSubmission(Promise.resolve(receipt));
+      }
+      // Keep the DMG submission genuinely in flight so an application outcome
+      // that arrives first is observed against a pending DMG submission.
+      return trackSubmission(
+        new Promise((resolve) => {
+          setTimeout(() => {
+            state.dmgSettled = true;
+            resolve(receipt);
+          }, 20);
+        }),
+      );
+    }
+    return baseRun(program, args, options);
+  };
+  return { release, state, stopGuard: () => clearTimeout(guardTimer) };
+}
+
+const invalidReceipt = {
+  status: 0,
+  stdout: JSON.stringify({ status: 'Invalid' }),
+  stderr: '',
+};
+
 async function rejectsBeforeSubmission({
   designatedRequirement,
   entitlementOutput,
@@ -192,6 +321,37 @@ test('uses a visible phase for each injected command and preserves the canonical
     ['-d', '--entitlements', '-', '--xml', '/app/Station.app'],
     expect.objectContaining({ phase: 'outer app entitlements' }),
   ]);
+  // Without `overlapNotarization` the notarization region is serial: the
+  // application is submitted, stapled, and admitted before the disk image is
+  // staged, so the image encloses an application carrying its own ticket.
+  const phases = calls.map(([_program, _args, options]) => options.phase);
+  expect(
+    phases.slice(phases.indexOf('application notarization archive')),
+  ).toEqual([
+    'application notarization archive',
+    'notarize notarization-input.zip',
+    'application stapling',
+    'application staple validation',
+    'application Gatekeeper assessment',
+    'DMG staging',
+    'DMG creation',
+    'DMG signing',
+    'DMG signature verification',
+    'DMG signing metadata',
+    'DMG designated requirement',
+    'notarize station-v1.2.3-macos-aarch64.dmg',
+    'DMG stapling',
+    'DMG staple validation',
+    'DMG Gatekeeper assessment',
+    'DMG mount',
+    'mounted app signature verification',
+    'mounted app bundle identity',
+    'mounted app Gatekeeper assessment',
+    'DMG detach',
+    'updater archive derivation',
+    'updater archive validation',
+    'updater signature derivation',
+  ]);
 });
 
 test('rejects missing, non-app, symlinked, newline, and escaping app paths before signing', async () => {
@@ -261,6 +421,9 @@ test('does not assess Gatekeeper until the accepted app has been stapled', async
       args[1] === 'submit' &&
       args.includes('/scratch/notarization-input.zip'),
   );
+  const dmgSubmit = calls.findIndex(([program, args]) =>
+    isSubmission(program, args, '.dmg'),
+  );
   const staple = calls.findIndex(
     ([program, args]) =>
       program === 'xcrun' &&
@@ -273,8 +436,174 @@ test('does not assess Gatekeeper until the accepted app has been stapled', async
       args.includes('execute') &&
       args.includes('/app/Station.app'),
   );
+  const dmgStaple = calls.findIndex(
+    ([program, args]) =>
+      program === 'xcrun' &&
+      args[1] === 'staple' &&
+      args.some((argument) => argument.endsWith('.dmg')),
+  );
+  expect(submit).toBeGreaterThanOrEqual(0);
+  // The default is serial: the application is stapled and assessed before the
+  // disk image it will be enclosed in is even submitted.
   expect(submit).toBeLessThan(staple);
   expect(staple).toBeLessThan(assess);
+  expect(assess).toBeLessThan(dmgSubmit);
+  expect(dmgSubmit).toBeLessThan(dmgStaple);
+});
+
+test('overlapped notarization submits the DMG before the application is stapled', async () => {
+  const { calls, embeddedMacos, fs, options, run } = fixture();
+  await createMacosNotarizedArtifacts(
+    { ...options, overlapNotarization: true },
+    { embeddedMacos, fs, run },
+  );
+  const phases = calls.map(([_program, _args, options_]) => options_.phase);
+  // The disk image is built and admitted while the application submission is
+  // still in flight, so its enclosed application is not yet stapled.
+  expect(
+    phases.slice(
+      phases.indexOf('application notarization archive'),
+      phases.indexOf('DMG stapling') + 1,
+    ),
+  ).toEqual([
+    'application notarization archive',
+    'notarize notarization-input.zip',
+    'DMG staging',
+    'DMG creation',
+    'DMG signing',
+    'DMG signature verification',
+    'DMG signing metadata',
+    'DMG designated requirement',
+    'notarize station-v1.2.3-macos-aarch64.dmg',
+    'application stapling',
+    'application staple validation',
+    'application Gatekeeper assessment',
+    'DMG stapling',
+  ]);
+});
+
+test('waits on both notarizations concurrently before stapling either artifact', async () => {
+  const { release, state, stopGuard } = withOverlappedSubmissions(fixture());
+  try {
+    await expect(
+      createMacosNotarizedArtifacts(
+        { ...release.options, overlapNotarization: true },
+        release,
+      ),
+    ).resolves.toMatchObject({
+      dmg: '/assets/station-v1.2.3-macos-aarch64.dmg',
+    });
+  } finally {
+    stopGuard();
+  }
+  // The injected application submission only produced its receipt after the
+  // DMG submission had been invoked, so completing at all proves the waits
+  // overlapped rather than ran back to back.
+  expect(state.applicationPendingAtDmgOutcome).toBe(true);
+  const phase = (name) =>
+    release.calls.findIndex(
+      ([_program, _args, options]) => options.phase === name,
+    );
+  expect(phase('notarize notarization-input.zip')).toBeLessThan(
+    phase('DMG creation'),
+  );
+  expect(phase('DMG creation')).toBeLessThan(
+    phase('notarize station-v1.2.3-macos-aarch64.dmg'),
+  );
+  expect(phase('notarize station-v1.2.3-macos-aarch64.dmg')).toBeLessThan(
+    phase('application stapling'),
+  );
+});
+
+test('staples nothing when the DMG is rejected while the application submission is still waiting', async () => {
+  const { release, state, stopGuard } = withOverlappedSubmissions(fixture(), {
+    dmgReceipt: invalidReceipt,
+    applicationSettlesLast: true,
+  });
+  try {
+    await expect(
+      createMacosNotarizedArtifacts(
+        { ...release.options, overlapNotarization: true },
+        release,
+      ),
+    ).rejects.toThrow('notarytool rejected station-v1.2.3-macos-aarch64.dmg.');
+  } finally {
+    stopGuard();
+  }
+  expect(state.applicationPendingAtDmgOutcome).toBe(true);
+  for (const name of ['application stapling', 'DMG stapling'])
+    expect(
+      release.calls.some(
+        ([_program, _args, options]) => options.phase === name,
+      ),
+    ).toBe(false);
+  expect(state.removals).toEqual([
+    { file: '/scratch', outstandingSubmissions: 0 },
+  ]);
+});
+
+test('staples nothing when the application is rejected while the DMG submission is still waiting', async () => {
+  const { release, state, stopGuard } = withOverlappedSubmissions(fixture(), {
+    applicationReceipt: invalidReceipt,
+    dmgSettlesLast: true,
+  });
+  try {
+    await expect(
+      createMacosNotarizedArtifacts(
+        { ...release.options, overlapNotarization: true },
+        release,
+      ),
+    ).rejects.toThrow('notarytool rejected notarization-input.zip.');
+  } finally {
+    stopGuard();
+  }
+  expect(state.dmgPendingAtApplicationOutcome).toBe(true);
+  for (const name of ['application stapling', 'DMG stapling'])
+    expect(
+      release.calls.some(
+        ([_program, _args, options]) => options.phase === name,
+      ),
+    ).toBe(false);
+  expect(state.removals).toEqual([
+    { file: '/scratch', outstandingSubmissions: 0 },
+  ]);
+});
+
+test('removes the scratch root only after a mid-flight failure has settled the application submission', async () => {
+  // The two rejection tests above reach cleanup through the join, which has
+  // already settled both submissions. Only a failure raised BETWEEN starting
+  // the application submission and that join leaves a notarytool child
+  // uploading an archive cleanup is about to delete, so this is where the
+  // `finally` settle has power.
+  const release = fixture();
+  const state = {};
+  const trackSubmission = withSubmissionSettlementRecording(release, state);
+  const baseRun = release.run;
+  release.run = (program, args, options) => {
+    if (isSubmission(program, args, '.zip')) {
+      const observed = baseRun(program, args, options);
+      return trackSubmission(
+        new Promise((resolve) => {
+          setTimeout(() => resolve(observed), 30);
+        }),
+      );
+    }
+    if (program === 'hdiutil' && args[0] === 'create') {
+      baseRun(program, args, options);
+      throw new Error('hdiutil create failed');
+    }
+    return baseRun(program, args, options);
+  };
+  await expect(
+    createMacosNotarizedArtifacts(
+      { ...release.options, overlapNotarization: true },
+      release,
+    ),
+  ).rejects.toThrow('hdiutil create failed');
+  expect(state.startedSubmissions).toBe(1);
+  expect(state.removals).toEqual([
+    { file: '/scratch', outstandingSubmissions: 0 },
+  ]);
 });
 
 test('DMG-only mode revalidates a notarized app but never signs, archives, submits, or staples it', async () => {
@@ -425,6 +754,33 @@ test('parses the DMG-only CLI flag as a bare opt-in and rejects a value for it',
     expect(() => parseMacosNotarizedArtifactsCli(invalid)).toThrow(
       /unique --name value/,
     );
+  // Overlapping the notarization waits is the same shape of bare opt-in, and
+  // absent it the release keeps the serial staple-then-package order.
+  expect(
+    parseMacosNotarizedArtifactsCli([...args, '--overlap-notarization']),
+  ).toMatchObject({ overlapNotarization: true });
+  expect(parseMacosNotarizedArtifactsCli(args)).toMatchObject({
+    overlapNotarization: undefined,
+  });
+  for (const invalid of [
+    [...args, '--overlap-notarization', 'true'],
+    [...args, '--overlap-notarization', '--overlap-notarization'],
+    [...args, '--overlap-notarisation'],
+  ])
+    expect(() => parseMacosNotarizedArtifactsCli(invalid)).toThrow(
+      /unique --name value/,
+    );
+});
+
+test('refuses an overlapped-notarization option that is not an explicit opt-in', async () => {
+  const release = fixture();
+  for (const overlapNotarization of [false, 'true', 1, null])
+    await expect(
+      createMacosNotarizedArtifacts(
+        { ...release.options, overlapNotarization },
+        release,
+      ),
+    ).rejects.toThrow('Overlapped notarization must be explicitly enabled.');
 });
 
 test('refuses a DMG whose signed authority or designated requirement is not Kontour before notarization', async () => {

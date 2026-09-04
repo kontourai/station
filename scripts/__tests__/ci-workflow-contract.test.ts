@@ -1424,7 +1424,7 @@ describe('every Tauri invocation is rooted at the app directory', () => {
   const DISCOVERY_EXPOSED = [
     'build-android.yml',
     'build-ios.yml',
-    'nightly-native-cohort.yml',
+    'nightly-native-stage.yml',
     'release.yml',
   ];
 
