@@ -11,6 +11,8 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
+import { REGION_IDS } from '../regions/region-model';
 
 /**
  * Placement vocabulary ratchet (#928). The owner decisions on that issue
@@ -27,6 +29,19 @@ import { describe, expect, test } from 'vitest';
  */
 const ROOT = process.cwd();
 const SELF = 'src-ui/src/__tests__/placement-vocabulary.test.ts';
+
+/**
+ * The two modules whose retired spellings this ratchet guards, imported as
+ * values so `test:changed`'s `--related` graph selection schedules this file
+ * when either changes. A manifest entry with an explicit `tests` list would
+ * REPLACE graph selection for that path (review of #928 measured ~46
+ * transitively related suites dropped by one), so the import is the
+ * scheduling mechanism, not the manifest.
+ */
+const GUARDED_MODULES = {
+  regionIds: REGION_IDS,
+  destinationCount: APP_DESTINATION_REGISTRY.getRegistered().length,
+} as const;
 const SCANNED_ROOTS = [
   'src-ui/src',
   'src-server',
@@ -97,6 +112,16 @@ function scanForRetiredNames(
 }
 
 describe('placement vocabulary (#928)', () => {
+  test('the ratchet is bound to the modules it guards, so graph selection schedules it', () => {
+    expect(GUARDED_MODULES.regionIds).toEqual([
+      'main',
+      'left',
+      'right',
+      'bottom',
+    ]);
+    expect(GUARDED_MODULES.destinationCount).toBeGreaterThan(0);
+  });
+
   const files = listSourceFiles();
 
   test('the enumeration is real: known root files present and the corpus is large', () => {
