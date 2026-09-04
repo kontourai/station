@@ -43,7 +43,11 @@ const mocks = vi.hoisted(() => ({
   // `PluginManagementView` claimed "No plugins installed yet" over a read
   // that never answered.
   pluginsError: undefined as unknown,
+  pluginsData: [] as unknown[],
   refetchPlugins: vi.fn(),
+  selectedId: null as string | null,
+  selectPlugin: vi.fn(),
+  deselectPlugin: vi.fn(),
   previewOnSuccess: null as ((data: unknown) => void) | null,
 }));
 
@@ -76,9 +80,9 @@ vi.mock('../core/PluginRegistry', () => ({
 
 vi.mock('../hooks/useUrlSelection', () => ({
   useUrlSelection: () => ({
-    selectedId: null,
-    select: vi.fn(),
-    deselect: vi.fn(),
+    selectedId: mocks.selectedId,
+    select: mocks.selectPlugin,
+    deselect: mocks.deselectPlugin,
   }),
 }));
 
@@ -100,14 +104,16 @@ vi.mock('@kontourai/station-sdk', () => ({
   usePluginSettingsMutation: () => ({ mutate: vi.fn() }),
   usePluginSettingsQuery: () => ({ data: undefined }),
   usePluginsQuery: () => ({
-    data: [],
+    data: mocks.pluginsData,
     error: mocks.pluginsError,
     isLoading: false,
     refetch: mocks.refetchPlugins,
   }),
   usePluginUpdateMutation: () => ({ mutate: vi.fn() }),
   usePluginUpdatesQuery: () => ({ data: [] }),
+  reloadPlugins: mocks.reloadPlugins,
   useReloadPluginsMutation: () => ({
+    isPending: false,
     mutateAsync: mocks.reloadPlugins,
   }),
   // archive#3815: withdrawing a permission.
@@ -131,10 +137,17 @@ describe('usePluginManagementViewModel', () => {
       mocks.previewOnSuccess = options.onSuccess;
     });
     mocks.reloadPlugins.mockReset().mockResolvedValue(undefined);
-    mocks.reloadClientRegistry.mockReset().mockResolvedValue(undefined);
+    mocks.reloadClientRegistry.mockReset().mockResolvedValue('ready');
     mocks.installOnSuccess = null;
     mocks.pluginsError = undefined;
-    mocks.refetchPlugins.mockReset();
+    mocks.pluginsData = [];
+    mocks.selectedId = null;
+    mocks.selectPlugin.mockReset();
+    mocks.deselectPlugin.mockReset();
+    mocks.refetchPlugins.mockReset().mockResolvedValue({
+      isError: false,
+      error: null,
+    });
   });
 
   test('surfaces the query error as pluginsError (Review H1)', () => {
@@ -149,6 +162,302 @@ describe('usePluginManagementViewModel', () => {
 
     result.current.refetchPlugins();
     expect(mocks.refetchPlugins).toHaveBeenCalledTimes(1);
+  });
+
+  test('reloads server, client registry, and collection after manifest repair', async () => {
+    mocks.selectedId = 'rejected:repairable';
+    mocks.pluginsData = [
+      {
+        status: 'rejected',
+        name: 'repairable',
+        displayName: 'repairable',
+        rejection: {
+          code: 'malformed-json',
+          reason: 'plugin.json contains malformed JSON.',
+          recovery: {
+            kind: 'repair-manifest',
+            instruction: 'Repair plugin.json, then choose Reload plugins.',
+          },
+        },
+      },
+    ];
+    mocks.refetchPlugins.mockResolvedValueOnce({
+      data: [{ name: 'repairable', version: '2.0.0' }],
+      isError: false,
+      error: null,
+    });
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.reloadClientRegistry).toHaveBeenCalledOnce();
+    expect(mocks.refetchPlugins).toHaveBeenCalledOnce();
+    expect(mocks.reloadPlugins.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.reloadClientRegistry.mock.invocationCallOrder[0],
+    );
+    expect(mocks.reloadClientRegistry.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.refetchPlugins.mock.invocationCallOrder[0],
+    );
+    expect(mocks.queryClient.invalidateQueries.mock.calls).toEqual([
+      [{ queryKey: ['plugin-updates'] }],
+      [{ queryKey: ['layouts'] }],
+      [{ queryKey: ['agents'] }],
+      [{ queryKey: ['projects'] }],
+    ]);
+    expect(mocks.selectPlugin).toHaveBeenCalledWith('repairable');
+    expect(mocks.deselectPlugin).not.toHaveBeenCalled();
+  });
+
+  test('does not overwrite user navigation while repaired selection reconciliation is in flight', async () => {
+    mocks.selectedId = 'rejected:repairable';
+    mocks.pluginsData = [
+      {
+        status: 'rejected',
+        name: 'repairable',
+        displayName: 'repairable',
+        rejection: {
+          code: 'malformed-json',
+          reason: 'plugin.json contains malformed JSON.',
+          recovery: {
+            kind: 'repair-manifest',
+            instruction: 'Repair plugin.json, then choose Reload plugins.',
+          },
+        },
+      },
+    ];
+    let finishRefetch!: () => void;
+    mocks.refetchPlugins.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRefetch = () =>
+            resolve({
+              data: [{ name: 'repairable', version: '2.0.0' }],
+              isError: false,
+              error: null,
+            });
+        }),
+    );
+    const { result, rerender } = renderHook(() =>
+      usePluginManagementViewModel(),
+    );
+
+    let reload!: Promise<void>;
+    act(() => {
+      reload = result.current.reloadRejectedPlugin();
+    });
+    await waitFor(() => expect(mocks.refetchPlugins).toHaveBeenCalledOnce());
+
+    act(() => {
+      mocks.selectedId = 'another-plugin';
+      rerender();
+    });
+    await act(async () => {
+      finishRefetch();
+      await reload;
+    });
+
+    expect(mocks.selectPlugin).not.toHaveBeenCalled();
+    expect(mocks.deselectPlugin).not.toHaveBeenCalled();
+  });
+
+  test('keeps a still-rejected plugin selected and reports that reload did not repair it', async () => {
+    const rejected = {
+      status: 'rejected',
+      name: 'repairable',
+      displayName: 'Repairable plugin',
+      rejection: {
+        code: 'malformed-json',
+        reason: 'plugin.json contains malformed JSON.',
+        recovery: {
+          kind: 'repair-manifest',
+          instruction: 'Repair plugin.json, then choose Reload plugins.',
+        },
+      },
+    };
+    mocks.selectedId = 'rejected:repairable';
+    mocks.pluginsData = [rejected];
+    mocks.refetchPlugins.mockResolvedValueOnce({
+      data: [rejected],
+      isError: false,
+      error: null,
+    });
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+
+    expect(mocks.selectPlugin).not.toHaveBeenCalled();
+    expect(mocks.deselectPlugin).not.toHaveBeenCalled();
+    expect(result.current.message).toEqual({
+      type: 'error',
+      text: 'Repairable plugin is still rejected. plugin.json contains malformed JSON.',
+    });
+  });
+
+  test('preserves the rejected directory when an unrelated valid manifest has the same name', async () => {
+    const rejected = {
+      status: 'rejected',
+      name: 'repairable',
+      displayName: 'Repairable folder',
+      rejection: {
+        code: 'malformed-json',
+        reason: 'plugin.json contains malformed JSON.',
+        recovery: {
+          kind: 'repair-manifest',
+          instruction: 'Repair plugin.json, then choose Reload plugins.',
+        },
+      },
+    };
+    const unrelated = { name: 'repairable', version: '1.0.0' };
+    mocks.selectedId = 'rejected:repairable';
+    mocks.pluginsData = [rejected, unrelated];
+    mocks.refetchPlugins.mockResolvedValueOnce({
+      data: [unrelated, rejected],
+      isError: false,
+      error: null,
+    });
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+
+    expect(mocks.selectPlugin).not.toHaveBeenCalled();
+    expect(mocks.deselectPlugin).not.toHaveBeenCalled();
+    expect(result.current.message).toEqual({
+      type: 'error',
+      text: 'Repairable folder is still rejected. plugin.json contains malformed JSON.',
+    });
+  });
+
+  test('keeps a client-registry reload failure visible and does not refresh the collection', async () => {
+    mocks.reloadClientRegistry.mockRejectedValueOnce(
+      new Error('registry is still unavailable'),
+    );
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.refetchPlugins).not.toHaveBeenCalled();
+    expect(result.current.message).toEqual({
+      type: 'error',
+      text: 'Plugins were not reloaded: registry is still unavailable',
+    });
+  });
+
+  test('treats a degraded client-registry reload as recovery failure', async () => {
+    mocks.reloadClientRegistry.mockResolvedValueOnce('degraded');
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.reloadClientRegistry).toHaveBeenCalledOnce();
+    expect(mocks.refetchPlugins).not.toHaveBeenCalled();
+    expect(result.current.message).toEqual({
+      type: 'error',
+      text: 'Plugins were not reloaded: browser plugin registry is still degraded',
+    });
+  });
+
+  test('keeps a collection refetch failure visible after both reload steps', async () => {
+    mocks.refetchPlugins.mockResolvedValueOnce({
+      isError: true,
+      error: new Error('collection is still unavailable'),
+    });
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.reloadClientRegistry).toHaveBeenCalledOnce();
+    expect(result.current.message).toEqual({
+      type: 'error',
+      text: 'Plugins were not reloaded: collection is still unavailable',
+    });
+  });
+
+  test('owns one pending latch across server, registry, and collection reloads', async () => {
+    let releaseServerReload!: () => void;
+    let releaseClientReload!: () => void;
+    let releaseCollectionReload!: () => void;
+    mocks.reloadPlugins.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseServerReload = resolve;
+        }),
+    );
+    mocks.reloadClientRegistry.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseClientReload = resolve;
+        }),
+    );
+    mocks.refetchPlugins.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseCollectionReload = () =>
+            resolve({ isError: false, error: null });
+        }),
+    );
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    let first!: Promise<void>;
+    act(() => {
+      first = result.current.reloadRejectedPlugin();
+    });
+    await waitFor(() =>
+      expect(result.current.reloadRejectedPending).toBe(true),
+    );
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.reloadClientRegistry).not.toHaveBeenCalled();
+    expect(mocks.refetchPlugins).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releaseServerReload();
+    });
+    await waitFor(() =>
+      expect(mocks.reloadClientRegistry).toHaveBeenCalledOnce(),
+    );
+    expect(result.current.reloadRejectedPending).toBe(true);
+    expect(mocks.refetchPlugins).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      releaseClientReload();
+    });
+    await waitFor(() => expect(mocks.refetchPlugins).toHaveBeenCalledOnce());
+    expect(result.current.reloadRejectedPending).toBe(true);
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      releaseCollectionReload();
+      await first;
+    });
+    expect(result.current.reloadRejectedPending).toBe(false);
   });
 
   test('uses host approval copy only for trusted pending permissions', () => {

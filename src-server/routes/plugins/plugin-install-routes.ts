@@ -1,11 +1,14 @@
 import { existsSync, rmSync } from 'node:fs';
-import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
+import {
+  rejectedInstalledPluginRecord,
+  scanInstalledPluginInventory,
+} from '../../services/plugins/installed-plugin-inventory.js';
 import { scanPluginPromptFileSafety } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   findPluginContentLockCycleError,
@@ -84,20 +87,22 @@ export function registerPluginInstallRoutes(
   } = deps;
 
   app.get('/', async (c) => {
-    if (!existsSync(pluginsDir)) return c.json({ plugins: [] });
-
-    const entries = await readdir(pluginsDir, { withFileTypes: true });
     const plugins = [];
 
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const manifestPath = join(pluginsDir, entry.name, 'plugin.json');
-      if (!existsSync(manifestPath)) continue;
-
+    for (const entry of scanInstalledPluginInventory(pluginsDir, logger)) {
+      if (entry.state === 'rejected') {
+        plugins.push(rejectedInstalledPluginRecord(entry));
+        continue;
+      }
       try {
-        const manifest = await readPluginManifestFile(manifestPath);
-        const bundlePath = join(pluginsDir, entry.name, 'dist', 'bundle.js');
-        const pluginDir = join(pluginsDir, entry.name);
+        const manifest = entry.manifest;
+        const bundlePath = join(
+          pluginsDir,
+          entry.directoryName,
+          'dist',
+          'bundle.js',
+        );
+        const pluginDir = join(pluginsDir, entry.directoryName);
         const git = await getPluginGitInfo(pluginDir, logger);
         const declared = requiredPermissionsForManifest(manifest);
         // archive#4288: EFFECTIVE grants, plus the derived binding state and
@@ -157,7 +162,7 @@ export function registerPluginInstallRoutes(
           );
         }
         logger.error('Failed to read plugin manifest', {
-          plugin: entry.name,
+          plugin: entry.directoryName,
           error: errorMessage(error),
         });
       }

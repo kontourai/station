@@ -251,6 +251,12 @@ one renders Station's explicit unavailable-component recovery state rather than
 silently substituting another layout. Reinstall the same registry item, refresh
 the project, and open the preserved layout again.
 
+If installed files remain but `plugin.json` is missing or rejected, Plugins
+keeps the folder visible with a **Rejected** badge, the validation reason, and
+specific repair guidance. Fix or restore the manifest, then choose **Reload
+plugins**. Station does not invent a version or expose normal settings, update,
+permission, or removal controls until the manifest validates again.
+
 ## layout.json
 
 ```json

@@ -4,20 +4,15 @@
  * by fetching a remote JSON manifest.
  */
 
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
+import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
 import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { execGitSync } from '../../utils/git-exec.js';
+import type { Logger } from '../../utils/logger.js';
 import type { InstallResult, RegistryItem } from '../provider-contracts.js';
 import type {
   IAgentRegistryProvider,
@@ -115,6 +110,7 @@ export class JsonManifestRegistryProvider
      * timeout nothing has ever tripped is an unproven timeout.
      */
     private readonly manifestFetchTimeoutMs: number = MANIFEST_FETCH_TIMEOUT_MS,
+    private readonly logger?: Pick<Logger, 'warn'>,
   ) {}
 
   get registryKey(): string {
@@ -199,30 +195,16 @@ export class JsonManifestRegistryProvider
     if (!existsSync(pluginsDir)) return [];
 
     const items: RegistryItem[] = [];
-    const entries = readdirSync(pluginsDir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const manifestPath = join(pluginsDir, entry.name, 'plugin.json');
-      if (!existsSync(manifestPath)) continue;
-
-      try {
-        const manifest = readPluginManifestFileSync(manifestPath);
-        items.push({
-          id: manifest.name || entry.name,
-          displayName: manifest.displayName,
-          description: manifest.description,
-          version: manifest.version,
-          installed: true,
-        });
-      } catch (e) {
-        console.debug(
-          'Failed to read installed plugin manifest:',
-          entry.name,
-          e,
-        );
-        // Skip invalid manifests
-      }
+    for (const entry of scanInstalledPluginInventory(pluginsDir, this.logger)) {
+      if (entry.state === 'rejected') continue;
+      const manifest = entry.manifest;
+      items.push({
+        id: manifest.name || entry.directoryName,
+        displayName: manifest.displayName,
+        description: manifest.description,
+        version: manifest.version,
+        installed: true,
+      });
     }
 
     return items;
@@ -524,8 +506,11 @@ export class JsonManifestRegistryProvider
       }
       const def = JSON.parse(raw) as ToolDef;
       return { ...def, id: def.id || tool.id };
-    } catch (e) {
-      console.debug('Failed to read manifest tool definition:', id, e);
+    } catch (error) {
+      this.logger?.warn('Registry integration manifest rejected', {
+        integrationId: id,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
   }

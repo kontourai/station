@@ -1878,6 +1878,7 @@ async function main() {
   let daemon = null;
   let operatorCredential = null;
   let browserSessionCredential = null;
+  let stationHome = null;
   // The Station CLI rejects a shared/root-owned log directory such as `/tmp`.
   // Keep startup diagnostics in the instance-owned Playwright artifact root so
   // hosted CI is secure and failures remain uploadable.
@@ -1987,6 +1988,7 @@ async function main() {
             instance,
           );
           operatorCredential = bootstrapAuthority.operatorCredential;
+          stationHome = bootstrapAuthority.registry.baseDir;
           daemon = await discoverE2EDaemon({
             root: process.cwd(),
             instance,
@@ -2130,6 +2132,9 @@ async function main() {
             STATION_E2E_RUNNER: '1',
             STATION_E2E_HOST_CREDENTIAL: operatorCredential,
             STATION_E2E_BROWSER_SESSION_CREDENTIAL: browserSessionCredential,
+            // Test-process-only authority for filesystem-backed clean-home
+            // journeys. The runner owns and removes this exact temporary home.
+            STATION_E2E_HOME: stationHome,
             // station#4464 arbiter fix: an explicit key (not a conditional
             // spread) so a stray `STATION_E2E_SCREENS` sitting in the
             // runner's own `process.env` (already inherited above via

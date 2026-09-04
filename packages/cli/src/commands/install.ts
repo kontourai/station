@@ -4,6 +4,7 @@ import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import type { AuthenticatedFetchInit } from '@kontourai/station-sdk/client';
 import {
   authenticatedFetch,
+  type InstalledPluginRecord,
   listPlugins,
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
@@ -23,7 +24,7 @@ const NO_FLAGS: ParsedCoreArgs = {
   repeatedFlags: {},
 };
 
-type PluginRecord = PluginManifest & { hasBundle?: boolean };
+type PluginRecord = InstalledPluginRecord;
 
 function resolvePluginSourceForStation(
   source: string,
@@ -387,9 +388,15 @@ export async function info(
   name: string,
   parsed: ParsedCoreArgs = NO_FLAGS,
 ): Promise<void> {
-  const plugin = (await installedPlugins(parsed)).find(
-    (candidate) => candidate.name === name,
-  );
+  const plugins = await installedPlugins(parsed);
+  // A rejected row is identified only by its directory entry. Prefer a
+  // validated manifest identity when both happen to use the same string.
+  const plugin =
+    plugins.find(
+      (candidate) =>
+        candidate.name === name &&
+        !('status' in candidate && candidate.status === 'rejected'),
+    ) ?? plugins.find((candidate) => candidate.name === name);
   if (!plugin) throw new Error(`Plugin ${name} not found`);
   console.log(JSON.stringify(plugin, null, 2));
 }
