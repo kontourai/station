@@ -46,6 +46,15 @@ same narrow preparation contract; registering one does not grant access to
 credentials or execution. Configuration cannot bypass the source and target
 ownership requirements. CloudFormation completion is not application readiness.
 
+## GCP development profile
+
+The `gcp-compute` preview reuses the same bounded inventory and non-transfer
+contract for `e2-micro`, `e2-small`, and `e2-medium`. It does not inspect cloud
+credentials, billing, quotas, or target readiness. GCP template generation is
+not implemented; use the [operator-run development recipe](../../deploy/gcp-dev/README.md)
+for an isolated persistent test host. Provider selection never turns preparation
+into permission to move a home or resume work.
+
 ## AWS development template
 
 Preparation requires an explicit region, instance type, digest-pinned public

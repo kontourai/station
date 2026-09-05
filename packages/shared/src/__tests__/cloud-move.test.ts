@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { previewCloudMove } from '../cloud-move.js';
+import { prepareCloudEnvironment, previewCloudMove } from '../cloud-move.js';
 import {
   ensureStationHomeSchemaSync,
   STATION_HOME_SCHEMA_FILE,
@@ -77,6 +77,35 @@ describe('cloud move preview', () => {
     expect(readFileSync(join(root, 'agents/writer/agent.json'), 'utf8')).toBe(
       source,
     );
+  });
+  test('selects GCP without inheriting AWS provisioning or availability claims', () => {
+    const { root } = fixture();
+    const gcp = {
+      providerId: 'gcp-compute',
+      region: 'us-central1',
+      instanceType: 'e2-micro',
+    };
+    const result = previewCloudMove({ homeDir: root, target: gcp });
+    expect(result.target).toEqual(gcp);
+    expect(result.transferAvailable).toBe(false);
+    expect(
+      result.warnings.some((warning) => warning.includes('Google credentials')),
+    ).toBe(true);
+    expect(() =>
+      previewCloudMove({
+        homeDir: root,
+        target: { ...gcp, region: 'us-central1-a' },
+      }),
+    ).toThrow('region');
+    expect(() =>
+      previewCloudMove({
+        homeDir: root,
+        target: { ...gcp, instanceType: 't3.micro' },
+      }),
+    ).toThrow('machine type');
+    expect(() =>
+      prepareCloudEnvironment({ target: gcp, image: 'unused' }),
+    ).toThrow('does not support environment preparation');
   });
   test('rejects unsupported target configuration before inspecting a home', () => {
     expect(() =>
