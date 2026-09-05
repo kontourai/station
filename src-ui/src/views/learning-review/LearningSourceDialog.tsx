@@ -16,8 +16,6 @@ import './LearningSourceDialog.css';
 
 type Authority = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 const gaps: Record<string, string> = {
-  restricted:
-    'Source inspection requires current local access to this personal store. The source is not disclosed.',
   unsupported: 'This store does not support source-only inspection.',
   missing: 'The selected source record is no longer available.',
   busy: 'The store is changing. Retry after its current operation finishes.',
@@ -146,6 +144,12 @@ export function LearningSourceDialog({
               not a learning revision.
             </p>
           </>
+        ) : query.data?.state === 'restricted' ? (
+          <ErrorState
+            variant="compact"
+            title="Source inspection is restricted"
+            description="The source is not disclosed. On a personal Station, open the local launch link on the machine that owns the store, then select the record again. Paired connections and operator API credentials do not grant this access. Hosted Stations are not supported. If the store changed, close this inspector and reload Memory before selecting its current record."
+          />
         ) : query.data ? (
           <p role="status">{gaps[query.data.state]}</p>
         ) : null}

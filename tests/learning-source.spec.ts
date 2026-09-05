@@ -18,6 +18,10 @@ import {
   expect,
   test,
 } from './helpers/authenticated-request';
+import {
+  type DeviceClassContext,
+  openDeviceClassContext,
+} from './helpers/device-class-context';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 
 const API = resolveE2EApiBase();
@@ -91,13 +95,15 @@ for (const viewport of [
   { label: 'mobile', width: 390, height: 844 },
 ]) {
   test(`learning source inspection uses the real owner and local UI credential on ${viewport.label}`, async ({
-    page,
+    browser,
+    baseURL,
     authenticatedRequest,
   }, testInfo) => {
     const directory = realpathSync(
       mkdtempSync(join(tmpdir(), 'station-learning-source-browser-')),
     );
     let root: KnowledgeStoreRoot | undefined;
+    let local: DeviceClassContext | undefined;
     try {
       root = await seed(authenticatedRequest, directory);
       // The operator API credential is intentionally insufficient: only the
@@ -113,8 +119,12 @@ for (const viewport of [
         },
       );
       expect((await denied.json()).data).toEqual({ state: 'restricted' });
-      await page.setViewportSize(viewport);
-      await page.goto('/developer/memory');
+      local = await openDeviceClassContext(browser, baseURL!, 'host', {
+        width: viewport.width,
+        height: viewport.height,
+      });
+      const page = local.page;
+      await page.goto(`${baseURL}/developer/memory`);
       const rootTab = page.getByRole('tab', {
         name: 'Learning source proof',
         exact: true,
@@ -179,6 +189,7 @@ for (const viewport of [
       await dialog.getByRole('button', { name: 'Close', exact: true }).click();
       await expect(dialog).toHaveCount(0);
     } finally {
+      await local?.context.close();
       if (root) await remove(authenticatedRequest, root);
       rmSync(directory, { recursive: true, force: true });
     }
@@ -186,7 +197,8 @@ for (const viewport of [
 }
 
 test('learning source inspection refuses a real replacement root with the same record ID', async ({
-  page,
+  browser,
+  baseURL,
   authenticatedRequest,
 }, testInfo) => {
   const first = realpathSync(
@@ -196,9 +208,15 @@ test('learning source inspection refuses a real replacement root with the same r
     mkdtempSync(join(tmpdir(), 'station-source-replacement-')),
   );
   let root: KnowledgeStoreRoot | undefined;
+  let local: DeviceClassContext | undefined;
   try {
     root = await seed(authenticatedRequest, first);
-    await page.goto('/developer/memory');
+    local = await openDeviceClassContext(browser, baseURL!, 'host', {
+      width: 1280,
+      height: 900,
+    });
+    const page = local.page;
+    await page.goto(`${baseURL}/developer/memory`);
     const tab = page.getByRole('tab', {
       name: 'Learning source proof',
       exact: true,
@@ -239,8 +257,54 @@ test('learning source inspection refuses a real replacement root with the same r
       animations: 'disabled',
     });
   } finally {
+    await local?.context.close();
     if (root) await remove(authenticatedRequest, root);
     rmSync(first, { recursive: true, force: true });
     rmSync(second, { recursive: true, force: true });
+  }
+});
+
+test('paired source inspection explains supported local access without exposing source', async ({
+  browser,
+  baseURL,
+  authenticatedRequest,
+}) => {
+  const directory = realpathSync(
+    mkdtempSync(join(tmpdir(), 'station-source-paired-')),
+  );
+  let root: KnowledgeStoreRoot | undefined;
+  let paired: DeviceClassContext | undefined;
+  try {
+    root = await seed(authenticatedRequest, directory);
+    paired = await openDeviceClassContext(browser, baseURL!, 'paired', {
+      width: 1280,
+      height: 900,
+    });
+    const page = paired.page;
+    await page.goto(`${baseURL}/developer/memory`);
+    const tab = page.getByRole('tab', {
+      name: 'Learning source proof',
+      exact: true,
+    });
+    if (await tab.count()) await tab.click();
+    await page.getByTestId(`knowledge-recall-node-${RECORD_ID}`).click();
+    await page
+      .getByRole('button', { name: 'Inspect learning source', exact: true })
+      .click();
+    const dialog = page.getByRole('dialog', {
+      name: 'Learning source',
+      exact: true,
+    });
+    await expect(
+      dialog.getByText('Source inspection is restricted', { exact: true }),
+    ).toBeVisible();
+    await expect(dialog.getByText(/local launch link/)).toBeVisible();
+    await expect(
+      dialog.getByRole('heading', { name: TITLE, exact: true }),
+    ).toHaveCount(0);
+  } finally {
+    await paired?.context.close();
+    if (root) await remove(authenticatedRequest, root);
+    rmSync(directory, { recursive: true, force: true });
   }
 });

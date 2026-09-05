@@ -160,3 +160,16 @@ test('revoked authority never displays a late source read', async () => {
   expect(screen.queryByText(/UNTRUSTED_SOURCE_BODY/)).toBeNull();
   expect(screen.getByText(/Station authorization changed/)).toBeTruthy();
 });
+
+test('restricted access gives a supported local-entry path and discloses no source', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => reply({ state: 'restricted', source: observed.source })),
+  );
+  mount();
+  expect(
+    await screen.findByText('Source inspection is restricted'),
+  ).toBeTruthy();
+  expect(screen.getByText(/local launch link/)).toBeTruthy();
+  expect(screen.queryByText(/UNTRUSTED_SOURCE_BODY/)).toBeNull();
+});
