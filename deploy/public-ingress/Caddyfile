@@ -8,7 +8,7 @@
 
 {$STATION_PUBLIC_HOST} {
 	reverse_proxy station:3000 {
-		flush_interval -1
+		# SSE is streamed automatically; retain backend cancellation on disconnect.
 		# A public client cannot introduce identity from a different ingress.
 		header_up -Tailscale-*
 		header_up -Remote-User

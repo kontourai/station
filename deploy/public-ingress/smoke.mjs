@@ -90,11 +90,18 @@ try {
 import http from 'node:http';
 import { createHash } from 'node:crypto';
 let stream;
+let cancelled = false;
 const server = http.createServer((req, res) => {
   if (req.url === '/events') {
     stream = res;
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
     res.write('data: first\\n\\n');
+  } else if (req.url === '/cancel') {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    res.on('close', () => { cancelled = true; });
+    res.write('data: cancellation-probe\\n\\n');
+  } else if (req.url === '/cancelled') {
+    res.end(JSON.stringify({ cancelled }));
   } else if (req.url === '/release') {
     stream?.end('data: second\\n\\n'); res.end('released');
   } else { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(req.headers)); }
@@ -114,6 +121,9 @@ server.listen(3000, '0.0.0.0');
   const dockerfile = readFileSync(join(root, 'Dockerfile'), 'utf8');
   const runtimeImage = dockerfile.match(/^FROM (\S+) AS runtime$/m)?.[1];
   assert.match(runtimeImage ?? '', /@sha256:[a-f0-9]{64}$/);
+  // Docker may create a container before reporting a start failure. Track the
+  // attempted name first; cleanup still verifies existence and exact ownership.
+  containers.push(upstream);
   docker([
     'run',
     '-d',
@@ -137,7 +147,7 @@ server.listen(3000, '0.0.0.0');
     runtimeImage,
     '/upstream.mjs',
   ]);
-  containers.push(upstream);
+  containers.push(proxy);
   docker([
     'run',
     '-d',
@@ -168,7 +178,6 @@ server.listen(3000, '0.0.0.0');
     `${join(root, 'deploy/public-ingress/Caddyfile')}:/etc/caddy/Caddyfile:ro`,
     image,
   ]);
-  containers.push(proxy);
   const port = Number(docker(['port', proxy, '443/tcp']).split(':').at(-1));
   const httpPort = Number(docker(['port', proxy, '80/tcp']).split(':').at(-1));
   const base = `https://localhost:${port}`;
@@ -259,6 +268,37 @@ server.listen(3000, '0.0.0.0');
   assert.match(chunk, /data: first/);
   await request(`${base}/release`, tls);
   await ended;
+  await new Promise((resolveCancelled, reject) => {
+    const req = https.get(
+      `${base}/cancel`,
+      { ...tls, timeout: 5000 },
+      (res) => {
+        res.once('data', () => {
+          res.destroy();
+          req.destroy();
+          resolveCancelled();
+        });
+        res.on('error', reject);
+      },
+    );
+    req.on('timeout', () =>
+      req.destroy(new Error('Cancellation probe timed out')),
+    );
+    req.on('error', reject);
+  });
+  let cancelled = false;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    cancelled = JSON.parse(
+      (await request(`${base}/cancelled`, tls)).body,
+    ).cancelled;
+    if (cancelled) break;
+    await pause(100);
+  }
+  assert.equal(
+    cancelled,
+    true,
+    'Client disconnect did not cancel the upstream stream',
+  );
   await new Promise((resolveSocket, reject) => {
     const socket = new WebSocket(`${base.replace('https:', 'wss:')}/socket`, {
       ...tls,
@@ -284,7 +324,7 @@ server.listen(3000, '0.0.0.0');
     });
   });
   console.log(
-    'PASS: composed port isolation, verified TLS, redirect, identity-header stripping, authorization forwarding, unbuffered SSE and WebSocket upgrade.',
+    'PASS: composed port isolation, verified TLS, redirect, identity-header stripping, authorization forwarding, unbuffered SSE, disconnect cancellation and WebSocket upgrade.',
   );
 } catch (error) {
   for (const name of containers) {
@@ -305,6 +345,8 @@ server.listen(3000, '0.0.0.0');
   let cleanupFailed = false;
   for (const name of containers.reverse()) {
     try {
+      if (!docker(['ps', '--all', '--quiet', '--filter', `name=^/${name}$`]))
+        continue;
       assert.equal(
         docker([
           'inspect',

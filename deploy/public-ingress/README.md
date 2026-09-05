@@ -75,8 +75,9 @@ cannot create a Project. Use normal owner-approved pairing, then exercise a
 workspace read, an SSE-backed live view and a terminal/WebSocket journey. A
 healthy internal container alone does not prove public ingress or enrollment.
 
-Caddy handles WebSocket upgrades and this configuration disables proxy response
-buffering for streaming. It strips unrelated identity headers while preserving
+Caddy handles WebSocket upgrades and automatically flushes SSE responses.
+The profile retains normal backend cancellation when a client disconnects; it
+does not set negative `flush_interval`, which would keep backend requests alive. It strips unrelated identity headers while preserving
 Station's own authorization and cookies. It does not configure header-based
 identity, company SSO, or a proxy-auth bypass. See the
 [reverse-proxy reference](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy).
@@ -120,7 +121,7 @@ private test network, publishes only ephemeral loopback ports, and verifies the
 local TLS certificate using its generated CA explicitly. It does not install a
 CA into the host trust store, modify DNS, request a public certificate, or start
 the GCP VM. It exercises composed port isolation, redirects, header stripping,
-authorization forwarding, SSE delivery before stream completion, and WebSocket
+authorization forwarding, SSE delivery before stream completion, client-disconnect cancellation, and WebSocket
 upgrade. Each created container/network carries an ownership label and is
 removed after the run. Public CA issuance, real-domain reachability and customer
 workload capacity still require deployment-specific acceptance.
