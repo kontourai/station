@@ -153,6 +153,8 @@ export function previewCloudMove(input: {
           ],
         });
       } else {
+        // Metadata only: the stored workspace is never expanded, resolved, or
+        // opened here. It may name a path on a different source host.
         if (
           typeof value.id !== 'string' ||
           typeof value.slug !== 'string' ||
