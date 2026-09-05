@@ -29,7 +29,7 @@
     "directory": "packages/cli"
   },
   "peerDependencies": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.2"
   },
   "peerDependenciesMeta": {
     "esbuild": {
@@ -42,7 +42,7 @@
     "@kontourai/station-sdk": "^0.7.0",
     "@kontourai/station-shared": "^0.7.0",
     "commander": "^11.1.0",
-    "esbuild": "^0.28.1",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.13"
   },
   "dependencies": {
