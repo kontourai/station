@@ -13,6 +13,50 @@ its protocol `requestPermission` callback. Codex has no Station pre-tool
 interception seam. Muse is also unsupported. An unknown external engine fails
 closed with no pre-tool delivery.
 
+## Which settings files can grant a Claude tool call (#1545)
+
+In Ask mode (`approvalMode: 'ask'` → the SDK's `permissionMode: 'default'`) the
+engine's own permission flow decides, and it honours the Claude settings files
+the CLI loads. Left unset, the SDK's `settingSources` loads all of them —
+`~/.claude/settings.json`, the workspace's checked-in `.claude/settings.json`,
+and `.claude/settings.local.json` — so a repository with
+`{"permissions":{"allow":["Bash(rm:*)"]}}` committed ran `rm` with no Station
+approval request and no Station receipt. Cloning a repository is not consent.
+
+Station therefore pins `settingSources: ['user']` on every Station-managed
+Claude session (`STATION_SESSION_SETTING_SOURCES`,
+`src-server/providers/adapters/claude-adapter.ts`). The operator's own
+`~/.claude/settings.json` still applies — that is what the Ask-mode chip copy
+promises — and the two repository-writable tiers do not. The model-catalog
+probe stays stricter at `settingSources: []`.
+
+`settingSources` is not permission-scoped: an excluded tier is not read at all.
+Measured against `@anthropic-ai/claude-agent-sdk` 0.3.224 (`resolveSettings()`,
+`getContextUsage().memoryFiles`, `mcpServerStatus()`) on a workspace holding all
+four files, narrowing to `['user']` also gives up:
+
+- **The workspace's `CLAUDE.md`.** `memoryFiles` loses its `type: 'Project'`
+  entry; the `type: 'User'` `~/.claude/CLAUDE.md` entry survives. This is the
+  real cost of the remedy and a regression for an agent working inside a
+  repository that documents itself there. An agent's own authored
+  `systemPrompt` is delivered separately and is unaffected — repository
+  instructions are not.
+- **Project `.mcp.json` servers**, whose approval is recorded in project/local
+  settings (`enabledMcpjsonServers`). User-scope servers survive. Nothing
+  Station wires itself is affected: `resolveAgentToolServers` builds
+  `mcpServers` explicitly, station-control included, and passes it with
+  `strictMcpConfig`.
+- **Project/local `hooks`, `env`, `model`, `statusLine`** and the rest of those
+  two files. Station's own `PreToolUse` hook is the SDK `hooks` *option*, not a
+  settings file, so the staged pre-tool policy is unaffected.
+
+The narrower remedy that would keep `CLAUDE.md` —
+`managedSettings: { allowManagedPermissionRulesOnly: true }` — was rejected
+because it ignores *all* filesystem permission rules, the operator's own
+included, which the Ask-mode copy promises still apply.
+
+## Matrix authority
+
 The matrix is authoritative for UI and conformance consumers. Its declared
 adapter modules are also the source for the tripwire, so a declared adapter
 module cannot silently gain a managed pre-tool seam while its matrix remains

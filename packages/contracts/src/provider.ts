@@ -379,7 +379,13 @@ export function modelLaunchTelemetryAttributes(
  * existing sessions and payloads that never set this field keep behaving
  * exactly as before.
  *
- * - `ask` — ask before every consequential action.
+ * - `ask` — the engine asks before actions its own rules do not already
+ *   allow. NOT "asks every time": each engine keeps its own allow list and
+ *   read-only classifier underneath this mode, so some calls run without a
+ *   Station approval request. For Claude that list is the operator's
+ *   `~/.claude/settings.json` only — Station narrows `settingSources` to
+ *   `['user']` so a workspace's checked-in `.claude/settings.json` cannot
+ *   grant tool permissions (#1545, claude-adapter.ts).
  * - `auto` — run some actions automatically; the exact boundary is
  *   provider-specific (see each adapter's mapping — e.g. Codex asks at its
  *   own discretion within a workspace-scoped sandbox, Claude auto-accepts

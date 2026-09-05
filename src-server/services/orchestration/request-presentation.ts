@@ -1,5 +1,6 @@
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import { toolRequestPreview } from '@kontourai/station-shared/tool-request-preview';
 
 /**
  * The evidenced title/body for a `needs_input`/`review_pending` item (and,
@@ -48,7 +49,7 @@ export function presentOpenRequest(request: RequestOpenedEvent): {
  * producers whose payload doesn't match `TOOL_NAME_PAYLOAD_FIELDS`/
  * `TOOL_ARGS_PAYLOAD_FIELDS` (e.g. Codex's `item/commandExecution/
  * requestApproval`, whose `title` is the literal shell command),
- * `summarizeToolPayload` returns no toolName/argsSummary and `rawTitle`
+ * `summarizeToolPayload` returns no toolName/preview and `rawTitle`
  * becomes the only detail available — it can embed secrets (a `curl -H
  * 'Authorization: Bearer ...'` command) or simply be long, so it is bounded
  * the same way `description`/args are, never passed through verbatim.
@@ -56,7 +57,7 @@ export function presentOpenRequest(request: RequestOpenedEvent): {
 function presentToolRequest(
   rawTitle: string | undefined,
   description: string | undefined,
-  toolSummary: { toolName?: string; argsSummary?: string } | null,
+  toolSummary: { toolName?: string; preview?: string } | null,
 ): { title: string; body?: string } {
   const boundedRawTitle = rawTitle
     ? truncateRequestText(rawTitle, MAX_RAW_TITLE_LENGTH)
@@ -73,7 +74,7 @@ function presentToolRequest(
     bodyParts.push(truncateRequestText(description, MAX_DESCRIPTION_LENGTH));
   if (boundedRawTitle && boundedRawTitle !== toolName)
     bodyParts.push(boundedRawTitle);
-  if (toolSummary?.argsSummary) bodyParts.push(toolSummary.argsSummary);
+  if (toolSummary?.preview) bodyParts.push(toolSummary.preview);
 
   return {
     title,
@@ -104,10 +105,6 @@ export const MAX_DESCRIPTION_LENGTH = 400;
  * `presentToolRequest`'s doc comment).
  */
 const MAX_RAW_TITLE_LENGTH = 200;
-const MAX_ARG_KEYS = 5;
-const MAX_ARGS_SUMMARY_LENGTH = 160;
-/** Bound on each individual arg key name before joining — a key name is attacker/caller-controlled and can itself carry a secret-length string (e.g. `{[secret]: value}`); the joined-and-truncated overall bound alone is not enough, since a single oversized key can still survive inside the first MAX_ARGS_SUMMARY_LENGTH characters. */
-const MAX_ARG_KEY_LENGTH = 24;
 const TOOL_NAME_PAYLOAD_FIELDS = ['toolName', 'tool'] as const;
 const TOOL_ARGS_PAYLOAD_FIELDS = [
   'toolInput',
@@ -118,17 +115,26 @@ const TOOL_ARGS_PAYLOAD_FIELDS = [
 ] as const;
 
 /**
- * A bounded, secret-safe summary of a `request.opened` payload's tool
- * name/args (archive#1185, deliver #3) — never the raw arg values, which
- * may be large or carry secrets. Argument values are reduced to a shape
- * summary (field names only, each individually bounded — see
- * `MAX_ARG_KEY_LENGTH` — then hard-truncated as a whole); string/number/
- * boolean args are reduced to just their type. Err small: when in doubt,
- * say less.
+ * A bounded, redacted preview of a `request.opened` payload's tool name and
+ * what the call will actually do.
+ *
+ * This used to be a shape summary — argument field NAMES only, never values
+ * (archive#1185, deliver #3), on the reasoning that a value may be large or
+ * carry a secret. #1545 replaced that: the field list is identical for
+ * `rm -rf ./node_modules` and `rm -rf /`, so it could not inform the decision
+ * these items exist to support, and an operator approving a call has to be
+ * able to see the call. `toolRequestPreview` keeps the bound and the
+ * secret-pattern redaction and gives up the value-blindness; it deliberately
+ * does NOT strip paths or URLs, which are the substance of the preview. The
+ * evidence surface at `platform-mutation-gate.ts` already renders tool
+ * arguments as values for the same reason.
+ *
+ * Still bounded, still single-line, and still not a full disclosure — see
+ * `toolRequestPreview`'s own doc comment.
  */
 function summarizeToolPayload(
   payload: Record<string, unknown> | undefined,
-): { toolName?: string; argsSummary?: string } | null {
+): { toolName?: string; preview?: string } | null {
   if (!payload) return null;
   const toolName = firstStringField(payload, TOOL_NAME_PAYLOAD_FIELDS);
   let argsValue: unknown;
@@ -138,12 +144,11 @@ function summarizeToolPayload(
       break;
     }
   }
-  const argsSummary =
-    argsValue !== undefined ? summarizeArgsShape(argsValue) : undefined;
-  if (!toolName && !argsSummary) return null;
+  const preview = toolRequestPreview(toolName, argsValue);
+  if (!toolName && !preview) return null;
   return {
     ...(toolName ? { toolName } : {}),
-    ...(argsSummary ? { argsSummary } : {}),
+    ...(preview ? { preview } : {}),
   };
 }
 
@@ -156,25 +161,6 @@ function firstStringField(
     if (typeof value === 'string' && value.trim()) return value.trim();
   }
   return undefined;
-}
-
-/** Field names only — never values — each individually bounded, then hard-truncated as a whole. */
-function summarizeArgsShape(value: unknown): string {
-  if (Array.isArray(value)) return `args: array(${value.length})`;
-  if (value && typeof value === 'object') {
-    const keys = Object.keys(value as Record<string, unknown>);
-    const shown = keys
-      .slice(0, MAX_ARG_KEYS)
-      .map((key) => truncateRequestText(key, MAX_ARG_KEY_LENGTH));
-    const more = keys.length - shown.length;
-    const list = shown.join(', ') + (more > 0 ? `, +${more} more` : '');
-    return truncateRequestText(`args: {${list}}`, MAX_ARGS_SUMMARY_LENGTH);
-  }
-  if (typeof value === 'string') return 'args: string';
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return `args: ${typeof value}`;
-  }
-  return 'args: present';
 }
 
 export function truncateRequestText(text: string, max: number): string {

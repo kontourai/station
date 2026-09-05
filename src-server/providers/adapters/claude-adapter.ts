@@ -11,6 +11,7 @@ import {
   type Query,
   query,
   type SDKMessage,
+  type SettingSource,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages/messages';
 import {
@@ -306,6 +307,67 @@ export interface ClaudeAdapterOptions {
 }
 
 const DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS = 5_000;
+
+/**
+ * Which Claude settings files a Station-managed session is allowed to load
+ * (#1545). The SDK's default — the option left unset — is the CLI's own
+ * cascade: `~/.claude/settings.json`, then the workspace's checked-in
+ * `.claude/settings.json`, then `.claude/settings.local.json`
+ * (sdk.d.ts `settingSources`: "When omitted, all sources are loaded").
+ *
+ * That default makes a *repository* a permission authority over a Station
+ * session. A workspace with `{"permissions":{"allow":["Bash(rm:*)"]}}` checked
+ * in ran `rm` with no Station approval request and no Station receipt — the
+ * engine's own permission flow allowed the call before `canUseTool` was ever
+ * consulted (the SDK reports the shadowing as `CLAUDE_SDK_CAN_USE_TOOL_SHADOWED`).
+ * Cloning a repository should not grant it tool permissions here.
+ *
+ * `['user']` keeps the operator's OWN `~/.claude/settings.json` — the file
+ * they wrote for themselves, which is what "your Claude settings apply" means
+ * in Station's Ask-mode copy — and drops the two repository-writable tiers.
+ * `[]` would be stricter still, but it also drops the operator's own rules and
+ * their user-scope MCP servers, which is a different product than the one the
+ * chip promises.
+ *
+ * WHAT ELSE THIS DROPS. `settingSources` is not permission-scoped: an excluded
+ * tier is not read at all, so everything those two files carry goes with it.
+ * Measured against `claude-agent-sdk` 0.3.224 (`resolveSettings()`,
+ * `getContextUsage().memoryFiles`, `mcpServerStatus()`) on a workspace holding
+ * a `.claude/settings.json`, a `.claude/settings.local.json`, a `CLAUDE.md`
+ * and a `.mcp.json`:
+ *
+ * - Project/local `permissions.*` (`allow`/`deny`/`ask`/`defaultMode`/
+ *   `additionalDirectories`) stop applying. This is the point of the change.
+ * - The workspace's **`CLAUDE.md` is no longer loaded** (`memoryFiles` drops
+ *   its `type: 'Project'` entry; the `type: 'User'` `~/.claude/CLAUDE.md`
+ *   entry survives). This is the real cost, and it is a product regression for
+ *   an agent working inside a repository that documents itself there. Station
+ *   delivers the agent's own authored `systemPrompt` separately (see
+ *   `buildOptions`), so agent instructions are unaffected — repository
+ *   instructions are not.
+ * - Project `.mcp.json` servers stop being configured, because their approval
+ *   is recorded in project/local settings (`enabledMcpjsonServers`); a
+ *   `mcpServerStatus()` probe listed the project server under the default and
+ *   omitted it under `['user']`. User-scope servers survive. Station's own
+ *   tool servers do not go through this path at all: `resolveAgentToolServers`
+ *   builds `mcpServers` explicitly (station-control included, see
+ *   claude-mcp-passthrough.ts) and `buildOptions` passes it with
+ *   `strictMcpConfig`, so nothing Station wires depends on a settings file.
+ * - Project/local `hooks`, `env`, `model`, `statusLine` and the rest stop
+ *   applying. Station's own `PreToolUse` hook is the SDK `hooks` *option*, not
+ *   a settings file, so the staged pre-tool policy is unaffected.
+ *
+ * The narrower remedy that would keep `CLAUDE.md` — `managedSettings:
+ * { allowManagedPermissionRulesOnly: true }` — is rejected here because it
+ * ignores *all* filesystem permission rules "User, project, local, and CLI
+ * argument" (sdk.d.ts), including the operator's own, which the Ask-mode copy
+ * promises still apply.
+ *
+ * NOT covered by this: the model-catalog probe in `listModelCatalog`, which
+ * has always passed `settingSources: []` — it runs no tools and wants no
+ * ambient configuration at all.
+ */
+const STATION_SESSION_SETTING_SOURCES: SettingSource[] = ['user'];
 
 /**
  * Keep the raw SDK name for authentic grant provenance and any user-visible
@@ -1193,6 +1255,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         mcpServers: {},
         persistSession: false,
         plugins: [],
+        // Stricter than a session's `STATION_SESSION_SETTING_SOURCES`
+        // (`['user']`) on purpose: this probe runs no tools, so it wants no
+        // ambient configuration at all, not even the operator's own.
         settingSources: [],
         skills: [],
         strictMcpConfig: true,
@@ -1529,6 +1594,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             },
           }
         : {}),
+      settingSources: STATION_SESSION_SETTING_SOURCES,
       permissionMode,
       // Required by the SDK whenever bypassPermissions is granted at spawn
       // time (sdk.d.ts: "Must be set to true when using permissionMode:

@@ -6,7 +6,12 @@ const CLAUDE_APPROVAL_MODE_MAP: Record<
   Exclude<ApprovalMode, 'connection-default'>,
   PermissionMode
 > = {
-  // Claude Code's own default: ask before every tool call.
+  // Claude Code's own default mode — NOT "ask before every tool call". The
+  // engine asks before calls its own rules and read-only classifier do not
+  // already allow, and Station adds no floor over that. Which rules can skip
+  // an approval is bounded by `STATION_SESSION_SETTING_SOURCES` in
+  // claude-adapter.ts (#1545): the operator's own `~/.claude/settings.json`
+  // only, never a workspace's checked-in `.claude/settings.json`.
   ask: 'default',
   // Auto-accept file edits within the workspace; still ask before
   // anything riskier (e.g. shell commands outside that boundary).

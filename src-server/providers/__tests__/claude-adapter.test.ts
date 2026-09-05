@@ -671,6 +671,38 @@ describe('ClaudeAdapter', () => {
     await adapter.stopSession('thread-invalid-utf8');
   });
 
+  describe('#1545: a repository is not a permission authority', () => {
+    // The SDK loads every tier it is given. Left unset, that is the CLI
+    // cascade — user, then the workspace's checked-in `.claude/settings.json`,
+    // then `.claude/settings.local.json` — so a repository's committed
+    // `permissions.allow` granted tools with no Station approval request and
+    // no Station receipt. Assert the option EXACTLY: a workspace tier back in
+    // the list is the defect itself, and `toContain('user')` would not see it.
+    const cases: Array<[string, Record<string, unknown> | undefined]> = [
+      ['a plain session', undefined],
+      ['an Ask-mode session', { approvalMode: 'ask' }],
+      ['a full-access session', { approvalMode: 'never' }],
+      ['a plan-mode session', { permissionMode: 'plan' }],
+    ];
+    for (const [label, modelOptions] of cases) {
+      test(`loads only the operator user settings for ${label}`, async () => {
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter();
+
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-setting-sources',
+          cwd: '/workspace/project',
+          ...(modelOptions ? { modelOptions } : {}),
+        });
+
+        expect(mockQuery.mock.calls[0][0].options.settingSources).toEqual([
+          'user',
+        ]);
+      });
+    }
+  });
+
   test('opens and resolves permission requests through canUseTool', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();
@@ -2564,6 +2596,9 @@ describe('ClaudeAdapter', () => {
           TMPDIR: engineSpawnTmpDirPath(),
         }),
         canUseTool: expect.any(Function),
+        // #1545: a Station-managed session reads the operator's own settings
+        // and neither of the two repository-writable tiers.
+        settingSources: ['user'],
         permissionMode: 'default',
         allowDangerouslySkipPermissions: undefined,
         thinking: undefined,

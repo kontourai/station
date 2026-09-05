@@ -106,7 +106,25 @@ describe('approvalModeDescription', () => {
     );
   });
 
-  test('non-auto modes are not provider-aware', () => {
+  test('ask is provider-aware for Claude: names whose settings can skip an approval (#1545)', () => {
+    // Station adds no approval floor over Claude's own permission flow in this
+    // mode, so the copy has to say which rules can still allow a call without
+    // one — and it must stay true to `settingSources: ['user']`.
+    expect(approvalModeDescription('ask', 'claude')).toBe(
+      "Claude asks before tool calls its own rules don't already allow; only your user-level Claude settings apply.",
+    );
+    expect(approvalModeDescription('ask', 'claude')).not.toMatch(/every time/i);
+  });
+
+  test('ask falls back to generic copy that still claims no floor', () => {
+    for (const engineId of [undefined, 'codex', 'acp']) {
+      expect(approvalModeDescription('ask', engineId)).toBe(
+        'Asks before actions the engine does not already allow on its own.',
+      );
+    }
+  });
+
+  test('never is not provider-aware', () => {
     expect(approvalModeDescription('never', 'codex')).toBe(
       approvalModeDescription('never', 'claude'),
     );
@@ -123,7 +141,7 @@ describe('resolveEffectiveApprovalMode', () => {
       }),
     ).toEqual({
       mode: 'ask',
-      label: 'Ask every time',
+      label: 'Ask first',
       source: 'session override',
     });
   });
@@ -171,7 +189,7 @@ describe('resolveEffectiveApprovalMode', () => {
       resolveEffectiveApprovalMode({ engineConnectionId: 'claude' }),
     ).toEqual({
       mode: 'ask',
-      label: 'Ask every time — default',
+      label: 'Ask first — default',
       source: 'adapter default',
     });
   });

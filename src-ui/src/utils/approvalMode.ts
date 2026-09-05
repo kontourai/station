@@ -44,8 +44,13 @@ export const APPROVAL_MODE_OPTIONS: Array<{
   },
   {
     value: 'ask',
-    label: 'Ask every time',
-    description: 'Ask before every consequential action.',
+    // Not "Ask every time" (#1545): every engine keeps its own allow list and
+    // read-only classifier underneath this mode, so some calls do run without
+    // a Station approval request. The label must not promise a floor Station
+    // does not impose.
+    label: 'Ask first',
+    description:
+      'Asks before actions the engine does not already allow on its own.',
   },
   {
     value: 'auto',
@@ -61,23 +66,37 @@ export const APPROVAL_MODE_OPTIONS: Array<{
   },
 ];
 
-/** Provider-specific description for 'auto', since its real guarantee
- * differs per engine connection (archive#727) — generic copy for any other
- * mode, or for a runtime the chip doesn't recognize. */
-const AUTO_MODE_DESCRIPTIONS: Partial<Record<string, string>> = {
-  codex:
-    'Agent asks at its own discretion; file writes sandboxed to the workspace.',
-  claude: 'File edits auto-approved; other actions still ask.',
+/**
+ * Per-engine description, for modes whose real guarantee differs by engine
+ * connection (archive#727 for 'auto'; #1545 added 'ask'). The generic copy in
+ * `APPROVAL_MODE_OPTIONS` is the fallback for any other mode, or for a runtime
+ * the chip doesn't recognize.
+ */
+const ENGINE_MODE_DESCRIPTIONS: Partial<
+  Record<ApprovalMode, Partial<Record<string, string>>>
+> = {
+  auto: {
+    codex:
+      'Agent asks at its own discretion; file writes sandboxed to the workspace.',
+    claude: 'File edits auto-approved; other actions still ask.',
+  },
+  ask: {
+    // #1545: Station imposes no approval floor over Claude's own permission
+    // flow in this mode, so the copy has to name whose rules can skip an
+    // approval. `settingSources: ['user']` (claude-adapter.ts) is what makes
+    // "user-level" true — a workspace's checked-in `.claude/settings.json` no
+    // longer applies.
+    claude:
+      "Claude asks before tool calls its own rules don't already allow; only your user-level Claude settings apply.",
+  },
 };
 
 export function approvalModeDescription(
   mode: ApprovalMode,
   engineId?: string | null,
 ): string {
-  if (mode === 'auto') {
-    const providerCopy = engineId && AUTO_MODE_DESCRIPTIONS[engineId];
-    if (providerCopy) return providerCopy;
-  }
+  const engineCopy = engineId && ENGINE_MODE_DESCRIPTIONS[mode]?.[engineId];
+  if (engineCopy) return engineCopy;
   return (
     APPROVAL_MODE_OPTIONS.find((option) => option.value === mode)
       ?.description ?? ''
@@ -125,7 +144,7 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
  * knob-supporting engine, which made it assert a posture the engine provably
  * cannot honour: `config.approvalMode` is a generic connection-config bag field
  * with no server-side gate, so a no-knob connection carrying it rendered e.g.
- * "Ask every time — default" while the adapter ignored the value entirely.
+ * "Ask first — default" while the adapter ignored the value entirely.
  * Reporting a governing approval mode that nothing governs is worse than
  * reporting nothing.
  */
