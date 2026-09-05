@@ -12,6 +12,11 @@ import type {
   PackageMcpInstallation,
 } from '../package-mcp-admission.js';
 
+import {
+  type PluginActivationPlan,
+  verifyPluginActivation,
+} from '../plugin-activation-plan.js';
+
 const digest = `sha256:${'a'.repeat(64)}`;
 const directories: string[] = [],
   stores: EventStore[] = [],
@@ -530,4 +535,64 @@ describe('package MCP shared admission evidence (no destructive authority)', {
       mutationAllowed: false,
     });
   });
+});
+
+test('a terminated journal writer leaves activation pending in a fresh process and cannot infer readiness', async () => {
+  const path = join(directory(), 'events.sqlite');
+  const writer = await peer(path);
+  const plan: PluginActivationPlan = {
+    version: 1,
+    artifactDigest: digest,
+    descriptorDigest: digest,
+    sourceDigest: digest,
+    origin: 'b'.repeat(64),
+    consent: { kind: 'no-operator-decision', caller: 'journal-fixture' },
+    previous: null,
+    agents: [],
+    ownedDependencies: [],
+  };
+  const recorded = await writer.request({
+    operation: 'record',
+    input: {
+      pluginId: 'pending-plugin',
+      contentDigest: digest,
+      origin: plan.origin,
+      activationPlan: plan,
+      previous: null,
+    },
+  });
+  expect(recorded.state).toBe('recorded');
+  const exited = once(writer.child, 'exit');
+  writer.child.kill('SIGKILL');
+  await exited;
+  const reader = await peer(path);
+  expect(
+    await reader.request({
+      operation: 'inspect',
+      installation: recorded.installation,
+    }),
+  ).toMatchObject({ admission: 'activation-pending', mutationAllowed: false });
+  expect(
+    await reader.request({
+      operation: 'reserve',
+      installation: recorded.installation,
+    }),
+  ).not.toMatchObject({ state: 'reserved' });
+  const { journal } = open(path);
+  expect(journal.activationPlan(recorded.installation)).toEqual(plan);
+  expect(journal.admissionOpen(recorded.installation)).toBe(false);
+  const permit = journal.claimActivation(recorded.installation);
+  expect(() => journal.completeActivation(permit)).toThrow('not been verified');
+  await verifyPluginActivation(permit, journal, async (evidence) => {
+    expect(evidence).toEqual(plan);
+  });
+  expect(journal.completeActivation(permit)).toEqual({ state: 'applied' });
+  expect(journal.admissionOpen(recorded.installation)).toBe(true);
+  expect(() => journal.completeActivation(permit)).toThrow();
+  expect(
+    await reader.request({
+      operation: 'inspect',
+      installation: recorded.installation,
+    }),
+  ).toMatchObject({ admission: 'open' });
 });

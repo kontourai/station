@@ -6,6 +6,14 @@
 import { randomUUID } from 'node:crypto';
 import type { SQLInputValue } from 'node:sqlite';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
+import {
+  activationPermitPlan,
+  consumePluginActivationPermit,
+  issuePluginActivationPermit,
+  type PluginActivationPermit,
+  type PluginActivationPlan,
+  validPluginActivationPlan,
+} from './plugin-activation-plan.js';
 
 export const PACKAGE_MCP_ADMISSION_SCHEMA = `
 CREATE TABLE IF NOT EXISTS package_mcp_admission_journal (
@@ -16,6 +24,10 @@ CREATE TABLE IF NOT EXISTS package_mcp_admission_journal (
 CREATE TABLE IF NOT EXISTS package_mcp_settled_effects (
   journal_id TEXT NOT NULL, incarnation TEXT NOT NULL, claim_id TEXT NOT NULL,
   claim_json TEXT NOT NULL, PRIMARY KEY(journal_id, claim_id)
+);
+CREATE TABLE IF NOT EXISTS package_plugin_activation_plans (
+  journal_id TEXT NOT NULL, incarnation TEXT NOT NULL, plan_json TEXT NOT NULL,
+  PRIMARY KEY(journal_id, incarnation)
 );
 CREATE TABLE IF NOT EXISTS package_mcp_generation_history (
   sequence INTEGER PRIMARY KEY AUTOINCREMENT, journal_id TEXT NOT NULL,
@@ -67,6 +79,7 @@ type Generation = {
   materialization?: string;
   dataScope?: string;
   origin?: string;
+  activation?: 'pending' | 'ready';
   current: boolean;
   claims: Claim[];
   settledEffects?: number;
@@ -79,7 +92,7 @@ export type PackageMcpInspection =
   | {
       state: 'observed';
       mutationAllowed: false;
-      admission: 'open' | 'fenced';
+      admission: 'open' | 'fenced' | 'activation-pending';
       reserved: number;
       possibleEffects: number;
       localSettled: number;
@@ -105,6 +118,7 @@ export interface PackageMcpRetirement {
     materialization: string;
     dataScope: string;
     origin?: string;
+    activationPlan?: PluginActivationPlan;
   }):
     | { state: 'recorded'; installation: PackageMcpInstallation }
     | { state: 'stale' | 'unavailable' };
@@ -112,6 +126,20 @@ export interface PackageMcpRetirement {
   cancel(): Transition;
 }
 export interface PackageMcpAdmissionJournal {
+  activationState(
+    installation: PackageMcpInstallation,
+  ): 'pending' | 'ready' | 'unavailable';
+  activationPlan(
+    installation: PackageMcpInstallation,
+  ): PluginActivationPlan | null;
+  claimActivation(installation: PackageMcpInstallation): PluginActivationPermit;
+  activationInstallation(
+    permit: PluginActivationPermit,
+  ): PackageMcpInstallation;
+  completeActivation(permit: PluginActivationPermit): {
+    state: 'applied' | 'stale' | 'unavailable';
+  };
+
   installationRecorded(installation: PackageMcpInstallation): boolean;
   admissionOpen(installation: PackageMcpInstallation): boolean;
   selectedInstallations():
@@ -147,6 +175,7 @@ export interface PackageMcpAdmissionJournal {
     materialization?: string;
     dataScope?: string;
     origin?: string;
+    activationPlan?: PluginActivationPlan;
   }):
     | { state: 'recorded'; installation: PackageMcpInstallation }
     | { state: 'stale' | 'blocked' | 'unavailable' };
@@ -220,6 +249,7 @@ function validJournal(value: unknown): value is Journal {
         'dataScope',
         'origin',
         'current',
+        'activation',
         'claims',
         'settledEffects',
         'retirement',
@@ -239,6 +269,8 @@ function validJournal(value: unknown): value is Journal {
       (generation.dataScope !== undefined &&
         (typeof generation.dataScope !== 'string' ||
           !UUID.test(generation.dataScope))) ||
+      (generation.activation !== undefined &&
+        !['pending', 'ready'].includes(generation.activation as string)) ||
       typeof generation.current !== 'boolean' ||
       !Array.isArray(generation.claims) ||
       (generation.settledEffects !== undefined &&
@@ -536,7 +568,9 @@ export function createPackageMcpAdmissionJournal(
       mutationAllowed: false,
       admission: fenced(loaded.value, installation.pluginId)
         ? 'fenced'
-        : 'open',
+        : find(loaded.value, installation)?.activation === 'pending'
+          ? 'activation-pending'
+          : 'open',
       reserved,
       possibleEffects,
       localSettled:
@@ -549,7 +583,90 @@ export function createPackageMcpAdmissionJournal(
       ],
     };
   }
+  const activationLeases = new WeakMap<
+    PluginActivationPermit,
+    PackageMcpInstallation
+  >();
   const journal: PackageMcpAdmissionJournal = {
+    activationState(installation) {
+      const loaded = read();
+      const generation =
+        loaded && loaded.id === journalId
+          ? find(loaded.value, installation)
+          : undefined;
+      return generation?.current
+        ? (generation.activation ?? 'ready')
+        : 'unavailable';
+    },
+    activationPlan(installation) {
+      return observe(() => {
+        if (!journal.installationRecorded(installation)) return null;
+        const row = db
+          .prepare(
+            'SELECT plan_json FROM package_plugin_activation_plans WHERE journal_id = ? AND incarnation = ?',
+          )
+          .get(journalId!, installation.incarnation) as
+          | { plan_json: string }
+          | undefined;
+        if (!row) return null;
+        const plan: unknown = JSON.parse(row.plan_json);
+        return validPluginActivationPlan(plan) &&
+          plan.artifactDigest === installation.contentDigest &&
+          plan.origin === installation.origin
+          ? plan
+          : null;
+      }, null);
+    },
+    claimActivation(installation) {
+      const captured = Object.freeze({ ...installation });
+      const plan = journal.activationPlan(captured);
+      if (!plan || journal.activationState(captured) !== 'pending')
+        throw new Error('Plugin activation plan is unavailable');
+      const current = () => {
+        const loaded = read();
+        const generation =
+          loaded && loaded.id === journalId
+            ? find(loaded.value, captured)
+            : undefined;
+        return (
+          generation?.current === true &&
+          generation.activation === 'pending' &&
+          !fenced(loaded!.value, captured.pluginId)
+        );
+      };
+      if (!current())
+        throw new Error('Plugin activation ownership is unavailable');
+      const permit = issuePluginActivationPermit(journal, current, plan);
+      activationLeases.set(permit, captured);
+      return permit;
+    },
+    activationInstallation(permit) {
+      const captured = activationLeases.get(permit);
+      if (!captured)
+        throw new Error(
+          'Plugin activation permit is not owned by this journal',
+        );
+      activationPermitPlan(permit, journal);
+      return captured;
+    },
+    completeActivation(permit) {
+      const captured = journal.activationInstallation(permit);
+      consumePluginActivationPermit(permit, journal);
+      const result = transaction((state) => {
+        const generation = find(state, captured);
+        if (
+          !generation?.current ||
+          generation.activation !== 'pending' ||
+          fenced(state, captured.pluginId)
+        )
+          return 'stale' as const;
+        generation.activation = 'ready';
+        return 'applied' as const;
+      });
+      return result.state === 'committed'
+        ? { state: result.result }
+        : { state: 'unavailable' };
+    },
     installationRecorded(installation) {
       return observe(() => {
         const loaded = read();
@@ -576,6 +693,7 @@ export function createPackageMcpAdmissionJournal(
         !!loaded &&
         loaded.id === journalId &&
         find(loaded.value, installation)?.current === true &&
+        find(loaded.value, installation)?.activation !== 'pending' &&
         !fenced(loaded.value, installation.pluginId)
       );
     },
@@ -715,12 +833,17 @@ export function createPackageMcpAdmissionJournal(
           'materialization',
           'dataScope',
           'origin',
+          'activationPlan',
         ]) ||
         !isCanonicalPluginId(input.pluginId) ||
         (input.materialization !== undefined &&
           !UUID.test(input.materialization)) ||
         (input.dataScope !== undefined && !UUID.test(input.dataScope)) ||
         (input.origin !== undefined && !/^[a-f0-9]{64}$/.test(input.origin)) ||
+        (input.activationPlan !== undefined &&
+          (!validPluginActivationPlan(input.activationPlan) ||
+            input.activationPlan.artifactDigest !== input.contentDigest ||
+            input.activationPlan.origin !== input.origin)) ||
         !DIGEST.test(input.contentDigest)
       )
         return { state: 'unavailable' as const };
@@ -747,9 +870,18 @@ export function createPackageMcpAdmissionJournal(
           ...(input.dataScope ? { dataScope: input.dataScope } : {}),
           ...(input.origin ? { origin: input.origin } : {}),
           contentDigest: input.contentDigest,
+          activation: input.activationPlan ? 'pending' : 'ready',
           current: true,
           claims: [],
         };
+        if (input.activationPlan)
+          db.prepare(
+            'INSERT INTO package_plugin_activation_plans(journal_id, incarnation, plan_json) VALUES (?, ?, ?)',
+          ).run(
+            journalId!,
+            generation.incarnation,
+            JSON.stringify(input.activationPlan),
+          );
         state.generations.push(generation);
         return { state: 'recorded' as const, installation: ref(generation) };
       });
@@ -763,7 +895,11 @@ export function createPackageMcpAdmissionJournal(
       const outcome = transaction((state) => {
         const generation = find(state, captured);
         if (!generation?.current) return 'stale' as const;
-        if (fenced(state, captured.pluginId)) return 'blocked' as const;
+        if (
+          generation.activation === 'pending' ||
+          fenced(state, captured.pluginId)
+        )
+          return 'blocked' as const;
         if (
           state.generations.reduce(
             (total, item) => total + item.claims.length,
@@ -799,7 +935,11 @@ export function createPackageMcpAdmissionJournal(
           );
           if (!generation || !claim) return 'stale' as const;
           if (operation === 'enter') {
-            if (!generation.current || fenced(state, captured.pluginId))
+            if (
+              !generation.current ||
+              generation.activation === 'pending' ||
+              fenced(state, captured.pluginId)
+            )
               return 'blocked' as const;
             if (claim.state !== 'reserved') return 'stale' as const;
             claim.state = 'effect-possible';
@@ -870,8 +1010,13 @@ export function createPackageMcpAdmissionJournal(
             materialization: string;
             dataScope: string;
             origin?: string;
+            activationPlan?: PluginActivationPlan;
           }) {
             if (
+              (input.activationPlan !== undefined &&
+                (!validPluginActivationPlan(input.activationPlan) ||
+                  input.activationPlan.artifactDigest !== input.contentDigest ||
+                  input.activationPlan.origin !== input.origin)) ||
               !DIGEST.test(input.contentDigest) ||
               !UUID.test(input.materialization) ||
               !UUID.test(input.dataScope) ||
@@ -898,9 +1043,18 @@ export function createPackageMcpAdmissionJournal(
                 materialization: input.materialization,
                 dataScope: input.dataScope,
                 ...(input.origin ? { origin: input.origin } : {}),
+                activation: input.activationPlan ? 'pending' : 'ready',
                 current: true,
                 claims: [],
               };
+              if (input.activationPlan)
+                db.prepare(
+                  'INSERT INTO package_plugin_activation_plans(journal_id, incarnation, plan_json) VALUES (?, ?, ?)',
+                ).run(
+                  journalId!,
+                  next.incarnation,
+                  JSON.stringify(input.activationPlan),
+                );
               state.generations.push(next);
               return { state: 'recorded' as const, installation: ref(next) };
             });
