@@ -1388,3 +1388,28 @@ include an explicit old-to-new behavior table. Their package-global declarations
 are migrated. Enterprise tab-local **Review** buttons focus their matching host control; invocation and Agent authority remain with that control. Existing persisted Layout records
 are not rewritten, and this does not claim the entire structural Layout
 migration is complete.
+
+For an Agent Plugins 1.0 manifest, place the declaration at
+`extensions["io.kontourai.station"].workspacePaneHost` alongside
+`schemaVersion: "1.0"` and the namespace's `agents`. Station validates the host
+shape with the same contribution parser used by legacy manifests. Registered
+prompt actions read the normalized namespace's `prompts.source`; unknown
+portable root fields never supply fallback actions or Agents.
+
+The five examples above retain their legacy manifest format because their
+structural Layout declarations have not yet been mapped. The remaining
+#265 / #346 conversion work is specific:
+
+| Example | Required structural mapping before switching its manifest schema |
+| --- | --- |
+| `demo-layout` | Map `layout` (`demo`, `./layout.json`) and its tab component references to declared Workspace Panes and placement. Preserve its original native `assistant`. |
+| `coding-starter` | Map `layout` (`coding`, `./layout.json`) and each authored tab component to Workspace Panes and placement. Preserve the explicit `coding-starter-assistant` host default. |
+| `getting-started-starter` | Map `layout` (`getting-started`, `./layout.json`) and its tabs to Workspace Panes and placement. Preserve the explicit `getting-started-starter-assistant` host default. |
+| `knowledge-docs-starter` | Map `layout` (`knowledge-docs`, `./layout.json`) and its tabs to Workspace Panes and placement; retain its declared knowledge namespaces through their existing owner. |
+| `enterprise-layout` | Map `layout` (`enterprise`, `./layout.json`) and Calendar/CRM Review links to Workspace Panes/placement; map the required `NOTES_VAULT_PATH` install input, the two file-based CRM/calendar integration declarations, and the local `../shared-providers` dependency source without discarding any of them. Preserve its original native `enterprise-assistant`, knowledge declaration, and four authored host prompts. |
+
+For each conversion, move `displayName` to namespace `title`, make the
+`entrypoint` explicitly package-relative (`./src/index.tsx`), and move the
+supported Agent, capability, permission, and host-action declarations into the
+Station namespace. A schema-only rewrite is insufficient: installation,
+activation, each component, and real action execution must be verified together.

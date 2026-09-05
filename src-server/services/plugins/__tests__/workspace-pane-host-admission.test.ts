@@ -413,6 +413,7 @@ describe('Workspace Pane host invocation admission', () => {
       beforeModel?: () => Promise<void>;
       inModel?: () => Promise<void>;
       retainArtifact?: boolean;
+      portable?: boolean;
       dropCompanionMarker?: boolean;
       waitForModel?: Promise<void>;
     } = {},
@@ -430,6 +431,27 @@ describe('Workspace Pane host invocation admission', () => {
       join(pluginDir, 'agents', slug, 'agent.json'),
       JSON.stringify(nativeSpec),
     );
+    if (options.portable) {
+      const legacy = JSON.parse(
+        readFileSync(join(pluginDir, 'plugin.json'), 'utf8'),
+      );
+      writeFileSync(
+        join(pluginDir, 'plugin.json'),
+        JSON.stringify({
+          $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+          name: legacy.name,
+          version: legacy.version,
+          extensions: {
+            'io.kontourai.station': {
+              schemaVersion: '1.0',
+              agents: legacy.agents,
+              prompts: legacy.prompts,
+              workspacePaneHost: legacy.workspacePaneHost,
+            },
+          },
+        }),
+      );
+    }
     let retained:
       | ReturnType<
           ReturnType<
@@ -649,6 +671,19 @@ describe('Workspace Pane host invocation admission', () => {
     const result = await proof.execute();
     expect(result.state).toBe('accepted');
     expect(proof.streamText).toHaveBeenCalledOnce();
+  });
+
+  test('portable Station namespace host declaration reaches the canonical native HTTP execution bridge', async () => {
+    const proof = await nativeHostProof({
+      retainArtifact: true,
+      portable: true,
+    });
+    const result = await proof.execute();
+    expect(result.state).toBe('accepted');
+    expect(proof.streamText).toHaveBeenCalledOnce();
+    expect(proof.streamText.mock.calls[0]?.[0]).toContain(
+      'Exact registered body.',
+    );
   });
 
   test('journal retirement fences a prepared native action even while artifact bytes remain', async () => {

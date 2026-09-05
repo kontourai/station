@@ -190,10 +190,15 @@ export function createWorkspacePaneHostAdmission(input: {
         let message: string;
         if (action.intent.kind === 'prompt') message = action.intent.prompt;
         else {
-          const exact = scanPluginPromptGeneration(pluginDir, pluginId, {
-            maxFiles: 32,
-            maxFileBytes: 64 * 1024,
-          }).filter(
+          const exact = scanPluginPromptGeneration(
+            pluginDir,
+            pluginId,
+            {
+              maxFiles: 32,
+              maxFileBytes: 64 * 1024,
+            },
+            manifest,
+          ).filter(
             (prompt) =>
               prompt.id ===
               `${pluginId}:${action.intent.kind === 'plugin-prompt' ? action.intent.promptId : ''}`,
