@@ -62,9 +62,36 @@ references, and measure recovery time and recoverable data loss.
 
 ## First cloud target: AWS
 
-AWS is the selected first cloud target. The following service mapping is a
-proposed implementation profile, not a provisioned deployment or a claim that
-Station already supports these adapters:
+AWS is the selected first cloud target. Start with one small EC2 instance for a
+persistent private development environment, using the existing local storage
+contracts. The larger service mapping below is an evolution target, not a
+prerequisite for testing, a provisioned deployment, or a claim that Station
+already supports these adapters.
+
+### Grow from a persistent development environment
+
+1. **Private development:** one EC2 instance, prebuilt Station image, and
+   persistent EBS storage for the home and repositories. Use authenticated
+   private access, preserve the data volume on replacement, and test backup and
+   restore. Start with SQLite and files; RDS, a load balancer, and a NAT gateway
+   are not mandatory components of this private single-host profile.
+2. **Resize when measured:** test a small instance and increase memory/CPU when
+   workload evidence calls for it. Build images in CI rather than compiling
+   the repository on a memory-constrained runtime host.
+3. **Scale independent work:** introduce separately owned execution workers and
+   scale their capacity. An Auto Scaling group is not permission to run competing
+   writers against one Station home. Replacement must drain/fence the old owner
+   and recover the exact workspace. Persistent EBS volumes are AZ-bound; cross-AZ
+   recovery requires a tested restore or replication procedure.
+4. **Shared hosted service:** add tenant-safe repositories, managed PostgreSQL,
+   object storage, and independent API capacity when the multi-tenant workload
+   justifies them. ECS can use EC2 or Fargate; Fargate is an operational option,
+   not the definition of scalability or a required final destination.
+
+The private development profile is not a public multi-tenant launch. Use its
+real workload and recovery measurements to select later stages.
+
+### Evolution target
 
 | Boundary | Initial AWS direction | Replacement contract |
 | --- | --- | --- |
@@ -109,6 +136,18 @@ entitlement changes, usage reporting where required, cancellation, and recovery
 from duplicated or delayed notifications. Partner status, listing approval,
 pricing, and marketplace availability are not established by this design.
 
+### Marketplace can start with an EC2 product
+
+A customer-account deployment can be delivered as an AMI, optionally with a
+CloudFormation template. AWS supports
+[AMI-based CloudFormation delivery](https://docs.aws.amazon.com/marketplace/latest/userguide/cloudformation.html)
+without requiring Fargate. A future seller-hosted service can use the separate
+SaaS product model. Choose the delivery and billing model for the offering;
+a later compute migration does not automatically convert a listing between
+product types. An AMI/template must contain no developer credentials or customer
+state and must document resources, permissions, upgrades, backup, and removal.
+Marketplace approval and commercial integration remain separate work.
+
 ## Cost target and sizing assumptions
 
 Planning estimate, checked 2026-09-05: use US East (N. Virginia), USD, 730 hours
@@ -116,7 +155,23 @@ per month, on-demand pricing, modest traffic, and no promotional credits or
 long-term commitments. These are budgeting envelopes, not a measured Station
 capacity result, AWS quote, or customer subscription price.
 
-| Shared service cost | Small pilot monthly allowance |
+For the first private development profile, a Linux `t3.micro` at $0.0104/hour
+is about $7.59 per 730-hour month. Illustrative 30-GB gp3 storage at $0.08/GB-month
+adds $2.40; one public IPv4 at $0.005/hour adds $3.65 if used. That is about
+$14/month before snapshots, transfer, CPU-credit charges, and other services.
+Budget roughly $15–25/month for this experiment, not as a production promise.
+The instance has only 1 GiB RAM, so its ability to run Station plus development
+tools is unverified. A `t3.small` doubles memory to 2 GiB; its $0.0209/hour
+compute rate puts the same illustrative base near $21/month before extras.
+See [T3 specifications/pricing](https://aws.amazon.com/ec2/instance-types/t3/)
+and [EBS pricing](https://aws.amazon.com/ebs/pricing/). T3 CPU-credit mode must be
+explicit: sustained burst usage can incur Unlimited charges or Standard-mode
+throttling. Stopping compute does not stop persistent storage charges.
+
+The following larger shared-service allowance applies to the later hosted
+profile, not the initial EC2 development experiment:
+
+| Shared service cost | Small hosted pilot monthly allowance |
 | --- | --- |
 | Web/API compute, roughly 1 vCPU and 2 GiB continuously | $35–45 |
 | Small single-AZ PostgreSQL database and initial storage | $30–60 |
