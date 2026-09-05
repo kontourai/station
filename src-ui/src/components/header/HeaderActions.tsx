@@ -237,6 +237,33 @@ export function HeaderActions({
   ]
     .filter(Boolean)
     .join(' · ');
+  // #1536 F: the steady state — connected, one Station, nothing qualifying it
+  // — is a 203px chip restating a fact that never changes while you work, in
+  // the row that runs out of width first. It collapses to its status dot
+  // there and keeps every word in the accessible name and the tooltip.
+  //
+  // Three conditions, and each one is a thing the chip would otherwise be the
+  // only place to read:
+  //   `connected`: every other state is NEWS. `connectionIndicatorState` owns
+  //     that distinction, so this adds no second opinion about health.
+  //   one Station known: with two, the identity is what tells you WHICH one
+  //     you are talking to, and a dot cannot carry it. `connections.length`,
+  //     not `hasRealSavedConnection`, is the right count here — an injected
+  //     host connection (`cli-base`, `managed-loopback`) is not a "real saved
+  //     host" but IS a second thing this chip could be pointed at.
+  //   not a sidecar: "App only" qualifies the server's lifetime — news the
+  //     user has no other route to on this surface.
+  //   an identity to fall back on: the collapsed form promises "Connected ·
+  //     <name>" in its tooltip and accessible name, so it is only taken when
+  //     there is a name to put there.
+  // The mobile breakpoint already rendered `connected` dot-only (chat.css,
+  // archive#3311); this is the same rule, now that the desktop row has the
+  // same problem.
+  const compactConn =
+    connState === 'connected' &&
+    (connections ?? []).length <= 1 &&
+    !isSidecar &&
+    Boolean(connIdentity);
 
   return (
     <div className="app-toolbar__actions">
@@ -248,7 +275,7 @@ export function HeaderActions({
         // connection chip into the mobile toolbar and demotes the profile into
         // the ⋯ overflow. (The full-screen mobile dock hides this whole
         // toolbar; ChatDockMobileConnection is that surface's indicator.)
-        className={`app-toolbar__icon-btn app-toolbar__conn app-toolbar__conn--${connState}`}
+        className={`app-toolbar__icon-btn app-toolbar__conn app-toolbar__conn--${connState}${compactConn ? ' app-toolbar__conn--compact' : ''}`}
         // ChatDockMobileConnection names itself from the same
         // `connectionIndicatorLabel`. Before station#1048 it rendered
         // unconditionally, so on a phone with the dock merely on screen —
@@ -299,34 +326,44 @@ export function HeaderActions({
         // state by SHAPE, so the distinction survives on a device with no
         // hover, and archive#3311 put the state in visible text as well. The
         // title stays as the pointer convenience it always was.
-        title={connTitle}
+        //
+        // #1536 F: except when the chip is collapsed to its dot, where hover
+        // is the only channel left for the identity — the bare "Manage
+        // Stations" would then name no Station at all. Every state that still
+        // renders text keeps the tooltip archive#3297 pinned.
+        title={compactConn ? connAccessibleName : connTitle}
         aria-label={connAccessibleName}
       >
         <ConnectionStatusDot status={connState} size={7} />
-        <span
-          className={`app-toolbar__conn-state${
-            connState === 'needs-credential' ||
-            connState === 'awaiting-approval' ||
-            connState === 'needs-repair'
-              ? ' app-toolbar__conn-state--alert'
-              : ''
-          }`}
-        >
-          {connStateLabel}
-        </span>
-        {connIdentity && (
-          <span className="app-toolbar__conn-name">{connIdentity}</span>
-        )}
-        {isSidecar && (
-          <span
-            className="app-toolbar__conn-note"
-            data-testid="desktop-sidecar-indicator"
-            // The sidecar's lifetime explanation has no room inline and no
-            // longer fits in the button's own title, which archive#3297 owns.
-            title="Runs while the Station app is open"
-          >
-            App only
-          </span>
+        {compactConn ? null : (
+          <>
+            <span
+              className={`app-toolbar__conn-state${
+                connState === 'needs-credential' ||
+                connState === 'awaiting-approval' ||
+                connState === 'needs-repair'
+                  ? ' app-toolbar__conn-state--alert'
+                  : ''
+              }`}
+            >
+              {connStateLabel}
+            </span>
+            {connIdentity && (
+              <span className="app-toolbar__conn-name">{connIdentity}</span>
+            )}
+            {isSidecar && (
+              <span
+                className="app-toolbar__conn-note"
+                data-testid="desktop-sidecar-indicator"
+                // The sidecar's lifetime explanation has no room inline and no
+                // longer fits in the button's own title, which archive#3297
+                // owns.
+                title="Runs while the Station app is open"
+              >
+                App only
+              </span>
+            )}
+          </>
         )}
       </button>
 

@@ -410,6 +410,17 @@
   color: var(--warning-text);
 }
 
+/* #1536 F: the collapsed steady state — connected, one Station, nothing
+   qualifying it. Only the dot renders, so the button needs its own hit target
+   rather than borrowing width from text it no longer has. 44px on every
+   pointer, not only touch: this is the smallest control in the row and the one
+   most often aimed at in a hurry. */
+.app-toolbar__conn--compact {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+}
+
 /* The bundled-server lifetime note ("App only"), which QUALIFIES the identity
    rather than replacing it — it describes the locally supervised server, not
    which Station the connection points at (station#3311 review). Muted so the
