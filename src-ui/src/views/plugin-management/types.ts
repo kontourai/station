@@ -1,10 +1,12 @@
 import type {
   PermissionTier,
+  PluginInstallationReadiness,
   PluginInstallationRevision,
   RejectedInstalledPluginRecord,
 } from '@kontourai/station-contracts/plugin';
 
 export interface ReadyPlugin {
+  installationReadiness?: PluginInstallationReadiness;
   retainedOnRemoval?: boolean;
   name: string;
   displayName: string;

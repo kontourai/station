@@ -197,7 +197,7 @@ describe('DistributionProfileService', () => {
     });
   });
 
-  test('a manually relocated plugin with divergent directory and descriptor claims is recorded for fail-closed consistency checking', () => {
+  test('refuses a manually relocated plugin before publishing divergent identity claims', () => {
     // A manifest whose `name` diverges from its installed directory passes
     // the loader (panes must name the MANIFEST name), but the issuance
     // snapshot records where the code actually lives. The client consistency
@@ -226,25 +226,11 @@ describe('DistributionProfileService', () => {
         ],
       }),
     );
-    const [entry] = new DistributionProfileService(
-      projectHome,
-    ).listPluginWorkspacePaneContributions();
-    expect(entry).toEqual(
-      expect.objectContaining({
-        pluginName: 'actual-directory',
-        descriptor: expect.objectContaining({
-          provenance: { origin: 'plugin', pluginId: 'claimed-name' },
-        }),
-        contribution: expect.objectContaining({
-          version: '9.9.9',
-          sourceIdentity: expect.objectContaining({
-            id: 'actual-directory',
-            source: 'plugins/actual-directory',
-          }),
-          provenance: { origin: 'plugin', pluginId: 'actual-directory' },
-        }),
-      }),
-    );
+    expect(
+      new DistributionProfileService(
+        projectHome,
+      ).listPluginWorkspacePaneContributions(),
+    ).toEqual([]);
   });
 
   test('organization policy can hide a starter and leave another installable', () => {

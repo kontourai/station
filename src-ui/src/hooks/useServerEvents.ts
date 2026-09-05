@@ -157,12 +157,15 @@ const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
   [SERVER_EVENTS.SYSTEM_STATUS_CHANGED]: (qc) =>
     qc.invalidateQueries({ queryKey: ['system-status'] }),
   [SERVER_EVENTS.PLUGINS_INSTALLED]: (qc) => {
+    qc.invalidateQueries({ queryKey: ['projects'] });
     qc.invalidateQueries({ queryKey: ['plugins'] });
     qc.invalidateQueries({ queryKey: ['layouts'] });
     qc.invalidateQueries({ queryKey: ['agents'] });
     reloadPluginRegistry();
   },
   [SERVER_EVENTS.PLUGINS_UPDATED]: (qc) => {
+    qc.invalidateQueries({ queryKey: ['projects'] });
+    qc.invalidateQueries({ queryKey: ['agents'] });
     qc.invalidateQueries({ queryKey: ['plugins'] });
     qc.invalidateQueries({ queryKey: ['layouts'] });
     reloadPluginRegistry();
@@ -175,6 +178,7 @@ const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
   // a permission the panel had just reported as removed, until some
   // unrelated reload happened to refresh the registry.
   [SERVER_EVENTS.PLUGINS_GRANTS_CHANGED]: (qc) => {
+    qc.invalidateQueries({ queryKey: ['projects'] });
     qc.invalidateQueries({ queryKey: ['plugins'] });
     reloadPluginRegistry();
   },

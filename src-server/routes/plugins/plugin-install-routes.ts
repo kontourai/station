@@ -7,16 +7,17 @@ import { getPluginRegistryProviders } from '../../providers/registries/registry.
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import {
+  describePluginManifestRejection,
   rejectedInstalledPluginRecord,
   scanInstalledPluginInventory,
 } from '../../services/plugins/installed-plugin-inventory.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import { readPluginCatalogInstallation } from '../../services/plugins/plugin-catalog-installation.js';
 import { scanPluginPromptFileSafety } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   findPluginContentLockCycleError,
   pluginContentLockCycleMessage,
 } from '../../services/plugins/plugin-content-integrity.js';
-import { resolveInstalledPluginRoot } from '../../services/plugins/plugin-incarnation.js';
 import {
   derivePluginConsentBasis,
   isPluginConsentRefusedError,
@@ -117,89 +118,154 @@ export function registerPluginInstallRoutes(
   });
 
   app.get('/', async (c) => {
-    const plugins = [];
-
-    for (const entry of scanInstalledPluginInventory(pluginsDir, logger)) {
-      if (entry.state === 'rejected') {
-        plugins.push(rejectedInstalledPluginRecord(entry));
-        continue;
-      }
-      try {
-        const manifest = entry.manifest;
-        const pluginDir =
-          resolveInstalledPluginRoot(pluginsDir, entry.directoryName)
-            ?.packageRoot ?? join(pluginsDir, entry.directoryName);
-        const bundlePath = join(pluginDir, 'dist', 'bundle.js');
-        const git = await getPluginGitInfo(pluginDir, logger);
-        const declared = requiredPermissionsForManifest(manifest);
-        // archive#4288: EFFECTIVE grants, plus the derived binding state and
-        // the names it withheld. `missing` therefore includes anything the
-        // content change took away — and `withheld` is what tells the reader
-        // that it was taken away rather than never given.
-        const grantState = readPluginGrantState(projectHomeDir, manifest.name);
-        const granted = grantState.granted;
-        const missing = declared
-          .filter((permission: string) => !granted.includes(permission))
-          .map((permission: string) => ({
-            permission,
-            tier: getPermissionTier(permission),
-          }));
-
-        plugins.push({
-          name: manifest.name,
-          displayName: manifest.displayName,
-          version: manifest.version,
-          description: manifest.description,
-          hasBundle: existsSync(bundlePath),
-          ...(resolveInstalledPluginRoot(pluginsDir, entry.directoryName)
-            ?.kind === 'incarnation'
-            ? { retainedOnRemoval: true }
-            : {}),
-          hasSettings:
-            Array.isArray(manifest.settings) && manifest.settings.length > 0,
-          layout: manifest.layout,
-          workspacePanes: manifest.workspacePanes,
-          agents: manifest.agents,
-          providers: manifest.providers,
-          links: manifest.links,
-          git,
-          permissions: {
-            declared,
-            granted,
-            missing,
-            contentBinding: grantState.binding,
-            withheld: grantState.withheld,
-          },
-        });
-      } catch (error: unknown) {
-        if (error instanceof PluginGrantsUnavailableError) {
-          // The grants store is one file for every plugin: listing the
-          // plugins with empty grant lists would render "nothing granted" as
-          // fact (archive#1835). Surface the unavailable state for the whole list.
-          logger.error(
-            'Plugin grants store unavailable while listing plugins',
-            {
-              path: error.storePath,
-              error: errorMessage(error),
-            },
+    const readEntries = () => {
+      const inventory = scanInstalledPluginInventory(pluginsDir, logger);
+      const selected = deps.packageMcpJournal?.selectedInstallations();
+      if (selected?.state === 'unavailable')
+        throw new Error('Plugin installation inventory unavailable');
+      const entries = new Map(
+        inventory.map((entry) => [entry.directoryName, entry]),
+      );
+      for (const installed of selected?.installations ?? []) {
+        try {
+          const catalog = readPluginCatalogInstallation(
+            pluginsDir,
+            installed.pluginId,
+            deps.packageMcpJournal,
           );
-          return c.json(
-            {
-              success: false,
-              error: errorMessage(error),
-              grantsUnavailable: true,
+          if (!catalog) throw new Error('Selected installation is unavailable');
+          entries.set(installed.pluginId, {
+            state: 'valid',
+            directoryName: installed.pluginId,
+            manifest: catalog.manifest,
+          });
+        } catch (error) {
+          entries.set(installed.pluginId, {
+            state: 'rejected',
+            directoryName: installed.pluginId,
+            rejection: describePluginManifestRejection(error),
+          });
+        }
+      }
+      return entries;
+    };
+    try {
+      // Git is only display metadata. Await it before the final synchronous
+      // installation projection, so selection/readiness cannot stale across it.
+      const gitObservations = new Map<
+        string,
+        {
+          root: string;
+          digest: string;
+          git: Awaited<ReturnType<typeof getPluginGitInfo>>;
+        }
+      >();
+      for (const entry of readEntries().values()) {
+        if (entry.state !== 'valid') continue;
+        try {
+          const catalog = readPluginCatalogInstallation(
+            pluginsDir,
+            entry.directoryName,
+            deps.packageMcpJournal,
+          );
+          if (!catalog) continue;
+          const git = await getPluginGitInfo(catalog.packageRoot, logger);
+          gitObservations.set(entry.directoryName, {
+            root: catalog.packageRoot,
+            digest: catalog.artifact.digest,
+            git,
+          });
+        } catch {
+          /* Final projection below owns the current bounded rejection. */
+        }
+      }
+      const plugins = [];
+      for (const entry of readEntries().values()) {
+        if (entry.state === 'rejected') {
+          plugins.push(rejectedInstalledPluginRecord(entry));
+          continue;
+        }
+        try {
+          const catalog = readPluginCatalogInstallation(
+            pluginsDir,
+            entry.directoryName,
+            deps.packageMcpJournal,
+          );
+          if (!catalog) throw new Error('Selected installation is unavailable');
+          const manifest = catalog.manifest;
+          const observation = gitObservations.get(entry.directoryName);
+          const git =
+            observation?.root === catalog.packageRoot &&
+            observation.digest === catalog.artifact.digest
+              ? observation.git
+              : undefined;
+          const declared = requiredPermissionsForManifest(manifest);
+          const grantState = readPluginGrantState(
+            projectHomeDir,
+            manifest.name,
+            catalog.artifact,
+          );
+          const granted = grantState.granted;
+          plugins.push({
+            name: manifest.name,
+            displayName: manifest.displayName,
+            version: manifest.version,
+            description: manifest.description,
+            installationReadiness: catalog.readiness,
+            hasBundle:
+              catalog.readiness.state === 'ready' &&
+              existsSync(join(catalog.packageRoot, 'dist', 'bundle.js')),
+            ...(catalog.retained ? { retainedOnRemoval: true } : {}),
+            hasSettings:
+              catalog.readiness.state === 'ready' &&
+              Array.isArray(manifest.settings) &&
+              manifest.settings.length > 0,
+            layout: manifest.layout,
+            workspacePanes: manifest.workspacePanes,
+            agents: manifest.agents,
+            providers: manifest.providers,
+            links: manifest.links,
+            git,
+            permissions: {
+              declared,
+              granted,
+              missing: declared
+                .filter((permission) => !granted.includes(permission))
+                .map((permission) => ({
+                  permission,
+                  tier: getPermissionTier(permission),
+                })),
+              contentBinding: grantState.binding,
+              withheld: grantState.withheld,
             },
-            503,
+          });
+        } catch (error) {
+          if (error instanceof PluginGrantsUnavailableError) throw error;
+          plugins.push(
+            rejectedInstalledPluginRecord({
+              state: 'rejected',
+              directoryName: entry.directoryName,
+              rejection: describePluginManifestRejection(error),
+            }),
           );
         }
-        logger.error('Failed to read plugin manifest', {
-          plugin: entry.directoryName,
-          error: errorMessage(error),
-        });
       }
+      return c.json({ plugins });
+    } catch (error) {
+      if (error instanceof PluginGrantsUnavailableError)
+        return c.json(
+          {
+            success: false,
+            error: 'Plugin permissions are unavailable',
+            grantsUnavailable: true,
+          },
+          503,
+        );
+      return c.json(
+        { success: false, error: 'Plugin installation inventory unavailable' },
+        503,
+      );
     }
-
-    return c.json({ plugins });
   });
 
   const recoveryDependencies: PluginInstallSharedDeps = {

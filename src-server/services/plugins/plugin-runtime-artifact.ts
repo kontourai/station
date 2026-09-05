@@ -1,3 +1,4 @@
+import { lstatSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
@@ -36,9 +37,11 @@ export function capturePluginRuntimeArtifact(
     (captured?.installation && captured.installation.contentDigest !== digest)
   )
     return null;
-  const manifest = readPluginManifestFileSync(
-    join(root.packageRoot, 'plugin.json'),
-  );
+  const manifestPath = join(root.packageRoot, 'plugin.json');
+  const manifestStat = lstatSync(manifestPath);
+  if (!manifestStat.isFile() || manifestStat.isSymbolicLink())
+    throw new Error('Plugin manifest must be a regular file.');
+  const manifest = readPluginManifestFileSync(manifestPath);
   if (manifest.name !== pluginId) return null;
   const isCurrent = () => {
     try {

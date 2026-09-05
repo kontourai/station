@@ -11,6 +11,7 @@ import {
   type PluginPermissionEntry,
   PluginPermissionsSection,
 } from './PluginPermissionsSection';
+import { PluginRecoveryPanel } from './PluginRecoveryPanel';
 import { PluginSettingFieldRow } from './PluginSettingFieldRow';
 import {
   isRejectedPlugin,
@@ -145,6 +146,17 @@ export function PluginDetailPanel({
       </div>
     );
   }
+  if (
+    selected.installationReadiness &&
+    selected.installationReadiness.state !== 'ready'
+  )
+    return (
+      <PluginRecoveryPanel
+        key={selected.name}
+        plugin={selected}
+        onRemove={onRemove}
+      />
+    );
   const update = updates.find((entry) => entry.name === selected.name);
   const providersExpanded = expandedProviders.has(selected.name);
 

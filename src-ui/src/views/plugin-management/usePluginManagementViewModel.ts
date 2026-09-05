@@ -136,7 +136,12 @@ export function usePluginManagementViewModel() {
     (plugin) => pluginSelectionId(plugin) === selectedPlugin,
   );
   const selectedReady =
-    selected && !isRejectedPlugin(selected) ? selected : undefined;
+    selected &&
+    !isRejectedPlugin(selected) &&
+    (!selected.installationReadiness ||
+      selected.installationReadiness.state === 'ready')
+      ? selected
+      : undefined;
 
   const { data: settingsData } = usePluginSettingsQuery(selectedReady?.name, {
     enabled: !!selectedReady?.hasSettings,

@@ -1912,6 +1912,15 @@ falls back to read-only evidence, never to another default Agent.
 
 ## Package lifecycle results
 
+`listPlugins` also reports optional `installationReadiness`: `ready`, `pending`
+(with `recovery: "review"`), or `unavailable`. Absence preserves compatibility
+with older servers; it is not a new readiness proof. Keep pending rows visible,
+but do not load their bundles or enable their actions. The server sets
+`hasBundle: false` until readiness is established. Project Pane availability
+uses `installation-pending` or `installation-unavailable` diagnostics, separate
+from distribution-policy disablement. Readiness notifications refresh the
+Project Pane and host-action catalogs as well as the installed-plugin list.
+
 `listPlugins` includes optional `retainedOnRemoval` metadata for packages using
 retained code generations. Normal package updates keep their stable data
 scope. `usePluginInstallMutation` accepts optional `dataPolicy`: `preserve`

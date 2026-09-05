@@ -17,17 +17,22 @@ import { createPluginOperationalEventSubscriptionService } from '../../../runtim
 import { loadRuntimePluginProviders } from '../../../runtime/plugins/runtime-plugin-loader.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { DistributionProfileService } from '../../../services/plugins/distribution-profile-service.js';
 import { verifyPluginActivation } from '../../../services/plugins/plugin-activation-plan.js';
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
 import { createLocalPluginInstallationService } from '../../../services/plugins/plugin-installation-local.js';
+import { readPluginManifestFileSync } from '../../../services/plugins/plugin-manifest-loader.js';
 import { grantPermissions } from '../../../services/plugins/plugin-permissions.js';
 import { capturePluginRuntimeArtifact } from '../../../services/plugins/plugin-runtime-artifact.js';
+import { readCurrentWorkspacePaneCatalog } from '../../../services/projects/workspace-pane-catalog.js';
 import { readPluginBundle } from '../plugin-bundles.js';
+import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 import { registerPluginPublicRoutes } from '../plugin-public-routes.js';
 import {
   acquirePluginPublicServerModule,
   readPluginPublicManifest,
 } from '../plugin-public-server.js';
+import * as pluginSource from '../plugin-source.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -40,10 +45,25 @@ async function fixture() {
     source = join(home, 'source');
   mkdirSync(plugins);
   mkdirSync(join(source, 'dist'), { recursive: true });
-  const manifest = {
+  const declaration = {
     name: 'public-fixture',
     version: '1.0.0',
     serverModule: 'server.mjs',
+    workspacePanes: [
+      {
+        version: '1.0' as const,
+        id: 'public-fixture-review',
+        name: 'Review',
+        rendererId: 'public-fixture.review',
+        renderer: { kind: 'plugin-component' as const, name: 'review' },
+        placement: { supportedRegions: ['primary' as const] },
+        modes: [
+          { id: 'default', contextRequirement: { project: true as const } },
+        ],
+        provenance: { origin: 'plugin' as const, pluginId: 'public-fixture' },
+        lifecycle: { stage: 'stable' as const },
+      },
+    ],
     providers: [{ type: 'branding', module: './provider.mjs' }],
     operationalEventSubscriptions: [
       {
@@ -54,7 +74,8 @@ async function fixture() {
       },
     ],
   };
-  writeFileSync(join(source, 'plugin.json'), JSON.stringify(manifest));
+  writeFileSync(join(source, 'plugin.json'), JSON.stringify(declaration));
+  const manifest = readPluginManifestFileSync(join(source, 'plugin.json'));
   writeFileSync(
     join(source, 'server.mjs'),
     "globalThis.__stationPublicReadinessImports = (globalThis.__stationPublicReadinessImports ?? 0) + 1; export function register(app) { app.get('/ping', c => c.text('ready')); } export const operationalEvents = { async observe() { globalThis.__stationPublicReadinessEvents = (globalThis.__stationPublicReadinessEvents ?? 0) + 1; return { kind: 'accepted' }; } };",
@@ -346,5 +367,126 @@ test('ordinary provider boot imports only ready journal selections and refuses p
   } finally {
     delete globals.__stationReadyProviderFactoryGate;
     await clearAll();
+  }
+});
+
+test('inventory and Pane catalogs retain pending rows without loading them and discover ready selections without aliases', async () => {
+  const f = await fixture();
+  const app = new Hono();
+  registerPluginInstallRoutes(app, {
+    pluginsDir: f.plugins,
+    projectHomeDir: f.home,
+    agentsDir: join(f.home, 'agents'),
+    packageMcpJournal: f.journal,
+    logger,
+  });
+  const pending = (await (await app.request('/')).json()) as {
+    plugins: unknown[];
+  };
+  expect(pending.plugins).toContainEqual(
+    expect.objectContaining({
+      name: f.manifest.name,
+      hasBundle: false,
+      installationReadiness: { state: 'pending', recovery: 'review' },
+    }),
+  );
+  const distribution = new DistributionProfileService(
+    f.home,
+    undefined,
+    f.journal,
+  );
+  expect(distribution.listPluginWorkspacePaneContributions()).toContainEqual(
+    expect.objectContaining({
+      enabled: false,
+      installationReadiness: { state: 'pending', recovery: 'review' },
+    }),
+  );
+  const catalog = readCurrentWorkspacePaneCatalog(distribution, 'project-a');
+  expect(catalog.availability).toContainEqual(
+    expect.objectContaining({
+      descriptorId: 'public-fixture-review',
+      availability: expect.objectContaining({
+        state: 'temporarily-unavailable',
+        reason: { code: 'installation-pending', source: 'configuration' },
+      }),
+    }),
+  );
+  await f.ready();
+  unlinkSync(join(f.plugins, f.manifest.name));
+  const ready = (await (await app.request('/')).json()) as {
+    plugins: unknown[];
+  };
+  expect(ready.plugins).toContainEqual(
+    expect.objectContaining({
+      name: f.manifest.name,
+      hasBundle: true,
+      retainedOnRemoval: true,
+      installationReadiness: { state: 'ready' },
+    }),
+  );
+  expect(distribution.listPluginWorkspacePaneContributions()).toContainEqual(
+    expect.objectContaining({
+      enabled: true,
+      installationReadiness: { state: 'ready' },
+    }),
+  );
+});
+
+test('inventory does not advertise a ready bundle when journal selection becomes pending during the awaited Git observation', async () => {
+  const f = await fixture();
+  await f.ready();
+  const app = new Hono();
+  registerPluginInstallRoutes(app, {
+    pluginsDir: f.plugins,
+    projectHomeDir: f.home,
+    agentsDir: join(f.home, 'agents'),
+    packageMcpJournal: f.journal,
+    logger,
+  });
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const original = pluginSource.getPluginGitInfo;
+  const spy = vi
+    .spyOn(pluginSource, 'getPluginGitInfo')
+    .mockImplementationOnce(async (...args) => {
+      entered();
+      await gate;
+      return original(...args);
+    });
+  const response = app.request('/');
+  try {
+    await started;
+    const current = f.journal.currentInstallation(f.manifest.name);
+    if (current.state !== 'observed')
+      throw new Error('Missing fixture installation');
+    expect(
+      f.journal.recordInstallation({
+        pluginId: f.manifest.name,
+        contentDigest: current.installation.contentDigest,
+        previous: current.installation,
+        materialization: current.installation.materialization,
+        dataScope: current.installation.dataScope,
+        origin: 'a'.repeat(64),
+        activationPlan: f.journal.activationPlan(current.installation)!,
+      }).state,
+    ).toBe('recorded');
+    release();
+    const body = (await (await response).json()) as { plugins: unknown[] };
+    expect(body.plugins).toContainEqual(
+      expect.objectContaining({
+        name: f.manifest.name,
+        installationReadiness: { state: 'pending', recovery: 'review' },
+        hasBundle: false,
+      }),
+    );
+  } finally {
+    release();
+    await response;
+    spy.mockRestore();
   }
 });

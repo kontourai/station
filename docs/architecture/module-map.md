@@ -187,6 +187,16 @@ method references. The existing retirement owner can still call cleanup methods
 after revocation. A failed replacement keeps registry ownership unchanged but
 does not leave changed source bytes callable through an older handle.
 
+Inert installation discovery is separate from invocation capture:
+`plugin-catalog-installation.ts` may project a validated pending declaration
+with typed readiness, while executable readers still require ready admission.
+Plugin inventory finishes awaited Git metadata reads before its synchronous
+current-selection projection. Distribution catalogs discover journal-selected
+identities without aliases and preserve disabled pending Panes with an explicit
+availability reason. The UI does not fetch pending bundles, and recovery uses
+the SDK's fresh-preview consent flow. Post-ready events refresh Project Pane and
+host-action queries as well as plugin inventory; they do not authorize retries.
+
 ## InstalledPluginInventory
 
 **Intent and Interface.** `scanInstalledPluginInventory()` performs one fresh deterministic scan of the existing installed-plugin directory. A readable valid manifest returns its parsed manifest; a missing, unreadable, unsafe, malformed, or invalid manifest returns a rejected entry naming only the directory plus a bounded path-free reason and recovery instruction. Rejections are not persisted in a second registry.
