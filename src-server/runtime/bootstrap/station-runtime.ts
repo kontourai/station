@@ -282,6 +282,10 @@ import {
   createMCPToolProvenanceGeneration,
   type MCPToolProvenanceGeneration,
 } from '../../services/orchestration/mcp-tool-provenance.js';
+import {
+  createRuntimeSearch,
+  type RuntimeSearch,
+} from '../../services/search/runtime-search.js';
 import { continueExecutionTargetMessage } from '../../tools/station-control-delegation.js';
 import { buildRuntimeContext as createRuntimeContext } from '../agents/runtime-context-builder.js';
 import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js';
@@ -734,6 +738,9 @@ export class StationRuntime {
   private knowledgeStoreProvider!: KnowledgeStoreProvider;
   private fileTreeService!: FileTreeService;
   private readonly taskGraphService: TaskGraphService;
+  private runtimeSearch?: RuntimeSearch;
+  private searchAdmissionStopped = false;
+  private searchRetirementRequired = false;
   private readonly taskDispatchAssignmentClaims: Pick<
     AssignmentClaimService,
     'claim' | 'release' | 'status'
@@ -2721,6 +2728,9 @@ export class StationRuntime {
   }
 
   private async runInitialize(): Promise<void> {
+    // A failed attempt retains its exact readers until both owners prove
+    // retirement. No replacement Orchestration or listener is constructed first.
+    await this.retireFailedSearch();
     // Identity/credential state is a startup invariant. Corrupt or unsafe
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
@@ -2978,6 +2988,10 @@ export class StationRuntime {
   }
 
   private async cleanupFailedInitialization(error: unknown): Promise<never> {
+    if (this.runtimeSearch) {
+      this.searchRetirementRequired = true;
+      this.runtimeSearch.stop();
+    }
     const failures = [error];
     const attempt = async (
       cleanup: (() => void | Promise<void>) | undefined,
@@ -2992,6 +3006,7 @@ export class StationRuntime {
       }
     };
 
+    await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());
     await attempt(() => this.discordGatewayService.stop());
     await attempt(() => this.taskRoomAcceptanceControl?.close());
@@ -3029,6 +3044,17 @@ export class StationRuntime {
       );
     }
     throw error;
+  }
+
+  private async retireFailedSearch(): Promise<void> {
+    if (!this.searchRetirementRequired || !this.runtimeSearch) return;
+    const owned = this.runtimeSearch;
+    owned.stop();
+    const result = await owned.retireAfterFailedInitialization();
+    if (result.state !== 'closed')
+      throw new Error('Failed runtime search readers are still retiring');
+    if (this.runtimeSearch === owned) this.runtimeSearch = undefined;
+    this.searchRetirementRequired = false;
   }
 
   /**
@@ -3227,6 +3253,14 @@ export class StationRuntime {
   private configureRoutes(
     app: Parameters<NonNullable<HonoServerConfig['configureApp']>>[0],
   ): void {
+    // The existing handshake environment identity qualifies these local owner
+    // records; it is not a new logical Station or machine identity.
+    this.runtimeSearch ??= createRuntimeSearch({
+      stationId: this.stationEnvironmentId!,
+      tasks: this.taskGraphService,
+      transcripts: this.orchestrationService,
+    });
+    if (this.searchAdmissionStopped) this.runtimeSearch.stop();
     const {
       schedulerService,
       notificationService,
@@ -3268,6 +3302,7 @@ export class StationRuntime {
       secretBindingIntegrationAdministration:
         this.secretBindingIntegrationAdministration,
       taskGraphService: this.taskGraphService,
+      runtimeSearch: this.runtimeSearch,
       taskDispatcher: this.taskDispatcher,
       terminalService: this.terminalService,
       actionOperations: this.actionOperations,
@@ -3712,6 +3747,8 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    this.searchAdmissionStopped = true;
+    this.runtimeSearch?.stop();
     // Settle any pending native-engine adoption window before timers are
     // cleared, so its promise cannot strand on a cleared timeout (archive#1575).
     // Optional-chained: prototype-built test doubles (Object.create) have no
@@ -3745,6 +3782,11 @@ export class StationRuntime {
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
+    if (this.runtimeSearch) {
+      const retirement = await this.runtimeSearch.close();
+      if (retirement.state !== 'closed')
+        failures.push(new Error('Task search reader shutdown pending'));
+    }
     try {
       await this.discordGatewayService?.stop();
     } catch (error) {
