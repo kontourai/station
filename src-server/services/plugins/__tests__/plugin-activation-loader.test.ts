@@ -16,7 +16,10 @@ import {
   verifyPluginActivation,
 } from '../plugin-activation-plan.js';
 import { computePluginContentDigest } from '../plugin-content-integrity.js';
-import { createLocalPluginInstallationService } from '../plugin-installation-local.js';
+import {
+  captureLocalPluginActivation,
+  createLocalPluginInstallationService,
+} from '../plugin-installation-local.js';
 import { readPluginManifestFile } from '../plugin-manifest-loader.js';
 
 test('the production Agent Plugin catalog withholds pending core and namespace contributions until verified activation', async () => {
@@ -114,6 +117,11 @@ test('the production Agent Plugin catalog withholds pending core and namespace c
       selected.installation,
       async () => {},
     );
+    const abandonedCapture = captureLocalPluginActivation(
+      plugins,
+      journal,
+      pendingPermit,
+    );
     const composition = await preparePluginActivationComposition(session);
     const composingSources = loader.skillSources(composition);
     const composingConfig = config.forPluginActivationComposition(composition);
@@ -154,8 +162,15 @@ test('the production Agent Plugin catalog withholds pending core and namespace c
       'not ready',
     );
     const permit = journal.claimActivation(selected.installation);
+    const completedCapture = captureLocalPluginActivation(
+      plugins,
+      journal,
+      permit,
+    );
     await verifyPluginActivation(permit, journal, async () => {});
     expect(journal.completeActivation(permit)).toEqual({ state: 'applied' });
+    expect(completedCapture.isCurrent()).toBe(true);
+    expect(abandonedCapture.isCurrent()).toBe(false);
     expect(reserved.claim.enterEffectBoundary()).toEqual({ state: 'blocked' });
     expect(loader.listInstalled()).toHaveLength(1);
     expect((await config.loadAgent('owned-agent')).name).toBe('owned-agent');

@@ -385,9 +385,24 @@ export function captureLocalPluginActivation(
     installation,
     isCurrent() {
       try {
-        const current = journal.activationInstallation(permit);
+        if (!journal.activationPermitCurrent(permit)) return false;
+        const selected = journal.currentInstallation(installation.pluginId);
+        const current =
+          selected.state === 'observed' &&
+          journal.admissionOpen(selected.installation)
+            ? selected.installation
+            : journal.activationInstallation(permit);
         return (
           current.incarnation === installation.incarnation &&
+          current.contentDigest === installation.contentDigest &&
+          current.materialization === installation.materialization &&
+          current.dataScope === installation.dataScope &&
+          current.origin === installation.origin &&
+          resolvePluginMaterialization(
+            pluginsDir,
+            installation.pluginId,
+            installation.materialization!,
+          ).dataScope === installation.dataScope &&
           computePluginContentDigest(
             dirname(root.packageRoot),
             basename(root.packageRoot),

@@ -2062,7 +2062,8 @@ export class StationRuntime {
   private async reloadAgentsFromDisk(
     composition?: PluginActivationComposition,
   ): Promise<void> {
-    const configurationBefore = this.captureAgentConfigurationRevisions();
+    const configurationBefore =
+      this.captureAgentConfigurationRevisions(composition);
     this.loadedProviderLaunchabilityRevision = null;
     this.loadedAppConfigLaunchabilityRevision = null;
     const preparationState: RuntimeAgentPreparationState = {
@@ -2178,7 +2179,10 @@ export class StationRuntime {
         }
       },
       assertConfigurationCurrent: () =>
-        this.assertAgentConfigurationRevisions(configurationBefore),
+        this.assertAgentConfigurationRevisions(
+          configurationBefore,
+          composition,
+        ),
       retainRetiredResource: (_key, config) => {
         this.retiredMcpConfigs.add(config);
       },
@@ -2192,7 +2196,7 @@ export class StationRuntime {
     });
     await this.reloadDefaultAgentFromConfig(appConfig, composition);
     this.rebuildGlobalToolRegistry();
-    this.assertAgentConfigurationRevisions(configurationBefore);
+    this.assertAgentConfigurationRevisions(configurationBefore, composition);
     this.appConfig = appConfig;
     this.usageTelemetry?.reconfigure(appConfig);
     applyConfiguredLogLevel(appConfig.logLevel, this.logger);

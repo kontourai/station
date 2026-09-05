@@ -148,6 +148,7 @@ export interface PackageMcpAdmissionJournal {
     permit: PluginActivationPermit,
     verify: (plan: PluginActivationPlan) => Promise<void>,
   ): Promise<void>;
+  activationPermitCurrent(permit: PluginActivationPermit): boolean;
   closeActivationPermit(permit: PluginActivationPermit): void;
   reserveActivation(
     permit: PluginActivationPermit,
@@ -1092,6 +1093,18 @@ export function createPackageMcpAdmissionJournal(
     },
     verifyActivation(permit, verify) {
       return verifyPluginActivation(permit, journal, verify);
+    },
+    activationPermitCurrent(permit) {
+      const installation = activationLeases.get(permit);
+      const loaded = read();
+      return (
+        !!installation &&
+        !!loaded &&
+        loaded.id === journalId &&
+        find(loaded.value, installation)?.current === true &&
+        !fenced(loaded.value, installation.pluginId) &&
+        activationPermitExecutionCurrent(permit, journal)
+      );
     },
     closeActivationPermit(permit) {
       revokePluginActivationPermit(permit, journal);

@@ -123,10 +123,12 @@ import {
   type PluginDependencyOwnershipEntry,
   type PluginDependencyOwnershipHandoff,
   type PluginGrantMutationScope,
+  PluginGrantMutationSupersededError,
   type PluginGrantRevisionSnapshot,
   type PluginInstallAuthorityRecord,
   processInstallPermissions,
   readPluginDependencyOwnership,
+  readPluginGrantRevision,
   rebindGrantsAfterContentChange,
   recordPluginDependencyOwnership,
   removePluginHostRecord,
@@ -2638,6 +2640,13 @@ async function installPluginFromSourceUnderContext(
     // uninstall routes too, and refusing there would strand a plugin already
     // installed under such a name instead of letting the operator remove it.
     assertPluginIdentityAvailable(pluginName);
+    if (
+      consent.kind === 'operator-decision' &&
+      consent.grantRevision !== undefined &&
+      consent.grantRevision !==
+        readPluginGrantRevision(projectHomeDir, pluginName)
+    )
+      throw new PluginGrantMutationSupersededError();
     grantScope = createPluginGrantMutationScope(projectHomeDir, pluginName, {
       expectedRevision:
         consent.kind === 'operator-decision' &&
@@ -2758,6 +2767,12 @@ async function installPluginFromSourceUnderContext(
               throw new Error(
                 `Plugin dependency '${dependency.id}' needs a readable, preview-bound approval before building`,
               );
+            if (
+              approval.grantRevision !== undefined &&
+              approval.grantRevision !==
+                readPluginGrantRevision(projectHomeDir, dependency.id)
+            )
+              throw new PluginGrantMutationSupersededError();
             const basis = dependency.consent;
             assertPluginOperatorDecision({
               pluginName: dependency.id,
