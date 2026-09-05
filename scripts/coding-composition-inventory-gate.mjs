@@ -137,6 +137,9 @@ const semantic =
 function walk(root, dir, includeTests = false) {
   const paths = [];
   for (const name of readdirSync(resolve(root, dir))) {
+    // Installed dependencies are not repository source or owned test proof.
+    // Skip before stat: pnpm links may be dangling or lead back into packages.
+    if (name === 'node_modules') continue;
     const relative = `${dir}/${name}`;
     const stat = statSync(resolve(root, relative));
     if (stat.isDirectory()) paths.push(...walk(root, relative, includeTests));
