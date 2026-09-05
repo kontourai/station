@@ -9,7 +9,9 @@ import {
 } from '../../../../src-shared/interactive-workspace-performance-timing.js';
 import {
   createProjectTaskRoomRoutes,
+  createProjectTaskRoomSseDeliveryQueue,
   settleProjectTaskRoomCadence,
+  settleProjectTaskRoomTerminal,
 } from '../project-task-rooms.js';
 
 async function successfulData(response: Response): Promise<unknown> {
@@ -66,6 +68,97 @@ function cadenceHarness(input: {
 }
 
 describe('project task room routes', () => {
+  test('delivers an accepted document ahead of queued room projections', async () => {
+    let releaseFirst!: (alive: boolean) => void;
+    const firstAuthority = new Promise<boolean>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const subscriptionAlive = vi
+      .fn<() => Promise<boolean>>()
+      .mockReturnValueOnce(firstAuthority)
+      .mockResolvedValue(true);
+    const writes: string[] = [];
+    const closeTerminal = vi.fn(async () => {});
+    const delivery = createProjectTaskRoomSseDeliveryQueue({
+      aborted: () => false,
+      subscriptionAlive,
+      closeTerminal,
+      write: async (value) => {
+        writes.push(String((value as { marker?: string }).marker));
+      },
+    });
+
+    delivery.enqueue({ type: 'room', marker: 'room-active' } as never);
+    delivery.enqueue({ type: 'room', marker: 'room-queued' } as never);
+    delivery.enqueue({ type: 'document', marker: 'document' } as never);
+    expect(subscriptionAlive).toHaveBeenCalledOnce();
+    releaseFirst(true);
+    await vi.waitFor(() => expect(writes).toHaveLength(3));
+
+    expect(writes).toEqual(['room-active', 'document', 'room-queued']);
+    expect(subscriptionAlive).toHaveBeenCalledTimes(3);
+    expect(closeTerminal).not.toHaveBeenCalled();
+  });
+
+  test('writes no priority document after its currentness check is revoked', async () => {
+    const write = vi.fn(async () => {});
+    const closeTerminal = vi.fn(async () => {});
+    const delivery = createProjectTaskRoomSseDeliveryQueue({
+      aborted: () => false,
+      subscriptionAlive: async () => false,
+      closeTerminal,
+      write,
+    });
+
+    delivery.enqueue({ type: 'document', revision: 'revision-1' });
+    await vi.waitFor(() => expect(closeTerminal).toHaveBeenCalledOnce());
+    expect(write).not.toHaveBeenCalled();
+    expect(delivery.terminal).toBe(true);
+  });
+
+  test('terminalizes an overflow while a prior delivery is still settling', async () => {
+    let releaseAuthority!: (alive: boolean) => void;
+    const authority = new Promise<boolean>((resolve) => {
+      releaseAuthority = resolve;
+    });
+    const write = vi.fn(async () => {});
+    const closeTerminal = vi.fn(async () => {});
+    const delivery = createProjectTaskRoomSseDeliveryQueue({
+      aborted: () => false,
+      subscriptionAlive: vi
+        .fn<() => Promise<boolean>>()
+        .mockReturnValueOnce(authority)
+        .mockResolvedValue(true),
+      closeTerminal,
+      write,
+    });
+
+    delivery.enqueue({ type: 'room' });
+    for (let index = 0; index < 65; index += 1) {
+      delivery.enqueue({ type: 'room', revision: `room-${index}` });
+    }
+    expect(delivery.terminal).toBe(true);
+    releaseAuthority(true);
+    await vi.waitFor(() => expect(closeTerminal).toHaveBeenCalledOnce());
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  test('finishes terminal ownership when both terminal write and close reject', async () => {
+    const finish = vi.fn();
+    await expect(
+      settleProjectTaskRoomTerminal({
+        writeTerminal: async () => {
+          throw new Error('write failed');
+        },
+        close: async () => {
+          throw new Error('close failed');
+        },
+        finish,
+      }),
+    ).rejects.toThrow('Task room terminal delivery failed');
+    expect(finish).toHaveBeenCalledOnce();
+  });
+
   test('keeps a successful cadence open with a ping', async () => {
     const fixture = cadenceHarness({ cadenceCompleted: true });
     await fixture.settle();

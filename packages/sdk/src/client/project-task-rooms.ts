@@ -461,30 +461,36 @@ export function subscribeProjectTaskRoomEvents(
       if (checkpoint.id) callbacks.onCheckpoint?.(checkpoint.id);
     },
     onMessage: (message) => {
-      if (message.event === 'ping') return;
-      if (message.event === 'terminal')
-        return callbacks.onEvent({
+      if (message.event === 'ping') return true;
+      if (message.event === 'terminal') {
+        callbacks.onEvent({
           kind: 'terminal',
           ...(message.id ? { id: message.id } : {}),
         });
+        return true;
+      }
       if (
         message.event !== 'snapshot' &&
         message.event !== 'room' &&
         message.event !== 'document'
-      )
-        return callbacks.onError?.(
+      ) {
+        callbacks.onError?.(
           new ProjectTaskRoomProtocolError('Unknown room SSE event'),
         );
+        return false;
+      }
       try {
         callbacks.onEvent({
           kind: message.event,
           ...(message.id ? { id: message.id } : {}),
           value: JSON.parse(message.data),
         });
+        return true;
       } catch {
         callbacks.onError?.(
           new ProjectTaskRoomProtocolError('Malformed room SSE event'),
         );
+        return false;
       }
     },
   });
