@@ -13,6 +13,7 @@ import {
   preparePluginProviderGeneration,
   publishPluginProviderGeneration,
 } from '../../providers/plugin-provider-loader.js';
+import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import { readRegistryInstallAliases } from '../../providers/registries/registry-install-aliases.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
@@ -84,7 +85,10 @@ interface PluginLifecycleRouteDeps {
   applyConfigurationMutation?: AgentConfigurationMutationRunner;
   refreshKitObservability?: () => void;
   settleProviderAdapterRetirements?: () => Promise<void>;
-  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  reconcileEngineConnections?: (
+    plugin: string,
+    view?: PluginProviderReadView,
+  ) => Promise<void>;
   removeEngineConnections?: (plugin: string) => Promise<void>;
   quiesceEventSubscriptions?: (
     pluginName?: string,

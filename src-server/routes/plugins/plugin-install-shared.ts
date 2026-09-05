@@ -42,6 +42,7 @@ import {
   type IPluginRegistryProvider,
   PROVIDER_TYPE_META,
 } from '../../providers/provider-interfaces.js';
+import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import {
   getIntegrationRegistryProvider,
   getPluginRegistryProviders,
@@ -61,6 +62,9 @@ import {
   deferPluginActivationNotification,
   deliverPluginActivationNotifications,
   type PluginActivationSession,
+  pluginActivationProviderReadView,
+  pluginActivationProviderReadViewCurrent,
+  pluginActivationProviderViewPermit,
   pluginActivationSessionPermit,
   preparePluginActivationComposition,
   registerPluginActivation,
@@ -383,7 +387,10 @@ export interface PluginInstallSharedDeps {
   ) => Promise<void>;
   beginConfigurationMutation?: () => void;
   settleProviderAdapterRetirements?: () => Promise<void>;
-  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  reconcileEngineConnections?: (
+    plugin: string,
+    view?: PluginProviderReadView,
+  ) => Promise<void>;
   removeEngineConnections?: (plugin: string) => Promise<void>;
   quiesceEventSubscriptions?: (
     pluginName: string,
@@ -496,7 +503,14 @@ function captureManagedPluginPermission(
   deps: PluginInstallSharedDeps,
   id: string,
 ):
-  | { packageRoot: string; artifact: CapturedPluginPermissionArtifact }
+  | {
+      packageRoot: string;
+      artifact: CapturedPluginPermissionArtifact;
+      visibility: {
+        ready(): boolean;
+        permits(view: PluginProviderReadView): boolean;
+      };
+    }
   | undefined {
   if (!deps.packageMcpJournal) return undefined;
   const selection = deps.packageMcpJournal.currentInstallation(id);
@@ -522,18 +536,59 @@ function captureManagedPluginPermission(
   if (!captured?.installation) return undefined;
   const digest = captured.installation.contentDigest;
   const packageRoot = captured.root.packageRoot;
+  const artifact: CapturedPluginPermissionArtifact = {
+    pluginId: id,
+    generation: captured.installation.incarnation,
+    digest,
+    isCurrent: () =>
+      captured.isCurrent() &&
+      computePluginContentDigest(
+        dirname(packageRoot),
+        basename(packageRoot),
+      ) === digest,
+  };
+  const granted = () =>
+    hasGrant(
+      deps.projectHomeDir,
+      id,
+      'providers.register',
+      undefined,
+      artifact,
+    );
+  const ready = () => {
+    try {
+      return (
+        deps.packageMcpJournal!.admissionOpen(captured.installation!) &&
+        artifact.isCurrent() &&
+        granted()
+      );
+    } catch {
+      return false;
+    }
+  };
   return {
     packageRoot,
-    artifact: {
-      pluginId: id,
-      generation: captured.installation.incarnation,
-      digest,
-      isCurrent: () =>
-        captured.isCurrent() &&
-        computePluginContentDigest(
-          dirname(packageRoot),
-          basename(packageRoot),
-        ) === digest,
+    artifact,
+    visibility: {
+      ready,
+      permits(view) {
+        try {
+          return (
+            pluginActivationProviderReadViewCurrent(view) &&
+            (ready() ||
+              (!!permit &&
+                pluginActivationProviderViewPermit(
+                  view,
+                  deps.packageMcpJournal!,
+                  id,
+                ) === permit &&
+                artifact.isCurrent() &&
+                granted()))
+          );
+        } catch {
+          return false;
+        }
+      },
     },
   };
 }
@@ -931,7 +986,10 @@ function createDependencyLifecycle(options: {
   pluginsDir: string;
   projectHomeDir: string;
   logger: Logger;
-  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  reconcileEngineConnections?: (
+    plugin: string,
+    view?: PluginProviderReadView,
+  ) => Promise<void>;
   settleProviderAdapterRetirements?: () => Promise<void>;
 }): PluginDependencyLifecycle {
   const approvals = new Map<
@@ -1140,7 +1198,10 @@ async function removeOwnedDependencyLifecycles(options: {
   projectHomeDir: string;
   backupRoot: string;
   logger: Logger;
-  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  reconcileEngineConnections?: (
+    plugin: string,
+    view?: PluginProviderReadView,
+  ) => Promise<void>;
   settleProviderAdapterRetirements?: () => Promise<void>;
   ownershipHandoffs: PluginDependencyOwnershipHandoff[];
 }): Promise<RemovedDependencyBackup[]> {
@@ -1459,7 +1520,10 @@ async function restoreRemovedDependencyLifecycles(options: {
   pluginsDir: string;
   projectHomeDir: string;
   logger: Logger;
-  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  reconcileEngineConnections?: (
+    plugin: string,
+    view?: PluginProviderReadView,
+  ) => Promise<void>;
   settleProviderAdapterRetirements?: () => Promise<void>;
 }): Promise<void> {
   for (const backup of [...options.backups].reverse()) {
@@ -2762,7 +2826,19 @@ async function runOwnedPluginMutation<T>(
   return withPluginPublicationContext(deps.projectHomeDir, async () => {
     try {
       const result = await operation(
-        { ...deps, activationSession: session },
+        {
+          ...deps,
+          activationSession: session,
+          ...(deps.reconcileEngineConnections
+            ? {
+                reconcileEngineConnections: (plugin: string) =>
+                  deps.reconcileEngineConnections!(
+                    plugin,
+                    pluginActivationProviderReadView(session),
+                  ),
+              }
+            : {}),
+        },
         session,
       );
       if (!providedSession)
@@ -3778,7 +3854,10 @@ async function installPluginFromSourceUnderContext(
           {
             strict: true,
             ...(permissionArtifact
-              ? { artifact: permissionArtifact, packageRoot: pluginDir }
+              ? (captureManagedPluginPermission(deps, pluginName) ?? {
+                  artifact: permissionArtifact,
+                  packageRoot: pluginDir,
+                })
               : {}),
           },
         );
@@ -4051,7 +4130,10 @@ async function installPluginFromSourceUnderContext(
               {
                 strict: true,
                 ...(permissionArtifact
-                  ? { artifact: permissionArtifact, packageRoot: pluginDir }
+                  ? (captureManagedPluginPermission(deps, pluginName) ?? {
+                      artifact: permissionArtifact,
+                      packageRoot: pluginDir,
+                    })
                   : {}),
               },
             );

@@ -1,3 +1,4 @@
+import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 /**
@@ -47,7 +48,10 @@ export function createPluginRoutes(
     applyConfigurationMutation: AgentConfigurationMutationRunner;
     refreshKitObservability?: () => void;
     settleProviderAdapterRetirements: () => Promise<void>;
-    reconcileEngineConnections?: (plugin: string) => Promise<void>;
+    reconcileEngineConnections?: (
+      plugin: string,
+      view?: PluginProviderReadView,
+    ) => Promise<void>;
     removeEngineConnections?: (plugin: string) => Promise<void>;
     quiesceEventSubscriptions?: (
       pluginName?: string,

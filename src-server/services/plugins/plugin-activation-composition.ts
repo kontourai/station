@@ -1,3 +1,4 @@
+import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import type {
   PackageMcpAdmissionJournal,
   PackageMcpInstallation,
@@ -295,4 +296,45 @@ export function deliverPluginActivationNotifications(
       }
     }
   }
+}
+
+/** The provider view is the same explicit owner key, not a new authority or
+ * ambient scope. Private handles expire when that owner's composition settles. */
+export function pluginActivationProviderReadView(
+  owner: PluginActivationSession | PluginActivationComposition,
+): PluginProviderReadView {
+  const view = owner as unknown as PluginProviderReadView;
+  if (!pluginActivationProviderReadViewCurrent(view))
+    throw new Error('Plugin provider composition view is unavailable');
+  return view;
+}
+
+export function pluginActivationProviderReadViewCurrent(
+  view: PluginProviderReadView,
+): boolean {
+  const state =
+    sessions.get(view as unknown as PluginActivationSession) ??
+    compositions.get(view as unknown as PluginActivationComposition);
+  return state?.phase === 'collecting' || state?.phase === 'composing';
+}
+
+export function pluginActivationProviderViewPermit(
+  view: PluginProviderReadView,
+  journal: PackageMcpAdmissionJournal,
+  pluginId: string,
+): PluginActivationPermit | undefined {
+  if (!pluginActivationProviderReadViewCurrent(view)) return undefined;
+  const state =
+    sessions.get(view as unknown as PluginActivationSession) ??
+    compositions.get(view as unknown as PluginActivationComposition);
+  const entry = state?.entries.find(
+    (candidate) =>
+      candidate.journal === journal &&
+      candidate.installation.pluginId === pluginId,
+  );
+  if (!entry) return undefined;
+  const selected = journal.activationInstallation(entry.permit);
+  return selected.incarnation === entry.installation.incarnation
+    ? entry.permit
+    : undefined;
 }

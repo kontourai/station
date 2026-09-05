@@ -1548,11 +1548,11 @@ export function configureRuntimeRoutes(
           ]),
         settleProviderAdapterRetirements: () =>
           context.orchestrationService.settleProviderAdapterRetirements(),
-        reconcileEngineConnections: async (plugin) => {
+        reconcileEngineConnections: async (plugin, view) => {
           await replacePluginEngineConnections(
             context.configLoader,
             plugin,
-            listProviders('acpConnections')
+            listProviders('acpConnections', view)
               .filter((entry: any) => entry.source === plugin)
               .flatMap((entry: any) =>
                 (entry.provider.getConnections?.() ?? []).map(

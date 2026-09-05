@@ -2,6 +2,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
+import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
@@ -77,7 +78,10 @@ interface PluginInstallRouteDeps {
   applyConfigurationMutation?: AgentConfigurationMutationRunner;
   refreshKitObservability?: () => void;
   settleProviderAdapterRetirements?: () => Promise<void>;
-  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  reconcileEngineConnections?: (
+    plugin: string,
+    view?: PluginProviderReadView,
+  ) => Promise<void>;
   quiesceEventSubscriptions?: (
     pluginName: string,
   ) => Promise<{ release(): void }>;

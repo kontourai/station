@@ -9,6 +9,9 @@ import {
   deliverPluginActivationNotifications,
   type PluginActivationComposition,
   pluginActivationCompositionPermit,
+  pluginActivationProviderReadView,
+  pluginActivationProviderReadViewCurrent,
+  pluginActivationProviderViewPermit,
   registerPluginActivation,
 } from '../../../services/plugins/plugin-activation-composition.js';
 import { StationRuntime } from '../station-runtime.js';
@@ -63,6 +66,11 @@ test.each(['applied', 'failed', 'deadline'] as const)(
       record.installation,
       async () => {},
     );
+    const providerView = pluginActivationProviderReadView(session);
+    expect(pluginActivationProviderReadViewCurrent({} as never)).toBe(false);
+    expect(
+      pluginActivationProviderViewPermit(providerView, journal, 'fixture'),
+    ).toBe(permit);
     const observations: Array<{ ready: boolean; revision: number }> = [];
     const notify = vi.fn(() => {
       observations.push({
@@ -80,6 +88,16 @@ test.each(['applied', 'failed', 'deadline'] as const)(
     runtime.reloadConfigurationFromDisk = vi.fn(
       async (capability: PluginActivationComposition) => {
         composition = capability;
+        expect(pluginActivationProviderReadViewCurrent(providerView)).toBe(
+          true,
+        );
+        expect(
+          pluginActivationProviderViewPermit(
+            pluginActivationProviderReadView(capability),
+            journal,
+            'fixture',
+          ),
+        ).toBe(permit);
         expect(
           pluginActivationCompositionPermit(capability, journal, 'fixture'),
         ).toBe(permit);
@@ -116,6 +134,10 @@ test.each(['applied', 'failed', 'deadline'] as const)(
       );
       expect(
         pluginActivationCompositionPermit(composition, journal, 'fixture'),
+      ).toBeUndefined();
+      expect(pluginActivationProviderReadViewCurrent(providerView)).toBe(false);
+      expect(
+        pluginActivationProviderViewPermit(providerView, journal, 'fixture'),
       ).toBeUndefined();
       expect(notify).toHaveBeenCalledTimes(outcome === 'applied' ? 1 : 0);
       expect(observations).toEqual(
