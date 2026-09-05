@@ -203,3 +203,32 @@ A local journal scope or shared filesystem home is not tenant isolation. Hosted
 identity and policy must bind authenticated tenant scopes to their installation,
 data and execution backends. These local adapters do not establish that hosted
 isolation contract.
+
+## Permission decision receipts
+
+Permission state remains in the existing GrantsFileStore. Its host-generated
+`mutationRevision` distinguishes decisions even when a revoke or regrant leaves
+the same permission values. Empty revisioned records are denial fences, not an
+installed-package claim or disposable cache; removing them could revive an old
+approval. Legacy arrays remain readable without inventing a content digest.
+
+An install adapter observes grant revisions before acquisition, including when
+it does not yet know the package name. Preview and recovery bind the eventual
+package and dependency revisions from that observation. Before every owned grant
+write, the permission owner compares the expected revision under the existing
+short mutation lock. A later independent decision rejects the stale write with
+`plugin_grant_mutation_superseded`; retry requires a fresh review. Source fetch,
+build, provider initialization, and other long work do not hold that lock.
+
+An in-process mutation scope retains receipts for its permission writes.
+Rollback folds those receipts backward under one short store mutation and
+reports `restored`, `superseded`, `unchanged`, or `unavailable`. Superseded means a
+later decision was preserved; it is not an invitation to repeat an old restore.
+An unavailable store is never repaired from a snapshot automatically. Current
+installation custody is retained: its owner compensates custody separately,
+then providers reload against the resulting live grants. A grant snapshot is
+observation and cannot authorize restoration.
+
+These receipt objects are server-local transaction context, not public plugin
+SDK authority or durable approval. After a crash, recovery obtains fresh approval
+against current grant revisions instead of treating old receipts as permission.
