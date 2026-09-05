@@ -109,9 +109,10 @@ export interface SessionStartBoundaryClaim {
 export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
 export class SessionStartIndeterminateError extends Error {
   readonly code = SESSION_START_INDETERMINATE_CODE;
-  constructor(cause?: unknown) {
+  constructor(cause?: unknown, reportedMessage?: string) {
     super(
-      `${cause instanceof Error ? `${cause.message} ` : ''}Provider session creation may have completed. Inspect the session before retrying.`,
+      reportedMessage ??
+        `${cause instanceof Error ? `${cause.message} ` : ''}Provider session creation may have completed. Inspect the session before retrying.`,
       { cause },
     );
     this.name = 'SessionStartIndeterminateError';

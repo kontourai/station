@@ -754,33 +754,42 @@ describe('Station Control canonical Environment + Agent execution', () => {
     ).toBe(false);
   });
 
-  test('does not retry a delegation start whose accepted receipt is indeterminate', async () => {
-    installCurrentStationFetch();
-    const service = localService();
-    service.sessionCommands.execute.mockResolvedValueOnce({
-      status: 'indeterminate',
-      receipt: { commandId: 'command-1', status: 'accepted' },
-      receiptStatus: 'unavailable',
-      session: { threadId: 'task:22222222-2222-4222-8222-222222222222' },
-      message: 'Session started, but receipt persistence is unavailable.',
-    } as never);
-    const { delegateTask } = await import('../station-control-delegation.js');
+  test.each([true, false])(
+    'does not retry an indeterminate delegation start (session returned: %s)',
+    async (hasSession) => {
+      installCurrentStationFetch();
+      const service = localService();
+      service.sessionCommands.execute.mockResolvedValueOnce({
+        status: 'indeterminate',
+        receipt: { commandId: 'command-1', status: 'accepted' },
+        receiptStatus: 'unavailable',
+        ...(hasSession
+          ? {
+              session: {
+                threadId: 'task:22222222-2222-4222-8222-222222222222',
+              },
+            }
+          : {}),
+        message: 'Session started, but receipt persistence is unavailable.',
+      } as never);
+      const { delegateTask } = await import('../station-control-delegation.js');
 
-    await expect(
-      delegateTask(
-        {
-          prompt: 'Inspect the checkout',
-          target: currentTarget(),
-          sessionId: 'task:22222222-2222-4222-8222-222222222222',
-          readAuthority: hostedAuthority('alpha'),
-        },
-        service as never,
-      ),
-    ).rejects.toThrow(
-      'Session task:22222222-2222-4222-8222-222222222222 may already be running; do not retry automatically.',
-    );
-    expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
-  });
+      await expect(
+        delegateTask(
+          {
+            prompt: 'Inspect the checkout',
+            target: currentTarget(),
+            sessionId: 'task:22222222-2222-4222-8222-222222222222',
+            readAuthority: hostedAuthority('alpha'),
+          },
+          service as never,
+        ),
+      ).rejects.toThrow(
+        'Session task:22222222-2222-4222-8222-222222222222 may already be running; do not retry automatically.',
+      );
+      expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+    },
+  );
 
   // archive#4543 LOW-2: a caller-supplied `sessionId` is stamped into
   // `metadata.conversationId` via the `conversationIdentity` internal
@@ -1831,6 +1840,36 @@ describe('Station Control canonical Environment + Agent execution', () => {
     });
   });
 
+  test('refuses a foreground start without fabricating a session when provider creation is uncertain', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    service.sessionCommands.execute.mockResolvedValueOnce({
+      status: 'indeterminate',
+      receipt: { commandId: 'unknown-creation', status: 'accepted' },
+      receiptStatus: 'unavailable',
+      message: 'Provider creation is unresolved.',
+      code: 'SESSION_START_INDETERMINATE',
+    } as never);
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await expect(
+      executeExecutionTargetMessage(
+        {
+          target: currentTarget(),
+          message: 'Do not dispatch twice',
+          conversationId: 'unknown-creation',
+          readAuthority: hostedAuthority('alpha'),
+        },
+        service as never,
+      ),
+    ).rejects.toMatchObject({
+      name: 'SessionStartIndeterminateError',
+      code: 'SESSION_START_INDETERMINATE',
+    });
+    expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+  });
+
   test('returns typed indeterminate foreground evidence instead of dispatching a second turn', async () => {
     installCurrentStationFetch();
     const service = localService();
@@ -2223,7 +2262,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
   // therefore cannot fail. This one builds the real EventStore and real
   // OrchestrationService so the reservation, the lineage read, and the
   // retried continue all run the production derivations.
-  test('a retried continue after a failed start reuses the same reserved child through the real lineage store (#764)', async () => {
+  test('a reconciled continue after an uncertain start reuses the same reserved child through the real lineage store (#764)', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'delegate-continuation-'));
     try {
       const eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
@@ -2303,9 +2342,9 @@ describe('Station Control canonical Environment + Agent execution', () => {
         '../station-control-delegation.js'
       );
 
-      // The first continue reserves the child, then its start FAILS (the
-      // ACP loadSession-fail-closed shape): the durable reservation stays as
-      // the lineage tail with no provider Session behind it.
+      // The provider call throws after entry. Without a definitive provider
+      // refusal receipt, this is uncertain rather than proof of no effects.
+      // The reserved child must remain the sole lineage tail.
       stationAgent.startSession.mockImplementationOnce(async () => {
         throw new Error('simulated failed start');
       });
@@ -2322,6 +2361,30 @@ describe('Station Control canonical Environment + Agent execution', () => {
       const lineage = eventStore.conversationSessions(conversationId);
       expect(lineage).toHaveLength(2);
       const reservedChildId = lineage.at(-1)!.sessionId;
+      await expect(
+        continueDelegatedTask(
+          {
+            taskId: conversationId,
+            message: 'unsafe immediate retry',
+            readAuthority: authority,
+          },
+          service as never,
+        ),
+      ).rejects.toThrow('no provider call was made');
+      expect(stationAgent.startSession).toHaveBeenCalledTimes(1);
+      // The existing trusted lifecycle observer supplies the missing terminal
+      // evidence; elapsed time or the start exception is not enough.
+      expect(
+        eventStore.sessionTurnBoundaryAuthority().observe({
+          eventId: 'confirmed-start-terminal',
+          provider: 'claude',
+          threadId: reservedChildId,
+          sessionId: reservedChildId,
+          method: 'session.exited',
+          exitCode: 0,
+          createdAt: new Date().toISOString(),
+        }),
+      ).toEqual({ kind: 'applied' });
 
       // The retry must look through the reserved-unstarted tail to the
       // predecessor's binding and REUSE the same reserved child identity,
