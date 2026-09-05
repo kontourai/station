@@ -24,98 +24,84 @@
           </aside>
           <article class="docs-content">
             <h1>Station Concepts</h1>
-<p>Station uses a small set of user-facing concepts. Transport names, process</p>
-<p>details, and internal record shapes stay out of the way unless setup or</p>
-<p>diagnosis requires them.</p>
+<p>Station uses a small set of user-facing concepts. Transport names, process details, and internal record shapes stay out of the way unless setup or diagnosis requires them.</p>
 <h2>Station And Device</h2>
 <ul>
-<li>A <strong>Station</strong> is the host you connect to and work on.</li>
-<li>A <strong>device</strong> is what you connect from: a browser, phone, tablet, or laptop.</li>
-<li>Pairing grants a device scoped, revocable access to a Station.</li>
+<li>A <strong>Station</strong> is the host you connect to and work on.
+</li>
+<li>A <strong>device</strong> is what you connect from: a browser, phone, tablet, or laptop.
+</li>
+<li>Pairing grants a device scoped, revocable access to a Station.
+</li>
 </ul>
-<h2>Agents, Engines, Providers, And Models</h2>
+<h2>Agents, Engines, And Model Connections</h2>
 <ul>
-<li>An <strong>agent</strong> is the working identity you choose for a Task or Session.</li>
-<li>A <strong>Station agent</strong> is executed by Station's engine. Station owns its prompt,</li>
+<li>An <strong>agent</strong> is the working identity you choose for a Task or Session.
+</li>
+<li>A <strong>Station agent</strong> is executed by Station's engine. Station owns its prompt, skills, tools, commands, and Model choice.
+</li>
+<li>An <strong>External agent</strong> is executed by another supported engine. That engine owns its behavior and tool loop.
+</li>
+<li>A <strong>Model connection</strong> is a local or hosted model service that Station's engine runs inference on. Connections lists these on its <strong>Models</strong> tab.
+</li>
+<li>An <strong>Engine</strong> is an installed agent CLI, or a custom engine you connected, that runs its own agent loop. Connections lists these on its <strong>Engines</strong> tab.
+</li>
+<li>A <strong>Model</strong> is the inference option selected within a Model connection or offered by an Engine.
+</li>
 </ul>
-<p>  skills, tools, commands, and Model choice.</p>
-<ul>
-<li>An <strong>External agent</strong> is executed by another supported engine. That engine</li>
-</ul>
-<p>  owns its behavior and tool loop.</p>
-<ul>
-<li>A <strong>Provider</strong> is the user-facing connection to a model service or agent app.</li>
-<li>A <strong>Model</strong> is the inference option selected within a Provider.</li>
-</ul>
-<p>Station names the concrete engine when that distinction matters. Protocols such</p>
-<p>as ACP are connection details, not agent types users need to choose.</p>
+<p>Station names the concrete engine when that distinction matters. Protocols such as ACP are connection details, not agent types users need to choose.</p>
 <p>Concrete examples:</p>
 <ul>
-<li><strong>Local model:</strong> a local model service is the Provider, one of its installed</li>
+<li><strong>Local model:</strong> a local model service is the Model connection, one of its installed models is the Model, and a Station agent uses Station's engine to run it.
+</li>
+<li><strong>External engine:</strong> the engine is the Engine connection; the Agent is an External agent because that engine owns its tool loop.
+</li>
+<li><strong>Hosted model:</strong> a hosted model service is the Model connection, one of its models is the Model, and a Station agent owns the prompt, skills, and tools around it.
+</li>
 </ul>
-<p>  models is the Model, and a Station agent uses Station's engine to run it.</p>
-<ul>
-<li><strong>External engine:</strong> the engine is the Provider; the Agent is an External</li>
-</ul>
-<p>  agent because that engine owns its tool loop.</p>
-<ul>
-<li><strong>Hosted model:</strong> a hosted model service is the Provider, one of its models is</li>
-</ul>
-<p>  the Model, and a Station agent owns the prompt, skills, and tools around it.</p>
-<p>See the <a href="https://github.com/kontourai/station/blob/main/docs/guides/connections.html">Connections guide</a></p>
-<p>for the current supported Providers and their setup details.</p>
+<p>See the <a href="https://github.com/kontourai/station/blob/main/docs/guides/connections.html">Connections guide</a> for the current supported model services and engines and their setup details.</p>
 <h2>Projects, Tasks, And Sessions</h2>
 <ul>
-<li>A <strong>Project</strong> supplies the working context and available agents.</li>
-<li>A <strong>Task</strong> is durable work that can be reopened with its workspace binding,</li>
+<li>A <strong>Project</strong> supplies the working context and available agents.
+</li>
+<li>A <strong>Task</strong> is durable work that can be reopened with its workspace binding, files, artifacts, receipts, and exact execution correlation.
+</li>
+<li>A <strong>Session</strong> is one bounded execution episode. A Task can have more than one Session over time.
+</li>
+<li>A <strong>direct chat</strong> is an immediate conversation and does not silently create a Task.
+</li>
 </ul>
-<p>  files, artifacts, receipts, and exact execution correlation.</p>
-<ul>
-<li>A <strong>Session</strong> is one bounded execution episode. A Task can have more than one</li>
-</ul>
-<p>  Session over time.</p>
-<ul>
-<li>A <strong>direct chat</strong> is an immediate conversation and does not silently create a</li>
-</ul>
-<p>  Task.</p>
-<p>Example: “Explain this function” can be a direct chat. “Refactor this module,</p>
-<p>run its gates, and preserve the evidence” should be a Task. Each attempt or</p>
-<p>continuation is a Session attached to that Task.</p>
+<p>Example: “Explain this function” can be a direct chat. “Refactor this module, run its gates, and preserve the evidence” should be a Task. Each attempt or continuation is a Session attached to that Task.</p>
 <h2>Gates, Evidence, And Receipts</h2>
 <ul>
-<li>A <strong>gate</strong> decides whether work may advance.</li>
-<li><strong>Evidence</strong> supports a claim made by the work.</li>
-<li>A <strong>route-back</strong> sends failed or incomplete work to a named earlier step.</li>
-<li><strong>Readiness</strong> explains whether repository or project requirements are met.</li>
-<li>A <strong>receipt</strong> records what ran, what passed or failed, and what remains</li>
+<li>A <strong>gate</strong> decides whether work may advance.
+</li>
+<li><strong>Evidence</strong> supports a claim made by the work.
+</li>
+<li>A <strong>route-back</strong> sends failed or incomplete work to a named earlier step.
+</li>
+<li><strong>Readiness</strong> explains whether repository or project requirements are met.
+</li>
+<li>A <strong>receipt</strong> records what ran, what passed or failed, and what remains unverified.
+</li>
 </ul>
-<p>  unverified.</p>
-<p>Station keeps these beside the work so a confident answer is not mistaken for</p>
-<p>a verified outcome.</p>
-<p>Example: a test result is evidence. The rule requiring that test is a gate. The</p>
-<p>record saying which command ran and whether it passed is the receipt. If the</p>
-<p>test fails, a route-back sends the work to the step that can fix it.</p>
+<p>Station keeps these beside the work so a confident answer is not mistaken for a verified outcome.</p>
+<p>Example: a test result is evidence. The rule requiring that test is a gate. The record saying which command ran and whether it passed is the receipt. If the test fails, a route-back sends the work to the step that can fix it.</p>
 <ul>
-<li>A <strong>degraded capability</strong> is a bounded feature Station runs without,</li>
+<li>A <strong>degraded capability</strong> is a bounded feature Station runs without, reported with a specific reason and remediation instead of failing silently or refusing to start.
+</li>
 </ul>
-<p>  reported with a specific reason and remediation instead of failing silently</p>
-<p>  or refusing to start.</p>
-<p>Example: interactive terminal panes need the <code>node-pty</code> native module, which</p>
-<p>requires a C++ compiler to build on Linux. On a machine without one, Station</p>
-<p>installs and runs with the terminal capability degraded: <code>station doctor</code></p>
-<p>prints a warn line with the rebuild command, the system status readiness</p>
-<p>record reports <code>terminal</code> as not ready with the same reason, and opening a</p>
-<p>terminal pane states why it cannot open. Agent execution does not use</p>
-<p><code>node-pty</code> and is unaffected.</p>
+<p>Example: interactive terminal panes need the <code>node-pty</code> native module, which requires a C++ compiler to build on Linux. On a machine without one, Station installs and runs with the terminal capability degraded: <code>station doctor</code> prints a warn line with the rebuild command, the system status readiness record reports <code>terminal</code> as not ready with the same reason, and opening a terminal pane states why it cannot open. Agent execution does not use <code>node-pty</code> and is unaffected.</p>
 <h2>Local-First Data</h2>
-<p>Station stores its data under <code>~/.station</code> by default. A Provider receives data</p>
-<p>only when you configure it and use a feature that needs it. Observability data</p>
-<p>leaves the machine only when an operator configures an export endpoint.</p>
+<p>Station stores its data under <code>~/.station</code> by default. A hosted model service, an Engine, a paired device, or a remote computer receives data only when you configure it and use a feature that needs it. Observability data leaves the machine only when an operator configures an export endpoint.</p>
 <h2>Next</h2>
 <ul>
-<li>Follow <a href="#">Getting started</a>.</li>
-<li>Customize <a href="../guides/keyboard-shortcuts.html">keyboard shortcuts</a>.</li>
-<li>Review the <a href="https://kontourai.io/privacy/station/">Station privacy policy</a>.</li>
+<li>Follow <a href="#">Getting started</a>.
+</li>
+<li>Customize <a href="../guides/keyboard-shortcuts.html">keyboard shortcuts</a>.
+</li>
+<li>Review the <a href="https://kontourai.io/privacy/station/">Station privacy policy</a>.
+</li>
 </ul>
           </article>
         </div>
