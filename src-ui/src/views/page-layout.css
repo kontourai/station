@@ -323,12 +323,17 @@
     transform var(--motion-base) var(--ease-standard);
 }
 
+/* Hover is an affordance, not a selection. The accent ring belongs to the
+   selected card alone: while hover also painted `--accent-primary`, two cards
+   read as selected at once and the pointer appeared to move the selection
+   (#1536 G8). Selection follows click and keyboard only. */
 .page__card-loose:hover {
-  border-color: var(--accent-primary);
+  border-color: var(--border-secondary);
   transform: translateY(-2px);
 }
 
-.page__card-loose--selected {
+.page__card-loose--selected,
+.page__card-loose--selected:hover {
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 1px var(--accent-primary);
   background: var(--bg-tertiary);
