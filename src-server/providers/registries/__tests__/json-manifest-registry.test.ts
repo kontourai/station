@@ -1360,4 +1360,63 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
     );
     await expect(integrations.getToolDef('does-not-exist')).resolves.toBeNull();
   });
+
+  test('partitions the catalog between the agent and plugin browse surfaces by declared kind', async () => {
+    const projectHome = await makeProjectHome();
+    const manifestPath = join(projectHome, 'manifest.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        version: 1,
+        plugins: [
+          {
+            id: 'layout-plugin',
+            displayName: 'Layout Plugin',
+            description: 'Contributes a layout.',
+            version: '1.0.0',
+            source: './layout-plugin',
+          },
+          {
+            id: 'reviewer-agent',
+            displayName: 'Reviewer Agent',
+            description: 'An agent definition.',
+            version: '1.0.0',
+            source: './reviewer-agent',
+            type: 'agent',
+          },
+        ],
+      }),
+    );
+    const provider = new JsonManifestRegistryProvider(
+      manifestPath,
+      projectHome,
+    );
+
+    // Each surface lists only its own kind: the agent browse list used to be
+    // `manifest.plugins` whole (#1536 D2).
+    expect((await provider.listAvailable()).map((item) => item.id)).toEqual([
+      'layout-plugin',
+    ]);
+    expect(
+      (await provider.agentRegistry().listAvailable()).map((item) => item.id),
+    ).toEqual(['reviewer-agent']);
+  });
+
+  test('browses no agents for a catalog that declares only plugins', async () => {
+    const manifest = JSON.parse(readFileSync(fixtureManifestPath, 'utf-8'));
+    const provider = new JsonManifestRegistryProvider(
+      fixtureManifestPath,
+      await makeProjectHome(),
+    );
+
+    // The shipped catalog's real bytes: every entry is a plugin, none declares
+    // an agent kind. An empty Agents tab is the honest reading of that.
+    expect(
+      manifest.plugins.some((entry: { type?: string }) => entry.type),
+    ).toBe(false);
+    expect(await provider.agentRegistry().listAvailable()).toEqual([]);
+    expect((await provider.listAvailable()).length).toBe(
+      manifest.plugins.length,
+    );
+  });
 });
