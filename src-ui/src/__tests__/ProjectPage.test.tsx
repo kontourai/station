@@ -32,6 +32,19 @@ const sdkMocks = vi.hoisted(() => ({
   sessions: [] as Array<Record<string, unknown>>,
 }));
 
+// The remote-isolation renderer gate is a PluginRegistry load-status fact.
+// One test sets it; the default is the ordinary settled-with-no-failure shape.
+const pluginRegistryState = vi.hoisted(() => ({
+  loadStatus: {} as { failure?: string },
+}));
+vi.mock('../core/PluginRegistry', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../core/PluginRegistry')>()),
+  pluginRegistry: {
+    subscribe: () => () => undefined,
+    getLoadStatus: () => pluginRegistryState.loadStatus,
+  },
+}));
+
 const navigationMocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   setLayout: vi.fn(),
@@ -217,6 +230,7 @@ async function renderProjectPage(waitForRenderTick = true) {
 describe('ProjectPage (#762 query-failure regression)', () => {
   afterEach(() => vi.useRealTimers());
   beforeEach(() => {
+    pluginRegistryState.loadStatus = {};
     sdkMocks.project = projectFixture;
     sdkMocks.isLoading = false;
     sdkMocks.isError = false;
@@ -489,6 +503,42 @@ describe('ProjectPage (#762 query-failure regression)', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Open Coding$/ })).toBeNull();
+  });
+
+  // #1536 E8: the removed page grid was the ONLY surface that passed
+  // `onReviewInRegistry`. Without it a card whose availability names the
+  // Registry silently falls back to a bounded action
+  // (`WorkspacePaneAvailabilityList.tsx` `actionPresentation`), so the remedy
+  // the copy promises has no affordance. The gate here is derived, not stated:
+  // a plugin-hosted descriptor plus a remote-isolation registry load failure is
+  // what makes `reviewInRegistry` true.
+  test('the picker can reach the Registry for a pane whose remedy is there', async () => {
+    pluginRegistryState.loadStatus = { failure: 'remote-isolation' };
+    const contributed = paneAdaptationFromLayoutTab(
+      {
+        id: 'starter',
+        label: 'SDK Patterns',
+        component: { kind: 'plugin-component', name: 'sdk-patterns' },
+      },
+      {
+        layoutSlug: 'starter',
+        instanceScope: 'project:project-demo:source:plugin:starter',
+        pluginId: 'getting-started-starter',
+        modeContextRequirement: { project: true, source: true },
+        boundContext: { projectId: 'project-demo', sourceId: 'plugin:starter' },
+      },
+    );
+    if (!contributed) throw new Error('plugin pane fixture is invalid');
+    sdkMocks.panes = [contributed.descriptor];
+    sdkMocks.paneInstances = [contributed.instance];
+    sdkMocks.paneAvailability = [availableFor(contributed.descriptor.id)];
+
+    await renderProjectPage();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
+
+    const review = screen.getByRole('button', { name: 'Review in Registry' });
+    fireEvent.click(review);
+    expect(navigationMocks.navigate).toHaveBeenCalledWith('/registry');
   });
 
   test('keeps layout cards visible when the panes catalog fails, and reports the failure in the picker', async () => {

@@ -1,5 +1,6 @@
 import { useAvailableProjectLayoutsQuery } from '@kontourai/station-sdk';
 import { useEffect, useState } from 'react';
+import { looksLikeWorkspacePath } from '../components/modals/project-form-utils';
 import { mergeAvailableProjectLayouts } from '../components/registry/ProjectLayoutCatalog';
 import { useReposQuery } from './useGitActions';
 import { getRecentLayouts } from './useRecentLayouts';
@@ -7,7 +8,28 @@ import { getRecentLayouts } from './useRecentLayouts';
 interface UseNewProjectStarterOptions {
   isOpen: boolean;
   normalizedDirectory: string;
-  directoryLikelyExists: boolean;
+}
+
+/** How long typing has to stop before the directory becomes a repo question. */
+const REPO_DISCOVERY_IDLE_MS = 400;
+
+/**
+ * The directory value once typing has settled.
+ *
+ * `useNewProjectDraft` holds the field in per-keystroke state and debounces
+ * nothing, so widening the discovery gate from "ends with /" to "looks like a
+ * path" would otherwise put one `GET /api/coding/repos` on every character.
+ * This changes only WHEN the question is asked, never the answer: the value it
+ * settles on is the value the field holds.
+ */
+function useSettledDirectory(value: string, delayMs: number): string {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    if (value === settled) return;
+    const timer = window.setTimeout(() => setSettled(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, settled, value]);
+  return settled;
 }
 
 /**
@@ -27,7 +49,6 @@ interface UseNewProjectStarterOptions {
 export function useNewProjectStarter({
   isOpen,
   normalizedDirectory,
-  directoryLikelyExists,
 }: UseNewProjectStarterOptions) {
   const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(null);
   const [layoutChoiceExplicit, setLayoutChoiceExplicit] = useState(false);
@@ -44,8 +65,18 @@ export function useNewProjectStarter({
     (layout) => layout.id === 'builtin:coding',
   );
   const recentLayouts = getRecentLayouts(eligibleLayouts);
-  const repoDiscovery = useReposQuery(normalizedDirectory || null, {
-    enabled: isOpen && directoryLikelyExists,
+  // #1536 E4: this used to be gated on `directoryLikelyExists` — the typed
+  // path ENDING IN "/" — which is also the icon-discovery gate. A user who
+  // pastes `/Users/me/code/myrepo` and presses Create got no discovery, so no
+  // recommendation, so no starter: the whole hint was reachable only by typing
+  // a trailing slash nobody types. The gate is now the shape of the string,
+  // and the idle settle above is what keeps it off the keystroke path.
+  const settledDirectory = useSettledDirectory(
+    normalizedDirectory,
+    REPO_DISCOVERY_IDLE_MS,
+  );
+  const repoDiscovery = useReposQuery(settledDirectory || null, {
+    enabled: isOpen && looksLikeWorkspacePath(settledDirectory),
   });
   const gitWorkspaceDetected = (repoDiscovery.data?.repos?.length ?? 0) > 0;
 

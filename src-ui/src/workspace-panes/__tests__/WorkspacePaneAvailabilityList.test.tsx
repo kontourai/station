@@ -133,24 +133,58 @@ describe('WorkspacePaneAvailabilityList', () => {
   });
 
   test('renders a deterministic generated preview placeholder per pane id', () => {
-    render(
+    const accentsByName = () =>
+      new Map(
+        [
+          ...document.querySelectorAll<HTMLElement>(
+            '.workspace-pane-availability-list__card',
+          ),
+        ].map((card) => [
+          card.querySelector('.workspace-pane-availability-list__name')
+            ?.textContent,
+          card
+            .querySelector<HTMLElement>(
+              '.workspace-pane-availability-list__preview',
+            )
+            ?.style.getPropertyValue('--pane-preview-accent'),
+        ]),
+      );
+
+    const first = render(
       <WorkspacePaneAvailabilityList
-        entries={[available]}
+        entries={[available, unavailable]}
         onSelect={vi.fn()}
+        onAction={vi.fn()}
+        canExecuteAction={() => true}
       />,
     );
+    const beforeReorder = accentsByName();
+    expect([...beforeReorder.keys()]).toEqual(['Files', 'Preview']);
+    // Two panes, two accents: an accent that is constant would pass the
+    // reorder check below without deriving anything from the id.
+    expect(new Set(beforeReorder.values()).size).toBe(2);
+    first.unmount();
 
-    // Deterministic: same id, same accent, regardless of catalog order.
-    expect(panePreviewAccent('pane.files')).toBe(
-      panePreviewAccent('pane.files'),
+    // The SAME panes in the opposite catalog order keep their own accents —
+    // the derivation reads the descriptor id, not the render position.
+    render(
+      <WorkspacePaneAvailabilityList
+        entries={[unavailable, available]}
+        onSelect={vi.fn()}
+        onAction={vi.fn()}
+        canExecuteAction={() => true}
+      />,
     );
+    const afterReorder = accentsByName();
+    expect([...afterReorder.keys()]).toEqual(['Preview', 'Files']);
+    expect(afterReorder.get('Files')).toBe(beforeReorder.get('Files'));
+    expect(afterReorder.get('Preview')).toBe(beforeReorder.get('Preview'));
+    // And it is the exported derivation, not an unrelated constant.
+    expect(afterReorder.get('Files')).toBe(panePreviewAccent('pane.files'));
 
     const preview = document.querySelector(
       '.workspace-pane-availability-list__preview',
     ) as HTMLElement;
-    expect(preview.style.getPropertyValue('--pane-preview-accent')).toBe(
-      panePreviewAccent('pane.files'),
-    );
     // Decorative only — the pane's name and state remain the textual signal.
     expect(preview.getAttribute('aria-hidden')).toBe('true');
   });

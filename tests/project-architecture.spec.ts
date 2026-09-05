@@ -724,7 +724,15 @@ test.describe('Project Navigation', () => {
     expect(layoutPosts).toBe(0);
   });
 
-  test('submit discovers Git for a manually typed path before choosing the recommended layout', async ({
+  /**
+   * #1536 E4. This used to type a path with no trailing slash and assert that
+   * Coding was applied — while the modal still showed "Start without a layout"
+   * as the pressed option, because the recommendation was resolved at SUBMIT
+   * and never rendered. Repo discovery is now gated on the SHAPE of the typed
+   * path (idle-settled), so the recommendation appears first and Create applies
+   * exactly what the picker shows.
+   */
+  test('a manually typed path shows the Git recommendation, and Create applies what is shown', async ({
     page,
   }) => {
     let createdLayoutBody: unknown = null;
@@ -749,25 +757,106 @@ test.describe('Project Navigation', () => {
         }),
       }),
     );
-    await page.route('**/api/projects/new-project/layouts/apply', (route) => {
-      createdLayoutBody = route.request().postDataJSON();
-      return route.fulfill({
-        status: 201,
+    await page.route(
+      '**/api/projects/typed-workspace/layouts/apply',
+      (route) => {
+        createdLayoutBody = route.request().postDataJSON();
+        return route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, data: { slug: 'coding' } }),
+        });
+      },
+    );
+
+    await page.goto('/projects/new');
+    await page.getByPlaceholder('My Project').fill('Typed Workspace');
+    // No trailing slash: the shape a user who pastes a path actually types.
+    await page
+      .getByPlaceholder('/path/to/project')
+      .fill('/tmp/typed-workspace');
+
+    // The recommendation is ON SCREEN before anything is created.
+    await expect(
+      page.getByText('Recommended for this Git directory'),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /Coding/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(
+      page.getByRole('button', { name: /Start without a layout/ }),
+    ).toHaveAttribute('aria-pressed', 'false');
+
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+
+    await expect
+      .poll(() => createdLayoutBody)
+      .toMatchObject({ layoutId: 'builtin:coding' });
+  });
+
+  /**
+   * The other half of the same contract, and the E4 report itself: declining
+   * the recommendation that is now visible must create no layout at all.
+   */
+  test('declining the recommendation for a typed path creates no layout', async ({
+    page,
+  }) => {
+    let layoutPosts = 0;
+    await page.route('**/api/projects/layouts/available', (route) =>
+      route.fulfill({
+        status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true, data: { slug: 'coding' } }),
-      });
-    });
+        body: JSON.stringify({ success: true, data: CODING_STARTER_CATALOG }),
+      }),
+    );
+    await page.route('**/api/coding/repos**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            workspace: '/tmp/typed-workspace',
+            workspaceIsRepo: true,
+            repos: [{ root: '/tmp/typed-workspace', name: 'typed-workspace' }],
+          },
+        }),
+      }),
+    );
+    await page.route(
+      '**/api/projects/typed-workspace/layouts/apply',
+      (route) => {
+        layoutPosts += 1;
+        return route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, data: { slug: 'coding' } }),
+        });
+      },
+    );
 
     await page.goto('/projects/new');
     await page.getByPlaceholder('My Project').fill('Typed Workspace');
     await page
       .getByPlaceholder('/path/to/project')
       .fill('/tmp/typed-workspace');
-    await page.getByRole('button', { name: 'Create', exact: true }).click();
 
-    await expect
-      .poll(() => createdLayoutBody)
-      .toMatchObject({ layoutId: 'builtin:coding' });
+    const noLayout = page.getByRole('button', {
+      name: /Start without a layout/,
+    });
+    // Wait for the recommendation to arrive before declining it, so this
+    // cannot pass merely by racing the discovery it is meant to override.
+    await expect(page.getByRole('button', { name: /Coding/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await noLayout.click();
+    await expect(noLayout).toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(page).toHaveURL(/\/projects\/typed-workspace$/);
+    expect(layoutPosts).toBe(0);
   });
 });
 

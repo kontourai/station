@@ -745,7 +745,6 @@ describe('ProjectLayoutsSection loading window (#801)', () => {
         layouts={[]}
         loading
         setLayout={vi.fn()}
-        onOpenAddLayout={vi.fn()}
       />,
     );
 
@@ -759,7 +758,6 @@ describe('ProjectLayoutsSection loading window (#801)', () => {
         layouts={[]}
         loading={false}
         setLayout={vi.fn()}
-        onOpenAddLayout={vi.fn()}
       />,
     );
 
@@ -784,7 +782,6 @@ describe('ProjectLayoutsSection loading window (#801)', () => {
         ]}
         loading
         setLayout={vi.fn()}
-        onOpenAddLayout={vi.fn()}
       />,
     );
 
@@ -804,7 +801,6 @@ describe('ProjectLayoutsSection loading window (#801)', () => {
         error
         onRetry={onRetry}
         setLayout={vi.fn()}
-        onOpenAddLayout={vi.fn()}
       />,
     );
 
@@ -831,7 +827,6 @@ describe('ProjectLayoutsSection loading window (#801)', () => {
         loading={false}
         error
         setLayout={vi.fn()}
-        onOpenAddLayout={vi.fn()}
       />,
     );
 

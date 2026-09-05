@@ -366,8 +366,6 @@ export function ProjectPage({ slug }: { slug: string }) {
             error={layoutsError}
             onRetry={() => void refetchLayouts()}
             setLayout={setLayout}
-            onOpenAddLayout={() => setShowAddLayout(true)}
-            embedded
           />
         </section>
 

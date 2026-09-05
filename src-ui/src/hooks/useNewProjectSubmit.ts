@@ -187,12 +187,10 @@ export function useNewProjectSubmit({
           setRejectedSlug(null);
         }
 
-        // Captured before creating so a retry applies the same starter the
-        // first attempt did, and every failure before this point remains a
-        // normal validation failure, never a duplicate-create retry hazard.
-        const layoutId = starterLayoutId;
         const created = await createProjectMutation.mutateAsync(draft);
-        project = { slug: created.slug, layoutId };
+        // Retained with the created identity so a retry applies the SAME
+        // starter this attempt chose, even if the picker moves underneath.
+        project = { slug: created.slug, layoutId: starterLayoutId };
         setCreatedProject(project);
       }
 

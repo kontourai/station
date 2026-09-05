@@ -56,11 +56,14 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
   const { apiBase } = useApiBase();
   const { setProject } = useNavigation();
   const draft = useNewProjectDraft(isOpen);
+  // Local artwork discovery reads the folder's own files, so it stays on the
+  // deliberate "the user finished a folder path" signal. Repo discovery owns
+  // its own, wider gate (`useNewProjectStarter`), because its answer is what
+  // the starter recommendation is made of.
   const directoryLikelyExists = draft.directory.trim().endsWith('/');
   const starter = useNewProjectStarter({
     isOpen,
     normalizedDirectory: draft.normalizedDirectory,
-    directoryLikelyExists,
   });
   const iconCandidates = useProjectIconCandidatesQuery(
     draft.normalizedDirectory || undefined,
