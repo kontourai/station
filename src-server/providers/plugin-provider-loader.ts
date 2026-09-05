@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { publishGrantedPluginProviderGeneration } from '../services/plugins/plugin-installation-generation-fence.js';
 import {
+  type CapturedPluginPermissionArtifact,
   type PluginProviderGrantSnapshot,
   withPluginProviderGrantSnapshot,
   withPluginProviderGrantsPublication,
@@ -31,7 +32,11 @@ export async function loadPluginProviders(
   pluginName: string,
   manifest: PluginManifest,
   logger: Pick<Logger, 'error'>,
-  options: { strict?: boolean } = {},
+  options: {
+    strict?: boolean;
+    packageRoot?: string;
+    artifact?: CapturedPluginPermissionArtifact;
+  } = {},
 ): Promise<number> {
   const expectedProviderGeneration = pluginProviderSourceGeneration(pluginName);
   const prepared = await preparePluginProviders(
@@ -54,7 +59,8 @@ export async function loadPluginProviders(
           pluginName,
           expectedProviderGeneration,
           prepared,
-          isCurrent: () => true,
+          isCurrent: () => options.artifact?.isCurrent() ?? true,
+          artifact: options.artifact,
         });
   return outcome === 'activated' ? prepared.length : 0;
 }
@@ -192,7 +198,11 @@ export async function preparePluginProviders(
   pluginName: string,
   manifest: PluginManifest,
   logger: Pick<Logger, 'error'>,
-  options: { strict?: boolean } = {},
+  options: {
+    strict?: boolean;
+    packageRoot?: string;
+    artifact?: CapturedPluginPermissionArtifact;
+  } = {},
 ): Promise<PreparedPluginProviderRegistration[]> {
   if (!manifest.providers) return [];
 
@@ -205,7 +215,9 @@ export async function preparePluginProviders(
 
   const prepared: PreparedPluginProviderRegistration[] = [];
   for (const provider of manifest.providers) {
-    const pluginRoot = join(pluginsDir, pluginName);
+    const pluginRoot = options.packageRoot ?? join(pluginsDir, pluginName);
+    if (options.artifact && !options.artifact.isCurrent())
+      throw new Error('Plugin installation changed before provider import');
     const modulePath = join(pluginRoot, provider.module);
     assertExistingPathInside(pluginRoot, modulePath, 'Plugin provider module');
     if (!existsSync(modulePath)) {

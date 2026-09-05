@@ -27,7 +27,7 @@ export interface PluginInstallationHost {
   ): Promise<
     Pick<
       PluginInstallationService,
-      'inspect' | 'install' | 'withdraw' | 'reconcile'
+      'inspect' | 'install' | 'withdraw' | 'reconcile' | 'compensate'
     >
   >;
   reconcile(): Promise<{ status: 'applied' | 'pending'; pending: string[] }>;
@@ -38,9 +38,11 @@ import type { PluginInstallationRevision } from '@kontourai/station-contracts/pl
 export interface PluginMaterialization {
   readonly reference: string;
   readonly dataScope: string;
+  readonly origin?: string;
   readonly artifact: PluginArtifactReference;
 }
 export interface PluginInstallationStateBackend {
+  recorded(revision: PluginInstallationRevision): Promise<boolean>;
   current(installation: string): Promise<PluginInstallationRevision | null>;
   create(
     installation: string,
@@ -100,6 +102,7 @@ function same(
         a.generation === b.generation &&
         a.materialization === b.materialization &&
         a.dataScope === b.dataScope &&
+        a.origin === b.origin &&
         a.artifact.digest === b.artifact.digest;
 }
 
@@ -141,7 +144,16 @@ export class PluginInstallationService {
     expected: PluginInstallationRevision | null;
     artifact: PluginArtifactReference;
     data?: 'preserve' | 'retain-and-reset';
+    origin: string;
   }) {
+    if (!/^[a-f0-9]{64}$/.test(input.origin))
+      throw new Error(
+        'Plugin acquisition origin is required; existing code and data are retained.',
+      );
+    if (input.expected && !input.expected.origin)
+      throw new Error(
+        'Plugin acquisition origin is unknown; reviewed migration is required. Existing code and data are retained.',
+      );
     await this.reconcile(input.installation);
     if (!same(await this.state.current(input.installation), input.expected))
       throw new PluginInstallationConflict();
@@ -157,16 +169,28 @@ export class PluginInstallationService {
         prior.dataScope !== input.expected.dataScope)
     )
       throw new PluginInstallationConflict();
+    if (
+      input.expected &&
+      (input.origin !== undefined || input.expected.origin !== undefined) &&
+      input.expected.origin !== input.origin
+    )
+      throw new Error(
+        'Plugin acquisition origin changed or is unknown; reviewed migration is required. Existing code and data are retained.',
+      );
     const dataScope = await this.dataScopes.prepare(
       input.installation,
       input.expected?.dataScope ?? null,
       input.data ?? 'preserve',
     );
-    const next = await this.materializations.prepare(
+    const prepared = await this.materializations.prepare(
       input.installation,
       input.artifact,
       dataScope,
     );
+    const next = {
+      ...prepared,
+      ...(input.origin ? { origin: input.origin } : {}),
+    };
     const fence = input.expected
       ? await this.state.fence(input.expected)
       : null;
@@ -212,6 +236,62 @@ export class PluginInstallationService {
       else if ((projection?.reference ?? null) !== (prior?.reference ?? null))
         throw new PluginInstallationPending(observed);
       if (!published) await fence?.cancel();
+      throw error;
+    }
+  }
+  /** Compensate an owned activation/removal transaction by restoring its prior
+   * selection under NEW admission. The caller holds the same configuration
+   * mutation. This is NOT user-facing code rollback: compensation of a failed
+   * explicit reset also restores that transaction's prior data-scope selection.
+   * Neither operation reverses writes made by plugin code. */
+  async compensate(input: {
+    expected: PluginInstallationRevision | null;
+    retained: PluginInstallationRevision;
+  }): Promise<PluginInstallationRevision> {
+    const { expected, retained } = input;
+    if (
+      (expected &&
+        (expected.scope !== retained.scope ||
+          expected.installation !== retained.installation)) ||
+      !(await this.state.recorded(retained))
+    )
+      throw new PluginInstallationConflict();
+    await this.reconcile(retained.installation);
+    if (!same(await this.state.current(retained.installation), expected))
+      throw new PluginInstallationConflict();
+    const prior = await this.materializations.current(retained.installation);
+    const next: PluginMaterialization = {
+      reference: retained.materialization,
+      artifact: retained.artifact,
+      dataScope: retained.dataScope,
+      ...(retained.origin ? { origin: retained.origin } : {}),
+    };
+    const fence = expected ? await this.state.fence(expected) : null;
+    try {
+      const created = fence
+        ? null
+        : await this.state.create(retained.installation, next);
+      await this.materializations.select(retained.installation, next, prior);
+      return fence ? await fence.replace(next) : created!;
+    } catch (error) {
+      const observed = await this.state
+        .current(retained.installation)
+        .catch(() => undefined);
+      if (observed === undefined || !same(observed, expected))
+        throw new PluginInstallationPending(observed ?? null);
+      const projection = await this.materializations.current(
+        retained.installation,
+      );
+      if (
+        projection?.reference === next.reference &&
+        projection.dataScope === next.dataScope
+      )
+        await this.materializations.select(
+          retained.installation,
+          prior,
+          projection,
+        );
+      await fence?.cancel();
       throw error;
     }
   }

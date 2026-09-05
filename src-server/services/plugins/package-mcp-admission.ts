@@ -44,6 +44,7 @@ export interface PackageMcpInstallation {
   readonly contentDigest: string;
   readonly materialization?: string;
   readonly dataScope?: string;
+  readonly origin?: string;
 }
 type RuntimeOwner = {
   id: string;
@@ -65,6 +66,7 @@ type Generation = {
   contentDigest: string;
   materialization?: string;
   dataScope?: string;
+  origin?: string;
   current: boolean;
   claims: Claim[];
   settledEffects?: number;
@@ -102,6 +104,7 @@ export interface PackageMcpRetirement {
     contentDigest: string;
     materialization: string;
     dataScope: string;
+    origin?: string;
   }):
     | { state: 'recorded'; installation: PackageMcpInstallation }
     | { state: 'stale' | 'unavailable' };
@@ -109,6 +112,7 @@ export interface PackageMcpRetirement {
   cancel(): Transition;
 }
 export interface PackageMcpAdmissionJournal {
+  installationRecorded(installation: PackageMcpInstallation): boolean;
   admissionOpen(installation: PackageMcpInstallation): boolean;
   selectedInstallations():
     | { state: 'observed'; installations: PackageMcpInstallation[] }
@@ -142,6 +146,7 @@ export interface PackageMcpAdmissionJournal {
     previous: PackageMcpInstallation | null;
     materialization?: string;
     dataScope?: string;
+    origin?: string;
   }):
     | { state: 'recorded'; installation: PackageMcpInstallation }
     | { state: 'stale' | 'blocked' | 'unavailable' };
@@ -213,6 +218,7 @@ function validJournal(value: unknown): value is Journal {
         'contentDigest',
         'materialization',
         'dataScope',
+        'origin',
         'current',
         'claims',
         'settledEffects',
@@ -227,6 +233,9 @@ function validJournal(value: unknown): value is Journal {
       (generation.materialization !== undefined &&
         (typeof generation.materialization !== 'string' ||
           !UUID.test(generation.materialization))) ||
+      (generation.origin !== undefined &&
+        (typeof generation.origin !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(generation.origin))) ||
       (generation.dataScope !== undefined &&
         (typeof generation.dataScope !== 'string' ||
           !UUID.test(generation.dataScope))) ||
@@ -423,6 +432,7 @@ export function createPackageMcpAdmissionJournal(
         'contentDigest',
         'materialization',
         'dataScope',
+        'origin',
       ]) ||
       ref.journalId !== journalId
     )
@@ -433,7 +443,8 @@ export function createPackageMcpAdmissionJournal(
         generation.incarnation === ref.incarnation &&
         generation.contentDigest === ref.contentDigest &&
         generation.materialization === ref.materialization &&
-        generation.dataScope === ref.dataScope,
+        generation.dataScope === ref.dataScope &&
+        generation.origin === ref.origin,
     );
   }
   function ref(generation: Generation): PackageMcpInstallation {
@@ -446,6 +457,7 @@ export function createPackageMcpAdmissionJournal(
         ? { materialization: generation.materialization }
         : {}),
       ...(generation.dataScope ? { dataScope: generation.dataScope } : {}),
+      ...(generation.origin ? { origin: generation.origin } : {}),
     });
   }
   function fenced(state: Journal, pluginId: string) {
@@ -538,6 +550,26 @@ export function createPackageMcpAdmissionJournal(
     };
   }
   const journal: PackageMcpAdmissionJournal = {
+    installationRecorded(installation) {
+      return observe(() => {
+        const loaded = read();
+        if (!loaded || loaded.id !== journalId) return false;
+        if (find(loaded.value, installation)) return true;
+        const row = db
+          .prepare(
+            'SELECT state_json FROM package_mcp_generation_history WHERE journal_id = ? AND plugin_id = ? AND incarnation = ?',
+          )
+          .get(journalId!, installation.pluginId, installation.incarnation) as
+          | { state_json: string }
+          | undefined;
+        if (!row) return false;
+        const state: Journal = {
+          version: 1,
+          generations: [JSON.parse(row.state_json)],
+        };
+        return validJournal(state) && !!find(state, installation);
+      }, false);
+    },
     admissionOpen(installation) {
       const loaded = read();
       return (
@@ -682,11 +714,13 @@ export function createPackageMcpAdmissionJournal(
           'previous',
           'materialization',
           'dataScope',
+          'origin',
         ]) ||
         !isCanonicalPluginId(input.pluginId) ||
         (input.materialization !== undefined &&
           !UUID.test(input.materialization)) ||
         (input.dataScope !== undefined && !UUID.test(input.dataScope)) ||
+        (input.origin !== undefined && !/^[a-f0-9]{64}$/.test(input.origin)) ||
         !DIGEST.test(input.contentDigest)
       )
         return { state: 'unavailable' as const };
@@ -711,6 +745,7 @@ export function createPackageMcpAdmissionJournal(
             ? { materialization: input.materialization }
             : {}),
           ...(input.dataScope ? { dataScope: input.dataScope } : {}),
+          ...(input.origin ? { origin: input.origin } : {}),
           contentDigest: input.contentDigest,
           current: true,
           claims: [],
@@ -834,11 +869,14 @@ export function createPackageMcpAdmissionJournal(
             contentDigest: string;
             materialization: string;
             dataScope: string;
+            origin?: string;
           }) {
             if (
               !DIGEST.test(input.contentDigest) ||
               !UUID.test(input.materialization) ||
-              !UUID.test(input.dataScope)
+              !UUID.test(input.dataScope) ||
+              (input.origin !== undefined &&
+                !/^[a-f0-9]{64}$/.test(input.origin))
             )
               return { state: 'unavailable' as const };
             const result = transaction((state) => {
@@ -859,6 +897,7 @@ export function createPackageMcpAdmissionJournal(
                 contentDigest: input.contentDigest,
                 materialization: input.materialization,
                 dataScope: input.dataScope,
+                ...(input.origin ? { origin: input.origin } : {}),
                 current: true,
                 claims: [],
               };

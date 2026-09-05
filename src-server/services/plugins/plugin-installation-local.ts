@@ -46,6 +46,7 @@ export function localPluginInstallationState(
       artifact: { digest: value.contentDigest },
       materialization: value.materialization,
       dataScope: value.dataScope,
+      ...(value.origin ? { origin: value.origin } : {}),
     };
   };
   const reference = (
@@ -57,8 +58,12 @@ export function localPluginInstallationState(
     contentDigest: value.artifact.digest,
     materialization: value.materialization,
     dataScope: value.dataScope,
+    ...(value.origin ? { origin: value.origin } : {}),
   });
   return {
+    async recorded(revision) {
+      return journal.installationRecorded(reference(revision));
+    },
     async current(id) {
       const result = journal.currentInstallation(id);
       if (result.state === 'unavailable')
@@ -71,6 +76,7 @@ export function localPluginInstallationState(
         contentDigest: value.artifact.digest,
         materialization: value.reference,
         dataScope: value.dataScope,
+        ...(value.origin ? { origin: value.origin } : {}),
         previous: null,
       });
       if (result.state !== 'recorded') throw new PluginInstallationConflict();
@@ -85,6 +91,7 @@ export function localPluginInstallationState(
             contentDigest: next.artifact.digest,
             materialization: next.reference,
             dataScope: next.dataScope,
+            ...(next.origin ? { origin: next.origin } : {}),
           });
           if (replaced.state !== 'recorded')
             throw new PluginInstallationConflict();
@@ -247,6 +254,7 @@ export function createLocalPluginInstallationHost(
       if (!artifact || source) return ordinary;
       return {
         inspect: (id) => ordinary.inspect(id),
+        compensate: (input) => ordinary.compensate(input),
         withdraw: (revision) => ordinary.withdraw(revision),
         reconcile: (id) => ordinary.reconcile(id),
         async install(input) {

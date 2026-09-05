@@ -316,4 +316,6 @@ export interface PluginInstallationRevision {
   readonly artifact: { readonly digest: string };
   readonly materialization: string;
   readonly dataScope: string;
+  /** Acquisition-owner scoped continuity token; not authenticated publisher identity. */
+  readonly origin?: string;
 }

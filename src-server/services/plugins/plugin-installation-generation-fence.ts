@@ -9,7 +9,10 @@ import {
   computePluginContentDigest,
   withPluginContentLock,
 } from './plugin-content-integrity.js';
-import { withPluginProviderGrantPublication } from './plugin-permissions.js';
+import {
+  type CapturedPluginPermissionArtifact,
+  withPluginProviderGrantPublication,
+} from './plugin-permissions.js';
 
 export interface PluginInstallationGenerationFence {
   readonly installed: boolean;
@@ -23,6 +26,7 @@ export async function publishGrantedPluginProviderGeneration(input: {
   expectedProviderGeneration: number;
   prepared: PreparedPluginProviderRegistration[];
   isCurrent: () => boolean;
+  artifact?: CapturedPluginPermissionArtifact;
 }): Promise<'activated' | 'superseded'> {
   let registryOwnsPrepared = false;
   let publication:
@@ -41,6 +45,7 @@ export async function publishGrantedPluginProviderGeneration(input: {
           input.isCurrent,
         );
       },
+      input.artifact,
     );
   } catch (error) {
     if (!registryOwnsPrepared)

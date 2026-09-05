@@ -2115,6 +2115,51 @@ describe('installPluginFromSource', () => {
     );
   });
 
+  test('Agent synchronization honors declared package-relative sources and refuses missing sources before replacing existing Agents', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-plugin-agent-source-'));
+    cleanupDirs.push(root);
+    const pluginDir = join(root, 'package');
+    const agentsDir = join(root, 'agents');
+    mkdirSync(join(pluginDir, 'io.kontourai.station', 'echo'), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(pluginDir, 'io.kontourai.station', 'echo', 'agent.json'),
+      JSON.stringify({ name: 'Echo', prompt: 'echo' }),
+    );
+    const manifest = {
+      name: 'source-plugin',
+      version: '1',
+      agents: [
+        { slug: 'echo', source: './io.kontourai.station/echo/agent.json' },
+      ],
+    };
+    await synchronizePluginAgentDefinitions({
+      agentsDir,
+      pluginDir,
+      pluginName: manifest.name,
+      projectHomeDir: root,
+      manifest,
+    });
+    const installed = join(agentsDir, 'echo', 'agent.json');
+    expect(JSON.parse(readFileSync(installed, 'utf8')).name).toBe('Echo');
+    const retained = readFileSync(installed, 'utf8');
+    await expect(
+      synchronizePluginAgentDefinitions({
+        agentsDir,
+        pluginDir,
+        pluginName: manifest.name,
+        projectHomeDir: root,
+        previousManifest: manifest,
+        manifest: {
+          ...manifest,
+          agents: [{ slug: 'echo', source: './missing/agent.json' }],
+        },
+      }),
+    ).rejects.toThrow(/Declared Agent 'echo' source is missing/);
+    expect(readFileSync(installed, 'utf8')).toBe(retained);
+  });
+
   test('rejects symlinked plugin agent definitions during install', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-plugin-install-'));
     cleanupDirs.push(root);
