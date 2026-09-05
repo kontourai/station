@@ -20,6 +20,7 @@ import {
   type ProjectTaskRoomCapabilityAuthority,
 } from '../project-task-room-history.js';
 import { createProjectTaskRoomWorkingState } from '../project-task-room-working-state.js';
+import { SessionExecutionCoordinator } from '../session-execution-coordinator.js';
 
 const TEST_RETENTION = 16;
 function sortJson(value: unknown): unknown {
@@ -1614,5 +1615,124 @@ it('source seal serializes behind an admitted transaction and closes at its comm
     release();
     await source.close();
     await sealer.close();
+  }
+});
+
+it('source closure joins durable provider admission and refuses a new bound turn before invocation', async () => {
+  const events = new EventStore(databasePath());
+  const room = events.createProjectTaskRoomHistory({ capabilities });
+  try {
+    await room.open({ grant: grant('discover') });
+    const binding = {
+      projectId: scope.projectId,
+      taskId: scope.taskId,
+      sessionId: 'bound-session',
+    };
+    expect(events.bindProjectTaskRoomExecution(binding)).toEqual({
+      kind: 'bound',
+    });
+    expect(
+      events.bindProjectTaskRoomExecution({ ...binding, taskId: 'other-task' }),
+    ).toEqual({ kind: 'conflict' });
+    const authority = events.sessionTurnBoundaryAuthority();
+    const claimed = authority.claim(
+      binding.sessionId,
+      '2026-09-05T00:00:00.000Z',
+    );
+    if (claimed.kind !== 'owner')
+      throw new Error('Expected provider admission');
+    expect(
+      await room.sealSource({ grant: grant('home-transfer'), ...sealIntent }),
+    ).toEqual({ kind: 'execution-pending' });
+    claimed.claim.notInvoked();
+    expect(
+      await room.sealSource({ grant: grant('home-transfer'), ...sealIntent }),
+    ).toMatchObject({ kind: 'sealed' });
+    const coordinator = new SessionExecutionCoordinator(authority);
+    let invoked = false;
+    await expect(
+      coordinator.runTurnStart(binding.sessionId, async () => {
+        invoked = true;
+      }),
+    ).rejects.toThrow('coordination is temporarily unavailable');
+    expect(invoked).toBe(false);
+    // The immutable association is readable, but cannot admit another session.
+    expect(events.bindProjectTaskRoomExecution(binding)).toEqual({
+      kind: 'bound',
+    });
+    expect(
+      events.bindProjectTaskRoomExecution({
+        ...binding,
+        sessionId: 'new-session',
+      }),
+    ).toEqual({ kind: 'unavailable' });
+  } finally {
+    await room.close();
+    expect(events.close()).toEqual({ kind: 'closed' });
+  }
+});
+
+it('an indeterminate bound provider invocation prevents source closure after restart', async () => {
+  const path = databasePath();
+  const first = new EventStore(path);
+  const room = first.createProjectTaskRoomHistory({ capabilities });
+  const binding = {
+    projectId: scope.projectId,
+    taskId: scope.taskId,
+    sessionId: 'uncertain-session',
+  };
+  try {
+    await room.open({ grant: grant('discover') });
+    expect(first.bindProjectTaskRoomExecution(binding)).toEqual({
+      kind: 'bound',
+    });
+    const claimed = first
+      .sessionTurnBoundaryAuthority()
+      .claim(binding.sessionId, '2026-09-05T00:00:00.000Z');
+    if (claimed.kind !== 'owner')
+      throw new Error('Expected provider admission');
+    expect(claimed.claim.beginInvocation('2026-09-05T00:00:01.000Z')).toEqual({
+      kind: 'applied',
+    });
+    claimed.claim.indeterminate('2026-09-05T00:00:02.000Z');
+  } finally {
+    await room.close();
+    expect(first.close()).toEqual({ kind: 'closed' });
+  }
+  const restarted = new EventStore(path);
+  const restoredRoom = restarted.createProjectTaskRoomHistory({ capabilities });
+  try {
+    expect(
+      await restoredRoom.sealSource({
+        grant: grant('home-transfer'),
+        ...sealIntent,
+      }),
+    ).toEqual({ kind: 'execution-pending' });
+    const authority = restarted.sessionTurnBoundaryAuthority();
+    expect(authority.hasPossibleEffect(binding.sessionId)).toEqual({
+      kind: 'available',
+      active: true,
+    });
+    // Feed the existing trusted terminal observer; elapsed time alone is no proof.
+    expect(
+      authority.observe({
+        eventId: 'exit-uncertain-session',
+        provider: 'claude',
+        threadId: binding.sessionId,
+        sessionId: binding.sessionId,
+        createdAt: '2026-09-05T00:00:03.000Z',
+        method: 'session.exited',
+        exitCode: 0,
+      }),
+    ).toEqual({ kind: 'applied' });
+    expect(
+      await restoredRoom.sealSource({
+        grant: grant('home-transfer'),
+        ...sealIntent,
+      }),
+    ).toMatchObject({ kind: 'sealed' });
+  } finally {
+    await restoredRoom.close();
+    expect(restarted.close()).toEqual({ kind: 'closed' });
   }
 });

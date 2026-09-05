@@ -100,6 +100,19 @@ This barrier does not yet have a public runtime/HTTP caller. The supplied home
 references are intent bindings, not independently verified host identities.
 Execution admission, target activation, the external authority adapter and
 cross-host acceptance remain to be composed before exposing a move command.
+An immutable server-owned session/room binding now joins the existing
+`orchestration_turn_boundaries` records to the source seal in the same SQLite
+transaction. Pending bound execution prevents closure, including indeterminate
+invocation after restart. A sealed room refuses a new bound turn claim before
+its provider callback runs. Binding cannot be changed to another room or added
+to a session with an active unbound invocation. This is an association, not a
+second execution ledger or a grant inferred from session metadata.
+
+Automatic binding at Task dispatch and durable admission for session creation
+are not yet connected. Existing or unbound sessions therefore remain an
+explicit missing integration; a future move caller must not claim full source
+quiescence from the private room seal alone. Lifecycle cleanup remains allowed
+after a seal so the old source can stop idle sessions.
 The barrier tests exercise real SQLite worker connections and restart; they
 do not substitute for the independent-process, network-partition acceptance
 journey below.

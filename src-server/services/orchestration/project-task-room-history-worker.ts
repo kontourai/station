@@ -21,6 +21,7 @@ import { PROJECT_TASK_ROOM_HISTORY_MIGRATION } from '../../domain/migrations/005
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { measureBoundedJson, plainDataObject } from './bounded-json.js';
 import {
+  hasPendingProjectTaskRoomExecution,
   initializeProjectTaskRoomSourceSeals,
   persistProjectTaskRoomSourceSeal,
   readProjectTaskRoomSourceSeal,
@@ -654,6 +655,10 @@ async function sealSource(
         db.exec('ROLLBACK');
         return { kind: 'publication-pending' };
       }
+    }
+    if (hasPendingProjectTaskRoomExecution(db, request.scope)) {
+      db.exec('ROLLBACK');
+      return { kind: 'execution-pending' };
     }
     const seal = {
       operationId: request.operationId,

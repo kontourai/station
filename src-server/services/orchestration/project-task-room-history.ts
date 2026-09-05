@@ -99,7 +99,14 @@ export interface ProjectTaskRoomHistory extends ProjectTaskRoomAuthority {
     targetHomeRef: string;
   }): Promise<
     | { kind: 'sealed'; seal: ProjectTaskRoomSourceSeal }
-    | { kind: 'denied' | 'unavailable' | 'conflict' | 'publication-pending' }
+    | {
+        kind:
+          | 'denied'
+          | 'unavailable'
+          | 'conflict'
+          | 'publication-pending'
+          | 'execution-pending';
+      }
   >;
 
   /** EventStore's synchronous shutdown fence; public callers use close(). */
@@ -556,12 +563,21 @@ function createProjectTaskRoomHistoryInternal(
     if (!active(operationGeneration)) return { kind: 'unavailable' };
     if (
       isPlainOwn(stored, ['kind']) &&
-      ['denied', 'unavailable', 'conflict', 'publication-pending'].includes(
-        stored.kind as string,
-      )
+      [
+        'denied',
+        'unavailable',
+        'conflict',
+        'publication-pending',
+        'execution-pending',
+      ].includes(stored.kind as string)
     )
       return stored as {
-        kind: 'denied' | 'unavailable' | 'conflict' | 'publication-pending';
+        kind:
+          | 'denied'
+          | 'unavailable'
+          | 'conflict'
+          | 'publication-pending'
+          | 'execution-pending';
       };
     if (
       !isPlainOwn(stored, ['kind', 'seal']) ||

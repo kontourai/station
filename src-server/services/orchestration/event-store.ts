@@ -189,6 +189,11 @@ import {
   type ProjectTaskRoomLinkAuthority,
 } from './project-task-room-history.js';
 import {
+  bindProjectTaskRoomExecution,
+  initializeProjectTaskRoomSourceSeals,
+  isProjectTaskRoomExecutionSealed,
+} from './project-task-room-source-seal.js';
+import {
   createProjectTaskRoomWorkingState,
   type ProjectTaskRoomWorkingState,
 } from './project-task-room-working-state.js';
@@ -1650,6 +1655,7 @@ export class EventStore {
       this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
       this.db.exec(OPERATIONAL_EVENT_OUTBOX_MIGRATION);
       this.db.exec(PROJECT_TASK_ROOM_RUNTIME_MIGRATION);
+      initializeProjectTaskRoomSourceSeals(this.db);
       this.db.exec(REVISION_EVIDENCE_RECEIPTS_MIGRATION);
       this.db.exec(PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION);
       ensureProjectTaskRoomRevisionAttributionColumn(this.db);
@@ -2242,6 +2248,15 @@ export class EventStore {
     });
     this.projectTaskRoomHistories.add(history);
     return history;
+  }
+
+  /** Immutable server-owned scope for provider admission; never inferred from metadata. */
+  bindProjectTaskRoomExecution(input: {
+    projectId: string;
+    taskId: string;
+    sessionId: string;
+  }): { kind: 'bound' | 'conflict' | 'unavailable' } {
+    return bindProjectTaskRoomExecution(this.db, input);
   }
 
   /** Private working-state worker over this exact orchestration SQLite file. */
@@ -8178,6 +8193,14 @@ export class EventStore {
       create: (record) => {
         try {
           this.db.exec('BEGIN IMMEDIATE');
+          if (
+            record.state !== 'lifecycle' &&
+            isProjectTaskRoomExecutionSealed(this.db, record.threadId)
+          ) {
+            this.db.exec('ROLLBACK');
+            return { kind: 'unavailable' };
+          }
+
           const occupied = this.db
             .prepare(
               record.state === 'lifecycle'
