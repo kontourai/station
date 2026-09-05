@@ -1178,6 +1178,17 @@
   background: var(--bg-highlight);
 }
 
+/* An eligible Agent that cannot run right now stays visible and refuses the
+   click, because its reason is the only thing that says what to fix. */
+.agent-picker__option:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.agent-picker__option-reason {
+  color: var(--warning-text);
+}
+
 .agent-picker__option:hover:not(.agent-picker__option--selected) {
   background: var(--bg-hover);
 }

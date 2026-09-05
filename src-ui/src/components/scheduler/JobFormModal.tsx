@@ -2,7 +2,8 @@ import type {
   SchedulerJob,
   SchedulerSchedule,
 } from '@kontourai/station-contracts/scheduler';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useAgents, useAgentsLoaded } from '../../contexts/AgentsContext';
 import type { SchedulerProviderInfo } from '../../hooks/useScheduler';
 import { useAddJob, useEditJob } from '../../hooks/useScheduler';
 import { errorText } from '../../utils/errorText';
@@ -13,12 +14,18 @@ import { AgentPicker } from './AgentPicker';
 import { CronPreview } from './CronEditor';
 import { ScheduleModeEditor } from './ScheduleModeEditor';
 import {
+  SCHEDULER_ENGINE_AGENT_NOTE,
+  schedulerAgentOptions,
+  schedulerAgentRunnability,
+} from './schedulerAgentOptions';
+import {
   datetimeLocalValue,
   type ExactIntervalUnit,
   intervalToMs,
   scheduleEquals,
   scheduleForJob,
   splitEveryMs,
+  weekdayMorningCron,
 } from './scheduleValue';
 
 export function JobFormModal({
@@ -48,11 +55,17 @@ export function JobFormModal({
   const extraFields: SchedulerProviderInfo['formFields'] =
     activeProvider?.formFields || [];
   const init = prefill || {};
+  const agents = useAgents();
+  const agentsLoaded = useAgentsLoaded();
+  const agentOptions = useMemo(() => schedulerAgentOptions(agents), [agents]);
+  // Weekdays 8:00 AM, not `* * * * *`. A default nobody reads must be the
+  // schedule a reasonable person would have chosen, not the one that runs
+  // every minute of every day.
   const initialSchedule: SchedulerSchedule = job
     ? scheduleForJob(job)
     : (init.schedule ?? {
         kind: 'cron',
-        expr: init.cron || '* * * * *',
+        expr: init.cron || weekdayMorningCron(),
       });
   const initialInterval = splitEveryMs(
     initialSchedule.kind === 'every' ? initialSchedule.everyMs : 60_000,
@@ -82,7 +95,10 @@ export function JobFormModal({
   }>({
     name: job?.name || init.name || '',
     scheduleKind: initialSchedule.kind,
-    cron: initialSchedule.kind === 'cron' ? initialSchedule.expr : '* * * * *',
+    cron:
+      initialSchedule.kind === 'cron'
+        ? initialSchedule.expr
+        : weekdayMorningCron(),
     everyValue: initialInterval.value,
     everyUnit: initialInterval.unit,
     atTime:
@@ -94,7 +110,7 @@ export function JobFormModal({
         ? (initialSchedule.deleteAfterRun ?? true)
         : true,
     prompt: job?.prompt || init.prompt || '',
-    agent: job?.agent || init.agent || 'station',
+    agent: job?.agent || init.agent || agentOptions.defaultSlug || 'station',
     retryCount: job?.retryCount ?? 0,
     retryDelaySecs: job?.retryDelaySecs ?? 60,
     monitorTarget:
@@ -121,6 +137,30 @@ export function JobFormModal({
     ...Object.fromEntries(extraFields.map((f) => [f.key, job?.[f.key] || ''])),
   });
   const [cronInput, setCronInput] = useState(form.cron);
+
+  // The catalog can arrive after this form mounts, so the runnable default
+  // cannot be settled at first render alone. Correct it once the catalog has
+  // answered, and never after the person has chosen: an auto-correction that
+  // overrides a deliberate pick is worse than a bad default.
+  const agentPickedRef = useRef(false);
+  useEffect(() => {
+    if (isEdit || init.agent || agentPickedRef.current || !agentsLoaded) return;
+    const runnableDefault = agentOptions.defaultSlug;
+    if (!runnableDefault) return;
+    setForm((current) =>
+      schedulerAgentRunnability(agents, current.agent).runnable
+        ? current
+        : { ...current, agent: runnableDefault },
+    );
+  }, [agents, agentOptions.defaultSlug, agentsLoaded, init.agent, isEdit]);
+
+  const jobAgentRunnability = schedulerAgentRunnability(agents, form.agent);
+  const monitorAgentRunnability = schedulerAgentRunnability(
+    agents,
+    form.monitorAgentId,
+  );
+  const namedAgentRunnability =
+    form.monitorType === 'none' ? jobAgentRunnability : monitorAgentRunnability;
 
   const scheduleFromForm = (): SchedulerSchedule => {
     if (form.scheduleKind === 'every') {
@@ -285,7 +325,17 @@ export function JobFormModal({
             pending={pending}
             pendingLabel="Saving…"
             disabled={
-              !scheduleValid || !monitorValid || (!isEdit && !form.name.trim())
+              !scheduleValid ||
+              !monitorValid ||
+              // A new job is refused while it names an Agent that cannot run
+              // it, or has no instructions: both produce a job whose first
+              // run fails. An EDIT is deliberately still saveable — an
+              // existing job whose Agent went unrunnable must stay
+              // reschedulable and repointable.
+              (!isEdit &&
+                (!form.name.trim() ||
+                  !form.prompt.trim() ||
+                  !namedAgentRunnability.runnable))
             }
           >
             {isEdit ? 'Save Changes' : 'Add Job'}
@@ -334,8 +384,21 @@ export function JobFormModal({
             <span className="schedule__field-label">Agent</span>
             <AgentPicker
               value={form.agent}
-              onChange={(v) => setForm((f) => ({ ...f, agent: v }))}
+              onChange={(v) => {
+                agentPickedRef.current = true;
+                setForm((f) => ({ ...f, agent: v }));
+              }}
             />
+            {!jobAgentRunnability.runnable && (
+              <span className="schedule__field-error">
+                {jobAgentRunnability.reason}
+              </span>
+            )}
+            {agentOptions.excludedEngineAgents.length > 0 && (
+              <span className="schedule__field-hint">
+                {SCHEDULER_ENGINE_AGENT_NOTE}
+              </span>
+            )}
           </div>
         )}
         <label className="schedule__field">
@@ -357,6 +420,12 @@ export function JobFormModal({
                   setForm((current) => ({ ...current, monitorAgentId: value }))
                 }
               />
+              {form.monitorAgentId.trim().length > 0 &&
+                !monitorAgentRunnability.runnable && (
+                  <span className="schedule__field-error">
+                    {monitorAgentRunnability.reason}
+                  </span>
+                )}
             </div>
             <label className="schedule__field">
               <span className="schedule__field-label">

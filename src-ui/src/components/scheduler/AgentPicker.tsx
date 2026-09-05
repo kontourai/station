@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type AgentData, useAgents } from '../../contexts/AgentsContext';
+import { agentRunnability } from '../agent-runnability';
 import { AgentIcon } from '../icons/AgentIcon';
 import { CheckGlyph } from '../icons/Glyph';
 import { Empty } from '../state';
-
-export function schedulerRunnableAgents(agents: AgentData[]): AgentData[] {
-  return agents.filter(
-    (agent) => agent.available !== false && !agent.execution?.agentConnectionId,
-  );
-}
+import {
+  schedulerAgentOptions,
+  schedulerAgentRunnability,
+} from './schedulerAgentOptions';
 
 export function AgentPicker({
   value,
@@ -19,24 +18,22 @@ export function AgentPicker({
   onChange: (slug: string) => void;
 }) {
   const agents = useAgents();
-  const runnableAgents = useMemo(
-    () => schedulerRunnableAgents(agents),
-    [agents],
-  );
+  const { eligible } = useMemo(() => schedulerAgentOptions(agents), [agents]);
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const selected = agents.find((a) => a.slug === value);
+  const selectedRunnability = schedulerAgentRunnability(agents, value);
 
   const filtered = useMemo(() => {
-    if (!filter) return runnableAgents;
+    if (!filter) return eligible;
     const q = filter.toLowerCase();
-    return runnableAgents.filter(
+    return eligible.filter(
       (a) =>
         a.name.toLowerCase().includes(q) || a.slug.toLowerCase().includes(q),
     );
-  }, [runnableAgents, filter]);
+  }, [eligible, filter]);
 
   useEffect(() => {
     if (!open) return;
@@ -75,7 +72,10 @@ export function AgentPicker({
     setFilter('');
   };
 
-  if (!runnableAgents.length) {
+  // Nothing the runner could resolve even in principle. The trigger stays
+  // disabled because there is no list to open, and the form beside it — not a
+  // dead row here — carries the reason (`SCHEDULER_ENGINE_AGENT_NOTE`).
+  if (!eligible.length) {
     return (
       <button type="button" className="agent-picker__trigger" disabled>
         {selected ? (
@@ -107,7 +107,9 @@ export function AgentPicker({
         </span>
         {selected && (
           <span className="agent-picker__trigger-model">
-            {selected.model || 'default model'}
+            {selectedRunnability.runnable
+              ? selected.model || 'default model'
+              : 'Not runnable here'}
           </span>
         )}
         <span className="agent-picker__trigger-caret">▼</span>
@@ -120,7 +122,7 @@ export function AgentPicker({
             className="agent-picker__dropdown"
             style={{ top: pos.top, left: pos.left, width: pos.width }}
           >
-            {runnableAgents.length > 1 && (
+            {eligible.length > 1 && (
               <div className="agent-picker__filter-wrap">
                 <input
                   value={filter}
@@ -131,31 +133,45 @@ export function AgentPicker({
                 />
               </div>
             )}
-            {filtered.map((a) => (
-              <button
-                type="button"
-                key={a.slug}
-                onClick={() => select(a.slug)}
-                className={`agent-picker__option ${a.slug === value ? 'agent-picker__option--selected' : ''}`}
-              >
-                <AgentIcon agent={a} size={28} />
-                <div className="agent-picker__option-info">
-                  <div className="agent-picker__option-name">
-                    {a.name}
-                    <span className="agent-picker__option-slug">{a.slug}</span>
+            {filtered.map((a) => {
+              const runnability = agentRunnability(a);
+              return (
+                <button
+                  type="button"
+                  key={a.slug}
+                  disabled={!runnability.runnable}
+                  onClick={() => select(a.slug)}
+                  className={`agent-picker__option ${a.slug === value ? 'agent-picker__option--selected' : ''}`}
+                >
+                  <AgentIcon agent={a} size={28} />
+                  <div className="agent-picker__option-info">
+                    <div className="agent-picker__option-name">
+                      {a.name}
+                      <span className="agent-picker__option-slug">
+                        {a.slug}
+                      </span>
+                    </div>
+                    <div className="agent-picker__option-meta">
+                      {runnability.runnable ? (
+                        <>
+                          {a.model || 'default model'}
+                          {toolCount(a) > 0 ? ` · ${toolCount(a)} tools` : ''}
+                        </>
+                      ) : (
+                        <span className="agent-picker__option-reason">
+                          Not runnable here — {runnability.reason}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="agent-picker__option-meta">
-                    {a.model || 'default model'}
-                    {toolCount(a) > 0 ? ` · ${toolCount(a)} tools` : ''}
-                  </div>
-                </div>
-                {a.slug === value && (
-                  <span className="agent-picker__check">
-                    <CheckGlyph />
-                  </span>
-                )}
-              </button>
-            ))}
+                  {a.slug === value && (
+                    <span className="agent-picker__check">
+                      <CheckGlyph />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
             {filtered.length === 0 && (
               /* empty-state action: filter reset is adjacent */
               <Empty variant="compact" label="No matching agents" />

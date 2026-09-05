@@ -29,6 +29,27 @@ export function intervalToMs(value: number, unit: ExactIntervalUnit): number {
   return value * INTERVAL_UNIT_MS[unit];
 }
 
+/**
+ * The hour a local wall-clock hour falls on in UTC. Cron expressions are
+ * evaluated in UTC by the built-in scheduler, so a preset that means "8am
+ * where the person is" has to be written down shifted.
+ */
+export function utcHourForLocalHour(localHour: number): number {
+  const date = new Date();
+  date.setHours(localHour, 0, 0, 0);
+  return date.getUTCHours();
+}
+
+/**
+ * Weekdays at 8:00 AM local — the "Morning Briefing" starter's schedule, and
+ * the Add Job form's default. ONE definition on purpose: the form used to
+ * default to `* * * * *`, so a reader who accepted the default without
+ * noticing scheduled a job that runs every single minute, forever.
+ */
+export function weekdayMorningCron(): string {
+  return `0 ${utcHourForLocalHour(8)} * * 1-5`;
+}
+
 export function scheduleForJob(job?: SchedulerJob): SchedulerSchedule {
   if (job?.schedule) return job.schedule;
   return { kind: 'cron', expr: job?.cron || '* * * * *' };

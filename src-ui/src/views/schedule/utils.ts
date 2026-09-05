@@ -1,5 +1,9 @@
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import { SchedulerResponseError } from '@kontourai/station-sdk';
+import {
+  utcHourForLocalHour as getUtcHour,
+  weekdayMorningCron,
+} from '../../components/scheduler/scheduleValue';
 import { errorText } from '../../utils/errorText';
 import { isStationTransportFailure } from '../../utils/stationTransportFailure';
 
@@ -47,12 +51,6 @@ export function getScheduleStatusLabel({
   return '○ Stopped';
 }
 
-function getUtcHour(localHour: number): number {
-  const date = new Date();
-  date.setHours(localHour, 0, 0, 0);
-  return date.getUTCHours();
-}
-
 export function getScheduleStarterTemplates(): Array<{
   name: string;
   label: string;
@@ -64,7 +62,7 @@ export function getScheduleStarterTemplates(): Array<{
     {
       name: 'good-morning',
       label: 'Morning Briefing',
-      cron: `0 ${getUtcHour(8)} * * 1-5`,
+      cron: weekdayMorningCron(),
       prompt:
         'Review my calendar and email for today. Summarize priorities, prep for meetings, and flag anything urgent.',
       meta: 'Weekdays · 8:00 AM',

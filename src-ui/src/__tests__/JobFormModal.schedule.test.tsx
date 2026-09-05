@@ -1,11 +1,23 @@
 /** @vitest-environment jsdom */
 
+import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+const agentCatalog = vi.hoisted(() => ({
+  agents: [] as EnrichedAgentProjection[],
+}));
+
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents: () => agentCatalog.agents,
+  useAgentsLoaded: () => true,
+}));
+
 import { JobFormModal } from '../components/scheduler/JobFormModal';
 import {
   formatSchedule,
   scheduleForJob,
+  weekdayMorningCron,
 } from '../components/scheduler/scheduleValue';
 
 const addMutate = vi.fn();
@@ -41,6 +53,9 @@ describe('JobFormModal schedule compatibility', () => {
     editMutate.mockReset();
     mutationState.addError = null;
     mutationState.editError = null;
+    agentCatalog.agents = [
+      { slug: 'station', name: 'Station' } as EnrichedAgentProjection,
+    ];
   });
 
   test('opens an exact-interval job without converting its schedule to text', () => {
@@ -231,5 +246,74 @@ describe('JobFormModal schedule compatibility', () => {
       "Job 'daily-report' already exists",
     );
     expect(screen.getByRole('dialog', { name: 'Add Job' })).toBeTruthy();
+  });
+
+  test('defaults a new job to weekdays 8:00 AM, not every minute', () => {
+    render(<JobFormModal onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'daily-briefing' },
+    });
+    fireEvent.change(screen.getByLabelText('Instructions'), {
+      target: { value: 'Summarize my day' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Job' }));
+
+    expect(addMutate.mock.calls[0]?.[0]).toMatchObject({
+      cron: weekdayMorningCron(),
+    });
+    expect(addMutate.mock.calls[0]?.[0].cron).not.toBe('* * * * *');
+  });
+
+  test('refuses a new job whose only agent cannot run it', () => {
+    agentCatalog.agents = [
+      {
+        slug: 'claude',
+        name: 'Claude Code',
+        available: true,
+        execution: { agentConnectionId: 'claude' },
+      } as EnrichedAgentProjection,
+    ];
+
+    render(<JobFormModal onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'doomed-job' },
+    });
+    fireEvent.change(screen.getByLabelText('Instructions'), {
+      target: { value: 'Never runs' },
+    });
+
+    const submit = screen.getByRole('button', { name: 'Add Job' });
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(submit);
+    expect(addMutate).not.toHaveBeenCalled();
+  });
+
+  test('refuses a new job with no instructions', () => {
+    render(<JobFormModal onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'empty-job' },
+    });
+
+    expect(
+      (screen.getByRole('button', { name: 'Add Job' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  test('adopts a runnable agent as the default instead of the station literal', () => {
+    agentCatalog.agents = [
+      {
+        slug: 'station',
+        name: 'Station',
+        available: false,
+        unavailableReason: 'No model resolves yet.',
+      } as EnrichedAgentProjection,
+      { slug: 'reviewer', name: 'Reviewer' } as EnrichedAgentProjection,
+    ];
+
+    render(<JobFormModal onClose={vi.fn()} />);
+
+    expect(screen.getByLabelText('Agent')).toHaveProperty('value', 'reviewer');
   });
 });
