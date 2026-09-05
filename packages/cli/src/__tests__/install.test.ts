@@ -49,6 +49,70 @@ describe('plugin CLI API authority', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
+  test.each(['parent', 'dependency'])(
+    'refuses a preview with a missing %s permission revision before installation',
+    async (missing) => {
+      authenticatedFetch.mockResolvedValueOnce(
+        Response.json({
+          valid: true,
+          manifest: { name: 'demo', version: '1' },
+          components: [],
+          contentDigest: 'sha256:reviewed',
+          ...(missing === 'parent' ? {} : { grantRevision: 'parent-revision' }),
+          permissions: { required: [], autoGranted: [], pendingConsent: [] },
+          dependencies:
+            missing === 'dependency'
+              ? [
+                  {
+                    id: 'child',
+                    consent: {
+                      contentDigest: 'sha256:child',
+                      permissions: [],
+                      dependencies: [],
+                      pendingConsent: [],
+                    },
+                  },
+                ]
+              : [],
+        }),
+      );
+      const { install } = await import('../commands/install.js');
+      await expect(install('/tmp/demo', [], parsed, approve)).rejects.toThrow(
+        /permission revision/,
+      );
+      expect(authenticatedFetch).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test('reports a stale permission decision refusal without retrying the install', async () => {
+    authenticatedFetch
+      .mockResolvedValueOnce(
+        Response.json({
+          valid: true,
+          manifest: { name: 'demo', version: '1' },
+          components: [],
+          contentDigest: 'sha256:reviewed',
+          grantRevision: 'stale-revision',
+          permissions: { required: [], autoGranted: [], pendingConsent: [] },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: 'Permission decision changed; preview again' },
+          { status: 409 },
+        ),
+      );
+    const { install } = await import('../commands/install.js');
+    await expect(install('/tmp/demo', [], parsed, approve)).rejects.toThrow(
+      /Permission decision changed/,
+    );
+    expect(authenticatedFetch).toHaveBeenCalledTimes(2);
+    expect(
+      JSON.parse(authenticatedFetch.mock.calls[1][1].body).consent
+        .grantRevision,
+    ).toBe('stale-revision');
+  });
+
   /**
    * station#4288. The install carries the operator's decision, taken from the
    * preview it just read — so this asserts the ORDER as well as the body: a
@@ -248,6 +312,7 @@ describe('plugin CLI API authority', () => {
         components: [],
         conflicts: [],
         contentDigest: 'sha256:reviewed',
+        grantRevision: 'parent-reviewed-revision',
         permissions: {
           required: ['network.fetch'],
           autoGranted: [],
@@ -285,6 +350,7 @@ describe('plugin CLI API authority', () => {
         components: [],
         conflicts: [],
         contentDigest: 'sha256:reviewed',
+        grantRevision: 'parent-reviewed-revision',
         permissions: { required: [], autoGranted: [], pendingConsent: [] },
       }),
     );
@@ -305,6 +371,7 @@ describe('plugin CLI API authority', () => {
           components: [],
           conflicts: [],
           contentDigest: 'sha256:reviewed',
+          grantRevision: 'parent-reviewed-revision',
           permissions: { required: [], autoGranted: [], pendingConsent: [] },
         }),
       )
@@ -383,6 +450,7 @@ describe('plugin CLI API authority', () => {
           components: [],
           conflicts: [],
           contentDigest: 'sha256:reviewed',
+          grantRevision: 'parent-reviewed-revision',
           permissions: {
             required: [],
             autoGranted: [],
@@ -409,6 +477,7 @@ describe('plugin CLI API authority', () => {
           consent: {
             permissions: [],
             contentDigest: 'sha256:reviewed',
+            grantRevision: 'parent-reviewed-revision',
             dependencies: [],
           },
         }),
