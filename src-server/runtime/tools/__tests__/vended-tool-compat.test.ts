@@ -392,6 +392,53 @@ describe('vended tool compatibility', () => {
     }
   });
 
+  test('closed native relay refuses late file and Bash effects and drains every disposer', async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), 'station-native-closed-'));
+    cleanupDirs.push(workspaceRoot);
+    const scope = createNativeForegroundRelay(
+      {
+        agentId: 'closed-agent',
+        agentSpec: {},
+        project: { slug: 'project' },
+        message: 'run',
+      } as ForegroundInvocationAdmission,
+      { threadId: 'closed-thread', userId: 'owner', workspaceRoot },
+    );
+    const file = createBuiltinTool(
+      'closed-agent',
+      createBuiltinVendedToolDef('file-editor')!,
+      {} as any,
+    )!;
+    const bash = createBuiltinTool(
+      'closed-agent',
+      createBuiltinVendedToolDef('bash')!,
+      {} as any,
+    )!;
+    const disposed = vi.fn();
+    scope.onClose(() => {
+      throw new Error('cleanup fixture');
+    });
+    scope.onClose(disposed);
+    await runWithNativeForegroundRelay(scope, async () => {
+      expect(() => scope.close()).toThrow('Native workspace cleanup failed');
+      expect(disposed).toHaveBeenCalledOnce();
+      await expect(
+        file.execute!({
+          command: 'create',
+          path: 'late.txt',
+          file_text: 'late',
+        }),
+      ).rejects.toThrow();
+      await expect(
+        bash.execute!({ mode: 'execute', command: 'touch late-shell.txt' }),
+      ).rejects.toThrow();
+      await expect(readFile(join(workspaceRoot, 'late.txt'))).rejects.toThrow();
+      await expect(
+        readFile(join(workspaceRoot, 'late-shell.txt')),
+      ).rejects.toThrow();
+    });
+  });
+
   test('bash preserves shell session state across calls', async () => {
     const toolDef = createBuiltinVendedToolDef('bash');
     const tool = createBuiltinTool('agent-shell', toolDef!, {} as any);

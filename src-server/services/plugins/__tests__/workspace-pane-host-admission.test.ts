@@ -976,6 +976,36 @@ describe('Workspace Pane host invocation admission', () => {
     });
   });
 
+  test('pending provisioning cannot admit an early start in the shared Project directory', async () => {
+    const revision = storage.projectRevision(projectSlug);
+    await revision.replace({
+      ...revision.value,
+      defaultWorkspaceIsolation: 'worktree',
+    });
+    const prepared = await prepare();
+    const pending = deferred();
+    const entered = deferred();
+    const startEffect = vi.fn(async () => undefined);
+    await prepared.run(async (admission) => {
+      const actual = { threadId: 'pending-thread', agentId: slug, projectSlug };
+      const provisioning = admission.invoke('provision', actual, async () => {
+        entered.resolve();
+        await pending.promise;
+        return { path: join(home, 'created-worktree') };
+      });
+      await entered.promise;
+      try {
+        await expect(
+          admission.invoke('start', { ...actual, cwd: home }, startEffect),
+        ).rejects.toThrow();
+        expect(startEffect).not.toHaveBeenCalled();
+      } finally {
+        pending.resolve();
+        await provisioning;
+      }
+    });
+  });
+
   test('captured native worktree action invokes a real Bash child in its provisioned Session workspace', async () => {
     const repo = join(home, 'repository');
     mkdirSync(repo);

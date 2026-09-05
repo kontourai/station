@@ -216,7 +216,7 @@ export function createWorkspacePaneHostAdmission(input: {
                           (provisionedThread !== undefined &&
                             provisionedThread !== actual.threadId) ||
                           (project.defaultWorkspaceIsolation === 'worktree' &&
-                            provisionedThread === undefined)
+                            provisionedWorkspace === undefined)
                         : thread !== actual.threadId ||
                           turnInvoked ||
                           actual.message !== message)

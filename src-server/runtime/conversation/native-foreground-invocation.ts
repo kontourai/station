@@ -114,7 +114,10 @@ export function createNativeForegroundRelay(
     reject(new ForegroundInvocationUnavailableError());
   };
   return Object.freeze({
-    workspaceRoot,
+    get workspaceRoot() {
+      if (closed) throw new ForegroundInvocationUnavailableError();
+      return workspaceRoot;
+    },
     onClose(dispose: () => void) {
       if (closed) throw new ForegroundInvocationUnavailableError();
       cleanup.add(dispose);
@@ -122,8 +125,17 @@ export function createNativeForegroundRelay(
     close() {
       if (closed) return;
       closed = true;
-      for (const dispose of cleanup) dispose();
+      const failures: unknown[] = [];
+      for (const dispose of cleanup) {
+        try {
+          dispose();
+        } catch (error) {
+          failures.push(error);
+        }
+      }
       cleanup.clear();
+      if (failures.length)
+        throw new AggregateError(failures, 'Native workspace cleanup failed');
     },
     get agentSpec() {
       return structuredClone(capturedSpec);
@@ -158,6 +170,7 @@ export function createNativeForegroundRelay(
             if (
               used ||
               refused ||
+              closed ||
               !runtime.isCurrent() ||
               !nativeRuntimeSpecMatches(capturedSpec, runtime.spec)
             ) {
