@@ -51,8 +51,12 @@ jobs:
           fi
           test "$source_sha" = "$GITHUB_SHA"
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - name: Lint
         run: npm run lint:check
@@ -142,8 +146,12 @@ jobs:
           ref: ${{ needs.test-gate.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - id: cli_source_decide
         name: Skip CLI publication when nightly already names this source
         env:
@@ -237,7 +245,20 @@ jobs:
           set -euo pipefail
           mkdir -p provider-receipts
           registry_record="$RUNNER_TEMP/nightly-cli-registry-githead.json"
-          npm view "@kontourai/station-cli@$CLI_VERSION" gitHead --json > "$registry_record"
+          # npm's registry read lags its write: the first Nightly through this
+          # step read E404 for a version the publish had just confirmed
+          # (#1498). Bounded retry; a persistent miss still fails closed.
+          attempt=0
+          until npm view "@kontourai/station-cli@$CLI_VERSION" gitHead --json > "$registry_record" 2> "$RUNNER_TEMP/nightly-cli-registry-view.err"; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -ge 12 ]; then
+              cat "$RUNNER_TEMP/nightly-cli-registry-view.err" >&2
+              echo "::error::npm registry never returned @kontourai/station-cli@$CLI_VERSION after $attempt reads" >&2
+              exit 1
+            fi
+            echo "registry read $attempt did not return $CLI_VERSION yet; retrying in 15s"
+            sleep 15
+          done
           registry_sha=$(node scripts/verify-npm-registry-provenance.mjs "$registry_record" "$SOURCE_SHA")
           REGISTRY_SHA="$registry_sha" node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync(process.argv[1], JSON.stringify({schemaVersion:1,kind:"station.npm-publish-receipt",package:"@kontourai/station-cli",version:process.env.CLI_VERSION,sourceSha:process.env.SOURCE_SHA,registryGitHead:process.env.REGISTRY_SHA,artifactBuiltAt:null,artifactBuiltAtReason:"npm package has no native artifact manifest",sourceBinding:"npm registry gitHead",},null,2)+"\n")' provider-receipts/nightly-cli.json
       - id: ledger_token

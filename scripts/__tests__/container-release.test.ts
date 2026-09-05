@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, relative, resolve, sep } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { validatePackagedReleaseManifest } from '../../packages/cli/src/commands/lifecycle.js';
 import {
@@ -149,7 +149,8 @@ function isBroadCopySource(src: string): boolean {
 const ALLOWED_RUNTIME_COPY_SOURCES = new Set([
   '/app/node_modules',
   '/app/package.json',
-  '/app/package-lock.json',
+  '/app/pnpm-lock.yaml',
+  '/app/pnpm-workspace.yaml',
   '/app/station',
   '/app/.station-release.json',
   '/app/packages',
@@ -330,14 +331,18 @@ describe('container source contract', () => {
       expect(dockerfile).toContain(
         `COPY ${workspace}/package.json ${workspace}/`,
       );
-    for (const lock of [
-      'packages/sdk/package-lock.json',
-      'packages/shared/package-lock.json',
-      'schemas/dependency-lifecycle-allowlist.schema.json',
-    ])
-      expect(dockerfile).toContain(`COPY ${lock}`);
+    expect(dockerfile).toContain(
+      'COPY schemas/dependency-lifecycle-allowlist.schema.json',
+    );
+    // Ordering contract only: the two script COPYs must be the last thing
+    // before `RUN npm run dependencies:ci`, so the install stage is not
+    // invalidated by unrelated source changes. Deliberately NOT pinning the
+    // scripts/lib/ file list here — completeness of that list is derived from
+    // the real import graph by the COPY-completeness test below, and pinning
+    // it twice means a legitimate addition edits a literal in two places and
+    // still proves nothing about whether the list is sufficient (#1469).
     expect(dockerfile).toMatch(
-      /COPY scripts\/node-runtime-contract\.mjs scripts\/dependency-lifecycle\.mjs scripts\/\s+COPY scripts\/lib\/dependency-lifecycle-policy\.mjs scripts\/lib\/workspace-dependency-satisfaction\.mjs scripts\/lib\/\s+RUN npm run dependencies:ci/,
+      /COPY scripts\/node-runtime-contract\.mjs scripts\/dependency-lifecycle\.mjs scripts\/\s+COPY scripts\/lib\/[^\n]*scripts\/lib\/\s+RUN npm run dependencies:ci/,
     );
     expect(runtimeStage).not.toContain('g++ make python3');
     // Runtime dependencies must come from the manifest-only install stage.
@@ -557,6 +562,70 @@ describe('container source contract', () => {
     expect(
       dockerContextIncludes(ignore, 'scripts/__tests__/unrelated.test.ts'),
     ).toBe(false);
+  });
+
+  test('COPYs every local module the dependencies stage imports at build time', () => {
+    // #1469 added `scripts/lib/dependency-install-retirement.mjs` and imported
+    // it from `scripts/dependency-lifecycle.mjs`, which the dependencies stage
+    // copies file by file. The image built and then `RUN npm run
+    // dependencies:ci` died with ERR_MODULE_NOT_FOUND on a path that exists in
+    // the repo and not in the image; container smoke on main was the first
+    // thing to notice, exactly as the #1264 comment above records from the
+    // other direction.
+    //
+    // The test above proves .dockerignore ADMITS what the Dockerfile copies.
+    // Nothing proved the Dockerfile copies what the copied code REQUIRES, and
+    // that is the half that broke. Derive it from the real import graph rather
+    // than a second hand-written list, which would go stale the same way.
+    const stage = dockerStage(dockerfile, 'dependencies');
+    expect(stage, 'Dockerfile must define stage "dependencies"').toBeTruthy();
+    const copied = new Set(parseCopySources(stage));
+
+    const entry = 'scripts/dependency-lifecycle.mjs';
+    const seen = new Set<string>();
+    const required = new Set<string>();
+    const queue: string[] = [entry];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (current === undefined || seen.has(current)) continue;
+      seen.add(current);
+      const source = readFileSync(resolve(root, current), 'utf8');
+      // Relative specifiers only. Bare specifiers resolve from node_modules,
+      // which the managed pnpm bootstrap installs inside the image.
+      for (const match of source.matchAll(
+        /from\s+'(\.[^']+\.mjs)'|import\s+'(\.[^']+\.mjs)'/g,
+      )) {
+        const specifier = match[1] ?? match[2];
+        // POSIX separators: `relative()` yields `scripts\\lib\\x.mjs` on
+        // Windows, while COPY sources are Dockerfile literals and always
+        // forward-slashed, so an unnormalised lookup can never match there.
+        // The Windows portable floor caught this on the first push.
+        const repoRelative = relative(
+          root,
+          resolve(dirname(resolve(root, current)), specifier),
+        )
+          .split(sep)
+          .join('/');
+        required.add(repoRelative);
+        queue.push(repoRelative);
+      }
+    }
+
+    // A "check every X" assertion passes vacuously when X is empty, so pin
+    // that the walk actually found the graph before reading its verdict.
+    expect(
+      required.size,
+      `no local imports discovered from ${entry}; the walk found nothing`,
+    ).toBeGreaterThan(0);
+
+    for (const module of required) {
+      expect(
+        copied.has(module),
+        `Dockerfile stage "dependencies" must COPY "${module}", which ` +
+          `${entry} imports (transitively) — otherwise the image builds and ` +
+          '`npm run dependencies:ci` fails with ERR_MODULE_NOT_FOUND (#1469).',
+      ).toBe(true);
+    }
   });
 });
 

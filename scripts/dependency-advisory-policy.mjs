@@ -10,6 +10,7 @@ import {
   DEPENDENCY_SCOPE_ROOTS,
 } from './classify-ci-change.mjs';
 import { createAuditAttemptDiagnostics } from './lib/dependency-audit-diagnostics.mjs';
+import { collectPnpmAudits, runPnpmAudit } from './lib/pnpm-advisory.mjs';
 
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 const RESIDUAL_SEVERITIES = new Set(['moderate', 'low']);
@@ -809,12 +810,12 @@ export async function withAuditRetries(
       lastError = error;
       if (attempt < attempts)
         console.warn(
-          `npm audit operational attempt ${attempt}/${attempts} failed for ${scope}; retrying: ${error.message}`,
+          `dependency audit operational attempt ${attempt}/${attempts} failed for ${scope}; retrying: ${error.message}`,
         );
     }
   }
   throw new Error(
-    `npm audit failed for ${scope} after ${attempts} attempts: ${lastError?.message ?? 'unknown error'}`,
+    `dependency audit failed for ${scope} after ${attempts} attempts: ${lastError?.message ?? 'unknown error'}`,
   );
 }
 
@@ -835,6 +836,18 @@ export function collectAudits(
   auditRunner = runAudit,
   versionResolver = resolvedVersions,
 ) {
+  if (
+    auditRunner === runAudit &&
+    readJson(
+      path.join(REPO_ROOT, 'package.json'),
+      'manifest',
+    ).packageManager?.startsWith('pnpm@')
+  )
+    return collectPnpmAudits(scopes, {
+      root: REPO_ROOT,
+      run: (root) =>
+        withAuditRetries('pnpm workspace', () => runPnpmAudit(root)),
+    });
   const requests = scopes.flatMap(({ scope, cwd }) => [
     { scope, cwd, reachability: 'full', productionOnly: false },
     { scope, cwd, reachability: 'production', productionOnly: true },

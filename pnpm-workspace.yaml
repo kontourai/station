@@ -1,0 +1,67 @@
+packages:
+  - packages/contracts
+  - packages/sdk
+  - packages/basis-pane
+  - packages/board-pane
+  - packages/shared
+  - packages/cli
+  - packages/connect
+  - examples/builder-delivery-viewer
+  - examples/fieldwork-review
+linkWorkspacePackages: true
+nodeLinker: hoisted
+packageImportMethod: clone-or-copy
+verifyDepsBeforeRun: false
+ignoreScripts: true
+engineStrict: true
+allowBuilds:
+  esbuild@0.25.12: true
+  cpu-features@0.0.10: false
+  esbuild@0.28.1: true
+  fsevents@2.3.3: true
+  libxmljs2@0.37.0: false
+  node-pty@1.1.0: true
+  fsevents@2.3.2: true
+  protobufjs@7.6.5: false
+  ssh2@1.17.0: false
+minimumReleaseAge: 1440
+pmOnFail: ignore
+overrides:
+  adm-zip: ^0.6.0
+  axios: ^1.18.1
+  express-rate-limit: ^8.3.1
+  fast-uri: ^3.1.6
+  form-data: ^4.0.6
+  gaxios: ^7.3.0
+  lodash: ^4.18.1
+  node-forge: ^1.4.0
+  qs: ^6.16.0
+  router>path-to-regexp: ^8.4.2
+  anymatch>picomatch: ^2.3.2
+  micromatch>picomatch: ^2.3.2
+  gray-matter>js-yaml: ^3.15.1
+  read-yaml-file>js-yaml: ^3.15.1
+  readdirp>picomatch: ^2.3.2
+  socket.io-parser: ^4.2.7
+  minimatch@^10.0.0>brace-expansion: ^5.0.9
+  brace-expansion@^2.0.2: ^2.1.4
+  js-yaml@^4.1.0: ^4.3.1
+  js-yaml@^4.1.1: ^4.3.1
+  nanoid: ^3.3.18
+  engine.io-client: ^6.6.6
+  "@strands-agents/sdk>@anthropic-ai/sdk": ^0.122.0
+  "@strands-agents/sdk>@opentelemetry/exporter-trace-otlp-http": ^0.221.0
+  "@strands-agents/sdk>@opentelemetry/exporter-metrics-otlp-http": ^0.221.0
+  "@ai-sdk/provider-utils>undici": ^6.28.0
+patchedDependencies:
+  "@voltagent/server-hono@2.0.14": patches/voltagent-server-hono-2.0.14.patch
+strictPeerDependencies: true
+enableGlobalVirtualStore: false
+# flow-agents 6.2 hosts dispatch 0.3, whose optional datum peer requires 0.7.
+# Give that parent its own datum instead of inheriting contracts' 0.8.
+packageExtensions:
+  "@kontourai/flow-agents@6.2.0":
+    dependencies:
+      "@kontourai/datum": 0.7.0
+
+# Managed bootstrap owns install, exact-hook preflight, and artifact proofs.

@@ -20,11 +20,15 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 export const DEPENDENCY_INSTALL_GUARD = '.station-dependency-install';
 export const DEPENDENCY_INSTALL_RECORD_PREFIX = '.station-dependency-record-';
 
-/** Freeze the selected tool paths before CI can move their former directory. */
+/** Freeze the selected tool paths before an installer can replace their tree.
+ * @param {{ root: string, nodePath: string, npmCliPath?: string, commandPath?: string, scriptPath?: string, clean: boolean }} options
+ */
 export function prepareDependencyInstallDrivers({
   root,
   nodePath,
   npmCliPath,
+  commandPath,
+  scriptPath,
   clean,
 }) {
   const modules = join(realpathSync(root), 'node_modules');
@@ -37,12 +41,14 @@ export function prepareDependencyInstallDrivers({
   };
   const drivers = {
     nodePath: realpathSync(nodePath),
-    npmCliPath: realpathSync(npmCliPath),
+    ...(npmCliPath ? { npmCliPath: realpathSync(npmCliPath) } : {}),
+    ...(commandPath ? { commandPath: realpathSync(commandPath) } : {}),
+    ...(scriptPath ? { scriptPath: realpathSync(scriptPath) } : {}),
   };
   for (const [name, canonical] of Object.entries(drivers)) {
     if (!lstatSync(canonical).isFile() || (clean && inside(canonical)))
       throw new Error(
-        `Clean dependency installation requires ${name} outside root node_modules; select an external Node/npm toolchain before retrying.`,
+        `Dependency installation requires ${name} outside root node_modules; select an external Node/package-manager toolchain before retrying.`,
       );
   }
   return drivers;
@@ -69,8 +75,9 @@ function sameEntry(path, expected) {
 
 /**
  * Participating installers exclude one another; there is no PID/age reclaim.
- * CI retires and clears only root node_modules before npm runs, matching ci's
- * replacement semantics without retaining two complete dependency trees.
+ * Callers requesting clean mode retire and clear only root node_modules before
+ * installation. The pnpm lifecycle caller retires only npm/unidentified trees;
+ * established pnpm installations preserve their store-backed dependency tree.
  * The caller must include ALL approved hooks and final verification in run().
  * Failed or interrupted installs leave their guard and any cleanup remnants
  * or partial new tree for inspection. This is not rollback, an archive, or protection
@@ -79,6 +86,7 @@ function sameEntry(path, expected) {
 export function withDependencyInstallGuard({
   root,
   clean = true,
+  retireLegacy = false,
   run,
   warn = console.warn,
   removeTree = rmSync,
@@ -134,12 +142,22 @@ export function withDependencyInstallGuard({
   try {
     receiptFd = openSync(receiptPath, 'wx', 0o600);
     receiptIdentity = fstatSync(receiptFd);
-    record('preparing');
     const before = entry(modules);
     if (before && (before.isSymbolicLink() || !before.isDirectory()))
       throw new Error(
         'node_modules must be a real directory owned by this package root.',
       );
+    // Decide only after obtaining the cooperative guard and checking the root
+    // entry. Never follow a redirected node_modules merely to inspect markers.
+    // A hybrid tree still carries npm's hidden lock: it must retire once too.
+    if (retireLegacy) {
+      const pnpmMarker = before && entry(join(modules, '.modules.yaml'));
+      clean = Boolean(
+        before &&
+          (entry(join(modules, '.package-lock.json')) || !pnpmMarker?.isFile()),
+      );
+    }
+    record('preparing');
     if (clean && before) {
       renameSync(modules, previous);
       retiredIdentity = before;
@@ -158,7 +176,7 @@ export function withDependencyInstallGuard({
     }
     if (clean && entry(modules))
       throw new Error(
-        'Dependency target name was reused before npm admission.',
+        'Dependency target name was reused before package-manager admission.',
       );
     record('installing');
     result = run();

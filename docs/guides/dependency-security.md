@@ -1,21 +1,31 @@
 # Dependency security
 
-Station treats the npm v3 lockfiles at the repository root, `packages/sdk`, and
-`packages/shared` as separate product dependency surfaces. The live policy is:
+Station uses one root `pnpm-lock.yaml` for its workspace. Root, SDK, and Shared
+remain separate advisory views of that graph; they no longer own independent
+npm lockfiles.
 
 ## Lifecycle scripts are reviewed capabilities
 
-`.npmrc` disables npm lifecycle scripts by default. Install dependencies through
-`npm run dependencies:ci` (clean CI/install) or `npm run dependencies:install`
-(developer install), never raw `npm ci`/`npm install` or a lifecycle-enabling
-flag. The repo-owned runner validates the root, SDK, and Shared lock policies
-before its one inert root workspace install. It preflights every installed root
-lifecycle package's exact identity and complete preinstall/install/postinstall
-set before permitting any reviewed command. The SDK and Shared locks are
-separate audited consumer surfaces, not extra installs during root bootstrap.
-It verifies the
-recorded artifact afterward and runs Station's Node contract,
-`patch-package`, and git-hook setup as visible Station-owned steps.
+Use `npm run dependencies:ci` for a frozen install and
+`npm run dependencies:install` when intentionally updating dependencies. The
+managed entry point bootstraps the exact pnpm version in `package.json`, forces
+an inert install, and validates every installed lifecycle package's locked
+identity and complete hook set before running approved commands. Keep npm for
+script execution and publication; do not use raw npm to install this workspace.
+
+`pnpm-workspace.yaml` owns workspace membership, overrides, pinned build
+permissions, and native patches. The retained npm workspace list supports
+existing `npm run --workspace` commands and is checked for parity. The hoisted
+layout preserves existing native consumers. Clone-or-copy imports and a local
+store layout prevent approved native writes from modifying another worktree;
+on filesystems without copy-on-write clones, copying trades disk savings for
+that isolation.
+
+The runner verifies native artifacts, Station's Node contract, and Git hooks.
+The VoltAgent patch is applied by pnpm from `patchedDependencies`; its content
+hash is bound to the lockfile. The lifecycle allowlist still owns the stronger
+exact-hook and artifact proofs; a successful raw pnpm install is not their
+receipt.
 
 `npm run dependencies:check` fails on an unknown, nested-path, version,
 integrity, lifecycle marker, platform, or stale-entry change. `npm run
@@ -29,7 +39,9 @@ not something inferred from Linux or macOS.
 npm run audit:policy
 ```
 
-The command runs full-graph and `npm audit --omit=dev --json` production checks.
+The command obtains one `pnpm audit --json` registry response and derives full
+and production reachability separately from each selected importer in the lock.
+It preserves critical/high blocking and exact production residual policy.
 Run locally it covers all three scopes. In CI, pull-request, push and
 merge-queue runs cover the scopes whose dependency inputs the change touched
 (see below); the scheduled scan always covers all three, which is what makes it
@@ -39,7 +51,7 @@ exception, and for every production moderate or low advisory that is not
 exactly matched by a current residual record. It also fails for malformed,
 expired, duplicate, severity-mismatched, or unused records. Blocking audit
 records must resolve through an acyclic `via` graph to concrete advisory
-identities, and npm's blocking metadata counts must match the records. Audit
+identities, and the normalized blocking metadata counts must match the records. Audit
 subprocess signals and operational exit statuses also fail closed.
 
 Each actual audit attempt retains bounded, structured phase diagnostics under
@@ -110,16 +122,12 @@ does not claim hosted advisory ingestion or GitHub alert state.
 Capture both the complete development graph and production reachability:
 
 ```bash
-npm audit --json
-(cd packages/sdk && npm audit --json --workspaces=false)
-(cd packages/shared && npm audit --json --workspaces=false)
-npm audit --omit=dev --json
+npm run audit:policy
 ```
 
-The full audits are authoritative for CI. `--omit=dev` only explains whether a
-root finding is reachable in production; it never removes a development finding
-from the floor. Registry advisory data changes over time, so use the executable
-report rather than copying a historical total into automation.
+This reports each selected importer's full graph and production closure from
+one registry snapshot. Registry advisory data changes over time; use the
+executable report rather than copying historical totals into automation.
 
 The full graph is never suppressed: its counts remain in the report even when
 development-only moderate or low findings need no production residual record.
@@ -128,25 +136,19 @@ severity waiver.
 
 Prefer the smallest compatible direct update. When a vulnerable transitive
 version remains, add the narrowest compatible `overrides` entry that cannot
-affect an unrelated dependency path. Regenerate every affected lock with the
-repository's supported peer-resolution mode:
+affect an unrelated dependency path. Update overrides in `pnpm-workspace.yaml`, then regenerate the workspace lock:
 
 ```bash
-npm install --package-lock-only
-(cd packages/sdk && npm install --package-lock-only --workspaces=false)
-(cd packages/shared && npm install --package-lock-only --workspaces=false)
+npm run dependencies:lock
+npm run lockfile-sync:gate
 npm run dependencies:ci
 npm run audit:policy
 ```
 
-`@kontourai/station-contracts` is published on npm (0.1.0), but the SDK and
-shared packages resolve it from the in-repo `packages/contracts` workspace, and
-both scoped locks record that local link rather than a registry tarball. When
-rebuilding either independent lock from scratch, temporarily resolve that
-package as `file:../contracts`, run the scoped lock-only install with
-`--workspaces=false`, then restore the published semver declaration and verify
-the lock retains the local link (`"resolved": "../contracts"`, `"link": true`)
-at version 0.1.0.
+The SDK and Shared resolve Station Contracts from the in-repo workspace.
+Keep the public semver declarations for npm publication; pnpm's checked
+workspace links select local source during development. Do not create an
+independent lockfile inside a root-managed workspace.
 Never use `npm audit fix --force`; major dependency migrations require their own
 review and compatibility evidence.
 
@@ -189,24 +191,12 @@ That step audits the scopes whose dependency inputs the change touched, not all
 three every time (#1417). This narrowing applies to `pull_request`,
 `pull_request_target`, `merge_group` and `push` events only -- the scheduled
 `dependency-advisory` workflow runs on `schedule`, so it always audits all
-three. A change to the root lockfile audits `root`; a change
-to `packages/sdk/package.json` audits `sdk`; anything the mapping cannot
-attribute -- a workspace that is not itself an audited scope, any `.npmrc`, the
-exceptions file -- audits all three, as does any classification that fails
-closed. What this trades away is the incidental re-audit of untouched scopes
-that a dependency-touching PR used to perform: an advisory newly disclosed
-against a scope nobody edited is caught by the scheduled
-`dependency-advisory` workflow within a day rather than by the next unrelated
-pull request. It was never caught by a PR that touched no dependency input at
-all, because the step skips entirely in that case.
-
-The delta is small but it is not zero, and it is not only dev dependencies.
-`packages/shared`'s closure is a subset of the root closure, and almost all of
-what `packages/sdk` adds is its dev graph -- but a standalone package lockfile
-can pin a PRODUCTION dependency at a version the root closure does not carry,
-and `npm audit --omit=dev` at the root cannot see that version. When a
-root-scoped pull request is the only audit a change receives, that is the gap
-the daily scan is covering.
+three. A change to the shared pnpm lock, workspace settings, or patches audits all
+three views. A change to `packages/sdk/package.json` selects SDK; an
+unattributable dependency input or failed classifier selects all scopes. The
+scheduled scan always covers all scopes. A single registry request serves all
+selected views, avoiding repeated registry-bound npm processes while retaining
+each importer's exact full and production closure.
 
 ## 2026-07 critical/high disposition
 

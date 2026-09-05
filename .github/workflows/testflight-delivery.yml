@@ -137,8 +137,12 @@ jobs:
           github_tag_object_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.object?.type!=="tag"||!/^[0-9a-f]{40}$/.test(value.object?.sha??"")) process.exit(1); process.stdout.write(value.object.sha)' "$github_ref")
           gh api "repos/$GITHUB_REPOSITORY/git/tags/$github_tag_object_sha" > "$github_tag"
           node scripts/verify-ios-testflight-internal-tag.mjs --source-ref '${{ inputs.source_ref }}' --source-sha '${{ inputs.source_sha }}' --channel '${{ inputs.channel }}' --marketing-version '${{ inputs.marketing_version }}' --bundle-version '${{ inputs.bundle_version }}' --expected-fingerprint "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" --local-tag-object-sha "$local_tag_object_sha" --github-ref "$github_ref" --github-tag "$github_tag" --gpg-status "$gpg_status"
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-apple-ios }
@@ -392,8 +396,12 @@ jobs:
           git fetch --no-tags origin "$source_ref:$source_ref"
           node scripts/verify-ios-testflight-authority.mjs --source-ref "$source_ref" --source-sha '${{ inputs.source_sha }}'
           echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -452,7 +460,12 @@ jobs:
           issuer-id: ${{ env.APPLE_API_ISSUER_ID }}
           api-key-id: ${{ env.APPLE_API_KEY_ID }}
           api-private-key: ${{ env.APPLE_API_PRIVATE_KEY }}
-          wait-for-processing: 'true'
+          # The action mints one App Store Connect token at start and its
+          # own processing wait outlived it (401 after ~12 minutes, Nightly
+          # 33929822729, #1499). The step below is the single processing
+          # wait: it mints a fresh token per request under a 30-minute
+          # deadline.
+          wait-for-processing: 'false'
       - name: Reconcile exactly one VALID provider build
         run: >-
           node scripts/app-store-connect-receipt.mjs wait-for-valid-build
