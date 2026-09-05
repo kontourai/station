@@ -154,8 +154,8 @@ for (const width of [1280, 390]) {
       ).toBe(true);
       const box = await combo.boundingBox();
       expect(box).not.toBeNull();
-      // Chromium can report44px as43.99999237060547 after layout transforms.
-      // Normalize sub-millipixel geometry; the44px interaction target remains.
+      // Chromium can report 44px as 43.99999237060547 after layout transforms.
+      // Normalize sub-millipixel geometry; the 44px interaction target remains.
       expect(
         Math.round((box?.height ?? 0) * 1000) / 1000,
       ).toBeGreaterThanOrEqual(44);

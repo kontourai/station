@@ -1,5 +1,5 @@
 /**
- * Real browser→SDK→HTTP→captured admission→Muse echo→EventStore proof.
+ * Real portable install→browser→SDK→HTTP→captured admission→Muse echo→EventStore proof.
  * The smoke-live runner selects Muse's no-network echo provider only in its
  * attested disposable home. No route interception or live paid model is used.
  */
@@ -45,7 +45,7 @@ test.afterAll(async () => {
   if (workspace) rmSync(workspace, { recursive: true, force: true });
 });
 
-test('installed host default Agent action completes one real echo turn and exposes its durable evidence', async ({
+test('portable installed host default Agent action completes one real echo turn and exposes its durable evidence', async ({
   page,
 }, testInfo) => {
   test.setTimeout(120_000);

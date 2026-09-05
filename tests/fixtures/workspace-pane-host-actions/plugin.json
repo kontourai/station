@@ -1,33 +1,47 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "host-action-browser-proof",
-  "displayName": "Host action proof",
   "version": "1.0.0",
   "description": "Disposable managed-browser host-action proof using Muse echo",
-  "permissions": ["agents.invoke"],
-  "agents": [
-    {
-      "slug": "host-action-echo",
-      "source": "./agents/host-action-echo/agent.json"
-    }
-  ],
-  "workspacePaneHost": {
-    "version": "station.workspace-pane-host-contribution/v1",
-    "agentSelection": {
-      "availableAgents": [
-        { "kind": "own-plugin-agent", "agentId": "host-action-echo" }
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "title": "Host action proof",
+      "permissions": [
+        "agents.invoke"
       ],
-      "defaultAgent": {
-        "kind": "own-plugin-agent",
-        "agentId": "host-action-echo"
+      "agents": [
+        {
+          "slug": "host-action-echo",
+          "source": "./agents/host-action-echo/agent.json"
+        }
+      ],
+      "workspacePaneHost": {
+        "version": "station.workspace-pane-host-contribution/v1",
+        "agentSelection": {
+          "availableAgents": [
+            {
+              "kind": "own-plugin-agent",
+              "agentId": "host-action-echo"
+            }
+          ],
+          "defaultAgent": {
+            "kind": "own-plugin-agent",
+            "agentId": "host-action-echo"
+          }
+        },
+        "actions": [
+          {
+            "id": "echo-proof",
+            "label": "Run host action proof",
+            "presentation": "action",
+            "intent": {
+              "kind": "prompt",
+              "prompt": "HOST_ACTION_BROWSER_1372"
+            }
+          }
+        ]
       }
-    },
-    "actions": [
-      {
-        "id": "echo-proof",
-        "label": "Run host action proof",
-        "presentation": "action",
-        "intent": { "kind": "prompt", "prompt": "HOST_ACTION_BROWSER_1372" }
-      }
-    ]
+    }
   }
 }
