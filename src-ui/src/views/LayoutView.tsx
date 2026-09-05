@@ -12,7 +12,10 @@ import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ErrorState } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
-import { useApiBase } from '../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { LAST_PROJECT_LAYOUT_KEY } from '../contexts/navigation-store';
 import { SDKAdapter } from '../core/SDKAdapter';
@@ -81,7 +84,11 @@ export function LayoutView({
   // forever, so launches stay refused rather than failing open.
   const { data: projectConfig, isSuccess: projectConfigReady } =
     useProjectQuery(projectSlug);
-  const hostActions = useWorkspacePaneHostActionsQuery(projectSlug);
+  const hostAuthority = useHostRequestAuthorityScope();
+  const hostActions = useWorkspacePaneHostActionsQuery(projectSlug, {
+    requestScope: hostAuthority,
+    enabled: Boolean(hostAuthority),
+  });
   const packageId = layoutData?.config?.plugin;
   // The host bar owns declared package-global actions. Keep unknown capability
   // reads inactive instead of briefly activating a stale persisted legacy path.

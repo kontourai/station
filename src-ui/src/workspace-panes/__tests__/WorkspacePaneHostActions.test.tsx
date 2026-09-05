@@ -10,8 +10,9 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   mutateAsync: vi.fn(),
-  setActiveChat: vi.fn(),
-  setDockState: vi.fn(),
+  openConversation: vi.fn(),
+  showSurface: vi.fn(),
+  isCurrent: vi.fn(() => true),
   refetch: vi.fn(),
 }));
 const projection = {
@@ -59,13 +60,27 @@ vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
     mutateAsync: mocks.mutateAsync,
   }),
 }));
-vi.mock('../../contexts/NavigationContext', () => ({
-  useNavigation: () => mocks,
+vi.mock('../../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'owner',
+    isCurrent: mocks.isCurrent,
+  }),
+}));
+vi.mock('../../contexts/open-chats-store', () => ({
+  openChatsStore: { openConversation: mocks.openConversation },
+}));
+vi.mock('../../contexts/useShowSurface', () => ({
+  useShowSurface: () => mocks.showSurface,
 }));
 
 import { WorkspacePaneHostActionsFrame } from '../WorkspacePaneHostActions';
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.isCurrent.mockReturnValue(true);
+  mocks.openConversation.mockResolvedValue(true);
+});
 afterEach(cleanup);
 
 test('one real host bar aggregates multiple pane occupants and routes explicit selected Agent', async () => {
@@ -99,9 +114,18 @@ test('one real host bar aggregates multiple pane occupants and routes explicit s
     actionKey: 'overview-key',
     selectedAgent: { kind: 'own-plugin-agent', agentId: 'alternate' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Open conversation' }));
-  expect(mocks.setActiveChat).toHaveBeenCalledWith('conversation-one');
-  expect(mocks.setDockState).toHaveBeenCalledWith(true);
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Open conversation' })),
+  );
+  expect(mocks.openConversation).toHaveBeenCalledWith(
+    'conversation-one',
+    mocks.isCurrent,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'View result' }));
+  expect(mocks.showSurface).toHaveBeenCalledWith('activity', {
+    session: 'execution-one',
+    focus: 'evidence',
+  });
 });
 
 test('fixed action binding is never replaced by the host dropdown', async () => {
@@ -152,4 +176,60 @@ test('same-frame repeated clicks cannot repeat work and uncertain effects stay b
   ).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh actions' }));
   expect(mocks.mutateAsync).toHaveBeenCalledTimes(1);
+});
+
+test('missing Agent on canonical open falls back to the created Session evidence, never a default Agent', async () => {
+  mocks.mutateAsync.mockResolvedValue({
+    state: 'accepted',
+    conversationId: 'conversation-one',
+    sessionId: 'created-session',
+    turnId: 'turn-one',
+  });
+  mocks.openConversation.mockResolvedValue(false);
+  render(
+    <WorkspacePaneHostActionsFrame projectSlug="one">
+      <div>Pane</div>
+    </WorkspacePaneHostActionsFrame>,
+  );
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Overview' })),
+  );
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Open conversation' })),
+  );
+  expect(mocks.showSurface).toHaveBeenCalledExactlyOnceWith('activity', {
+    session: 'created-session',
+    focus: 'evidence',
+  });
+  expect(mocks.mutateAsync).toHaveBeenCalledTimes(1);
+});
+
+test('late results cannot publish into a replaced Station authority', async () => {
+  let settle!: (value: unknown) => void;
+  mocks.mutateAsync.mockReturnValue(
+    new Promise((resolve) => {
+      settle = resolve;
+    }),
+  );
+  render(
+    <WorkspacePaneHostActionsFrame projectSlug="one">
+      <div>Pane</div>
+    </WorkspacePaneHostActionsFrame>,
+  );
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Overview' })),
+  );
+  mocks.isCurrent.mockReturnValue(false);
+  await act(async () =>
+    settle({
+      state: 'accepted',
+      conversationId: 'foreign-conversation',
+      sessionId: 'foreign-session',
+      turnId: 'foreign-turn',
+    }),
+  );
+  expect(
+    screen.queryByRole('button', { name: 'Open conversation' }),
+  ).toBeNull();
+  expect(mocks.openConversation).not.toHaveBeenCalled();
 });

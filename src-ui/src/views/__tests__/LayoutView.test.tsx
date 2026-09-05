@@ -61,6 +61,11 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('../../contexts/AgentsContext', () => ({ useAgents: () => [] }));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3000' }),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://localhost:3000',
+    authorityKey: 'test',
+    isCurrent: () => true,
+  }),
 }));
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => ({

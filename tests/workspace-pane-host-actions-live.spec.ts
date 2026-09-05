@@ -159,11 +159,21 @@ test('installed host default Agent action completes one real echo turn and expos
     .poll(
       async () =>
         (
-          await page.locator('#chat-dock, #chat-workspace-pane').allInnerTexts()
+          await page
+            .locator(
+              '#chat-dock .message.assistant, #chat-workspace-pane .message.assistant',
+            )
+            .allInnerTexts()
         ).join('\n'),
       { timeout: 20_000 },
     )
     .toMatch(/echo:[\s\S]*HOST_ACTION_BROWSER_1372/);
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'Session record missing.' }),
+  ).toHaveCount(0);
+  await expect(
+    bar.getByRole('button', { name: 'View result', exact: true }),
+  ).toBeVisible();
   const evidenceRoot = join(
     process.cwd(),
     '.kontourai',

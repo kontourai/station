@@ -5,7 +5,12 @@ import type {
   WorkspacePaneHostActionPrepareRequest,
 } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { WORKSPACE_PANE_HOST_ACTION_UNAVAILABLE_REASONS } from '@kontourai/station-contracts/workspace-pane-host-contribution';
-import { getJson, mutateJson, readEnvelopeOrThrow } from './http.js';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  readEnvelopeOrThrow,
+} from './http.js';
 
 function hostPath(apiBase: string, projectSlug: string) {
   return `${apiBase}/api/orchestration/pane-host/${encodeURIComponent(projectSlug)}`;
@@ -14,8 +19,12 @@ function hostPath(apiBase: string, projectSlug: string) {
 export async function getWorkspacePaneHostActions(
   apiBase: string,
   projectSlug: string,
+  options?: ClientRequestOptions,
 ): Promise<WorkspacePaneHostActionCatalog> {
-  const response = await getJson(`${hostPath(apiBase, projectSlug)}/catalog`);
+  const response = await getJson(
+    `${hostPath(apiBase, projectSlug)}/catalog`,
+    options,
+  );
   const data =
     await readEnvelopeOrThrow<WorkspacePaneHostActionCatalog>(response);
   if (
@@ -33,12 +42,13 @@ export async function prepareWorkspacePaneHostAction(
   apiBase: string,
   projectSlug: string,
   request: WorkspacePaneHostActionPrepareRequest,
+  options?: ClientRequestOptions,
 ): Promise<WorkspacePaneHostActionPreparation> {
   const data = await readEnvelopeOrThrow<WorkspacePaneHostActionPreparation>(
     await mutateJson(
       `${hostPath(apiBase, projectSlug)}/prepare`,
       'POST',
-      undefined,
+      options,
       request,
     ),
   );
@@ -59,13 +69,14 @@ export async function executeWorkspacePaneHostAction(
   apiBase: string,
   projectSlug: string,
   ticket: string,
+  options?: ClientRequestOptions,
 ): Promise<WorkspacePaneHostActionExecution> {
   try {
     const data = await readEnvelopeOrThrow<WorkspacePaneHostActionExecution>(
       await mutateJson(
         `${hostPath(apiBase, projectSlug)}/execute`,
         'POST',
-        undefined,
+        options,
         { ticket },
       ),
     );

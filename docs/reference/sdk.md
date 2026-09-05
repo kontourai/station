@@ -1805,3 +1805,11 @@ package id, action id, and opaque installation generation. These coordinates
 survive completion and package removal alongside the existing Session command
 receipts. Public metadata/options cannot forge this reserved field; callers
 receive the existing client-origin and principal attribution as well.
+
+Host action reads and mutations accept the standard `ApiRequestScope`/client
+request options so the preparation and execution stay on the same Station
+and authority. The mutation refreshes canonical Session and conversation
+inventory queries before exposing its result. In Station's host UI, **Open
+conversation** uses canonical resolution and hydration; **View result** stays
+anchored to the execution Session returned by this invocation. A removed Agent
+falls back to read-only evidence, never to another default Agent.

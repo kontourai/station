@@ -10,7 +10,9 @@ import {
 } from '@kontourai/station-sdk/workspace-pane';
 import { type ReactNode, useRef, useState } from 'react';
 import { Button } from '../components/Button';
-import { useNavigation } from '../contexts/NavigationContext';
+import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { openChatsStore } from '../contexts/open-chats-store';
+import { useShowSurface } from '../contexts/useShowSurface';
 import './WorkspacePaneHostActions.css';
 
 const reasons: Record<WorkspacePaneHostActionUnavailableReason, string> = {
@@ -41,7 +43,9 @@ function PackageHostActions({
   projection: WorkspacePaneHostCompositionProjection;
   reason?: WorkspacePaneHostActionUnavailableReason;
 }) {
-  const { setActiveChat, setDockState } = useNavigation();
+  const authority = useHostRequestAuthorityScope();
+  const showSurface = useShowSurface();
+  const [opening, setOpening] = useState(false);
   const declaredDefault =
     'resolution' in projection.agentSelection.defaultAgent
       ? projection.agentSelection.defaultAgent.declaration
@@ -53,7 +57,7 @@ function PackageHostActions({
   const [pendingKey, setPendingKey] = useState<string>();
   // React's disabled render is not synchronous with a click; this latch is.
   const busy = useRef(false);
-  const mutation = useWorkspacePaneHostActionMutation(projectSlug);
+  const mutation = useWorkspacePaneHostActionMutation(projectSlug, authority);
   const selected = projection.agentSelection.availableAgents.find(
     (entry) => agentKey(entry.declaration) === selection,
   );
@@ -63,28 +67,54 @@ function PackageHostActions({
   async function run(
     action: WorkspacePaneHostCompositionProjection['actions'][number],
   ) {
-    if (busy.current || blocked || reason) return;
+    if (busy.current || blocked || reason || !authority?.isCurrent()) return;
     busy.current = true;
     setPendingKey(action.key);
     setResult(undefined);
     try {
-      setResult(
-        await mutation.mutateAsync({
-          pluginId: projection.owner.pluginId,
-          installationGeneration: projection.owner.installationGeneration,
-          actionKey: action.key,
-          ...(!action.agent && selected
-            ? { selectedAgent: selected.declaration }
-            : {}),
-        }),
-      );
+      const outcome = await mutation.mutateAsync({
+        pluginId: projection.owner.pluginId,
+        installationGeneration: projection.owner.installationGeneration,
+        actionKey: action.key,
+        ...(!action.agent && selected
+          ? { selectedAgent: selected.declaration }
+          : {}),
+      });
+      if (authority.isCurrent()) setResult(outcome);
     } catch {
       // Preparation performs no invocation. A transport failure during execute
       // is converted to indeterminate by the SDK and never reaches this catch.
-      setResult({ state: 'unavailable', reason: 'host-unavailable' });
+      if (authority.isCurrent())
+        setResult({ state: 'unavailable', reason: 'host-unavailable' });
     } finally {
       busy.current = false;
       setPendingKey(undefined);
+    }
+  }
+
+  async function openCreatedConversation(
+    created: Extract<WorkspacePaneHostActionExecution, { state: 'accepted' }>,
+  ) {
+    if (opening || !authority?.isCurrent()) return;
+    setOpening(true);
+    try {
+      const opened = await openChatsStore.openConversation(
+        created.conversationId,
+        authority.isCurrent,
+      );
+      if (!opened && authority.isCurrent())
+        showSurface('activity', {
+          session: created.sessionId,
+          focus: 'evidence',
+        });
+    } catch {
+      if (authority.isCurrent())
+        showSurface('activity', {
+          session: created.sessionId,
+          focus: 'evidence',
+        });
+    } finally {
+      setOpening(false);
     }
   }
 
@@ -149,14 +179,26 @@ function PackageHostActions({
           </p>
         ) : null}
         {result?.state === 'accepted' ? (
-          <Button
-            onClick={() => {
-              setActiveChat(result.conversationId);
-              setDockState(true);
-            }}
-          >
-            Open conversation
-          </Button>
+          <>
+            <Button
+              pending={opening}
+              pendingLabel="Opening…"
+              onClick={() => void openCreatedConversation(result)}
+            >
+              Open conversation
+            </Button>
+            <Button
+              onClick={() => {
+                if (authority?.isCurrent())
+                  showSurface('activity', {
+                    session: result.sessionId,
+                    focus: 'evidence',
+                  });
+              }}
+            >
+              View result
+            </Button>
+          </>
         ) : null}
       </div>
     </fieldset>
@@ -169,7 +211,11 @@ export function WorkspacePaneHostActions({
 }: {
   projectSlug: string;
 }) {
-  const query = useWorkspacePaneHostActionsQuery(projectSlug);
+  const authority = useHostRequestAuthorityScope();
+  const query = useWorkspacePaneHostActionsQuery(projectSlug, {
+    requestScope: authority,
+    enabled: Boolean(authority),
+  });
   if (query.isLoading) return <p role="status">Loading workspace actions…</p>;
   if (query.isError)
     return (
@@ -212,9 +258,13 @@ export function WorkspacePaneHostActionsFrame({
   projectSlug: string;
   children: ReactNode;
 }) {
+  const authority = useHostRequestAuthorityScope();
   return (
     <div className="workspace-host-actions__frame">
-      <WorkspacePaneHostActions projectSlug={projectSlug} />
+      <WorkspacePaneHostActions
+        key={`${projectSlug}:${authority?.apiBase}:${authority?.authorityKey}`}
+        projectSlug={projectSlug}
+      />
       <div className="workspace-host-actions__content">{children}</div>
     </div>
   );
