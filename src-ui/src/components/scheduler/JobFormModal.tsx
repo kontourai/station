@@ -31,6 +31,14 @@ import {
   weekdayMorningSchedule,
 } from './scheduleValue';
 
+/**
+ * The one catalog-failure message both Agent fields describe themselves by
+ * (#1536 S1). Named here so the element and every reference to it move
+ * together — a hardcoded id in the picker is how the monitor branch ended up
+ * pointing at something that was not rendered.
+ */
+const AGENT_CATALOG_ERROR_ID = 'schedule-agent-catalog-error';
+
 export function JobFormModal({
   job,
   prefill,
@@ -151,11 +159,16 @@ export function JobFormModal({
   // preview and the field label both read it, so what the form SAYS and what it
   // will SUBMIT cannot disagree.
   //
-  // #1536 R4: it follows the expression the form CURRENTLY holds, not the shape
-  // it opened with. Switching an `every`/`at` job to the Calendar tab mints a
-  // cron the form did not have before, and reading `initialSchedule` alone left
-  // that expression zoneless — so a job the reader typed as a local hour would
-  // have been saved, previewed and labelled as UTC.
+  // #1536 R4/S2, stated as the three cases it actually decides — it is keyed on
+  // what the form OPENED with, not on the tab currently selected:
+  //   - opened on a zoned cron        → that cron keeps its own zone;
+  //   - opened on a legacy UNZONED cron → stays UTC, because changing an
+  //     existing job's meaning is not this field's business;
+  //   - opened on anything else (`every`/`at`, or a new job) → the reader's
+  //     zone, so a cron the Calendar tab mints is not silently zoneless. That
+  //     last case is the fix: reading `initialSchedule.timezone` alone left such
+  //     an expression with no zone, so an hour the reader typed as local was
+  //     saved, previewed and labelled as UTC.
   const cronTimezone =
     initialSchedule.kind === 'cron'
       ? initialSchedule.timezone
@@ -417,41 +430,41 @@ export function JobFormModal({
             )}
           </label>
         )}
+        {/* #1536 S1: the catalog READ's state is one fact about one catalog, so
+            it is stated once — above whichever Agent field this form is
+            showing. It used to live inside the non-monitor branch only, which
+            left a monitor job with no account of a failed read at all AND a
+            trigger describing itself by an id that was not on the page.
+            The loading vocabulary names the wait in the skeleton's `label`; a
+            new sentence is the eleven-treatments problem SHELL-13 removed, and
+            `check-prepush-static-gates` refuses it. */}
+        {!agentsSettled && <SkeletonList count={1} label="Loading agents" />}
+        {agentsFailed && (
+          <span className="schedule__field-error" id={AGENT_CATALOG_ERROR_ID}>
+            Station could not load the Agent catalog.{' '}
+            {/* #1536 D7: a retry that looks idle while it is in flight invites a
+                second click at the one moment a second request helps least. */}
+            <button
+              type="button"
+              className="schedule__field-retry"
+              onClick={retryAgents}
+              disabled={agentsRetrying}
+            >
+              {agentsRetrying ? 'Trying…' : 'Try again'}
+            </button>
+          </span>
+        )}
         {form.monitorType === 'none' && (
           <div className="schedule__field">
             <span className="schedule__field-label">Agent</span>
             <AgentPicker
               value={form.agent}
+              catalogErrorId={agentsFailed ? AGENT_CATALOG_ERROR_ID : undefined}
               onChange={(v) => {
                 agentPickedRef.current = true;
                 setForm((f) => ({ ...f, agent: v }));
               }}
             />
-            {/* The shared loading vocabulary names the wait in the skeleton's
-                `label`; a new sentence here is the eleven-treatments problem
-                SHELL-13 removed, and `check-prepush-static-gates` refuses it. */}
-            {!agentsSettled && (
-              <SkeletonList count={1} label="Loading agents" />
-            )}
-            {agentsFailed && (
-              <span
-                className="schedule__field-error"
-                id="schedule-agent-catalog-error"
-              >
-                Station could not load the Agent catalog.{' '}
-                {/* #1536 D7: a retry that looks idle while it is in flight
-                    invites a second click at the one moment a second request
-                    helps least. */}
-                <button
-                  type="button"
-                  className="schedule__field-retry"
-                  onClick={retryAgents}
-                  disabled={agentsRetrying}
-                >
-                  {agentsRetrying ? 'Trying…' : 'Try again'}
-                </button>
-              </span>
-            )}
             {agentRunnabilityKnown && !jobAgentRunnability.runnable && (
               <span className="schedule__field-error">
                 {jobAgentRunnability.reason}
@@ -479,6 +492,9 @@ export function JobFormModal({
               <span className="schedule__field-label">Monitor Agent</span>
               <AgentPicker
                 value={form.monitorAgentId}
+                catalogErrorId={
+                  agentsFailed ? AGENT_CATALOG_ERROR_ID : undefined
+                }
                 onChange={(value) =>
                   setForm((current) => ({ ...current, monitorAgentId: value }))
                 }

@@ -216,9 +216,30 @@ describe('scheduler Agent options', () => {
     expect(
       screen.queryByRole('button', { name: 'Agent unavailable' }),
     ).toBeNull();
-    // It points at that error rather than restating it, so there is one account.
-    expect(trigger.getAttribute('aria-describedby')).toBe(
-      'schedule-agent-catalog-error',
+    // #1536 S1: it points at the id its HOST gave it — hardcoding one is how the
+    // monitor branch came to name an element that was not rendered. With no id
+    // supplied it describes nothing rather than dangling.
+    expect(trigger.getAttribute('aria-describedby')).toBeNull();
+  });
+
+  test('describes itself by the id its host supplies, and nothing otherwise', () => {
+    catalogRead.loaded = false;
+    catalogRead.settled = true;
+    catalogRead.failed = true;
+    useAgents.mockReturnValue([]);
+
+    const { unmount } = render(
+      <AgentPicker
+        value="station"
+        onChange={vi.fn()}
+        catalogErrorId="host-owned-error"
+      />,
     );
+    expect(
+      screen
+        .getByRole('button', { name: 'Agent catalog unavailable' })
+        .getAttribute('aria-describedby'),
+    ).toBe('host-owned-error');
+    unmount();
   });
 });

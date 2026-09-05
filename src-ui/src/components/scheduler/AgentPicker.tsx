@@ -17,9 +17,19 @@ import {
 export function AgentPicker({
   value,
   onChange,
+  catalogErrorId,
 }: {
   value: string;
   onChange: (slug: string) => void;
+  /**
+   * #1536 S1: the id of the host's catalog-failure message, when the host is
+   * showing one. Passed in rather than hardcoded — the previous version named
+   * an element that exists only beside the non-monitor Agent field, so a
+   * monitor job's trigger described itself by an id that was not on the page.
+   * A dangling `aria-describedby` announces nothing, which is worse than
+   * silence because it reads as covered.
+   */
+  catalogErrorId?: string;
 }) {
   const agents = useAgents();
   const { loaded: agentsLoaded, settled: agentsSettled } =
@@ -105,10 +115,10 @@ export function AgentPicker({
         disabled
         // #1536 R5: "Agent unavailable" overclaimed — no Agent has been found
         // unavailable; the CATALOG did not load, which is a different fact and
-        // the one the field's error explains. Pointing at that error rather
+        // the one the host's message explains. Pointing at that message rather
         // than restating it keeps one account of the failure.
         aria-label="Agent catalog unavailable"
-        aria-describedby="schedule-agent-catalog-error"
+        {...(catalogErrorId ? { 'aria-describedby': catalogErrorId } : {})}
       />
     );
   }

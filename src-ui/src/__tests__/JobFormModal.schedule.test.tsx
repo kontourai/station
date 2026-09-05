@@ -558,3 +558,93 @@ describe('the Calendar field states the zone it will be evaluated in', () => {
     expect(label.textContent).not.toMatch(/\bM[SD]T\b/);
   });
 });
+
+/**
+ * #1536 S1 — the catalog-failure message and the reference to it, for BOTH Agent
+ * fields. It used to live inside the non-monitor branch only, so a monitor job
+ * with a failed read got no account of it at all and its trigger described
+ * itself by an id that was not on the page.
+ */
+describe('a failed Agent catalog is reported once, for whichever field is shown', () => {
+  const monitorJob = {
+    name: 'pr-monitor',
+    provider: 'built-in',
+    cron: '0 9 * * *',
+    prompt: 'Observe',
+    agent: 'station',
+    enabled: true,
+    monitor: {
+      kind: 'github-pull-request' as const,
+      objective: 'review-ready' as const,
+      target: 'https://github.com/kontourai/station/pull/4210',
+      projectId: 'station',
+      agentId: 'station',
+      budget: { maxTurns: 2, maxTokens: 200, maxRuntimeMs: 300 },
+    },
+  };
+
+  function failedCatalog() {
+    agentCatalog.agents = [];
+    agentCatalog.read = {
+      loaded: false,
+      settled: true,
+      failed: true,
+      retrying: false,
+    };
+    agentCatalog.useRealPicker = true;
+  }
+
+  test('the MONITOR field gets the message, and its trigger points at it', () => {
+    failedCatalog();
+    render(<JobFormModal job={monitorJob} onClose={vi.fn()} />);
+
+    const error = screen.getByText(/Station could not load the Agent catalog/);
+    expect(error.getAttribute('id')).toBe('schedule-agent-catalog-error');
+    // Both sides of the reference, in the branch that had neither.
+    const trigger = screen.getByRole('button', {
+      name: 'Agent catalog unavailable',
+    });
+    expect(trigger.getAttribute('aria-describedby')).toBe(
+      'schedule-agent-catalog-error',
+    );
+    expect(
+      document.getElementById(
+        trigger.getAttribute('aria-describedby') as string,
+      ),
+      'aria-describedby names an element that is not on the page',
+    ).toBe(error);
+  });
+
+  test('states the failure ONCE, not once per Agent field', () => {
+    failedCatalog();
+    render(<JobFormModal job={monitorJob} onClose={vi.fn()} />);
+
+    expect(
+      screen.getAllByText(/Station could not load the Agent catalog/),
+    ).toHaveLength(1);
+  });
+
+  test('describes nothing when the catalog did not fail', () => {
+    // A description that survives its subject is the dangling reference facing
+    // the other way.
+    agentCatalog.agents = [];
+    agentCatalog.read = {
+      loaded: false,
+      settled: false,
+      failed: false,
+      retrying: false,
+    };
+    agentCatalog.useRealPicker = true;
+
+    render(<JobFormModal job={monitorJob} onClose={vi.fn()} />);
+
+    expect(
+      screen.queryByText(/Station could not load the Agent catalog/),
+    ).toBeNull();
+    expect(
+      document.querySelector(
+        '[aria-describedby="schedule-agent-catalog-error"]',
+      ),
+    ).toBeNull();
+  });
+});
