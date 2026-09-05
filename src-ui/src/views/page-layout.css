@@ -546,6 +546,11 @@
   margin-bottom: 1.5rem;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  /* UX audit 2026-09-05 D1: a tab strip is chrome, never a flex-shrink
+     candidate. Inside a `.pane-host` column (Connections) the split pane's
+     `flex: 1 1 auto` squeezed this strip to 11px and the tabs rendered as
+     clipped half-glyphs under the panel below. */
+  flex-shrink: 0;
 }
 
 .page__tab {
