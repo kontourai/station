@@ -49,8 +49,7 @@ export function runCloudCommand(args: string[]): void | Promise<void> {
   for (const flag of Object.keys(flags))
     if (!allowed.has(flag))
       throw new Error(`Unsupported cloud ${action} option: --${flag}`);
-  if (action === 'import-project')
-    return runCloudProjectImport(parsed);
+  if (action === 'import-project') return runCloudProjectImport(parsed);
   const required = (key: string) => {
     const value = flags[key];
     if (typeof value !== 'string' || !value.trim())
