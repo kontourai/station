@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test } from 'vitest';
 import { EventStore } from '../event-store.js';
@@ -40,6 +41,44 @@ describe('SessionTurnBoundaryAuthority', () => {
     roots.push(root);
     return join(root, 'orchestration.sqlite');
   }
+
+  test('upgrades a legacy invocation table without losing its unresolved record', () => {
+    const path = databasePath();
+    const legacy = new DatabaseSync(path);
+    legacy.exec(`CREATE TABLE orchestration_turn_boundaries (
+      boundary_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, state TEXT NOT NULL,
+      provider_turn_id TEXT, owner_id TEXT NOT NULL, owner_pid INTEGER NOT NULL,
+      owner_birth TEXT, owner_identity_kind TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ); INSERT INTO orchestration_turn_boundaries VALUES (
+      'legacy-boundary','legacy-session','indeterminate',NULL,'legacy-owner',2147483647,
+      NULL,'unverified','2026-09-05T00:00:00.000Z','2026-09-05T00:00:00.000Z'
+    );`);
+    legacy.close();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const store = new EventStore(path);
+      try {
+        expect(
+          store
+            .sessionTurnBoundaryAuthority()
+            .hasPossibleEffect('legacy-session'),
+        ).toEqual({ kind: 'available', active: true });
+        const inspection = new DatabaseSync(path, { readOnly: true });
+        try {
+          expect(
+            inspection
+              .prepare(
+                'SELECT purpose FROM orchestration_turn_boundaries WHERE boundary_id=?',
+              )
+              .get('legacy-boundary'),
+          ).toEqual({ purpose: 'turn' });
+        } finally {
+          inspection.close();
+        }
+      } finally {
+        expect(store.close()).toEqual({ kind: 'closed' });
+      }
+    }
+  });
 
   test.each(['sqlite', 'memory'] as const)(
     'dispatch completion remains owned after provider start and terminal evidence (%s)',
