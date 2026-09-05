@@ -34,6 +34,21 @@ export function isApprovalLivePending(item: ApprovalAttentionItem): boolean {
 }
 
 /**
+ * Whether this item can be ACKNOWLEDGED away (#1536 D8, review M1).
+ *
+ * `setup-incomplete` cannot: it is a standing notice, still true after the
+ * dismissal, and the server refuses the acknowledgement for that reason
+ * (`STANDING_ATTENTION_KINDS` in `attention-projection.ts`). Both the per-row
+ * dismiss and "Dismiss all" read this one predicate — without it, dismiss-all
+ * posted an acknowledgement the server now refuses, and before the refusal it
+ * cleared the only row saying why chat could not start until the next poll
+ * happened to move the row's timestamp.
+ */
+export function isAcknowledgeableAttentionItem(item: AttentionItem): boolean {
+  return item.kind !== 'setup-incomplete';
+}
+
+/**
  * archive#3214: the client-side mirror of the ONE predicate that decides what
  * "pending" means — `AttentionProjectionService.list`'s
  * `items.filter((item) => !item.acknowledgedAt)`

@@ -26,6 +26,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import {
   attentionKindLabel,
+  isAcknowledgeableAttentionItem,
   isApprovalLivePending,
   sessionFailedIdentity,
   sessionFailureCause,
@@ -82,11 +83,11 @@ export function AttentionCard({
         </time>
       </header>
       <AttentionAction item={item} />
-      {/* #1536 D8: `setup-incomplete` is a live precondition, not an event.
-          Acknowledging the only row that says why chat cannot start would
-          leave the inbox claiming nothing needs you while it still does; it
-          clears itself the moment a connection resolves. */}
-      {item.kind !== 'approval' && item.kind !== 'setup-incomplete' && (
+      {/* #1536 D8: a standing notice is not dismissible — acknowledging the
+          only row that says why chat cannot start would leave the inbox
+          claiming nothing needs you while it still does. One predicate, shared
+          with "Dismiss all" and with the server's own refusal. */}
+      {item.kind !== 'approval' && isAcknowledgeableAttentionItem(item) && (
         <DismissAttentionItem item={item} />
       )}
     </article>

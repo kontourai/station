@@ -81,6 +81,13 @@ export class AttentionProjectionService {
     { requests: Map<string, RequestOpenedEvent>; expiresAt: number }
   >();
 
+  /**
+   * When the CURRENT setup requirement was first observed (#1536 review M2).
+   * Reset when the requirement resolves or changes, so "since when" is a fact
+   * about this requirement and not about this process's uptime.
+   */
+  private setupRequirementFirstObserved?: { identity: string; at: string };
+
   constructor(
     private readonly notificationService: Pick<NotificationService, 'list'>,
     private readonly orchestrationService: Pick<
@@ -339,6 +346,9 @@ export class AttentionProjectionService {
     const { items } = await this.list(readAuthority);
     const item = items.find((candidate) => candidate.id === itemId);
     if (!item) return false;
+    // A standing notice is still true after the dismissal, so there is nothing
+    // an acknowledgement could honestly record — see STANDING_ATTENTION_KINDS.
+    if (STANDING_ATTENTION_KINDS.has(item.kind)) return false;
     this.acknowledgementStore.acknowledge({
       userId: readAuthority.userId,
       conversationId: item.id,
@@ -781,10 +791,22 @@ export class AttentionProjectionService {
     if (!this.readStationSetupRequirement) return [];
     if (isHostedSessionReadAuthority(authority)) return [];
     const requirement = await this.readStationSetupRequirement();
-    if (!requirement) return [];
-    // The observation time, because the requirement is continuously observed
-    // and carries no event of its own; it stops projecting when it resolves.
-    const observedAt = new Date().toISOString();
+    if (!requirement) {
+      this.setupRequirementFirstObserved = undefined;
+      return [];
+    }
+    // Review M2: SINCE WHEN this requirement has been true, not when the
+    // projection last looked. A read-time stamp moved on every poll, which
+    // both defeated acknowledgement versioning and — before the ordering band
+    // above — floated the row over every live approval forever.
+    const identity = `${requirement.agentSlug}:${requirement.reason}`;
+    if (this.setupRequirementFirstObserved?.identity !== identity) {
+      this.setupRequirementFirstObserved = {
+        identity,
+        at: new Date().toISOString(),
+      };
+    }
+    const observedAt = this.setupRequirementFirstObserved.at;
     return [
       {
         id: `setup-incomplete:model-connection:${requirement.agentSlug}`,
@@ -1308,11 +1330,36 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
 }
 
+/**
+ * Kinds that are STANDING notices rather than per-event facts (#1536 D8,
+ * review M1/M2): continuously true until a configuration changes, with no
+ * event of their own. Two consequences follow from that one property, and
+ * declaring it once is what keeps them from drifting apart:
+ *
+ *  - a standing notice sorts BELOW live per-event attention, because its
+ *    observation time says only when the projection last looked. Ordering it
+ *    by recency put "Station cannot run yet" above every live approval on
+ *    every read — an artefact of the timestamp, not a priority anyone chose.
+ *  - a standing notice cannot be acknowledged, because it is still true after
+ *    the dismissal. `acknowledge` refuses it (below) and the surfaces offer no
+ *    dismiss for it; without the refusal, "Dismiss all" acked it and the row
+ *    only came back because its `updatedAt` moved on the next read.
+ */
+const STANDING_ATTENTION_KINDS: ReadonlySet<AttentionItem['kind']> = new Set([
+  'setup-incomplete',
+]);
+
+/** 0 = live, per-event attention; 1 = a standing notice. */
+function attentionOrderBand(item: AttentionItem): number {
+  return STANDING_ATTENTION_KINDS.has(item.kind) ? 1 : 0;
+}
+
 function compareAttentionItems(
   left: AttentionItem,
   right: AttentionItem,
 ): number {
   return (
+    attentionOrderBand(left) - attentionOrderBand(right) ||
     Date.parse(right.updatedAt) - Date.parse(left.updatedAt) ||
     left.id.localeCompare(right.id)
   );
