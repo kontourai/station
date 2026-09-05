@@ -173,8 +173,11 @@ manifest and consent owners. Managed installation uses the existing build,
 Agent synchronization, provider publication, permission, and rollback flow.
 Agent sources are validated before prior definitions are removed. Uninstall
 withdraws admission and removes host contributions while retaining package code
-and data. Activation rollback selects the recorded prior materialization with a
+and data. Transaction compensation selects the recorded prior materialization with a
 fresh admission generation; it does not undo writes made by plugin code.
+Compensation of a failed explicit reset restores its prior data-scope selection.
+This internal recovery intent is distinct from ordinary user-facing code rollback,
+which would keep the currently selected data scope and is not provided by it.
 
 The journal additionally records an opaque acquisition-origin continuity token.
 The local acquisition owner scopes it to the host, canonical source, and registry

@@ -213,6 +213,7 @@ test('separate-process async service uses opaque CAS revisions, retains old data
     installation: 'fixture',
     expected: null,
     artifact: { digest: f.digest() },
+    origin: 'a'.repeat(64),
   });
   const prior = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
   writeFileSync(join(prior.dataRoot!, 'state'), 'must survive');
@@ -221,6 +222,7 @@ test('separate-process async service uses opaque CAS revisions, retains old data
     installation: 'fixture',
     expected: installed.selected,
     artifact: { digest: f.digest() },
+    origin: 'a'.repeat(64),
   });
   expect(update.data).toBe('preserved');
   expect(resolveInstalledPluginRoot(f.plugins, 'fixture')!.dataRoot).toBe(
@@ -230,6 +232,7 @@ test('separate-process async service uses opaque CAS revisions, retains old data
     installation: 'fixture',
     expected: update.selected,
     artifact: { digest: f.digest() },
+    origin: 'a'.repeat(64),
     data: 'retain-and-reset',
   });
   expect(replacement.selected.generation).not.toBe(
@@ -273,7 +276,7 @@ test('the actual install route injects a transport-backed host that receives art
       }
       return {
         inspect: (id) => request('inspect', id),
-        restore: (input) => request('restore', input),
+        compensate: (input) => request('compensate', input),
         install: (input) => request('install', input),
         withdraw: (revision) => request('withdraw', revision),
         reconcile: (id) => request('reconcile', id),
@@ -527,6 +530,7 @@ test.each(['before', 'after'] as const)(
         installation: 'fixture',
         expected: null,
         artifact: { digest: f.digest() },
+        origin: 'a'.repeat(64),
       }),
     ).rejects.toMatchObject({ code: 'plugin-projection-pending' });
     const recorded = await f.service().inspect('fixture');
@@ -564,6 +568,7 @@ test.each(['before', 'after'] as const)(
         installation: 'fixture',
         expected: recorded,
         artifact: { digest: f.digest() },
+        origin: 'a'.repeat(64),
       }),
     ).resolves.toMatchObject({ data: 'preserved' });
   },
@@ -575,6 +580,7 @@ test('a delayed projection cannot replace a newer selected materialization', asy
     installation: 'fixture',
     expected: null,
     artifact: { digest: f.digest() },
+    origin: 'a'.repeat(64),
   });
   const staleMaterializer = localPluginMaterializations(f.plugins, f.source);
   const captured = await staleMaterializer.current('fixture');
@@ -582,6 +588,7 @@ test('a delayed projection cannot replace a newer selected materialization', asy
     installation: 'fixture',
     expected: first.selected,
     artifact: { digest: f.digest() },
+    origin: 'a'.repeat(64),
   });
   await expect(
     staleMaterializer.select('fixture', captured, captured),
@@ -655,6 +662,7 @@ test('more than 256 sequential updates use paged durable history while retaining
     installation: 'fixture',
     expected: null,
     artifact: { digest: f.digest() },
+    origin: 'a'.repeat(64),
   });
   const first = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
   for (let index = 0; index < 260; index++)
@@ -662,6 +670,7 @@ test('more than 256 sequential updates use paged durable history while retaining
       installation: 'fixture',
       expected: outcome.selected,
       artifact: { digest: f.digest() },
+      origin: 'a'.repeat(64),
     });
   expect(resolveInstalledPluginRoot(f.plugins, 'fixture')!.dataScope).toBe(
     first.dataScope,
@@ -687,6 +696,7 @@ test('failed state replacement restores the prior pointer without copying a muta
     installation: 'fixture',
     expected: null,
     artifact: { digest: f.digest() },
+    origin: 'a'.repeat(64),
   });
   const prior = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
   const state = localPluginInstallationState(f.journal);
@@ -715,6 +725,7 @@ test('failed state replacement restores the prior pointer without copying a muta
       installation: 'fixture',
       expected: first.selected,
       artifact: { digest: f.digest() },
+      origin: 'a'.repeat(64),
       data: 'retain-and-reset',
     }),
   ).rejects.toThrow('commit failed');
@@ -746,6 +757,7 @@ test.runIf(process.platform !== 'win32')(
       installation: 'fixture',
       expected: null,
       artifact: { digest: f.digest() },
+      origin: 'a'.repeat(64),
     });
     const root = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
     rmSync(root.dataRoot!, { recursive: true });
@@ -775,7 +787,7 @@ test('retained selection rollback mints fresh admission, preserves data, and ref
   });
   const restored = await f
     .service()
-    .restore({ expected: second.selected, retained: first.selected });
+    .compensate({ expected: second.selected, retained: first.selected });
   expect(restored.generation).not.toBe(first.selected.generation);
   expect(restored.generation).not.toBe(second.selected.generation);
   expect(restored.materialization).toBe(first.selected.materialization);
@@ -784,7 +796,7 @@ test('retained selection rollback mints fresh admission, preserves data, and ref
     'user state',
   );
   await expect(
-    f.service().restore({
+    f.service().compensate({
       expected: restored,
       retained: { ...first.selected, origin: 'b'.repeat(64) },
     }),
@@ -807,9 +819,9 @@ test('acquisition origin changes or omission cannot inherit a provenance-bound d
         installation: 'fixture',
         expected: first.selected,
         artifact: { digest: f.digest() },
-        origin: replacement,
+        origin: replacement as string,
       }),
-    ).rejects.toThrow(/migration is required/);
+    ).rejects.toThrow(/migration is required|origin is required/);
   }
   expect(await f.service().inspect('fixture')).toEqual(first.selected);
 });
@@ -941,4 +953,43 @@ test('managed activation failure restores prior code and Agent ownership without
   expect(readFileSync(join(original.dataRoot!, 'state'), 'utf8')).toBe(
     'retained',
   );
+});
+
+test('the generic service refuses missing acquisition provenance on fresh and historical installations', async () => {
+  const f = fixture();
+  await expect(
+    f.service().install({
+      installation: 'fixture',
+      expected: null,
+      artifact: { digest: f.digest() },
+      origin: undefined as unknown as string,
+    }),
+  ).rejects.toThrow(/origin is required/);
+  const data = await localPluginDataScopes(f.plugins).prepare(
+    'fixture',
+    null,
+    'preserve',
+  );
+  const materializer = localPluginMaterializations(f.plugins, f.source);
+  const materialization = await materializer.prepare(
+    'fixture',
+    { digest: f.digest() },
+    data,
+  );
+  const unknown = await localPluginInstallationState(f.journal).create(
+    'fixture',
+    materialization,
+  );
+  await materializer.select('fixture', materialization, null);
+  await expect(
+    f
+      .service()
+      .install({
+        installation: 'fixture',
+        expected: unknown,
+        artifact: { digest: f.digest() },
+        origin: 'a'.repeat(64),
+      }),
+  ).rejects.toThrow(/origin is unknown/);
+  expect(await f.service().inspect('fixture')).toEqual(unknown);
 });

@@ -2683,7 +2683,7 @@ export async function installPluginFromSource(
           try {
             if (isAgentPlugin) {
               if (managedLifecycle && priorInstallation) {
-                await installationService!.restore({
+                await installationService!.compensate({
                   expected: managedLifecycle.selected,
                   retained: priorInstallation,
                 });
@@ -3006,7 +3006,7 @@ async function uninstallPluginUnderPublication(
         if (managed) {
           const observed = await installationService!.inspect(pluginName);
           if (observed?.generation !== priorInstallation!.generation)
-            await installationService!.restore({
+            await installationService!.compensate({
               expected: observed,
               retained: priorInstallation!,
             });

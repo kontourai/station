@@ -254,7 +254,7 @@ export function createLocalPluginInstallationHost(
       if (!artifact || source) return ordinary;
       return {
         inspect: (id) => ordinary.inspect(id),
-        restore: (input) => ordinary.restore(input),
+        compensate: (input) => ordinary.compensate(input),
         withdraw: (revision) => ordinary.withdraw(revision),
         reconcile: (id) => ordinary.reconcile(id),
         async install(input) {

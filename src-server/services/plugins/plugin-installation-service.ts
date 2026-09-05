@@ -27,7 +27,7 @@ export interface PluginInstallationHost {
   ): Promise<
     Pick<
       PluginInstallationService,
-      'inspect' | 'install' | 'withdraw' | 'reconcile' | 'restore'
+      'inspect' | 'install' | 'withdraw' | 'reconcile' | 'compensate'
     >
   >;
   reconcile(): Promise<{ status: 'applied' | 'pending'; pending: string[] }>;
@@ -144,8 +144,16 @@ export class PluginInstallationService {
     expected: PluginInstallationRevision | null;
     artifact: PluginArtifactReference;
     data?: 'preserve' | 'retain-and-reset';
-    origin?: string;
+    origin: string;
   }) {
+    if (!/^[a-f0-9]{64}$/.test(input.origin))
+      throw new Error(
+        'Plugin acquisition origin is required; existing code and data are retained.',
+      );
+    if (input.expected && !input.expected.origin)
+      throw new Error(
+        'Plugin acquisition origin is unknown; reviewed migration is required. Existing code and data are retained.',
+      );
     await this.reconcile(input.installation);
     if (!same(await this.state.current(input.installation), input.expected))
       throw new PluginInstallationConflict();
@@ -231,9 +239,12 @@ export class PluginInstallationService {
       throw error;
     }
   }
-  /** Select retained code and its original data scope under a NEW admission
-   * generation. This changes routing only; it never reverses plugin data effects. */
-  async restore(input: {
+  /** Compensate an owned activation/removal transaction by restoring its prior
+   * selection under NEW admission. The caller holds the same configuration
+   * mutation. This is NOT user-facing code rollback: compensation of a failed
+   * explicit reset also restores that transaction's prior data-scope selection.
+   * Neither operation reverses writes made by plugin code. */
+  async compensate(input: {
     expected: PluginInstallationRevision | null;
     retained: PluginInstallationRevision;
   }): Promise<PluginInstallationRevision> {
