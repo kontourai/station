@@ -4,6 +4,7 @@ on:
   workflow_run:
     # Self-exclusion is by omission: watching this workflow would recurse.
     workflows:
+      - Nightly
       - Container smoke
       - Windows Verification
       - Secret Scan
@@ -123,7 +124,18 @@ jobs:
             // both jobs).
             const hasSuccessfulJob = jobs.some((job) => job.conclusion === 'success');
             const hasSkippedJob = jobs.some((job) => job.conclusion === 'skipped');
-            if (!hasSuccessfulJob || hasSkippedJob) return;
+            if (workflowName === 'Nightly') {
+              // Recovery and the unused half of the reusable iOS workflow
+              // are intentionally skipped even in a completed Nightly.
+              // Require the terminal delivery jobs instead of treating those
+              // expected skips as missing delivery evidence.
+              const requiredJobs = [
+                '3 · Publish native cohort / Record ledger and markers',
+                '3 · Publish CLI to npm nightly',
+                '3 · Stage portable fleet evidence / Admit portable bytes',
+              ];
+              if (!requiredJobs.every((name) => jobs.some((job) => job.name === name && job.conclusion === 'success'))) return;
+            } else if (!hasSuccessfulJob || hasSkippedJob) return;
             const issues = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,

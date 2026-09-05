@@ -239,6 +239,7 @@ describe('CI verification workflow contracts', () => {
       | { on?: { workflow_run?: { workflows?: unknown } } }
       | undefined;
     const intendedTargetFiles = [
+      '.github/workflows/nightly.yml',
       '.github/workflows/container-smoke.yml',
       '.github/workflows/windows-verification.yml',
       '.github/workflows/secret-scan.yml',
@@ -318,6 +319,64 @@ describe('CI verification workflow contracts', () => {
     expect(successJob).toContain(
       'if (!hasSuccessfulJob || hasSkippedJob) return;',
     );
+  });
+
+  it('closes Nightly health only after terminal deliveries, despite expected recovery skips', async () => {
+    const document = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/main-health.yml',
+    )?.document as {
+      jobs: Record<string, { steps: { with: { script: string } }[] }>;
+    };
+    const script = document.jobs['close-after-success'].steps[0].with.script;
+    const run = new (Object.getPrototypeOf(async () => {}).constructor)(
+      'github',
+      'context',
+      'process',
+      script,
+    );
+    const requiredNames = [
+      '3 · Publish native cohort / Record ledger and markers',
+      '3 · Publish CLI to npm nightly',
+      '3 · Stage portable fleet evidence / Admit portable bytes',
+    ];
+    for (const missingTerminal of [false, true]) {
+      const update = vi.fn();
+      const jobs = requiredNames.map((name, index) => ({
+        name,
+        conclusion: missingTerminal && index === 0 ? 'skipped' : 'success',
+      }));
+      jobs.push({
+        name: 'Recovery lock (owner must reconcile)',
+        conclusion: 'skipped',
+      });
+      const listJobs = vi.fn();
+      const github = {
+        rest: {
+          actions: { listJobsForWorkflowRun: listJobs },
+          issues: { listForRepo: vi.fn(), createComment: vi.fn(), update },
+        },
+        paginate: vi.fn(async (method) =>
+          method === listJobs
+            ? jobs
+            : [{ number: 1, title: 'Main pipeline red: Nightly' }],
+        ),
+      };
+      await run(
+        github,
+        {
+          repo: { owner: 'kontourai', repo: 'station' },
+          payload: { workflow_run: { id: 123 } },
+        },
+        {
+          env: {
+            WORKFLOW_NAME: 'Nightly',
+            RUN_URL: 'https://example.test/run/123',
+            HEAD_SHA: 'a'.repeat(40),
+          },
+        },
+      );
+      expect(update).toHaveBeenCalledTimes(missingTerminal ? 0 : 1);
+    }
   });
 
   it('classifies the complete push diff before entering independent heavy concurrency groups', () => {

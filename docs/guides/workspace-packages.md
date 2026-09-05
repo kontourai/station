@@ -2,8 +2,9 @@
 
 Station can create an encrypted copy of a paused Git checkout and restore it
 into a fresh directory. The same commands apply to a company's own cloud host,
-a development machine, or an operator-managed environment. They require no cloud
-provider adapter or Station server connection.
+a development machine, or an operator-managed environment. Package-only commands require no cloud
+provider adapter or Station server connection; Project registration uses an
+already authenticated target.
 
 This is a workspace copy, not a complete Station setup migration. The unpack command does not
 register a Project; the optional combined command below does. Neither installs
@@ -169,7 +170,7 @@ unrelated Project. A successful create alone does not verify filesystem access,
 provider enrollment, membership, or agent readiness. Read the restored files
 through the target's normal workspace UI/API and verify Git state as well.
 
-For rollback, continue using the unchanged source. A failed import cleans up its
+For rollback, continue using the unchanged source. A failed unpack cleans up its
 new destination when still owned by that operation. A process or machine crash
 can leave a partial destination: inspect it and choose a new path for retry.
 Successful output is retained if a later filesystem durability operation fails;
@@ -235,6 +236,7 @@ The container smoke journey (`scripts/container-smoke.sh` and
 persistent storage as the runtime user, registers it through the existing
 Project route, checks unauthorized and duplicate creation refusals, reads the
 restored files and Git state, and repeats reads after container recreation.
-The source checkout and temporary key are removed before the server starts.
+The source checkout is removed before the server starts; the synthetic key is
+removed after the combined registration command finishes.
 This qualifies the single-host operator path; it does not qualify multi-tenant
 membership or a real agent continuation.

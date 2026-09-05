@@ -7,7 +7,7 @@ import {
 } from '../check-mobile-package.mjs';
 
 const info =
-  '<key>NSCameraUsageDescription</key><key>NSLocalNetworkUsageDescription</key><key>NSMicrophoneUsageDescription</key>';
+  '<key>DTSDKName</key><string>iphoneos26.6</string><key>NSCameraUsageDescription</key><key>NSLocalNetworkUsageDescription</key><key>NSMicrophoneUsageDescription</key>';
 const privacy = '<key>NSPrivacyTracking</key><false/>';
 // Every path is relative to the application bundle (the bundle itself is
 // `.`), and the main executable is whatever the bundle's CFBundleExecutable
@@ -35,6 +35,32 @@ const base = {
 };
 
 describe('packaged iOS capability audit', () => {
+  test.each(['18.5', '25.9'])(
+    'rejects the packaged SDK %s before store upload',
+    (sdk) => {
+      expect(() =>
+        auditIosInventory({
+          ...base,
+          info: info.replace('iphoneos26.6', `iphoneos${sdk}`),
+        }),
+      ).toThrow(/require iOS SDK 26/);
+    },
+  );
+  test.each(['', '<key>DTSDKName</key><string>iphonesimulator26.6</string>'])(
+    'rejects missing or simulator SDK provenance',
+    (sdk) => {
+      expect(() =>
+        auditIosInventory({
+          ...base,
+          info: info.replace(
+            '<key>DTSDKName</key><string>iphoneos26.6</string>',
+            sdk,
+          ),
+        }),
+      ).toThrow(/DTSDKName/);
+    },
+  );
+
   test('accepts only canonical, source-derived iOS client build provenance', () => {
     expect(
       parseIosClientBuildProvenance(
