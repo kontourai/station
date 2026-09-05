@@ -197,10 +197,11 @@ export function createRuntimeSystemRouteDeps(
 /**
  * Ceiling on how long a setup-requirement observation is reused across
  * `/api/attention` reads. The inbox polls every 10s, and each read costs an
- * agent-directory listing plus one spec read plus the provider-connection
- * list; the projection bounds `readSessionFlowRun` the same way and for the
- * same reason. Short enough that configuring a connection clears the item
- * within one poll.
+ * agent-directory listing plus a spec read for every candidate up to the first
+ * Station-engine one — N spec reads, not one, since an external-engine binding
+ * is only visible in the spec — plus the provider-connection list. The
+ * projection bounds `readSessionFlowRun` the same way and for the same reason.
+ * Short enough that configuring a connection clears the item within one poll.
  */
 const STATION_SETUP_REQUIREMENT_CACHE_TTL_MS = 5_000;
 
@@ -258,7 +259,10 @@ export async function readStationSetupRequirement(
     );
     const station = candidates.find((agent) => agent.slug === 'station');
     const readAvailability = createStationEngineAvailabilityReader(context);
-    for (const metadata of station ? [station, ...candidates] : candidates) {
+    const ordered = station
+      ? [station, ...candidates.filter((agent) => agent.slug !== 'station')]
+      : candidates;
+    for (const metadata of ordered) {
       const spec = await context.agentService.getAgent(metadata.slug);
       if (isExternalEngineBoundAgent(spec)) continue;
       const reason = readAvailability(spec);

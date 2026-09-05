@@ -1,8 +1,9 @@
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
-import type {
-  ApprovalAttentionItem,
-  AttentionItem,
-  SessionFailedAttentionItem,
+import {
+  type ApprovalAttentionItem,
+  type AttentionItem,
+  isStandingAttentionKind,
+  type SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
 import { notificationCategoryLabel } from './notificationLabels';
 import { NO_FAILURE_DETAIL_RECORDED } from './sessionFailure';
@@ -36,16 +37,18 @@ export function isApprovalLivePending(item: ApprovalAttentionItem): boolean {
 /**
  * Whether this item can be ACKNOWLEDGED away (#1536 D8, review M1).
  *
- * `setup-incomplete` cannot: it is a standing notice, still true after the
- * dismissal, and the server refuses the acknowledgement for that reason
- * (`STANDING_ATTENTION_KINDS` in `attention-projection.ts`). Both the per-row
- * dismiss and "Dismiss all" read this one predicate — without it, dismiss-all
- * posted an acknowledgement the server now refuses, and before the refusal it
- * cleared the only row saying why chat could not start until the next poll
- * happened to move the row's timestamp.
+ * A standing notice cannot: it is still true after the dismissal, and the
+ * server refuses the acknowledgement for that reason. Delta review DM3 moved
+ * the membership into the contract (`isStandingAttentionKind`), so this
+ * predicate and the server's refusal and ordering band are three readings of
+ * ONE declaration rather than three lists that agree today. Both the per-row
+ * dismiss and "Dismiss all" read this — without it, dismiss-all posted an
+ * acknowledgement the server now refuses, and before the refusal it cleared the
+ * only row saying why chat could not start until the next poll happened to move
+ * the row's timestamp.
  */
 export function isAcknowledgeableAttentionItem(item: AttentionItem): boolean {
-  return item.kind !== 'setup-incomplete';
+  return !isStandingAttentionKind(item.kind);
 }
 
 /**

@@ -1,10 +1,11 @@
 import type { FlowConsoleGateProjection } from '@kontourai/flow';
-import type {
-  AttentionItem,
-  AttentionProjection,
-  DevicePairingAttentionItem,
-  SessionFailedAttentionItem,
-  SetupIncompleteAttentionItem,
+import {
+  type AttentionItem,
+  type AttentionProjection,
+  type DevicePairingAttentionItem,
+  isStandingAttentionKind,
+  type SessionFailedAttentionItem,
+  type SetupIncompleteAttentionItem,
 } from '@kontourai/station-contracts/attention';
 import type { DevicePairingRequest } from '@kontourai/station-contracts/environment-security';
 import type { Notification } from '@kontourai/station-contracts/notification';
@@ -146,14 +147,15 @@ export class AttentionProjectionService {
     /**
      * #1536 D8: whether Station's own Agent can run right now, and why not.
      *
-     * Deliberately injected rather than derived here: the answer is
-     * `resolveManagedAvailabilityReason` over the LIVE app config and provider
-     * connections — the same call the New Chat picker's Station row and the
-     * chat route's 409 already make — and a projection that re-derived it from
-     * its own read of the connections would be a second rule with a delay on
-     * it. The caller hands back `null` when the Agent resolves, or the
-     * requirement's own sentence when it does not. Optional so every existing
-     * caller/test keeps compiling with setup attention simply unavailable.
+     * Deliberately injected rather than derived here: the answer comes from
+     * `createStationEngineAvailabilityReader`, the one reader the New Chat
+     * picker's Station row, `/api/boot`'s catalog and `/chat`'s 409 all go
+     * through, on live app config and live provider connections. A projection
+     * that re-derived it from its own read of the connections would be a
+     * second rule with a delay on it. The caller hands back `null` when the
+     * Agent resolves, or the requirement's own sentence when it does not.
+     * Optional so every existing caller/test keeps compiling with setup
+     * attention simply unavailable.
      */
     private readonly readStationSetupRequirement?: () => Promise<{
       agentSlug: string;
@@ -347,8 +349,8 @@ export class AttentionProjectionService {
     const item = items.find((candidate) => candidate.id === itemId);
     if (!item) return false;
     // A standing notice is still true after the dismissal, so there is nothing
-    // an acknowledgement could honestly record — see STANDING_ATTENTION_KINDS.
-    if (STANDING_ATTENTION_KINDS.has(item.kind)) return false;
+    // an acknowledgement could honestly record — see `isStandingAttentionKind`.
+    if (isStandingAttentionKind(item.kind)) return false;
     this.acknowledgementStore.acknowledge({
       userId: readAuthority.userId,
       conversationId: item.id,
@@ -1331,27 +1333,13 @@ function stringValue(value: unknown): string | undefined {
 }
 
 /**
- * Kinds that are STANDING notices rather than per-event facts (#1536 D8,
- * review M1/M2): continuously true until a configuration changes, with no
- * event of their own. Two consequences follow from that one property, and
- * declaring it once is what keeps them from drifting apart:
- *
- *  - a standing notice sorts BELOW live per-event attention, because its
- *    observation time says only when the projection last looked. Ordering it
- *    by recency put "Station cannot run yet" above every live approval on
- *    every read — an artefact of the timestamp, not a priority anyone chose.
- *  - a standing notice cannot be acknowledged, because it is still true after
- *    the dismissal. `acknowledge` refuses it (below) and the surfaces offer no
- *    dismiss for it; without the refusal, "Dismiss all" acked it and the row
- *    only came back because its `updatedAt` moved on the next read.
+ * 0 = live, per-event attention; 1 = a standing notice. The membership is the
+ * CONTRACT's (`isStandingAttentionKind`), shared with the client's own dismiss
+ * predicate — see its docblock for why one declaration governs both the
+ * ordering band here and the acknowledgement refusal below.
  */
-const STANDING_ATTENTION_KINDS: ReadonlySet<AttentionItem['kind']> = new Set([
-  'setup-incomplete',
-]);
-
-/** 0 = live, per-event attention; 1 = a standing notice. */
 function attentionOrderBand(item: AttentionItem): number {
-  return STANDING_ATTENTION_KINDS.has(item.kind) ? 1 : 0;
+  return isStandingAttentionKind(item.kind) ? 1 : 0;
 }
 
 function compareAttentionItems(

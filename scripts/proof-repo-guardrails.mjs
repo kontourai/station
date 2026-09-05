@@ -6636,20 +6636,48 @@ const messageBubbleUtils = readRequiredSource(
 // that has to hold now is the DELEGATION that replaced it: this module names
 // no model itself, it asks the one shared identity rule. The negative
 // assertion above keeps the table from growing back inside MessageBubble.
-if (!messageBubbleUtils.includes('function getModelDisplayName(')) {
-  if (
-    !messageBubbleUtils.includes(
-      "import { modelIdentityLabel } from '../../../utils/modelCapabilities'",
-    )
-  ) {
-    errors.push(
-      'message-bubble/utils.ts must resolve model names through modelIdentityLabel.',
-    );
-  }
-} else {
+//
+// Delta review DL6: the import check is a regex rather than an exact string, so
+// adding a second symbol to that import statement cannot silently retire this
+// assertion; and a `const getModelDisplayName =` is the same table under an
+// expression, so it is refused too.
+if (
+  /function\s+getModelDisplayName\s*\(/.test(messageBubbleUtils) ||
+  /const\s+getModelDisplayName\s*=/.test(messageBubbleUtils)
+) {
   errors.push(
     'message-bubble/utils.ts must not re-declare getModelDisplayName; use modelIdentityLabel.',
   );
+} else if (
+  !/import\s*\{[^}]*\bmodelIdentityLabel\b[^}]*\}\s*from\s*'\.\.\/\.\.\/\.\.\/utils\/modelCapabilities'/.test(
+    messageBubbleUtils,
+  )
+) {
+  errors.push(
+    'message-bubble/utils.ts must resolve model names through modelIdentityLabel.',
+  );
+}
+
+/**
+ * #1536 D8 delta review DM2: every availability surface reads
+ * `createStationEngineAvailabilityReader`, never `resolveManagedAvailabilityReason`
+ * directly. Six callers built that call themselves and had drifted — three onto
+ * the app config the process BOOTED with, one of those also dropping the
+ * check-gated connection receipts, and `/chat` last of all — so fixing the
+ * default model connection at runtime cleared the picker and the inbox while
+ * chat went on refusing until restart. A hand-rolled call cannot come back
+ * green; the reader's own module is where the call belongs.
+ */
+for (const availabilityConsumer of [
+  '../src-server/runtime/routes/runtime-routes.ts',
+  '../src-server/routes/chat/chat.ts',
+]) {
+  const source = readRequiredSource(availabilityConsumer);
+  if (/\bresolveManagedAvailabilityReason\s*\(/.test(source)) {
+    errors.push(
+      `${availabilityConsumer} must resolve Agent availability through createStationEngineAvailabilityReader, not resolveManagedAvailabilityReason directly.`,
+    );
+  }
 }
 const messageBubbleRating = readRequiredSource(
   '../src-ui/src/components/chat/message-bubble/MessageRating.tsx',

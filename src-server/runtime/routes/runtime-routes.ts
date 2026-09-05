@@ -2699,6 +2699,13 @@ export function configureRuntimeRoutes(
       // instead of falsely reporting a persisted, ready external-engine
       // agent "not currently launchable".
       connectionService: context.connectionService,
+      // #1536 D8 delta review DM1: the live inputs the shared availability
+      // reader needs. Without them `/chat` answered its 409 from the boot
+      // snapshot, so fixing the default model connection at runtime cleared
+      // the picker and the inbox while chat went on refusing until restart.
+      getLiveAppConfig: () => context.getLiveAppConfig(),
+      checkGatedModelConnectionIds: () =>
+        context.connectionService.checkGatedModelConnectionIds(),
       listAgents: () => context.agentService.listAgents(),
       getDefaultAgentIds: async () =>
         new Set(

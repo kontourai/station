@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, test } from 'vitest';
+import { chatStationEngineAvailabilitySource } from '../../../routes/chat/chat.js';
 import { createStationEngineAvailabilityReader } from '../../plugins/runtime-provider-resolution.js';
 import {
   memoizeStationSetupRequirement,
@@ -327,12 +328,46 @@ describe('createStationEngineAvailabilityReader (#1536 D8 review H2)', () => {
         'Multiple enabled LLM provider connections require an explicit default.',
     });
 
+    // And `/chat`'s own 409 decision, which delta review DM1 found reading the
+    // boot snapshot: a sixth caller, agreeing with nobody after a runtime fix.
+    const chatReason = () =>
+      createStationEngineAvailabilityReader(
+        chatStationEngineAvailabilitySource({
+          appConfig: { defaultLLMProvider: undefined },
+          getLiveAppConfig: () => ({ defaultLLMProvider: liveDefault }),
+          providerService: {
+            listProviderConnections: () => twoConnections,
+          },
+          checkGatedModelConnectionIds: () => new Map(),
+        } as never),
+      )(spec);
+    expect(chatReason()).toBe(
+      'Multiple enabled LLM provider connections require an explicit default.',
+    );
+
     // The operator sets a default while Station runs.
     liveDefault = 'anthropic-main';
 
-    // Both clear. Reading the boot snapshot here left the picker refusing.
+    // All three clear together. Reading the boot snapshot left the picker
+    // refusing (H2) and then left chat refusing (DM1).
     expect(pickerReason(spec)).toBeNull();
     expect(await readStationSetupRequirement(context)).toBeNull();
+    expect(chatReason()).toBeNull();
+  });
+
+  test('a chat context that threads neither live field keeps its old boot-snapshot behaviour', () => {
+    // The `??` fallbacks exist for an older wiring or a test that omits them;
+    // making them required would have broken those instead of fixing this.
+    expect(
+      createStationEngineAvailabilityReader(
+        chatStationEngineAvailabilitySource({
+          appConfig: { defaultLLMProvider: 'anthropic-main' },
+          providerService: {
+            listProviderConnections: () => twoConnections,
+          },
+        } as never),
+      )({ name: 'Station', model: 'anthropic/opus' } as never),
+    ).toBeNull();
   });
 
   test('carries the check-gated connection receipts, so a faulted binding is not reported runnable', () => {
@@ -347,12 +382,17 @@ describe('createStationEngineAvailabilityReader (#1536 D8 review H2)', () => {
     context.connectionService.checkGatedModelConnectionIds = () => gated;
 
     // `/api/boot`'s catalog omitted this argument entirely, so it reported an
-    // agent bound to a faulted connection as runnable.
+    // agent bound to a faulted connection as runnable. DL9: the SENTENCE, not
+    // merely "some reason" — a reader that refused for an unrelated cause would
+    // have satisfied `not.toBeNull()`.
     expect(
       createStationEngineAvailabilityReader(context)({
         name: 'Station',
         model: 'anthropic/opus',
       } as never),
-    ).not.toBeNull();
+    ).toBe(
+      "Model connection 'anthropic-main' was refused by its provider at its " +
+        'last check. Fix its settings and test it again in Connections.',
+    );
   });
 });

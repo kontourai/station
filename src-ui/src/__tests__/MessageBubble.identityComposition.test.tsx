@@ -408,10 +408,10 @@ describe('assistant row identity composition (station#1434)', () => {
 
     const badge = container.querySelector('.message__model-badge');
     expect(badge).toBeTruthy();
+    // The exact string is the whole assertion: neither the raw id nor the
+    // retired table's "Custom" can satisfy it, so restating those as separate
+    // `not.toBe` lines proved nothing the equality did not already.
     expect(badge?.textContent).toBe('Opus 5');
-    // Never the raw id in primary text, and never the retired table's answer.
-    expect(badge?.textContent).not.toBe('claude-opus-5');
-    expect(badge?.textContent).not.toBe('Custom');
   });
 
   it('renders the badge for a row carrying no provenance at all', () => {

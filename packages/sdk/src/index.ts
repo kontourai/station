@@ -73,6 +73,10 @@ export type {
   SessionFailedAttentionItem,
   SetupIncompleteAttentionItem,
 } from '@kontourai/station-contracts/attention';
+export {
+  isStandingAttentionKind,
+  STANDING_ATTENTION_KINDS,
+} from '@kontourai/station-contracts/attention';
 export type {
   AdoptedSessionResult,
   TurnProgressSilence,

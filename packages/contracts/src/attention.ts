@@ -279,6 +279,32 @@ export type AttentionItem =
   | GateExceptionAttentionItem
   | DevicePairingAttentionItem;
 
+/**
+ * Kinds that are STANDING notices rather than per-event facts (#1536 D8; delta
+ * review DM3 moved this here from the server projection).
+ *
+ * A standing notice is continuously true until a configuration changes and has
+ * no event of its own. Two consequences follow from that one property, on two
+ * sides of the wire, and declaring it in the contract is what keeps them from
+ * drifting:
+ *
+ *  - it sorts BELOW live per-event attention, because its observation time says
+ *    only when the projection last looked. Ordering it by recency put "Station
+ *    cannot run yet" above every live approval on every read — an artefact of
+ *    the timestamp, not a priority anyone chose.
+ *  - it cannot be acknowledged, because it is still true after the dismissal.
+ *    The server refuses the acknowledgement and the surfaces offer no dismiss;
+ *    without the refusal, "Dismiss all" acked it and the row only came back
+ *    because the next read moved its `updatedAt`.
+ */
+export const STANDING_ATTENTION_KINDS: ReadonlySet<AttentionItem['kind']> =
+  new Set<AttentionItem['kind']>(['setup-incomplete']);
+
+/** See {@link STANDING_ATTENTION_KINDS}. */
+export function isStandingAttentionKind(kind: AttentionItem['kind']): boolean {
+  return STANDING_ATTENTION_KINDS.has(kind);
+}
+
 export interface AttentionProjection {
   items: AttentionItem[];
   pendingCount: number;
