@@ -181,7 +181,7 @@ test('coding example preserves both Panes and its authored native Agent in a rea
           url.pathname ===
           `/projects/${slug}/panes/${encodeURIComponent(descriptor.id)}/${encodeURIComponent(occurrence.instanceId)}`,
       );
-      await expect(page.locator('.coding-shell')).toBeVisible();
+      await expect(page.locator('.coding-starter-shell')).toBeVisible();
       await expect(
         page.getByText('Sample data', { exact: true }),
       ).toBeVisible();
@@ -379,7 +379,7 @@ test('coding example preserves both Panes and its authored native Agent in a rea
     await expect(
       page.getByRole('button', { name: 'Review current diff', exact: true }),
     ).toHaveCount(0);
-    await expect(page.locator('.coding-shell')).toHaveCount(0);
+    await expect(page.locator('.coding-starter-shell')).toHaveCount(0);
   } catch (error) {
     failures.push(error);
   } finally {

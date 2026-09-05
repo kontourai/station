@@ -15,13 +15,13 @@ function CodingWorkspace() {
   };
 
   return (
-    <main className="coding-shell">
-      <section className="coding-sidebar" aria-label="Files">
-        <div className="coding-heading">
+    <main className="coding-starter-shell">
+      <section className="coding-starter-sidebar" aria-label="Files">
+        <div className="coding-starter-heading">
           <h1>Files</h1>
-          <span className="coding-sample-badge">Sample data</span>
+          <span className="coding-starter-sample-badge">Sample data</span>
         </div>
-        <p className="coding-supporting-copy">
+        <p className="coding-starter-supporting-copy">
           Replace these placeholders with files from your project provider.
         </p>
         <ul>
@@ -34,14 +34,23 @@ function CodingWorkspace() {
         </ul>
       </section>
 
-      <section className="coding-main">
-        <section className="coding-terminal" aria-label="Terminal output">
-          <div className="coding-terminal__bar">sample terminal output</div>
+      <section className="coding-starter-main">
+        <section
+          className="coding-starter-terminal"
+          aria-label="Terminal output"
+        >
+          <div className="coding-starter-terminal__bar">
+            sample terminal output
+          </div>
           <pre>{`$ npm test
 PASS tests/session.spec.ts
 3 tests passed`}</pre>
         </section>
-        <button className="coding-primary" type="button" onClick={askAboutCode}>
+        <button
+          className="coding-starter-primary"
+          type="button"
+          onClick={askAboutCode}
+        >
           Open Chat Dock
         </button>
       </section>
@@ -51,22 +60,22 @@ PASS tests/session.spec.ts
 
 function CodingDiffReview() {
   return (
-    <main className="coding-shell coding-shell--diff">
-      <section className="coding-main">
-        <div className="coding-heading">
+    <main className="coding-starter-shell coding-starter-shell--diff">
+      <section className="coding-starter-main">
+        <div className="coding-starter-heading">
           <h1>Diff review</h1>
-          <span className="coding-sample-badge">Sample data</span>
+          <span className="coding-starter-sample-badge">Sample data</span>
         </div>
-        <p className="coding-supporting-copy">
+        <p className="coding-starter-supporting-copy">
           This preview demonstrates the review surface; it is not your current
           Git diff.
         </p>
-        <section className="coding-diff" aria-label="Diff preview">
+        <section className="coding-starter-diff" aria-label="Diff preview">
           <pre>{`+ export function createSession(input) {
 +  return { id: crypto.randomUUID(), ...input };
  }`}</pre>
         </section>
-        <div className="coding-review-grid">
+        <div className="coding-starter-review-grid">
           <article>
             <h2>Behavior</h2>
             <p>Describe expected user-visible behavior before editing.</p>

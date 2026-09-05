@@ -54,7 +54,9 @@ is no whole-plugin enable/disable workflow implied by this example.
 ## Package and migration
 
 The package includes `plugin.json`, authored source/CSS, `agents/`, and this
-README. No install hook copies files into Station's checkout. Building a copied
+README. No install hook copies files into Station's checkout. Keep authored CSS
+selectors scoped to the package: this example uses `coding-starter-` class
+names so it cannot inherit or override the host's terminal styles. Building a copied
 source directory requires compatible candidate tooling and its dependencies;
 no independently resolved public-registry install is claimed here.
 
