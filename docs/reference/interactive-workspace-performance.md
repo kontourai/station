@@ -100,9 +100,12 @@ ingress. Missing or cross-epoch receipts make only that fixture
 checked-in v3 fixture/action definitions and the checker derives all metrics.
 For remote apply, the components distinguish authoritative-document apply from
 apply-to-layout commit; they are not mislabeled as one generic state-apply
-delay. An authenticated, ordered committed/duplicate document SSE is normalized
-into the authoritative document query, while a gap or malformed envelope still
-forces the no-cache document read.
+delay. Authenticated document notifications keep exact order in a priority lane
+that may pass queued presence/cursor projections but still rechecks current
+authority immediately before the serialized wire write. A parsed accepted
+snapshot/delta is applied directly to the mounted Task editor and normalized
+into the authoritative document query in the same ingress turn; a gap,
+duplicate, or malformed envelope still forces the no-cache document read.
 
 The reference workflow now provisions its own temporary Station home, exact
 checkout build, six dedicated Project/Task documents, and two independently
