@@ -101,6 +101,22 @@ vi.mock('../../../hooks/useKeyboardShortcut', () => ({
 
 import { RegionToolbarControls } from '../RegionToolbarControls';
 
+/** The fine pointer's one control, and the menu it opens. */
+function openLayoutMenu() {
+  const trigger = screen.getByRole('button', { name: 'Layout regions' });
+  fireEvent.click(trigger);
+  return {
+    trigger,
+    menu: screen.getByRole('menu', { name: 'Layout regions' }),
+  };
+}
+
+/** Every row under one region heading, in order. Headings are spans. */
+function rowLabels(menu: HTMLElement, regionLabel: string) {
+  const group = within(menu).getByRole('group', { name: regionLabel });
+  return [...group.querySelectorAll('button')].map((row) => row.textContent);
+}
+
 describe('RegionToolbarControls', () => {
   beforeEach(() => {
     Object.assign(harness.regions.main, {
@@ -156,8 +172,10 @@ describe('RegionToolbarControls', () => {
     harness.shortcuts.get('activity.toggle')?.handler();
     expect(harness.showSurface).toHaveBeenCalledWith('activity');
 
+    // The same Hide the retired per-region button carried, now a menu row.
+    openLayoutMenu();
     fireEvent.click(
-      screen.getByRole('button', { name: 'Hide Chat Bottom region' }),
+      screen.getByRole('menuitemcheckbox', { name: 'Hide Chat' }),
     );
     expect(harness.setRegion).toHaveBeenLastCalledWith('bottom', {
       visible: false,
@@ -204,59 +222,75 @@ describe('RegionToolbarControls', () => {
     });
   });
 
-  test('an empty region opens a portalled menu and places either registered surface', () => {
-    const { container } = render(<RegionToolbarControls />);
+  /**
+   * #1536 F: five unlabeled monochrome rectangles (four region glyphs plus a
+   * `⋯` swap) became ONE control with a visible word. The commands did not
+   * change; where they live did.
+   */
+  test('a fine pointer renders one region control, carrying a visible word inside its accessible name', () => {
+    render(<RegionToolbarControls />);
 
-    const trigger = screen.getByRole('button', {
-      name: 'Choose a surface for Left region',
-    });
+    const buttons = [
+      ...screen
+        .getByRole('group', { name: 'Regions' })
+        .querySelectorAll('button'),
+    ];
+    expect(buttons).toHaveLength(1);
+    const trigger = buttons[0] as HTMLButtonElement;
+    expect(trigger.getAttribute('aria-label')).toBe('Layout regions');
     expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    expect(trigger.hasAttribute('aria-pressed')).toBe(false);
+    // WCAG 2.5.3: the visible word must be part of the accessible name.
+    const visible = trigger.querySelector(
+      '.app-toolbar__region-layout-label',
+    )?.textContent;
+    expect(visible).toBe('Layout');
+    expect(trigger.getAttribute('aria-label')).toContain(visible);
+    // And the button is no longer a fixed square glyph box.
+    const layoutRule = chatCss.match(
+      /\.app-toolbar__region-layout\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(layoutRule).toMatch(/width:\s*auto/);
+  });
+
+  test('the menu opens portalled, anchored to the trigger, and closes on select', () => {
+    const { container } = render(<RegionToolbarControls />);
+
+    const trigger = screen.getByRole('button', { name: 'Layout regions' });
     vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
       right: 760,
     } as DOMRect);
     fireEvent.click(trigger);
-    const menu = screen.getByRole('menu', { name: 'Left region surfaces' });
+    const menu = screen.getByRole('menu', { name: 'Layout regions' });
     expect(menu.parentElement).toBe(document.body);
     expect(container.contains(menu)).toBe(false);
     expect(menu.style.right).toBe(`${window.innerWidth - 760}px`);
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
-    expect(
-      screen.getByRole('menuitem', { name: 'Place Chat here' }),
-    ).toBeTruthy();
+
     fireEvent.click(
-      screen.getByRole('menuitem', { name: 'Place Activity here' }),
+      within(within(menu).getByRole('group', { name: 'Left' })).getByRole(
+        'menuitem',
+        { name: 'Place Activity here' },
+      ),
     );
     expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'left');
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  test('an occupied region exposes a keyboard-reachable swap menu that dismisses on Escape and a backdrop click, not on pointerdown', () => {
+  test('it dismisses on Escape and a backdrop click, not on pointerdown, and returns focus', () => {
     render(<RegionToolbarControls />);
 
-    const trigger = screen.getByRole('button', {
-      name: 'Change Bottom region surface',
-    });
-    expect(trigger.classList.contains('app-toolbar__region-swap')).toBe(true);
-    const swapRule = chatCss.match(
-      /\.app-toolbar__region-swap\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(swapRule).toMatch(/position:\s*static/);
-    expect(swapRule).toMatch(/min-width:\s*24px/);
-    expect(swapRule).toMatch(/min-height:\s*24px/);
+    const trigger = screen.getByRole('button', { name: 'Layout regions' });
     trigger.focus();
     fireEvent.click(trigger);
-    expect(
-      screen.getByRole('menuitem', { name: 'Swap in Activity' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('menu', { name: 'Layout regions' })).toBeTruthy();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();
     expect(document.activeElement).toBe(trigger);
 
     fireEvent.click(trigger);
     const backdrop = screen.getByRole('button', {
-      name: 'Close Bottom region menu',
+      name: 'Close layout menu',
     });
     const pointerDown = createEvent.pointerDown(backdrop);
     fireEvent(backdrop, pointerDown);
@@ -267,126 +301,120 @@ describe('RegionToolbarControls', () => {
   });
 
   /**
-   * #928 C2a: `main` is a choosable region. Its control has no show/hide half
-   * (`main` is always visible), so the primary click opens the placement
-   * menu; the menu offers the surfaces that declare `main`, minus the one in
-   * it. Home declares only `main`, so no dock menu ever offers Home.
+   * The inventory, per region, for the default arrangement — the same set of
+   * commands the five buttons exposed (Main placement, an empty region's
+   * placements, an occupied region's Hide plus its swap). A dropped command
+   * reds this; so does a relabel.
    */
-  const dockControlLabels = () =>
-    [
-      ...screen
-        .getByRole('group', { name: 'Regions' })
-        .querySelectorAll(
-          'button:not([aria-label="Change Main region surface"])',
-        ),
-    ].map((button) => button.getAttribute('aria-label'));
-
-  test('the main control opens a placement menu of the surfaces that declare main, minus its occupant', () => {
+  test('the menu carries every command the five buttons exposed, grouped by region', () => {
     render(<RegionToolbarControls />);
+    const { menu } = openLayoutMenu();
 
-    const trigger = screen.getByRole('button', {
-      name: 'Change Main region surface',
-    });
-    expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
-    expect(trigger.hasAttribute('aria-pressed')).toBe(false);
-    expect(
-      screen.getByRole('group', { name: 'Regions' }).querySelector('button'),
-      'main comes before the dock controls',
-    ).toBe(trigger);
-    fireEvent.click(trigger);
-
-    const menu = screen.getByRole('menu', { name: 'Main region surfaces' });
     expect(
       within(menu)
-        .getAllByRole('menuitem')
-        .map((item) => item.textContent),
-    ).toEqual(['Place Activity here']);
-    fireEvent.click(
-      screen.getByRole('menuitem', { name: 'Place Activity here' }),
-    );
-    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'main');
-    expect(screen.queryByRole('menu')).toBeNull();
+        .getAllByRole('group')
+        .map((group) => group.getAttribute('aria-label')),
+    ).toEqual(['Main', 'Left', 'Right', 'Bottom']);
+
+    expect(rowLabels(menu, 'Main')).toEqual(['Place Activity here']);
+    expect(rowLabels(menu, 'Left')).toEqual([
+      'Place Chat here',
+      'Place Activity here',
+    ]);
+    expect(rowLabels(menu, 'Right')).toEqual([
+      'Place Chat here',
+      'Place Activity here',
+    ]);
+    expect(rowLabels(menu, 'Bottom')).toEqual([
+      'Hide Chat',
+      'Swap in Activity',
+    ]);
   });
 
-  test('with Activity in main the control offers Home back, and no dock menu offers Home', () => {
-    harness.regions.main.occupant = 'activity';
+  test('the Show/Hide row is the checked state, and the verb follows visibility', () => {
     render(<RegionToolbarControls />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Change Main region surface' }),
-    );
+    openLayoutMenu();
     expect(
-      within(screen.getByRole('menu', { name: 'Main region surfaces' }))
-        .getAllByRole('menuitem')
-        .map((item) => item.textContent),
-    ).toEqual(['Place Home here']);
+      screen
+        .getByRole('menuitemcheckbox', { name: 'Hide Chat' })
+        .getAttribute('aria-checked'),
+    ).toBe('true');
     fireEvent.keyDown(document, { key: 'Escape' });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Choose a surface for Left region' }),
-    );
-    expect(
-      within(screen.getByRole('menu', { name: 'Left region surfaces' }))
-        .getAllByRole('menuitem')
-        .map((item) => item.textContent),
-    ).toEqual(['Place Chat here', 'Place Activity here']);
-    fireEvent.keyDown(document, { key: 'Escape' });
+    harness.regions.bottom.visible = false;
+    openLayoutMenu();
+    const row = screen.getByRole('menuitemcheckbox', { name: 'Show Chat' });
+    expect(row.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(row);
+    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
+      visible: true,
+    });
+  });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Change Bottom region surface' }),
-    );
-    expect(
-      within(screen.getByRole('menu', { name: 'Bottom region surfaces' }))
-        .getAllByRole('menuitem')
-        .map((item) => item.textContent),
-    ).toEqual(['Swap in Activity']);
+  test('the placement rows are one-shot commands, not toggles', () => {
+    render(<RegionToolbarControls />);
+    openLayoutMenu();
+
+    const place = screen.getAllByRole('menuitem', {
+      name: 'Place Activity here',
+    });
+    expect(place.length).toBeGreaterThan(0);
+    for (const row of place) {
+      expect(row.hasAttribute('aria-checked')).toBe(false);
+    }
+  });
+
+  test('with Activity in main the menu offers Home back, and no dock group offers Home', () => {
+    harness.regions.main.occupant = 'activity';
+    render(<RegionToolbarControls />);
+    const { menu } = openLayoutMenu();
+
+    expect(rowLabels(menu, 'Main')).toEqual(['Place Home here']);
+    expect(rowLabels(menu, 'Left')).toEqual([
+      'Place Chat here',
+      'Place Activity here',
+    ]);
+    expect(rowLabels(menu, 'Bottom')).toEqual([
+      'Hide Chat',
+      'Swap in Activity',
+    ]);
   });
 
   test('an empty main (Activity left it) is Home on screen, so the menu does not offer Home', () => {
     harness.regions.main.occupant = null;
     render(<RegionToolbarControls />);
+    const { menu } = openLayoutMenu();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Change Main region surface' }),
-    );
-    expect(
-      within(screen.getByRole('menu', { name: 'Main region surfaces' }))
-        .getAllByRole('menuitem')
-        .map((item) => item.textContent),
-    ).toEqual(['Place Activity here']);
+    expect(rowLabels(menu, 'Main')).toEqual(['Place Activity here']);
   });
 
-  test('the dock control labels are what they were before main became choosable', () => {
-    render(<RegionToolbarControls />);
-
-    // The exact strings the pre-C2a toolbar rendered for the default
-    // arrangement, in order. A relabel of any dock control reds this.
-    expect(dockControlLabels()).toEqual([
-      'Choose a surface for Left region',
-      'Choose a surface for Right region',
-      'Hide Chat Bottom region',
-      'Change Bottom region surface',
-    ]);
-  });
-
-  test('a bottom-only device gets no main control (#1400 occlusion floor)', () => {
+  test('a bottom-only device keeps its glyph-only folded control (#1400 occlusion floor)', () => {
     harness.bottomOnly = true;
     harness.isMobile = false;
     render(<RegionToolbarControls />);
 
+    expect(screen.queryByRole('button', { name: 'Layout regions' })).toBeNull();
+    const trigger = screen.getByRole('button', { name: 'Regions' });
     expect(
-      screen.queryByRole('button', { name: 'Change Main region surface' }),
+      trigger.querySelector('.app-toolbar__region-layout-label'),
     ).toBeNull();
     expect(
       screen.getByRole('group', { name: 'Regions' }).querySelectorAll('button'),
     ).toHaveLength(1);
     // Nor does the folded menu list Home: it is not a dock toggle.
-    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
+    fireEvent.click(trigger);
     expect(
       within(screen.getByRole('menu', { name: 'Region surfaces' }))
         .getAllByRole('menuitemcheckbox')
         .map((item) => item.textContent),
     ).toEqual(['Hide Chat', 'Show Activity']);
+    // Flat, not grouped: the folded list is one Show/Hide per surface.
+    expect(
+      within(
+        screen.getByRole('menu', { name: 'Region surfaces' }),
+      ).queryAllByRole('group'),
+    ).toHaveLength(0);
   });
 
   test('Home registers no chord', () => {
@@ -397,7 +425,7 @@ describe('RegionToolbarControls', () => {
     ]);
   });
 
-  test('the region fieldset holds its controls\u2019 width (#917)', () => {
+  test('the region fieldset holds its controls’ width (#917)', () => {
     const regionsRule = chatCss.match(
       /\.app-toolbar__regions\s*\{([^}]*)\}/,
     )?.[1];
@@ -410,16 +438,14 @@ describe('RegionToolbarControls', () => {
   test('a wide device gaining a coarse pointer closes the menu instead of re-anchoring it', () => {
     const { rerender } = render(<RegionToolbarControls />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Choose a surface for Left region' }),
-    );
+    openLayoutMenu();
     expect(screen.queryByRole('menu')).not.toBeNull();
 
     // A wide device can change its PRIMARY pointer to coarse without becoming
     // mobile — a touchscreen laptop, a tablet in a keyboard case. `bottomOnly`
-    // flips while the overflow branch does not, so this renders the folded
-    // Regions menu: an open per-region popover would silently become a
-    // different menu, still anchored to the trigger that is now gone.
+    // flips while the overflow branch does not, so the SAME trigger would open
+    // a different menu: the folded flat Show/Hide list instead of the grouped
+    // arrangement, under a button that just changed its name.
     harness.bottomOnly = true;
     harness.isMobile = false;
     rerender(<RegionToolbarControls />);
@@ -435,9 +461,7 @@ describe('RegionToolbarControls', () => {
   test('narrowing into the phone layout takes the whole control away and strands no open menu', () => {
     const { container, rerender } = render(<RegionToolbarControls />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Choose a surface for Left region' }),
-    );
+    openLayoutMenu();
     expect(screen.queryByRole('menu')).not.toBeNull();
 
     // `useDockSlotDevice` re-reads on resize, so the coarse branch can take
@@ -463,7 +487,7 @@ describe('RegionToolbarControls', () => {
     expect(screen.queryByRole('menu')).toBeNull();
     expect(
       screen
-        .getByRole('button', { name: 'Choose a surface for Left region' })
+        .getByRole('button', { name: 'Layout regions' })
         .getAttribute('aria-expanded'),
     ).toBe('false');
   });
@@ -479,6 +503,7 @@ describe('RegionToolbarControls', () => {
     expect(container.querySelector('fieldset')).toBeNull();
     expect(screen.queryByRole('group', { name: 'Regions' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Regions' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Layout regions' })).toBeNull();
     // Including anything portalled out of the component.
     expect(document.body.querySelectorAll('button')).toHaveLength(0);
   });

@@ -144,33 +144,37 @@
   stroke-width: 1.5;
 }
 
-.app-toolbar__region-control {
-  display: inline-flex;
-  gap: 2px;
-  align-items: center;
+/* #1536 F: the one folded region control. `width: auto` overrides the square
+   glyph box above — this button carries a visible word, which is the whole
+   point of folding five unlabeled rectangles into it. */
+.app-toolbar__region-layout {
+  width: auto;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: var(--text-base);
+  font-family: inherit;
 }
 
-.app-toolbar__region-swap {
-  position: static;
-  flex: 0 0 24px;
-  min-width: 24px;
-  min-height: 24px;
-  padding: 0;
-  border: 0;
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  line-height: 1;
-  cursor: pointer;
+.app-toolbar__region-layout-label {
+  white-space: nowrap;
 }
 
-.app-toolbar__region-add {
-  position: absolute;
-  right: 1px;
-  bottom: -1px;
+/* One block of the Layout menu. The heading names the region its rows belong
+   to, so the rows themselves say "Hide Chat" rather than repeating the region
+   in every label. `aria-hidden` on the heading: the block is a `role="group"`
+   with the same name, so a screen reader already announces it. */
+.app-toolbar__region-menu-group + .app-toolbar__region-menu-group {
+  border-top: 1px solid var(--border-primary);
+}
+
+.app-toolbar__region-menu-heading {
+  display: block;
+  padding: 8px 14px 4px;
+  color: var(--text-tertiary);
   font-size: var(--text-xs);
-  font-weight: 700;
-  line-height: 1;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 @media (max-width: 480px) {

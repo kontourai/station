@@ -551,9 +551,8 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     const chatShell = await renderShellsSettled();
     const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Change Bottom region surface' }),
-    );
+    // #1536 F: the per-region swap button folded into the one Layout menu.
+    fireEvent.click(screen.getByRole('button', { name: 'Layout regions' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Swap in Activity' }));
 
     await waitFor(() =>
@@ -695,9 +694,8 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       currentRegionModel().setRegion('right', { visible: false, size: 600 });
     });
     const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Change Bottom region surface' }),
-    );
+    // #1536 F: the per-region swap button folded into the one Layout menu.
+    fireEvent.click(screen.getByRole('button', { name: 'Layout regions' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Swap in Activity' }));
     await waitFor(() => expect(chatShell?.dataset.region).toBe('right'));
     expect(activityShell?.dataset.region).toBe('bottom');
