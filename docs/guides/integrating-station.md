@@ -60,6 +60,55 @@ Unavailable surfaces remain explicit. Restore a representative environment into
 a clean deployment, including uncommitted repository files and required secret
 references, and measure recovery time and recoverable data loss.
 
+## First cloud target: AWS
+
+AWS is the selected first cloud target. The following service mapping is a
+proposed implementation profile, not a provisioned deployment or a claim that
+Station already supports these adapters:
+
+| Boundary | Initial AWS direction | Replacement contract |
+| --- | --- | --- |
+| Web/API compute | ECS on Fargate behind HTTPS ingress | Container lifecycle, readiness, draining, and reconnect behavior |
+| Application database | RDS for PostgreSQL | Tenant-scoped repositories, transactions, migrations, and recovery |
+| Artifacts | S3 | Authorized streaming, integrity, retention, and deletion |
+| Execution and workspaces | Select Fargate or EC2 after workload validation | Admission, isolation, durable ownership, filesystem behavior, restart, and cleanup |
+| Identity and secrets | Choose an identity provider and AWS secret/key services during deployment design | Principal/membership resolution and scoped secret access |
+| Commercial integration | AWS Marketplace as a prospective purchase channel | Account mapping, entitlements, usage reporting, and subscription lifecycle |
+
+Providers are selected through explicit, validated configuration at their owning
+composition boundary. Unsupported combinations fail clearly. Tenant grants and
+core domain rules remain consistent across providers. Replacing a provider can
+require migration, draining, or restart; pluggability does not imply arbitrary
+hot-swapping or letting untrusted plugins choose infrastructure credentials.
+Build one tested implementation per boundary first and document the contract
+before claiming another provider is compatible.
+
+Execution must be evaluated separately from web hosting. Verify required tools,
+process isolation, networking, filesystem performance, and replacement behavior
+before choosing its compute profile. AWS supports multiple
+[ECS storage options](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using_data_volumes.html);
+[EBS lifecycle rules](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ebs-volumes.html)
+vary with service and standalone-task deployment. Do not assume a task-attached
+volume survives replacement or that shared storage provides tenant isolation.
+
+The first reusable AWS deployment should document resources, IAM permissions,
+network boundaries, configuration, cost drivers, deployment, upgrades, rollback,
+and tested recovery. Use customer-owned domains and account inputs. Distinguish
+our hosted account from a customer's account in any bring-your-own-cloud profile.
+Other clouds remain future adapter work until their own deployment and contract
+checks pass.
+
+AWS Marketplace is a separate integration and launch milestone. Select the
+product and billing model before implementing its required APIs. Follow AWS's
+[current SaaS onboarding](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-product-customer-setup.html)
+and [product guidelines](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-guidelines.html),
+including customer-account deployment documentation where applicable. Keep
+Marketplace customer/account mapping separate from Station tenant membership;
+a purchase alone must not grant access to another tenant's data. Test purchase,
+entitlement changes, usage reporting where required, cancellation, and recovery
+from duplicated or delayed notifications. Partner status, listing approval,
+pricing, and marketplace availability are not established by this design.
+
 ## The integration material every shipped slice needs
 
 Publish the following alongside each adapter, deployment option, or integration:
