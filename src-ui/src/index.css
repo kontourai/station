@@ -7566,6 +7566,21 @@ button.tool-call__line:hover {
     display: none;
   }
 
+  /* UX audit 2026-09-05 D3: a side region collapsed to its 36px rail kept
+     rendering the occupant's whole body inside the rail — the first 36px of
+     Activity's list ("Act", "Wat host", "Dele are c") stayed visible as a
+     clipped sliver on every route. Chat already clips through
+     `.chat-dock__body`; a non-chat occupant renders `.dock-slot__body`, which
+     nothing hid. The bottom dock deliberately keeps a collapsed non-chat
+     occupant's height (#765 C1, `.chat-dock.is-collapsed` above) because its
+     content stays reachable there; a vertical rail cannot show content at
+     all, so hiding the body loses nothing. */
+  .app__main
+    > :is([data-region="left"], [data-region="right"]).is-collapsed
+    .dock-slot__body {
+    display: none;
+  }
+
   .app__main
     > :is([data-region="left"], [data-region="right"]).is-collapsed
     .chat-dock__maximize-btn,

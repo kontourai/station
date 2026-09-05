@@ -316,26 +316,12 @@
   gap: 8px;
 }
 
-.project-page__section-explainer,
-.project-page__subsection-label {
-  color: var(--text-muted);
-}
-
+/* The pane subsection this also styled is gone with the catalog grid
+   (#1536 E8); nothing else on the page has a subsection label. */
 .project-page__section-explainer {
   margin: -4px 0 16px;
   font-size: var(--text-sm);
-}
-
-.project-page__pane-subsection {
-  margin-top: 20px;
-}
-
-.project-page__subsection-label {
-  margin-bottom: 8px;
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .project-page__section-label {

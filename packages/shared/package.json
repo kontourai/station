@@ -76,6 +76,7 @@
     "./setup-import-bounds": "./src/setup-import-bounds.ts",
     "./random-id": "./src/random-id.ts",
     "./terminal-capability": "./src/terminal-capability.ts",
+    "./knowledge-root-identity": "./src/knowledge-root-identity.ts",
     "./cloud-move": "./src/cloud-move.ts",
     "./workspace-package": "./src/workspace-package.ts"
   },

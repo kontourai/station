@@ -54,10 +54,10 @@ function CatalogContents({
       />
     );
   }
-  // Both call sites already name the noun (the section header and the modal
-  // title both read "workspace pane(s)"), so the label collapses to the
-  // family's shared phrasing (#192 ratchet) and the description carries the
-  // only information the old "No workspace panes are known…" label added.
+  // The picker's own title already names the noun ("Add workspace pane"), so
+  // the label collapses to the family's shared phrasing (#192 ratchet) and the
+  // description carries the only information the old "No workspace panes are
+  // known…" label added.
   if (entries.length === 0) {
     return (
       <Empty
@@ -77,72 +77,6 @@ function CatalogContents({
       isOpen={isOpen}
       onReviewInRegistry={onReviewInRegistry}
     />
-  );
-}
-
-/**
- * archive#3318: the project page shows only the project's ACTIVE panes (placed
- * occurrences) plus the "Add pane" affordance. Availability diagnostics for
- * unplaced/unavailable panes live in the picker modal, not on the page.
- */
-function ActivePaneContents(props: CatalogProps & { onOpen: () => void }) {
-  const { onOpen, entries, ...catalog } = props;
-  const activeEntries = entries.filter((entry) => entry.instance !== undefined);
-  if (entries.length === 0) {
-    // Loading skeleton, load error, and the discovered-nothing empty state.
-    return <CatalogContents {...catalog} entries={entries} />;
-  }
-  if (activeEntries.length === 0) {
-    return (
-      <Empty
-        variant="compact"
-        label="Nothing here yet"
-        description="No panes are active in this Project yet."
-        action={
-          <button type="button" onClick={onOpen}>
-            Add pane
-          </button>
-        }
-      />
-    );
-  }
-  return <CatalogContents {...catalog} entries={activeEntries} />;
-}
-
-export function ProjectWorkspacePaneSection(
-  props: CatalogProps & { onOpen: () => void; embedded?: boolean },
-) {
-  const { embedded = false, ...contents } = props;
-  if (embedded) {
-    return (
-      <div className="project-page__pane-subsection">
-        <div className="project-page__subsection-label">Workspace panes</div>
-        <ActivePaneContents {...contents} />
-      </div>
-    );
-  }
-  return (
-    <section
-      className="project-page__layouts"
-      aria-labelledby="workspace-panes-title"
-    >
-      <div className="project-page__section-header">
-        <span
-          id="workspace-panes-title"
-          className="project-page__section-label"
-        >
-          Workspace panes
-        </span>
-        <button
-          type="button"
-          className="project-page__add-btn"
-          onClick={props.onOpen}
-        >
-          + Add pane
-        </button>
-      </div>
-      <ActivePaneContents {...contents} />
-    </section>
   );
 }
 
