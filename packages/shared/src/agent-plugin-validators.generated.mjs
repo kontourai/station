@@ -5502,4 +5502,5 @@ validate21.evaluated = {
   dynamicProps: false,
   dynamicItems: false,
 };
+
 export { validateManifest, validateStationExtension };

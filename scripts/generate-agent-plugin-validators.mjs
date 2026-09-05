@@ -67,7 +67,7 @@ export async function generateAgentPluginValidators({ check = false } = {}) {
       input:
         header +
         `/*! Bundled Ajv runtime helper.\n${runtimeLicense}*/\n` +
-        bundled.outputFiles[0].text,
+        bundled.outputFiles[0].text.replaceAll('\nexport {', '\n\nexport {'),
       encoding: 'utf8',
       windowsHide: true,
     },
