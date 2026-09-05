@@ -57,3 +57,13 @@ export interface WorkspacePackageInspection extends WorkspacePackageReceipt {
   }>;
   gitObjectValidation: 'performed-during-import';
 }
+
+export interface WorkspacePackageVerification extends WorkspacePackageReceipt {
+  workspace: string;
+  verified: true;
+  verification: 'HEAD-branch-index-policy-working-files';
+  packageSha256: string;
+  verifiedAt: string;
+  gitObjectValidation: 'performed-in-isolated-import';
+  executableModeVerification: 'passed' | 'unavailable-on-windows';
+}
