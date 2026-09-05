@@ -1,4 +1,7 @@
-import type { PluginInstallationRevision } from '@kontourai/station-contracts/plugin';
+import type {
+  PluginInstallationRevision,
+  PluginManifest,
+} from '@kontourai/station-contracts/plugin';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
@@ -112,9 +115,13 @@ export function createRegistryRoutes(
         packageMcpJournal: deps.packageMcpJournal,
         installationHost: deps.installationHost,
         agentsDir: join(projectHomeDir, 'agents'),
-        buildPlugin: async (pluginDir: string, name: string) => {
+        buildPlugin: async (
+          pluginDir: string,
+          name: string,
+          manifest?: PluginManifest,
+        ) => {
           const { buildPlugin } = await import('./plugin-bundles.js');
-          return buildPlugin(pluginDir, name, deps.logger);
+          return buildPlugin(pluginDir, name, deps.logger, manifest);
         },
         eventBus: deps.eventBus,
         logger: deps.logger,

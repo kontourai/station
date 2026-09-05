@@ -103,9 +103,10 @@ export async function buildPlugin(
   pluginDir: string,
   name: string,
   logger: Logger,
+  manifest?: PluginManifest,
 ): Promise<void> {
   try {
-    const result = await buildPluginBundle(pluginDir);
+    const result = await buildPluginBundle(pluginDir, 'production', manifest);
     if (result.built) {
       logger.info(`Plugin ${name}: build complete`);
     }

@@ -20,6 +20,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { buildPlugin as buildInstalledPlugin } from '../../../routes/plugins/plugin-bundles.js';
 import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
 import {
   installPluginFromSource,
@@ -992,4 +993,44 @@ test('the generic service refuses missing acquisition provenance on fresh and hi
       }),
   ).rejects.toThrow(/origin is unknown/);
   expect(await f.service().inspect('fixture')).toEqual(unknown);
+});
+
+test('managed namespace build uses the existing builder with validated fields and ignores portable root lookalikes', async () => {
+  const f = fixture();
+  writeFileSync(
+    join(f.source, 'plugin.json'),
+    JSON.stringify({
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'fixture',
+      version: '1',
+      entrypoint: './must-not-build.ts',
+      build: 'must-not-run',
+      extensions: {
+        'io.kontourai.station': {
+          schemaVersion: '1.0',
+          entrypoint: './io.kontourai.station/index.js',
+        },
+      },
+    }),
+  );
+  mkdirSync(join(f.source, 'io.kontourai.station'), { recursive: true });
+  writeFileSync(
+    join(f.source, 'io.kontourai.station', 'index.js'),
+    'export const reviewedMarker = "namespace-build-witness";',
+  );
+  const result = await installPluginFromSource(
+    f.source,
+    [],
+    {
+      ...f.deps,
+      buildPlugin: (dir, name, manifest) =>
+        buildInstalledPlugin(dir, name, f.deps.logger, manifest),
+    },
+    { consent: await namespaceConsent(f.source) },
+  );
+  expect(result.plugin.hasBundle).toBe(true);
+  const root = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
+  expect(
+    readFileSync(join(root.packageRoot, 'dist', 'bundle.js'), 'utf8'),
+  ).toContain('namespace-build-witness');
 });

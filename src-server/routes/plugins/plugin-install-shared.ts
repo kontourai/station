@@ -336,7 +336,7 @@ export interface PluginInstallSharedDeps {
   logger: Logger;
   pluginsDir: string;
   projectHomeDir: string;
-  buildPlugin: (pluginDir: string, name: string) => Promise<void>;
+  buildPlugin: (pluginDir: string, name: string, manifest?: PluginManifest) => Promise<void>;
   beginConfigurationMutation?: () => void;
   settleProviderAdapterRetirements?: () => Promise<void>;
   reconcileEngineConnections?: (plugin: string) => Promise<void>;
@@ -2331,7 +2331,7 @@ export async function installPluginFromSource(
         if (!isAgentPlugin) {
           scanPluginPromptGeneration(tempDir, pluginName);
         }
-        await buildPlugin(tempDir, pluginName);
+        await buildPlugin(tempDir, pluginName, manifest);
         assertPluginBundleAssetsContained(tempDir);
 
         if (isAgentPlugin) {

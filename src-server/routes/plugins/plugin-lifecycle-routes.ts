@@ -75,7 +75,11 @@ interface PluginLifecycleRouteDeps {
   logger: Logger;
   pluginsDir: string;
   projectHomeDir: string;
-  buildPlugin: (pluginDir: string, name: string) => Promise<void>;
+  buildPlugin: (
+    pluginDir: string,
+    name: string,
+    manifest?: PluginManifest,
+  ) => Promise<void>;
   applyConfigurationMutation?: AgentConfigurationMutationRunner;
   refreshKitObservability?: () => void;
   settleProviderAdapterRetirements?: () => Promise<void>;

@@ -490,8 +490,8 @@ export function registerPluginInstallRoutes(
               packageMcpJournal: deps.packageMcpJournal,
               installationHost: deps.installationHost,
               beginConfigurationMutation: beginMutation,
-              buildPlugin: (pluginDir, name) =>
-                buildPlugin(pluginDir, name, logger),
+              buildPlugin: (pluginDir, name, manifest) =>
+                buildPlugin(pluginDir, name, logger, manifest),
               eventBus,
               logger,
               pluginsDir,

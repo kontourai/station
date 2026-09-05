@@ -40,6 +40,24 @@ function createPluginRoot(): string {
 }
 
 describe('buildPlugin', () => {
+  test('requires the installation owner to validate portable namespace build fields', async () => {
+    const pluginDir = createPluginRoot();
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'portable',
+        entrypoint: './unknown-root.js',
+      }),
+    );
+    await expect(buildPlugin(pluginDir)).rejects.toThrow(
+      /validated Station namespace/,
+    );
+    await expect(
+      buildPlugin(pluginDir, 'production', { name: 'portable', version: '1' }),
+    ).resolves.toEqual({ built: false });
+  });
+
   test('rejects manifest.build even when an entrypoint is declared', async () => {
     const pluginDir = createPluginRoot();
     writeFileSync(
