@@ -22,6 +22,10 @@ import {
   issueAuthorizedTurnCorrelationHandoff,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
 import {
+  INTERNAL_NATIVE_WORKSPACE_HEADER,
+  NativeExecutionWorkspaceUnavailableError,
+} from '../../runtime/conversation/native-execution-workspace.js';
+import {
   currentNativeForegroundRelay,
   INTERNAL_NATIVE_FOREGROUND_HEADER,
 } from '../../runtime/conversation/native-foreground-invocation.js';
@@ -107,6 +111,7 @@ interface StationAgentResumeCursor {
 }
 
 interface StationAgentSessionRecord {
+  workspaceRequired: boolean;
   session: ProviderSession;
   agentId: string;
   projectSlug?: string;
@@ -637,6 +642,10 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       updatedAt: now,
     };
     this.sessions.set(input.threadId, {
+      workspaceRequired:
+        input.workspaceIsolation?.mode === 'worktree' ||
+        (input.metadata?.workspaceIsolation as { mode?: unknown } | undefined)
+          ?.mode === 'worktree',
       session,
       agentId,
       ...(projectSlug ? { projectSlug } : {}),
@@ -706,6 +715,11 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const turnCorrelation = currentAuthorizedTurnCorrelation();
     const nativeOutputRelay = currentNativeOutputRelayCompanion();
     const nativeForeground = currentNativeForegroundRelay();
+    if (
+      record.workspaceRequired &&
+      (!nativeOutputRelay?.workspaceRequired || !turnCorrelation)
+    )
+      throw new NativeExecutionWorkspaceUnavailableError();
     if (nativeForeground && !turnCorrelation)
       throw new ForegroundInvocationUnavailableError();
     const turnId = turnCorrelation?.turnId ?? crypto.randomUUID();
@@ -799,6 +813,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
             ...(relayHandoff
               ? {
                   [INTERNAL_TURN_CORRELATION_HEADER]: relayHandoff,
+                  ...(nativeOutputRelay?.workspaceRequired
+                    ? { [INTERNAL_NATIVE_WORKSPACE_HEADER]: relayHandoff }
+                    : {}),
                   ...(nativeForeground
                     ? { [INTERNAL_NATIVE_FOREGROUND_HEADER]: relayHandoff }
                     : {}),

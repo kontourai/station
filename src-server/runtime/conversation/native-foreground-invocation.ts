@@ -6,6 +6,7 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from '../../services/orchestration/foreground-invocation-admission.js';
+import { createNativeExecutionWorkspace } from './native-execution-workspace.js';
 
 export const INTERNAL_NATIVE_FOREGROUND_HEADER =
   'x-station-native-foreground-admission';
@@ -81,7 +82,7 @@ export function createNativeForegroundRelay(
   )
     throw new ForegroundInvocationUnavailableError();
   if (workspaceRoot) capturedProject.workingDirectory = workspaceRoot;
-  const cleanup = new Set<() => void>();
+  const workspace = createNativeExecutionWorkspace(workspaceRoot);
   let closed = false;
   const expectedOptions = {
     conversationId: binding.threadId,
@@ -115,27 +116,12 @@ export function createNativeForegroundRelay(
   };
   return Object.freeze({
     get workspaceRoot() {
-      if (closed) throw new ForegroundInvocationUnavailableError();
-      return workspaceRoot;
+      return workspace.workspaceRoot;
     },
-    onClose(dispose: () => void) {
-      if (closed) throw new ForegroundInvocationUnavailableError();
-      cleanup.add(dispose);
-    },
+    onClose: workspace.onClose,
     close() {
-      if (closed) return;
       closed = true;
-      const failures: unknown[] = [];
-      for (const dispose of cleanup) {
-        try {
-          dispose();
-        } catch (error) {
-          failures.push(error);
-        }
-      }
-      cleanup.clear();
-      if (failures.length)
-        throw new AggregateError(failures, 'Native workspace cleanup failed');
+      workspace.close();
     },
     get agentSpec() {
       return structuredClone(capturedSpec);

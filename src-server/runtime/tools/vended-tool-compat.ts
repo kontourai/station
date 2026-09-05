@@ -11,9 +11,10 @@ import type {
 import { uiBlockEmitted } from '../../telemetry/metrics.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import {
-  currentNativeForegroundRelay,
-  type NativeForegroundRelayCompanion,
-} from '../conversation/native-foreground-invocation.js';
+  currentNativeExecutionWorkspace,
+  type NativeExecutionWorkspace,
+} from '../conversation/native-execution-workspace.js';
+import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
 import { acceptUIBlockProvenance } from '../conversation/ui-block-provenance.js';
 import type { ITool } from '../types.js';
 
@@ -178,7 +179,7 @@ export function createBuiltinVendedTool(
 }
 
 const capturedBashSessions = new WeakMap<
-  NativeForegroundRelayCompanion,
+  NativeExecutionWorkspace,
   Map<string, BashSession>
 >();
 
@@ -317,7 +318,8 @@ function createBashTool(
       command?: string;
       timeout?: number;
     }) => {
-      const workspace = currentNativeForegroundRelay();
+      const workspace =
+        currentNativeExecutionWorkspace() ?? currentNativeForegroundRelay();
       let sessions = bashSessions;
       if (workspace) {
         let captured = capturedBashSessions.get(workspace);
@@ -400,7 +402,9 @@ function createFileEditorTool(
       new_str?: string;
       insert_line?: number;
     }) => {
-      const workspaceRoot = currentNativeForegroundRelay()?.workspaceRoot;
+      const workspaceRoot = (
+        currentNativeExecutionWorkspace() ?? currentNativeForegroundRelay()
+      )?.workspaceRoot;
       if (workspaceRoot && !path.isAbsolute(input.path))
         input = { ...input, path: path.resolve(workspaceRoot, input.path) };
       switch (input.command) {

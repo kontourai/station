@@ -208,6 +208,10 @@ import type {
   EventStore,
   PersistedRuntimeEvent,
 } from './event-store.js';
+import {
+  type ExecutionWorkspaceBinding,
+  readExecutionWorkspaceBinding,
+} from './execution-workspace-binding.js';
 import { FlowPolicySidecar } from './flow-policy-sidecar.js';
 import {
   type ForegroundInvocationAdmission,
@@ -315,6 +319,7 @@ function telemetryEngine(
  */
 interface OrchestrationDispatchInternalOptions {
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
+  executionWorkspace?: ExecutionWorkspaceBinding;
   /** Skip the modelOptions per-provider support check for this one command. */
   skipModelOptionSupportCheck?: boolean;
   /**
@@ -3721,7 +3726,8 @@ export class OrchestrationService {
             ),
             this.options.listProjects,
             this.options.observeCwdShadow,
-            internal?.foregroundInvocationAdmission?.provisionedWorkspace,
+            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
+              readExecutionWorkspaceBinding(internal?.executionWorkspace),
           );
           if (internal?.reviewIsolation) {
             startInput = {
@@ -4461,7 +4467,16 @@ export class OrchestrationService {
                         context.userId.trim() !== ''
                       ) {
                         const nativeTurnId = nativeTurn.turnId;
+                        const nativeWorkspaceIsolation =
+                          this.readLatestSessionStartMetadata(
+                            turnInput.threadId,
+                          )?.workspaceIsolation;
                         nativeOutputRelay = createNativeOutputRelayCompanion({
+                          workspaceRequired:
+                            !!nativeWorkspaceIsolation &&
+                            typeof nativeWorkspaceIsolation === 'object' &&
+                            'mode' in nativeWorkspaceIsolation &&
+                            nativeWorkspaceIsolation.mode === 'worktree',
                           authority: this.nativeOutputGrants,
                           facts: {
                             threadId: turnInput.threadId,

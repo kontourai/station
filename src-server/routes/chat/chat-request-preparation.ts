@@ -47,6 +47,8 @@ interface PrepareChatRequestContext {
   projectSlug?: string;
   /** Internal captured invocation only; never populated from public JSON. */
   capturedProject?: ProjectConfig;
+  /** Private server-resolved Session location, never request options. */
+  capturedWorkspaceRoot?: string;
   /** Test seam; defaults to the shared service. */
   agentPolicyService?: AgentPolicyService;
 }
@@ -194,9 +196,11 @@ export async function prepareChatRequest(
       // check is FAIL-OPEN — a `~/…` path threw, was read as "not opted in", and
       // Flow-Agents steering was silently never injected into any chat context
       // for a tilde-configured project (archive#3155). Nothing surfaced.
-      const workspaceCwd = project?.workingDirectory
-        ? resolve(expandTilde(project.workingDirectory))
-        : undefined;
+      const workspaceCwd =
+        context.capturedWorkspaceRoot ??
+        (project?.workingDirectory
+          ? resolve(expandTilde(project.workingDirectory))
+          : undefined);
       if (workspaceCwd) {
         const policyService =
           context.agentPolicyService ??

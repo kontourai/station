@@ -9,6 +9,10 @@ import {
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
 import {
+  type NativeExecutionWorkspace,
+  runWithNativeExecutionWorkspace,
+} from '../../runtime/conversation/native-execution-workspace.js';
+import {
   type NativeForegroundRelayCompanion,
   runWithNativeForegroundRelay,
 } from '../../runtime/conversation/native-foreground-invocation.js';
@@ -109,6 +113,7 @@ interface StreamPrimaryAgentChatArgs {
   /** Private native-output capability from the authenticated internal relay. */
   nativeOutputGrant?: NativeOutputTurnContext;
   nativeForeground?: NativeForegroundRelayCompanion;
+  nativeWorkspace?: NativeExecutionWorkspace;
   nativeRuntimeAgent?: unknown;
 }
 
@@ -165,6 +170,7 @@ export function streamPrimaryAgentChat({
   turnCorrelation,
   nativeOutputGrant,
   nativeForeground,
+  nativeWorkspace,
   nativeRuntimeAgent,
 }: StreamPrimaryAgentChatArgs): Response {
   c.header('Content-Type', 'text/event-stream');
@@ -723,13 +729,21 @@ export function streamPrimaryAgentChat({
         return await writeStream(streamWriter);
       } finally {
         nativeForeground?.refuse();
-        nativeForeground?.close();
+        try {
+          nativeForeground?.close();
+        } finally {
+          nativeWorkspace?.close();
+        }
       }
     };
-    const withWorkspace = () =>
+    const withForeground = () =>
       nativeForeground
         ? runWithNativeForegroundRelay(nativeForeground, write)
         : write();
+    const withWorkspace = () =>
+      nativeWorkspace
+        ? runWithNativeExecutionWorkspace(nativeWorkspace, withForeground)
+        : withForeground();
     const correlated = () =>
       turnCorrelation
         ? runWithAuthorizedTurnCorrelation(turnCorrelation, withWorkspace)

@@ -20,6 +20,10 @@ import {
   readNativeForegroundRelayCompanion,
   readNativeOutputRelayCompanion,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import {
+  INTERNAL_NATIVE_WORKSPACE_HEADER,
+  type NativeExecutionWorkspace,
+} from '../../runtime/conversation/native-execution-workspace.js';
 import { INTERNAL_NATIVE_FOREGROUND_HEADER } from '../../runtime/conversation/native-foreground-invocation.js';
 import {
   captureRuntimeConfigurationLease,
@@ -125,6 +129,21 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
     const nativeOutputRelay = trustedRelay
       ? readNativeOutputRelayCompanion(relayHandoff)
       : undefined;
+    const workspaceHeader = c.req.header(INTERNAL_NATIVE_WORKSPACE_HEADER);
+    if (
+      (workspaceHeader || nativeOutputRelay?.workspaceRequired) &&
+      (!nativeOutputRelay ||
+        !turnCorrelation ||
+        workspaceHeader !== relayHandoff)
+    )
+      return c.json(
+        {
+          success: false,
+          error: 'The native execution workspace is unavailable.',
+        },
+        409,
+      );
+    let nativeWorkspace: NativeExecutionWorkspace | undefined;
     const nativeForegroundHeader = c.req.header(
       INTERNAL_NATIVE_FOREGROUND_HEADER,
     );
@@ -162,6 +181,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
       delete optionsForPreparation[WORKSPACE_PANE_HOST_ACTION_METADATA_KEY];
       const configurationLease = captureRuntimeConfigurationLease(ctx);
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
+      nativeWorkspace = nativeOutputRelay?.readExecutionWorkspace?.(
+        rawOptions.conversationId,
+      );
       const nativeOutputGrant = nativeOutputRelay?.issueForRuntimeConfiguration(
         configurationLease,
         () => runtimeConfigurationLeaseIsCurrent(ctx, configurationLease),
@@ -180,6 +202,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         options: optionsForPreparation,
         projectSlug,
         capturedProject: nativeForeground?.project,
+        capturedWorkspaceRoot: nativeWorkspace?.workspaceRoot,
       });
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       const ragContext = preparedRagContext;
@@ -285,11 +308,13 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         dedupStore: getChatTurnDedupStore(ctx.orchestrationEventStore),
         turnCorrelation,
         ...(nativeOutputGrant ? { nativeOutputGrant } : {}),
+        ...(nativeWorkspace ? { nativeWorkspace } : {}),
         ...(nativeForeground
           ? { nativeForeground, nativeRuntimeAgent: runtimeAgent.agent }
           : {}),
       });
     } catch (error: unknown) {
+      nativeWorkspace?.close();
       nativeForeground?.refuse();
       if (nativeForeground)
         return c.json(

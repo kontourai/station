@@ -38,12 +38,16 @@ import { StationAgentAdapter } from '../../../providers/adapters/station-agent-a
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { createChatRoutes } from '../../../routes/chat/chat.js';
 import { createWorkspacePaneHostActionRoutes } from '../../../routes/orchestration/workspace-pane-host-actions.js';
+import { INTERNAL_NATIVE_WORKSPACE_HEADER } from '../../../runtime/conversation/native-execution-workspace.js';
 import { INTERNAL_NATIVE_FOREGROUND_HEADER } from '../../../runtime/conversation/native-foreground-invocation.js';
+import type { NativeOutputGrantAuthority } from '../../../runtime/native-output-turn-grant.js';
 import { createRuntimeWorkspacePaneHostActions } from '../../../runtime/routes/workspace-pane-host-actions.js';
 import {
   createBuiltinVendedTool,
   createBuiltinVendedToolDef,
 } from '../../../runtime/tools/vended-tool-compat.js';
+import { executeExecutionTargetMessage } from '../../../tools/station-control-delegation.js';
+import { getAgentPolicyService } from '../../agents/agent-policy-service.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import type { ForegroundInvocationAdmission } from '../../orchestration/foreground-invocation-admission.js';
@@ -113,6 +117,7 @@ describe('Workspace Pane host invocation admission', () => {
   let beforeReady: (() => Promise<void>) | undefined;
   let beforeTurn: (() => Promise<void>) | undefined;
   let counter = 0;
+  let ordinaryLookupAllowed = false;
 
   beforeEach(async () => {
     home = mkdtempSync(join(tmpdir(), 'station-pane-admission-'));
@@ -276,14 +281,23 @@ describe('Workspace Pane host invocation admission', () => {
         resolveSkillDir: async () => null,
       }),
       loadAgentExecutionConfig: async () => {
+        if (ordinaryLookupAllowed)
+          return JSON.parse(
+            readFileSync(join(home, 'agents', slug, 'agent.json'), 'utf8'),
+          ).execution;
         throw new Error('Must consume captured execution, not reread');
       },
       loadAgentPresentation: async () => {
+        if (ordinaryLookupAllowed)
+          return JSON.parse(
+            readFileSync(join(home, 'agents', slug, 'agent.json'), 'utf8'),
+          );
         throw new Error('Must consume captured presentation, not reread');
       },
       listProjects: () => [storage.projectRevision(projectSlug).value],
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+    ordinaryLookupAllowed = false;
     beforeReady = undefined;
     beforeTurn = undefined;
   });
@@ -415,6 +429,7 @@ describe('Workspace Pane host invocation admission', () => {
       retainArtifact?: boolean;
       portable?: boolean;
       dropCompanionMarker?: boolean;
+      dropWorkspaceMarker?: boolean;
       waitForModel?: Promise<void>;
     } = {},
   ) {
@@ -505,8 +520,19 @@ describe('Workspace Pane host invocation admission', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: Parameters<typeof fetch>[0]) => {
+        const path = new URL(String(url)).pathname;
+        if (path === `/api/agents/${slug}`)
+          return Response.json({
+            success: true,
+            data: { ...nativeSpec, slug },
+          });
+        if (path === `/api/projects/${projectSlug}`)
+          return Response.json({
+            success: true,
+            data: storage.projectRevision(projectSlug).value,
+          });
         if (!String(url).endsWith('/.well-known/station/v1'))
-          throw new Error('Unexpected native proof network request');
+          throw new Error(`Unexpected native proof network request: ${path}`);
         return new Response(
           JSON.stringify({ environmentId: 'environment-current' }),
         );
@@ -594,6 +620,8 @@ describe('Workspace Pane host invocation admission', () => {
         const headers = new Headers(init?.headers);
         if (options.dropCompanionMarker)
           headers.delete(INTERNAL_NATIVE_FOREGROUND_HEADER);
+        if (options.dropWorkspaceMarker)
+          headers.delete(INTERNAL_NATIVE_WORKSPACE_HEADER);
         return chat.request(
           new URL(String(url)).pathname.replace('/api/agents', ''),
           { ...init, headers },
@@ -640,6 +668,7 @@ describe('Workspace Pane host invocation admission', () => {
     );
     expect(prepared.data.state).toBe('prepared');
     return {
+      actor,
       retained,
       streamText,
       ctx,
@@ -1150,7 +1179,7 @@ describe('Workspace Pane host invocation admission', () => {
     });
   });
 
-  test('captured native worktree action invokes a real Bash child in its provisioned Session workspace', async () => {
+  test('native worktree action and ordinary child continuation keep real Bash in the owned workspace without output grants', async () => {
     const repo = join(home, 'repository');
     mkdirSync(repo);
     execFileSync('git', ['init', '--quiet', repo], { windowsHide: true });
@@ -1180,24 +1209,158 @@ describe('Workspace Pane host invocation admission', () => {
       slug,
       createBuiltinVendedToolDef('bash')!,
     )!;
-    let observed: unknown;
-    const proof = await nativeHostProof({
+    const observed: unknown[] = [];
+    const proofOptions = {
+      dropWorkspaceMarker: false,
       inModel: async () => {
-        observed = await bash.execute({ mode: 'execute', command: 'pwd -P' });
+        observed.push(
+          await bash.execute({ mode: 'execute', command: 'pwd -P' }),
+        );
       },
-    });
+    };
+    const proof = await nativeHostProof(proofOptions);
     const result = await proof.execute();
     expect(result.state).toBe('accepted');
-    await expect.poll(() => observed).toBeDefined();
+    await expect.poll(() => observed.length).toBe(1);
     const session = await service.readSession(
       result.sessionId,
       INTERNAL_SESSION_READ_SCOPE,
     );
     expect(session?.session.cwd).not.toBe(repo);
-    expect(observed).toMatchObject({
+    expect(observed[0]).toMatchObject({
       output: realpathSync(session!.session.cwd!),
     });
     expect(session?.session.cwd).toContain('repository-worktrees');
+    await expect
+      .poll(
+        async () =>
+          (
+            await service.readSession(
+              result.sessionId,
+              INTERNAL_SESSION_READ_SCOPE,
+            )
+          )?.session.lifecycleState,
+      )
+      .toBe('completed');
+    const forged = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          provider: 'station-agent',
+          threadId: 'forged-public-worktree',
+          cwd: session!.session.cwd,
+          metadata: {
+            agentId: slug,
+            agentSlug: slug,
+            projectSlug,
+            userId: proof.actor.principal.id,
+            workspaceIsolation: { mode: 'worktree' },
+            worktree: {
+              mode: 'worktree',
+              path: session!.session.cwd,
+              repoPath: repo,
+            },
+            executionWorkspace: {
+              threadId: 'forged-public-worktree',
+              projectSlug,
+              cwd: session!.session.cwd,
+            },
+          },
+        },
+      },
+      { userId: proof.actor.principal.id },
+    );
+    expect(forged.status).not.toBe('accepted');
+    expect('message' in forged ? forged.message : '').toContain(
+      'outside project',
+    );
+    expect(proof.streamText).toHaveBeenCalledOnce();
+    ordinaryLookupAllowed = true;
+    const registeredBefore = execFileSync(
+      'git',
+      ['-C', repo, 'worktree', 'list', '--porcelain'],
+      { windowsHide: true, encoding: 'utf8' },
+    );
+    // Output declaration can be disabled/exhausted without changing location.
+    const outputAuthority = Reflect.get(
+      service,
+      'nativeOutputGrants',
+    ) as NativeOutputGrantAuthority;
+    const steering = vi.spyOn(getAgentPolicyService(), 'steeringContext');
+    const optionalGrant = vi
+      .spyOn(outputAuthority, 'issue')
+      .mockReturnValue(null);
+    try {
+      const continued = await executeExecutionTargetMessage(
+        {
+          conversationId: result.conversationId,
+          target: {
+            environment: { kind: 'current' },
+            agent: slug,
+            workspace: { kind: 'project', projectSlug },
+          },
+          message: 'Continue in the same workspace.',
+          userId: proof.actor.principal.id,
+          principal: proof.actor.principal,
+          readAuthority: proof.actor.readAuthority,
+        },
+        service,
+      );
+      await expect.poll(() => observed.length).toBe(2);
+      expect(continued.sessionId).not.toBe(result.sessionId);
+      expect(
+        (
+          await service.readSession(
+            continued.sessionId,
+            INTERNAL_SESSION_READ_SCOPE,
+          )
+        )?.session.cwd,
+      ).toBe(session!.session.cwd);
+      expect(observed[1]).toMatchObject({
+        output: realpathSync(session!.session.cwd!),
+      });
+      expect(
+        execFileSync('git', ['-C', repo, 'worktree', 'list', '--porcelain'], {
+          windowsHide: true,
+          encoding: 'utf8',
+        }),
+      ).toBe(registeredBefore);
+      expect(optionalGrant).toHaveBeenCalled();
+      expect(steering.mock.calls.at(-1)?.[0].cwd).toBe(session!.session.cwd);
+      await expect
+        .poll(
+          async () =>
+            (
+              await service.readSession(
+                continued.sessionId,
+                INTERNAL_SESSION_READ_SCOPE,
+              )
+            )?.session.lifecycleState,
+        )
+        .toBe('completed');
+      proofOptions.dropWorkspaceMarker = true;
+      await expect(
+        executeExecutionTargetMessage(
+          {
+            conversationId: result.conversationId,
+            target: {
+              environment: { kind: 'current' },
+              agent: slug,
+              workspace: { kind: 'project', projectSlug },
+            },
+            message: 'Must not run without the workspace relay.',
+            userId: proof.actor.principal.id,
+            principal: proof.actor.principal,
+            readAuthority: proof.actor.readAuthority,
+          },
+          service,
+        ),
+      ).rejects.toThrow();
+      expect(proof.streamText).toHaveBeenCalledTimes(2);
+    } finally {
+      optionalGrant.mockRestore();
+      steering.mockRestore();
+    }
   });
 
   test('refuses native Agent execution that cannot consume the captured spec', async () => {

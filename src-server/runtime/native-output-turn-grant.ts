@@ -11,6 +11,11 @@ import {
   isPrincipalRef,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
+import {
+  createNativeExecutionWorkspace,
+  type NativeExecutionWorkspace,
+  NativeExecutionWorkspaceUnavailableError,
+} from './conversation/native-execution-workspace.js';
 import type { NativeOutputDeclarationOperation } from './native-output-declaration.js';
 
 declare const nativeOutputGrantBrand: unique symbol;
@@ -62,6 +67,11 @@ export interface NativeOutputGrantAuthority {
 
 /** Process-local relay capability; it never crosses a JSON or public seam. */
 export interface NativeOutputRelayCompanion {
+  /** Private captured location; independent of optional output-declaration grants. */
+  readonly workspaceRequired?: boolean;
+  readExecutionWorkspace?(
+    threadId: unknown,
+  ): NativeExecutionWorkspace | undefined;
   issueForRuntimeConfiguration(
     configurationLease: unknown,
     runtimeConfigurationLeaseIsCurrent: () => boolean,
@@ -285,6 +295,7 @@ const captureFacts = (facts: unknown): CapturedFacts | null => {
  * authorization, adapter, lifecycle, and generation fence.
  */
 export function createNativeOutputRelayCompanion(input: {
+  workspaceRequired?: boolean;
   authority: NativeOutputGrantAuthority;
   facts: Omit<NativeOutputGrantFacts, 'configurationLease'>;
   sourceLease: NativeOutputTurnLease;
@@ -294,7 +305,22 @@ export function createNativeOutputRelayCompanion(input: {
   const principal = captured && copyPrincipal(captured.principal);
   const sourceChecker = captureLeaseChecker(input.sourceLease);
   if (!captured || !principal || !sourceChecker) return null;
+  const workspaceRequired = input.workspaceRequired === true;
   return Object.freeze({
+    workspaceRequired,
+    readExecutionWorkspace(threadId: unknown) {
+      if (threadId !== captured.threadId || !current(sourceChecker))
+        throw new NativeExecutionWorkspaceUnavailableError();
+      if (
+        typeof captured.workspaceRoot !== 'string' ||
+        !captured.workspaceRoot
+      ) {
+        if (workspaceRequired)
+          throw new NativeExecutionWorkspaceUnavailableError();
+        return undefined;
+      }
+      return createNativeExecutionWorkspace(captured.workspaceRoot);
+    },
     issueForRuntimeConfiguration(
       configurationLease: unknown,
       isConfigurationCurrent: () => boolean,
