@@ -6730,6 +6730,11 @@ export class EventStore {
    *
    * `undefined` for a root thread: it already folds its own first turn, and
    * returning it here would make two paths answer one question.
+   *
+   * Derived at read time on purpose, which is also what makes it retroactive: a
+   * conversation recorded before this existed gets the right title on its next
+   * read. The stored projection rows are NOT repaired — see the migration note
+   * in `projectConversationHistoryEvent` (#1536 L6).
    */
   conversationRootFirstPromptedTurn(
     threadId: string,
@@ -10129,15 +10134,35 @@ export class EventStore {
     // #1536 B4: a continuation child Session is a new thread with its own
     // history row, and its first prompted turn is the SECOND thing the person
     // said — so titling that row from this thread alone renamed the
-    // conversation on every continuation. The conversation's title belongs to
+    // conversation on every continuation.
+    //
+    // NOT MIGRATED, deliberately (#1536 L6): rows written before this change
+    // keep the title they were given, and a conversation row whose `created_at`
+    // was stamped by a child's upsert keeps that time until some later upsert
+    // rewrites it. Reads are correct going forward — `listConversationHistoryPage`
+    // prefers the root's title regardless — but an existing conversation's
+    // recorded creation time stays wrong, because `MIN(created_at)` over rows
+    // that are already wrong is still wrong. Repairing them needs a backfill
+    // against the lineage table, which is a migration and not this projection's
+    // job. The conversation's title belongs to
     // its ROOT Session. `listConversationHistoryPage`'s `root_title` window
     // already prefers the root when reading a whole conversation; this makes
     // the row itself right, so a direct reader of one row cannot disagree with
     // the list, and the window stays a second line of defence rather than the
     // only one.
-    const lineage = this.conversationSessionLineage.sessionForExecution(
-      event.threadId,
-    );
+    //
+    // #1536 L5: both reads are skipped unless they can change the outcome — a
+    // row that already has a title keeps it (the title is write-once here), and
+    // an event that carries no prompt has none to write. That leaves the lineage
+    // lookup and the root read on a thread's FIRST prompted turn only, not on
+    // every appended event.
+    const needsTitle =
+      !existing?.title &&
+      typeof prompt === 'string' &&
+      prompt.trim().length > 0;
+    const lineage = needsTitle
+      ? this.conversationSessionLineage.sessionForExecution(event.threadId)
+      : undefined;
     const inheritedTitle =
       lineage?.predecessorSessionId && lineage.conversationId !== event.threadId
         ? ((

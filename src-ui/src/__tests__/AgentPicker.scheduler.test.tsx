@@ -21,7 +21,6 @@ import {
   SCHEDULER_ENGINE_AGENT_REASON,
   schedulerAgentOptions,
   schedulerAgentRunnability,
-  schedulerRunnableAgents,
 } from '../components/scheduler/schedulerAgentOptions';
 
 const agent = (
@@ -38,8 +37,12 @@ describe('scheduler Agent options', () => {
     agentsLoaded.value = true;
   });
 
-  test('offers only agents the in-process scheduler runner can resolve', () => {
-    const offered = schedulerRunnableAgents([
+  test('lists every agent the in-process runner can resolve, and only those', () => {
+    // #1536 L2: this used to assert a `schedulerRunnableAgents` helper with no
+    // production consumer, under a name describing what the PICKER does. The
+    // picker lists `eligible`; runnability decides which of those rows a click
+    // may take. Both are asserted here, on the derivation the picker uses.
+    const options = schedulerAgentOptions([
       agent('station'),
       agent('external-station', {
         execution: { agentConnectionId: engineConnectionId('claude') },
@@ -51,7 +54,27 @@ describe('scheduler Agent options', () => {
       agent('offline', { available: false }),
     ]);
 
-    expect(offered.map(({ slug }) => slug)).toEqual(['station', 'reviewer']);
+    // Every Station-engine Agent is a ROW, including the one that cannot run:
+    // its reason is the only thing that says what to fix.
+    expect(options.eligible.map(({ slug }) => slug)).toEqual([
+      'station',
+      'reviewer',
+      'offline',
+    ]);
+    // The bound ones are not offered at all — the runner cannot resolve them.
+    expect(options.excludedEngineAgents.map(({ slug }) => slug)).toEqual([
+      'external-station',
+      'claude',
+    ]);
+    // And only a runnable row is selectable.
+    expect(
+      options.eligible
+        .filter(
+          ({ slug }) =>
+            schedulerAgentRunnability(options.eligible, slug).runnable,
+        )
+        .map(({ slug }) => slug),
+    ).toEqual(['station', 'reviewer']);
   });
 
   test('separates the engine-binding contract from current readiness', () => {
@@ -154,9 +177,9 @@ describe('scheduler Agent options', () => {
 
     render(<AgentPicker value="station" onChange={vi.fn()} />);
 
-    expect(
-      screen.getByRole('button', { name: 'Loading agents…' }),
-    ).toBeTruthy();
+    // The shared loading primitive stands in for the control; its `label` is
+    // the placeholder's accessible name.
+    expect(screen.getByLabelText('Loading agents')).toBeTruthy();
     expect(screen.queryByText('No runnable agents')).toBeNull();
 
     agentsLoaded.value = true;

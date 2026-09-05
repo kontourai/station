@@ -132,11 +132,20 @@ function notReadyNote(engine: ExternalEngineReadinessProjection): string {
  * covers a row that is merely un-tickable for some other reason, whose own
  * note is the only accurate account of why.
  */
-export type FirstRunEngineListLede = 'pick' | 'all-set' | 'none-selectable';
+export type FirstRunEngineListLede =
+  | 'pick'
+  | 'all-set'
+  | 'none-selectable'
+  /** No list at all — the caller renders its own empty state, not a lede. */
+  | 'none';
 
 export function firstRunEngineListLede(
   options: readonly FirstRunEngineOption[],
 ): FirstRunEngineListLede {
+  // #1536 L8: `every()` on `[]` is true, so an empty list used to classify as
+  // 'all-set' — "Station found these and set each one up" about nothing. The
+  // lede describes a list; with no list there is nothing for it to describe.
+  if (options.length === 0) return 'none';
   if (options.some((option) => option.selectable)) return 'pick';
   return options.every((option) => option.state === 'enabled')
     ? 'all-set'

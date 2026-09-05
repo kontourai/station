@@ -594,6 +594,30 @@ describe('resolveDockProjectContextDirectory (#1536 G6)', () => {
     ).toBeNull();
   });
 
+  test("an unbound session in a bound dock takes the bound project's directory", () => {
+    // #1536 L4: `sessionProjectSlug: undefined` means both "no session" and
+    // "a session with no project", and this step answers them the same way on
+    // purpose — a projectless chat has nothing of its own to report, which is
+    // what the fallback is for, and it is not a claim about a DIFFERENT
+    // project's directory. Pinned so a later reading of `undefined` has to
+    // change this test deliberately.
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        sessionDisplayCwd: null,
+        sessionProjectSlug: undefined,
+      }),
+    ).toBe('/Users/brian/dev/demo');
+    // And it stays subordinate to the session's own directory when it has one.
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        sessionDisplayCwd: '/tmp/unbound-session',
+        sessionProjectSlug: undefined,
+      }),
+    ).toBe('/tmp/unbound-session');
+  });
+
   test('reports nothing under a project chat-scope filter', () => {
     expect(
       resolveDockProjectContextDirectory({

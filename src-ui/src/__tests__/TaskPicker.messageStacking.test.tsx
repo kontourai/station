@@ -42,9 +42,32 @@ const REPO_ROOT = resolve(HERE, '../../../');
 
 const VIEWPORT = { width: 1200, height: 800 };
 
+/**
+ * Production puts this row in a fixed-descendant-trapping state two ways:
+ * `.message-row`'s `animation: message-slide-in` applies a live transform while
+ * it runs, and `.message-row:not(:last-child) { will-change: auto }` means the
+ * NEWEST row keeps the hint permanently. Either one makes the row a containing
+ * block AND a stacking context.
+ *
+ * The fixture states `will-change: transform` and CANCELS the animation, so the
+ * hint is the single mechanism under test. Both halves matter: leaving the
+ * animation on made the test's power a race against a duration (the review
+ * finding), and it also hid the hint's own contribution — with the animation
+ * running, removing `will-change` changed nothing and the self-guard below could
+ * not tell a live fixture from a dead one.
+ *
+ * With the animation cancelled the two parameterised cases then exercise the two
+ * production mechanisms separately: as a NON-final row the inline hint is the
+ * only trap (proved — removing it reds the self-guard), and as the FINAL row
+ * `.message-row`'s own `will-change` supplies it regardless, which is the state
+ * the newest message in every transcript sits in permanently.
+ */
 function userRow() {
   return (
-    <div className="message-row message-row--user">
+    <div
+      className="message-row message-row--user"
+      style={{ animation: 'none', willChange: 'transform' }}
+    >
       <div className="message user">
         <div>Reply with exactly: TURN TWO OK</div>
         <div className="message__task-input-action">
@@ -114,8 +137,10 @@ type PanelGeometry = {
   left: number;
   width: number;
   height: number;
+  /** The same overlay re-parented into the message row: the un-portaled shape. */
+  trappedTop: number;
   hitIsInsidePanel: boolean;
-  hitClassName: string;
+  hitDescription: string;
 };
 
 describe.skipIf(!chromiumAvailable)(
@@ -143,18 +168,36 @@ describe.skipIf(!chromiumAvailable)(
         return await page.evaluate(() => {
           const panel = document.querySelector('.task-picker__dialog');
           if (!panel) throw new Error('the picker dialog did not render');
+          const overlay = panel.closest('.responsive-surface-overlay');
+          const row = document.querySelector('.message-row--user');
+          if (!overlay || !row) throw new Error('fixture shape changed');
+          // The SAME overlay, re-parented into the message row: the shape this
+          // dialog had before it was portaled. Measuring it here is what keeps
+          // this test honest — if the row ever stops trapping a fixed
+          // descendant, `trappedTop` equals `top` and the assertion below says
+          // the fixture lost its power instead of quietly passing.
+          const clone = overlay.cloneNode(true) as HTMLElement;
+          clone.dataset.unportaled = '';
+          row.appendChild(clone);
+          const trapped = clone.querySelector('.task-picker__dialog');
+          if (!trapped) throw new Error('clone lost its panel');
+          const trappedRect = trapped.getBoundingClientRect();
           const rect = panel.getBoundingClientRect();
           const hit = document.elementFromPoint(
             rect.left + rect.width / 2,
             rect.top + rect.height / 2,
           );
+          clone.remove();
           return {
             top: Math.round(rect.top),
             left: Math.round(rect.left),
             width: Math.round(rect.width),
             height: Math.round(rect.height),
+            trappedTop: Math.round(trappedRect.top),
             hitIsInsidePanel: !!hit && panel.contains(hit),
-            hitClassName: hit ? hit.className || hit.tagName : 'none',
+            hitDescription: hit
+              ? `${hit.tagName.toLowerCase()}.${hit.className || '(no class)'}`
+              : 'nothing',
           };
         });
       } finally {
@@ -169,9 +212,18 @@ describe.skipIf(!chromiumAvailable)(
       'the panel is positioned against the viewport when %s',
       async (_label, withFollowingAnswer) => {
         const panel = await measure(withFollowingAnswer);
-        // Trapped by the row, the panel measured y = -129 in this fixture:
-        // above the viewport entirely, because `fixed` resolved against the
-        // animating row's box rather than the viewport.
+        // FIRST: the trap this fixture exists to escape is really here. The
+        // un-portaled clone is positioned against the ROW, not the viewport —
+        // measured at y = -129 when the real panel was inside the row. Equal
+        // tops would mean the row no longer traps a fixed descendant and every
+        // assertion below had stopped proving anything.
+        expect(
+          Math.abs(panel.trappedTop - panel.top),
+          `the un-portaled clone measured the same top (${panel.trappedTop}) as ` +
+            'the portaled panel, so this fixture no longer reproduces the ' +
+            'containing-block trap and cannot prove the portal escapes it',
+        ).toBeGreaterThan(1);
+        // THEN: the portaled panel is positioned against the viewport…
         expect({ top: panel.top >= 0, left: panel.left >= 0 }).toEqual({
           top: true,
           left: true,
@@ -183,13 +235,10 @@ describe.skipIf(!chromiumAvailable)(
         // panel, because the trap MOVED the panel rather than covering it, so
         // its centre still hit itself. Only paired with the containment above
         // does it discriminate.
-        expect({
-          hitIsInsidePanel: panel.hitIsInsidePanel,
-          hitClassName: panel.hitClassName,
-        }).toEqual({
-          hitIsInsidePanel: true,
-          hitClassName: panel.hitClassName,
-        });
+        expect(
+          panel.hitIsInsidePanel,
+          `the point at the open panel's centre resolved to ${panel.hitDescription}`,
+        ).toBe(true);
       },
     );
   },

@@ -9,6 +9,7 @@ import { useAddJob, useEditJob } from '../../hooks/useScheduler';
 import { errorText } from '../../utils/errorText';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
+import { SkeletonList } from '../state';
 import { Toggle } from '../Toggle';
 import { AgentPicker } from './AgentPicker';
 import { CronPreview } from './CronEditor';
@@ -25,7 +26,8 @@ import {
   scheduleEquals,
   scheduleForJob,
   splitEveryMs,
-  weekdayMorningCron,
+  WEEKDAY_MORNING_CRON,
+  weekdayMorningSchedule,
 } from './scheduleValue';
 
 export function JobFormModal({
@@ -68,10 +70,10 @@ export function JobFormModal({
   // every minute of every day.
   const initialSchedule: SchedulerSchedule = job
     ? scheduleForJob(job)
-    : (init.schedule ?? {
-        kind: 'cron',
-        expr: init.cron || weekdayMorningCron(),
-      });
+    : (init.schedule ??
+      (init.cron
+        ? { kind: 'cron', expr: init.cron }
+        : weekdayMorningSchedule()));
   const initialInterval = splitEveryMs(
     initialSchedule.kind === 'every' ? initialSchedule.everyMs : 60_000,
   );
@@ -103,7 +105,7 @@ export function JobFormModal({
     cron:
       initialSchedule.kind === 'cron'
         ? initialSchedule.expr
-        : weekdayMorningCron(),
+        : WEEKDAY_MORNING_CRON,
     everyValue: initialInterval.value,
     everyUnit: initialInterval.unit,
     atTime:
@@ -193,6 +195,10 @@ export function JobFormModal({
         deleteAfterRun: form.deleteAfterRun,
       };
     }
+    // The zone travels with the expression: a local weekday rule has no
+    // correct fixed-UTC spelling (#1536 L1). An edited job keeps whatever zone
+    // it was created with; a new one inherits the default schedule's, which is
+    // the reader's own.
     return {
       kind: 'cron',
       expr: form.cron,
@@ -280,7 +286,10 @@ export function JobFormModal({
         {
           name: form.name,
           provider: selectedProvider,
-          ...(nextSchedule.kind === 'cron'
+          // #1536 L1: a bare `cron` string cannot carry a timezone, so sending
+          // one silently dropped the zone the expression depends on. The
+          // `schedule` shape carries both and the server accepts either.
+          ...(nextSchedule.kind === 'cron' && !nextSchedule.timezone
             ? { cron: nextSchedule.expr }
             : { schedule: nextSchedule }),
           prompt: form.prompt,
@@ -404,8 +413,11 @@ export function JobFormModal({
                 setForm((f) => ({ ...f, agent: v }));
               }}
             />
+            {/* The shared loading vocabulary names the wait in the skeleton's
+                `label`; a new sentence here is the eleven-treatments problem
+                SHELL-13 removed, and `check-prepush-static-gates` refuses it. */}
             {!agentsSettled && (
-              <span className="schedule__field-hint">Loading agents…</span>
+              <SkeletonList count={1} label="Loading agents" />
             )}
             {agentsFailed && (
               <span className="schedule__field-error">

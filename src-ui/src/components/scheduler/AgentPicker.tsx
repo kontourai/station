@@ -8,7 +8,7 @@ import {
 import { agentRunnability } from '../agent-runnability';
 import { AgentIcon } from '../icons/AgentIcon';
 import { CheckGlyph } from '../icons/Glyph';
-import { Empty } from '../state';
+import { Empty, SkeletonList } from '../state';
 import {
   schedulerAgentOptions,
   schedulerAgentRunnability,
@@ -81,11 +81,10 @@ export function AgentPicker({
   // one that genuinely holds nothing. "No runnable agents" is a verdict, so it
   // waits for the answer; until then the trigger says only that it is waiting.
   if (!agentsLoaded && !eligible.length) {
-    return (
-      <button type="button" className="agent-picker__trigger" disabled>
-        Loading agents…
-      </button>
-    );
+    // The control itself is what is waiting, so the shared placeholder stands in
+    // for it — labelled rather than spelled out in a bespoke sentence
+    // (SHELL-13; enforced by `check-prepush-static-gates`).
+    return <SkeletonList count={1} label="Loading agents" />;
   }
 
   // Nothing the runner could resolve even in principle. The trigger stays

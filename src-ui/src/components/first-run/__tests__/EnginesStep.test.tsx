@@ -948,6 +948,17 @@ describe('the list lede describes the list it stands over', () => {
     expect(firstRunEngineListLede(pick)).toBe('pick');
     expect(firstRunEngineListLede(allSet)).toBe('all-set');
     expect(firstRunEngineListLede(noneSelectable)).toBe('none-selectable');
+    // #1536 L8: `every()` on `[]` is true, so an empty list classified as
+    // 'all-set' — "Station found these and set each one up" about nothing.
+    expect(firstRunEngineListLede([])).toBe('none');
+  });
+
+  test('says nothing at all over an empty list', () => {
+    renderChapter([]);
+
+    expect(screen.queryByText(/Station found these/)).toBeNull();
+    // The empty case has its own state, which is not a lede.
+    expect(screen.getByTestId('first-run-engines-none')).toBeTruthy();
   });
 
   test('drops the pick verb when every engine is already set up, and still offers Continue', () => {

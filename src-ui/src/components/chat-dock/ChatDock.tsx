@@ -67,6 +67,7 @@ import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
+  PROJECT_CHAT_ENTRY_TELEMETRY_SOURCE,
 } from '../../lib/projectChatEvents';
 import type {
   ChatSession,
@@ -894,9 +895,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // station#4525 review HIGH-2/MED-1: the badge names the BOUND project
   // (`resolveDockBadgeProjectName`, shared by the desktop and mobile
   // triggers so the two can never disagree) — but the session's own
-  // directory/git/coding-layout facts are NOT gated on it (see the JSX
-  // below: they read straight off `sessionDisplayCwd`/`gitStatus`/
-  // `sessionCodingLayout`, exactly as pre-station#4525, unconditionally).
+  // git/coding-layout facts are NOT gated on it (see the JSX below: they read
+  // straight off `gitStatus`/`sessionCodingLayout`, exactly as
+  // pre-station#4525, unconditionally).
+  //
+  // #1536 G6 NARROWED that for the DIRECTORY alone: it now goes through
+  // `resolveDockProjectContextDirectory`, which still prefers the session's own
+  // `sessionDisplayCwd` unconditionally and still refuses to caption a FOREIGN
+  // session with the badge's path — the ruling's actual subject. What it adds is
+  // a fallback for the case the ruling never faced: no session at all (a
+  // collapsed dock with nothing open), where the row printed "Home folder"
+  // beside a project whose directory is set.
   // `sessionSourceProjectSlug`/`sessionSourceProjectName` are threaded
   // through to both derivations rather than reading `activeSession` inline
   // twice, so the badge name and the mismatch label can never read two
@@ -1809,7 +1818,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       });
       if (outcome === 'focused') {
         telemetry.track('ui.chat.entry', {
-          source: 'project-sidebar',
+          // #1536 M6: the sidebar pill that used to be this event's only
+          // dispatcher was deleted in archive#1629, so this reported a caller
+          // that no longer existed. The name lives with the event seam, which
+          // is the thing that knows who dispatches it.
+          source: PROJECT_CHAT_ENTRY_TELEMETRY_SOURCE,
           outcome: 'focused',
           projectScoped: 1,
         });
@@ -1824,7 +1837,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       });
       setShowNewChatModal(true);
       telemetry.track('ui.chat.entry', {
-        source: 'project-sidebar',
+        source: PROJECT_CHAT_ENTRY_TELEMETRY_SOURCE,
         outcome: 'new-chat',
         projectScoped: 1,
       });

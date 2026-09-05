@@ -1,8 +1,11 @@
-import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
+import type {
+  SchedulerJob,
+  SchedulerSchedule,
+} from '@kontourai/station-contracts/scheduler';
 import { SchedulerResponseError } from '@kontourai/station-sdk';
 import {
-  utcHourForLocalHour as getUtcHour,
-  weekdayMorningCron,
+  localCronSchedule,
+  weekdayMorningSchedule,
 } from '../../components/scheduler/scheduleValue';
 import { errorText } from '../../utils/errorText';
 import { isStationTransportFailure } from '../../utils/stationTransportFailure';
@@ -51,10 +54,18 @@ export function getScheduleStatusLabel({
   return '○ Stopped';
 }
 
+/**
+ * #1536 L1: each starter carries a SCHEDULE (a local cron plus the reader's IANA
+ * zone), not a UTC-shifted cron string. Shifting only the hour was wrong for
+ * every zone where the shift crosses midnight — at UTC+10 the three weekday
+ * presets fired Tuesday through Saturday, and "Mondays" fired on Tuesday — and
+ * it could not survive DST either, since the offset was read once at render.
+ * The `meta` line beside each is the claim this now actually keeps.
+ */
 export function getScheduleStarterTemplates(): Array<{
   name: string;
   label: string;
-  cron: string;
+  schedule: SchedulerSchedule;
   prompt: string;
   meta: string;
 }> {
@@ -62,7 +73,7 @@ export function getScheduleStarterTemplates(): Array<{
     {
       name: 'good-morning',
       label: 'Morning Briefing',
-      cron: weekdayMorningCron(),
+      schedule: weekdayMorningSchedule(),
       prompt:
         'Review my calendar and email for today. Summarize priorities, prep for meetings, and flag anything urgent.',
       meta: 'Weekdays · 8:00 AM',
@@ -70,7 +81,7 @@ export function getScheduleStarterTemplates(): Array<{
     {
       name: 'catch-up-emails',
       label: 'Email Catch-up',
-      cron: `0 ${getUtcHour(12)} * * 1-5`,
+      schedule: localCronSchedule('0 12 * * 1-5'),
       prompt:
         'Check my recent emails and summarize anything I need to respond to or follow up on.',
       meta: 'Weekdays · 12:00 PM',
@@ -78,7 +89,7 @@ export function getScheduleStarterTemplates(): Array<{
     {
       name: 'wrap-up-day',
       label: 'End of Day Wrap',
-      cron: `0 ${getUtcHour(17)} * * 1-5`,
+      schedule: localCronSchedule('0 17 * * 1-5'),
       prompt:
         'Summarize what I accomplished today. Check for any customer meetings that need activity logging. Preview tomorrow.',
       meta: 'Weekdays · 5:00 PM',
@@ -86,7 +97,7 @@ export function getScheduleStarterTemplates(): Array<{
     {
       name: 'prep-week',
       label: 'Weekly Prep',
-      cron: `0 ${getUtcHour(8)} * * 1`,
+      schedule: localCronSchedule('0 8 * * 1'),
       prompt:
         'Prepare my weekly overview: key meetings, customer engagements, deadlines, and priorities for the week ahead.',
       meta: 'Mondays · 8:00 AM',

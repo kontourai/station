@@ -24,7 +24,7 @@ import { JobFormModal } from '../components/scheduler/JobFormModal';
 import {
   formatSchedule,
   scheduleForJob,
-  weekdayMorningCron,
+  WEEKDAY_MORNING_CRON,
 } from '../components/scheduler/scheduleValue';
 
 const addMutate = vi.fn();
@@ -257,7 +257,7 @@ describe('JobFormModal schedule compatibility', () => {
     expect(screen.getByRole('dialog', { name: 'Add Job' })).toBeTruthy();
   });
 
-  test('defaults a new job to weekdays 8:00 AM, not every minute', () => {
+  test('defaults a new job to weekdays 8:00 AM local, not every minute', () => {
     render(<JobFormModal onClose={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText('Name'), {
@@ -268,10 +268,16 @@ describe('JobFormModal schedule compatibility', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Add Job' }));
 
-    expect(addMutate.mock.calls[0]?.[0]).toMatchObject({
-      cron: weekdayMorningCron(),
+    const submitted = addMutate.mock.calls[0]?.[0];
+    // #1536 L1: sent as a SCHEDULE, because a bare `cron` string cannot carry
+    // the zone the local expression depends on.
+    expect(submitted.schedule).toMatchObject({
+      kind: 'cron',
+      expr: WEEKDAY_MORNING_CRON,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
-    expect(addMutate.mock.calls[0]?.[0].cron).not.toBe('* * * * *');
+    expect(submitted.cron).toBeUndefined();
+    expect(submitted.schedule.expr).not.toBe('* * * * *');
   });
 
   test('refuses a new job whose only agent cannot run it', () => {
@@ -340,7 +346,9 @@ describe('JobFormModal schedule compatibility', () => {
 
       render(<JobFormModal onClose={vi.fn()} />);
 
-      expect(screen.getByText('Loading agents…')).toBeTruthy();
+      // The shared loading primitive names the wait in its `label`, which lands
+      // as the placeholder's accessible name — not as a bespoke sentence.
+      expect(screen.getByLabelText('Loading agents')).toBeTruthy();
       expect(screen.queryByText(/No Agent named/)).toBeNull();
     });
 
@@ -374,7 +382,7 @@ describe('JobFormModal schedule compatibility', () => {
         screen.getByText(/Station could not load the Agent catalog/),
       ).toBeTruthy();
       expect(screen.queryByText(/No Agent named/)).toBeNull();
-      expect(screen.queryByText('Loading agents…')).toBeNull();
+      expect(screen.queryByLabelText('Loading agents')).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
       expect(retry).toHaveBeenCalledTimes(1);
     });

@@ -275,6 +275,16 @@ export function resolveDockBadgeProjectName(
  * lead-in label the facts row shows in that case (e.g. "ProjectB ·
  * ~/dev/foo"); `null` on a genuine match, so the row renders exactly as it
  * did before this fix.
+ *
+ * WHAT #1536 G6 CHANGED, and what it did not: the ruling above stands for the
+ * git and layout-link facts, and for the directory whenever a session has
+ * one. `resolveDockProjectContextDirectory` adds one step BELOW those — the
+ * bound project's own directory — reached only when no session reports one,
+ * and refused outright when the session on screen belongs to a different
+ * project. So the ruling's subject (never substituting the badge's facts for
+ * the visible session's) is intact; the case it did not face is "no session at
+ * all", where the row used to print "Home folder" beside a project whose
+ * directory is set.
  */
 export function resolveSessionProjectMismatchLabel(
   input: Omit<DockProjectNameInput, 'projects'>,
@@ -308,6 +318,19 @@ export function resolveSessionProjectMismatchLabel(
  *    with project A's directory — that is the station#1146 class of lie, and
  *    substituting the badge's path for a foreign session's would reintroduce
  *    it facing the other way.
+ *
+ *    #1536 L4: an UNBOUND session (`sessionProjectSlug` undefined) in a
+ *    project-bound dock reaches this step, deliberately, and is the one case
+ *    where the two readings of `undefined` — "no session" and "a session with
+ *    no project" — are answered the same way. That matches the precedent this
+ *    step extends: `useChatDockViewModel`'s `sessionDisplayCwd` step 2 already
+ *    falls back to the project's `workingDirectory` for a chat that has not
+ *    started one, and a projectless chat in a bound dock is not a claim about
+ *    a DIFFERENT project's directory — it is a chat with nothing of its own to
+ *    report, which is what the fallback is for. `resolveSessionProjectMismatchLabel`
+ *    agrees (it returns null for an unbound session, so the row shows no
+ *    divergence lead-in). If those two ever need to diverge, this input needs a
+ *    third state rather than a sharper reading of `undefined`.
  * 4. Nothing known. `ChatDockProjectContext` then says "Home folder", which is
  *    a true statement about what an unbound chat gets.
  */

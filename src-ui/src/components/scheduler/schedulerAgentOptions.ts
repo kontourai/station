@@ -25,7 +25,16 @@ import { type AgentRunnability, agentRunnability } from '../agent-runnability';
 export const SCHEDULER_ENGINE_AGENT_NOTE =
   "Scheduled jobs run on Station's own engine, so Agents bound to an external engine are not listed.";
 
-/** Spoken on the one row that names an ineligible Agent: an edited job's own. */
+/**
+ * Spoken on the one row that names an ineligible Agent: an edited job's own.
+ *
+ * TRUE OF THE TURN PATH ONLY. A monitor job dispatches through `taskDispatcher`
+ * rather than `createScheduledTurnAdapter`, and that path DOES support an
+ * engine-bound Agent — which is why the form's Monitor Agent field is a
+ * separate question from this one. If a monitor row ever consumes this reason it
+ * will be saying something false; the eligibility rule below is about the
+ * scheduler's own turn invocation, nothing else.
+ */
 export const SCHEDULER_ENGINE_AGENT_REASON =
   "Runs on an external engine, which the scheduler cannot invoke — scheduled jobs run on Station's own engine.";
 
@@ -70,15 +79,6 @@ export function schedulerAgentOptions(
     excludedEngineAgents,
     defaultSlug: defaultAgent ? defaultAgent.slug : null,
   };
-}
-
-/** Agents a click may select right now. */
-export function schedulerRunnableAgents(
-  agents: readonly AgentData[],
-): AgentData[] {
-  return schedulerAgentOptions(agents).eligible.filter(
-    (agent) => agentRunnability(agent).runnable,
-  );
 }
 
 /**

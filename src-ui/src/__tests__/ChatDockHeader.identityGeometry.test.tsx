@@ -151,6 +151,14 @@ type Measurement = {
 
 const WIDTHS = [320, 800, 1200] as const;
 
+/**
+ * The widths this component actually renders at. Below the dock's 768px
+ * breakpoint the shell mounts `ChatDockMobileHeader` instead, so 320px exists in
+ * `WIDTHS` only to squeeze the identity row hard enough to expose an unclipped
+ * overflow — it is not a width whose READABILITY this component owns.
+ */
+const DESKTOP_WIDTHS = [800, 1200] as const;
+
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 
 describe.skipIf(!chromiumAvailable)(
@@ -178,6 +186,7 @@ describe.skipIf(!chromiumAvailable)(
             '.chat-dock__active-identity-title',
             '.chat-dock__project-context',
             '.chat-dock__project-badge',
+            '.git-badge',
             '.git-badge__branch',
           ].map((selector) => {
             const element = document.querySelector(selector);
@@ -217,15 +226,11 @@ describe.skipIf(!chromiumAvailable)(
         if (!row) throw new Error('missing identity row');
         // THE defect: `flex-shrink: 0` on the agent name and model meant this
         // box's contents were wider than the box, and painted outside it.
-        expect({
-          selector: row.selector,
-          scrollWidth: row.scrollWidth,
-          fits: !doesNotFit(row),
-        }).toEqual({
-          selector: '.chat-dock__active-identity-text',
-          scrollWidth: row.scrollWidth,
-          fits: true,
-        });
+        expect(
+          doesNotFit(row),
+          `${row.selector} holds ${row.scrollWidth}px of content in a ` +
+            `${row.clientWidth}px box, so its members are painting outside it`,
+        ).toBe(false);
       },
     );
 
@@ -275,14 +280,60 @@ describe.skipIf(!chromiumAvailable)(
       expect(branch?.clientWidth).toBeGreaterThan(0);
     });
 
-    test('the session title survives the squeeze rather than being hidden to fit', async () => {
-      const measurements = await measure(800);
-      const title = measurements.find(
-        (m) => m.selector === '.chat-dock__active-identity-title',
-      );
-      expect(title?.visible).toBe(true);
-      expect(title?.clientWidth).toBeGreaterThan(0);
-    });
+    test.each(DESKTOP_WIDTHS)(
+      'the session title keeps at least one glyph while the agent name yields, at %ipx',
+      async (width) => {
+        // #1536 L9/L10. The layout lets the agent name and model ellipsise as a
+        // last resort so nothing paints outside its box, but the TITLE is the
+        // part that yields FIRST (`flex-shrink: 4`) — so the risk this pins is
+        // the fix trading an overprint for an invisible title. One glyph is the
+        // floor: an ellipsis alone still says "there is a title here, truncated",
+        // which a zero-width box does not.
+        //
+        // ACCEPTED TRADE, measured: at 320px the title is squeezed to 4px —
+        // under one glyph. That width is below the dock's own breakpoint, where
+        // the shell renders `ChatDockMobileHeader` instead, so no reader meets
+        // this header there; 320px keeps its place in the overflow assertions
+        // above (where it is the only width that makes the constraint bite) and
+        // is deliberately excluded here rather than driving a `min-width` floor
+        // this component does not need.
+        const measurements = await measure(width);
+        const title = measurements.find(
+          (m) => m.selector === '.chat-dock__active-identity-title',
+        );
+        if (!title) throw new Error('missing title');
+        expect(
+          title.visible,
+          `the session title box collapsed to ${title.clientWidth}px at ${width}px`,
+        ).toBe(true);
+        // A rendered glyph, not merely a non-zero box: below one character's
+        // width there is nothing to read.
+        expect(
+          title.clientWidth,
+          `the session title has ${title.clientWidth}px, under one glyph`,
+        ).toBeGreaterThanOrEqual(title.lineHeight * 0.4);
+      },
+    );
+
+    test.each(WIDTHS)(
+      'the git badge stays inside its own box at %ipx',
+      async (width) => {
+        // #1536 L10: the branch label ellipsises, but the badge that holds it
+        // must not spill — a `flex-shrink: 0` anchor plus a long branch name is
+        // exactly how the header used to push content past its edge.
+        const measurements = await measure(width);
+        const badge = measurements.find((m) => m.selector === '.git-badge');
+        if (!badge) throw new Error('missing git badge');
+        if (badge.clientWidth === 0) return; // display:none below the breakpoint
+        expect(
+          badge.scrollWidth <= badge.clientWidth + 1 ||
+            badge.overflowX === 'hidden' ||
+            badge.overflowX === 'clip',
+          `the git badge holds ${badge.scrollWidth}px in a ${badge.clientWidth}px ` +
+            `box with overflow-x:${badge.overflowX}, so it is painting outside it`,
+        ).toBe(true);
+      },
+    );
   },
 );
 
