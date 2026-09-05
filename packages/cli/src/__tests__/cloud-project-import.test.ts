@@ -165,7 +165,7 @@ test('a slug collision never imports files or overwrites a Project', {
   expect(f.fetch).toHaveBeenCalledTimes(1);
 });
 
-test.each(['lost-reply', 'race', 'wrong-readback'])(
+test.each(['lost-reply', 'race', 'wrong-readback', 'rewritten-remote-path'])(
   'preserves bytes and intent after %s with no retry or success receipt',
   { timeout: 30000 },
   async (failure) => {
@@ -184,7 +184,14 @@ test.each(['lost-reply', 'race', 'wrong-readback'])(
           ),
         )
         .mockResolvedValueOnce(
-          reply({ id: 'other', slug: 'acme', workingDirectory: f.targetPath }),
+          reply({
+            id: failure === 'rewritten-remote-path' ? 'created' : 'other',
+            slug: 'acme',
+            workingDirectory:
+              failure === 'rewritten-remote-path'
+                ? '~/workspace/acme/workspace'
+                : f.targetPath,
+          }),
         );
     await expect(runCloudCommand(f.args)).rejects.toThrow(
       'registration is unconfirmed',
@@ -200,7 +207,9 @@ test.each(['lost-reply', 'race', 'wrong-readback'])(
     expect(
       existsSync(join(f.destination, 'workspace-project-registration.json')),
     ).toBe(false);
-    expect(f.fetch).toHaveBeenCalledTimes(failure === 'wrong-readback' ? 3 : 2);
+    expect(f.fetch).toHaveBeenCalledTimes(
+      ['wrong-readback', 'rewritten-remote-path'].includes(failure) ? 3 : 2,
+    );
   },
 );
 

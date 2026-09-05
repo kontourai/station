@@ -100,6 +100,8 @@ export async function runCloudProjectImport(
     });
     try {
       const created = await createProject(apiBase, request, requestOptions);
+      // Remote metadata corroboration only: expanding this path on the CLI
+      // host could falsely accept a different server-visible directory.
       if (
         !created ||
         typeof created.id !== 'string' ||
@@ -109,6 +111,7 @@ export async function runCloudProjectImport(
       )
         throw new Error('Target returned an unexpected Project identity');
       const observed = await getProject(apiBase, slug, requestOptions);
+      // Keep the target read-back byte-exact for the same remote-path reason.
       if (
         !observed ||
         observed.id !== created.id ||
