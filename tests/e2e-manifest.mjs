@@ -741,6 +741,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/minimal-workspace-example.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Installs the actual portable minimal example, opens an explicit Project-bound Pane through the public SDK, proves local dock navigation without a chat mutation, and refuses the occurrence after uninstall.',
+    exceptions: [],
+  },
+  {
     path: 'tests/workspace-pane-host-actions-live.spec.ts',
     bucket: 'smoke-live',
     surface: 'Plugins',
