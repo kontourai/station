@@ -13,6 +13,7 @@ import {
   projectDisplayName,
   resolveDirectNewChatProjectSlug,
   resolveDockBadgeProjectName,
+  resolveDockProjectContextDirectory,
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
   routeToOpenChatsCollection,
@@ -551,5 +552,64 @@ describe('resolveNewChatModalDefaultProjectSlug (station#4525 review MED-3)', ()
         routeActiveProjectSlug: null,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe('resolveDockProjectContextDirectory (#1536 G6)', () => {
+  const base = {
+    scopedProjectSlug: null,
+    sessionDisplayCwd: null,
+    sessionProjectSlug: undefined,
+    dockProjectSlug: 'demo',
+    dockProjectWorkingDirectory: '/Users/brian/dev/demo',
+  } as Parameters<typeof resolveDockProjectContextDirectory>[0];
+
+  test("names the bound project's directory when no session reports one", () => {
+    // The audited case: the dock is collapsed with nothing open, so there is
+    // no session — and the row said "Home folder" beside a badge naming a
+    // project whose directory is set.
+    expect(resolveDockProjectContextDirectory(base)).toBe(
+      '/Users/brian/dev/demo',
+    );
+  });
+
+  test("prefers the session's own directory over the bound project's", () => {
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        sessionDisplayCwd: '/tmp/session-cwd',
+        sessionProjectSlug: 'demo',
+      }),
+    ).toBe('/tmp/session-cwd');
+  });
+
+  test("never captions a foreign session with the bound project's directory", () => {
+    // station#1146's class of lie, facing the other way: the transcript on
+    // screen belongs to another project, so the badge's path is not its path.
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        sessionProjectSlug: 'other-project',
+      }),
+    ).toBeNull();
+  });
+
+  test('reports nothing under a project chat-scope filter', () => {
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        scopedProjectSlug: 'demo',
+        sessionDisplayCwd: '/tmp/session-cwd',
+      }),
+    ).toBeNull();
+  });
+
+  test('reports nothing when the bound project has no directory either', () => {
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        dockProjectWorkingDirectory: undefined,
+      }),
+    ).toBeNull();
   });
 });

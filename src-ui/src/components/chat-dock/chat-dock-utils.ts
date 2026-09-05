@@ -286,6 +286,51 @@ export function resolveSessionProjectMismatchLabel(
 }
 
 /**
+ * The directory the dock header names — one derivation, so the badge and the
+ * path beside it can never describe different projects.
+ *
+ * #1536 G6: with the dock collapsed and nothing open, there is no session to
+ * report on, so `sessionDisplayCwd` is null and the row printed "Home folder"
+ * — beside a badge naming a project whose working directory IS set, and whose
+ * real path the expanded header showed. The name came from the dock's own
+ * persistent binding and the directory from a session that did not exist.
+ *
+ * The order, and why each step stops where it does:
+ *
+ * 1. A project chat-SCOPE filter shows no session-specific facts at all. That
+ *    predates this and is unchanged.
+ * 2. The session's own resolved directory — the truth about the chat on
+ *    screen, whatever it is (`useChatDockViewModel`'s `sessionDisplayCwd`
+ *    documents its own two steps).
+ * 3. The BOUND project's working directory, but only when the session cannot
+ *    contradict it: either there is no session, or its project is that same
+ *    bound project. A session belonging to project B must never be captioned
+ *    with project A's directory — that is the station#1146 class of lie, and
+ *    substituting the badge's path for a foreign session's would reintroduce
+ *    it facing the other way.
+ * 4. Nothing known. `ChatDockProjectContext` then says "Home folder", which is
+ *    a true statement about what an unbound chat gets.
+ */
+export function resolveDockProjectContextDirectory(input: {
+  scopedProjectSlug: string | null | undefined;
+  /** `useChatDockViewModel`'s session-first directory, already resolved. */
+  sessionDisplayCwd: string | null;
+  sessionProjectSlug: string | undefined;
+  dockProjectSlug: string | null | undefined;
+  dockProjectWorkingDirectory: string | null | undefined;
+}): string | null {
+  if (input.scopedProjectSlug) return null;
+  if (input.sessionDisplayCwd) return input.sessionDisplayCwd;
+  if (
+    input.sessionProjectSlug !== undefined &&
+    input.sessionProjectSlug !== input.dockProjectSlug
+  ) {
+    return null;
+  }
+  return input.dockProjectWorkingDirectory ?? null;
+}
+
+/**
  * station#4525 review HIGH-3 (blocking): what project a DIRECTLY-created
  * new chat (the pinned single-ready-agent New icon, `openNewChatDirect`)
  * should target. An immutably project-scoped placement (a project's own

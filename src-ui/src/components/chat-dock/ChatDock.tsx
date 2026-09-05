@@ -119,6 +119,7 @@ import {
   projectDisplayName,
   resolveDirectNewChatProjectSlug,
   resolveDockBadgeProjectName,
+  resolveDockProjectContextDirectory,
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
   routeToOpenChatsCollection,
@@ -918,6 +919,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     dockProjectSlug,
     sessionProjectSlug: sessionSourceProjectSlug,
     sessionProjectName,
+  });
+  const dockProjectContextDirectory = resolveDockProjectContextDirectory({
+    scopedProjectSlug,
+    sessionDisplayCwd,
+    sessionProjectSlug: sessionSourceProjectSlug,
+    dockProjectSlug,
+    dockProjectWorkingDirectory: dockProjectSlug
+      ? (projects.find((project) => project.slug === dockProjectSlug)
+          ?.workingDirectory ?? null)
+      : null,
   });
   const attachmentCapabilities = useMemo(
     () => ({
@@ -2123,9 +2134,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     // pre-station#4525, other than the pre-existing
                     // `scopedProjectSlug` guard (a project chat-scope filter
                     // has never shown session-specific facts).
-                    workingDirectory={
-                      scopedProjectSlug ? null : sessionDisplayCwd
-                    }
+                    // #1536 G6: one derivation for the directory, so the
+                    // badge and the path can never name different projects.
+                    // With the dock collapsed and nothing open there is no
+                    // session to report on, and this row used to print "Home
+                    // folder" beside a project whose directory IS set.
+                    workingDirectory={dockProjectContextDirectory}
                     codingLayoutSlug={
                       scopedProjectSlug
                         ? null
