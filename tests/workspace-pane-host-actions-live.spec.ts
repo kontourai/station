@@ -128,6 +128,12 @@ test('retained plugin recovers through responsive UI and its host default Agent 
   page,
 }, testInfo) => {
   test.setTimeout(120_000);
+  const cssResponses: Array<{ path: string; status: number }> = [];
+  page.on('response', (response) => {
+    const path = new URL(response.url()).pathname;
+    if (path.endsWith('.css'))
+      cssResponses.push({ path, status: response.status() });
+  });
   const connection = await (
     await authenticatedE2EFetch(`${api}/api/connections/muse`)
   ).json();
@@ -152,6 +158,10 @@ test('retained plugin recovers through responsive UI and its host default Agent 
     execution: { agentConnectionId: 'muse' },
   });
   workspace = mkdtempSync(join(tmpdir(), 'station-host-action-live-'));
+  writeFileSync(
+    join(workspace, 'HOST-ACTION-README.md'),
+    '# Host action workspace\nThis file belongs to the disposable browser proof.\n',
+  );
   const project = await authenticatedE2EFetch(`${api}/api/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -328,6 +338,39 @@ test('retained plugin recovers through responsive UI and its host default Agent 
     exact: true,
   });
   await expect(bar).toBeVisible({ timeout: 20_000 });
+  const hostStyles = await bar.evaluate((element) => {
+    const controls = element.querySelector(
+      '.workspace-host-actions__controls',
+    )!;
+    const select = element.querySelector('select')!;
+    return {
+      bar: {
+        padding: getComputedStyle(element).padding,
+        background: getComputedStyle(element).backgroundColor,
+      },
+      controls: {
+        display: getComputedStyle(controls).display,
+        gap: getComputedStyle(controls).gap,
+      },
+      select: {
+        background: getComputedStyle(select).backgroundColor,
+        color: getComputedStyle(select).color,
+      },
+      stylesheets: [...document.styleSheets].map((sheet) => ({
+        href: sheet.href,
+        disabled: sheet.disabled,
+      })),
+    };
+  });
+  writeFileSync(
+    join(recoveryEvidenceRoot, 'host-style-diagnostic.json'),
+    JSON.stringify({ ...hostStyles, cssResponses }, null, 2),
+  );
+  await page.getByRole('tab', { name: 'Files', exact: true }).click();
+  await expect(
+    page.getByText('HOST-ACTION-README.md', { exact: true }).first(),
+  ).toBeVisible();
+
   await expect(bar.getByRole('combobox', { name: 'Agent' })).toHaveValue(
     'own-plugin-agent:host-action-echo',
   );
