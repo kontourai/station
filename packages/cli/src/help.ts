@@ -182,6 +182,7 @@ const VERBS: Record<string, VerbSpec> = {
       'pack-workspace',
       'inspect-workspace',
       'unpack-workspace',
+      'import-project',
     ],
     usage: [
       'station cloud preview --home=<path> --provider=<aws-ec2|gcp-compute> --region=<region> --instance-type=<type> [--json]',
@@ -190,13 +191,15 @@ const VERBS: Record<string, VerbSpec> = {
       'station cloud pack-workspace --workspace=<checkout-root> --key-file=<key> --output=<new-package> --source-paused',
       'station cloud inspect-workspace --archive=<package> --key-file=<key>',
       'station cloud unpack-workspace --archive=<package> --key-file=<key> --destination=<new-directory>',
+      'station cloud import-project --archive=<package> --key-file=<key> --destination=<new-directory> --target-workspace=<server-path> --name=<name> --slug=<slug> --station=<enrolled-target>',
     ],
     detail: [
       'Read-only metadata preview. Does not export credentials or move running work.',
       'GCP preview supports e2-micro, e2-small, and e2-medium; template generation is currently AWS-only.',
       'Whole-setup transfer and resume remain unavailable. Workspace packages copy data only.',
       'Packages include reachable Git history and non-ignored working files, which may contain secrets.',
-      'Import creates a fresh workspace and does not enroll credentials, register a Project, or execute code.',
+      'unpack-workspace creates a fresh workspace without registration. import-project also creates and reads back a fresh target Project.',
+      'Neither operation enrolls credentials or executes code. Failed registration retains the import for explicit reconciliation.',
     ],
   },
   home: {
