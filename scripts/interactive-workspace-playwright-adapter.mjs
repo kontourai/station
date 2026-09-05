@@ -1318,21 +1318,58 @@ async function clickWhenEnabled(page, name) {
   await button.click();
 }
 
-async function clickLiveCommand(page, name) {
-  const command = {
+class LiveCommandStepError extends Error {
+  constructor(command, phase, cause) {
+    const reason =
+      cause instanceof Error && cause.name === 'TimeoutError'
+        ? 'TIMEOUT'
+        : cause instanceof Error &&
+            /Target (?:page, context or browser|page|context|browser) has been closed/.test(
+              cause.message,
+            )
+          ? 'TARGET_CLOSED'
+          : 'FAILED';
+    super(`Live command ${command} ${phase} ${reason}`, { cause });
+  }
+}
+
+async function interactForLiveResponse(page, command, interaction) {
+  // Observe both outcomes immediately. Input can fail (or remain pending)
+  // before this waiter settles; page teardown must not create an unhandled
+  // rejection that replaces the primary input failure.
+  const response = page
+    .waitForResponse(
+      (candidate) =>
+        candidate.request().method() === 'POST' &&
+        new URL(candidate.url()).pathname.endsWith('/room/live') &&
+        liveCommandRequestMatches(candidate.request(), command),
+    )
+    .then(
+      (value) => ({ kind: 'received', value }),
+      (error) => ({ kind: 'failed', error }),
+    );
+  try {
+    await interaction();
+  } catch (error) {
+    throw new LiveCommandStepError(command, 'input', error);
+  }
+  const outcome = await response;
+  if (outcome.kind === 'failed')
+    throw new LiveCommandStepError(command, 'response', outcome.error);
+  return outcome.value;
+}
+
+export async function clickLiveCommand(page, name) {
+  const commands = {
     'Leave room': 'depart',
     'Join room': 'join',
     'Announce work': 'announce',
-  }[name];
+  };
+  const command = Object.hasOwn(commands, name) ? commands[name] : undefined;
   if (!command) throw new Error('live command label is invalid');
-  const response = page.waitForResponse(
-    (candidate) =>
-      candidate.request().method() === 'POST' &&
-      new URL(candidate.url()).pathname.endsWith('/room/live') &&
-      liveCommandRequestMatches(candidate.request(), command),
+  const settled = await interactForLiveResponse(page, command, () =>
+    clickWhenEnabled(page, name),
   );
-  await clickWhenEnabled(page, name);
-  const settled = await response;
   const body = await settled.json();
   if (
     settled.status() !== 200 ||
@@ -1447,6 +1484,12 @@ export async function peerActorIdentity(page) {
 
 export function closedLiveCommandDiagnostic(error) {
   const message = error instanceof Error ? error.message : '';
+  if (
+    /^Live command (depart|join|announce|cursor) (input|response) (TIMEOUT|TARGET_CLOSED|FAILED)$/.test(
+      message,
+    )
+  )
+    return message;
   return /^Live command (Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN)$/.test(
     message,
   )
@@ -1512,16 +1555,11 @@ async function publishPeerCursor(peer, owner, taskId, iteration) {
     },
   );
   const startedEpochMs = await epoch(peer);
-  const response = peer.waitForResponse(
-    (candidate) =>
-      candidate.request().method() === 'POST' &&
-      new URL(candidate.url()).pathname.endsWith('/room/live') &&
-      liveCommandRequestMatches(candidate.request(), 'cursor'),
-  );
-  await editor.click();
-  await editor.press('ControlOrMeta+A');
-  if (iteration % 2 !== 0) await editor.press('ArrowRight');
-  const settled = await response;
+  const settled = await interactForLiveResponse(peer, 'cursor', async () => {
+    await editor.click();
+    await editor.press('ControlOrMeta+A');
+    if (iteration % 2 !== 0) await editor.press('ArrowRight');
+  });
   const body = await settled.json();
   if (
     settled.status() !== 200 ||

@@ -2664,3 +2664,19 @@ registration retains the checkout and durable request for explicit reconciliatio
 See [combined import and registration](../guides/workspace-packages.md#import-and-register-in-one-command)
 for the exact lifecycle and limits. This does not upload files, enroll credentials,
 verify the target filesystem, or transfer execution authority.
+
+
+### Verify a restored workspace
+
+```bash
+station cloud verify-workspace --archive=/private/import/workspace.enc --key-file=/private/keys/workspace.key --workspace=/work/imported/workspace --workspace-paused --json
+```
+
+Compares the paused local checkout with the authenticated package and emits a
+receipt bound to the package SHA-256. It checks HEAD/branch, staged state, content
+policy and working files through the existing bounded codecs. Physical executable
+bits are checked on POSIX and explicitly unavailable on Windows. It does not
+repair files or transfer authority. See [restored-checkout verification](../guides/workspace-packages.md#verify-the-restored-checkout)
+for scratch storage, exclusions and non-atomic capture limits. `import-project`
+performs this local check before sending Project creation, and retains the import
+without attempting creation when verification fails.
