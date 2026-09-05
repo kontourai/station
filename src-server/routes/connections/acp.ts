@@ -69,16 +69,32 @@ function mergeACPConnections(
 export async function listDetectedUnconnectedACPRegistryEntries(configLoader: {
   loadACPConfig: () => Promise<{ connections: ACPConnectionConfig[] }>;
 }): Promise<Array<{ id: string; name: string }>> {
-  const config = await configLoader.loadACPConfig();
-  const registeredIds = await registeredRuntimeConnectionIds(configLoader);
-  return getRegistryEntries(
-    mergeACPConnections(config.connections, getProviderConnections()).filter(
-      (connection) =>
-        isRegisteredRuntimeConnection(connection.id, registeredIds),
-    ),
-  )
+  return getRegistryEntries(await installedACPConnections(configLoader))
     .filter((entry) => entry.detected === true && !entry.installed)
     .map((entry) => ({ id: entry.id, name: entry.name }));
+}
+
+/**
+ * The connections that count as installed for every registry projection
+ * (onboarding, Add engine, GET /connections): user config plus plugin-provided
+ * connections, minus any whose engine identity is not registered. The install
+ * route saves config BEFORE the identity CAS, so a failed commit leaves a
+ * config entry that is retryable but not an installed Engine; counting it as
+ * installed hid it from every repair surface at once (station#1548 review).
+ * Transport-only contexts (no filesystem loader, test fixtures) carry no
+ * identity evidence and keep the legacy reading: every config entry counts.
+ */
+async function installedACPConnections(configLoader: {
+  loadACPConfig: () => Promise<{ connections: ACPConnectionConfig[] }>;
+}): Promise<ACPConnectionConfig[]> {
+  const config = await configLoader.loadACPConfig();
+  const registeredIds = await registeredRuntimeConnectionIds(configLoader);
+  return mergeACPConnections(
+    config.connections,
+    getProviderConnections(),
+  ).filter((connection) =>
+    isRegisteredRuntimeConnection(connection.id, registeredIds),
+  );
 }
 
 function getRegistryEntries(
@@ -172,6 +188,24 @@ async function registerPersistedACPConnection(
   return materializeEngineAgent(ctx.configLoader as ConfigLoader, id, name);
 }
 
+/**
+ * The receipt names the Agent the install materialized or adopted. The
+ * install is already committed by the time this reads the file; an adopted
+ * Agent can be selected while its file is mid-write (materializeEngineAgent
+ * tolerates that), so an unreadable file must not turn a committed install
+ * into a 500 — the slug alone is still an honest receipt.
+ */
+async function installedAgentReceipt(
+  configLoader: ConfigLoader,
+  slug: string,
+): Promise<Record<string, unknown>> {
+  try {
+    return { slug, ...(await configLoader.loadAgent(slug)) };
+  } catch {
+    return { slug };
+  }
+}
+
 async function unregisterPersistedACPConnection(
   ctx: RuntimeContext,
   id: string,
@@ -236,9 +270,8 @@ export function createACPRoutes(ctx: RuntimeContext) {
   });
 
   app.get('/registry', async (c) => {
-    const config = await ctx.configLoader.loadACPConfig();
     const entries = getRegistryEntries(
-      mergeACPConnections(config.connections, getProviderConnections()),
+      await installedACPConnections(ctx.configLoader),
     );
     return c.json({ success: true, data: entries });
   });
@@ -307,12 +340,10 @@ export function createACPRoutes(ctx: RuntimeContext) {
             ...(agent
               ? {
                   agent: {
-                    data: {
-                      slug: agent.slug,
-                      ...(await (ctx.configLoader as ConfigLoader).loadAgent(
-                        agent.slug,
-                      )),
-                    },
+                    data: await installedAgentReceipt(
+                      ctx.configLoader as ConfigLoader,
+                      agent.slug,
+                    ),
                     created: agent.created,
                   },
                 }

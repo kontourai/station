@@ -367,6 +367,11 @@ describe('ACP Routes', () => {
     expect(
       await listDetectedUnconnectedACPRegistryEntries(configLoader),
     ).toEqual([{ id: 'kiro', name: 'Kiro CLI' }]);
+    // Add engine reads GET /registry and hides installed entries, so the
+    // same predicate must keep the stranded entry visible there too.
+    expect((await json(await app.request('/registry'))).data).toMatchObject([
+      { id: 'kiro', installed: false },
+    ]);
     const second = await app.request('/registry/kiro/install', {
       method: 'POST',
     });
@@ -458,6 +463,42 @@ describe('ACP Routes', () => {
     expect(body).toMatchObject({
       success: true,
       agent: { created: false, data: { slug: 'my-kiro', name: 'My Kiro' } },
+    });
+  });
+
+  test('POST /registry/:id/install stays 200 with a slug-only receipt when the Agent file is unreadable after commit', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            { id: 'kiro', name: 'Kiro CLI', command: 'kiro-cli' },
+          ],
+        },
+      },
+    ];
+    const { ctx, configLoader } = await createFilesystemRuntimeContext();
+    const originalLoadAgent = configLoader.loadAgent.bind(configLoader);
+    let installed = false;
+    configLoader.loadAgent = async (slug: string) => {
+      if (installed && slug === 'kiro') {
+        throw new Error('simulated unreadable agent file');
+      }
+      return originalLoadAgent(slug);
+    };
+    const app = createACPRoutes(ctx);
+    const originalAddConnection = ctx.acpBridge.addConnection;
+    ctx.acpBridge.addConnection = async (...args: unknown[]) => {
+      installed = true;
+      return originalAddConnection(...args);
+    };
+
+    const res = await app.request('/registry/kiro/install', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(await json(res)).toMatchObject({
+      success: true,
+      agent: { created: true, data: { slug: 'kiro' } },
     });
   });
 
