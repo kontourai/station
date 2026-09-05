@@ -1,96 +1,48 @@
 /** @vitest-environment jsdom */
 
 import { createDirectAnswerBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
-import {
-  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-  WORKSPACE_ACTIVITY_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-activity-pane';
-import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
+import { WORKSPACE_ACTIVITY_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-activity-pane';
 import {
   WORKSPACE_HOME_PANE_DESCRIPTOR,
   WORKSPACE_HOME_PANE_INSTANCE,
 } from '@kontourai/station-contracts/workspace-home-pane';
+import { parseWorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
-  parseWorkspacePaneInstance,
-  workspacePaneModesSatisfiableBy,
-} from '@kontourai/station-contracts/workspace-pane';
-import { workspacePaneHostSuppliableContexts } from '@kontourai/station-contracts/workspace-pane-host';
-import {
-  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
-  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { ChatDockHeader } from '../../components/chat-dock/ChatDockHeader';
 import {
+  AMBIENT_CHAT_DOCK_DOCUMENT_ID,
   AmbientChatDockPaneHost,
-  ambientWorkspacePaneDockAction,
   createAmbientChatDockPaneDocument,
 } from '../AmbientChatDockPaneHost';
-import { AMBIENT_DOCK_RENDERABLE_PANES } from '../ambientDockOccupants';
 import { useBasisPaneLauncher } from '../BasisPaneLauncher';
-import type { WorkspacePaneDockAction } from '../WorkspacePaneDockContext';
+import { workspacePaneHostStorageKey } from '../workspacePaneHostStorage';
 
 vi.mock('../../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({
     chatDockHeight: 320,
     chatDockWidth: 400,
   }),
-  // `DockShell` (archive#4460) owns dock chrome now, including the
-  // drag-end device-settings commit `useChatDockState` used to own.
+  // `DockShell` (archive#4460) owns dock chrome, including the drag-end
+  // device-settings commit `useChatDockState` used to own.
   useDeviceSettingsActions: () => ({ setDeviceSetting: () => {} }),
 }));
 
-// station#520: `setDockState` is a spy (not a bare no-op) so the
-// mobile-dock-and-empty tests below can assert `dockPaneAsOnlyContent`
-// actually requests Full (`setDockState(true, true)`) rather than only
-// checking DOM state a fully-mocked navigation context can't reflect.
-const navigationMock = vi.hoisted(() => ({ setDockState: vi.fn() }));
-// station#520: `useIsMobile` is real (unmocked) elsewhere in this file,
-// which is correctly "desktop" in jsdom's default viewport — the
-// mobile-dock-and-empty tests below flip this flag to exercise the phone
-// branch without needing a real `matchMedia` breakpoint match.
-const mobileFlag = vi.hoisted(() => ({ isMobile: false }));
-vi.mock('../../hooks/useIsMobile', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('../../hooks/useIsMobile')>();
-  return { ...actual, useIsMobile: () => mobileFlag.isMobile };
-});
-
-// station#520 (review round 2, M3): `DockOccupantPicker`'s onChoose seam now
-// reads `pathname` too — mutable so the picker tests below can exercise
-// both "on this pane's own route" and "somewhere else" without a real
-// router.
-const pathnameFlag = vi.hoisted(() => ({ pathname: '/' }));
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     dockMode: 'bottom',
     isDockOpen: true,
     isDockMaximized: false,
-    get pathname() {
-      return pathnameFlag.pathname;
-    },
-    setDockState: navigationMock.setDockState,
+    pathname: '/',
+    setDockState: () => {},
     setDockMode: () => {},
     collapseMaximizedDock: () => {},
   }),
-}));
-
-// #928 C2a: Home is a region surface whose only placement is `main`, so the
-// legacy ambient host no longer admits it (`AMBIENT_DOCK_RENDERABLE_PANES`
-// is Chat only). The Home stubs stay so the refusal tests below can prove
-// the Home render branch is NOT reached — an admitted Home would render this
-// marker.
-vi.mock('../../views/home/useHomeViewModel', () => ({
-  useHomeViewModel: () => ({}),
-}));
-
-vi.mock('../../views/home/HomeSurface', () => ({
-  HomeSurface: () => <p data-testid="ambient-home-occupant">Home surface</p>,
 }));
 
 vi.mock('../../contexts/ApiBaseContext', () => ({
@@ -102,11 +54,11 @@ vi.mock('../BasisPaneFallbackContent', () => ({
   ConnectedBasisFallbackPane: () => <p>Basis fallback content</p>,
 }));
 
-// archive#4525: `DockShell` (via `useDockShellChrome`) now reads `useProjects`
+// archive#4525: `DockShell` (via `useDockShellChrome`) reads `useProjects`
 // for its project-binding deletion cleanup. Mocked here the same way every
-// other unrelated context in this file is — this suite is about occupant
-// admission/replacement, not project binding (see
-// `AmbientChatDockProjectBinding.test.tsx` for that).
+// other unrelated context in this file is — this suite is about the Chat
+// host's admission and persistence, not project binding (see
+// `DockShellProjectBinding.test.tsx` for that).
 vi.mock('../../contexts/ProjectsContext', () => ({
   useProjects: () => ({
     projects: [],
@@ -125,6 +77,12 @@ vi.mock('../../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: () => '',
 }));
 
+/**
+ * The literal key a user's dock state lives under. Spelled out, not derived
+ * from the host's constants: the test's job is to notice the constants
+ * moving. Renaming the document id or the scope segment resets every
+ * device's dock on upgrade (#928 C2b keeps the key for exactly that reason).
+ */
 const AMBIENT_DOCK_STORAGE_KEY =
   'station:workspace-pane-host:v2:ambient:chat-dock';
 
@@ -135,9 +93,6 @@ const AMBIENT_DOCK_STORAGE_KEY =
  * path production takes.
  */
 beforeEach(() => {
-  mobileFlag.isMobile = false;
-  pathnameFlag.pathname = '/';
-  navigationMock.setDockState.mockClear();
   Object.defineProperty(globalThis.navigator, 'locks', {
     configurable: true,
     value: {
@@ -157,9 +112,7 @@ afterEach(() => {
   delete (globalThis.navigator as { locks?: unknown }).locks;
 });
 
-function renderAmbientHost(
-  onDockActionChange?: (action: WorkspacePaneDockAction | null) => void,
-) {
+function renderAmbientHost() {
   return render(
     <AmbientChatDockPaneHost
       renderChatPane={(instance) => (
@@ -167,38 +120,6 @@ function renderAmbientHost(
           Chat pane {instance.instanceId}
         </p>
       )}
-      onDockActionChange={onDockActionChange}
-    />,
-  );
-}
-
-function renderAmbientHostWithChatHeader(
-  onDockActionChange?: (action: WorkspacePaneDockAction | null) => void,
-) {
-  return render(
-    <AmbientChatDockPaneHost
-      renderChatPane={(instance, _onRequestAuth, shellChrome) => (
-        <>
-          <ChatDockHeader
-            regionVisible={shellChrome.isDockOpen}
-            shellMaximized={shellChrome.isDockMaximized}
-            canMaximize={shellChrome.canMaximize}
-            surfaceShortcutId={shellChrome.surfaceShortcutId}
-            isDragging={shellChrome.isDragging}
-            onDockSnap={shellChrome.applyDockSnap}
-            availableDockSlotPlacements={
-              shellChrome.availableDockSlotPlacements
-            }
-            effectiveDockSlotPlacement={shellChrome.effectiveDockSlotPlacement}
-            onDockPlacementChange={shellChrome.commitDockPlacement}
-            occupantPicker={shellChrome.occupantPicker}
-          />
-          <p data-testid="ambient-chat-occupant">
-            Chat pane {instance.instanceId}
-          </p>
-        </>
-      )}
-      onDockActionChange={onDockActionChange}
     />,
   );
 }
@@ -229,28 +150,6 @@ function ProjectBasisLauncher() {
   );
 }
 
-async function publishedDockAction(): Promise<WorkspacePaneDockAction> {
-  const published: (WorkspacePaneDockAction | null)[] = [];
-  renderAmbientHost((action) => published.push(action));
-  await waitFor(() => {
-    expect(published.some((action) => action !== null)).toBe(true);
-  });
-  for (let index = published.length - 1; index >= 0; index -= 1) {
-    const action = published[index];
-    if (action) return action;
-  }
-  throw new Error('no dock action published');
-}
-
-/** A Home-shaped occurrence that is NOT the canonical one. */
-const impostorHomeInstance = parseWorkspacePaneInstance({
-  version: '1.0',
-  descriptorId: WORKSPACE_HOME_PANE_DESCRIPTOR.id,
-  instanceId: 'workspace-home-impostor',
-  stateKey: 'workspace-home-impostor',
-  boundContext: { sourceId: 'builtin:workspace-home' },
-})!;
-
 test('the ambient dock document names a projectless chat occupant in the docked region', () => {
   const document = createAmbientChatDockPaneDocument();
 
@@ -267,16 +166,36 @@ test('the ambient dock document names a projectless chat occupant in the docked 
   expect(document.instances[0]?.boundContext?.projectId).toBeUndefined();
 });
 
-test('ambient dock renderPane mounts the canonical chat occupant through a chromeless host', () => {
-  const { container } = render(
-    <AmbientChatDockPaneHost
-      renderChatPane={(instance) => (
-        <p data-testid="ambient-chat-occupant">
-          Chat pane {instance.instanceId}
-        </p>
-      )}
-    />,
+/**
+ * #928 C2b: the docked-Home path was deleted, the document that outlived it
+ * was not. Its key is a user's persisted dock state, so the document's own
+ * identity (scope + id, the two inputs `workspacePaneHostStorageKey` folds)
+ * must still resolve to the pre-C2b literal — a renamed id or scope would
+ * silently reset every device's dock.
+ */
+test('the persisted dock document keeps its pre-C2b storage key', () => {
+  const document = createAmbientChatDockPaneDocument();
+  expect(AMBIENT_CHAT_DOCK_DOCUMENT_ID).toBe('chat-dock');
+  expect(workspacePaneHostStorageKey(document.scope, document.id)).toBe(
+    AMBIENT_DOCK_STORAGE_KEY,
   );
+});
+
+test('the mounted host persists Chat under that same key', async () => {
+  renderAmbientHost();
+  await waitFor(() => {
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
+  });
+  await waitFor(() => {
+    expect(
+      window.localStorage.getItem(AMBIENT_DOCK_STORAGE_KEY) ?? '',
+      'the live host must write its document to the pinned key, not a renamed one',
+    ).toContain('pane:builtin:chat');
+  });
+});
+
+test('ambient dock renderPane mounts the canonical chat occupant through a chromeless host', () => {
+  const { container } = renderAmbientHost();
 
   expect(
     screen.queryByTestId('ambient-chat-occupant'),
@@ -285,10 +204,10 @@ test('ambient dock renderPane mounts the canonical chat occupant through a chrom
   // `WorkspacePaneHost` itself still contributes no chrome and no element
   // (its "chromeless" contract) — the labelled "Workspace panes" container
   // belongs to a tab strip's group of panes; there is no group here. What
-  // DOES wrap the occupant now is `DockShell` (archive#4460): the one
-  // `.chat-dock` root every occupant shares, a real element by design (it
-  // owns the shell's root box, resize handle and geometry). The occupant is
-  // a DIRECT descendant of it, not buried under a second host-owned wrapper.
+  // DOES wrap the occupant is `DockShell` (archive#4460): the one
+  // `.chat-dock` root, a real element by design (it owns the shell's root
+  // box, resize handle and geometry). The occupant is a DIRECT descendant of
+  // it, not buried under a second host-owned wrapper.
   expect(screen.queryByLabelText('Workspace panes')).toBeNull();
   expect(screen.queryByRole('tablist')).toBeNull();
   expect(container.querySelector('.workspace-pane-host')).toBeNull();
@@ -320,85 +239,22 @@ test('the production ambient host refuses project-bound Basis so the launcher us
   ).not.toContain('project-bound-basis');
 });
 
-/**
- * The dock action trusts the host's reported `suppliable` blindly — by
- * design, so a second host with a different scope works through the same
- * context. The trust is honest only if this binding holds: a host reporting
- * contexts its scope does not own would make every matching pane's dock
- * action appear with nothing able to bind it. Caught by injection:
- * hand-writing `new Set(['project', 'task'])` in the published action passed
- * every other test.
- */
-test('the published dock action reports EXACTLY the ambient scope derivation', () => {
-  const action = ambientWorkspacePaneDockAction(
-    () => {},
-    () => {},
-    'workspace-chat',
-    () => {},
-  );
-  expect([...action.suppliable].sort()).toEqual(
-    [...workspacePaneHostSuppliableContexts({ kind: 'ambient' })].sort(),
-  );
-});
+/** A Home-shaped occurrence that is NOT the canonical one. */
+const impostorHomeInstance = parseWorkspacePaneInstance({
+  version: '1.0',
+  descriptorId: WORKSPACE_HOME_PANE_DESCRIPTOR.id,
+  instanceId: 'workspace-home-impostor',
+  stateKey: 'workspace-home-impostor',
+  boundContext: { sourceId: 'builtin:workspace-home' },
+})!;
 
 /**
- * Regression pin for the wiring that kept "Dock this pane" off every route
- * (archive#4090): `onDockSlotActionChange={setReplace}` handed the host's
- * replace FUNCTION straight to a state setter, which React treats as an
- * updater — the stored state became `controller.replace(null)` (a boolean),
- * so the published action was permanently null. The docked-slot unit test
- * captured the authority with a `vi.fn` and never saw it. This test goes
- * through the REAL mounted host and the REAL App-facing callback.
+ * The persisted-occupant half of the admission seam (reload path). A device
+ * that docked Home or Activity under a pre-C2a build still carries that
+ * document; the host has no render branch for either any more, so restore
+ * must retire the occupant and land on the Chat baseline — never a blank
+ * dock, never a pane this host cannot render.
  */
-test('the mounted ambient host publishes a live dock action, not null forever', async () => {
-  const action = await publishedDockAction();
-  expect(typeof action.dockPane).toBe('function');
-  expect([...action.suppliable].sort()).toEqual(
-    [...workspacePaneHostSuppliableContexts({ kind: 'ambient' })].sort(),
-  );
-});
-
-/**
- * #928 C2a: Home left this host for the region registry (its only placement
- * is `main`), so the ambient dock refuses it exactly as it refuses Activity —
- * on a live dock request, and on restore of a persisted document that still
- * names it. The Home render branch (`AmbientHomeDock`) is legacy plumbing
- * awaiting C2b; these prove nothing reaches it.
- */
-test('the legacy ambient dock refuses the canonical Home occurrence', async () => {
-  const action = await publishedDockAction();
-  act(() => {
-    action.dockPane(
-      WORKSPACE_HOME_PANE_DESCRIPTOR,
-      WORKSPACE_HOME_PANE_INSTANCE,
-    );
-  });
-  await act(async () => Promise.resolve());
-  expect(screen.queryByTestId('ambient-home-occupant')).toBeNull();
-  expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
-  expect(
-    window.localStorage.getItem(AMBIENT_DOCK_STORAGE_KEY) ?? '',
-    'Home belongs to the region registry and must not enter the legacy ambient document',
-  ).not.toContain('pane:builtin:home');
-});
-
-test('a non-canonical Home occurrence is refused: the dock admits nothing', async () => {
-  const action = await publishedDockAction();
-  act(() => {
-    action.dockPane(WORKSPACE_HOME_PANE_DESCRIPTOR, impostorHomeInstance);
-  });
-  await act(async () => {
-    await Promise.resolve();
-  });
-  expect(screen.queryByTestId('ambient-home-occupant')).toBeNull();
-  expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
-  expect(
-    window.localStorage.getItem(AMBIENT_DOCK_STORAGE_KEY) ?? '',
-    'a refused occurrence must never reach the persisted document',
-  ).not.toContain('pane:builtin:home');
-});
-
-/** The persisted-occupant halves of the same admission seam (reload path). */
 function persistedAmbientDocument(instance: unknown) {
   return JSON.stringify({
     version: '1.1',
@@ -415,198 +271,38 @@ function persistedAmbientDocument(instance: unknown) {
   });
 }
 
-test('a persisted canonical Home occupant is retired on restore: Chat renders', async () => {
-  window.localStorage.setItem(
-    AMBIENT_DOCK_STORAGE_KEY,
-    persistedAmbientDocument(WORKSPACE_HOME_PANE_INSTANCE),
-  );
-  renderAmbientHost();
-  await waitFor(() => {
-    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
-  });
-  expect(screen.queryByTestId('ambient-home-occupant')).toBeNull();
-});
-
-test('a persisted non-canonical Home occupant is refused on restore: Chat renders', async () => {
-  window.localStorage.setItem(
-    AMBIENT_DOCK_STORAGE_KEY,
-    persistedAmbientDocument(impostorHomeInstance),
-  );
-  renderAmbientHost();
-  await waitFor(() => {
-    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
-  });
-  expect(screen.queryByTestId('ambient-home-occupant')).toBeNull();
-});
-
-/** An Activity-shaped occurrence that is NOT the canonical one. */
-const impostorActivityInstance = parseWorkspacePaneInstance({
-  version: '1.0',
-  descriptorId: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id,
-  instanceId: 'workspace-activity-impostor',
-  stateKey: 'workspace-activity-impostor',
-  boundContext: { sourceId: 'builtin:workspace-activity' },
-})!;
-
-test('the legacy ambient dock refuses the canonical Activity occurrence', async () => {
-  const action = await publishedDockAction();
-  act(() => {
-    action.dockPane(
-      WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-      WORKSPACE_ACTIVITY_PANE_INSTANCE,
+test.each([
+  [
+    'a canonical Home occupant',
+    WORKSPACE_HOME_PANE_INSTANCE,
+    'pane:builtin:home',
+  ],
+  ['a non-canonical Home occupant', impostorHomeInstance, 'pane:builtin:home'],
+  [
+    'a canonical Activity occupant',
+    WORKSPACE_ACTIVITY_PANE_INSTANCE,
+    'pane:builtin:activity',
+  ],
+])(
+  'a persisted document naming %s is retired on restore: Chat renders and the stale occupant is gone',
+  async (_label, instance, descriptorId) => {
+    window.localStorage.setItem(
+      AMBIENT_DOCK_STORAGE_KEY,
+      persistedAmbientDocument(instance),
     );
-  });
-  await act(async () => Promise.resolve());
-  expect(screen.queryByTestId('ambient-activity-occupant')).toBeNull();
-  expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
-  expect(
-    window.localStorage.getItem(AMBIENT_DOCK_STORAGE_KEY) ?? '',
-    'Activity belongs to the region registry and must not enter the legacy ambient document',
-  ).not.toContain('pane:builtin:activity');
-});
-
-test('a non-canonical Activity occurrence is refused: the dock admits nothing', async () => {
-  const action = await publishedDockAction();
-  act(() => {
-    action.dockPane(
-      WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-      impostorActivityInstance,
-    );
-  });
-  await act(async () => {
-    await Promise.resolve();
-  });
-  expect(screen.queryByTestId('ambient-activity-occupant')).toBeNull();
-  expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
-  expect(
-    window.localStorage.getItem(AMBIENT_DOCK_STORAGE_KEY) ?? '',
-    'a refused occurrence must never reach the persisted document',
-  ).not.toContain('pane:builtin:activity');
-});
-
-test('a persisted canonical Activity occupant is retired on restore', async () => {
-  window.localStorage.setItem(
-    AMBIENT_DOCK_STORAGE_KEY,
-    persistedAmbientDocument(WORKSPACE_ACTIVITY_PANE_INSTANCE),
-  );
-  renderAmbientHost();
-  await waitFor(() => {
-    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
-  });
-  expect(screen.queryByTestId('ambient-activity-occupant')).toBeNull();
-});
-
-test('a persisted non-canonical Activity occupant is refused on restore: Chat renders', async () => {
-  window.localStorage.setItem(
-    AMBIENT_DOCK_STORAGE_KEY,
-    persistedAmbientDocument(impostorActivityInstance),
-  );
-  renderAmbientHost();
-  await waitFor(() => {
-    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
-  });
-  expect(screen.queryByTestId('ambient-activity-occupant')).toBeNull();
-});
-
-/**
- * #928 C2a retired the docked-Home cases that used to live here — the
- * occupant picker's derived list, choosing another pane, the header naming
- * its occupant, `occupantInstanceId` republishing on change, `undockOccupant`
- * restoring Chat. Every one of them docked Home to get a second ambient
- * occupant, and Chat is now the only pane this host admits, so there is no
- * occupant switch left to drive. The pure derivations they rested on
- * (`ambientDockOccupantChoices`, `chooseAmbientOccupant`) keep their own
- * tests in `mobile-chrome-safety.test.ts`; the host's occupant-switch
- * machinery is legacy plumbing awaiting C2b.
- */
-
-/** Keeps EVERY published action so occupant-change republishes are visible. */
-function mountedDockActionFeed(
-  mount: typeof renderAmbientHost = renderAmbientHost,
-) {
-  const published: (WorkspacePaneDockAction | null)[] = [];
-  mount((action) => published.push(action));
-  return {
-    published,
-    latest(): WorkspacePaneDockAction {
-      for (let index = published.length - 1; index >= 0; index -= 1) {
-        const action = published[index];
-        if (action) return action;
-      }
-      throw new Error('no dock action published');
-    },
-  };
-}
-
-test('the published dock action reports the live occupant', async () => {
-  const feed = mountedDockActionFeed();
-  await waitFor(() => {
-    expect(feed.published.some((action) => action !== null)).toBe(true);
-  });
-  expect(feed.latest().occupantInstanceId).toBe('workspace-chat');
-});
-
-test('the occupant picker offers only Chat: the derived ambient-admissible list is Chat alone', async () => {
-  const feed = mountedDockActionFeed(renderAmbientHostWithChatHeader);
-  await waitFor(() =>
-    expect(feed.published.some((action) => action !== null)).toBe(true),
-  );
-  fireEvent.click(screen.getByRole('button', { name: 'Docked pane: Chat' }));
-  const menu = screen.getByRole('menu', { name: 'Docked pane' });
-  const derivedNames = [
-    WORKSPACE_CHAT_PANE_DESCRIPTOR,
-    WORKSPACE_HOME_PANE_DESCRIPTOR,
-  ]
-    .filter(
-      (descriptor) =>
-        AMBIENT_DOCK_RENDERABLE_PANES.some(
-          (pane) => pane.descriptor.id === descriptor.id,
-        ) &&
-        workspacePaneModesSatisfiableBy(
-          descriptor,
-          workspacePaneHostSuppliableContexts({ kind: 'ambient' }),
-        ).length > 0,
-    )
-    .map((descriptor) => descriptor.name);
-  expect(derivedNames).toEqual(['Chat']);
-  expect(
-    within(menu)
-      .getAllByRole('menuitemradio')
-      .map((item) => item.textContent),
-    'the occupant menu must render the ambient admission derivation, not a curated list',
-  ).toEqual(derivedNames);
-});
-
-/* ------------------------------------------------------------------ *
- * station#520: the mobile dock-and-empty contract. At phone width,
- * `dockPaneAsOnlyContent` must open the dock MAXIMIZED after a SUCCESSFUL
- * dock and never after a refused one. With Chat the only admissible pane
- * (#928 C2a) there is no successful non-Chat dock left to drive here; the
- * maximize derivation itself is pinned in `mobile-chrome-safety.test.ts`
- * (`shouldMaximizeAfterDockingAsOnlyContent`). What this host still proves
- * is the refusal half.
- * ------------------------------------------------------------------ */
-
-test('mobile: a REFUSED dockPaneAsOnlyContent (Home, no longer admitted) never requests Full', async () => {
-  mobileFlag.isMobile = true;
-  const feed = mountedDockActionFeed();
-  await waitFor(() => {
-    expect(feed.published.some((action) => action !== null)).toBe(true);
-  });
-  act(() => {
-    feed
-      .latest()
-      .dockPaneAsOnlyContent(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      );
-  });
-  await act(async () => {
-    await Promise.resolve();
-  });
-  expect(screen.queryByTestId('ambient-home-occupant')).toBeNull();
-  expect(
-    navigationMock.setDockState,
-    'maximizing a request the admission check refused would open the dock over nothing',
-  ).not.toHaveBeenCalled();
-});
+    renderAmbientHost();
+    await waitFor(() => {
+      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
+    });
+    expect(
+      screen.getByTestId('ambient-chat-occupant').textContent,
+      'the Chat baseline occurrence, not the stale one, must be what renders',
+    ).toContain('workspace-chat');
+    await waitFor(() => {
+      expect(
+        window.localStorage.getItem(AMBIENT_DOCK_STORAGE_KEY) ?? '',
+        'the retired occupant must not survive into the rewritten document',
+      ).not.toContain(descriptorId);
+    });
+  },
+);

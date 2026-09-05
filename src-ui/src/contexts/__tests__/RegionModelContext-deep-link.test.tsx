@@ -77,13 +77,7 @@ function Harness({
           <Probe />
           <CommandProbe />
           {shell ? <ActivityRegionShell regionId="right" /> : null}
-          {host ? (
-            <RegionShells
-              homeContinuation={null}
-              onNavigate={() => undefined}
-              onDockActionChange={() => undefined}
-            />
-          ) : null}
+          {host ? <RegionShells /> : null}
         </RegionModelProvider>
       </NavigationProvider>
     </KeyboardShortcutsProvider>

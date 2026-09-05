@@ -57,17 +57,6 @@ vi.mock('../../components/chat-dock/ChatDock', async () => {
     ),
   };
 });
-vi.mock('../../views/home/useHomeViewModel', () => ({
-  useHomeViewModel: () => ({}),
-}));
-vi.mock('../../views/home/HomeSurface', () => ({
-  HomeSurface: () => <p data-testid="ambient-home-occupant">Home surface</p>,
-}));
-vi.mock('../../views/SessionsView', () => ({
-  SessionsView: () => (
-    <p data-testid="ambient-activity-occupant">Sessions surface</p>
-  ),
-}));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
 }));
@@ -328,11 +317,7 @@ function Providers({ children }: { children: React.ReactNode }) {
 function renderShells() {
   return render(
     <Providers>
-      <RegionShells
-        homeContinuation={null}
-        onNavigate={vi.fn()}
-        onDockActionChange={vi.fn()}
-      />
+      <RegionShells />
     </Providers>,
   );
 }
@@ -792,11 +777,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     seedPlacement('bottom', 'open');
     render(
       <Providers>
-        <RegionShells
-          homeContinuation={null}
-          onNavigate={vi.fn()}
-          onDockActionChange={vi.fn()}
-        />
+        <RegionShells />
       </Providers>,
     );
     act(() => {

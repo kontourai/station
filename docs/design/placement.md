@@ -87,10 +87,16 @@ plugin and SDK model: plugins contribute pane descriptors, not surfaces, and
 the contracts vocabulary (`supportedRegions`, composition `role`) describes
 positions inside this tree.
 
-The layers meet at one seam: the bottom region's chat surface is itself a
-pane host with a one-pane tab group, persisted as
-`station:workspace-pane-host:v2:ambient:chat-dock`. That is why the direction
-below is cheap.
+The layers meet at one seam: the Chat surface is itself a pane host — a
+chromeless `WorkspacePaneHost` inside the region's `DockShell`
+(`AmbientChatDockPaneHost`) holding a one-pane tab group, persisted as
+`station:workspace-pane-host:v2:ambient:chat-dock`. Chat is the only pane that
+host renders: the legacy path that docked Home as a second pane inside the
+chat dock, with an occupant picker to switch between them, was deleted in
+slice C2b (owner decision, 2026-09-03) once Home became a region surface. The
+document and its key outlived that deletion — the key is a user's dock state
+on disk, and the document is the prototype of the per-region document below.
+That is why the direction below is cheap.
 
 ## The words
 
@@ -149,11 +155,12 @@ Two facts that follow from the map and are easy to get wrong:
   whether a pane fits a slot; the user, the registry and the composition
   builders decide where. Do not add a reader that picks a region from it
   without a decision on #928.
-- **Compatibility is context supply, not region words.** The only "can this
-  pane live here" check the shell derives is
-  `ambientDockDescriptorFor`: a pane is admitted where its declared modes are
-  satisfiable by the contexts the host can supply (project, task, session).
-  New placement targets should reuse that fold, not a new enum.
+- **Compatibility is context supply, not region words.** The "can this pane
+  live here" check is `workspacePaneModesSatisfiableBy` against the contexts a
+  host can supply (`workspacePaneHostSuppliableContexts`: project, task,
+  session). The chat dock's host applies it to one pane and admits only Chat's
+  canonical occurrence; new placement targets should reuse that fold, not a
+  new enum.
 
 ## Persistence today
 
