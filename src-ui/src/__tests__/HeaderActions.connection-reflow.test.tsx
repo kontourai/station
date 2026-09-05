@@ -353,8 +353,9 @@ describe.skipIf(!chromiumAvailable)(
       expect(chip.nameBefore).toBe('none');
       expect(chip.nameVisible).toBe(true);
       // Geometric: and the reservation's slack no longer splits the phrase.
-      // Measured in this fixture — 40px with the centred label and the
-      // identity-side separator, 18px with both fixed.
+      // Measured in this fixture, not estimated: 36.0px with the label
+      // centred inside its reservation, 18.0px with it aligned to the end.
+      // Each half of the fix reddens this on its own.
       expect(chip.gapBetweenPhrases).not.toBeNull();
       expect(chip.gapBetweenPhrases as number).toBeLessThanOrEqual(24);
     });

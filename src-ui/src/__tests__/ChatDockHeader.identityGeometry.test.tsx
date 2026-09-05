@@ -285,3 +285,19 @@ describe.skipIf(!chromiumAvailable)(
     });
   },
 );
+
+/**
+ * A `describe.skipIf` alone would make an uninstalled browser look like a
+ * pass — the exact absence-as-success shape this suite exists to catch. The
+ * sibling `HeaderActions.connection-reflow.test.tsx` established this guard.
+ */
+test.skipIf(chromiumAvailable)(
+  'dock header identity/project-context geometry (#1536 E2) — Chromium not installed, cannot verify',
+  () => {
+    throw new Error(
+      'Playwright Chromium is not installed in this worktree, so the ' +
+        'browser-backed geometry assertions above did not run. Install it ' +
+        '(`npx playwright install chromium`) and re-run.',
+    );
+  },
+);

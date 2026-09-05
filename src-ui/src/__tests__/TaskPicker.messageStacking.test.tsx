@@ -107,6 +107,8 @@ const fixtureCss = (() => {
   return css;
 })();
 
+const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
+
 type PanelGeometry = {
   top: number;
   left: number;
@@ -116,7 +118,7 @@ type PanelGeometry = {
   hitClassName: string;
 };
 
-describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
+describe.skipIf(!chromiumAvailable)(
   'the Task picker opened from a message bubble is not trapped by that bubble',
   () => {
     let browser: Awaited<ReturnType<typeof chromium.launch>>;
@@ -189,6 +191,22 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
           hitClassName: panel.hitClassName,
         });
       },
+    );
+  },
+);
+
+/**
+ * A `describe.skipIf` alone would make an uninstalled browser look like a
+ * pass — the exact absence-as-success shape this suite exists to catch. The
+ * sibling `HeaderActions.connection-reflow.test.tsx` established this guard.
+ */
+test.skipIf(chromiumAvailable)(
+  'Task picker message-row stacking (#1536 B2) — Chromium not installed, cannot verify',
+  () => {
+    throw new Error(
+      'Playwright Chromium is not installed in this worktree, so the ' +
+        'browser-backed geometry assertions above did not run. Install it ' +
+        '(`npx playwright install chromium`) and re-run.',
     );
   },
 );
