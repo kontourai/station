@@ -172,6 +172,20 @@ const VERBS: Record<string, VerbSpec> = {
       '  --ui-port=<n>         UI port used for instance targeting',
     ],
   },
+  cloud: {
+    group: 'Lifecycle',
+    summary:
+      'Preview cloud setup compatibility without transferring or provisioning',
+    actions: ['preview', 'template'],
+    usage: [
+      'station cloud preview --home=<path> --provider=aws-ec2 --region=<region> --instance-type=<type> [--json]',
+      'station cloud template --provider=aws-ec2 --region=<region> --instance-type=<type> --image=<digest-pinned-image> --output=<new-file>',
+    ],
+    detail: [
+      'Read-only metadata preview. Does not export credentials or move running work.',
+      'Transfer and resume remain unavailable until target and ownership verification are implemented.',
+    ],
+  },
   home: {
     group: 'Lifecycle',
     summary: 'Verify, back up, restore, or archive a Station home',

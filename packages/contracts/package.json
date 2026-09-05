@@ -162,7 +162,8 @@
     "./workspace-coding-diff-composition": "./src/workspace-coding-diff-composition.ts",
     "./workspace-evidence-panels": "./src/workspace-evidence-panels.ts",
     "./workspace-file-preview": "./src/workspace-file-preview.ts",
-    "./workspace-isolation": "./src/workspace-isolation.ts"
+    "./workspace-isolation": "./src/workspace-isolation.ts",
+    "./cloud-move": "./src/cloud-move.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",
