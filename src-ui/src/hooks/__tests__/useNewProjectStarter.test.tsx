@@ -169,6 +169,43 @@ describe('useNewProjectStarter repo discovery gate (#1536 E4)', () => {
   });
 
   /**
+   * The same directory change WITHOUT `resetForDirectory`.
+   *
+   * Nothing in this hook's contract requires a caller to call that — today
+   * exactly one does (`NewProjectModalContent`'s directory field), and while it
+   * does, it nulls the selection before the effect could withdraw it, which is
+   * why a set-only effect passes the two tests above. That coupling is the
+   * defect underneath D1: the selection was a residue of whoever remembered to
+   * reset rather than a derivation of the detected fact. Drive the hook the way
+   * a caller that does not reset would, and the selection must still track the
+   * recommendation.
+   */
+  test('withdraws the recommendation on a directory change even with no reset', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { result, rerender } = renderStarter('/tmp/repo');
+      await settleDiscovery();
+      await waitFor(() =>
+        expect(result.current.selectedLayoutId).toBe('builtin:coding'),
+      );
+
+      respondWithRepos([]);
+      rerender({ normalizedDirectory: '/tmp/notes' });
+
+      expect(result.current.gitWorkspaceDetected).toBe(false);
+      expect(result.current.selectedLayoutId).toBeNull();
+
+      await settleDiscovery();
+      await waitFor(() =>
+        expect(discoveryPaths()).toEqual(['/tmp/repo', '/tmp/notes']),
+      );
+      expect(result.current.selectedLayoutId).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
    * The variant with no correcting answer at all: the replacement value fails
    * `looksLikeWorkspacePath`, so the query is DISABLED and its last answer
    * ("repo") simply stays. Nothing later flips detection false, so a
@@ -183,7 +220,6 @@ describe('useNewProjectStarter repo discovery gate (#1536 E4)', () => {
         expect(result.current.selectedLayoutId).toBe('builtin:coding'),
       );
 
-      act(() => result.current.resetForDirectory());
       rerender({ normalizedDirectory: 'notes' });
       await settleDiscovery();
 
