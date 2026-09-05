@@ -270,8 +270,11 @@ describe('createSessionAgentResolver', () => {
       tools: { mcpServers: [] },
     });
     const result = await resolver(
-      baseInput({ provider: 'codex', metadata: { agentSlug: 'example:assistant' } }),
-      { agentId: 'example:assistant', spec: captured },
+      baseInput({
+        provider: 'claude',
+        metadata: { agentSlug: 'example-assistant' },
+      }),
+      { agentId: 'example-assistant', spec: captured },
     );
     expect(loadAgentSpec).not.toHaveBeenCalled();
     expect(resolveToolServer).not.toHaveBeenCalled();
