@@ -1170,6 +1170,7 @@
 
 .chat-input .chat-input__send-btn--active:hover:not(:disabled) {
   background: var(--accent-hover-fill);
+  opacity: 1;
 }
 
 .chat-input .chat-input__send-btn--inactive {

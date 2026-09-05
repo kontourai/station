@@ -1452,11 +1452,11 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect(new URL(page.url()).searchParams.get('dock')).toBe('open');
   expect(new URL(page.url()).searchParams.get('maximize')).toBeNull();
   await expect(textarea).toHaveValue('return to this draft');
-  // The standalone project-context row is desktop-only now; on a phone the
-  // project switcher carries the visible name instead of a folder-only glyph.
+  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: 'Switch project — Default' }),
+    page.getByRole('menuitem', { name: /^Switch project/ }),
   ).toContainText('Default');
+  await page.getByRole('button', { name: 'Close actions menu' }).click();
   await expect(page.locator('.chat-input__model-name')).toHaveText(
     'model-selected',
   );
@@ -2164,12 +2164,12 @@ for (const viewport of [
     await expandMobileDock(page);
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     const selectedModel = page.locator('.chat-input__model-name');
-    await expect(selectedModel).toHaveText('test-model');
+    await expect(selectedModel).toHaveText('Selected Test Model');
     await expect(page.locator('.chat-input__model-btn')).toHaveAttribute(
       'aria-label',
       /agent default/,
     );
-    const selectedModelLabel = 'test-model';
+    const selectedModelLabel = 'Selected Test Model';
     const activeChatParam = new URL(page.url()).searchParams.get('chat');
     const switcher = page.getByRole('button', { name: /^Switch task/ });
     await expect(switcher).toContainText('New chat');
@@ -3278,13 +3278,18 @@ for (const width of [320, 390, 1280]) {
       await page.setViewportSize({ width, height: 844 });
       await mockChatShell(page);
       const textarea = await openComposer(page);
+      await page.evaluate(
+        (theme) => document.documentElement.setAttribute('data-theme', theme),
+        theme,
+      );
       await textarea.fill('Ask a question or describe a task…');
       await expect(
         page.getByRole('button', { name: 'Send', exact: true }),
       ).toBeEnabled();
       const send = page.getByRole('button', { name: 'Send', exact: true });
+      await expect(send).toHaveCSS('opacity', '1');
       expect((await backgroundPaint(send)).alpha).toBe(1);
-      expect(await contrastRatio(send)).toBeGreaterThanOrEqual(4.5);
+      await expect.poll(() => contrastRatio(send)).toBeGreaterThanOrEqual(4.5);
       const drafts = page
         .locator('.chat-controls-row')
         .getByRole('button', { name: 'Drafts', exact: true });
@@ -3292,10 +3297,6 @@ for (const width of [320, 390, 1280]) {
       const draftsBox = (await drafts.boundingBox())!;
       expect(draftsBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
 
-      await page.evaluate(
-        (theme) => document.documentElement.setAttribute('data-theme', theme),
-        theme,
-      );
       const agent = page.getByRole('button', { name: /^Agent: Claude/ });
       const model = page.getByRole('button', {
         name: /^Model: Claude — Selected Test Model/,
