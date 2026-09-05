@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  copyFileSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -9,6 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { Worker } from 'node:worker_threads';
 import {
   parseHostedTenantRegistry,
@@ -57,8 +59,23 @@ function reader(
   readers.push(value);
   return value;
 }
-function source(body: string) {
-  return new URL(`data:text/javascript,${encodeURIComponent(body)}`);
+function source(directory: string, mode: string, marker?: string) {
+  const fixture = mkdtempSync(join(directory, 'worker-'));
+  writeFileSync(
+    join(fixture, 'inputs.json'),
+    JSON.stringify({
+      mode,
+      marker,
+      empty,
+      responseBytes: TASK_SEARCH_LIMITS.responseBytes,
+    }),
+  );
+  const entry = join(fixture, 'worker.mjs');
+  copyFileSync(
+    new URL('./fixtures/task-search-worker.fixture.mjs', import.meta.url),
+    entry,
+  );
+  return pathToFileURL(entry);
 }
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -137,9 +154,7 @@ describe('owned isolated Task search', () => {
     );
     const marker = join(directory, 'worker-constructed');
     const owned = reader(directory, {
-      workerSourceUrl: source(
-        `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'constructed'); throw new Error('must not launch');`,
-      ),
+      workerSourceUrl: source(directory, 'must-not-launch', marker),
     });
     expect(
       await owned.open({
@@ -152,9 +167,7 @@ describe('owned isolated Task search', () => {
     expect(owned.inspect().phase).toBe('idle');
     expect(existsSync(marker)).toBe(false);
     const delayed = reader(directory, {
-      workerSourceUrl: source(
-        `import { parentPort } from 'node:worker_threads'; parentPort.on('message', wire => { const r=JSON.parse(wire); setTimeout(() => parentPort.postMessage(JSON.stringify({id:r.id,page:{state:'resolved',target:{kind:'task',projectId:r.projectId,taskId:r.taskId}}})), 20); });`,
-      ),
+      workerSourceUrl: source(directory, 'delayed-open'),
     });
     let current = true;
     const opening = delayed.open({
@@ -271,9 +284,7 @@ describe('owned isolated Task search', () => {
     const owned = reader(directory, {
       deadlineMs: 1500,
       terminate: terminated,
-      workerSourceUrl: source(
-        `import { parentPort } from 'node:worker_threads'; import { writeFileSync } from 'node:fs'; parentPort.on('message', () => { writeFileSync(${JSON.stringify(marker)}, 'entered'); while (true) {} });`,
-      ),
+      workerSourceUrl: source(directory, 'infinite', marker),
     });
     const pending = owned.provider.search(
       request,
@@ -345,9 +356,7 @@ describe('owned isolated Task search', () => {
         worker = value;
         return cleanup.promise;
       },
-      workerSourceUrl: source(
-        `import { parentPort } from 'node:worker_threads'; import { writeFileSync } from 'node:fs'; parentPort.on('message', wire => { const {id} = JSON.parse(wire); setTimeout(() => { parentPort.postMessage(JSON.stringify({id,page:${JSON.stringify(empty)}})); writeFileSync(${JSON.stringify(marker)}, 'sent'); }, 30); });`,
-      ),
+      workerSourceUrl: source(directory, 'late-success', marker),
     });
     const controller = new AbortController();
     const pending = owned.provider.search(request, controller.signal);
@@ -372,9 +381,7 @@ describe('owned isolated Task search', () => {
     });
     const owned = reader(directory, {
       terminate,
-      workerSourceUrl: source(
-        `import { parentPort } from 'node:worker_threads'; parentPort.on('message', () => {});`,
-      ),
+      workerSourceUrl: source(directory, 'idle'),
     });
     const controller = new AbortController();
     const pending = owned.provider.search(request, controller.signal);
@@ -400,9 +407,7 @@ describe('owned isolated Task search', () => {
       .mockImplementation((worker) => worker.terminate());
     const owned = reader(directory, {
       terminate,
-      workerSourceUrl: source(
-        `import { parentPort } from 'node:worker_threads'; parentPort.on('message', () => {});`,
-      ),
+      workerSourceUrl: source(directory, 'idle'),
     });
     const controller = new AbortController();
     const pending = owned.provider.search(request, controller.signal);
@@ -422,9 +427,7 @@ describe('owned isolated Task search', () => {
   test('saturation has no queue; the admitted request alone receives its result', async () => {
     const directory = root();
     const owned = reader(directory, {
-      workerSourceUrl: source(
-        `import { parentPort } from 'node:worker_threads'; parentPort.on('message', wire => { const request = JSON.parse(wire); setTimeout(() => parentPort.postMessage(JSON.stringify({id:request.id,page:${JSON.stringify(empty)}})), 80); });`,
-      ),
+      workerSourceUrl: source(directory, 'delayed-success'),
     });
     const admitted = owned.provider.search(
       request,
@@ -440,18 +443,9 @@ describe('owned isolated Task search', () => {
   test.each(['wrong-id', 'oversized', 'bad-page', 'crash'])(
     'retires a worker with %s output and settles its caller',
     async (fault) => {
-      const body =
-        fault === 'crash'
-          ? `throw new Error('crash')`
-          : fault === 'oversized'
-            ? `parentPort.postMessage('x'.repeat(${TASK_SEARCH_LIMITS.responseBytes + 1}))`
-            : fault === 'bad-page'
-              ? `parentPort.postMessage(JSON.stringify({id:request.id,page:{invalid:true}}))`
-              : `parentPort.postMessage(JSON.stringify({id:request.id+1,page:${JSON.stringify(empty)}}))`;
-      const owned = reader(root(), {
-        workerSourceUrl: source(
-          `import { parentPort } from 'node:worker_threads'; parentPort.on('message', wire => { const request = JSON.parse(wire); ${body}; });`,
-        ),
+      const directory = root();
+      const owned = reader(directory, {
+        workerSourceUrl: source(directory, fault),
       });
       expect(
         await owned.provider.search(request, new AbortController().signal),

@@ -452,7 +452,12 @@ jobs:
           issuer-id: ${{ env.APPLE_API_ISSUER_ID }}
           api-key-id: ${{ env.APPLE_API_KEY_ID }}
           api-private-key: ${{ env.APPLE_API_PRIVATE_KEY }}
-          wait-for-processing: 'true'
+          # The action mints one App Store Connect token at start and its
+          # own processing wait outlived it (401 after ~12 minutes, Nightly
+          # 33929822729, #1499). The step below is the single processing
+          # wait: it mints a fresh token per request under a 30-minute
+          # deadline.
+          wait-for-processing: 'false'
       - name: Reconcile exactly one VALID provider build
         run: >-
           node scripts/app-store-connect-receipt.mjs wait-for-valid-build
