@@ -9,3 +9,8 @@ export function projectTaskRoomDocumentId(scope: {
     .update(`${scope.projectId}\u0000${scope.taskId}`)
     .digest('hex')}`;
 }
+
+/** Exact durable proposal identity for the revision published by one edit. */
+export function projectTaskRoomRevisionPublicationId(intentId: string): string {
+  return `revision-publication:${intentId}`;
+}

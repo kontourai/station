@@ -16,6 +16,7 @@ import type {
   ProjectTaskRoomOpenOutcome,
   ProjectTaskRoomPrincipal,
   ProjectTaskRoomReadOutcome,
+  ProjectTaskRoomRecord,
   ProjectTaskRoomResolvedLink,
   ProjectTaskRoomScope,
 } from '@kontourai/station-contracts/project-task-room';
@@ -91,6 +92,10 @@ interface StorageAdapter {
   close(): Promise<ProjectTaskRoomCloseOutcome>;
 }
 export interface ProjectTaskRoomHistory extends ProjectTaskRoomAuthority {
+  findByProposal(input: {
+    grant: ProjectTaskRoomGrant<'history-read'>;
+    proposalId: string;
+  }): Promise<ProjectTaskRoomRecord | undefined>;
   /** EventStore's synchronous shutdown fence; public callers use close(). */
   dispose(): void;
 }
@@ -501,6 +506,50 @@ function createProjectTaskRoomHistoryInternal(
     return deepCloneFreeze(outcome);
   }
 
+  async function findByProposal({
+    grant,
+    proposalId,
+  }: Parameters<ProjectTaskRoomHistory['findByProposal']>[0]): Promise<
+    ProjectTaskRoomRecord | undefined
+  > {
+    const operationGeneration = generation;
+    if (closed || !id(proposalId)) return undefined;
+    const resolved = await resolveAuthorized(grant, 'history-read');
+    if (!active(operationGeneration) || resolved.kind !== 'granted')
+      return undefined;
+    const located = await totalStorage(storage, {
+      type: 'locate-proposal',
+      scope: resolved.receipt.scope,
+      channelId: channelIdFor(resolved.receipt.scope),
+      proposalId,
+    });
+    if (
+      !active(operationGeneration) ||
+      !isPlainOwn(located, ['kind', 'cursor']) ||
+      located.kind !== 'located' ||
+      !validReadInput(located.cursor, 1)
+    )
+      return undefined;
+    // Reuse one bounded page read: it verifies the history, cursor, record,
+    // exact scope and delivery-time authority. No quadratic pagination scan.
+    const page = await read({
+      grant,
+      cursor:
+        located.cursor as import('@kontourai/station-contracts/project-task-room').ProjectTaskRoomCursor,
+      limit: 1,
+    });
+    if (
+      !active(operationGeneration) ||
+      page.kind !== 'available' ||
+      page.records.length !== 1
+    )
+      return undefined;
+    const record = page.records[0];
+    return record.envelope.proposal.proposalId === proposalId
+      ? record
+      : undefined;
+  }
+
   function close(): Promise<ProjectTaskRoomCloseOutcome> {
     if (closeSettlement) return closeSettlement;
     closed = true;
@@ -518,7 +567,7 @@ function createProjectTaskRoomHistoryInternal(
   function dispose() {
     void close();
   }
-  return Object.freeze({ open, append, read, close, dispose });
+  return Object.freeze({ open, append, read, findByProposal, close, dispose });
 }
 
 function createWorkerStorage(
