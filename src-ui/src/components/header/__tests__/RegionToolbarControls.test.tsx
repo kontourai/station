@@ -310,10 +310,12 @@ describe('RegionToolbarControls', () => {
     render(<RegionToolbarControls />);
     const { menu } = openLayoutMenu();
 
+    // Each block is a `fieldset`, so its `legend` is both the group's
+    // accessible name and the heading a sighted reader sees.
     expect(
       within(menu)
         .getAllByRole('group')
-        .map((group) => group.getAttribute('aria-label')),
+        .map((group) => group.querySelector('legend')?.textContent),
     ).toEqual(['Main', 'Left', 'Right', 'Bottom']);
 
     expect(rowLabels(menu, 'Main')).toEqual(['Place Activity here']);

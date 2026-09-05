@@ -159,16 +159,23 @@
   white-space: nowrap;
 }
 
-/* One block of the Layout menu. The heading names the region its rows belong
-   to, so the rows themselves say "Hide Chat" rather than repeating the region
-   in every label. `aria-hidden` on the heading: the block is a `role="group"`
-   with the same name, so a screen reader already announces it. */
+/* One region's block of the Layout menu. A `fieldset` because its implicit
+   role is `group`, and its `legend` is both the group's accessible name and
+   the visible heading — so the rows say "Hide Chat" instead of repeating the
+   region in every label. `min-inline-size: 0` because a fieldset's default is
+   `min-content`, which would let a long surface title widen the menu. */
+.app-toolbar__region-menu-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
 .app-toolbar__region-menu-group + .app-toolbar__region-menu-group {
   border-top: 1px solid var(--border-primary);
 }
 
-.app-toolbar__region-menu-heading {
-  display: block;
+.app-toolbar__region-menu-group > legend {
   padding: 8px 14px 4px;
   color: var(--text-tertiary);
   font-size: var(--text-xs);

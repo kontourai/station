@@ -135,24 +135,20 @@ function ToolbarMenu({
           section.label === null ? (
             <Fragment key={section.key}>{section.items.map(row)}</Fragment>
           ) : (
-            // `group` is a legal child of `menu` and the rows stay
-            // `menuitem`/`menuitemcheckbox` inside it, so the region a command
-            // belongs to is announced instead of being carried by the label of
-            // every single row ("Hide Chat Bottom region" five times over).
-            <div
+            // A `fieldset`, whose implicit role IS `group` — a legal child of
+            // `menu`, with the rows staying `menuitem`/`menuitemcheckbox`
+            // inside it — so the region a command belongs to is announced
+            // instead of being repeated in the label of every single row
+            // ("Hide Chat Bottom region" five times over). The `legend` is the
+            // group's name AND its visible heading, so there is no second
+            // aria-hidden copy of the same word to keep in step.
+            <fieldset
               key={section.key}
-              role="group"
-              aria-label={section.label}
               className="app-toolbar__region-menu-group"
             >
-              <span
-                className="app-toolbar__region-menu-heading"
-                aria-hidden="true"
-              >
-                {section.label}
-              </span>
+              <legend>{section.label}</legend>
               {section.items.map(row)}
-            </div>
+            </fieldset>
           ),
         )}
       </div>
