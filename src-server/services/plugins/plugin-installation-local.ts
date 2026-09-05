@@ -66,6 +66,9 @@ export function localPluginInstallationState(
     ...(value.origin ? { origin: value.origin } : {}),
   });
   return {
+    async activationPlan(revision) {
+      return journal.activationPlan(reference(revision));
+    },
     async recorded(revision) {
       return journal.installationRecorded(reference(revision));
     },

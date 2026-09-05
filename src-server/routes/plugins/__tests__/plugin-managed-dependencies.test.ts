@@ -292,6 +292,7 @@ describe('managed dependency graph uses canonical lifecycle owners', () => {
         consent: f.consent,
       }),
     ).rejects.toThrow(/changed after it was reviewed/);
+    expect(f.installDeps.buildPlugin).not.toHaveBeenCalled();
     expect(
       f.installDeps.packageMcpJournal.currentInstallation('parent').state,
     ).toBe('not-observed');
@@ -347,6 +348,7 @@ describe('managed dependency graph uses canonical lifecycle owners', () => {
         consent: f.consent,
       }),
     ).rejects.toThrow(/cycle detected/);
+    expect(f.installDeps.buildPlugin).not.toHaveBeenCalled();
     expect(
       f.installDeps.packageMcpJournal.currentInstallation('parent').state,
     ).toBe('not-observed');

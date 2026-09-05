@@ -385,6 +385,20 @@ export function assertPluginInstallConsent(input: {
     });
   }
 
+  assertPluginOperatorDecision({ pluginName, consent, basis });
+}
+
+/** The same byte/permission/dependency decision check for a fully disclosed
+ * inert dependency preview. No missing manifest fields are invented here. */
+export function assertPluginOperatorDecision(input: {
+  pluginName: string;
+  consent: Extract<PluginInstallConsent, { kind: 'operator-decision' }>;
+  basis: Pick<
+    PluginConsentBasis,
+    'contentDigest' | 'required' | 'dependencies'
+  >;
+}): void {
+  const { pluginName, consent, basis } = input;
   const consented = [...new Set(consent.permissions)].sort();
   const required = [...basis.required].sort();
 

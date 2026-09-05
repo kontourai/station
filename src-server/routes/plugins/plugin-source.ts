@@ -635,11 +635,16 @@ export async function resolvePluginDependencies(
   seen: Set<string> = new Set(),
   parentSourceDir: string = pluginsDir,
   allowedLocalRoot: string = dirname(resolve(parentSourceDir)),
+  validation?: {
+    beforeResolve(id: string): void;
+    resolved(dependency: ResolvedPluginDependency): void | Promise<void>;
+  },
 ): Promise<ResolvedPluginDependency[]> {
   const dependencies: ResolvedPluginDependency[] = [];
   if (!manifest.dependencies?.length) return dependencies;
 
   for (const dependency of manifest.dependencies) {
+    validation?.beforeResolve(dependency.id);
     if (seen.has(dependency.id)) continue;
     seen.add(dependency.id);
 
@@ -729,8 +734,11 @@ export async function resolvePluginDependencies(
       }
     } else {
       try {
-        const available =
-          (await getPluginRegistryProvider().listAvailable?.()) ?? [];
+        const registry = getPluginRegistryProvider();
+        const resolvedSource = await registry.resolveSource?.(dependency.id);
+        const available = resolvedSource
+          ? [{ id: dependency.id, source: resolvedSource }]
+          : ((await registry.listAvailable?.()) ?? []);
         const match = available.find((entry) => entry.id === dependency.id);
         if (match) {
           status = 'will-install';
@@ -799,14 +807,19 @@ export async function resolvePluginDependencies(
       }
     }
 
-    dependencies.push({
+    const resolved: ResolvedPluginDependency = {
       id: dependency.id,
       source: dependency.source,
       status,
       components: components.length ? components : undefined,
       git: depGit,
       consent,
-    });
+    };
+    // An installation preflight validates this exact source before recursion
+    // can acquire anything named by its manifest. Ordinary preview is inert
+    // discovery and does not supply an installation decision.
+    await validation?.resolved(resolved);
+    dependencies.push(resolved);
 
     if (depManifest) {
       dependencies.push(
@@ -821,6 +834,7 @@ export async function resolvePluginDependencies(
             ? dependencySourceContext
             : dependencyDir,
           allowedLocalRoot,
+          validation,
         )),
       );
     }

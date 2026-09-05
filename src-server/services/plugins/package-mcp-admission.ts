@@ -16,6 +16,7 @@ import {
   type PluginActivationPlan,
   revokePluginActivationPermit,
   validPluginActivationPlan,
+  verifyPluginActivation,
 } from './plugin-activation-plan.js';
 
 export const PACKAGE_MCP_ADMISSION_SCHEMA = `
@@ -143,6 +144,10 @@ export interface PackageMcpAdmissionJournal {
     state: 'applied' | 'stale' | 'unavailable';
   };
 
+  verifyActivation(
+    permit: PluginActivationPermit,
+    verify: (plan: PluginActivationPlan) => Promise<void>,
+  ): Promise<void>;
   closeActivationPermit(permit: PluginActivationPermit): void;
   reserveActivation(
     permit: PluginActivationPermit,
@@ -1084,6 +1089,9 @@ export function createPackageMcpAdmissionJournal(
       } catch {
         return { state: 'blocked' };
       }
+    },
+    verifyActivation(permit, verify) {
+      return verifyPluginActivation(permit, journal, verify);
     },
     closeActivationPermit(permit) {
       revokePluginActivationPermit(permit, journal);

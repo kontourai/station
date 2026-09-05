@@ -2773,7 +2773,7 @@ describe('plugin durable-state backup/restore (#1835 review finding 2)', () => {
     }
   }
 
-  test('rollback restores ONLY the target plugin grants entry; consent recorded after the snapshot survives', async () => {
+  test('custody snapshot restoration preserves later permission decisions for the target and other plugins', async () => {
     const home = mkdtempSync(join(tmpdir(), 'station-grants-backup-'));
     const backupRoot = mkdtempSync(
       join(tmpdir(), 'station-grants-backup-root-'),
@@ -2790,20 +2790,23 @@ describe('plugin durable-state backup/restore (#1835 review finding 2)', () => {
 
     backupPluginDurableState(home, backupRoot, 'victim');
 
-    // Between snapshot and rollback: the install mutates the victim's grants
-    // AND an unrelated consent lands (e.g. a host approval for another
-    // plugin). A raw whole-file restore would revert both.
+    // These independent decisions have no installer mutation receipt. A
+    // custody snapshot cannot undo either decision; owned permission rollback
+    // is exercised through the real installer and its revision receipts.
     await grantPermissions(home, 'victim', ['network.fetch']);
     await grantPermissions(home, 'late', ['navigation.dock']);
 
     await restorePluginDurableState(home, backupRoot);
 
-    expect(getPluginGrants(home, 'victim')).toEqual(['ui.confirm']);
+    expect(getPluginGrants(home, 'victim')).toEqual([
+      'ui.confirm',
+      'network.fetch',
+    ]);
     expect(getPluginGrants(home, 'late')).toEqual(['navigation.dock']);
     expect(getPluginGrants(home, 'other')).toEqual(['navigation.dock']);
   });
 
-  test('rollback removes an entry that did not exist at snapshot time', async () => {
+  test('custody snapshot restoration preserves an independently created permission entry', async () => {
     const home = mkdtempSync(join(tmpdir(), 'station-grants-backup-'));
     const backupRoot = mkdtempSync(
       join(tmpdir(), 'station-grants-backup-root-'),
@@ -2816,7 +2819,7 @@ describe('plugin durable-state backup/restore (#1835 review finding 2)', () => {
 
     await restorePluginDurableState(home, backupRoot);
 
-    expect(getPluginGrants(home, 'victim')).toEqual([]);
+    expect(getPluginGrants(home, 'victim')).toEqual(['navigation.dock']);
   });
 
   test('rollback fails loudly on an unavailable grants store — never a raw byte copy over the corrupt file', async () => {

@@ -45,6 +45,10 @@ export interface PluginMaterialization {
   readonly artifact: PluginArtifactReference;
 }
 export interface PluginInstallationStateBackend {
+  /** Optional capability: retained host-activation evidence for safe recovery. */
+  activationPlan?(
+    revision: PluginInstallationRevision,
+  ): Promise<PluginActivationPlan | null>;
   recorded(revision: PluginInstallationRevision): Promise<boolean>;
   current(installation: string): Promise<PluginInstallationRevision | null>;
   create(
@@ -165,6 +169,13 @@ export class PluginInstallationService {
     await this.reconcile(input.installation);
     if (!same(await this.state.current(input.installation), input.expected))
       throw new PluginInstallationConflict();
+    if (
+      input.activationPlan &&
+      !same(input.activationPlan.previous, input.expected)
+    )
+      throw new Error(
+        'Plugin activation plan does not match the expected installation',
+      );
     const prior = await this.materializations.current(input.installation);
     if (
       (prior?.reference ?? null) !== (input.expected?.materialization ?? null)
@@ -264,8 +275,13 @@ export class PluginInstallationService {
   async compensate(input: {
     expected: PluginInstallationRevision | null;
     retained: PluginInstallationRevision;
+    activationPlan?: PluginActivationPlan;
   }): Promise<PluginInstallationRevision> {
     const { expected, retained } = input;
+    if (!retained.origin || (expected && expected.origin !== retained.origin))
+      throw new Error(
+        'Retained acquisition origin is unknown or changed; reviewed migration is required',
+      );
     if (
       (expected &&
         (expected.scope !== retained.scope ||
@@ -277,11 +293,35 @@ export class PluginInstallationService {
     if (!same(await this.state.current(retained.installation), expected))
       throw new PluginInstallationConflict();
     const prior = await this.materializations.current(retained.installation);
+    const materialization = await this.materializations.describe(
+      retained.installation,
+      retained.materialization,
+    );
+    if (
+      materialization.artifact.digest !== retained.artifact.digest ||
+      materialization.dataScope !== retained.dataScope
+    )
+      throw new PluginInstallationConflict();
+    const retainedPlan =
+      input.activationPlan ?? (await this.state.activationPlan?.(retained));
+    const activationPlan = retainedPlan
+      ? { ...retainedPlan, previous: expected }
+      : undefined;
+    if (
+      materialization.activationDescriptor &&
+      (!activationPlan ||
+        activationPlan.descriptorDigest !==
+          materialization.activationDescriptor)
+    )
+      throw new Error(
+        'Retained host contributions require a pending activation plan; code and data remain retained',
+      );
     const next: PluginMaterialization = {
       reference: retained.materialization,
       artifact: retained.artifact,
       dataScope: retained.dataScope,
       ...(retained.origin ? { origin: retained.origin } : {}),
+      ...(activationPlan ? { activationPlan } : {}),
     };
     const fence = expected ? await this.state.fence(expected) : null;
     try {

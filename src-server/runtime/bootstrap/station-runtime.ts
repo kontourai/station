@@ -1490,12 +1490,12 @@ export class StationRuntime {
             const activating = this.trackAgentActivation(
               agentSlug,
               (async () => {
-                const composition =
-                  options?.pluginActivation && operationError === undefined
-                    ? await preparePluginActivationComposition(
-                        options.pluginActivation,
-                      )
-                    : undefined;
+                const composition = options?.pluginActivation
+                  ? await preparePluginActivationComposition(
+                      options.pluginActivation,
+                      operationError === undefined ? 'install' : 'compensation',
+                    )
+                  : undefined;
                 if (agentSlug && !composition)
                   await this.reloadPersistedAgentFromDisk(agentSlug);
                 else await this.reloadConfigurationFromDisk(composition);

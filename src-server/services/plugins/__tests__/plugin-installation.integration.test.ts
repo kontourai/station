@@ -253,7 +253,7 @@ test('separate-process async service uses opaque CAS revisions, retains old data
   );
 });
 
-test('the actual install route injects a transport-backed host that receives artifact bytes and owns selection', async () => {
+test('the actual install route uses transport-backed installation control and explicit local execution custody', async () => {
   const f = fixture();
   const remote = await peer(f.home, join(f.home, 'no-shared-source-path'));
   const payloads: string[] = [];
@@ -288,7 +288,9 @@ test('the actual install route injects a transport-backed host that receives art
   const app = new Hono();
   registerPluginInstallRoutes(app, {
     ...f.deps,
-    packageMcpJournal: undefined,
+    // Installation control travels through IPC; execution remains this
+    // local adapter and uses its shared admission journal explicitly.
+    packageMcpJournal: f.journal,
     installationHost: host,
   });
   const basis = derivePluginConsentBasis(
@@ -1012,9 +1014,11 @@ test('managed consent refuses a physically changed selected artifact before gran
   let changed = false;
   const journal = {
     ...f.journal,
-    admissionOpen(installation: Parameters<typeof f.journal.admissionOpen>[0]) {
-      const current = f.journal.admissionOpen(installation);
-      if (!changed && current) {
+    activationInstallation(
+      permit: Parameters<typeof f.journal.activationInstallation>[0],
+    ) {
+      const current = f.journal.activationInstallation(permit);
+      if (!changed) {
         changed = true;
         const root = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
         writeFileSync(

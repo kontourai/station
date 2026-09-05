@@ -5,7 +5,6 @@ import type {
 import {
   type PluginActivationPermit,
   type PluginActivationPlan,
-  verifyPluginActivation,
 } from './plugin-activation-plan.js';
 
 /** Explicit internal capability. It is never read from ambient async context,
@@ -20,6 +19,7 @@ interface Entry {
   journal: PackageMcpAdmissionJournal;
   installation: PackageMcpInstallation;
   permit: PluginActivationPermit;
+  intent: 'install' | 'compensation';
   verifyResources(plan: PluginActivationPlan): Promise<void>;
 }
 interface Session {
@@ -40,30 +40,67 @@ export function registerPluginActivation(
   journal: PackageMcpAdmissionJournal,
   installation: PackageMcpInstallation,
   verifyResources: (plan: PluginActivationPlan) => Promise<void>,
+  intent: 'install' | 'compensation' = 'install',
 ): PluginActivationPermit {
   const state = sessions.get(session);
   if (state?.phase !== 'collecting')
     throw new Error('Plugin activation session is unavailable');
-  if (state.entries.length >= 256)
+  const existingIndex = state.entries.findIndex(
+    (entry) =>
+      entry.journal === journal &&
+      entry.installation.pluginId === installation.pluginId,
+  );
+  if (existingIndex < 0 && state.entries.length >= 256)
     throw new Error(
       'Plugin activation graph exceeds the supported transaction size',
     );
   if (
-    state.entries.some(
-      (entry) =>
-        entry.journal === journal &&
-        entry.installation.pluginId === installation.pluginId,
-    )
+    existingIndex >= 0 &&
+    state.entries[existingIndex]!.installation.incarnation ===
+      installation.incarnation
   )
     throw new Error('Plugin activation graph contains a repeated installation');
   const permit = journal.claimActivation(installation);
-  state.entries.push({
+  const entry = {
     journal,
     installation: Object.freeze({ ...installation }),
     permit,
     verifyResources,
-  });
+    intent,
+  };
+  if (existingIndex >= 0) {
+    journal.closeActivationPermit(state.entries[existingIndex]!.permit);
+    state.entries[existingIndex] = entry;
+  } else state.entries.push(entry);
   return permit;
+}
+
+/** Removes only an exact member whose owned withdrawal already completed.
+ * This does not infer termination or erase the durable journal evidence. */
+export function retirePluginActivation(
+  session: PluginActivationSession | undefined,
+  journal: PackageMcpAdmissionJournal,
+  generation: string,
+): void {
+  if (!session) return;
+  const state = sessions.get(session);
+  if (state?.phase !== 'collecting')
+    throw new Error('Plugin activation session is unavailable');
+  const entry = state.entries.find(
+    (candidate) =>
+      candidate.journal === journal &&
+      candidate.installation.incarnation === generation,
+  );
+  if (!entry) return;
+  const selected = journal.currentInstallation(entry.installation.pluginId);
+  if (
+    selected.state === 'unavailable' ||
+    (selected.state === 'observed' &&
+      selected.installation.incarnation === generation)
+  )
+    throw new Error('Plugin activation withdrawal was not observed');
+  journal.closeActivationPermit(entry.permit);
+  state.entries = state.entries.filter((candidate) => candidate !== entry);
 }
 
 /** Installer-only ownership reads while collecting the graph. This does not
@@ -119,10 +156,16 @@ async function verifyActivationEntry(
 
 export async function preparePluginActivationComposition(
   session: PluginActivationSession,
+  intent: 'install' | 'compensation' = 'install',
 ): Promise<PluginActivationComposition> {
   const state = sessions.get(session);
   if (state?.phase !== 'collecting')
     throw new Error('Plugin activation session is unavailable');
+  if (
+    intent === 'compensation' &&
+    state.entries.some((entry) => entry.intent !== 'compensation')
+  )
+    throw new Error('An incomplete failed installation remains pending');
   for (const entry of state.entries) {
     entry.journal.activationInstallation(entry.permit);
     const plan = entry.journal.activationPlan(entry.installation);
@@ -172,7 +215,7 @@ export async function completePluginActivationComposition(
   // before their children, so reverse publication keeps a parent pending until
   // its owned children have passed their exact-generation CAS.
   for (const entry of state.entries) {
-    await verifyPluginActivation(entry.permit, entry.journal, (plan) =>
+    await entry.journal.verifyActivation(entry.permit, (plan) =>
       verifyActivationEntry(state, entry, plan),
     );
     if (state.phase !== 'composing')
