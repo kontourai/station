@@ -67,6 +67,10 @@ Before adding or accepting a test, answer both: does it reach the code its name 
 
 When a mutation is the only convincing evidence, commit first and confirm `git status --short` is empty before injecting — restoring a dirty tree discards uncommitted work. Report the red result, not only the green: an injection that does not fail means the test lacks power or the mutation never reached the case. A fix round is where defects are introduced most often, so review the delta of a fix, not only the original change.
 
+## Fixture, performance, and cleanup work
+
+Read [the test-effectiveness route](docs/guides/testing.md#fixture-fidelity-and-test-effectiveness) before changing browser fixtures or retiring coverage. `npm run gate:for -- <paths>` routes to the executable checks. Use the typed fixture owners, real user interactions, and targeted mutation cases; profile the real journey before adding a performance abstraction. Source-policy checks establish syntax/ownership rules, not rendered behavior. Keep measurements bound to their revision and environment.
+
 ## Issue references
 
 `archive#NNNN` — and any `station#NNNN` or bare `#NNNN` below #550, the reseeded backlog's start — refers to [kontourai/station-archive](https://github.com/kontourai/station-archive), the pre-2026-08-28 backlog and history. Those discussions remain readable there; this repository's own issues start fresh. Write new references as plain `#NNNN` for this repo or `archive#NNNN` for the archive.

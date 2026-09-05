@@ -845,3 +845,11 @@ Actual filesystem and command tests live in
 `packages/shared/src/__tests__/cloud-move.test.ts` and
 `packages/cli/src/__tests__/cloud.test.ts`. Template generation and schema
 validation do not establish AWS provisioning or application readiness.
+
+## Browser test evidence
+
+**Interface.** `test:fixtures:check`, `test:journeys:profile`, and `test:mutation:smoke` own syntax admission, diagnostic profiling, and targeted fault injection. `gate:for` consumes `fixturePolicyCommands` from the policy owner so contributors get the same route the gate enforces. Usage, scope, and limitations belong to [the testing guide](../guides/testing.md#fixture-fidelity-and-test-effectiveness).
+
+**Seams and adapters.** Typed engine and runtime-conversation factories in `tests/helpers` describe the backend fixture. `fixture-audit.ts` owns unknown-request failure at test teardown. `journey-profile.ts` instruments the real browser through CDP and the React commit hook; it adds no production endpoint. `run-test-mutations.mjs` reuses `lib/owned-process.mjs`, records exact replacement bytes, and restores only its own changes. The existing E2E runner owns app lifecycle and ports.
+
+**Evidence.** Policy known-bad/control tests, factory-to-execution binding tests, mutation restoration/verdict tests, profile schema tests, and the measured browser journeys exercise these interfaces. Do not copy the fixture defaults into a new catch-all router, replace the process owner, or treat a static PASS as behavioral coverage.

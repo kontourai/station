@@ -1,5 +1,42 @@
 # Testing Guide
 
+## Fixture fidelity and test effectiveness
+
+Use this route for weak-test cleanup, fixture repairs, and performance work. The owning modules are in the [module map](../architecture/module-map.md#browser-test-evidence). Run `npm run gate:for -- <paths>` before editing; it prints the current fixture policy command when the change touches this surface.
+
+| Work | Owner / command | What it establishes |
+| --- | --- | --- |
+| Engine fixtures | `tests/helpers/connection-fixtures.ts` | Canonical `config.engineId` and typed connection envelope; obsolete `executionClass` alone cannot bind a fixture. |
+| Restored conversation fixtures | `tests/helpers/runtime-conversation-fixture.ts` | An explicit backend `/open` result and canonical conversation event window, independently of client storage seeds. The caller declares continuation authority. |
+| Unknown API reads | `tests/helpers/fixture-audit.ts`, `station-shell-fixtures.ts` | Explicit method/response shapes; omitted requests fail the audited test instead of returning false empty inventories. |
+| User interaction policy | `npm run test:fixtures:check` | Detects known source patterns that bypass Playwright actionability. The check runs inside `verification:policy:gate` and therefore `ci:fast`. |
+| Critical assertion strength | `npm run test:mutation:smoke` | Baseline green, known injected defect caught by the named assertion, source restored, restored green. |
+| Journey diagnosis | `npm run test:journeys:profile -- --samples=3` | Raw browser CPU/heap profiles, React commit counts, DOM mutations, storage calls, and timings on three actual journeys. No uncalibrated latency threshold. |
+
+### Authoring fixtures
+
+Use the shared typed factory and assert the rendered engine/model/approval state before exercising that path. A chat titled “Claude” is not evidence that it runs in the external-engine mode. For restored chats, supply the authoritative conversation-open response and the conversation-scoped transcript endpoint; sessionStorage is only a client seed. In a mock API router, declare optional reads with their actual envelopes or a deliberate unavailable response. End an unknown branch with `rejectUnexpectedFixtureRequest` and use the audited `test` fixture so those failures cannot disappear at teardown.
+
+User journeys use normal `click`, `fill`, keyboard, and pointer actions. Do not use forced clicks, `dispatchEvent('click')`, DOM `.click()`, or remove a disabled/inert guard to get past an obstruction. Establish the right surface first, then assert its prerequisite. A test may deliberately inject provider protocol events or a clipboard payload when that is its named seam; this is not a substitute for a user's click.
+
+The syntax checker has deliberate limits: it recognizes the listed AST shapes, not arbitrary aliases, every dynamically constructed option, or assertion semantics. Existing out-of-scope findings are reported as **legacy unqualified sites**, with exact fingerprints in `scripts/test-fixture-policy-baseline.json`; PASS does not bless them. New baseline entries are refused once an upstream baseline exists, and removed sites must be removed from the baseline. Inspect the live inventory with `npm run test:fixtures:check -- --inventory`. Keep structural protocol/security tests when syntax or ownership is the actual contract; replace them when they claim a rendered or runtime result they never exercise.
+
+### Profiling
+
+Commit first, then run `npm run test:journeys:profile -- --samples=3`. `--allow-dirty` is an explicit diagnostic escape hatch; it cannot produce a clean-revision observation. The command uses the canonical isolated E2E lifecycle and writes a fresh `.kontourai/journey-profiles/<run>/` directory. Never reuse a summary from another revision or hardware/build mode as current evidence.
+
+The workloads are a 10,000-turn corpus with bounded loaded windows and streaming updates, an authoritative two-conversation round trip, and Home with 1,000 session records. The harness records its actual build mode and host/browser versions. CPU profiles include idle time; use script/layout metrics and source maps to locate work. Heap allocation is sampled, not an exact allocation census. Storage counters cover the browser's synchronous Storage calls, not server filesystem I/O. Instrumentation adds overhead; compare like-for-like samples and use the established production reference performance contract for release claims.
+
+Profiles retain `.cpuprofile`, `.heapprofile`, per-journey JSON, source maps when emitted by the opt-in build, and a median summary. Inspect before choosing a fix. Preserve the real journey's assertions, then compare the same workload after the change. A counter can become a regression assertion when it represents a deterministic contract, such as one store read per request. Do not turn a noisy single-host timing into a blocking gate merely because a cleanup improved one sample.
+
+### Mutation safety and interpretation
+
+`test:mutation:smoke` runs four curated defects: missing empty-state rendering, repeated acknowledgement reads, property-order-dependent scope identity, and missing fixture engine identity. Select one with `--case=<id>`. New cases belong in the runner's registry and must name both the source mutation and the exact failing assertion.
+
+The runner requires a clean linked worktree, takes an exclusive lock, owns the test process tree, and retains baseline/injected/restored logs and recovery bytes under `.kontourai/test-mutations/`. An import error, missing test, wrong root, timeout, truncated output, or unrelated failure is not catch evidence. Restoration only replaces the exact injected bytes; intervening edits are preserved. After an abnormal interruption, inspect the record and run `npm run test:mutation:smoke -- --recover=<path/to/recovery.json>` on the same revision. Recovery refuses a live owner and verifies original bytes against git. Run the case again after recovery.
+
+The mutation suite is deliberately focused and opt-in. Its runner safety and policy catch tests run in ordinary focused verification; the application mutations themselves are not injected during general CI or while another process owns the worktree.
+
 ## Philosophy
 
 - **Unit tests** for business logic (services, utilities, pure functions)

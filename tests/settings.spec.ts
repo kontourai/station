@@ -3,25 +3,13 @@ import { dismissSetupLauncher } from './helpers/orchestration';
 
 async function goToSettings(page: import('@playwright/test').Page) {
   await page.goto('/');
+  await dismissSetupLauncher(page);
   // archive#1009: the header gear is an SVG glyph now — target the accessible name.
   await page.waitForSelector('button[aria-label="Open settings"]', {
     timeout: 10_000,
   });
-  await forceClick(page, 'button[aria-label="Open settings"]');
+  await page.locator('button[aria-label="Open settings"]').first().click();
   await page.waitForSelector('.settings__section-nav', { timeout: 10_000 });
-}
-
-/** ChatDock overlay intercepts pointer events on bottom elements — use dispatchEvent */
-async function forceClick(
-  page: import('@playwright/test').Page,
-  selector: string,
-) {
-  await page
-    .locator(selector)
-    .first()
-    .evaluate((el) =>
-      el.dispatchEvent(new MouseEvent('click', { bubbles: true })),
-    );
 }
 
 /**
@@ -65,7 +53,7 @@ async function saveSettingsAndVerifyPersistence(
         { timeout: 10_000 },
       )
     : undefined;
-  await forceClick(page, '.settings__save-pill-btn');
+  await page.locator('.settings__save-pill-btn').first().click();
   const saved = await putResponse;
   expect(saved.ok()).toBe(true);
   if (logLevelPut) expect((await logLevelPut).ok()).toBe(true);
@@ -278,7 +266,7 @@ test.describe('Settings', () => {
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
     // Clean up
-    await forceClick(page, '.settings__save-pill-discard');
+    await page.locator('.settings__save-pill-discard').first().click();
   });
 
   // Regression: the settings form must load saved server values into its fields
@@ -360,7 +348,7 @@ test.describe('Settings', () => {
         response.request().method() === 'PUT' &&
         new URL(response.url()).pathname === '/config/app',
     );
-    await forceClick(page, '.settings__save-pill-btn');
+    await page.locator('.settings__save-pill-btn').first().click();
     expect((await plainPut).ok()).toBe(true);
     await expect(
       page.getByText(
@@ -384,7 +372,7 @@ test.describe('Settings', () => {
     await expect(
       page.getByText('Unsaved changes', { exact: true }),
     ).toBeVisible();
-    await forceClick(page, '.settings__save-pill-discard');
+    await page.locator('.settings__save-pill-discard').first().click();
     await expect(page.locator('#systemPrompt')).toHaveValue(original);
     await expect(
       page.getByText('Unsaved changes', { exact: true }),
@@ -444,7 +432,7 @@ test.describe('Settings', () => {
     // Discard if needed
     const pill = page.getByText('Unsaved changes', { exact: true });
     if (await pill.isVisible()) {
-      await forceClick(page, '.settings__save-pill-discard');
+      await page.locator('.settings__save-pill-discard').first().click();
     }
   });
 

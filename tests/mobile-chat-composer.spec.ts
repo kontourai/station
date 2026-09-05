@@ -1,18 +1,22 @@
-import { expect, type Locator, type Page, test } from '@playwright/test';
-import {
-  buildLongSessionTurns,
-  createLongSessionEventWindowHandler,
-} from './fixtures/long-session';
+import { expect, type Locator, type Page } from '@playwright/test';
+import { buildLongSessionTurns } from './fixtures/long-session';
 import { backgroundPaint } from './helpers/color-contrast';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import {
+  installJourneyProfile,
+  profileJourney,
+} from './helpers/journey-profile';
 import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
   seedActiveChats,
 } from './helpers/orchestration';
+import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import {
   installVisualViewportFixture,
@@ -71,7 +75,7 @@ async function mockChatShell(
       }),
     ),
   );
-  await page.route('**/api/**', (route) => {
+  await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     // `GET /api/plugins` answers `{ plugins: [...] }`, not the `{success,data}`
     // envelope the catch-all below returns. `PluginRegistry.ts:207-212`
@@ -335,7 +339,25 @@ async function mockChatShell(
           ],
         }),
       );
-    return route.fulfill(json({ success: true, data: [] }));
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/projects/default/layouts'
+    )
+      return route.fulfill(json({ success: true, data: [] }));
+    if (route.request().method() === 'GET' && path === '/api/projects/default')
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            id: 'default',
+            slug: 'default',
+            name: 'Default',
+            hasWorkingDirectory: false,
+          },
+        }),
+      );
+    if (await fulfillStationShellRead(route)) return;
+    return rejectUnexpectedFixtureRequest(route);
   });
   await page.route('**/config/app', (route) =>
     route.fulfill(
@@ -408,9 +430,10 @@ async function openComposer(
 
 test('virtualizes a long real transcript while preserving reader controls on mobile', async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 390, height: 844 });
+  await installJourneyProfile(page);
   await mockChatShell(page);
   await installMockOrchestrationSse(page);
   const threadId = 'thread-long-transcript';
@@ -508,15 +531,17 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   let liveTurnPersisted = false;
   const requestedWindows: string[] = [];
   let messagesRequested = false;
-  await page.route(
-    `**/api/orchestration/sessions/${threadId}/event-window**`,
-    createLongSessionEventWindowHandler({
-      threadId,
-      availableTurns: () =>
-        liveTurnPersisted ? [...turns, persistedLiveTurn] : turns,
-      onRequest: (url) => requestedWindows.push(url),
-    }),
-  );
+  await mockRuntimeConversation(page, {
+    id: threadId,
+    agentSlug: 'station',
+    title: 'Long transcript',
+    provider: 'bedrock',
+    model: 'model-selected',
+    projectSlug: 'default',
+    canContinue: true,
+    turns: () => (liveTurnPersisted ? [...turns, persistedLiveTurn] : turns),
+    onWindow: (url) => requestedWindows.push(url),
+  });
   await page.route('**/api/orchestration/chat', (route) =>
     route.fulfill(
       json(
@@ -716,91 +741,101 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   await jumpToTail.focus();
   await page.keyboard.press('Enter');
 
-  await emitMockOrchestrationEvent(page, 'orchestration:event', {
-    event: {
-      eventId: 'turn-live-started',
-      method: 'turn.started',
-      provider: 'bedrock',
-      threadId,
-      turnId: 'turn-live',
-      createdAt: '2026-07-19T10:09:59.000Z',
-      prompt: 'Live question',
-    },
-  });
-  await expect(
-    transcript.getByText('Live question', { exact: true }),
-  ).toHaveCount(1);
-  liveTurnPersisted = true;
-  await emitMockOrchestrationEvent(page, 'orchestration:event', {
-    event: {
-      eventId: 'turn-live-delta',
-      method: 'content.text-delta',
-      provider: 'bedrock',
-      threadId,
-      turnId: 'turn-live',
-      itemId: 'turn-live',
-      createdAt: '2026-07-19T10:10:00.000Z',
-      delta: 'Live bounded streaming growth.',
-    },
-  });
-  await expect(transcript).toContainText('Live bounded streaming growth.');
-  await expect(
-    transcript.getByText('Live bounded streaming growth.', { exact: true }),
-  ).toHaveCount(1);
-  const liveRowCount = Number(
-    await transcript
-      .getByTestId('virtualized-transcript-spacer')
-      .getAttribute('data-transcript-row-count'),
-  );
-  expect(liveRowCount).toBeGreaterThan(0);
-  expect(requestedWindows).toHaveLength(11);
-  await expect
-    .poll(() =>
-      transcript.evaluate(
-        (element) =>
-          element.scrollHeight - element.scrollTop - element.clientHeight,
-      ),
-    )
-    .toBeLessThanOrEqual(32);
-
-  await emitMockOrchestrationEvent(page, 'orchestration:event', {
-    event: {
-      eventId: 'turn-live-completed',
-      method: 'turn.completed',
-      provider: 'bedrock',
-      threadId,
-      turnId: 'turn-live',
-      createdAt: '2026-07-19T10:10:01.000Z',
-      outputText: 'Live bounded streaming growth.',
-    },
-  });
-  await expect.poll(() => requestedWindows.length).toBe(12);
-  await expect(
-    transcript.getByText('Live question', { exact: true }),
-  ).toHaveCount(1);
-  await expect
-    .poll(async () =>
-      Number(
+  await profileJourney(
+    page,
+    testInfo,
+    'long-transcript-stream',
+    { corpusTurns: turns.length, loadedWindows: requestedWindows.length },
+    async () => {
+      await emitMockOrchestrationEvent(page, 'orchestration:event', {
+        event: {
+          eventId: 'turn-live-started',
+          method: 'turn.started',
+          provider: 'bedrock',
+          threadId,
+          turnId: 'turn-live',
+          createdAt: '2026-07-19T10:09:59.000Z',
+          prompt: 'Live question',
+        },
+      });
+      await expect(
+        transcript.getByText('Live question', { exact: true }),
+      ).toHaveCount(1);
+      liveTurnPersisted = true;
+      await emitMockOrchestrationEvent(page, 'orchestration:event', {
+        event: {
+          eventId: 'turn-live-delta',
+          method: 'content.text-delta',
+          provider: 'bedrock',
+          threadId,
+          turnId: 'turn-live',
+          itemId: 'turn-live',
+          createdAt: '2026-07-19T10:10:00.000Z',
+          delta: 'Live bounded streaming growth.',
+        },
+      });
+      await expect(transcript).toContainText('Live bounded streaming growth.');
+      await expect(
+        transcript.getByText('Live bounded streaming growth.', { exact: true }),
+      ).toHaveCount(1);
+      const liveRowCount = Number(
         await transcript
           .getByTestId('virtualized-transcript-spacer')
           .getAttribute('data-transcript-row-count'),
-      ),
-    )
-    // The local prompt becomes one canonical user row and gains exactly one
-    // terminal assistant row. A sliding-window refresh that drops the
-    // displaced prior-newest turn would decrease this count instead.
-    .toBe(liveRowCount + 1);
-  const terminalOrder = await transcript.evaluate((element) => {
-    const text = element.textContent ?? '';
-    return [
-      text.indexOf('Transcript fixture 9999: prompt.'),
-      text.indexOf('Transcript fixture 9999: retained content for selection.'),
-      text.indexOf('Live question'),
-      text.indexOf('Live bounded streaming growth.'),
-    ];
-  });
-  expect(terminalOrder.every((position) => position >= 0)).toBe(true);
-  expect(terminalOrder).toEqual([...terminalOrder].sort((a, b) => a - b));
+      );
+      expect(liveRowCount).toBeGreaterThan(0);
+      expect(requestedWindows).toHaveLength(11);
+      await expect
+        .poll(() =>
+          transcript.evaluate(
+            (element) =>
+              element.scrollHeight - element.scrollTop - element.clientHeight,
+          ),
+        )
+        .toBeLessThanOrEqual(32);
+
+      await emitMockOrchestrationEvent(page, 'orchestration:event', {
+        event: {
+          eventId: 'turn-live-completed',
+          method: 'turn.completed',
+          provider: 'bedrock',
+          threadId,
+          turnId: 'turn-live',
+          createdAt: '2026-07-19T10:10:01.000Z',
+          outputText: 'Live bounded streaming growth.',
+        },
+      });
+      await expect.poll(() => requestedWindows.length).toBe(12);
+      await expect(
+        transcript.getByText('Live question', { exact: true }),
+      ).toHaveCount(1);
+      await expect
+        .poll(async () =>
+          Number(
+            await transcript
+              .getByTestId('virtualized-transcript-spacer')
+              .getAttribute('data-transcript-row-count'),
+          ),
+        )
+        // The local prompt becomes one canonical user row and gains exactly one
+        // terminal assistant row. A sliding-window refresh that drops the
+        // displaced prior-newest turn would decrease this count instead.
+        .toBe(liveRowCount + 1);
+      const terminalOrder = await transcript.evaluate((element) => {
+        const text = element.textContent ?? '';
+        return [
+          text.indexOf('Transcript fixture 9999: prompt.'),
+          text.indexOf(
+            'Transcript fixture 9999: retained content for selection.',
+          ),
+          text.indexOf('Live question'),
+          text.indexOf('Live bounded streaming growth.'),
+        ];
+      });
+      expect(terminalOrder.every((position) => position >= 0)).toBe(true);
+      expect(terminalOrder).toEqual([...terminalOrder].sort((a, b) => a - b));
+    },
+  );
   await loadEarlier.click();
   await expect.poll(() => requestedWindows.length).toBe(13);
   expect(new URL(requestedWindows[12]).searchParams.get('cursor')).toBe(
@@ -1163,6 +1198,33 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
  */
 async function seedMobileTaskSwitcher(page: Page) {
   await mockChatShell(page);
+  for (const [id, reply] of [
+    ['conv-running', 'Working through the current task.'],
+    ['conv-review', 'Review needed before continuing.'],
+  ]) {
+    const turns = buildLongSessionTurns({
+      threadId: id,
+      provider: 'codex',
+      turnCount: 1,
+      replyText: () => reply,
+    });
+    await mockRuntimeConversation(page, {
+      id,
+      agentSlug: 'station',
+      title: 'Station Chat',
+      provider: 'codex',
+      model: 'model-selected',
+      projectSlug: 'default',
+      canContinue: true,
+      turns: () => turns,
+    });
+  }
+
+  for (const id of ['chat-running', 'chat-review'])
+    await page.route(
+      new RegExp(`/api/orchestration/sessions/${id}/checkpoints(?:\\?.*)?$`),
+      (route) => route.fulfill(json({ success: true, data: [] })),
+    );
   await seedActiveChats(page, [
     {
       sessionId: 'chat-running',
@@ -1259,9 +1321,10 @@ async function seedMobileTaskSwitcher(page: Page) {
 
 test('switches between mobile tasks and restores the exact active chat context', async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(20_000);
   await page.setViewportSize({ width: 390, height: 844 });
+  await installJourneyProfile(page);
   await seedMobileTaskSwitcher(page);
 
   await page.goto('/?dock=open&maximize=true&chat=conv-running');
@@ -1295,18 +1358,26 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect(menuBox?.x ?? -1).toBeGreaterThanOrEqual(0);
   expect((menuBox?.x ?? 0) + (menuBox?.width ?? 0)).toBeLessThanOrEqual(390);
 
-  await reviewRow.click();
-  await expect(menu).toBeHidden();
-  await expect(switcher).toBeFocused();
-  expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-review');
-
   const textarea = page.locator('textarea[placeholder*="Type a message"]');
-  await textarea.evaluate((element) => element.removeAttribute('disabled'));
-  await textarea.fill('return to this draft');
+  await profileJourney(
+    page,
+    testInfo,
+    'conversation-switch',
+    { conversations: 2 },
+    async () => {
+      await reviewRow.click();
+      await expect(menu).toBeHidden();
+      await expect(switcher).toBeFocused();
+      expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-review');
 
-  // The sheet's own dismiss control. The Escape path is the same claim through
-  // a different affordance and has its own test below (archive#3771), so this
-  // journey keeps exercising the button.
+      await expect(textarea).toBeEnabled();
+      await textarea.fill('return to this draft');
+
+      // The sheet's own dismiss control. The Escape path is the same claim through
+      // a different affordance and has its own test below (archive#3771), so this
+      // journey keeps exercising the button.
+    },
+  );
   await switcher.click();
   await menu.getByRole('button', { name: 'Close task switcher' }).click();
   await expect(menu).toBeHidden();
@@ -2243,7 +2314,7 @@ for (const viewport of [
             requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
           ),
       );
-      await textarea.evaluate((element) => element.removeAttribute('disabled'));
+      await expect(textarea).toBeEnabled();
       await textarea.fill('one\ntwo\nthree\nfour\nfive\nsix\nseven\neight');
       await textarea.focus();
       const openHeight = Math.round(
@@ -3272,3 +3343,41 @@ for (const width of [320, 390, 600]) {
     ).toBe(true);
   });
 }
+
+test('profiles switching between authoritative conversations', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installJourneyProfile(page);
+  await seedMobileTaskSwitcher(page);
+  await page.goto('/?dock=open&chat=conv-running');
+  await dismissSetupLauncher(page);
+  const switcher = page.getByRole('button', { name: 'Switch task' });
+  const menu = page.getByRole('dialog', { name: 'Switch task' });
+  const textarea = page.locator('textarea[placeholder*="Type a message"]');
+  await expect(switcher).toBeVisible();
+  await profileJourney(
+    page,
+    testInfo,
+    'conversation-switch',
+    { conversations: 2 },
+    async () => {
+      for (const state of ['Attention needed', 'Active', 'Attention needed']) {
+        await switcher.click();
+        await menu
+          .getByRole('button', { name: 'Station Chat, Default' })
+          .filter({ hasText: state })
+          .click();
+        await expect(menu).toBeHidden();
+        if (state === 'Attention needed') {
+          await expect(textarea).toBeEnabled();
+          await textarea.fill('profile draft');
+        }
+      }
+      await expect(textarea).toHaveValue('profile draft');
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get('chat'))
+        .toBe('conv-review');
+    },
+  );
+});
