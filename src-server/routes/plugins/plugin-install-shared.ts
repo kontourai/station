@@ -2886,6 +2886,7 @@ async function inspectRetainedPluginRecovery(
     .digest('hex')}`;
   return {
     source: root.packageRoot,
+    parent: plan.parent,
     originalSourceDigest: plan.sourceDigest,
     registryReceipt: priorTrust.receipt ?? undefined,
     origin,
@@ -2947,6 +2948,7 @@ export async function recoverInstalledPlugin(
         expectedInstallation: captured.view.expectedInstallation,
         activationSession: deps.activationSession,
         retainedRecovery: authorization,
+        activationParent: captured.parent,
       },
     );
   } finally {

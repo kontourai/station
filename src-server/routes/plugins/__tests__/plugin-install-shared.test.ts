@@ -1124,9 +1124,13 @@ describe('installPluginFromSource', () => {
     expect(existsSync(join(root, 'integrations'))).toBe(false);
   });
 
-  test.each([false, true])(
-    'signed graph carries child trust consent and refuses qualified legacy build (legacy=%s)',
-    async (legacy) => {
+  test.each([
+    { legacy: false, interruptGraph: false },
+    { legacy: false, interruptGraph: true },
+    { legacy: true, interruptGraph: false },
+  ])(
+    'signed graph trust/recovery (legacy=$legacy, interrupted=$interruptGraph)',
+    async ({ legacy, interruptGraph }) => {
       const root = mkdtempSync(join(tmpdir(), 'station-signed-graph-'));
       cleanupDirs.push(root);
       await ensureStationHomeSchema(root);
@@ -1333,26 +1337,105 @@ describe('installPluginFromSource', () => {
       expect(preview.dependencies[0]?.consent.registryTrustRevision).toMatch(
         /^sha256:/,
       );
-      await installPluginFromSource(parentSource, [], installDeps, {
-        registryId: 'graph-parent',
-        registryKey: registryPath,
-        consent: {
-          kind: 'operator-decision',
-          contentDigest: preview.contentDigest,
-          permissions: preview.permissions.required,
-          grantRevision: preview.grantRevision,
-          registryTrustRevision: preview.registryTrustRevision,
-          dependencies: preview.dependencies.map((entry) => entry.id),
-          dependencyApprovals: preview.dependencies.map((entry) => ({
-            id: entry.id,
-            contentDigest: entry.consent.contentDigest,
-            permissions: entry.consent.permissions,
-            dependencies: entry.consent.dependencies,
-            grantRevision: entry.consent.grantRevision,
-            registryTrustRevision: entry.consent.registryTrustRevision,
-          })),
-        },
-      });
+      const interruptedSession = interruptGraph
+        ? createPluginActivationSession()
+        : undefined;
+      try {
+        await installPluginFromSource(parentSource, [], installDeps, {
+          activationSession: interruptedSession,
+          registryId: 'graph-parent',
+          registryKey: registryPath,
+          consent: {
+            kind: 'operator-decision',
+            contentDigest: preview.contentDigest,
+            permissions: preview.permissions.required,
+            grantRevision: preview.grantRevision,
+            registryTrustRevision: preview.registryTrustRevision,
+            dependencies: preview.dependencies.map((entry) => entry.id),
+            dependencyApprovals: preview.dependencies.map((entry) => ({
+              id: entry.id,
+              contentDigest: entry.consent.contentDigest,
+              permissions: entry.consent.permissions,
+              dependencies: entry.consent.dependencies,
+              grantRevision: entry.consent.grantRevision,
+              registryTrustRevision: entry.consent.registryTrustRevision,
+            })),
+          },
+        });
+      } finally {
+        if (interruptedSession)
+          closePluginActivationSession(interruptedSession);
+      }
+      if (interruptGraph) {
+        const parent = journal.currentInstallation('graph-parent'),
+          child = journal.currentInstallation('graph-child');
+        if (parent.state !== 'observed' || child.state !== 'observed')
+          throw new Error('Missing pending graph');
+        expect(journal.activationState(parent.installation)).toBe('pending');
+        expect(journal.activationState(child.installation)).toBe('pending');
+        const parentReference = journal.activationPlan(
+          child.installation,
+        )?.parent;
+        expect(parentReference).toEqual({
+          installation: 'graph-parent',
+          generation: parent.installation.incarnation,
+        });
+        rmSync(parentSource, { recursive: true });
+        rmSync(childSource, { recursive: true });
+        rmSync(registryPath);
+        for (const id of ['graph-parent', 'graph-child'])
+          rmSync(join(root, 'plugins', id), { recursive: true, force: true });
+        rmSync(join(root, 'config', 'registry-installs.json'), { force: true });
+        getPluginRegistryProviders.mockImplementation(() => {
+          throw new Error('Registry is offline');
+        });
+        const recover = async (name: string) => {
+          const view = await previewInstalledPluginRecovery(name, installDeps);
+          await recoverInstalledPlugin(name, installDeps, {
+            recoveryRevision: view.recoveryRevision,
+            consent: {
+              kind: 'operator-decision',
+              contentDigest: view.contentDigest,
+              permissions: view.permissions.required,
+              grantRevision: view.grantRevision,
+              registryTrustRevision: view.registryTrustRevision,
+              dependencies: view.dependencies.map((entry) => entry.id),
+              dependencyApprovals: view.dependencies.map((entry) => ({
+                id: entry.id,
+                ...entry.consent,
+              })),
+            },
+          });
+        };
+        await recover('graph-child');
+        const recoveredChild = journal.currentInstallation('graph-child');
+        if (recoveredChild.state !== 'observed')
+          throw new Error('Missing recovered child');
+        expect(
+          journal.activationPlan(recoveredChild.installation)?.parent,
+        ).toEqual(parentReference);
+        expect(
+          journal.activationPlan(parent.installation)?.ownedDependencies,
+        ).toContainEqual(
+          expect.objectContaining({
+            id: 'graph-child',
+            generation: recoveredChild.installation.incarnation,
+          }),
+        );
+        await recover('graph-parent');
+        const recoveredParent = journal.currentInstallation('graph-parent');
+        if (recoveredParent.state !== 'observed')
+          throw new Error('Missing recovered parent');
+        expect(journal.admissionOpen(recoveredParent.installation)).toBe(true);
+        expect(recoveredParent.installation.dataScope).toBe(
+          parent.installation.dataScope,
+        );
+        expect(recoveredChild.installation.dataScope).toBe(
+          child.installation.dataScope,
+        );
+        expect(installDeps.buildPlugin).toHaveBeenCalledTimes(2);
+        return;
+      }
       for (const id of ['graph-parent', 'graph-child']) {
         const selected = journal.currentInstallation(id);
         if (selected.state !== 'observed')

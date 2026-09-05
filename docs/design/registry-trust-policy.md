@@ -78,17 +78,21 @@ selected generation and its activation plan are the authority.
 
 ## Execution and retained recovery
 
-New builds and provider import/factory entries check current policy through the
-asynchronous admission owner. The local journal checks the authoritative applied
-epoch for ordinary ready admission, private pending permits, reservation, and
+New acquisition builds and provider import/factory entries check current policy
+through the asynchronous admission owner. The local journal checks the
+authoritative applied epoch for ordinary ready admission, private pending permits, reservation, and
 entry into an MCP effect. Provider handles retain current-generation fences.
 A refusal between provider constructions stays under the existing preparation
 cleanup owner; cleanup attempts do not prove external work terminated.
 
-A candidate-only file edit is not a completed policy withdrawal. New asynchronous
-admissions refuse candidate/applied mismatch. An accepted epoch change fences
-captured local handles immediately. No equivalent guarantee is claimed for an
-eventually updated remote cache. The public policy/storage boundary is
+A candidate-only file edit is not a completed policy withdrawal. New acquisition
+verification and recovery observations refuse candidate/applied mismatch. An
+accepted epoch change fences captured local handles immediately. Retained code, including a provider restored
+at startup, is authorized against the still-applied decision while a new
+candidate is being constructed. It is not labeled as admitted under the new
+policy: publication of that policy closes the old generation's handles, and
+configuration reconciliation drops the stale composition. No equivalent
+guarantee is claimed for an eventually updated remote cache. The public policy/storage boundary is
 asynchronous; an unsupported hosted synchronization profile must refuse rather
 than emulate local revocation semantics.
 
@@ -98,8 +102,10 @@ fresh consent. It does not contact the registry or original source, and does not
 claim a fresh source observation. The original source digest remains attached
 to that verification. Ready retained children are inspected through their
 captured journal identities; their current byte, permission, and trust consent
-must match. Missing or pending children keep their existing explicit recovery
-remedy. Recovery does not invent a pending capability for them.
+must match. Missing children keep their explicit recovery remedy. A pending child is
+recovered first, preserving its recorded parent reference through the existing
+journal owner so the parent sees its new generation; the parent can then recover.
+Recovery does not invent a pending capability or a new parent relationship.
 
 Updating or withdrawing routing retains old code, stable plugin data, and any
 uncertain external effects. Policy changes do not terminate already-started
