@@ -1,10 +1,11 @@
 # Agent Plugins contract
 
-This document defines Station's **target v1 authoring contract**. The current
-runtime now consumes recognized Agent Plugins 1.0 packages for portable Skills
-and MCP while still accepting the legacy Station manifest until #346 and #348
-land. This document must not be read as a claim that the released tree has
-removed its legacy fallback or activates every Station extension contribution.
+This document defines Station's Agent Plugins authoring contract and retained
+compatibility boundary. The source consumes recognized Agent Plugins 1.0
+packages for portable Skills and MCP and normalizes validated Station namespace
+declarations through existing host contribution owners. Legacy Station manifests
+remain accepted. This does not claim that legacy fallback has been removed or
+that every feature in this source checkpoint is already released.
 
 Station targets the published **Agent Plugins 1.0.0** contract. The upstream
 1.1.0 document is a working draft and is not a supported package version until
@@ -105,8 +106,8 @@ expected-revision publication, explicit reset, and reclamation limits.
 
 Recognized Agent Plugins take this path during directory or git installation.
 The old manifest parser remains only as an explicit compatibility fallback for
-packages without an Agent Plugins `$schema`; #346 owns deleting it after the
-remaining examples move. Validated Station namespace declarations now use the existing host contribution
+packages without an Agent Plugins `$schema`. Removing that fallback and
+migrating the remaining legacy examples are separate completion requirements. Validated Station namespace declarations now use the existing host contribution
 owners. Their durable activation and retained recovery are described in the
 [installation lifecycle](../design/plugin-installation-lifecycle.md); full
 combined qualification remains required before publication.
