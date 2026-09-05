@@ -10,13 +10,17 @@ import {
   isSecretField,
   redactSecrets,
 } from '@kontourai/station-shared/redaction';
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
-import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import { withPluginContentLock } from '../../services/plugins/plugin-content-integrity.js';
+import {
+  capturePluginRuntimeArtifact,
+  type PluginRuntimeArtifact,
+} from '../../services/plugins/plugin-runtime-artifact.js';
 import { pluginSettingsUpdates } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
-import { assertPathInside } from '../../utils/path-containment.js';
 import { nullPrototypeCopy } from '../../utils/reserved-object-keys.js';
 import {
   errorMessage,
@@ -29,6 +33,7 @@ import {
 import { assertPluginNameSegment } from './plugin-install-shared.js';
 
 interface PluginConfigRouteDeps {
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   pluginsDir: string;
   projectHomeDir: string;
   logger: Logger;
@@ -116,26 +121,57 @@ export function registerPluginConfigRoutes(
   deps: PluginConfigRouteDeps,
 ): void {
   const { eventBus, logger, pluginsDir, projectHomeDir } = deps;
+  const captures = new WeakMap<object, PluginRuntimeArtifact>();
+  const capture: MiddlewareHandler = async (c, next) => {
+    let name: string;
+    try {
+      name = decodeURIComponent(param(c, 'name'));
+      assertPluginNameSegment(name);
+    } catch (error) {
+      return c.json({ error: errorMessage(error) }, 400);
+    }
+    const run = async () => {
+      try {
+        const artifact = capturePluginRuntimeArtifact(
+          pluginsDir,
+          name,
+          deps.packageMcpJournal,
+        );
+        if (!artifact)
+          return c.json({ error: 'Plugin is absent or not ready' }, 404);
+        captures.set(c, artifact);
+        await next();
+        if (!artifact.isCurrent())
+          return c.json(
+            {
+              error:
+                'Plugin changed during configuration access; reload before retrying',
+            },
+            409,
+          );
+      } catch (error) {
+        return c.json(
+          { error: errorMessage(error) },
+          isContextSafetyError(error) ? 400 : 500,
+        );
+      } finally {
+        captures.delete(c);
+      }
+    };
+    if (c.req.method === 'PUT')
+      return withPluginContentLock(pluginsDir, name, run);
+    return run();
+  };
 
-  app.get('/:name/settings', async (c) => {
+  app.get('/:name/settings', capture, async (c) => {
     const name = decodeURIComponent(param(c, 'name'));
     try {
       assertPluginNameSegment(name);
     } catch (error) {
       return c.json({ error: errorMessage(error) }, 400);
     }
-    const manifestPath = join(pluginsDir, name, 'plugin.json');
     try {
-      assertPathInside(pluginsDir, manifestPath, 'Plugin settings target');
-    } catch (error) {
-      return c.json({ error: errorMessage(error) }, 400);
-    }
-    if (!existsSync(manifestPath)) {
-      return c.json({ error: 'Plugin not found' }, 404);
-    }
-
-    try {
-      const manifest = readPluginManifestFileSync(manifestPath);
+      const manifest = captures.get(c)!.manifest;
       const schema = manifest.settings || [];
 
       const { ConfigLoader } = await import('../../domain/config-loader.js');
@@ -165,115 +201,104 @@ export function registerPluginConfigRoutes(
     }
   });
 
-  app.put('/:name/settings', validate(pluginSettingsSchema), async (c) => {
-    const name = decodeURIComponent(param(c, 'name'));
-    try {
-      assertPluginNameSegment(name);
-    } catch (error) {
-      return c.json({ error: errorMessage(error) }, 400);
-    }
-    const body = getBody(c);
-    const manifestPath = join(pluginsDir, name, 'plugin.json');
-    try {
-      assertPathInside(pluginsDir, manifestPath, 'Plugin settings target');
-    } catch (error) {
-      return c.json({ error: errorMessage(error) }, 400);
-    }
-    if (!existsSync(manifestPath)) {
-      return c.json({ error: 'Plugin not found' }, 404);
-    }
-
-    const { ConfigLoader } = await import('../../domain/config-loader.js');
-    const configLoader = new ConfigLoader({ projectHomeDir });
-    const overrides = await configLoader.loadPluginOverrides();
-    // The read is guarded here, as it is on GET and on the changelog route
-    // (archive#4307 review): a REFUSED manifest — a name that is not a
-    // canonical plugin id, a reserved settings key, a hidden-unicode channel —
-    // throws, and unguarded that surfaced as Hono's bodiless 500 with no
-    // mention of what was wrong. Same disposition as GET: a context-safety
-    // refusal is the caller's 400, anything else is a 500 that at least names
-    // the reason.
-    let manifest: PluginManifest;
-    try {
-      manifest = readPluginManifestFileSync(manifestPath);
-    } catch (error: unknown) {
-      // `errorMessage` on both branches, not the raw `.message` the GET path
-      // carries as a reviewed egress exception: it is the same text through
-      // the common sanitizing boundary, so this adds no new outward-error
-      // surface to review.
-      if (isContextSafetyError(error)) {
+  app.put(
+    '/:name/settings',
+    validate(pluginSettingsSchema),
+    capture,
+    async (c) => {
+      const name = decodeURIComponent(param(c, 'name'));
+      try {
+        assertPluginNameSegment(name);
+      } catch (error) {
         return c.json({ error: errorMessage(error) }, 400);
       }
-      return c.json({ error: errorMessage(error) }, 500);
-    }
-    const pluginName = manifest.name || name;
-    const existingSettings = overrides[pluginName]?.settings || {};
-    // Null-prototype (archive#4307). Both loops below write keys that are not
-    // ours: `field.key` comes from the manifest and the second loop copies
-    // EVERY undeclared key from the request body verbatim, so a body of
-    // `{"settings":{"__proto__":{…}}}` would otherwise hit the prototype
-    // setter — the value would not persist (it is not an own property, so
-    // `JSON.stringify` drops it) while the route answered success. The
-    // reserved-key/null-prototype policy is the grants store's
-    // (`services/plugins/grants-file-store.ts` decision 5, shared via
-    // `utils/reserved-object-keys.ts`).
-    const nextSettings: Record<string, unknown> =
-      nullPrototypeCopy(existingSettings);
-    const incomingSettings = body.settings || {};
-
-    for (const field of manifest.settings || []) {
-      if (!Object.hasOwn(incomingSettings, field.key)) continue;
-      const value = incomingSettings[field.key];
-      if (field.secret && (value === null || value === undefined)) {
-        continue;
+      const body = getBody(c);
+      const { ConfigLoader } = await import('../../domain/config-loader.js');
+      const configLoader = new ConfigLoader({ projectHomeDir });
+      const overrides = await configLoader.loadPluginOverrides();
+      // The read is guarded here, as it is on GET and on the changelog route
+      // (archive#4307 review): a REFUSED manifest — a name that is not a
+      // canonical plugin id, a reserved settings key, a hidden-unicode channel —
+      // throws, and unguarded that surfaced as Hono's bodiless 500 with no
+      // mention of what was wrong. Same disposition as GET: a context-safety
+      // refusal is the caller's 400, anything else is a 500 that at least names
+      // the reason.
+      let manifest: PluginManifest;
+      try {
+        manifest = captures.get(c)!.manifest;
+      } catch (error: unknown) {
+        // `errorMessage` on both branches, not the raw `.message` the GET path
+        // carries as a reviewed egress exception: it is the same text through
+        // the common sanitizing boundary, so this adds no new outward-error
+        // surface to review.
+        if (isContextSafetyError(error)) {
+          return c.json({ error: errorMessage(error) }, 400);
+        }
+        return c.json({ error: errorMessage(error) }, 500);
       }
-      nextSettings[field.key] = value;
-    }
-    for (const [key, value] of Object.entries(incomingSettings)) {
-      if ((manifest.settings || []).some((field) => field.key === key)) {
-        continue;
+      const pluginName = manifest.name || name;
+      const existingSettings = overrides[pluginName]?.settings || {};
+      // Null-prototype (archive#4307). Both loops below write keys that are not
+      // ours: `field.key` comes from the manifest and the second loop copies
+      // EVERY undeclared key from the request body verbatim, so a body of
+      // `{"settings":{"__proto__":{…}}}` would otherwise hit the prototype
+      // setter — the value would not persist (it is not an own property, so
+      // `JSON.stringify` drops it) while the route answered success. The
+      // reserved-key/null-prototype policy is the grants store's
+      // (`services/plugins/grants-file-store.ts` decision 5, shared via
+      // `utils/reserved-object-keys.ts`).
+      const nextSettings: Record<string, unknown> =
+        nullPrototypeCopy(existingSettings);
+      const incomingSettings = body.settings || {};
+
+      for (const field of manifest.settings || []) {
+        if (!Object.hasOwn(incomingSettings, field.key)) continue;
+        const value = incomingSettings[field.key];
+        if (field.secret && (value === null || value === undefined)) {
+          continue;
+        }
+        nextSettings[field.key] = value;
       }
-      nextSettings[key] = value;
-    }
+      for (const [key, value] of Object.entries(incomingSettings)) {
+        if ((manifest.settings || []).some((field) => field.key === key)) {
+          continue;
+        }
+        nextSettings[key] = value;
+      }
 
-    if (!overrides[pluginName]) {
-      overrides[pluginName] = Object.create(null);
-    }
-    overrides[pluginName].settings = nextSettings as Record<
-      string,
-      string | number | boolean
-    >;
-    await configLoader.savePluginOverrides(overrides);
-    pluginSettingsUpdates.add(1, { plugin: pluginName });
-    eventBus?.emit('plugins:settings-changed', {
-      name: pluginName,
-      settings: emittedPluginSettings(
-        pluginName,
-        manifest.settings || [],
-        nextSettings,
-        logger,
-      ),
-    });
+      if (!overrides[pluginName]) {
+        overrides[pluginName] = Object.create(null);
+      }
+      overrides[pluginName].settings = nextSettings as Record<
+        string,
+        string | number | boolean
+      >;
+      if (!captures.get(c)!.isCurrent())
+        return c.json({ error: 'Plugin changed; reload before retrying' }, 409);
+      await configLoader.savePluginOverrides(overrides);
+      pluginSettingsUpdates.add(1, { plugin: pluginName });
+      eventBus?.emit('plugins:settings-changed', {
+        name: pluginName,
+        settings: emittedPluginSettings(
+          pluginName,
+          manifest.settings || [],
+          nextSettings,
+          logger,
+        ),
+      });
 
-    return c.json({ success: true });
-  });
+      return c.json({ success: true });
+    },
+  );
 
-  app.get('/:name/changelog', async (c) => {
+  app.get('/:name/changelog', capture, async (c) => {
     const name = decodeURIComponent(param(c, 'name'));
     try {
       assertPluginNameSegment(name);
     } catch (error) {
       return c.json({ error: errorMessage(error) }, 400);
     }
-    const pluginDir = join(pluginsDir, name);
-    try {
-      assertPathInside(pluginsDir, pluginDir, 'Plugin changelog target');
-    } catch (error) {
-      return c.json({ error: errorMessage(error) }, 400);
-    }
-    if (!existsSync(pluginDir)) {
-      return c.json({ error: 'Plugin not found' }, 404);
-    }
+    const pluginDir = captures.get(c)!.packageRoot;
 
     const isGit = existsSync(join(pluginDir, '.git'));
     if (!isGit) {
@@ -312,26 +337,15 @@ export function registerPluginConfigRoutes(
     }
   });
 
-  app.get('/:name/providers', async (c) => {
+  app.get('/:name/providers', capture, async (c) => {
     const name = decodeURIComponent(param(c, 'name'));
     try {
       assertPluginNameSegment(name);
     } catch (error) {
       return c.json({ error: errorMessage(error) }, 400);
     }
-    const pluginDir = join(pluginsDir, name);
-    const manifestPath = join(pluginDir, 'plugin.json');
     try {
-      assertPathInside(pluginsDir, manifestPath, 'Plugin providers target');
-    } catch (error) {
-      return c.json({ error: errorMessage(error) }, 400);
-    }
-    if (!existsSync(manifestPath)) {
-      return c.json({ error: 'Plugin not found' }, 404);
-    }
-
-    try {
-      const manifest = readPluginManifestFileSync(manifestPath);
+      const manifest = captures.get(c)!.manifest;
       const { ConfigLoader } = await import('../../domain/config-loader.js');
       const configLoader = new ConfigLoader({ projectHomeDir });
       const overrides = await configLoader.loadPluginOverrides();
@@ -353,7 +367,7 @@ export function registerPluginConfigRoutes(
     }
   });
 
-  app.get('/:name/overrides', async (c) => {
+  app.get('/:name/overrides', capture, async (c) => {
     const name = decodeURIComponent(param(c, 'name'));
     try {
       assertPluginNameSegment(name);
@@ -367,25 +381,32 @@ export function registerPluginConfigRoutes(
     return c.json({ disabled: override.disabled ?? [] });
   });
 
-  app.put('/:name/overrides', validate(pluginOverridesSchema), async (c) => {
-    const name = decodeURIComponent(param(c, 'name'));
-    try {
-      assertPluginNameSegment(name);
-    } catch (error) {
-      return c.json({ error: errorMessage(error) }, 400);
-    }
-    const body = getBody(c);
-    const { ConfigLoader } = await import('../../domain/config-loader.js');
-    const configLoader = new ConfigLoader({ projectHomeDir });
-    const overrides = await configLoader.loadPluginOverrides();
-    // Null-prototype, matching the settings route's initializer above: a plain
-    // object literal here would put a plain-prototype value back into the
-    // null-prototype map on the very next save, defeating the invariant
-    // `loadPluginOverrides` documents (archive#4307 review).
-    overrides[name] = Object.assign(Object.create(null), overrides[name], {
-      disabled: body.disabled || [],
-    });
-    await configLoader.savePluginOverrides(overrides);
-    return c.json({ success: true });
-  });
+  app.put(
+    '/:name/overrides',
+    validate(pluginOverridesSchema),
+    capture,
+    async (c) => {
+      const name = decodeURIComponent(param(c, 'name'));
+      try {
+        assertPluginNameSegment(name);
+      } catch (error) {
+        return c.json({ error: errorMessage(error) }, 400);
+      }
+      const body = getBody(c);
+      const { ConfigLoader } = await import('../../domain/config-loader.js');
+      const configLoader = new ConfigLoader({ projectHomeDir });
+      const overrides = await configLoader.loadPluginOverrides();
+      // Null-prototype, matching the settings route's initializer above: a plain
+      // object literal here would put a plain-prototype value back into the
+      // null-prototype map on the very next save, defeating the invariant
+      // `loadPluginOverrides` documents (archive#4307 review).
+      overrides[name] = Object.assign(Object.create(null), overrides[name], {
+        disabled: body.disabled || [],
+      });
+      if (!captures.get(c)!.isCurrent())
+        return c.json({ error: 'Plugin changed; reload before retrying' }, 409);
+      await configLoader.savePluginOverrides(overrides);
+      return c.json({ success: true });
+    },
+  );
 }

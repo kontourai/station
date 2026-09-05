@@ -189,6 +189,7 @@ export function createPluginRoutes(
     quiesceEventSubscriptions: runtime?.quiesceEventSubscriptions,
   });
   registerPluginConfigRoutes(app, {
+    packageMcpJournal: runtime?.packageMcpJournal,
     eventBus,
     logger,
     pluginsDir,
