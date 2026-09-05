@@ -1,16 +1,16 @@
 import { describe, expect, test } from 'vitest';
 import {
-  APP_SURFACE_REGISTRY,
-  createSurfaceRegistry,
+  APP_DESTINATION_REGISTRY,
+  createDestinationRegistry,
   DEVELOPER_TOOLS_FLAG,
-  type SurfaceDefinition,
-} from '../surface-registry';
+  type DestinationDefinition,
+} from '../destination-registry';
 
-describe('SurfaceRegistry', () => {
+describe('DestinationRegistry', () => {
   test('drives the exact sidebar and command-palette inventories from one authority', () => {
     // archive#3313 (Settings IA, option A): Settings holds a System slot;
     // Feature Previews is a Settings section (palette deep link only); the
-    // Developer surfaces advertise only with the developer-tools flag on.
+    // Developer destinations advertise only with the developer-tools flag on.
     //
     // UX audit RT-13 / SHELL-08: Agents, Connections and Activity lead as a
     // flat `primary` band. The order below is also the assertion that
@@ -18,7 +18,9 @@ describe('SurfaceRegistry', () => {
     // `String.localeCompare`, under which 'primary' would have landed between
     // 'customize' and 'system' and put the top-level band in the middle.
     expect(
-      APP_SURFACE_REGISTRY.getSidebar().map((surface) => surface.id),
+      APP_DESTINATION_REGISTRY.getSidebar().map(
+        (destination) => destination.id,
+      ),
     ).toEqual([
       'agents',
       'connections',
@@ -32,8 +34,8 @@ describe('SurfaceRegistry', () => {
       'settings',
     ]);
     expect(
-      APP_SURFACE_REGISTRY.getSidebar(new Set([DEVELOPER_TOOLS_FLAG])).map(
-        (surface) => surface.id,
+      APP_DESTINATION_REGISTRY.getSidebar(new Set([DEVELOPER_TOOLS_FLAG])).map(
+        (destination) => destination.id,
       ),
     ).toEqual([
       'agents',
@@ -49,7 +51,9 @@ describe('SurfaceRegistry', () => {
       'developer',
     ]);
     expect(
-      APP_SURFACE_REGISTRY.getPalette().map((surface) => surface.id),
+      APP_DESTINATION_REGISTRY.getPalette().map(
+        (destination) => destination.id,
+      ),
     ).toEqual([
       'agents',
       'guidance-commands',
@@ -71,8 +75,8 @@ describe('SurfaceRegistry', () => {
       'profile',
     ]);
     expect(
-      APP_SURFACE_REGISTRY.getPalette(new Set([DEVELOPER_TOOLS_FLAG])).map(
-        (surface) => surface.id,
+      APP_DESTINATION_REGISTRY.getPalette(new Set([DEVELOPER_TOOLS_FLAG])).map(
+        (destination) => destination.id,
       ),
     ).toEqual([
       'agents',
@@ -96,7 +100,7 @@ describe('SurfaceRegistry', () => {
   });
 
   test('keeps registered preview surfaces wired while advertising only enabled ones', () => {
-    const preview: SurfaceDefinition = {
+    const preview: DestinationDefinition = {
       id: 'preview',
       route: '/preview',
       label: () => 'Preview',
@@ -104,7 +108,7 @@ describe('SurfaceRegistry', () => {
       hiddenFromNav: true,
       palette: { order: 1 },
     };
-    const registry = createSurfaceRegistry([preview]);
+    const registry = createDestinationRegistry([preview]);
 
     expect(registry.getRegistered()).toHaveLength(1);
     expect(registry.getAdvertised()).toEqual([]);
@@ -116,7 +120,7 @@ describe('SurfaceRegistry', () => {
   });
 
   test('resolves labels and badges at projection time', () => {
-    const notifications = APP_SURFACE_REGISTRY.get('notifications');
+    const notifications = APP_DESTINATION_REGISTRY.get('notifications');
     expect(notifications?.label()).toBe('Notifications');
     expect(notifications?.badge?.({ attentionCount: 0 })).toBeNull();
     expect(notifications?.badge?.({ attentionCount: 3 })).toEqual({
@@ -127,7 +131,7 @@ describe('SurfaceRegistry', () => {
 
   test('does not resolve render-time labels during composition or projection', () => {
     let labelCalls = 0;
-    const registry = createSurfaceRegistry([
+    const registry = createDestinationRegistry([
       {
         id: 'late-label',
         route: '/late-label',
@@ -140,18 +144,18 @@ describe('SurfaceRegistry', () => {
     ]);
 
     expect(labelCalls).toBe(0);
-    const [surface] = registry.getSidebar();
+    const [destination] = registry.getSidebar();
     expect(labelCalls).toBe(0);
-    expect(surface?.label()).toBe('Localized later');
+    expect(destination?.label()).toBe('Localized later');
     expect(labelCalls).toBe(1);
   });
 
   test('owns exact root routing and semantic management grouping', () => {
-    expect(APP_SURFACE_REGISTRY.resolveExactRoute('/schedule')).toEqual({
+    expect(APP_DESTINATION_REGISTRY.resolveExactRoute('/schedule')).toEqual({
       type: 'schedule',
     });
     expect(
-      APP_SURFACE_REGISTRY.getSurfaceForView({
+      APP_DESTINATION_REGISTRY.getDestinationForView({
         type: 'connections-model-edit',
         id: 'ollama',
       })?.id,
@@ -159,7 +163,7 @@ describe('SurfaceRegistry', () => {
   });
 
   test('returns frozen definitions and projections from immutable composition', () => {
-    const registry = createSurfaceRegistry([
+    const registry = createDestinationRegistry([
       {
         id: 'one',
         route: '/one',
@@ -187,7 +191,7 @@ describe('SurfaceRegistry', () => {
         { id: 'same', route: '/one', label: () => 'One' },
         { id: 'same', route: '/two', label: () => 'Two' },
       ],
-      /Duplicate surface id/,
+      /Duplicate destination id/,
     ],
     [
       'relative routes',
@@ -210,7 +214,7 @@ describe('SurfaceRegistry', () => {
           view: { type: 'settings' },
         },
       ],
-      /Duplicate exact surface route/,
+      /Duplicate exact destination route/,
     ],
     [
       'duplicate sidebar order slots',
@@ -228,7 +232,7 @@ describe('SurfaceRegistry', () => {
           sidebar: { section: 'system', order: 1 },
         },
       ],
-      /Duplicate sidebar surface order/,
+      /Duplicate sidebar destination order/,
     ],
     [
       'duplicate command-palette order slots',
@@ -246,12 +250,12 @@ describe('SurfaceRegistry', () => {
           palette: { order: 1 },
         },
       ],
-      /Duplicate command-palette surface order/,
+      /Duplicate command-palette destination order/,
     ],
   ] as const)(
     'rejects %s at the composition seam',
     (_label, entries, error) => {
-      expect(() => createSurfaceRegistry(entries)).toThrow(error);
+      expect(() => createDestinationRegistry(entries)).toThrow(error);
     },
   );
 
@@ -260,12 +264,12 @@ describe('SurfaceRegistry', () => {
   // someone who learned "playbooks" still finds the surface while reading the
   // one noun that survives.
   test('the retired Playbooks palette entry is replaced by Commands', () => {
-    const palette = APP_SURFACE_REGISTRY.getPalette().map(
-      (surface) => surface.id,
+    const palette = APP_DESTINATION_REGISTRY.getPalette().map(
+      (destination) => destination.id,
     );
     expect(palette).not.toContain('guidance-playbooks');
     expect(palette).toContain('guidance-commands');
-    const commands = APP_SURFACE_REGISTRY.get('guidance-commands');
+    const commands = APP_DESTINATION_REGISTRY.get('guidance-commands');
     expect(commands?.label()).toBe('Commands');
     expect(commands?.keywords).toContain('playbooks');
   });

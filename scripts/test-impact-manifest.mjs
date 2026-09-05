@@ -400,7 +400,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     // that reads the registry as a value went unscheduled. The registry is a
     // data table, not a module with behaviour, so `--related` would not have
     // found most of these anyway: they assert what it DECLARES.
-    pattern: 'src-ui/src/app-shell/surface-registry.ts',
+    pattern: 'src-ui/src/app-shell/destination-registry.ts',
     tests: [
       'scripts/__tests__/documentation-foundations.test.ts',
       // Route/label/deep-link declarations read straight off the registry.
@@ -416,8 +416,12 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
       // first-run tour derives its anchors and paths from it.
       'src-ui/src/app-shell/__tests__/page-frame-registry.test.ts',
       'src-ui/src/components/first-run/__tests__/tour-steps.test.ts',
+      // The placement-vocabulary ratchet (#928). It imports this module so
+      // `related` reaches it from region-model.ts, but this entry's explicit
+      // list replaces graph selection for the registry, so it is named here.
+      'src-ui/src/__tests__/placement-vocabulary.test.ts',
     ],
-    reason: 'app surface registry declarations (routes, labels, nav, docs)',
+    reason: 'app destination registry declarations (routes, labels, nav, docs)',
   },
   {
     pattern: 'justfile',

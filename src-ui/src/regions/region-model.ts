@@ -12,9 +12,9 @@ export interface RegionState {
   size: number;
   occupant: string | null;
 }
-export type RegionLayout = Record<RegionId, RegionState>;
+export type RegionArrangement = Record<RegionId, RegionState>;
 
-export const DEFAULT_DEVICE_REGION_LAYOUT: RegionLayout = {
+export const DEFAULT_DEVICE_REGION_ARRANGEMENT: RegionArrangement = {
   main: { visible: true, size: 0, occupant: null },
   left: { visible: false, size: 400, occupant: null },
   right: { visible: false, size: 400, occupant: null },
@@ -29,33 +29,35 @@ type DockSeedSettings = Pick<
 export type DockRegionId = (typeof DOCK_REGION_IDS)[number];
 
 export function occupiedDockRegion(
-  layout: RegionLayout,
+  arrangement: RegionArrangement,
   surfaceId: string,
 ): DockRegionId | undefined {
-  return DOCK_REGION_IDS.find((id) => layout[id].occupant === surfaceId);
+  return DOCK_REGION_IDS.find((id) => arrangement[id].occupant === surfaceId);
 }
 
 export function firstFreeDockRegion(
-  layout: RegionLayout,
+  arrangement: RegionArrangement,
   preferred: DockRegionId,
 ): DockRegionId | undefined {
-  if (layout[preferred].occupant === null) return preferred;
+  if (arrangement[preferred].occupant === null) return preferred;
   return (['bottom', 'right', 'left'] as const).find(
-    (id) => layout[id].occupant === null,
+    (id) => arrangement[id].occupant === null,
   );
 }
 
 /** The dock region holding chat; undefined when chat sits outside the dock (e.g. 'main'). */
-export function chatRegion(layout: RegionLayout): DockRegionId | undefined {
-  return occupiedDockRegion(layout, 'chat');
+export function chatRegion(
+  arrangement: RegionArrangement,
+): DockRegionId | undefined {
+  return occupiedDockRegion(arrangement, 'chat');
 }
 
 export function foldedDockRegion(
-  layout: RegionLayout,
+  arrangement: RegionArrangement,
   lastShownRegion: RegionId | null,
 ): DockRegionId | undefined {
   const visibleOccupied = DOCK_REGION_IDS.filter(
-    (id) => layout[id].occupant !== null && layout[id].visible,
+    (id) => arrangement[id].occupant !== null && arrangement[id].visible,
   );
   if (
     lastShownRegion &&
@@ -66,31 +68,31 @@ export function foldedDockRegion(
   }
   return (
     visibleOccupied[0] ??
-    chatRegion(layout) ??
-    DOCK_REGION_IDS.find((id) => layout[id].occupant !== null)
+    chatRegion(arrangement) ??
+    DOCK_REGION_IDS.find((id) => arrangement[id].occupant !== null)
   );
 }
 
-export function seedRegionLayoutFromDock(
+export function seedRegionArrangementFromDock(
   settings: DockSeedSettings,
   placement: DockRegionId,
   isDockOpen: boolean,
-): RegionLayout {
-  return syncRegionLayoutFromDock(
-    structuredClone(DEFAULT_DEVICE_REGION_LAYOUT),
+): RegionArrangement {
+  return syncRegionArrangementFromDock(
+    structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),
     settings,
     isDockOpen,
     placement,
   );
 }
 
-export function syncRegionLayoutFromDock(
-  layout: RegionLayout,
+export function syncRegionArrangementFromDock(
+  arrangement: RegionArrangement,
   settings: DockSeedSettings,
   isDockOpen: boolean,
   placement: DockRegionId,
-): RegionLayout {
-  let next = layout;
+): RegionArrangement {
+  let next = arrangement;
   for (const id of DOCK_REGION_IDS) {
     if (next[id].occupant === null || next[id].occupant === 'chat') {
       next = updateRegion(next, id, {
@@ -123,23 +125,24 @@ export function syncRegionLayoutFromDock(
 }
 
 export function placeSurface(
-  layout: RegionLayout,
+  arrangement: RegionArrangement,
   surfaceId: string,
   regionId: RegionId,
   visible = true,
-): RegionLayout {
+): RegionArrangement {
   const previousRegion = REGION_IDS.find(
-    (id) => id !== regionId && layout[id].occupant === surfaceId,
+    (id) => id !== regionId && arrangement[id].occupant === surfaceId,
   );
-  const displacedSurface = layout[regionId].occupant;
-  const next = updateRegion(layout, regionId, {
+  const displacedSurface = arrangement[regionId].occupant;
+  const next = updateRegion(arrangement, regionId, {
     occupant: surfaceId,
     visible,
   });
   if (previousRegion) {
     return updateRegion(next, previousRegion, {
       occupant: displacedSurface,
-      visible: displacedSurface === null ? false : layout[regionId].visible,
+      visible:
+        displacedSurface === null ? false : arrangement[regionId].visible,
     });
   }
   if (displacedSurface !== null && displacedSurface !== surfaceId) {
@@ -152,7 +155,7 @@ export function placeSurface(
     if (freeRegion) {
       return updateRegion(next, freeRegion, {
         occupant: displacedSurface,
-        visible: layout[regionId].visible,
+        visible: arrangement[regionId].visible,
       });
     }
   }
@@ -160,38 +163,38 @@ export function placeSurface(
 }
 
 export function revealSurface(
-  layout: RegionLayout,
+  arrangement: RegionArrangement,
   surfaceId: string,
   preferred: DockRegionId,
-): { layout: RegionLayout; region: DockRegionId } {
-  const occupied = occupiedDockRegion(layout, surfaceId);
+): { arrangement: RegionArrangement; region: DockRegionId } {
+  const occupied = occupiedDockRegion(arrangement, surfaceId);
   if (occupied) {
     return {
-      layout: updateRegion(layout, occupied, { visible: true }),
+      arrangement: updateRegion(arrangement, occupied, { visible: true }),
       region: occupied,
     };
   }
-  const region = firstFreeDockRegion(layout, preferred) ?? preferred;
-  return { layout: placeSurface(layout, surfaceId, region), region };
+  const region = firstFreeDockRegion(arrangement, preferred) ?? preferred;
+  return { arrangement: placeSurface(arrangement, surfaceId, region), region };
 }
 
 export function showSurfaceAlone(
-  layout: RegionLayout,
+  arrangement: RegionArrangement,
   surfaceId: string,
   preferred: DockRegionId,
-): { layout: RegionLayout; region: DockRegionId } {
-  const revealed = revealSurface(layout, surfaceId, preferred);
-  let next = revealed.layout;
+): { arrangement: RegionArrangement; region: DockRegionId } {
+  const revealed = revealSurface(arrangement, surfaceId, preferred);
+  let next = revealed.arrangement;
   for (const id of DOCK_REGION_IDS) {
     if (id !== revealed.region)
       next = updateRegion(next, id, { visible: false });
   }
-  return { layout: next, region: revealed.region };
+  return { arrangement: next, region: revealed.region };
 }
 
 export function dockMirrorDiff(
-  previous: RegionLayout,
-  next: RegionLayout,
+  previous: RegionArrangement,
+  next: RegionArrangement,
 ): {
   placement?: DockRegionId;
   visible?: boolean;
@@ -281,16 +284,16 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
 ]);
 
 export function updateRegion(
-  layout: RegionLayout,
+  arrangement: RegionArrangement,
   id: RegionId,
   patch: Partial<RegionState>,
-): RegionLayout {
+): RegionArrangement {
   if (
     Object.entries(patch).every(
-      ([key, value]) => layout[id][key as keyof RegionState] === value,
+      ([key, value]) => arrangement[id][key as keyof RegionState] === value,
     )
   ) {
-    return layout;
+    return arrangement;
   }
-  return { ...layout, [id]: { ...layout[id], ...patch } };
+  return { ...arrangement, [id]: { ...arrangement[id], ...patch } };
 }

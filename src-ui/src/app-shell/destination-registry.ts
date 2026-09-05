@@ -6,7 +6,7 @@ import type { NavigationView } from '../types';
  * group toggle, nothing to expand. `customize` and `system` are the two
  * disclosure groups below it.
  */
-export type SurfaceSection = 'primary' | 'customize' | 'system';
+export type DestinationSection = 'primary' | 'customize' | 'system';
 
 /**
  * Sidebar section order. Explicit because the previous ordering was
@@ -14,12 +14,12 @@ export type SurfaceSection = 'primary' | 'customize' | 'system';
  * alphabetical accident — adding `primary` under that rule would have sorted
  * the top-level band into the MIDDLE ('customize' < 'primary' < 'system').
  */
-export const SURFACE_SECTION_ORDER: readonly SurfaceSection[] = [
+export const DESTINATION_SECTION_ORDER: readonly DestinationSection[] = [
   'primary',
   'customize',
   'system',
 ];
-export type ManagementSurfaceId =
+export type ManagementDestinationId =
   | 'agents'
   | 'guidance'
   | 'registry'
@@ -30,7 +30,7 @@ export type ManagementSurfaceId =
   | 'developer'
   | 'notifications'
   | 'schedule';
-export type SurfaceIconId =
+export type DestinationIconId =
   | 'agents'
   | 'connections'
   | 'developer'
@@ -44,12 +44,12 @@ export type SurfaceIconId =
   | 'settings';
 
 /**
- * archive#3313: gates the Developer surfaces' sidebar/palette advertisement.
+ * archive#3313: gates the Developer destinations' sidebar/palette advertisement.
  * Unlike the other `previewFlag` values (server feature-preview ids), this
  * flag is derived from the device setting `developerToolsEnabled` — see
  * `useSurfaceVisibilityFlags`, which composes both sources into the one
  * enabled-flags set the registry filters on. Deep links are unaffected:
- * `resolveExactRoute`/`getSurfaceForView` never consult flags.
+ * `resolveExactRoute`/`getDestinationForView` never consult flags.
  *
  * The `device:` prefix is what keeps those two sources from sharing a flat
  * namespace: server preview ids are bare slugs registered in-process
@@ -59,66 +59,66 @@ export type SurfaceIconId =
  */
 export const DEVELOPER_TOOLS_FLAG = 'device:developer-tools';
 
-export interface SurfaceBadgeContext {
+export interface DestinationBadgeContext {
   attentionCount: number;
 }
 
-export interface SurfaceBadge {
+export interface DestinationBadge {
   count: number;
   label: string;
 }
 
-export interface SurfaceDefinition {
+export interface DestinationDefinition {
   id: string;
   route: string;
   label: () => string;
   keywords?: readonly string[];
-  icon?: SurfaceIconId;
+  icon?: DestinationIconId;
   previewFlag?: string;
   hiddenFromNav?: boolean;
   /** When set, the palette calls `showSurface(regionSurface)` and `params` are not applied. */
   regionSurface?: string;
-  sidebar?: { section: SurfaceSection; order: number };
+  sidebar?: { section: DestinationSection; order: number };
   palette?: { order: number; params?: Readonly<Record<string, string | null>> };
   /** Stable semantic owner used by sidebar selection and management routing. */
-  managementGroup?: ManagementSurfaceId;
+  managementGroup?: ManagementDestinationId;
   managementViewTypes?: readonly NavigationView['type'][];
-  badge?: (context: SurfaceBadgeContext) => SurfaceBadge | null;
+  badge?: (context: DestinationBadgeContext) => DestinationBadge | null;
   /** Exact root route projection. Parameterized child routes stay with their domain parser. */
   view?: NavigationView;
 }
 
-export interface SurfaceRegistry {
-  get(id: string): SurfaceDefinition | null;
-  getRegistered(): readonly SurfaceDefinition[];
+export interface DestinationRegistry {
+  get(id: string): DestinationDefinition | null;
+  getRegistered(): readonly DestinationDefinition[];
   getAdvertised(
     enabledPreviewFlags?: ReadonlySet<string>,
-  ): readonly SurfaceDefinition[];
+  ): readonly DestinationDefinition[];
   getSidebar(
     enabledPreviewFlags?: ReadonlySet<string>,
-  ): readonly SurfaceDefinition[];
+  ): readonly DestinationDefinition[];
   getPalette(
     enabledPreviewFlags?: ReadonlySet<string>,
-  ): readonly SurfaceDefinition[];
-  getSurfaceForView(view: NavigationView): SurfaceDefinition | null;
+  ): readonly DestinationDefinition[];
+  getDestinationForView(view: NavigationView): DestinationDefinition | null;
   resolveExactRoute(pathname: string): NavigationView | null;
 }
 
 /**
- * Compose one immutable surface inventory. Contributions are supplied at the
+ * Compose one immutable destination inventory. Contributions are supplied at the
  * composition seam; callers never mutate a process-global registry after UI
  * construction.
  */
-export function createSurfaceRegistry(
-  definitions: readonly SurfaceDefinition[],
-): SurfaceRegistry {
+export function createDestinationRegistry(
+  definitions: readonly DestinationDefinition[],
+): DestinationRegistry {
   const registered = Object.freeze(
     definitions.map((definition) => {
       const id = definition.id.trim();
       const route = definition.route.trim();
-      if (!id) throw new Error('Surface id must be nonempty');
+      if (!id) throw new Error('Destination id must be nonempty');
       if (!route.startsWith('/')) {
-        throw new Error(`Surface ${id} must use an absolute Station route`);
+        throw new Error(`Destination ${id} must use an absolute Station route`);
       }
       return Object.freeze({
         ...definition,
@@ -147,40 +147,47 @@ export function createSurfaceRegistry(
       });
     }),
   );
-  const byId = new Map<string, SurfaceDefinition>();
-  const byManagementView = new Map<NavigationView['type'], SurfaceDefinition>();
+  const byId = new Map<string, DestinationDefinition>();
+  const byManagementView = new Map<
+    NavigationView['type'],
+    DestinationDefinition
+  >();
   const byExactRoute = new Map<string, NavigationView>();
   const sidebarSlots = new Set<string>();
   const paletteSlots = new Set<number>();
   for (const definition of registered) {
     if (byId.has(definition.id)) {
-      throw new Error(`Duplicate surface id: ${definition.id}`);
+      throw new Error(`Duplicate destination id: ${definition.id}`);
     }
     byId.set(definition.id, definition);
     if (definition.sidebar) {
       const slot = `${definition.sidebar.section}:${definition.sidebar.order}`;
       if (sidebarSlots.has(slot)) {
-        throw new Error(`Duplicate sidebar surface order: ${slot}`);
+        throw new Error(`Duplicate sidebar destination order: ${slot}`);
       }
       sidebarSlots.add(slot);
     }
     if (definition.palette) {
       if (paletteSlots.has(definition.palette.order)) {
         throw new Error(
-          `Duplicate command-palette surface order: ${definition.palette.order}`,
+          `Duplicate command-palette destination order: ${definition.palette.order}`,
         );
       }
       paletteSlots.add(definition.palette.order);
     }
     if (definition.view) {
       if (byExactRoute.has(definition.route)) {
-        throw new Error(`Duplicate exact surface route: ${definition.route}`);
+        throw new Error(
+          `Duplicate exact destination route: ${definition.route}`,
+        );
       }
       byExactRoute.set(definition.route, definition.view);
     }
     for (const viewType of definition.managementViewTypes ?? []) {
       if (byManagementView.has(viewType)) {
-        throw new Error(`Duplicate management surface for view: ${viewType}`);
+        throw new Error(
+          `Duplicate management destination for view: ${viewType}`,
+        );
       }
       byManagementView.set(viewType, definition);
     }
@@ -207,8 +214,8 @@ export function createSurfaceRegistry(
           .sort((left, right) =>
             left.sidebar!.section === right.sidebar!.section
               ? left.sidebar!.order - right.sidebar!.order
-              : SURFACE_SECTION_ORDER.indexOf(left.sidebar!.section) -
-                SURFACE_SECTION_ORDER.indexOf(right.sidebar!.section),
+              : DESTINATION_SECTION_ORDER.indexOf(left.sidebar!.section) -
+                DESTINATION_SECTION_ORDER.indexOf(right.sidebar!.section),
           ),
       ),
     getPalette: (flags = defaultFlags) =>
@@ -217,7 +224,7 @@ export function createSurfaceRegistry(
           .filter((definition) => definition.palette)
           .sort((left, right) => left.palette!.order - right.palette!.order),
       ),
-    getSurfaceForView: (view: NavigationView) =>
+    getDestinationForView: (view: NavigationView) =>
       byManagementView.get(view.type) ?? null,
     resolveExactRoute: (pathname: string) => byExactRoute.get(pathname) ?? null,
   });
@@ -227,7 +234,7 @@ const primary = (order: number) => ({ section: 'primary', order }) as const;
 const customize = (order: number) => ({ section: 'customize', order }) as const;
 const system = (order: number) => ({ section: 'system', order }) as const;
 
-export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
+export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
   {
     id: 'home',
     route: '/',
@@ -500,4 +507,4 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     managementViewTypes: ['profile'],
     view: { type: 'profile' },
   },
-] as const satisfies readonly SurfaceDefinition[]);
+] as const satisfies readonly DestinationDefinition[]);

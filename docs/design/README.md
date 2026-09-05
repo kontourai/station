@@ -62,6 +62,7 @@ category.
 - [orchestration-decomposition-map.md](orchestration-decomposition-map.md) — The Seam Map — `OrchestrationService`
 - [pane-host-contract.md](pane-host-contract.md) — The pane-host contract: one interface, two transports
 - [pane-or-shell.md](pane-or-shell.md) — Pane or shell: the criterion
+- [placement.md](placement.md) — Placement: regions, surfaces, layouts, panes, pane hosts
 - [plugin-authority-model.md](plugin-authority-model.md) — The plugin authority model: contributions, loci, and where consent belongs
 - [plugin-knowledge-store-contributions.md](plugin-knowledge-store-contributions.md) — Plugin-contributed Knowledge stores
 - [pnpm-workspace-installation.md](pnpm-workspace-installation.md) — pnpm workspace installation

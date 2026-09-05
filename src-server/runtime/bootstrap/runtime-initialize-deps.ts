@@ -89,6 +89,7 @@ export interface RuntimeInitializationContext {
   resolveBuiltinEngineBinding?: (
     appConfig: AppConfig,
   ) => Promise<BuiltinAgentEngineBinding | null>;
+  onACPConnectionsReady?: () => void | Promise<void>;
   orchestrationEventStore: EventStore;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -171,6 +172,7 @@ export function createRuntimeInitializationDeps(
     voiceService: context.voiceService,
     acpBridge: context.acpBridge,
     resolveBuiltinEngineBinding: context.resolveBuiltinEngineBinding,
+    onACPConnectionsReady: context.onACPConnectionsReady,
     orchestrationEventStore: context.orchestrationEventStore,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
     usageAggregator: context.usageAggregator,

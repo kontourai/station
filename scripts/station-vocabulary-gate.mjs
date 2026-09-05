@@ -162,7 +162,7 @@ function main() {
   });
 
   console.log(
-    'Station vocabulary gate (Station/saved Station; Layout contains Panes; Panes/pages contain Panels).\n',
+    'Station vocabulary gate (Station/saved Station; the shell has regions, a region holds a surface, a surface or a layout holds a pane host, a pane host holds panes, a pane or page may hold panels).\n',
   );
   if (scanned.length === 0) {
     console.error('FAIL: no tracked text files were scanned.');
@@ -182,7 +182,7 @@ function main() {
     return 1;
   }
   console.log(
-    `OK: no retired saved-Station or Layout/Pane/Panel vocabulary in ${scanned.length} tracked text files.`,
+    `OK: no retired saved-Station or region/surface/layout/pane/panel vocabulary in ${scanned.length} tracked text files.`,
   );
   return 0;
 }
