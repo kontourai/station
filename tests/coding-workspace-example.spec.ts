@@ -11,6 +11,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
+import { parseAgentPluginManifest } from '@kontourai/station-shared/agent-plugin-manifest';
 import { expect, test } from '@playwright/test';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
@@ -62,6 +63,17 @@ test('coding example preserves both Panes and its authored native Agent in a rea
   let created = false;
   let connected = false;
   try {
+    const reports: unknown[] = [];
+    const declaration = parseAgentPluginManifest(
+      JSON.parse(
+        readFileSync(resolve('examples/coding-starter/plugin.json'), 'utf8'),
+      ),
+      (report) => reports.push(report),
+    );
+    expect(
+      declaration?.stationExtension,
+      JSON.stringify(reports),
+    ).toBeDefined();
     mkdirSync(repo);
     execFileSync('git', ['init', '--quiet', repo], { windowsHide: true });
     execFileSync(

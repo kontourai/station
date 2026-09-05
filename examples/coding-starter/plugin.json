@@ -7,7 +7,7 @@
     "io.kontourai.station": {
       "schemaVersion": "1.0",
       "title": "Coding Starter",
-      "entrypoint": "src/index.tsx",
+      "entrypoint": "./src/index.tsx",
       "capabilities": ["chat", "navigation"],
       "permissions": ["navigation.dock", "agents.invoke"],
       "agents": [
