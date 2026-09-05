@@ -81,6 +81,9 @@ export function createNativeForegroundRelay(
     !workspaceRoot
   )
     throw new ForegroundInvocationUnavailableError();
+  // The private relay supplies the server-resolved Session cwd.
+  // resolveStartSessionCwd expands stored Project paths before this binding;
+  // keep its exact owned-worktree directory instead of the original Project root.
   if (workspaceRoot) capturedProject.workingDirectory = workspaceRoot;
   const workspace = createNativeExecutionWorkspace(workspaceRoot);
   let closed = false;
