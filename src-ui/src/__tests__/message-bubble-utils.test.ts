@@ -1,20 +1,33 @@
 import { describe, expect, test } from 'vitest';
 import {
-  getModelDisplayName,
   resolveTurnEngine,
   resolveTurnModelIdentity,
 } from '../components/chat/message-bubble/utils';
+import { modelIdentityLabel } from '../utils/modelCapabilities';
 
-describe('message bubble utils', () => {
-  test('maps known Claude models to readable labels', () => {
-    expect(getModelDisplayName('claude-3-7-sonnet-latest')).toBe(
-      'Claude 3.7 Sonnet',
-    );
-    expect(getModelDisplayName('claude-3-opus')).toBe('Claude 3 Opus');
+/**
+ * #1536 B5: this file used to pin `getModelDisplayName`, a private table of
+ * five Claude 3 ids that answered "Custom" for everything else — so a row
+ * running claude-opus-5 named it "Custom" while Home named the same session
+ * "Opus 5". The table is gone; these assert the shared rule reaches the cases
+ * the table used to own.
+ */
+describe('the model a bubble names comes from the shared identity rule', () => {
+  test('a modern model gets its own name, not "Custom"', () => {
+    expect(modelIdentityLabel('claude-opus-5')).toBe('Opus 5');
+    expect(modelIdentityLabel('claude-opus-5[1m]')).toBe('Opus 5 (1M)');
   });
 
-  test('falls back to custom for unknown models', () => {
-    expect(getModelDisplayName('gpt-5.4')).toBe('Custom');
+  test('an engine default is "Default", not the catalog\'s option copy', () => {
+    expect(
+      modelIdentityLabel('default', [
+        {
+          id: 'default',
+          name: 'Default (recommended)',
+          capabilities: {},
+        } as never,
+      ]),
+    ).toBe('Default');
   });
 });
 
@@ -176,14 +189,14 @@ describe('resolveTurnModelIdentity (station#1410 review finding SF5, closed in s
         {
           slot: 'requested',
           label: 'Requested',
-          value: 'sonnet-latest',
-          description: 'Model requested',
+          value: 'Sonnet Latest',
+          description: 'Model requested (sonnet-latest)',
         },
         {
           slot: 'reported',
           label: 'Reported',
-          value: 'sonnet-9-20260701',
-          description: 'Model reported by engine',
+          value: 'Sonnet 9 20260701',
+          description: 'Model reported by engine (sonnet-9-20260701)',
         },
       ],
     });
@@ -203,9 +216,9 @@ describe('resolveTurnModelIdentity (station#1410 review finding SF5, closed in s
         {
           slot: 'agreed',
           label: 'Model',
-          value: 'claude-fable-5',
+          value: 'Fable 5',
           description:
-            'Station requested this model and the engine reported it',
+            'Station requested this model and the engine reported it (claude-fable-5)',
         },
       ],
     });
@@ -225,9 +238,9 @@ describe('resolveTurnModelIdentity (station#1410 review finding SF5, closed in s
         {
           slot: 'agreed',
           label: 'Model',
-          value: 'sonnet-9-20260701',
+          value: 'Sonnet 9 20260701',
           description:
-            'Station requested this model and the engine reported it',
+            'Station requested this model and the engine reported it (sonnet-9-20260701)',
         },
       ],
     });
@@ -244,8 +257,8 @@ describe('resolveTurnModelIdentity (station#1410 review finding SF5, closed in s
         {
           slot: 'reported',
           label: 'Reported',
-          value: 'sonnet-9-20260701',
-          description: 'Model reported by engine',
+          value: 'Sonnet 9 20260701',
+          description: 'Model reported by engine (sonnet-9-20260701)',
         },
       ],
     });
@@ -267,8 +280,8 @@ describe('resolveTurnModelIdentity (station#1410 review finding SF5, closed in s
         {
           slot: 'requested',
           label: 'Requested',
-          value: 'sonnet',
-          description: 'Model requested',
+          value: 'Sonnet',
+          description: 'Model requested (sonnet)',
         },
       ],
     });

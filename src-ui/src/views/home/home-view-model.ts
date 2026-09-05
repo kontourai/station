@@ -13,7 +13,7 @@ import {
   LIFECYCLE_PRIORITY,
   moreImportantLifecycle,
 } from '../../utils/lifecycle-priority';
-import { modelDisplayLabel } from '../../utils/modelCapabilities';
+import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import {
   activeTurnProgress,
   orchestrationLifecycleLabel,
@@ -232,7 +232,7 @@ export interface RemoteHomeEnvironmentSessions {
 export type ResolveModelLabel = (modelId: string | null | undefined) => string;
 
 export const defaultResolveModelLabel: ResolveModelLabel = (modelId) =>
-  modelDisplayLabel(modelId);
+  modelIdentityLabel(modelId);
 
 export function buildHomeWorkItems({
   chats,

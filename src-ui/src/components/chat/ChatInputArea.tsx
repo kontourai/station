@@ -23,6 +23,7 @@ import {
 } from '../../utils/execution';
 import {
   type ModelProviderOption,
+  modelIdentityLabel,
   resolvedModelLabel,
   type SelectableModel,
 } from '../../utils/modelCapabilities';
@@ -277,7 +278,15 @@ export function ChatInputArea({
   const resolvedLabel = resolvedModelLabel(effectiveModelInfo, availableModels);
   const aliasLabel =
     effectiveModelInfo?.name || effectiveModelId || 'Model & effort';
-  const modelLabel = resolvedLabel ?? aliasLabel;
+  // #1536 B5: the visible pill is an identity surface, so it takes the shared
+  // identity rule rather than the catalog's own option copy — an unresolved
+  // engine default read "Default (recommended)" here while the dock header,
+  // Home and the sidebar said something else about the same session. The
+  // catalog's option name survives in `aliasLabel`, which is what the
+  // accessible label and title carry.
+  const modelLabel = effectiveModelId
+    ? modelIdentityLabel(effectiveModelId, availableModels)
+    : aliasLabel;
   const modelSource =
     currentModelSource ??
     defaultModelSource ??
@@ -291,9 +300,12 @@ export function ChatInputArea({
   // made this control two rows tall on a phone). The source is still carried
   // here, and the override state is still visible via the pill's variant, so
   // no information is lost — only vertical space.
+  // #1536 B5: the accessible name is where the fuller statement belongs — the
+  // catalog's own option copy for an alias ("Default (recommended)"), or a raw
+  // id we have no name for. The visible pill states the identity only.
   const fullModelIdentity = resolvedLabel
     ? `${aliasLabel} → ${resolvedLabel}`
-    : modelLabel;
+    : aliasLabel;
   const modelAccessibleLabel = [
     'Model:',
     modelProviderLabel

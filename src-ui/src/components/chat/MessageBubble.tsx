@@ -3,6 +3,7 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import type { ChatMessage } from '../../types';
+import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
@@ -19,7 +20,6 @@ import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { MessageContent } from './message-bubble/MessageContent';
 import { MessageRating } from './message-bubble/MessageRating';
 import {
-  getModelDisplayName,
   resolveTurnEngine,
   resolveTurnModelIdentity,
 } from './message-bubble/utils';
@@ -355,7 +355,11 @@ function MessageBubbleComponent({
         modelIdentity.source === 'metadata-absent' &&
         msg.model && (
           <div className="message__model-badge" title={modelOptionsTitle}>
-            {getModelDisplayName(msg.model)}
+            {/* #1536 B5: the shared identity rule. This used to be a
+                hardcoded table that answered "Custom" for every model newer
+                than Claude 3, so a row running claude-opus-5 with no
+                provenance envelope named it "Custom". */}
+            {modelIdentityLabel(msg.model)}
           </div>
         )}
 

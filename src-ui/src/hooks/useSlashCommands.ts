@@ -8,6 +8,7 @@ import { useCallback, useMemo } from 'react';
 import { useAgents } from '../contexts/AgentsContext';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import type { BindingStatus } from '../utils/execution';
+import { modelIdentityLabel } from '../utils/modelCapabilities';
 import {
   agentCommandSkills,
   declaredSkillCommandWord,
@@ -62,16 +63,6 @@ export function mergeSlashCommandSources(
   });
 }
 
-function getModelDisplayName(modelId: string): string {
-  if (modelId.includes('claude-3-7-sonnet')) return 'Claude 3.7 Sonnet';
-  if (modelId.includes('claude-3-5-sonnet-20241022'))
-    return 'Claude 3.5 Sonnet v2';
-  if (modelId.includes('claude-3-5-sonnet')) return 'Claude 3.5 Sonnet';
-  if (modelId.includes('claude-3-opus')) return 'Claude 3 Opus';
-  if (modelId.includes('claude-3-haiku')) return 'Claude 3 Haiku';
-  return modelId;
-}
-
 export function useSlashCommands(
   agentSlug: string | null,
   // Only `.model` is read below — accept any object shaped like a slice of
@@ -105,7 +96,10 @@ export function useSlashCommands(
 
   const catalog = useMemo(() => {
     const currentModelId = chatState?.model || currentAgent?.model || '';
-    const modelDisplayName = getModelDisplayName(currentModelId);
+    // #1536 B5: the shared identity rule, not a fourth private table — this
+    // one hardcoded five Claude 3 ids and handed back the raw id for
+    // everything else.
+    const modelDisplayName = modelIdentityLabel(currentModelId);
     const modelSource = chatState?.model
       ? chatState.model !== currentAgent?.model
         ? 'session override'
