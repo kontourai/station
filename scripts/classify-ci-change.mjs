@@ -33,10 +33,13 @@ const DEPENDENCY_FILES = new Set([
   '.npmrc',
   'package.json',
   'package-lock.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
   'npm-shrinkwrap.json',
 ]);
 
 function isDependencyInput(changedPath) {
+  if (changedPath.startsWith('patches/')) return true;
   if (changedPath === 'scripts/dependency-advisory-exceptions.json')
     return true;
   const base = changedPath.slice(changedPath.lastIndexOf('/') + 1);
@@ -63,7 +66,13 @@ function scopesForDependencyInput(changedPath) {
   if (changedPath === 'scripts/dependency-advisory-exceptions.json')
     return null;
   const base = changedPath.slice(changedPath.lastIndexOf('/') + 1);
-  if (base === '.npmrc') return null;
+  if (
+    changedPath.startsWith('patches/') ||
+    base === '.npmrc' ||
+    base === 'pnpm-lock.yaml' ||
+    base === 'pnpm-workspace.yaml'
+  )
+    return null;
   const directory = changedPath.slice(0, changedPath.lastIndexOf('/') + 1);
   for (const [scope, root] of Object.entries(DEPENDENCY_SCOPE_ROOTS)) {
     if (directory === root) return [scope];

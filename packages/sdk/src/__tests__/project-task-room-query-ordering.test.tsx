@@ -1,8 +1,8 @@
 /** @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
-import { type ReactNode } from 'react';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { type ReactNode, useLayoutEffect, useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 
 let resolveDocument: ((value: unknown) => void) | undefined;
@@ -11,12 +11,23 @@ const documentRequests: Array<{
   init: RequestInit;
   resolve(value: unknown): void;
 }> = [];
-let callbacks:
-  | { onEvent(event: { kind: string; value?: unknown }): void }
-  | undefined;
+type StreamCallbacks = {
+  onError?(error: unknown): void;
+  onCheckpoint?(id: string): void;
+  onConnectionCreated?(id: string): void;
+  onConnectionClosed?(id: string): void;
+  onEvent(event: { kind: string; value?: unknown }): void;
+};
+let callbacks: StreamCallbacks | undefined;
+const streamConnections: Array<{
+  taskId: string;
+  callbacks: StreamCallbacks;
+  close: ReturnType<typeof vi.fn>;
+}> = [];
 
 vi.mock('../api', () => ({ _getApiBase: async () => 'https://station.test' }));
 vi.mock('../client/project-task-rooms', () => ({
+  ProjectTaskRoomProtocolError: class ProjectTaskRoomProtocolError extends Error {},
   fetchProjectTaskRoomDocument: (
     _base: string,
     _task: string,
@@ -30,11 +41,17 @@ vi.mock('../client/project-task-rooms', () => ({
     }),
   subscribeProjectTaskRoomEvents: (
     _base: string,
-    _task: string,
-    input: typeof callbacks,
+    taskId: string,
+    input: StreamCallbacks,
   ) => {
     callbacks = input;
-    return { close: vi.fn(), restart: vi.fn(), completed: Promise.resolve() };
+    let complete!: () => void;
+    const completed = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    const close = vi.fn(complete);
+    streamConnections.push({ taskId, callbacks: input, close });
+    return { close, restart: vi.fn(), completed };
   },
   parseAuthoritativeProjectTaskRoomDocumentEvent: (value: any) =>
     value?.kind === 'committed'
@@ -54,8 +71,10 @@ vi.mock('../client/project-task-rooms', () => ({
 
 import {
   adoptCommittedProjectTaskRoomDocument,
+  ProjectTaskRoomProtocolError,
   projectTaskRoomQueries,
   refetchAuthoritativeProjectTaskRoomDocument,
+  useProjectTaskRoomDocumentQuery,
   useProjectTaskRoomStream,
 } from '../query-domains/projectTaskRooms';
 
@@ -64,6 +83,7 @@ afterEach(() => {
   documentSignal = undefined;
   documentRequests.splice(0);
   callbacks = undefined;
+  streamConnections.splice(0);
 });
 
 test('committed settlement replaces only its exact observed document object', () => {
@@ -169,6 +189,55 @@ test.each([
     ).toBe(value);
   },
 );
+
+test('a transport protocol error recovers through the authoritative no-cache read', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const rendered = renderHook(
+    () => {
+      const document = useProjectTaskRoomDocumentQuery('task-1');
+      useProjectTaskRoomStream('task-1');
+      return document.data;
+    },
+    { wrapper },
+  );
+  await waitFor(() => expect(callbacks).toBeDefined());
+  await waitFor(() => expect(documentRequests).toHaveLength(1));
+  documentRequests[0]?.resolve({
+    kind: 'snapshot',
+    revision: 'baseline',
+    text: 'baseline',
+  });
+  await waitFor(() =>
+    expect(rendered.result.current).toMatchObject({ revision: 'baseline' }),
+  );
+
+  act(() =>
+    callbacks!.onError?.(
+      new ProjectTaskRoomProtocolError('Malformed room SSE event'),
+    ),
+  );
+  await waitFor(() => expect(documentRequests).toHaveLength(2));
+  expect(
+    client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
+  ).toEqual({ kind: 'unavailable' });
+  expect(documentRequests[1]?.init.headers).toEqual({
+    'Cache-Control': 'no-cache',
+  });
+  documentRequests[1]?.resolve({
+    kind: 'snapshot',
+    revision: 'recovered',
+    text: 'recovered text',
+  });
+
+  await waitFor(() =>
+    expect(rendered.result.current).toMatchObject({ revision: 'recovered' }),
+  );
+});
 
 test('committed settlement treats accessor and custom-prototype cache values as a refetch boundary', () => {
   const accessor = Object.defineProperty({}, 'kind', {
@@ -308,6 +377,338 @@ test('a committed SSE cancels an authoritative GET and preserves its newer canon
   ).toEqual({ kind: 'snapshot', revision: 'rev3', text: 'three' });
 });
 
+test('initial SSE snapshot cancels the older GET before cache publication and preserves mounted editor text', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const rendered = renderHook(
+    () => {
+      const document = useProjectTaskRoomDocumentQuery('task-1');
+      const [editorText, setEditorText] = useState('');
+      useProjectTaskRoomStream('task-1', {
+        onAuthoritativeDocument: (next) => setEditorText(next.text),
+      });
+      return { document: document.data, editorText };
+    },
+    { wrapper },
+  );
+  await waitFor(() => expect(callbacks).toBeDefined());
+  await waitFor(() => expect(documentRequests).toHaveLength(1));
+
+  act(() =>
+    callbacks!.onEvent({
+      kind: 'snapshot',
+      value: {
+        document: {
+          kind: 'snapshot',
+          revision: 'stream-new',
+          text: 'new editor text',
+        },
+      },
+    }),
+  );
+  expect(documentRequests[0]?.init.signal?.aborted).toBe(true);
+  expect(
+    client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
+  ).toEqual({
+    kind: 'snapshot',
+    revision: 'stream-new',
+    text: 'new editor text',
+  });
+  documentRequests[0]?.resolve({
+    kind: 'snapshot',
+    revision: 'http-old',
+    text: 'old editor text',
+  });
+  await Promise.resolve();
+
+  await waitFor(() =>
+    expect(rendered.result.current.editorText).toBe('new editor text'),
+  );
+  expect(rendered.result.current.document).toEqual({
+    kind: 'snapshot',
+    revision: 'stream-new',
+    text: 'new editor text',
+  });
+});
+
+test.each([
+  ['duplicate', { kind: 'duplicate', revision: 'rev-duplicate' }],
+  ['malformed', { kind: 'unexpected' }],
+] as const)(
+  'an active document observer recovers a %s event through the no-cache authoritative read',
+  async (_label, value) => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const rendered = renderHook(
+      () => {
+        const document = useProjectTaskRoomDocumentQuery('task-1');
+        useProjectTaskRoomStream('task-1');
+        return document.data;
+      },
+      { wrapper },
+    );
+    await waitFor(() => expect(callbacks).toBeDefined());
+    await waitFor(() => expect(documentRequests).toHaveLength(1));
+    documentRequests[0]?.resolve({
+      kind: 'snapshot',
+      revision: 'baseline',
+      text: 'baseline',
+    });
+    await waitFor(() =>
+      expect(rendered.result.current).toMatchObject({ revision: 'baseline' }),
+    );
+
+    act(() => callbacks!.onEvent({ kind: 'document', value }));
+    await waitFor(() => expect(documentRequests).toHaveLength(2));
+    expect(documentRequests[1]?.init.headers).toEqual({
+      'Cache-Control': 'no-cache',
+    });
+    documentRequests[1]?.resolve({
+      kind: 'snapshot',
+      revision: 'recovered',
+      text: 'recovered text',
+    });
+
+    await waitFor(() =>
+      expect(rendered.result.current).toEqual({
+        kind: 'snapshot',
+        revision: 'recovered',
+        text: 'recovered text',
+      }),
+    );
+  },
+);
+
+test('applies a parsed accepted document synchronously without a recovery refetch', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  const applied: Array<{ revision: string; beforeReturn: boolean }> = [];
+  let returned = false;
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  renderHook(
+    () => {
+      useProjectTaskRoomStream('task-1', {
+        onAuthoritativeDocument: (document) =>
+          applied.push({
+            revision: document.revision,
+            beforeReturn: !returned,
+          }),
+      });
+    },
+    { wrapper },
+  );
+  await waitFor(() => expect(callbacks).toBeDefined());
+
+  callbacks!.onEvent({
+    kind: 'document',
+    value: { kind: 'committed', revision: 'rev2', text: 'two' },
+  });
+  returned = true;
+
+  expect(applied).toEqual([{ revision: 'rev2', beforeReturn: true }]);
+  expect(documentRequests).toHaveLength(0);
+  expect(invalidate).not.toHaveBeenCalled();
+  expect(
+    client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
+  ).toEqual({ kind: 'snapshot', revision: 'rev2', text: 'two' });
+});
+
+test('isolates throwing document observers without delaying cache normalization', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const rawObserver = vi.fn(() => {
+    throw new Error('raw observer failed');
+  });
+  const authoritativeObserver = vi.fn(() => {
+    throw new Error('authoritative observer failed');
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  renderHook(
+    () => {
+      useProjectTaskRoomStream('task-1', {
+        onDocument: rawObserver,
+        onAuthoritativeDocument: authoritativeObserver,
+      });
+    },
+    { wrapper },
+  );
+  await waitFor(() => expect(callbacks).toBeDefined());
+
+  expect(() =>
+    callbacks!.onEvent({
+      kind: 'document',
+      value: { kind: 'committed', revision: 'rev2', text: 'two' },
+    }),
+  ).not.toThrow();
+
+  expect(rawObserver).toHaveBeenCalledOnce();
+  expect(authoritativeObserver).toHaveBeenCalledOnce();
+  expect(
+    client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
+  ).toEqual({ kind: 'snapshot', revision: 'rev2', text: 'two' });
+});
+
+test('observer mutation cannot alter authoritative cache truth', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const observer = vi.fn((document: { text: string }) => {
+    document.text = 'observer-poisoned';
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  renderHook(
+    () =>
+      useProjectTaskRoomStream('task-1', { onAuthoritativeDocument: observer }),
+    { wrapper },
+  );
+  await waitFor(() => expect(callbacks).toBeDefined());
+
+  callbacks!.onEvent({
+    kind: 'document',
+    value: { kind: 'committed', revision: 'rev2', text: 'canonical' },
+  });
+
+  expect(observer).toHaveBeenCalledOnce();
+  expect(
+    client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
+  ).toEqual({ kind: 'snapshot', revision: 'rev2', text: 'canonical' });
+});
+
+test('rejects callbacks from the previous Task during the render-to-cleanup handoff', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const delivered: string[] = [];
+  let injectedOldConnection = false;
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const rendered = renderHook(
+    ({ taskId }: { taskId: string }) => {
+      useProjectTaskRoomStream(taskId, {
+        onAuthoritativeDocument: (document) =>
+          delivered.push(`${taskId}:document:${document.text}`),
+        onCheckpoint: (id) => delivered.push(`${taskId}:checkpoint:${id}`),
+        onTerminal: () => delivered.push(`${taskId}:terminal`),
+      });
+      // This is the review's exact window: Task B has committed and the stream
+      // hook's layout fence has advanced, but Task A's passive cleanup has not
+      // run yet. Hook layout effects execute in declaration order.
+      useLayoutEffect(() => {
+        if (
+          taskId !== 'task-b' ||
+          injectedOldConnection ||
+          !streamConnections[0]
+        )
+          return;
+        injectedOldConnection = true;
+        streamConnections[0].callbacks.onCheckpoint?.('late-a');
+        streamConnections[0].callbacks.onEvent({
+          kind: 'document',
+          value: { kind: 'committed', revision: 'rev-a', text: 'task a' },
+        });
+        streamConnections[0].callbacks.onEvent({ kind: 'terminal' });
+      }, [taskId]);
+    },
+    { initialProps: { taskId: 'task-a' }, wrapper },
+  );
+  await waitFor(() => expect(streamConnections).toHaveLength(1));
+
+  rendered.rerender({ taskId: 'task-b' });
+
+  expect(delivered).toEqual([]);
+  expect(
+    client.getQueryData(projectTaskRoomQueries.document('task-a').queryKey),
+  ).toBeUndefined();
+  await waitFor(() => expect(streamConnections).toHaveLength(2));
+  streamConnections[1].callbacks.onEvent({
+    kind: 'document',
+    value: { kind: 'committed', revision: 'rev-b', text: 'task b' },
+  });
+  expect(delivered).toEqual(['task-b:document:task b']);
+});
+
+test('closes the originating lifecycle exactly once across Task and generation changes', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const lifecycle: string[] = [];
+  const documents: string[] = [];
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const rendered = renderHook(
+    ({ taskId, generation }: { taskId: string; generation: number }) =>
+      useProjectTaskRoomStream(
+        taskId,
+        {
+          onConnectionCreated: (id) =>
+            lifecycle.push(`${taskId}:created:${id}`),
+          onConnectionClosed: (id) => lifecycle.push(`${taskId}:closed:${id}`),
+          onAuthoritativeDocument: (document) =>
+            documents.push(`${taskId}:${document.text}`),
+        },
+        generation,
+      ),
+    {
+      initialProps: { taskId: 'task-a', generation: 0 },
+      wrapper,
+    },
+  );
+  await waitFor(() => expect(streamConnections).toHaveLength(1));
+  await waitFor(() => expect(lifecycle).toHaveLength(1));
+  const firstId = lifecycle[0].split(':created:')[1];
+
+  rendered.rerender({ taskId: 'task-b', generation: 0 });
+  await waitFor(() => expect(streamConnections).toHaveLength(2));
+  await waitFor(() =>
+    expect(lifecycle).toEqual(
+      expect.arrayContaining([
+        `task-a:closed:${firstId}`,
+        expect.stringMatching(/^task-b:created:task-b:/),
+      ]),
+    ),
+  );
+  expect(streamConnections[0].close).toHaveBeenCalledOnce();
+  streamConnections[0].callbacks.onEvent({
+    kind: 'document',
+    value: { kind: 'committed', revision: 'late-a', text: 'late task a' },
+  });
+  expect(documents).toEqual([]);
+  const secondCreated = lifecycle.find((entry) =>
+    entry.startsWith('task-b:created:'),
+  );
+  const secondId = secondCreated?.split(':created:')[1];
+
+  rendered.rerender({ taskId: 'task-b', generation: 1 });
+  await waitFor(() => expect(streamConnections).toHaveLength(3));
+  await waitFor(() => expect(lifecycle).toContain(`task-b:closed:${secondId}`));
+  expect(streamConnections[1].close).toHaveBeenCalledOnce();
+  expect(
+    lifecycle.filter((entry) => entry === `task-a:closed:${firstId}`),
+  ).toHaveLength(1);
+  expect(
+    lifecycle.filter((entry) => entry === `task-b:closed:${secondId}`),
+  ).toHaveLength(1);
+});
+
 test('committed SSE cancels a deferred older GET and duplicate cannot regress cache', async () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -352,7 +753,46 @@ test('committed SSE cancels a deferred older GET and duplicate cannot regress ca
   await Promise.resolve();
   expect(
     client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
-  ).toEqual({ kind: 'snapshot', revision: 'rev3', text: 'three' });
+  ).toEqual({ kind: 'unavailable' });
+  await waitFor(() => expect(documentRequests).toHaveLength(1));
+  documentRequests[0].resolve({
+    kind: 'snapshot',
+    revision: 'rev3',
+    text: 'three',
+  });
+  await waitFor(() =>
+    expect(
+      client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
+    ).toEqual({ kind: 'snapshot', revision: 'rev3', text: 'three' }),
+  );
+});
+
+test('a gap revokes cached authority before its recovery GET settles', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const key = projectTaskRoomQueries.document('task-1').queryKey;
+  client.setQueryData(key, { kind: 'snapshot', revision: 'old', text: 'old' });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  renderHook(() => useProjectTaskRoomStream('task-1'), { wrapper });
+  await waitFor(() => expect(callbacks).toBeDefined());
+  callbacks!.onEvent({
+    kind: 'document',
+    value: { kind: 'gap', floor: 'floor' },
+  });
+  expect(client.getQueryData(key)).toEqual({ kind: 'gap', floor: 'floor' });
+  await waitFor(() => expect(documentRequests).toHaveLength(1));
+  expect(client.getQueryData(key)).toEqual({ kind: 'gap', floor: 'floor' });
+  documentRequests[0].resolve({
+    kind: 'snapshot',
+    revision: 'new',
+    text: 'new',
+  });
+  await waitFor(() =>
+    expect(client.getQueryData(key)).toMatchObject({ revision: 'new' }),
+  );
 });
 
 test('a gap recovery GET cannot overwrite a later committed SSE', async () => {

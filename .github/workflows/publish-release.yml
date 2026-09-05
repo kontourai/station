@@ -52,8 +52,12 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           path: release-policy
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - name: Resolve tag to one immutable commit
         id: source
@@ -144,8 +148,12 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           path: release-policy
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - name: Download and revalidate every staged release asset
         env:
@@ -466,8 +474,12 @@ jobs:
           ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 257
           persist-credentials: false
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - name: Validate public release inventory and GitHub attestations
         env:

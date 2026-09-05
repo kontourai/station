@@ -77,7 +77,15 @@ If the workspace is not ready, Station keeps the setup action visible. Run
 - [Contributing](CONTRIBUTING.md) — source setup, repository architecture,
   testing, and documentation maintenance.
 
-## Data And Privacy
+## Support and contributions
+
+For setup and usage help, use [Kontour support](https://kontourai.io/support/).
+For bugs and feature requests, use the [issue chooser](https://github.com/kontourai/station/issues/new/choose).
+Read [Contributing](CONTRIBUTING.md) before proposing a change and follow the
+[Code of Conduct](CODE_OF_CONDUCT.md). Report vulnerabilities through the
+private route in our [Security Policy](SECURITY.md).
+
+## Data and privacy
 
 Station is self-hosted. It does not use data for cross-app or cross-site
 tracking. Data leaves the device only when a user or operator configures a

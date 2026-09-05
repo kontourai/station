@@ -255,6 +255,33 @@ describe('createSessionAgentResolver', () => {
     },
   );
 
+  test('uses the captured plugin Agent without rereading a replacement definition', async () => {
+    const loadAgentSpec = vi.fn(async () =>
+      agentSpec({ prompt: 'Replacement instructions' }),
+    );
+    const resolveToolServer = vi.fn(async () => null);
+    const resolver = createSessionAgentResolver({
+      loadAgentSpec,
+      resolveToolServer,
+      resolveSkillDir: async () => null,
+    });
+    const captured = agentSpec({
+      prompt: 'Captured instructions',
+      tools: { mcpServers: [] },
+    });
+    const result = await resolver(
+      baseInput({
+        provider: 'claude',
+        metadata: { agentSlug: 'example-assistant' },
+      }),
+      { agentId: 'example-assistant', spec: captured },
+    );
+    expect(loadAgentSpec).not.toHaveBeenCalled();
+    expect(resolveToolServer).not.toHaveBeenCalled();
+    expect(result.agent?.systemPrompt).toBe('Captured instructions');
+    expect(result.agent?.toolServers).toEqual([]);
+  });
+
   test('keeps the Station role capabilities when a materialized record omits tools', async () => {
     const { selfIntegration } = createRuntimeSelfIntegration();
     const { docsIntegration } = createRuntimeDocsIntegration();

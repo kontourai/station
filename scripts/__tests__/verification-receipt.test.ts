@@ -24,6 +24,7 @@ import {
   collectVerificationProvenance,
   detectToolchainIdentity,
   digestRepositoryFile,
+  digestVerificationDependencies,
   digestVerificationEnvironment,
   normalizeGitOrigin,
   resolveVerificationToolchain,
@@ -1330,7 +1331,7 @@ describe('collectRepositoryIdentity and toolchain', () => {
     // points at a file that does not exist (the prior bug) and invalidates
     // every receipt. Verified by spawning a real child in the scripts/ subdir.
     const root = collectRepositoryIdentity().repositoryRoot;
-    const expected = digestRepositoryFile(resolve(root, 'package-lock.json'));
+    const expected = digestVerificationDependencies(root);
     const moduleUrl = pathToFileURL(
       resolve(root, 'scripts/lib/test-reliability.mjs'),
     ).href;
@@ -1349,10 +1350,10 @@ describe('collectRepositoryIdentity and toolchain', () => {
 
   it('collectVerificationProvenance honors an explicit lockfile override', () => {
     const root = collectRepositoryIdentity().repositoryRoot;
-    const explicit = resolve(root, 'package-lock.json');
+    const explicit = resolve(root, 'pnpm-lock.yaml');
     expect(
       collectVerificationProvenance({ lockfile: explicit }).dependencyDigest,
-    ).toBe(digestRepositoryFile(explicit));
+    ).toBe(digestVerificationDependencies(root, explicit));
   });
 
   it('honors an explicit cwd for repository, workspace, toolchain, and lockfile identity', () => {

@@ -1347,6 +1347,31 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test.each([
+    { with: { install: true } },
+    { with: undefined },
+    { with: { version: 'latest' } },
+    { uses: 'pnpm/setup@v2' },
+    { env: { NODE_OPTIONS: '--require=./candidate.js' } },
+  ])('rejects changing the pinned pnpm bootstrap contract: %j', (mutation) => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiFixture((forkSmoke) => {
+          const setup = (
+            forkSmoke.steps as Array<Record<string, unknown>>
+          ).find((step) => step.name === 'Setup pinned pnpm');
+          if (!setup) throw new Error('Expected pinned pnpm bootstrap.');
+          Object.assign(setup, mutation);
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fork-smoke',
+      message:
+        'pull_request_target router jobs must not add unreviewed custom actions',
+    });
+  });
+
   test('rejects setup-node remote caching on a persistent self-hosted job', () => {
     const findings = persistentRunnerPolicyFindings([
       {
