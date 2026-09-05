@@ -81,7 +81,7 @@ describe('verification policy gate', () => {
   test('keeps public heavy lanes coordinated and guidance progressive', () => {
     expect(verificationPolicyErrors()).toEqual([]);
     expect(packageJson.scripts['verification:policy:gate']).toBe(
-      'node scripts/verification-policy-gate.mjs && node scripts/product-law-gate.mjs',
+      'node scripts/verification-policy-gate.mjs && node scripts/product-law-gate.mjs && npm run test:fixtures:guard',
     );
     expect(PREPUSH_TEST_FILES).toContain(
       'scripts/__tests__/verification-policy-gate.test.ts',
