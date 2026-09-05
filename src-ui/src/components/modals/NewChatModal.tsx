@@ -968,7 +968,9 @@ export function NewChatModal({
               }
             />
           ))}
-        {checkingSetup ? <p role="status">Checking connections…</p> : null}
+        {checkingSetup ? (
+          <SkeletonList count={1} label="Checking connections" />
+        ) : null}
         {flatList.length > 0 && returnError ? (
           <ErrorState
             variant="compact"
