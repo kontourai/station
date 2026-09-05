@@ -5,7 +5,10 @@ import { CANONICAL_PLUGIN_ID_PATTERN } from '@kontourai/station-contracts/plugin
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { ContextSafetyError } from '../../orchestration/context-safety.js';
 import { DistributionProfileService } from '../distribution-profile-service.js';
-import { readPluginManifestFile } from '../plugin-manifest-loader.js';
+import {
+  readPluginManifestFile,
+  readPluginManifestFileWithFormat,
+} from '../plugin-manifest-loader.js';
 
 describe('plugin-manifest-loader', () => {
   let dir: string;
@@ -69,6 +72,130 @@ describe('plugin-manifest-loader', () => {
       /Agent Plugin manifest is invalid: Plugin manifest uses retired Station root field 'layout'/,
     );
   });
+
+  test('normalizes validated Station contributions into their existing host contract', async () => {
+    const manifestPath = join(dir, 'plugin.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'portable.example',
+        version: '2.0',
+        extensions: {
+          'io.kontourai.station': {
+            schemaVersion: '1.0',
+            title: 'Example',
+            agents: [{ slug: 'echo', source: './agents/echo/agent.json' }],
+            providers: [{ type: 'userIdentity', module: './identity.js' }],
+            workspacePanes: [
+              {
+                version: '1.0',
+                id: 'review-queue',
+                name: 'Review Queue',
+                rendererId: 'portable.example.review-queue',
+                renderer: { kind: 'plugin-component', name: 'review-queue' },
+                placement: { supportedRegions: ['secondary'] },
+                modes: [
+                  { id: 'default', contextRequirement: { project: true } },
+                ],
+                provenance: { origin: 'plugin', pluginId: 'portable.example' },
+                lifecycle: { stage: 'stable' },
+              },
+            ],
+            permissions: ['agents.invoke'],
+            dependencies: [{ name: 'common', version: '*' }],
+            settings: [
+              {
+                key: 'authDomain',
+                title: 'Domain',
+                type: 'string',
+                default: 'example.test',
+              },
+              {
+                key: 'mode',
+                title: 'Mode',
+                type: 'select',
+                options: [{ title: 'Local', value: 'local' }],
+              },
+            ],
+            secretReferences: [
+              { key: 'apiToken', title: 'API token', required: true },
+            ],
+          },
+        },
+      }),
+    );
+    await expect(
+      readPluginManifestFileWithFormat(manifestPath),
+    ).resolves.toMatchObject({
+      format: 'agent-plugin-1.0',
+      stationExtension: { status: 'validated' },
+      manifest: {
+        name: 'portable.example',
+        displayName: 'Example',
+        agents: [{ slug: 'echo', source: './agents/echo/agent.json' }],
+        providers: [{ type: 'userIdentity', module: './identity.js' }],
+        workspacePanes: [
+          {
+            id: 'review-queue',
+            provenance: { origin: 'plugin', pluginId: 'portable.example' },
+          },
+        ],
+        permissions: ['agents.invoke'],
+        dependencies: [{ id: 'common', version: '*' }],
+        settings: [
+          {
+            key: 'authDomain',
+            label: 'Domain',
+            type: 'string',
+            default: 'example.test',
+          },
+          {
+            key: 'mode',
+            label: 'Mode',
+            type: 'select',
+            options: [{ label: 'Local', value: 'local' }],
+          },
+          {
+            key: 'apiToken',
+            label: 'API token',
+            type: 'string',
+            secret: true,
+            required: true,
+          },
+        ],
+      },
+    });
+  });
+
+  test.each([
+    { settings: [{ key: 'constructor', title: 'Invalid', type: 'string' }] },
+    {
+      settings: [{ key: 'token', title: 'Token', type: 'string' }],
+      secretReferences: [{ key: 'token', title: 'Token' }],
+    },
+    { providers: [{ type: 'userIdentity', module: 'invalid-path' }] },
+  ])(
+    'disables an invalid Station extension while preserving portable identity: %j',
+    async (extension) => {
+      const manifestPath = join(dir, 'plugin.json');
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+          name: 'portable.example',
+          extensions: {
+            'io.kontourai.station': { schemaVersion: '1.0', ...extension },
+          },
+        }),
+      );
+      const loaded = await readPluginManifestFileWithFormat(manifestPath);
+      expect(loaded.stationExtension).toMatchObject({ status: 'disabled' });
+      expect(loaded.manifest.name).toBe('portable.example');
+      expect(loaded.manifest.providers).toBeUndefined();
+      expect(loaded.manifest.settings).toBeUndefined();
+    },
+  );
 
   // archive#4307: `manifest.name` is a STORE KEY (plugin-overrides, grants,
   // the provider resolver, the installed-plugin registry) and the manifest's

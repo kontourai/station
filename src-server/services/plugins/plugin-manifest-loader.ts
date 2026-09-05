@@ -59,6 +59,7 @@ export type PluginManifestFormat = 'legacy' | 'agent-plugin-1.0';
 export interface PluginManifestWithFormat {
   manifest: PluginManifest;
   format: PluginManifestFormat;
+  stationExtension?: { status: 'validated' | 'disabled'; reason?: string };
 }
 
 export async function readPluginManifestFileWithFormat(
@@ -101,14 +102,14 @@ export function parsePluginManifestDocumentWithFormat(
   });
   const agentPlugin = readAgentPluginManifest(raw, manifestPath);
   return agentPlugin
-    ? { manifest: agentPlugin, format: 'agent-plugin-1.0' }
+    ? { ...agentPlugin, format: 'agent-plugin-1.0' }
     : { manifest: parsePluginManifest(raw, manifestPath), format: 'legacy' };
 }
 
 function readAgentPluginManifest(
   raw: string,
   manifestPath: string,
-): PluginManifest | null {
+): Omit<PluginManifestWithFormat, 'format'> | null {
   let candidate: unknown;
   try {
     candidate = JSON.parse(raw);
@@ -141,11 +142,106 @@ function readAgentPluginManifest(
     );
   }
   const loaded = outcome.plugin;
-  return {
+  const base: PluginManifest = {
     name: loaded.manifest.name,
     version: loaded.manifest.version ?? '0.0.0-agent-plugin-unversioned',
     description: loaded.manifest.description,
   };
+  const extension = loaded.stationExtension;
+  if (!extension)
+    return {
+      manifest: base,
+      ...(loaded.reports.some(
+        (report) => report.code === 'station-extension-invalid',
+      )
+        ? {
+            stationExtension: {
+              status: 'disabled' as const,
+              reason: 'Station extension does not satisfy its schema',
+            },
+          }
+        : {}),
+    };
+  try {
+    const settings = (extension.settings ?? []).map((field) => ({
+      key: field.key,
+      label: field.title,
+      type: field.type,
+      ...(field.description !== undefined
+        ? { description: field.description }
+        : {}),
+      ...(field.default !== undefined ? { default: field.default } : {}),
+      ...(field.required !== undefined ? { required: field.required } : {}),
+      ...(field.type === 'select'
+        ? {
+            options: field.options.map((option) => ({
+              label: option.title,
+              value: option.value,
+            })),
+          }
+        : {}),
+    }));
+    const settingKeys = new Set(settings.map((field) => field.key));
+    if (settingKeys.size !== settings.length)
+      throw new Error('Duplicate Station setting keys');
+    const secrets = (extension.secretReferences ?? []).map((field) => {
+      if (settingKeys.has(field.key))
+        throw new Error('Duplicate Station setting or secret-reference key');
+      settingKeys.add(field.key);
+      return {
+        key: field.key,
+        label: field.title,
+        type: 'string' as const,
+        secret: true,
+        ...(field.description ? { description: field.description } : {}),
+        ...(field.required !== undefined ? { required: field.required } : {}),
+      };
+    });
+    const normalized: Record<string, unknown> = { ...base };
+    const fields = [
+      'sdkVersion',
+      'entrypoint',
+      'serverModule',
+      'build',
+      'capabilities',
+      'permissions',
+      'commands',
+      'links',
+      'agents',
+      'workspacePanes',
+      'operationalEventSubscriptions',
+      'providers',
+      'integrations',
+      'tools',
+      'knowledge',
+      'prompts',
+    ] as const;
+    for (const field of fields)
+      if (extension[field] !== undefined) normalized[field] = extension[field];
+    if (extension.title !== undefined) normalized.displayName = extension.title;
+    if (settings.length || secrets.length)
+      normalized.settings = [...settings, ...secrets];
+    if (extension.dependencies)
+      normalized.dependencies = extension.dependencies.map((dependency) => ({
+        id: dependency.name,
+        version: dependency.version,
+      }));
+    return {
+      manifest: parsePluginManifest(JSON.stringify(normalized), manifestPath),
+      stationExtension: { status: 'validated' },
+    };
+  } catch (error) {
+    return {
+      manifest: base,
+      stationExtension: {
+        status: 'disabled',
+        reason:
+          error instanceof PluginManifestValidationError
+            ? error.message
+            : 'Station extension could not be normalized into the host contract',
+      },
+    };
+  }
 }
 
 export function parsePluginManifest(

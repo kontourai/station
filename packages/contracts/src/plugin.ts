@@ -1,3 +1,4 @@
+import type { PluginCommandContribution } from './agent-plugin.js';
 import type { KnowledgeNamespaceConfig } from './knowledge.js';
 import type {
   OperationalEventProjection,
@@ -7,9 +8,8 @@ import type { WorkspacePaneDescriptor } from './workspace-pane.js';
 import type { WorkspacePaneHostContributionV1 } from './workspace-pane-host-contribution.js';
 
 /**
- * Canonical persisted plugin identity. Plugin directories and registry aliases
- * use this exact path-safe lowercase identifier rather than accepting a second
- * broader spelling at their storage boundary.
+ * Canonical logical plugin identity. Local adapters derive safe physical keys;
+ * filesystem spellings never create a second logical identifier grammar.
  */
 export const CANONICAL_PLUGIN_ID_PATTERN =
   /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$/;
@@ -121,6 +121,8 @@ export interface PluginProviderEntry {
 export interface PluginDependency {
   id: string;
   source?: string;
+  /** Exact opaque version, or '*' for any declared version. */
+  version?: string;
 }
 
 export interface PluginSettingField {
@@ -225,6 +227,7 @@ export interface PluginManifest {
   serverModule?: string;
   build?: string;
   capabilities?: string[];
+  commands?: PluginCommandContribution[];
   permissions?: string[];
   links?: unknown;
   agents?: Array<{ slug: string; source: string }>;
