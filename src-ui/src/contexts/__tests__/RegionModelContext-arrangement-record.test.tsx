@@ -111,6 +111,23 @@ function writeFromAnotherTab(record: unknown) {
   );
 }
 
+/** Every write a mount could make: device settings (any key) and navigation's dock setters. */
+function spyOnEverySetter() {
+  return {
+    set: vi.spyOn(deviceSettingsStore, 'set'),
+    setDockMode: vi.spyOn(navigationStore, 'setDockMode'),
+    setDockState: vi.spyOn(navigationStore, 'setDockState'),
+    updateParams: vi.spyOn(navigationStore, 'updateParams'),
+  };
+}
+
+function expectNoWrites(spies: ReturnType<typeof spyOnEverySetter>) {
+  expect(spies.set).not.toHaveBeenCalled();
+  expect(spies.setDockMode).not.toHaveBeenCalled();
+  expect(spies.setDockState).not.toHaveBeenCalled();
+  expect(spies.updateParams).not.toHaveBeenCalled();
+}
+
 function regionArrangementWrites(spy: {
   mock: { calls: readonly (readonly unknown[])[] };
 }) {
@@ -166,7 +183,11 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
     expect(model?.regions.main.occupant).toBe('home');
   });
 
-  test('a record equal to the default is no record: the legacy seed governs, so Chat follows dockSlotPlacement', async () => {
+  // The upgrade case: a pre-record device holds the registry default plus its
+  // legacy `dockSlotPlacement`. Only the default-record gate lets the legacy
+  // key govern here, because a governing record now decides Chat's placement
+  // itself (below).
+  test('a record equal to the default is no record: the legacy seed governs, so a pre-record device keeps Chat where dockSlotPlacement said', async () => {
     seedEnvelope({
       regionArrangement: DEFAULT_REGION_ARRANGEMENT_RECORD,
       dockSlotPlacement: 'right',
@@ -193,6 +214,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
       }),
     });
     setUrl('/?dock=open&dockSlotPlacement=left');
+    const spies = spyOnEverySetter();
 
     render(<Harness />);
     await waitFor(() => expect(model).not.toBeNull());
@@ -208,6 +230,66 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
       size: 517,
       occupant: 'activity',
     });
+    // The initializer did this, not a mount-time correction that then
+    // persisted: no record write, no navigation write.
+    await settle();
+    expect(regionArrangementWrites(spies.set)).toHaveLength(0);
+    expectNoWrites(spies);
+  });
+
+  test('?dockSlotPlacement=right places Chat in an occupied right, relocating Activity by the model’s own rule, and writes nothing', async () => {
+    seedEnvelope({ regionArrangement: activityRightRecord() });
+    setUrl('/?dockSlotPlacement=right');
+    const spies = spyOnEverySetter();
+
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+
+    // No `dock=open`, and the record held Chat hidden: placed, not shown.
+    expect(model?.regions.right).toMatchObject({
+      occupant: 'chat',
+      visible: false,
+    });
+    // Activity swaps into the region Chat vacated, keeping its visibility.
+    expect(model?.regions.bottom).toMatchObject({
+      occupant: 'activity',
+      visible: true,
+    });
+    await settle();
+    expectNoWrites(spies);
+    expect(window.location.search).toBe('?dockSlotPlacement=right');
+  });
+
+  test('with no URL param the record decides Chat, not the legacy dockSlotPlacement/dock keys', async () => {
+    seedEnvelope({
+      regionArrangement: activityRightRecord({
+        left: {
+          visible: false,
+          size: 400,
+          occupant: { kind: 'surface', id: 'activity' },
+        },
+        right: {
+          visible: true,
+          size: 480,
+          occupant: { kind: 'surface', id: 'chat' },
+        },
+        bottom: { visible: false, size: 320, occupant: null },
+      }),
+      dockSlotPlacement: 'left',
+    });
+    setUrl('/');
+    expect(navigationStore.getSnapshot().dockMode).toBe('left');
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+
+    expect(model?.regions.right).toEqual({
+      visible: true,
+      size: 480,
+      occupant: 'chat',
+    });
+    expect(model?.regions.left.occupant).toBe('activity');
   });
 
   test('a record naming a retired surface in right mounts with right empty', async () => {
@@ -287,17 +369,59 @@ describe('RegionModelProvider persists every arrangement write as the record', (
     expect(model?.regions.left.occupant).toBe('activity');
   });
 
-  test('a mount is not a write: nothing is persisted until the user changes something', async () => {
-    const setSpy = vi.spyOn(deviceSettingsStore, 'set');
+  test('a mount is not a write: no setter is reached until the user changes something', async () => {
     setUrl('/?dock=open');
+    const spies = spyOnEverySetter();
     render(<Harness />);
     await waitFor(() => expect(model?.regions.bottom.visible).toBe(true));
     await settle();
 
-    expect(regionArrangementWrites(setSpy)).toHaveLength(0);
+    expectNoWrites(spies);
     expect(deviceSettingsStore.get('regionArrangement')).toEqual(
       DEFAULT_REGION_ARRANGEMENT_RECORD,
     );
+  });
+
+  // The legacy keys say Chat belongs in `left`, which the record gives to
+  // Activity; the record shows Chat in `right` while navigation says closed.
+  // Before this fix the mount-time legacy sync kept Chat put and then
+  // `setDockMode` wrote `dockSlotPlacement: 'right'` before the user touched
+  // anything. A disagreement is reconciled by the mirror on the next user
+  // change, never at mount.
+  test('a mount with legacy keys disagreeing with the record reaches no setter', async () => {
+    seedEnvelope({
+      regionArrangement: activityRightRecord({
+        left: {
+          visible: false,
+          size: 400,
+          occupant: { kind: 'surface', id: 'activity' },
+        },
+        right: {
+          visible: true,
+          size: 480,
+          occupant: { kind: 'surface', id: 'chat' },
+        },
+        bottom: { visible: false, size: 320, occupant: null },
+      }),
+      dockSlotPlacement: 'left',
+    });
+    setUrl('/');
+    const spies = spyOnEverySetter();
+
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    await settle();
+
+    expect(model?.regions.right.occupant).toBe('chat');
+    expect(model?.regions.left.occupant).toBe('activity');
+    expectNoWrites(spies);
+    expect(deviceSettingsStore.get('dockSlotPlacement')).toBe('left');
+    expect(window.location.search).toBe('');
+
+    // The next USER change is where the mirror reconciles: hiding Chat now
+    // reaches navigation, and only navigation.
+    act(() => model?.setRegion('right', { visible: false }));
+    await waitFor(() => expect(spies.setDockState).toHaveBeenCalled());
   });
 });
 
@@ -333,6 +457,18 @@ describe('RegionModelProvider adopts another tab’s record without re-persistin
 
     expect(model?.regions).toBe(before);
     expect(regionArrangementWrites(setSpy)).toHaveLength(0);
+  });
+
+  test('adopting a record that hides the last-shown region moves lastShownRegion to a region still showing something', async () => {
+    setUrl('/?dock=open');
+    render(<Harness />);
+    await waitFor(() => expect(model?.lastShownRegion).toBe('bottom'));
+
+    act(() => writeFromAnotherTab(activityRightRecord()));
+
+    await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
+    expect(model?.regions.bottom.visible).toBe(false);
+    expect(model?.lastShownRegion).toBe('right');
   });
 
   test('an unrelated setting’s write re-materializes an equal record and changes nothing', async () => {

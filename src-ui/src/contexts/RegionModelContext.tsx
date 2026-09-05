@@ -36,6 +36,7 @@ import {
   syncRegionArrangementFromDock,
   updateRegion,
 } from '../regions/region-model';
+import { normalizeDockMode } from '../types';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -128,15 +129,24 @@ const REGION_ARRANGEMENT_PERSIST_DELAY_MS = 150;
 /**
  * Where the arrangement starts (#928 D). Precedence, highest first:
  *
- * 1. URL and navigation for Chat (`dock`, `dockSlotPlacement`, then the
- *    `dockSlotPlacement` device setting) — applied through the same
- *    `syncRegionArrangementFromDock` the legacy seed uses, so a deep link
- *    still wins over what the record says about Chat.
- * 2. The `regionArrangement` record, for every other surface, every size and
- *    every visibility. A record equal to the registry default is one this
- *    device has never written, and reads as absent.
- * 3. The legacy dock seed (`chatDockHeight`/`chatDockWidth` plus Chat's
- *    navigation state), which is all an older device has.
+ * 1. A URL deep link, for Chat only: `dockSlotPlacement` PLACES Chat there
+ *    (`placeSurface`, relocating whatever held the region by the model's own
+ *    rule — the previous Chat region when it may, else the first free dock
+ *    region), and `dock=open` shows it. Read from the URL itself, not from
+ *    navigation's blended `dockMode`, which falls back to the device setting.
+ * 2. The `regionArrangement` record: every surface's placement, every size,
+ *    every visibility — Chat's included when the URL says nothing. A record
+ *    equal to the registry default is one this device has never written and
+ *    reads as absent, which is what carries a pre-record device's dock
+ *    position through the upgrade (its only state is the legacy keys).
+ * 3. The legacy dock seed (`chatDockHeight`/`chatDockWidth`, the
+ *    `dockSlotPlacement` device setting, navigation's `dock`), which is all
+ *    an older device has. Only this path reads the legacy size keys; a record
+ *    keeps its own sizes.
+ *
+ * A mount is not a write: nothing here reaches navigation or device settings.
+ * A record and legacy keys that disagree are reconciled by the mirror on the
+ * next user change (see `mirroredRegionsRef` and `seenNavigationRef`).
  */
 function initialRegionArrangement(
   settings: DeviceSettings,
@@ -145,17 +155,32 @@ function initialRegionArrangement(
 ): RegionArrangement {
   const stored = parseRegionArrangementRecord(settings.regionArrangement);
   if (
-    stored &&
-    !isDefaultRegionArrangementRecord(toRegionArrangementRecord(stored))
+    !stored ||
+    isDefaultRegionArrangementRecord(toRegionArrangementRecord(stored))
   ) {
-    return syncRegionArrangementFromDock(
+    return seedRegionArrangementFromDock(settings, dockMode, isDockOpen);
+  }
+  const linkedPlacement = normalizeDockMode(
+    new URLSearchParams(window.location.search).get('dockSlotPlacement'),
+  );
+  const chatAt = chatRegion(stored);
+  // `isDockOpen` is a URL fact (`dock=open`; navigation-store.ts), so an
+  // absent param defers to the record's own visibility for Chat.
+  const chatVisible = isDockOpen || (chatAt ? stored[chatAt].visible : false);
+  if (linkedPlacement) {
+    return placeSurfaceInArrangement(
       stored,
-      settings,
-      isDockOpen,
-      dockMode,
+      'chat',
+      linkedPlacement,
+      chatVisible,
     );
   }
-  return seedRegionArrangementFromDock(settings, dockMode, isDockOpen);
+  if (isDockOpen) {
+    return chatAt
+      ? updateRegion(stored, chatAt, { visible: true })
+      : placeSurfaceInArrangement(stored, 'chat', dockMode, true);
+  }
+  return stored;
 }
 
 function recordOf(value: unknown): RegionArrangementRecord | null {
@@ -206,6 +231,13 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   >(undefined);
   if (seenStoredRecordRef.current === undefined)
     seenStoredRecordRef.current = recordOf(settings.regionArrangement);
+  // Navigation as last acted on. The legacy-sync effect below runs on the
+  // dependency change React reports, and a MOUNT is one of those; only a
+  // change since this snapshot is an inbound navigation event. Without it, a
+  // record whose Chat placement disagrees with the legacy keys would be
+  // "corrected" at mount — and `setDockMode` would write the device setting
+  // before the user touched anything.
+  const seenNavigationRef = useRef({ dockMode, isDockOpen });
 
   const setRegion = useCallback((id: RegionId, patch: Partial<RegionState>) => {
     const next = updateRegion(regionsRef.current, id, patch);
@@ -357,6 +389,21 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     if (!adopted) return;
     persistedRecordRef.current = incoming;
     regionsRef.current = adopted;
+    // The other tab may have hidden or emptied the region this tab last
+    // showed; the fold then points at the first dock region still showing
+    // something, so the next fold/unfold acts on a region that exists.
+    setLastShownRegion((previous) => {
+      const stillShown =
+        previous !== null &&
+        adopted[previous].visible &&
+        (previous === 'main' || adopted[previous].occupant !== null);
+      if (stillShown) return previous;
+      return (
+        DOCK_REGION_IDS.find(
+          (id) => adopted[id].visible && adopted[id].occupant !== null,
+        ) ?? previous
+      );
+    });
     setRegions(adopted);
   }, [settings.regionArrangement]);
 
@@ -381,6 +428,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // Navigation remains an inbound source for deep links and browser history.
   // biome-ignore lint/correctness/useExhaustiveDependencies: device-setting notifications are mirror traffic, not inbound navigation.
   useEffect(() => {
+    const seen = seenNavigationRef.current;
+    if (seen.dockMode === dockMode && seen.isDockOpen === isDockOpen) return;
+    seenNavigationRef.current = { dockMode, isDockOpen };
     const current = regionsRef.current;
     const placement = chatRegion(current);
     if (placement === dockMode && current[placement].visible === isDockOpen)

@@ -290,10 +290,13 @@ export interface DeviceSettings {
   /**
    * #928 slice D: which surface occupies which region, with each region's
    * size and visibility, on this device. Per device on purpose — never per
-   * project or layout (owner decision, docs/design/placement.md). Chat's
-   * placement and visibility in a URL (`dock`, `dockSlotPlacement`) still
-   * win over this record on load; the record is what survives a reload for
-   * every other surface. Validated by
+   * project or layout (owner decision, docs/design/placement.md).
+   * Precedence at load, highest first: a URL deep link for Chat
+   * (`dockSlotPlacement` places Chat there, relocating an occupant;
+   * `dock=open` shows it) > this record when it differs from the default
+   * (every surface, size and visibility, Chat's included) > the legacy dock
+   * seed (`chatDockHeight`/`chatDockWidth`, `dockSlotPlacement`). Sizes
+   * render from the record. A mount never writes. Validated by
    * `src-ui/src/regions/region-arrangement-record.ts` on every read — a
    * malformed value falls back to the legacy dock seed, never a crash.
    * Never had a prior key: no arrangement record existed before it.

@@ -127,7 +127,8 @@ function parseOccupant(
  * Reads a stored record back into live state, or returns null for a record
  * the caller should treat as absent. See the module comment for the
  * per-field fail-closed rules; in addition, a surface named by two regions
- * keeps the first in `REGION_IDS` order and the later regions read as empty.
+ * keeps the first in `REGION_IDS` order and the later regions read as empty
+ * and hidden.
  */
 export function parseRegionArrangementRecord(
   value: unknown,
@@ -153,8 +154,12 @@ export function parseRegionArrangementRecord(
         }
       : { ...fallback };
     if (state.occupant !== null) {
-      if (seen.has(state.occupant)) state.occupant = null;
-      else seen.add(state.occupant);
+      if (seen.has(state.occupant)) {
+        // A duplicate's later region is emptied AND hidden: an empty dock
+        // region is never shown (`placeSurface` hides a vacated one).
+        state.occupant = null;
+        state.visible = false;
+      } else seen.add(state.occupant);
     }
     arrangement[id] = state;
   }

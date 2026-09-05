@@ -220,7 +220,7 @@ describe('region arrangement record (#928 D)', () => {
       ).toBeNull();
     });
 
-    test('a surface named by two regions keeps the first in REGION_IDS order and empties the rest', () => {
+    test('a surface named by two regions keeps the first in REGION_IDS order and empties and hides the rest', () => {
       const parsed = parseRegionArrangementRecord({
         version: 1,
         regions: {
@@ -247,8 +247,16 @@ describe('region arrangement record (#928 D)', () => {
         },
       });
       expect(parsed!.main.occupant).toBe('activity');
-      expect(parsed!.left.occupant).toBeNull();
-      expect(parsed!.right.occupant).toBeNull();
+      expect(parsed!.left).toEqual({
+        visible: false,
+        size: 400,
+        occupant: null,
+      });
+      expect(parsed!.right).toEqual({
+        visible: false,
+        size: 400,
+        occupant: null,
+      });
       expect(parsed!.bottom.occupant).toBe('chat');
     });
 
