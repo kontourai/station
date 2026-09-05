@@ -415,7 +415,9 @@ function App() {
     isDockOpen: modelChatRegion
       ? regionModel.regions[modelChatRegion].visible
       : isDockOpen,
-    isDockMaximized,
+    isDockMaximized: modelChatRegion
+      ? regionModel.regions[modelChatRegion].maximized
+      : isDockMaximized,
     isDockOwnedView: isDockOwnedViewType(displayCurrentView.type),
   });
   const isMobileDockFullscreen =

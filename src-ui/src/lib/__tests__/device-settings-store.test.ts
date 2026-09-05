@@ -690,6 +690,7 @@ describe('device-settings-store', () => {
         visible: true,
         size: 517,
         occupant: null,
+        maximized: false,
       });
       expect(record.regions.bottom.occupant).toEqual({
         kind: 'surface',

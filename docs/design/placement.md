@@ -107,7 +107,7 @@ That is why the direction below is cheap.
 | **Layout** | a project's named view the sidebar navigates between (Coding, Tasks, Session board, a plugin's) | `LayoutConfig` server record; `type` selects the renderer |
 | **Pane** | the smallest addressable UI unit; what plugins contribute | `WorkspacePaneDescriptor`, `WorkspacePaneInstance` |
 | **Pane host** | a tree of panes arranged as splits and tab groups, inside a region or a layout | `WorkspacePaneHost`, `WorkspacePaneHostDocumentV1` |
-| **Arrangement** | the user's placement choices: which surface in which region, each region's size and visibility, each pane host's tree | `RegionArrangement` for the region half; persisted per device by #928 slice D |
+| **Arrangement** | the user's placement choices: which surface in which region, each region's size and visibility, which region (at most one) is maximized, each pane host's tree | `RegionArrangement` for the region half; persisted per device by #928 slice D, `maximized` added by slice iii (#1385) |
 | **Destination** | a navigable place in the app the palette and sidebar can send you to | `APP_DESTINATION_REGISTRY` (`src-ui/src/app-shell/destination-registry.ts`) |
 | **Panel** | a bounded visual grouping inside a page or pane (Trust panel, inspector) | unchanged; see the glossary |
 
@@ -135,7 +135,7 @@ implementation name and its CSS classes are pinned by e2e and ratchets),
 `useShowSurface`, `parseSurfaceDeepLink`, and everything under
 `src-ui/src/regions/` (they are about region surfaces).
 
-## What reads what (verified 2026-09-04 against the placement batch (#1462, #1463, #1464 and this change))
+## What reads what (verified 2026-09-05 against the placement batch (#1462, #1463, #1464) and #928 slice iii (#1385))
 
 A placement declaration is only as real as its reader. This is the reader
 map; anything not listed is a label.
@@ -148,6 +148,7 @@ map; anything not listed is a label.
 | `WorkspacePanePlacement.preferredRegion` | same | parse validation and canonical-identity equality only |
 | `WorkspaceCompositionPaneSpec.role` | `navigation`, `content`, `auxiliary`, `inspector` | the composition algorithm groups panes by role: tabs within a role, splits between roles. Runs on real data through the coding file/diff/evidence compositions (behind `workspaceComposition*` layout config controls) and the task room |
 | `RegionState.size` | pixels | round-trips through device settings; does not yet drive the rendered shell (#1380) |
+| `RegionState.maximized` | boolean, at most one region, never `main`, never a hidden or empty region (`updateRegion`, the parser) | `useDockShellChrome` (the shell's `isDockMaximized`, for ANY occupant — `DockShell` renders the class and side-panel width from it), `App.tsx` (mobile full-screen, Chat's region), `placeSurface` (clears both ends of a move or swap, #1385); navigation's `maximize` param and `lastDockMaximized` are Chat's MIRROR of it (`dockMirrorDiff`, `RegionModelContext`), never its source — the region is also seeded from them inbound (`?maximize=true`, `focusSession`'s restore) |
 
 Two facts that follow from the map and are easy to get wrong:
 
@@ -167,8 +168,9 @@ Two facts that follow from the map and are easy to get wrong:
 - **Arrangement (regions):** the `regionArrangement` device setting
   (`packages/contracts/src/device-settings.ts`), one versioned record per
   device inside the device-settings envelope: for each of `main`, `left`,
-  `right` and `bottom`, its `visible`, its `size` along its own edge, and its
-  occupant as `{ kind: 'surface', id }` or `null`. `occupant.kind` is the
+  `right` and `bottom`, its `visible`, its `size` along its own edge, its
+  occupant as `{ kind: 'surface', id }` or `null`, and (additive, #928 slice
+  iii) its `maximized`, absent in older records and read as false. `occupant.kind` is the
   extension point for the pane-host direction below: `{ kind: 'pane-host',
   documentId }` is an additive second variant. A newer variant survives being
   READ by an older build (the parser treats an unknown `kind` as an empty
@@ -181,9 +183,10 @@ Two facts that follow from the map and are easy to get wrong:
   A mount never writes.
   Precedence at load, highest first: a URL deep link, for Chat only —
   `dockSlotPlacement` places Chat there through `placeSurface`, relocating an
-  occupant by the model's own rule, and `dock=open` shows it; then the
+  occupant by the model's own rule, `dock=open` shows it, and `maximize=true`
+  maximizes Chat's region (restoring any other); then the
   record, when it differs from the registry default, for every surface's
-  placement, size and visibility, Chat's included; then the legacy dock seed
+  placement, size, visibility and maximize, Chat's included; then the legacy dock seed
   (`chatDockHeight`/`chatDockWidth`, the `dockSlotPlacement` device setting),
   which is all a pre-record device has. A record equal to the default is one
   the device has never written and reads as absent, which is what carries a
@@ -197,7 +200,9 @@ Two facts that follow from the map and are easy to get wrong:
   does not declare the region it was stored in, reads as an empty region; a
   surface named by two regions keeps the first in `main`, `left`, `right`,
   `bottom` order and the rest read as empty and hidden; `main` is always
-  visible. Chat's placement, visibility and size are still mirrored to the
+  visible and never maximized, nor is a hidden or empty region, and a second
+  maximized region reads as restored. Chat's placement, visibility, size and
+  maximize are still mirrored to the
   legacy keys, which keep every existing reader working. The `?surface=` deep
   link reveals a surface once and then clears itself; it is a command, not
   persistence.

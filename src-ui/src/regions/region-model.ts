@@ -11,15 +11,25 @@ export interface RegionState {
   visible: boolean;
   size: number;
   occupant: string | null;
+  /**
+   * Whether this region is expanded over the workspace (#928 slice iii,
+   * #1385). An attribute of the REGION, not of its occupant: the shell reads
+   * it for any occupant, and navigation's `maximize` param is Chat's mirror
+   * of it, never its source. `updateRegion` keeps the invariants — at most
+   * one region is maximized, `main` never is, and a hidden or empty region
+   * never is — and `placeSurface` clears it on both ends of a move, so a
+   * relocation can never carry a maximize into the region it enters.
+   */
+  maximized: boolean;
 }
 export type RegionArrangement = Record<RegionId, RegionState>;
 
 export const DEFAULT_DEVICE_REGION_ARRANGEMENT: RegionArrangement = {
   // `main` is always visible and Home is its default occupant (#928 C2a).
-  main: { visible: true, size: 0, occupant: 'home' },
-  left: { visible: false, size: 400, occupant: null },
-  right: { visible: false, size: 400, occupant: null },
-  bottom: { visible: false, size: 320, occupant: 'chat' },
+  main: { visible: true, size: 0, occupant: 'home', maximized: false },
+  left: { visible: false, size: 400, occupant: null, maximized: false },
+  right: { visible: false, size: 400, occupant: null, maximized: false },
+  bottom: { visible: false, size: 320, occupant: 'chat', maximized: false },
 };
 
 type DockSeedSettings = Pick<
@@ -181,9 +191,17 @@ export function placeSurface(
     (id) => id !== regionId && arrangement[id].occupant === surfaceId,
   );
   const displacedSurface = arrangement[regionId].occupant;
+  // A relocation never carries a maximize (#1385): the region a surface
+  // enters and the region it leaves both come out restored, whatever either
+  // was before. The one #1385 saw — Chat maximized in `bottom`, Activity
+  // swapped in, Chat's shell re-propped to `right` still full-width over the
+  // Activity shell the user had just asked for — is a maximize that was the
+  // occupant's flag surviving a move; as the region's attribute it is written
+  // out here.
   let next = updateRegion(arrangement, regionId, {
     occupant: surfaceId,
     visible: regionId === 'main' || visible,
+    maximized: false,
   });
   if (previousRegion) {
     // An emptied dock region hides; an emptied `main` stays visible (the
@@ -191,6 +209,7 @@ export function placeSurface(
     next = updateRegion(next, previousRegion, {
       occupant: null,
       visible: previousRegion === 'main',
+      maximized: false,
     });
   }
   if (displacedSurface === null || displacedSurface === surfaceId) return next;
@@ -204,6 +223,7 @@ export function placeSurface(
     return updateRegion(next, previousRegion, {
       occupant: displacedSurface,
       visible: displacedVisible,
+      maximized: false,
     });
   }
   const freeRegion = firstFreeDockRegion(next, regionId);
@@ -211,6 +231,7 @@ export function placeSurface(
     return updateRegion(next, freeRegion, {
       occupant: displacedSurface,
       visible: displacedVisible,
+      maximized: false,
     });
   }
   return next;
@@ -264,21 +285,29 @@ export function showSurfaceAlone(
   return { arrangement: next, region: revealed.region };
 }
 
+export interface DockMirrorDiff {
+  placement?: DockRegionId;
+  visible?: boolean;
+  /**
+   * Chat's maximize, for navigation's `maximize` param and
+   * `lastDockMaximized`. Emitted only when Chat's region is visible after the
+   * change and its `maximized` differs from before — an explicit maximize or
+   * restore. A hide is not a maximize change even though the region's flag
+   * clears with it: the provider's `setDockState(false, …)` forwards the
+   * flag the region closed FROM (archive#945), so a remembered Full survives
+   * the close. A non-chat region's maximize is never mirrored.
+   */
+  maximized?: boolean;
+  size?: Partial<Record<RegionId, number>>;
+}
+
 export function dockMirrorDiff(
   previous: RegionArrangement,
   next: RegionArrangement,
-): {
-  placement?: DockRegionId;
-  visible?: boolean;
-  size?: Partial<Record<RegionId, number>>;
-} {
+): DockMirrorDiff {
   const previousPlacement = chatRegion(previous);
   const placement = chatRegion(next);
-  const result: {
-    placement?: DockRegionId;
-    visible?: boolean;
-    size?: Partial<Record<RegionId, number>>;
-  } = {};
+  const result: DockMirrorDiff = {};
   if (placement !== previousPlacement && placement) {
     result.placement = placement;
     result.size = { [placement]: next[placement].size };
@@ -289,8 +318,17 @@ export function dockMirrorDiff(
   const previousVisible = previousPlacement
     ? previous[previousPlacement].visible
     : false;
+  const previousMaximized = previousPlacement
+    ? previous[previousPlacement].maximized
+    : false;
   if (placement && next[placement].visible !== previousVisible)
     result.visible = next[placement].visible;
+  if (
+    placement &&
+    next[placement].visible &&
+    next[placement].maximized !== previousMaximized
+  )
+    result.maximized = next[placement].maximized;
   const sizes: Partial<Record<RegionId, number>> = {};
   for (const id of DOCK_REGION_IDS)
     if (next[id].occupant === 'chat' && next[id].size !== previous[id].size)
@@ -383,17 +421,45 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
   },
 ]);
 
+function regionStatesEqual(a: RegionState, b: RegionState): boolean {
+  return (
+    a.visible === b.visible &&
+    a.size === b.size &&
+    a.occupant === b.occupant &&
+    a.maximized === b.maximized
+  );
+}
+
+/**
+ * Apply `patch` to one region, holding the maximize invariants for the whole
+ * arrangement (#928 slice iii): `main` is never maximized, a hidden or empty
+ * region is never maximized (the region-level form of "a closed dock is never
+ * maximized", archive#795 — `is-collapsed` and `is-maximized` together render
+ * a blank full-height shell), and at most one region is maximized at a time,
+ * so maximizing one restores every other. Returns the same reference when
+ * nothing changes.
+ */
 export function updateRegion(
   arrangement: RegionArrangement,
   id: RegionId,
   patch: Partial<RegionState>,
 ): RegionArrangement {
+  const merged: RegionState = { ...arrangement[id], ...patch };
   if (
-    Object.entries(patch).every(
-      ([key, value]) => arrangement[id][key as keyof RegionState] === value,
-    )
+    merged.maximized &&
+    (id === 'main' || !merged.visible || merged.occupant === null)
   ) {
-    return arrangement;
+    merged.maximized = false;
   }
-  return { ...arrangement, [id]: { ...arrangement[id], ...patch } };
+  let next = regionStatesEqual(arrangement[id], merged)
+    ? arrangement
+    : { ...arrangement, [id]: merged };
+  if (merged.maximized) {
+    for (const other of REGION_IDS) {
+      if (other !== id && next[other].maximized) {
+        next = { ...next, [other]: { ...next[other], maximized: false } };
+      }
+    }
+  }
+  return next;
 }

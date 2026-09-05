@@ -120,8 +120,14 @@ interface ChatDockHeaderProps {
   surfaceShortcutId?: string;
   /** Registered title for a non-Chat shell's visibility action. */
   surfaceTitle?: string;
-  /** Whether this shell owns the Chat-only maximize state. */
+  /** Whether this shell offers the maximize control (any dock occupant, #928 slice iii). */
   canMaximize?: boolean;
+  /**
+   * Whether ⌘M acts on this shell (`DockShellChrome.ownsMaximizeShortcut`).
+   * The hint is shown only where it is true — a chord that maximizes Chat's
+   * region must not be advertised on Activity's button.
+   */
+  showMaximizeShortcut?: boolean;
 }
 
 export function ChatDockHeader({
@@ -141,11 +147,15 @@ export function ChatDockHeader({
   surfaceShortcutId = 'dock.toggle',
   surfaceTitle,
   canMaximize = true,
+  showMaximizeShortcut = true,
 }: ChatDockHeaderProps) {
   const isDockOpen = regionVisible;
   const isDockMaximized = shellMaximized;
   const toggleDockShortcut = useShortcutDisplay(surfaceShortcutId);
-  const maximizeShortcut = useShortcutDisplay('dock.maximize');
+  const registeredMaximizeShortcut = useShortcutDisplay('dock.maximize');
+  const maximizeShortcut = showMaximizeShortcut
+    ? registeredMaximizeShortcut
+    : '';
   const visibilityLabel = surfaceTitle
     ? `${isDockOpen ? 'Hide' : 'Show'} ${surfaceTitle}`
     : `${isDockOpen ? 'Hide' : 'Show'} dock region`;
@@ -373,7 +383,11 @@ export function ChatDockHeader({
                 }
               >
                 <RegionExtentGlyph expanded={isDockMaximized} />
-                <span className="chat-dock__subtitle">{maximizeShortcut}</span>
+                {maximizeShortcut ? (
+                  <span className="chat-dock__subtitle">
+                    {maximizeShortcut}
+                  </span>
+                ) : null}
               </button>
             ) : null}
             <button

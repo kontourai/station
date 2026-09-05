@@ -9,6 +9,7 @@ import {
   occupiedDockRegion,
   occupiedRegion,
   placeSurface,
+  REGION_IDS,
   REGION_SURFACE_REGISTRY,
   revealSurface,
   seedRegionArrangementFromDock,
@@ -31,7 +32,12 @@ describe('region model', () => {
     const second = updateRegion(first, 'bottom', { occupant: 'activity' });
 
     expect(second.bottom.occupant).toBe('activity');
-    expect(Object.keys(second.bottom)).toEqual(['visible', 'size', 'occupant']);
+    expect(Object.keys(second.bottom)).toEqual([
+      'visible',
+      'size',
+      'occupant',
+      'maximized',
+    ]);
   });
 
   test('finds the dock region occupied by any surface', () => {
@@ -50,12 +56,14 @@ describe('region model', () => {
       visible: true,
       size: 444,
       occupant: 'chat',
+      maximized: false,
     });
 
     expect(updateRegion(sized, 'bottom', { visible: false }).bottom).toEqual({
       visible: false,
       size: 444,
       occupant: 'chat',
+      maximized: false,
     });
   });
 
@@ -207,6 +215,7 @@ describe('region model', () => {
       visible: true,
       size: 0,
       occupant: 'home',
+      maximized: false,
     });
     const seeded = seedRegionArrangementFromDock(
       { chatDockHeight: 320, chatDockWidth: 400 },
@@ -230,6 +239,7 @@ describe('region model', () => {
       visible: true,
       size: 0,
       occupant: 'activity',
+      maximized: false,
     });
     expect(occupiedRegion(placed, 'home')).toBeUndefined();
     expect(placed.left.occupant).toBeNull();
@@ -246,7 +256,12 @@ describe('region model', () => {
     const placed = placeSurface(activityAtRight, 'activity', 'main');
 
     expect(placed.main.occupant).toBe('activity');
-    expect(placed.right).toEqual({ visible: false, size: 400, occupant: null });
+    expect(placed.right).toEqual({
+      visible: false,
+      size: 400,
+      occupant: null,
+      maximized: false,
+    });
     expect(occupiedRegion(placed, 'home')).toBeUndefined();
   });
 
@@ -258,7 +273,12 @@ describe('region model', () => {
     );
     const moved = placeSurface(activityInMain, 'activity', 'bottom');
 
-    expect(moved.main).toEqual({ visible: true, size: 0, occupant: null });
+    expect(moved.main).toEqual({
+      visible: true,
+      size: 0,
+      occupant: null,
+      maximized: false,
+    });
     expect(moved.bottom).toMatchObject({ occupant: 'activity', visible: true });
     // Chat, displaced from bottom, follows the homeless rule — it does not
     // jump into `main`, which it does not declare.
@@ -341,11 +361,13 @@ describe('region model', () => {
       visible: true,
       size: 320,
       occupant: 'activity',
+      maximized: false,
     });
     expect(swapped.right).toEqual({
       visible: false,
       size: 400,
       occupant: 'chat',
+      maximized: false,
     });
   });
 
@@ -382,8 +404,18 @@ describe('region model', () => {
   test('placing a homeless surface vacates the displaced occupant when no dock region is free', () => {
     const fullArrangement = {
       ...structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),
-      left: { visible: true, size: 400, occupant: 'left-surface' },
-      right: { visible: true, size: 400, occupant: 'right-surface' },
+      left: {
+        visible: true,
+        size: 400,
+        occupant: 'left-surface',
+        maximized: false,
+      },
+      right: {
+        visible: true,
+        size: 400,
+        occupant: 'right-surface',
+        maximized: false,
+      },
     };
     const placed = placeSurface(fullArrangement, 'activity', 'bottom');
 
@@ -405,12 +437,14 @@ describe('region model', () => {
       visible: false,
       size: 417,
       occupant: null,
+      maximized: false,
     });
     expect(arrangement.left.size).toBe(389);
     expect(arrangement.right).toEqual({
       visible: true,
       size: 389,
       occupant: 'chat',
+      maximized: false,
     });
   });
 
@@ -473,6 +507,7 @@ describe('region model', () => {
         occupant: 'activity',
         visible: true,
         size: 517,
+        maximized: false,
       },
     );
     const synced = syncRegionArrangementFromDock(
@@ -486,6 +521,7 @@ describe('region model', () => {
       occupant: 'activity',
       visible: true,
       size: 517,
+      maximized: false,
     });
     expect(synced.bottom.visible).toBe(false);
   });
@@ -509,6 +545,117 @@ describe('region model', () => {
     expect(synced.right.occupant).toBe('activity');
     expect(synced.bottom.occupant).toBe('chat');
     expect(synced.bottom.visible).toBe(true);
+  });
+
+  // #928 slice iii / #1385: maximize is a region attribute with invariants.
+  describe('maximize is a region attribute', () => {
+    const chatOpenActivityRight = updateRegion(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'right'),
+      'bottom',
+      { visible: true },
+    );
+
+    test('at most one region is maximized: maximizing one restores every other', () => {
+      const chatMax = updateRegion(chatOpenActivityRight, 'bottom', {
+        maximized: true,
+      });
+      expect(chatMax.bottom.maximized).toBe(true);
+
+      const activityMax = updateRegion(chatMax, 'right', { maximized: true });
+
+      expect(activityMax.right.maximized).toBe(true);
+      expect(activityMax.bottom.maximized).toBe(false);
+      expect(REGION_IDS.filter((id) => activityMax[id].maximized)).toEqual([
+        'right',
+      ]);
+    });
+
+    test('hiding a region clears its maximize; main, a hidden region and an empty region never maximize', () => {
+      const chatMax = updateRegion(chatOpenActivityRight, 'bottom', {
+        maximized: true,
+      });
+      expect(
+        updateRegion(chatMax, 'bottom', { visible: false }).bottom,
+      ).toMatchObject({ visible: false, maximized: false });
+      expect(
+        updateRegion(chatOpenActivityRight, 'main', { maximized: true }).main
+          .maximized,
+      ).toBe(false);
+      // Hidden: Activity's right region is placed hidden-by-default here.
+      const hiddenRight = updateRegion(chatOpenActivityRight, 'right', {
+        visible: false,
+      });
+      expect(
+        updateRegion(hiddenRight, 'right', { maximized: true }).right.maximized,
+      ).toBe(false);
+      expect(
+        updateRegion(chatOpenActivityRight, 'left', {
+          visible: true,
+          maximized: true,
+        }).left.maximized,
+      ).toBe(false);
+      // A no-op patch keeps the reference.
+      expect(updateRegion(chatMax, 'main', { maximized: true })).toBe(chatMax);
+    });
+
+    test('placeSurface clears maximize on both ends of a move and of a swap (the #1385 shape)', () => {
+      const chatMax = updateRegion(chatOpenActivityRight, 'bottom', {
+        maximized: true,
+      });
+
+      // Swap: Activity into Chat's maximized bottom, Chat back into right.
+      const swapped = placeSurface(chatMax, 'activity', 'bottom');
+      expect(swapped.bottom).toMatchObject({
+        occupant: 'activity',
+        maximized: false,
+      });
+      expect(swapped.right).toMatchObject({
+        occupant: 'chat',
+        visible: true,
+        maximized: false,
+      });
+
+      // Move: maximized Chat into an empty left.
+      const moved = placeSurface(chatMax, 'chat', 'left');
+      expect(moved.left).toMatchObject({ occupant: 'chat', maximized: false });
+      expect(moved.bottom).toMatchObject({ occupant: null, maximized: false });
+      expect(REGION_IDS.some((id) => moved[id].maximized)).toBe(false);
+    });
+
+    test('dockMirrorDiff emits maximized for Chat only when Chat’s maximize changed', () => {
+      const chatMax = updateRegion(chatOpenActivityRight, 'bottom', {
+        maximized: true,
+      });
+      expect(dockMirrorDiff(chatOpenActivityRight, chatMax)).toEqual({
+        maximized: true,
+      });
+      expect(dockMirrorDiff(chatMax, chatOpenActivityRight)).toEqual({
+        maximized: false,
+      });
+      // A hide is a visibility change, not a maximize change: the provider
+      // forwards the maximize it closed from so `lastDockMaximized` survives.
+      expect(
+        dockMirrorDiff(
+          chatMax,
+          updateRegion(chatMax, 'bottom', { visible: false }),
+        ),
+      ).toEqual({ visible: false });
+      // Activity's maximize is never Chat's.
+      expect(
+        dockMirrorDiff(
+          chatOpenActivityRight,
+          updateRegion(chatOpenActivityRight, 'right', { maximized: true }),
+        ),
+      ).toEqual({});
+      // A relocation that clears Chat's maximize mirrors the clear with the move.
+      expect(
+        dockMirrorDiff(chatMax, placeSurface(chatMax, 'chat', 'left')),
+      ).toEqual({
+        placement: 'left',
+        size: { left: 400 },
+        maximized: false,
+      });
+    });
   });
 
   test('mirror ignores size changes from a region Activity occupies', () => {

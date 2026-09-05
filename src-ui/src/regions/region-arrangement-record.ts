@@ -82,6 +82,7 @@ export function toRegionArrangementRecord(
       visible: state.visible,
       size: state.size,
       occupant: toOccupantRecord(state.occupant),
+      maximized: state.maximized,
     };
   }
   return { version: REGION_ARRANGEMENT_RECORD_VERSION, regions };
@@ -95,6 +96,16 @@ function parseVisible(
   // `main` is the primary area and is never hidden, whatever was stored.
   if (id === 'main') return true;
   return typeof value === 'boolean' ? value : fallback;
+}
+
+/**
+ * `maximized` is additive (#928 slice iii): absent in a record written before
+ * it existed, and false then. Only a literal `true` maximizes; the arrangement
+ * invariants below (`main` never, a hidden or empty region never, one region
+ * at most) are applied after every region is read.
+ */
+function parseMaximized(value: unknown): boolean {
+  return value === true;
 }
 
 function parseSize(value: unknown, id: RegionId, fallback: number): number {
@@ -151,6 +162,7 @@ export function parseRegionArrangementRecord(
           visible: parseVisible(stored.visible, id, fallback.visible),
           size: parseSize(stored.size, id, fallback.size),
           occupant: parseOccupant(stored.occupant, id, registry),
+          maximized: parseMaximized(stored.maximized),
         }
       : { ...fallback };
     if (state.occupant !== null) {
@@ -161,7 +173,25 @@ export function parseRegionArrangementRecord(
         state.visible = false;
       } else seen.add(state.occupant);
     }
+    // The same invariants `updateRegion` holds for live state: `main` is
+    // never maximized, nor is a hidden or empty region. Stored bytes can say
+    // anything; the shell must never mount a blank full-height panel from
+    // them (archive#795's shape).
+    if (
+      state.maximized &&
+      (id === 'main' || !state.visible || state.occupant === null)
+    ) {
+      state.maximized = false;
+    }
     arrangement[id] = state;
+  }
+  // At most one region is maximized: the first in `REGION_IDS` order keeps
+  // it, matching the duplicate-occupant rule above.
+  let maximizedSeen = false;
+  for (const id of REGION_IDS) {
+    if (!arrangement[id].maximized) continue;
+    if (maximizedSeen) arrangement[id].maximized = false;
+    maximizedSeen = true;
   }
   return arrangement;
 }
@@ -186,7 +216,10 @@ export function regionArrangementRecordsEqual(
     return (
       left.visible === right.visible &&
       left.size === right.size &&
-      occupantsEqual(left.occupant, right.occupant)
+      occupantsEqual(left.occupant, right.occupant) &&
+      // Additive field: a record written before `maximized` existed reads
+      // equal to one that spells out `false`.
+      (left.maximized ?? false) === (right.maximized ?? false)
     );
   });
 }

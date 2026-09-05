@@ -2119,6 +2119,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               regionVisible={isDockOpen}
               shellMaximized={isDockMaximized}
               canMaximize={chrome.canMaximize}
+              showMaximizeShortcut={chrome.ownsMaximizeShortcut}
               surfaceShortcutId={chrome.surfaceShortcutId}
               // #3309: the tab strip's controls fold into the header — one
               // chrome bar, every reclaimed pixel is transcript space. Only

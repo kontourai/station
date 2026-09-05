@@ -185,6 +185,13 @@ export interface RegionArrangementRecordRegion {
   visible: boolean;
   size: number;
   occupant: RegionOccupantRecord | null;
+  /**
+   * Whether the region is expanded over the workspace (#928 slice iii).
+   * Additive: absent in records written before it existed and read as
+   * `false`; `version` stays 1. The UI parser also refuses it on `main`, on
+   * an empty or hidden region, and on more than one region.
+   */
+  maximized?: boolean;
 }
 
 export interface RegionArrangementRecord {
@@ -207,13 +214,19 @@ export interface RegionArrangementRecord {
 export const DEFAULT_REGION_ARRANGEMENT_RECORD: RegionArrangementRecord = {
   version: 1,
   regions: {
-    main: { visible: true, size: 0, occupant: { kind: 'surface', id: 'home' } },
-    left: { visible: false, size: 400, occupant: null },
-    right: { visible: false, size: 400, occupant: null },
+    main: {
+      visible: true,
+      size: 0,
+      occupant: { kind: 'surface', id: 'home' },
+      maximized: false,
+    },
+    left: { visible: false, size: 400, occupant: null, maximized: false },
+    right: { visible: false, size: 400, occupant: null, maximized: false },
     bottom: {
       visible: false,
       size: 320,
       occupant: { kind: 'surface', id: 'chat' },
+      maximized: false,
     },
   },
 };
