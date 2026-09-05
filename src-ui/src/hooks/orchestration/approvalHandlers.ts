@@ -1,6 +1,7 @@
 import { resolveOrchestrationRequest } from '@kontourai/station-sdk';
 import {
   toolRequestDisplayName,
+  toolRequestFromPayload,
   toolRequestPreview,
 } from '@kontourai/station-shared/tool-request-preview';
 import { activeChatsStore } from '../../contexts/active-chats-store';
@@ -41,26 +42,30 @@ export function handleRequestOpenedEvent(
   // #1545: the tool name alone ("Codex wants to use Bash") is not a decision an
   // operator can make. `toolRequestPreview` derives the one field that says
   // what the call will do — the command, the file, the pattern — bounded,
-  // single-line and secret-redacted. `event.payload` is the live orchestration
-  // event as it arrives on the stream, so `toolInput` is present here; the
-  // durable inbox row gets the same preview server-side (see
-  // `request-presentation.ts`), from the same derivation.
-  const payloadToolName =
-    typeof event.payload?.toolName === 'string'
-      ? event.payload.toolName
-      : undefined;
-  const toolName = String(payloadToolName || event.title || 'Tool request');
+  // single-line and secret-redacted.
+  //
+  // Read the payload through `toolRequestFromPayload`, never by indexing one
+  // key: the adapters do not agree on a name. Claude's `canUseTool` publishes
+  // `toolInput`, ACP publishes `rawInput` (so every ACP engine, Gemini
+  // included), the station-agent adapter publishes `toolArgs`. Indexing
+  // `toolInput` alone left those sessions with no preview here while the
+  // durable inbox row, which reads all five names, showed the command.
+  const { toolName: payloadToolName, toolInput } = toolRequestFromPayload(
+    event.payload,
+  );
+  const displayName = toolRequestDisplayName(payloadToolName);
+  const toolName = String(displayName || event.title || 'Tool request');
   // Only name the tool in the grant label when the payload actually reported
   // one. The `event.title` fallback is adapter display text — for Codex it is
   // the literal shell command — and "Allow <a whole command line> for this
   // session" would both mislead about the grant's scope and swamp the button.
-  const grantLabel = payloadToolName
-    ? `Allow ${toolRequestDisplayName(payloadToolName) ?? payloadToolName} for this session`
+  const grantLabel = displayName
+    ? `Allow ${displayName} for this session`
     : 'Allow this tool for this session';
   const toastId = toastStore.showToolApproval({
     sessionId: event.threadId,
     toolName,
-    toolPreview: toolRequestPreview(payloadToolName, event.payload?.toolInput),
+    toolPreview: toolRequestPreview(payloadToolName, toolInput),
     agentName,
     conversationTitle: chat.title,
     actions: [

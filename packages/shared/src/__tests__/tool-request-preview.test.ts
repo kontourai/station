@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import {
   MAX_TOOL_REQUEST_PREVIEW_LENGTH,
+  TOOL_REQUEST_ARGS_FIELDS,
   toolRequestDisplayName,
+  toolRequestFromPayload,
   toolRequestPreview,
+  toolRequestPreviewFromPayload,
 } from '../tool-request-preview.js';
 
 describe('toolRequestPreview', () => {
@@ -144,6 +147,24 @@ describe('toolRequestPreview', () => {
       expect(preview?.endsWith('…')).toBe(true);
     });
 
+    test('redacts BEFORE collapsing to one line, not after', () => {
+      // Order is load-bearing and the reason this test exists. `redactSecrets`
+      // is line-oriented: its contextual `key=value` pass is anchored on a line
+      // boundary, so a secret on the SECOND line is only reachable while the
+      // newline is still there. Collapse first and `PASSWORD=hunter2` becomes
+      // mid-line text the contextual pass no longer sees — reproduced.
+      expect(
+        toolRequestPreview('Bash', {
+          command: 'NAME=bob\nPASSWORD=hunter2',
+        }),
+      ).toBe('NAME=bob PASSWORD=[REDACTED]');
+      expect(
+        toolRequestPreview('Bash', {
+          command: 'echo one\n--password=hunter2',
+        }),
+      ).toBe('echo one --password=[REDACTED]');
+    });
+
     test('collapses newlines and control characters into one line', () => {
       // A multi-line value must not be able to push a toast's buttons out of
       // view, and a second command below a newline must stay readable.
@@ -194,5 +215,57 @@ describe('toolRequestDisplayName', () => {
     );
     expect(toolRequestDisplayName('   ')).toBeUndefined();
     expect(toolRequestDisplayName(undefined)).toBeUndefined();
+  });
+});
+
+describe('toolRequestFromPayload — adapters do not agree on a field name', () => {
+  // The list is not cosmetic: reading `toolInput` alone left every ACP engine
+  // (`rawInput`) and every station-agent session (`toolArgs`) with no preview on
+  // the live toast while the durable inbox row showed the command.
+  test.each([
+    ['claude canUseTool', 'toolInput'],
+    ['station-agent + the Claude PreToolUse hook', 'toolArgs'],
+    ['ACP session/request_permission (Gemini and friends)', 'rawInput'],
+    ['a future producer', 'arguments'],
+    ['a future producer', 'args'],
+  ])('reads the arguments %s publishes under %j', (_who, field) => {
+    const payload = { toolName: 'Bash', [field]: { command: 'ls -la' } };
+    expect(toolRequestFromPayload(payload)).toEqual({
+      toolName: 'Bash',
+      toolInput: { command: 'ls -la' },
+    });
+    expect(toolRequestPreviewFromPayload(payload)).toBe('ls -la');
+  });
+
+  test('every declared field name is actually read', () => {
+    // Pins the list against a field being dropped from it: the loop above is
+    // hand-written, so this is what notices a name leaving the export.
+    for (const field of TOOL_REQUEST_ARGS_FIELDS) {
+      expect(
+        toolRequestFromPayload({ [field]: { command: 'ls' } }).toolInput,
+      ).toEqual({ command: 'ls' });
+    }
+  });
+
+  test('prefers the most specific name when a payload carries two', () => {
+    expect(
+      toolRequestFromPayload({
+        args: { command: 'second' },
+        toolInput: { command: 'first' },
+      }).toolInput,
+    ).toEqual({ command: 'first' });
+  });
+
+  test('falls back from toolName to tool, and trims', () => {
+    expect(toolRequestFromPayload({ tool: '  Bash  ' }).toolName).toBe('Bash');
+    expect(
+      toolRequestFromPayload({ toolName: '  ', tool: 'Bash' }).toolName,
+    ).toBe('Bash');
+  });
+
+  test('reports nothing for a payload that carries neither', () => {
+    expect(toolRequestFromPayload(undefined)).toEqual({});
+    expect(toolRequestFromPayload({ toolCallId: 'x' })).toEqual({});
+    expect(toolRequestPreviewFromPayload({ toolCallId: 'x' })).toBeUndefined();
   });
 });

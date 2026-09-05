@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  isSecretField,
   MAX_SANITIZED_ERROR_STACK_FRAMES,
   redactDeep,
   redactSecrets,
@@ -274,5 +275,55 @@ describe('redactDeep', () => {
     expect(redacted.err.type).toBe('Error');
     expect(typeof redacted.err.stack).toBe('string');
     expect(redacted.password).toBe('[REDACTED]');
+  });
+});
+
+describe('#1545: credential vocabulary reachable from a tool-call preview', () => {
+  // A tool-call approval preview renders a shell command, so the credential
+  // shapes that matter are the ones a command line actually carries — a
+  // `--flag=` key and the whole-name env vars. Neither was contextually
+  // redacted before.
+  test.each([
+    ['--password=hunter2', '--password=[REDACTED]'],
+    ['mysql --password=hunter2', 'mysql --password=[REDACTED]'],
+    ['-password=hunter2', '-password=[REDACTED]'],
+    ['--creds=abc123', '--creds=[REDACTED]'],
+    ['--api-key=abc123', '--api-key=[REDACTED]'],
+    ['PGPASSWORD=hunter2', 'PGPASSWORD=[REDACTED]'],
+    ['MYSQL_PWD=hunter2', 'MYSQL_PWD=[REDACTED]'],
+    ['env MYSQL_PWD=hunter2', 'env MYSQL_PWD=[REDACTED]'],
+  ])('redacts %j', (input, expected) => {
+    expect(redactSecrets(input)).toBe(expected);
+  });
+
+  test('leaves a non-secret flag alone, dashes and all', () => {
+    expect(redactSecrets('--host=db --port=5432')).toBe(
+      '--host=db --port=5432',
+    );
+  });
+
+  test('does not touch the attached single-letter password flag, deliberately', () => {
+    // `-p<value>` is mysql's password flag, and also `-p` for a hundred other
+    // things. With no separator to anchor on there is nothing to distinguish a
+    // secret from a port number, so this is left alone on purpose rather than
+    // guessed at. Documented in `redactContextualFields`.
+    expect(redactSecrets('mysql -phunter2')).toBe('mysql -phunter2');
+    expect(redactSecrets('mysql -p hunter2')).toBe('mysql -p hunter2');
+  });
+
+  test.each([
+    ['PGPASSWORD', true],
+    ['MYSQL_PWD', true],
+    ['mysql-pwd', true],
+    ['mysqlPwd', true],
+    ['creds', true],
+    ['AWS_CREDS', true],
+    // The segments these whole names decompose into must stay non-secret on
+    // their own: `pwd` is also "print working directory", `mysql` is a program.
+    ['pwd', false],
+    ['mysql', false],
+    ['host', false],
+  ])('isSecretField(%j) is %s', (key, expected) => {
+    expect(isSecretField(key)).toBe(expected);
   });
 });

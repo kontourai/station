@@ -1,6 +1,9 @@
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
-import { toolRequestPreview } from '@kontourai/station-shared/tool-request-preview';
+import {
+  toolRequestFromPayload,
+  toolRequestPreview,
+} from '@kontourai/station-shared/tool-request-preview';
 
 /**
  * The evidenced title/body for a `needs_input`/`review_pending` item (and,
@@ -105,15 +108,6 @@ export const MAX_DESCRIPTION_LENGTH = 400;
  * `presentToolRequest`'s doc comment).
  */
 const MAX_RAW_TITLE_LENGTH = 200;
-const TOOL_NAME_PAYLOAD_FIELDS = ['toolName', 'tool'] as const;
-const TOOL_ARGS_PAYLOAD_FIELDS = [
-  'toolInput',
-  'toolArgs',
-  'rawInput',
-  'arguments',
-  'args',
-] as const;
-
 /**
  * A bounded, redacted preview of a `request.opened` payload's tool name and
  * what the call will actually do.
@@ -135,32 +129,18 @@ const TOOL_ARGS_PAYLOAD_FIELDS = [
 function summarizeToolPayload(
   payload: Record<string, unknown> | undefined,
 ): { toolName?: string; preview?: string } | null {
-  if (!payload) return null;
-  const toolName = firstStringField(payload, TOOL_NAME_PAYLOAD_FIELDS);
-  let argsValue: unknown;
-  for (const key of TOOL_ARGS_PAYLOAD_FIELDS) {
-    if (payload[key] !== undefined) {
-      argsValue = payload[key];
-      break;
-    }
-  }
-  const preview = toolRequestPreview(toolName, argsValue);
+  // `toolRequestFromPayload` owns which payload keys carry the name and the
+  // arguments (`TOOL_REQUEST_ARGS_FIELDS`). It used to be a private list here,
+  // and the client toast grew its own one-key version of it — so ACP and
+  // station-agent approvals had a command in this row and a bare tool name in
+  // the toast. One reader, one list.
+  const { toolName, toolInput } = toolRequestFromPayload(payload);
+  const preview = toolRequestPreview(toolName, toolInput);
   if (!toolName && !preview) return null;
   return {
     ...(toolName ? { toolName } : {}),
     ...(preview ? { preview } : {}),
   };
-}
-
-function firstStringField(
-  record: Record<string, unknown>,
-  keys: readonly string[],
-): string | undefined {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return undefined;
 }
 
 export function truncateRequestText(text: string, max: number): string {

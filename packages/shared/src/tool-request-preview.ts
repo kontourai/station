@@ -1,4 +1,70 @@
-import { redactSecrets } from './redaction.js';
+import { MAX_SANITIZED_TEXT_LENGTH, redactSecrets } from './redaction.js';
+
+/**
+ * Where a `request.opened` payload's tool NAME lives, most specific first.
+ * Exported so no consumer re-derives the list: the Claude adapter writes
+ * `toolName`, the station-agent adapter writes `toolName`/`tool`.
+ */
+export const TOOL_REQUEST_NAME_FIELDS = ['toolName', 'tool'] as const;
+
+/**
+ * Where a `request.opened` payload's tool ARGUMENTS live, most specific first.
+ * Every adapter picked its own name and they are all in production:
+ * `toolInput` (claude-adapter.ts `canUseTool`), `toolArgs` (station-agent
+ * adapter, and the Claude PreToolUse hook path), `rawInput` (acp-adapter.ts
+ * `session/request_permission`, so every ACP engine incl. Gemini). `arguments`
+ * and `args` are the shapes a future/external producer is most likely to use.
+ *
+ * Exported for the same reason as the derivation itself: the client toast read
+ * only `toolInput` for one release, so ACP and station-agent approvals showed a
+ * bare tool name in the toast while the durable inbox row — which did read all
+ * five — showed the command. Two readers of one payload, one of them wrong.
+ */
+export const TOOL_REQUEST_ARGS_FIELDS = [
+  'toolInput',
+  'toolArgs',
+  'rawInput',
+  'arguments',
+  'args',
+] as const;
+
+/**
+ * The tool name and arguments a `request.opened` payload carries, whatever the
+ * publishing adapter called them. Use this rather than indexing the payload:
+ * see `TOOL_REQUEST_ARGS_FIELDS` for what indexing one name costs.
+ */
+export function toolRequestFromPayload(
+  payload: Record<string, unknown> | undefined,
+): { toolName?: string; toolInput?: unknown } {
+  if (!payload) return {};
+  let toolName: string | undefined;
+  for (const key of TOOL_REQUEST_NAME_FIELDS) {
+    const value = payload[key];
+    if (typeof value === 'string' && value.trim()) {
+      toolName = value.trim();
+      break;
+    }
+  }
+  let toolInput: unknown;
+  for (const key of TOOL_REQUEST_ARGS_FIELDS) {
+    if (payload[key] !== undefined) {
+      toolInput = payload[key];
+      break;
+    }
+  }
+  return {
+    ...(toolName ? { toolName } : {}),
+    ...(toolInput !== undefined ? { toolInput } : {}),
+  };
+}
+
+/** `toolRequestPreview` over a whole `request.opened` payload. */
+export function toolRequestPreviewFromPayload(
+  payload: Record<string, unknown> | undefined,
+): string | undefined {
+  const { toolName, toolInput } = toolRequestFromPayload(payload);
+  return toolRequestPreview(toolName, toolInput);
+}
 
 /**
  * Inherited from the `MAX_ARGS_SUMMARY_LENGTH` bound this replaced in
@@ -27,10 +93,26 @@ export const MAX_TOOL_REQUEST_PREVIEW_LENGTH = 160;
  * shapes and contextual secret fields while KEEPING paths and URLs, which a
  * preview must show to be worth reading at all.
  *
- * NOT A FULL DISCLOSURE. The result is bounded and single-line, so a long
- * command's tail is not shown and a trailing `; rm -rf /` can hide past the
- * cap. It is an aid to recognising the call, never a complete description of
- * it — no caller should present it as the whole of what is being approved.
+ * NOT A FULL DISCLOSURE, in two ways. The result is bounded and single-line, so
+ * a long command's tail is not shown and a trailing `; rm -rf /` can hide past
+ * the cap. And it is ONE field per tool family: for `Edit`/`Write`/
+ * `NotebookEdit` that is the file path, never the content being written, so a
+ * reader learns which file is about to change and not what it will say. It is
+ * an aid to recognising the call, never a complete description of it — no
+ * caller should present it as the whole of what is being approved.
+ *
+ * "Secret-redacted" means `redactSecrets` — KNOWN credential shapes and
+ * contextual secret-looking field names (see its docblock in `redaction.ts` for
+ * the exact inventory). It is not a guarantee that no secret survives: an
+ * unrecognised token in an unrecognised field is rendered as written.
+ *
+ * BUNDLE NOTE (correcting this branch's earlier commit message, which claimed
+ * this was the entry bundle's first eager consumer of `redaction.ts`):
+ * `src-ui/src/components/coding-layout/terminalSelectionHandoff.ts` and
+ * `src-ui/src/platform/native/sshLauncher.ts` already import it. The measured
+ * 1192-gzip-byte cost of importing this module at the eager approval-handler
+ * site is what it is; the attribution of which part is `redaction.ts` was a
+ * guess and is not load-bearing for anything.
  *
  * @param toolName the raw tool name as the adapter reported it
  * @param toolInput the raw tool arguments
@@ -143,16 +225,20 @@ function readField(
 }
 
 function renderValue(value: unknown): string | undefined {
-  if (typeof value === 'string') return boundedPreviewLine(value);
-  if (
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    typeof value === 'bigint'
-  ) {
-    return boundedPreviewLine(String(value));
-  }
   if (value === null || value === undefined) return undefined;
+  // Everything, the plain-string branch included, sits inside the try: this
+  // runs on adapter-supplied input on a live approval path, and a preview is
+  // never worth throwing over. Saying nothing degrades to the old
+  // tool-name-only card; throwing would lose the approval.
   try {
+    if (typeof value === 'string') return boundedPreviewLine(value);
+    if (
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      typeof value === 'bigint'
+    ) {
+      return boundedPreviewLine(String(value));
+    }
     // `JSON.stringify` returns undefined for a function or a bare symbol, and
     // throws on a circular structure or a BigInt nested in an object.
     const serialized = JSON.stringify(value);
@@ -170,7 +256,16 @@ function renderValue(value: unknown): string | undefined {
  * it still renders as a gap that hides what follows it.
  */
 function boundedPreviewLine(value: string): string | undefined {
-  const oneLine = redactSecrets(value)
+  // Slice to a coarse prefix BEFORE redacting. A tool input is unbounded
+  // (a `Write` body, a serialized blob), and running the secret patterns over
+  // megabytes to then keep 160 characters is pure cost with a backtracking
+  // hazard attached. The direction is the safe one: the prefix is a superset of
+  // what survives the final bound, so nothing reaches the output that redaction
+  // has not seen. Truncating AFTER redaction would be equally safe but not
+  // equally cheap; truncating to near the OUTPUT bound before redacting would
+  // not be safe, because collapsing whitespace afterwards pulls later
+  // characters into view.
+  const oneLine = redactSecrets(value.slice(0, MAX_SANITIZED_TEXT_LENGTH))
     // biome-ignore lint/suspicious/noControlCharactersInRegex: collapsing raw control characters into spaces is the point.
     .replace(/[\u0000-\u001F\u007F]+/g, ' ')
     .replace(/\s+/g, ' ')

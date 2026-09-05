@@ -42,12 +42,37 @@ permission flow.
 
 What Station ships instead is that its approval surfaces name the call. Every
 `request.opened` approval — the live toast and the durable inbox row — carries a
-bounded, secret-redacted preview of what the tool will actually do
+bounded, single-line preview naming **which command, or which file**
 (`toolRequestPreview`, `packages/shared/src/tool-request-preview.ts`), and the
 standing-grant button says which tool it grants. A call the settings do NOT
-already allow is therefore prompted with its command visible, never approved
-blind. The Ask-mode chip copy says the engine asks before calls its own rules do
-not already allow, rather than claiming a floor Station does not impose.
+already allow is therefore prompted with its subject visible, never as a bare
+tool name. The Ask-mode chip copy says the engine asks before calls its own rules
+do not already allow, rather than claiming a floor Station does not impose.
+
+Both surfaces read the payload through the same `toolRequestFromPayload`, whose
+`TOOL_REQUEST_ARGS_FIELDS` is the one list of the names the adapters publish
+arguments under — `toolInput` (Claude's `canUseTool`), `toolArgs` (station-agent,
+and Claude's `PreToolUse` path), `rawInput` (ACP, so every ACP engine including
+Gemini). Two readers with two lists is exactly how the toast came to show a bare
+tool name for ACP sessions while the inbox row showed the command.
+
+Two limits on "the preview", stated because a consent surface must not be read as
+promising more than it does:
+
+- **It is one field per tool family, not the whole call.** For `Bash` that is the
+  command; for `Edit`/`Write`/`NotebookEdit` it is the file path and **never the
+  content being written**, so the reader learns which file is about to change,
+  not what it will say. It is also bounded to 160 characters on one line, so a
+  long command's tail — a trailing `; rm -rf /` — can sit past the cap.
+- **"Redacted" means known credential shapes.** `redactSecrets`
+  (`packages/shared/src/redaction.ts`, see its docblock for the exact inventory)
+  removes recognised credential patterns and `key=value` pairs whose key looks
+  like a secret. An unrecognised token in an unrecognised field is rendered as
+  written. It deliberately keeps paths and URLs, which are the substance of a
+  preview. One consequence worth knowing: its contextual pass consumes the rest
+  of the line after a redacted key, so a command with a secret in the middle can
+  show its head and `[REDACTED]` and none of its tail — pre-existing behaviour,
+  and in the safe direction.
 
 ### Why the obvious remedy was not taken
 
