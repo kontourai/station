@@ -55,7 +55,9 @@ process.on('message', async (message: any) => {
           ? await service.reconcile(message.input)
           : message.operation === 'withdraw'
             ? await service.withdraw(message.input)
-            : await service.install(message.input);
+            : message.operation === 'restore'
+              ? await service.restore(message.input)
+              : await service.install(message.input);
     process.send?.({ id: message.id, result });
   } catch (error) {
     process.send?.({

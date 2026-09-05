@@ -165,3 +165,28 @@ The native-resolution regression includes an actual outside-read witness;
 Node's JavaScript realpath normalization can disagree with the path the OS
 opens for a symlink chain containing `..`. Existing containment owners are
 tracked separately in #1502; this change does not claim they were all audited.
+
+## Station contribution activation and continuity
+
+Validated `io.kontourai.station` declarations normalize into the existing host
+manifest and consent owners. Managed installation uses the existing build,
+Agent synchronization, provider publication, permission, and rollback flow.
+Agent sources are validated before prior definitions are removed. Uninstall
+withdraws admission and removes host contributions while retaining package code
+and data. Activation rollback selects the recorded prior materialization with a
+fresh admission generation; it does not undo writes made by plugin code.
+
+The journal additionally records an opaque acquisition-origin continuity token.
+The local acquisition owner scopes it to the host, canonical source, and registry
+owner when applicable. A changed or missing historical origin refuses data
+continuity with a migration-needed outcome; it does not reset or copy data.
+This token does not authenticate a publisher. Registry signatures and trusted
+publisher changes must remain governed by the registry claim/pin owner, whose
+complete production integration is a separate qualification requirement.
+
+Qualification remains incomplete: automatic portable dependency creation,
+all contribution diagnostics, full captured-root propagation, and final routed
+gates are still required. Focused tests cover real Station Agent activation,
+withdrawal, injected activation-failure rollback, retained data, fresh rollback
+admission, and acquisition-origin refusal. They do not establish hosted execution
+or full enterprise support.

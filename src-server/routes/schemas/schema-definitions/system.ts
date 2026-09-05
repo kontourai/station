@@ -148,6 +148,10 @@ const pluginInstallationRevisionSchema = z
     generation: z.string().uuid(),
     materialization: z.string().uuid(),
     dataScope: z.string().uuid(),
+    origin: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
     artifact: z
       .object({ digest: z.string().regex(/^sha256:[0-9a-f]{64}$/) })
       .strict(),
