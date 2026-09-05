@@ -53,6 +53,8 @@ clearly mark the stale document.
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
 - **[Architecture](architecture/)** — current module boundaries and ownership.
+- **[Cloud move](design/cloud-move.md)** — setup preview, AWS preparation, and
+  the staged path to verified execution handoff.
 - **[Private cloud environment](design/private-cloud-environment.md)** — working
   single-VM deployment and execution design.
 - **[Design records](design/README.md)** — proposals, accepted decisions, and

@@ -32,6 +32,7 @@ import {
 import { Command } from 'commander';
 import { build as buildPlugin } from './commands/build.js';
 import { runCheckpointsCommand } from './commands/checkpoints.js';
+import { runCloudCommand } from './commands/cloud.js';
 import { configGet, configSet } from './commands/config.js';
 import { runCoreCommand } from './commands/core.js';
 import {
@@ -448,6 +449,7 @@ const INDIVIDUAL_COMMANDS = [
   'stop',
   'fresh',
   'home',
+  'cloud',
   'upgrade',
   'doctor',
   'link',
@@ -1079,6 +1081,8 @@ function buildProgram(
       uiPort: lifecycleArgs.uiPort,
     });
   });
+
+  register('cloud', (args) => runCloudCommand(args));
 
   register('home', (args) => {
     const [homeAction, ...homeArgs] = args;
