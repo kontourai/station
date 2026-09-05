@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { QuestionGlyph, SettingsGlyph } from '../icons/Glyph';
@@ -20,7 +20,14 @@ import './HeaderMenu.css';
  *
  * `role="menu"` with `menuitem` rows, so `useMenuFocus` gives it arrow-key
  * roving focus (that hook derives the behaviour from the role, deliberately —
- * see its own note); Escape and focus-return come from the same hook.
+ * see its own note) plus focus entry and focus return.
+ *
+ * ESCAPE IS THIS COMPONENT'S OWN, and the first draft of this docblock claimed
+ * `useMenuFocus` supplied it. It does not: the hook dismisses on FOCUSOUT, and
+ * pressing Escape moves focus nowhere, so the menu stayed open under a
+ * screenshot that was supposed to show it closed. `RegionToolbarControls` and
+ * `ChatDockHeaderMoreMenu` each carry the same listener for the same reason.
+ * Capturing, so a key pressed while focus sits on a row still reaches it.
  */
 export function ProfileMenu({
   isOpen,
@@ -44,6 +51,18 @@ export function ProfileMenu({
   onToggleSettings: () => void;
 }) {
   const menuRef = useMenuFocus<HTMLDivElement>(isOpen, onClose);
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      // Stopped so the same press does not also reach a surface behind this
+      // menu — the shell has several document-level Escape handlers.
+      event.stopPropagation();
+      onClose();
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [isOpen, onClose]);
   if (!isOpen) return null;
 
   const row = (

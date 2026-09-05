@@ -532,6 +532,15 @@
   content: "· ";
 }
 
+/* Inside a `.menu-row__glyph` the chip takes the family's 16px slot rather than
+   its own 22px: the slot is what puts every label on one x, and a chip that
+   overflows it is the misalignment #1552 D4 removes. */
+.menu-row__glyph .app-toolbar__overflow-initials {
+  width: 100%;
+  height: 100%;
+  font-size: var(--text-2xs);
+}
+
 /* The profile entry's initials chip inside the ⋯ overflow menu. */
 .app-toolbar__overflow-initials {
   display: inline-flex;
