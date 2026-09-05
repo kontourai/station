@@ -654,6 +654,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // identity/project-context geometry (unclipped overflow and wrapped
   // one-line labels) at a squeezed and a comfortable width.
   'src-ui/src/__tests__/ChatDockHeader.identityGeometry.test.tsx',
+  // #1536 B2: same shape again — launches a real Chromium via
+  // `@playwright/test` to prove the Task picker's dialog is not trapped by the
+  // animating message row it opens from (containing block and stacking
+  // context), which no jsdom assertion can observe.
+  'src-ui/src/__tests__/TaskPicker.messageStacking.test.tsx',
   // station#235: launches real Chromium against the actual compact Session
   // inventory markup and cascade-resolved CSS to measure its 390px heading
   // geometry and keyboard order. Browser launch ownership keeps it out of

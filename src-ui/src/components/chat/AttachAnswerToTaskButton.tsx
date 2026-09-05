@@ -3,7 +3,7 @@ import {
   useTasksQuery,
 } from '@kontourai/station-sdk';
 import { useAttachTaskUserInputReferenceMutation } from '@kontourai/station-sdk/task-user-input-references';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   TaskPicker,
   type TaskPickerAdapter,
@@ -81,10 +81,27 @@ export function AttachAnswerToTaskButton({
   );
 }
 
+/**
+ * The Task catalog for this conversation, plus the ONE fact that decides
+ * whether the affordance is offered at all: does a Task exist to attach to.
+ *
+ * That is the same fact the picker's own empty state speaks — "Tasks are not
+ * available" — and it used to be unknowable until after the click, because the
+ * query was deferred until the dialog opened. So every user bubble in a chat
+ * with no Tasks advertised a control whose only outcome was a dead end. React
+ * Query keys this per project, so asking eagerly costs one request per
+ * conversation however many bubbles ask it.
+ *
+ * `hasNoTasks` is true ONLY for a settled, genuinely empty catalog. A query in
+ * flight or errored proves nothing, and withdrawing an affordance on no
+ * information is the same defect facing the other way.
+ */
 function useTaskPickerAdapter(projectId?: string) {
-  const [queryEnabled, setQueryEnabled] = useState(false);
-  const tasksQuery = useTasksQuery(projectId, { enabled: queryEnabled });
-  return { tasksQuery, enableQuery: () => setQueryEnabled(true) };
+  const tasksQuery = useTasksQuery(projectId);
+  return {
+    tasksQuery,
+    hasNoTasks: tasksQuery.isSuccess && (tasksQuery.data?.length ?? 0) === 0,
+  };
 }
 
 /** SDK-connected completed-answer action. */
@@ -97,7 +114,7 @@ export function ConnectedAttachAnswerToTaskButton({
   AttachAnswerToTaskButtonProps,
   'sessionId' | 'turnId' | 'projectId' | 'menuItem'
 >) {
-  const { tasksQuery, enableQuery } = useTaskPickerAdapter(projectId);
+  const { tasksQuery, hasNoTasks } = useTaskPickerAdapter(projectId);
   const attachMutation = useCreateTaskReferenceMutation();
   const adapter = useMemo<AttachAnswerToTaskAdapter>(
     () => ({
@@ -117,6 +134,7 @@ export function ConnectedAttachAnswerToTaskButton({
       tasksQuery.refetch,
     ],
   );
+  if (hasNoTasks) return null;
   return (
     <AttachAnswerToTaskButton
       sessionId={sessionId}
@@ -124,7 +142,6 @@ export function ConnectedAttachAnswerToTaskButton({
       projectId={projectId}
       menuItem={menuItem}
       adapter={adapter}
-      onOpen={enableQuery}
     />
   );
 }
@@ -174,7 +191,7 @@ export function ConnectedAttachUserInputToTaskButton({
   eventId: string;
   projectId?: string;
 }) {
-  const { tasksQuery, enableQuery } = useTaskPickerAdapter(projectId);
+  const { tasksQuery, hasNoTasks } = useTaskPickerAdapter(projectId);
   const attachMutation = useAttachTaskUserInputReferenceMutation();
   const adapter = useMemo<AttachUserInputToTaskAdapter>(
     () => ({
@@ -194,13 +211,13 @@ export function ConnectedAttachUserInputToTaskButton({
       tasksQuery.refetch,
     ],
   );
+  if (hasNoTasks) return null;
   return (
     <AttachUserInputToTaskButton
       sessionId={sessionId}
       eventId={eventId}
       projectId={projectId}
       adapter={adapter}
-      onOpen={enableQuery}
     />
   );
 }
