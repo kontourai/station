@@ -91,6 +91,20 @@ try {
     false,
   );
 
+  // Raw file bytes must not be able to impersonate another entry's framing.
+  const framedLeft = join(root, 'framed-left');
+  const framedRight = join(root, 'framed-right');
+  cpSync(source, framedLeft, { recursive: true });
+  cpSync(source, framedRight, { recursive: true });
+  writeFileSync(join(framedLeft, 'a'), Buffer.from('x\0b\0file\0y'));
+  writeFileSync(join(framedRight, 'a'), 'x');
+  writeFileSync(join(framedRight, 'b'), 'y');
+  assert.notEqual(
+    computePluginTreeDigest(framedLeft),
+    computePluginTreeDigest(framedRight),
+    'Different package trees must have distinct canonical encodings.',
+  );
+
   const existing = run();
   assert.notEqual(existing.status, 0);
   assert.equal(readFileSync(join(output, 'catalog.json'), 'utf8'), original);
