@@ -163,6 +163,13 @@ const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
     qc.invalidateQueries({ queryKey: ['agents'] });
     reloadPluginRegistry();
   },
+  [SERVER_EVENTS.PLUGINS_REMOVED]: (qc) => {
+    qc.invalidateQueries({ queryKey: ['plugins'] });
+    qc.invalidateQueries({ queryKey: ['projects'] });
+    qc.invalidateQueries({ queryKey: ['layouts'] });
+    qc.invalidateQueries({ queryKey: ['agents'] });
+    reloadPluginRegistry();
+  },
   [SERVER_EVENTS.PLUGINS_UPDATED]: (qc) => {
     qc.invalidateQueries({ queryKey: ['projects'] });
     qc.invalidateQueries({ queryKey: ['agents'] });

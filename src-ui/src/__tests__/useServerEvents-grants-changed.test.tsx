@@ -69,3 +69,10 @@ test.each([
   const invalidations = await dispatch(event);
   expect(invalidations).toHaveBeenCalledWith({ queryKey: ['projects'] });
 });
+
+test('plugin removal withdraws cached inventory, Project panes, layouts, Agents, and loaded frames', async () => {
+  const invalidations = await dispatch(SERVER_EVENTS.PLUGINS_REMOVED);
+  for (const key of ['plugins', 'projects', 'layouts', 'agents'])
+    expect(invalidations).toHaveBeenCalledWith({ queryKey: [key] });
+  expect(reload).toHaveBeenCalledOnce();
+});
