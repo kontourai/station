@@ -53,15 +53,27 @@ import {
   buildFirstRunEnableBatch,
   buildFirstRunEngineOptions,
   type FirstRunEnableOutcome,
+  type FirstRunEngineListLede,
   type FirstRunEngineOption,
   failedFirstRunEngineIds,
   firstRunEnableFailureOutcome,
   firstRunEnableOutcomeMessage,
   firstRunEnableSuccessOutcome,
+  firstRunEngineListLede,
   firstRunEngineRowLabel,
   summarizeFirstRunEnableOutcomes,
   unplannableFirstRunEngineOutcomes,
 } from './first-run-engines';
+
+/** The lede each list shape may say, named once so the copy cannot drift. */
+const LIST_LEDE_COPY_IDS: Record<
+  FirstRunEngineListLede,
+  'engine-scan' | 'engine-scan-all-set' | 'engine-scan-none-selectable'
+> = {
+  pick: 'engine-scan',
+  'all-set': 'engine-scan-all-set',
+  'none-selectable': 'engine-scan-none-selectable',
+};
 
 /**
  * The chapter's CONTENT, and whether it can be trusted yet.
@@ -254,7 +266,10 @@ export function EnginesStep({
               screenshot of the loading state. */}
           {!loading && listed.length > 0 ? (
             <p className="first-run-chapter__lede">
-              {hostActionCopy('engine-scan', devicePresentation)}
+              {hostActionCopy(
+                LIST_LEDE_COPY_IDS[firstRunEngineListLede(listed)],
+                devicePresentation,
+              )}
             </p>
           ) : null}
 

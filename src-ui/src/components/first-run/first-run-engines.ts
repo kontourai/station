@@ -119,6 +119,30 @@ function notReadyNote(engine: ExternalEngineReadinessProjection): string {
   }
 }
 
+/**
+ * Which lede this list can honestly carry — #1536 A4.
+ *
+ * The step's lede said "Pick the ones you use and Station sets up an agent for
+ * each" unconditionally. On a home where every detected engine was already set
+ * up, all three rows read "Ready — Already set up as …" with no checkbox
+ * anywhere: a verb with no control under it, asking for an act that had
+ * already happened.
+ *
+ * `'all-set'` is the narrow claim — every listed engine is enabled — and never
+ * covers a row that is merely un-tickable for some other reason, whose own
+ * note is the only accurate account of why.
+ */
+export type FirstRunEngineListLede = 'pick' | 'all-set' | 'none-selectable';
+
+export function firstRunEngineListLede(
+  options: readonly FirstRunEngineOption[],
+): FirstRunEngineListLede {
+  if (options.some((option) => option.selectable)) return 'pick';
+  return options.every((option) => option.state === 'enabled')
+    ? 'all-set'
+    : 'none-selectable';
+}
+
 function toOption(
   engine: ExternalEngineReadinessProjection,
   agents: AgentData[],
