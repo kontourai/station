@@ -36,6 +36,10 @@ import { installPluginDependency } from '../../../routes/plugins/plugin-source.j
 import { EventStore } from '../../orchestration/event-store.js';
 import { AgentPluginLoader } from '../agent-plugin-loader.js';
 import { MCPService } from '../mcp-service.js';
+import {
+  closePluginActivationSession,
+  createPluginActivationSession,
+} from '../plugin-activation-composition.js';
 import { computePluginContentDigest } from '../plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from '../plugin-incarnation.js';
 import { derivePluginConsentBasis } from '../plugin-install-consent.js';
@@ -375,63 +379,105 @@ test.each(['con', 'nul', 'com1', 'con.foo'])(
   },
 );
 
-test('the Update route installs a new code generation from its source and keeps the exact data scope', async () => {
-  const f = fixture();
-  const git = (...args: string[]) =>
-    execFileSync('git', ['-C', f.source, ...args], {
-      windowsHide: true,
-      stdio: 'ignore',
+test.each([false, true])(
+  'the Update route installs a new code generation from its source and keeps the exact data scope (alias absent: %s)',
+  async (removeAlias) => {
+    const f = fixture();
+    const git = (...args: string[]) =>
+      execFileSync('git', ['-C', f.source, ...args], {
+        windowsHide: true,
+        stdio: 'ignore',
+      });
+    git('init', '-b', 'main');
+    git('remote', 'add', 'origin', f.source);
+    git('add', '.');
+    git(
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      'commit',
+      '-m',
+      'Initial fixture',
+    );
+    await installPluginFromSource(f.source, [], f.deps);
+    const before = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
+    writeFileSync(join(before.dataRoot!, 'state'), 'persistent value');
+    writeFileSync(
+      join(f.source, 'plugin.json'),
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'fixture',
+        version: '2.0.0',
+      }),
+    );
+    git('add', '.');
+    git(
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      'commit',
+      '-m',
+      'Next fixture',
+    );
+    const app = new Hono();
+    registerPluginLifecycleRoutes(app, f.deps);
+    if (removeAlias) unlinkSync(join(f.plugins, 'fixture'));
+    const response = await app.request('/fixture/update', { method: 'POST' });
+    const body = await response.json();
+    expect(body, JSON.stringify(body)).toMatchObject({
+      success: true,
+      plugin: { version: '2.0.0' },
+      lifecycle: { data: 'preserved' },
     });
-  git('init', '-b', 'main');
-  git('remote', 'add', 'origin', f.source);
-  git('add', '.');
-  git(
-    '-c',
-    'user.name=Fixture',
-    '-c',
-    'user.email=fixture@example.test',
-    'commit',
-    '-m',
-    'Initial fixture',
-  );
-  await installPluginFromSource(f.source, [], f.deps);
-  const before = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
-  writeFileSync(join(before.dataRoot!, 'state'), 'persistent value');
-  writeFileSync(
-    join(f.source, 'plugin.json'),
-    JSON.stringify({
-      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
-      name: 'fixture',
-      version: '2.0.0',
-    }),
-  );
-  git('add', '.');
-  git(
-    '-c',
-    'user.name=Fixture',
-    '-c',
-    'user.email=fixture@example.test',
-    'commit',
-    '-m',
-    'Next fixture',
-  );
-  const app = new Hono();
-  registerPluginLifecycleRoutes(app, f.deps);
-  const response = await app.request('/fixture/update', { method: 'POST' });
-  const body = await response.json();
-  expect(body, JSON.stringify(body)).toMatchObject({
-    success: true,
-    plugin: { version: '2.0.0' },
-    lifecycle: { data: 'preserved' },
-  });
-  const after = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
-  expect(after.packageRoot).not.toBe(before.packageRoot);
-  expect(after.dataScope).toBe(before.dataScope);
-  expect(readFileSync(join(after.dataRoot!, 'state'), 'utf8')).toBe(
-    'persistent value',
-  );
-  expect(existsSync(join(before.packageRoot, 'plugin.json'))).toBe(true);
-});
+    const after = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
+    expect(after.packageRoot).not.toBe(before.packageRoot);
+    expect(after.dataScope).toBe(before.dataScope);
+    expect(readFileSync(join(after.dataRoot!, 'state'), 'utf8')).toBe(
+      'persistent value',
+    );
+    expect(existsSync(join(before.packageRoot, 'plugin.json'))).toBe(true);
+  },
+);
+
+test.each(['ready', 'pending'] as const)(
+  'DELETE withdraws a %s installation without its compatibility alias and retains data',
+  async (phase) => {
+    const f = fixture();
+    const session = createPluginActivationSession();
+    try {
+      await installPluginFromSource(
+        f.source,
+        [],
+        f.deps,
+        phase === 'pending' ? { activationSession: session } : {},
+      );
+    } finally {
+      closePluginActivationSession(session);
+    }
+    const captured = captureLocalPluginInstallation(
+      f.plugins,
+      f.journal,
+      'fixture',
+    )!;
+    expect(captured.isCurrent()).toBe(phase === 'ready');
+    writeFileSync(join(captured.root.dataRoot!, 'retained-value'), 'keep this');
+    unlinkSync(join(f.plugins, 'fixture'));
+    const app = new Hono();
+    registerPluginLifecycleRoutes(app, f.deps);
+    const response = await app.request('/fixture', { method: 'DELETE' });
+    expect(await response.json()).toMatchObject({
+      success: true,
+      lifecycle: { reclamation: 'not-proven' },
+    });
+    expect(f.journal.currentInstallation('fixture').state).toBe('not-observed');
+    expect(
+      readFileSync(join(captured.root.dataRoot!, 'retained-value'), 'utf8'),
+    ).toBe('keep this');
+    expect(existsSync(captured.root.packageRoot)).toBe(true);
+  },
+);
 
 test('a captured definition cannot start a child after another runtime withdraws it', async () => {
   const f = fixture();

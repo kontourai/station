@@ -4299,9 +4299,18 @@ async function uninstallPluginUnderPublication(
   requestGrants?: PluginGrantRevisionSnapshot,
 ): Promise<{ success: true; lifecycle?: unknown }> {
   const { agentsDir, eventBus, logger, pluginsDir, projectHomeDir } = deps;
+  const captured = deps.packageMcpJournal
+    ? captureLocalPluginInstallation(
+        pluginsDir,
+        deps.packageMcpJournal,
+        installedPluginName,
+      )
+    : null;
+  const selectedRoot = deps.packageMcpJournal
+    ? captured?.root
+    : resolveInstalledPluginRoot(pluginsDir, installedPluginName);
   const pluginDir =
-    resolveInstalledPluginRoot(pluginsDir, installedPluginName)?.packageRoot ??
-    join(pluginsDir, installedPluginName);
+    selectedRoot?.packageRoot ?? join(pluginsDir, installedPluginName);
   // The selected installed directory is the uninstall identity. A mutable
   // manifest may describe what needs cleanup, but it cannot rename the
   // principal whose grants, providers, integrations, or host record are
@@ -4336,7 +4345,6 @@ async function uninstallPluginUnderPublication(
     installedPluginName,
     logger,
   );
-  const selectedRoot = resolveInstalledPluginRoot(pluginsDir, pluginName);
   const managed = isAgentPlugin || selectedRoot?.kind === 'incarnation';
   if (managed && manifest.name !== pluginName)
     throw new Error(
@@ -4351,6 +4359,17 @@ async function uninstallPluginUnderPublication(
     ? await installationService.inspect(pluginName)
     : null;
   const priorJournal = deps.packageMcpJournal?.currentInstallation(pluginName);
+  if (
+    captured?.installation &&
+    (priorInstallation?.generation !== captured.installation.incarnation ||
+      priorInstallation.materialization !== selectedRoot?.generation ||
+      priorJournal?.state !== 'observed' ||
+      priorJournal.installation.incarnation !==
+        captured.installation.incarnation)
+  )
+    throw new Error(
+      'Plugin installation changed before removal; reload before retrying',
+    );
   const priorWasReady =
     priorJournal?.state === 'observed' &&
     deps.packageMcpJournal!.admissionOpen(priorJournal.installation);

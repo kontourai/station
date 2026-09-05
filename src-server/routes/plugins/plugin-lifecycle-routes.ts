@@ -26,7 +26,10 @@ import {
   withPluginContentLock,
 } from '../../services/plugins/plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from '../../services/plugins/plugin-incarnation.js';
-import { reconcileLocalPluginInstallations } from '../../services/plugins/plugin-installation-local.js';
+import {
+  captureLocalPluginInstallation,
+  reconcileLocalPluginInstallations,
+} from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import {
@@ -347,6 +350,16 @@ export function registerPluginLifecycleRoutes(
     removeEngineConnections,
     settleProviderAdapterRetirements,
   } = deps;
+  // Lifecycle operations must also address pending installations. The journal
+  // selects retained bytes; a compatibility alias is never their authority.
+  const resolveLifecycleRoot = (name: string) =>
+    deps.packageMcpJournal
+      ? (captureLocalPluginInstallation(
+          pluginsDir,
+          deps.packageMcpJournal,
+          name,
+        )?.root ?? null)
+      : resolveInstalledPluginRoot(pluginsDir, name);
 
   app.get('/check-updates', async (c) => {
     const updates: Array<{
@@ -436,8 +449,7 @@ export function registerPluginLifecycleRoutes(
     let pluginDir = join(pluginsDir, name);
     try {
       assertPathInside(pluginsDir, pluginDir, 'Plugin update target');
-      pluginDir =
-        resolveInstalledPluginRoot(pluginsDir, name)?.packageRoot ?? pluginDir;
+      pluginDir = resolveLifecycleRoot(name)?.packageRoot ?? pluginDir;
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
@@ -463,8 +475,8 @@ export function registerPluginLifecycleRoutes(
       }
       installedPluginName = registryOwner.installedName;
       pluginDir =
-        resolveInstalledPluginRoot(pluginsDir, installedPluginName)
-          ?.packageRoot ?? join(pluginsDir, installedPluginName);
+        resolveLifecycleRoot(installedPluginName)?.packageRoot ??
+        join(pluginsDir, installedPluginName);
       try {
         assertPathInside(
           pluginsDir,
@@ -488,10 +500,7 @@ export function registerPluginLifecycleRoutes(
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
 
-    const installedRoot = resolveInstalledPluginRoot(
-      pluginsDir,
-      installedPluginName,
-    );
+    const installedRoot = resolveLifecycleRoot(installedPluginName);
     if (installedRoot?.kind === 'incarnation') {
       try {
         const registryInstall = registryOwner?.success
@@ -895,8 +904,7 @@ export function registerPluginLifecycleRoutes(
     let pluginDir = join(pluginsDir, name);
     try {
       assertPathInside(pluginsDir, pluginDir, 'Plugin removal target');
-      pluginDir =
-        resolveInstalledPluginRoot(pluginsDir, name)?.packageRoot ?? pluginDir;
+      pluginDir = resolveLifecycleRoot(name)?.packageRoot ?? pluginDir;
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
@@ -929,8 +937,7 @@ export function registerPluginLifecycleRoutes(
     try {
       assertPathInside(pluginsDir, pluginDir, 'Plugin removal target');
       pluginDir =
-        resolveInstalledPluginRoot(pluginsDir, installedPluginName)
-          ?.packageRoot ?? pluginDir;
+        resolveLifecycleRoot(installedPluginName)?.packageRoot ?? pluginDir;
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
