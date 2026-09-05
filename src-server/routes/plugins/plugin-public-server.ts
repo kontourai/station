@@ -374,6 +374,8 @@ export async function acquirePluginReviewedSourcesModule(input: {
   logger: Logger;
   projectHomeDir: string;
   journal?: PackageMcpAdmissionJournal;
+  artifact?: PluginRuntimeArtifact;
+  authorize?: () => boolean;
 }): Promise<{
   read(input: ReviewedSourcesInvocation): Promise<ReviewedSourcesResult>;
   release(): void;
@@ -383,7 +385,11 @@ export async function acquirePluginReviewedSourcesModule(input: {
     input.pluginName,
     input.manifest,
     input.logger,
-    { journal: input.journal },
+    {
+      journal: input.journal,
+      artifact: input.artifact,
+      authorize: input.authorize,
+    },
   );
   if (!acquired) return null;
   const owner = acquired.loaded.reviewedSources;

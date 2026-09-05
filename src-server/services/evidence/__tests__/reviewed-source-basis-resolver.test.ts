@@ -5,25 +5,45 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const owner = vi.hoisted(() => ({
   currentness: undefined as unknown,
+  artifactAvailable: true,
+  artifactCurrent: true,
+  retireOnCurrentness: false,
+  acquisitions: 0,
   descriptor: undefined as unknown,
   descriptorResult: undefined as unknown,
 }));
 
 vi.mock('../../../routes/plugins/plugin-public-server.js', () => ({
   readPluginPublicManifest: async () => ({ serverModule: 'owner.mjs' }),
-  acquirePluginReviewedSourcesModule: async () => ({
-    read: async (input: { operation: 'describe' | 'currentness' }) =>
-      input.operation === 'describe'
-        ? (owner.descriptorResult ?? {
-            status: 'available',
-            payload: owner.descriptor,
-          })
-        : { status: 'available', payload: owner.currentness },
-    release: () => undefined,
-  }),
+  acquirePluginReviewedSourcesModule: async () => {
+    owner.acquisitions += 1;
+    return {
+      read: async (input: { operation: 'describe' | 'currentness' }) => {
+        if (input.operation === 'currentness' && owner.retireOnCurrentness)
+          owner.artifactCurrent = false;
+        return input.operation === 'describe'
+          ? (owner.descriptorResult ?? {
+              status: 'available',
+              payload: owner.descriptor,
+            })
+          : { status: 'available', payload: owner.currentness };
+      },
+      release: () => undefined,
+    };
+  },
 }));
 vi.mock('../../plugins/plugin-permissions.js', () => ({
-  hasGrantOrThrow: () => true,
+  readPluginGrantState: () => ({ granted: ['plugin.server'] }),
+}));
+
+vi.mock('../../plugins/plugin-runtime-artifact.js', () => ({
+  capturePluginRuntimeArtifact: () =>
+    owner.artifactAvailable
+      ? {
+          manifest: { serverModule: 'owner.mjs' },
+          isCurrent: () => owner.artifactCurrent,
+        }
+      : null,
 }));
 
 import { ReviewedSourceBasisResolver } from '../reviewed-source-basis-resolver.js';
@@ -152,6 +172,10 @@ owner.descriptor = descriptor;
 afterEach(() => {
   owner.descriptor = descriptor;
   owner.descriptorResult = undefined;
+  owner.artifactAvailable = true;
+  owner.artifactCurrent = true;
+  owner.retireOnCurrentness = false;
+  owner.acquisitions = 0;
 });
 
 const answer = {
@@ -386,4 +410,42 @@ describe.sequential('ReviewedSourceBasisResolver currentness table', () => {
       }),
     ).resolves.toMatchObject({ state: 'restricted' });
   });
+});
+
+test('does not acquire an owner module when its installation is unavailable', async () => {
+  owner.artifactAvailable = false;
+  const resolver = new ReviewedSourceBasisResolver({
+    projectHomeDir: '/tmp/station-review-source-table',
+    logger: {} as never,
+  });
+  const result = await resolver.read({
+    answer: answer as never,
+    assessment: captured as never,
+    authority,
+    current: () => true,
+  });
+  expect(result).toMatchObject({ state: 'unavailable' });
+  expect(owner.acquisitions).toBe(0);
+});
+
+test('withholds the final reviewed-source contribution if its captured installation retires during the owner read', async () => {
+  owner.currentness = {
+    apiVersion: 'fieldwork.kontourai.io/v1',
+    kind: 'ReviewedWebSourceCurrentness',
+    status: 'unavailable',
+  };
+  owner.retireOnCurrentness = true;
+  const resolver = new ReviewedSourceBasisResolver({
+    projectHomeDir: '/tmp/station-review-source-table',
+    logger: {} as never,
+  });
+  const result = await resolver.read({
+    answer: answer as never,
+    assessment: captured as never,
+    authority,
+    current: () => true,
+  });
+  expect(result).toMatchObject({ state: 'restricted' });
+  expect(result).not.toHaveProperty('value');
+  expect(owner.acquisitions).toBe(1);
 });

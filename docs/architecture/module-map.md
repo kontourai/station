@@ -170,7 +170,12 @@ module acquisition and recheck currentness and grants before plugin callbacks;
 bundle delivery checks currentness again after the asynchronous read. The
 runtime helper has no activation bypass and no independent persisted state.
 `plugin-runtime-readiness.test.ts` exercises the real journal and HTTP routes
-across pending/ready selection, content mutation, and stale caller declarations.
+across pending/ready selection, content mutation, and stale caller declarations. Operational
+subscription discovery unions journal-selected identities with legacy inventory,
+binds each observer to the captured generation and digest, and rechecks before
+dispatch. Reviewed-source resolution carries the same capture through owner
+module reads and the final contribution publication. Neither background reader
+accepts the installer's private pending-activation composition capability.
 
 ## InstalledPluginInventory
 

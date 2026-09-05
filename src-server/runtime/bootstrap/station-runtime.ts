@@ -992,6 +992,8 @@ export class StationRuntime {
       this.bindFleetConsumerProbesPreview();
       this.pluginOperationalEventSubscriptions =
         createPluginOperationalEventSubscriptionService({
+          packageMcpJournal:
+            this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
           eventBus: this.eventBus,
           eventStore: this.orchestrationEventStore,
           logger: this.logger,
