@@ -13,6 +13,10 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import { replacePluginProvidersForSource } from '../../../providers/registries/registry.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import {
+  closePluginActivationSession,
+  createPluginActivationSession,
+} from '../../../services/plugins/plugin-activation-composition.js';
 import { resolveInstalledPluginRoot } from '../../../services/plugins/plugin-incarnation.js';
 import {
   derivePluginConsentBasis,
@@ -23,6 +27,7 @@ import { readPluginDependencyOwnership } from '../../../services/plugins/plugin-
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 import {
   installPluginFromSource,
+  previewInstalledPluginRecovery,
   uninstallInstalledPlugin,
 } from '../plugin-install-shared.js';
 import { fetchPluginSource } from '../plugin-source.js';
@@ -387,4 +392,96 @@ describe('managed dependency graph uses canonical lifecycle owners', () => {
       existsSync(join(f.root, 'agents', 'child-agent', 'agent.json')),
     ).toBe(true);
   });
+});
+
+test('retained diamond recovery checks every version edge before deduplicating shared dependencies', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'station-retained-diamond-'));
+  cleanupDirs.push(root);
+  mkdirSync(join(root, 'plugins'));
+  const store = new EventStore(join(root, 'events.sqlite'));
+  packageStores.push(store);
+  const installDeps = {
+    ...deps(root),
+    packageMcpJournal: store.createPackageMcpAdmissionJournal(),
+  };
+  const app = new Hono();
+  registerPluginInstallRoutes(app, installDeps);
+  const source = (
+    name: string,
+    dependencies: Array<{ name: string; version: string }>,
+    version = '1.0.0',
+  ) => {
+    const path = join(root, `${name}-source`);
+    writePlugin(path, {
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name,
+      version,
+      extensions: {
+        'io.kontourai.station': { schemaVersion: '1.0', dependencies },
+      },
+    });
+    return path;
+  };
+  const install = async (
+    path: string,
+    activationSession?: ReturnType<typeof createPluginActivationSession>,
+  ) => {
+    const response = await app.request('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: path }),
+    });
+    const preview = (await response.json()) as any;
+    expect(preview, JSON.stringify(preview)).toMatchObject({ valid: true });
+    return installPluginFromSource(path, [], installDeps, {
+      activationSession,
+      consent: {
+        kind: 'operator-decision',
+        contentDigest: preview.contentDigest,
+        grantRevision: preview.grantRevision,
+        permissions: preview.permissions.required,
+        dependencies: preview.dependencies.map((entry: any) => entry.id),
+        dependencyApprovals: preview.dependencies.flatMap((entry: any) =>
+          entry.consent
+            ? [
+                {
+                  id: entry.id,
+                  contentDigest: entry.consent.contentDigest,
+                  grantRevision: entry.consent.grantRevision,
+                  permissions: entry.consent.permissions,
+                  dependencies: entry.consent.dependencies,
+                },
+              ]
+            : [],
+        ),
+      },
+    });
+  };
+  await install(source('shared', []));
+  await install(source('left', [{ name: 'shared', version: '1.0.0' }]));
+  await install(source('right', [{ name: 'shared', version: '1.0.0' }]));
+  const pending = createPluginActivationSession();
+  try {
+    await install(
+      source('diamond', [
+        { name: 'left', version: '*' },
+        { name: 'right', version: '*' },
+      ]),
+      pending,
+    );
+  } finally {
+    closePluginActivationSession(pending);
+  }
+  // A different installed branch is upgraded, then the shared package changes
+  // again. The pending parent's bytes still exist, but its graph is incompatible.
+  await install(source('shared', [], '2.0.0'));
+  await install(source('right', [{ name: 'shared', version: '2.0.0' }]));
+  await install(source('shared', []));
+  const before = installDeps.packageMcpJournal.currentInstallation('diamond');
+  await expect(
+    previewInstalledPluginRecovery('diamond', installDeps),
+  ).rejects.toThrow(/shared.*required version '2.0.0'/);
+  expect(installDeps.packageMcpJournal.currentInstallation('diamond')).toEqual(
+    before,
+  );
 });

@@ -69,18 +69,22 @@ export async function withPluginInstallationGeneration<T>(input: {
   readonly pluginName: string;
   readonly expected: PluginInstallationGenerationFence;
   readonly effect: () => Promise<T>;
+  readonly capture?: () => PluginInstallationGenerationFence;
 }): Promise<
   | { readonly kind: 'applied'; readonly value: T }
   | { readonly kind: 'superseded' }
 > {
   return withPluginContentLock(input.pluginsDir, input.pluginName, async () => {
-    const installed = existsSync(
-      join(input.pluginsDir, input.pluginName, 'plugin.json'),
-    );
-    const installationGeneration = computePluginContentDigest(
-      input.pluginsDir,
-      input.pluginName,
-    );
+    const current = input.capture?.() ?? {
+      installed: existsSync(
+        join(input.pluginsDir, input.pluginName, 'plugin.json'),
+      ),
+      installationGeneration: computePluginContentDigest(
+        input.pluginsDir,
+        input.pluginName,
+      ),
+    };
+    const { installed, installationGeneration } = current;
     if (
       installed !== input.expected.installed ||
       installationGeneration !== input.expected.installationGeneration

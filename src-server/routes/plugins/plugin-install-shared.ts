@@ -2649,12 +2649,30 @@ async function inspectRetainedPluginRecovery(
       grantRevision: string;
     };
   }> = [];
+  const versions = new Map<string, string>();
+  const checkVersion = (
+    dependency: NonNullable<PluginManifest['dependencies']>[number],
+    version: string,
+  ) => {
+    if (
+      dependency.version &&
+      dependency.version !== '*' &&
+      dependency.version !== version
+    )
+      throw new Error(
+        `Dependency '${dependency.id}' does not match required version '${dependency.version}'`,
+      );
+  };
   const visiting = new Set([name]);
   const walk = async (parent: PluginManifest): Promise<void> => {
     for (const dependency of parent.dependencies ?? []) {
       if (visiting.has(dependency.id))
         throw new Error(`Retained dependency cycle detected: ${dependency.id}`);
-      if (dependencies.has(dependency.id)) continue;
+      const seenVersion = versions.get(dependency.id);
+      if (seenVersion !== undefined) {
+        checkVersion(dependency, seenVersion);
+        continue;
+      }
       const captured = captureLocalPluginInstallation(
         deps.pluginsDir,
         journal,
@@ -2681,14 +2699,8 @@ async function inspectRetainedPluginRecovery(
         childBasis.contentDigest !== captured.installation.contentDigest
       )
         throw new Error(`Dependency '${dependency.id}' bytes changed`);
-      if (
-        dependency.version &&
-        dependency.version !== '*' &&
-        dependency.version !== child.version
-      )
-        throw new Error(
-          `Dependency '${dependency.id}' does not match required version '${dependency.version}'`,
-        );
+      checkVersion(dependency, child.version);
+      versions.set(dependency.id, child.version);
       const expectedInstallation = revision(captured.installation);
       dependencies.set(dependency.id, expectedInstallation);
       captures.push(captured);
