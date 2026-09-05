@@ -376,10 +376,12 @@ describe('what an installed plugin adds (#1536 G2)', () => {
       .closest<HTMLElement>('.detail-panel__section');
     expect(section).toBeTruthy();
     const rows = within(section!).getAllByRole('listitem');
+    // Review M4: each entry is NAMED. The layout used to render its raw slug
+    // under a section promising things rather than slugs.
     expect(rows.map((row) => row.textContent)).toEqual([
-      'Layoutgetting-startedAdd to Demo',
+      'LayoutGetting StartedAdd to Demo',
       'PaneNotes',
-      'Agentguide',
+      'AgentGuide',
     ]);
   });
 
@@ -442,5 +444,28 @@ describe('what an installed plugin adds (#1536 G2)', () => {
     render(<PluginManagementView onNavigate={vi.fn()} />);
 
     expect(screen.queryByText('What it adds')).toBeNull();
+  });
+  test('prefers a display name the payload declares over the humanized slug', () => {
+    viewModel = baseViewModel({
+      plugins: [
+        {
+          ...starter,
+          layout: { slug: 'getting-started', name: 'First Steps' },
+        },
+      ],
+      filtered: [starter],
+      items: [{ id: starter.name, name: starter.displayName, subtitle: '' }],
+      selectedPlugin: starter.name,
+      selected: {
+        ...starter,
+        layout: { slug: 'getting-started', name: 'First Steps' },
+      },
+      projects: [{ slug: 'demo', name: 'Demo' }],
+    });
+
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    expect(screen.getByText('First Steps')).toBeTruthy();
+    expect(screen.queryByText('Getting Started')).toBeNull();
   });
 });

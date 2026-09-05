@@ -61,13 +61,40 @@ export function toggleSetValue(
 }
 
 /**
+ * A path-safe identifier as a person would read it: `getting-started` ->
+ * "Getting Started" (#1536 review M4). Reached only when the payload carries
+ * no display name of its own — a manifest slug is what the reader is stuck
+ * with otherwise, and it is the thing they were shown before.
+ *
+ * Deliberately conservative: an identifier carrying a separator that is not a
+ * word break (a dotted or slashed id) is returned unchanged rather than
+ * mangled into a fabricated name, the same rule `prettifyModelId` follows.
+ */
+export function humanizeContributionSlug(slug: string): string {
+  const id = slug.trim();
+  if (!id || /[./:]/.test(id)) return id;
+  return (
+    id
+      .split(/[-_]+/)
+      .filter(Boolean)
+      .map((word) => word[0].toUpperCase() + word.slice(1))
+      .join(' ') || id
+  );
+}
+
+/**
  * What an installed plugin CONTRIBUTES, in the reader's words.
  *
  * The detail page listed `ui` and `layout:getting-started` capability chips
  * and nothing else, so after installing a starter there was no way to see
  * what had arrived or to reach it (#1536 G2). This is the same manifest data
- * the chips render, named as things rather than as slugs, and it carries the
- * `layoutSlug` the Add Layout flow needs.
+ * the chips render, and it carries the `layoutSlug` the Add Layout flow needs.
+ *
+ * Review M4: each entry is NAMED — its own display name when the payload
+ * carries one (panes always do; a layout will once the route sends it), and a
+ * humanized identifier otherwise. It used to pass the raw slug through under
+ * the field called `name`, so the section promised things and rendered
+ * `getting-started`.
  */
 export interface PluginContribution {
   kind: 'layout' | 'pane' | 'agent' | 'provider';
@@ -82,11 +109,13 @@ export interface PluginContribution {
 export function pluginContributions(plugin: ReadyPlugin): PluginContribution[] {
   const contributions: PluginContribution[] = [];
   if (plugin.layout) {
+    const declared =
+      plugin.layout.name || plugin.layout.displayName || plugin.layout.title;
     contributions.push({
       kind: 'layout',
       kindLabel: 'Layout',
       id: `layout:${plugin.layout.slug}`,
-      name: plugin.layout.slug,
+      name: declared || humanizeContributionSlug(plugin.layout.slug),
       layoutSlug: plugin.layout.slug,
     });
   }
@@ -95,7 +124,7 @@ export function pluginContributions(plugin: ReadyPlugin): PluginContribution[] {
       kind: 'pane',
       kindLabel: 'Pane',
       id: `pane:${pane.id}`,
-      name: pane.name || pane.id,
+      name: pane.name || humanizeContributionSlug(pane.id),
     });
   }
   for (const agent of plugin.agents ?? []) {
@@ -103,7 +132,7 @@ export function pluginContributions(plugin: ReadyPlugin): PluginContribution[] {
       kind: 'agent',
       kindLabel: 'Agent',
       id: `agent:${agent.slug}`,
-      name: agent.slug,
+      name: humanizeContributionSlug(agent.slug),
     });
   }
   for (const provider of plugin.providers ?? []) {
@@ -111,6 +140,8 @@ export function pluginContributions(plugin: ReadyPlugin): PluginContribution[] {
       kind: 'provider',
       kindLabel: 'Connection type',
       id: `provider:${provider.type}`,
+      // A provider TYPE is an identifier the operator matches against
+      // configuration, not a product name — shown as declared.
       name: provider.type,
     });
   }
