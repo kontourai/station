@@ -3310,7 +3310,8 @@ for (const width of [320, 390, 1280]) {
       );
       const rail = page.locator('.chat-input__meta');
       const bounds = (await rail.boundingBox())!;
-      for (const control of [agent, model]) {
+      const approval = page.getByRole('button', { name: /^Approval mode:/ });
+      for (const control of [agent, model, approval]) {
         const box = (await control.boundingBox())!;
         expect(box.height).toBeGreaterThanOrEqual(width < 769 ? 44 : 32);
         expect(box.x).toBeGreaterThanOrEqual(bounds.x);
@@ -3319,6 +3320,20 @@ for (const width of [320, 390, 1280]) {
         );
         expect(await contrastRatio(control)).toBeGreaterThanOrEqual(4.5);
       }
+      const clear = page.getByRole('button', {
+        name: 'Clear input',
+        exact: true,
+      });
+      await expect(clear).toHaveText('Clear');
+      const clearBox = (await clear.boundingBox())!;
+      expect(clearBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
+      expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(
+        (await send.boundingBox())!.x,
+      );
+      await expect(textarea).toHaveCSS('outline-style', 'none');
+      const capsule = page.locator('.chat-input__capsule');
+      await expect(capsule).toHaveCSS('outline-style', 'solid');
+      await expect(capsule).toHaveCSS('outline-width', '2px');
       await page.locator('.chat-input').screenshot({
         path: testInfo.outputPath(`composer-${width}-${theme}.png`),
       });
@@ -3349,6 +3364,9 @@ for (const width of [320, 390, 1280]) {
         .click();
       await expect(draftsDialog).toBeHidden();
       await expect(textarea).toHaveValue('Ask a question or describe a task…');
+      await clear.click();
+      await expect(textarea).toHaveValue('');
+      await expect(clear).toBeHidden();
     });
   }
 }

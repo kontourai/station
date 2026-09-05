@@ -420,7 +420,7 @@ export function ChatInputArea({
           <button
             ref={agentHandoffTriggerRef}
             type="button"
-            className="chat-input__agent-btn"
+            className="choice-trigger chat-input__agent-btn"
             onClick={agentHandoffDisabled ? undefined : onOpenAgentHandoff}
             aria-disabled={agentHandoffDisabled}
             aria-haspopup="dialog"
@@ -430,7 +430,7 @@ export function ChatInputArea({
             <span className="chat-input__agent-name">
               {agentLabel ?? 'Current Agent'}
             </span>
-            <ArrowDownGlyph className="chat-input__choice-caret" />
+            <ArrowDownGlyph className="choice-caret" />
           </button>
         )}
         <button
@@ -438,7 +438,7 @@ export function ChatInputArea({
           type="button"
           onClick={canModelSelect ? onModelOpen : undefined}
           aria-disabled={!canModelSelect}
-          className={`chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
+          className={`choice-trigger chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
           aria-haspopup="dialog"
           aria-expanded={modelQuery !== null && !input.startsWith('/model ')}
           aria-label={modelAccessibleLabel}
@@ -447,7 +447,7 @@ export function ChatInputArea({
           <span className="chat-input__model-name" aria-hidden="true">
             {modelLabel}
           </span>
-          <ArrowDownGlyph className="chat-input__choice-caret" />
+          <ArrowDownGlyph className="choice-caret" />
         </button>
         {isOverride && (
           <button
@@ -597,17 +597,6 @@ export function ChatInputArea({
               minHeight: 0,
             }}
           />
-          {input && (
-            <button
-              type="button"
-              onClick={onClearInput}
-              className="chat-input__clear"
-              aria-label="Clear input"
-              title="Clear input"
-            >
-              ×
-            </button>
-          )}
           {isOverLimit && (
             <div className="chat-input__attachment-error" role="alert">
               {overLimitBy.toLocaleString('en-US')} characters over the limit
@@ -670,6 +659,17 @@ export function ChatInputArea({
               }}
             />
           </React.Suspense>
+          {input && (
+            <button
+              type="button"
+              onClick={onClearInput}
+              className="chat-input__clear"
+              aria-label="Clear input"
+              title="Clear input"
+            >
+              Clear
+            </button>
+          )}
           <span className="chat-controls-row__spacer" />
           {turnInFlight ? (
             <button

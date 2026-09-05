@@ -146,11 +146,6 @@
   white-space: nowrap;
 }
 
-.branch-toolbar__caret {
-  color: var(--text-secondary);
-  font-size: 10px;
-}
-
 .branch-toolbar__menu {
   position: absolute;
   top: calc(100% + 4px);

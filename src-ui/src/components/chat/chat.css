@@ -954,26 +954,6 @@
 }
 
 /* ── ChatInputArea ── */
-.chat-input__clear {
-  position: absolute;
-  right: 20px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  font-size: var(--text-2xl);
-  color: var(--text-muted);
-  padding: 4px;
-  line-height: 1;
-  z-index: 1;
-  transition: color var(--motion-fast) var(--ease-standard);
-}
-
-.chat-input__clear:hover {
-  color: var(--text-primary);
-}
-
 /* archive#3344: attached files, shown in the composer rather than only behind
    the paperclip popover, so a pasted screenshot is visibly attached. The row
    scrolls instead of wrapping — wrapping grows the composer upward and pushes
@@ -1204,26 +1184,6 @@
   color: white;
 }
 
-/* Scoped under `.chat-input__meta` for the same reason as the approval chip
-   below — `.chat-input button` was stripping this pill's padding and
-   background too, so the model control rendered as bare text (#1010 item 1). */
-.chat-input__meta :is(.chat-input__model-btn, .chat-input__agent-btn) {
-  min-width: 0;
-  min-height: 32px;
-  max-width: 100%;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 .chat-input__agent-name,
 .chat-input__model-name {
   min-width: 0;
@@ -1232,29 +1192,9 @@
   white-space: nowrap;
 }
 
-.chat-controls-row .chat-input__drafts-button {
-  font-size: var(--text-xs);
-}
-
-.chat-input__choice-caret {
-  flex: none;
-  margin-left: auto;
-  color: var(--text-secondary);
-}
-
-.chat-input__meta
-  :is(.chat-input__agent-btn, .chat-input__model-btn):hover:not(
-    [aria-disabled="true"]
-  ),
-.chat-input__meta .chat-input__model-btn[aria-expanded="true"] {
-  background: var(--bg-hover);
-  border-color: var(--accent-primary);
-}
-
-.chat-input__meta
-  :is(.chat-input__agent-btn, .chat-input__model-btn):focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: -2px;
+.chat-controls-row :is(.chat-input__drafts-button, .chat-input__clear) {
+  font-size: var(--text-sm);
+  font-weight: 500;
 }
 
 .chat-input__meta
@@ -1291,34 +1231,9 @@
   background: color-mix(in srgb, var(--accent-yellow) 12%, transparent);
 }
 
-/* archive#1010 — the meta row's pills are scoped under `.chat-input__meta`
-   (0,2,0) on purpose. `.chat-input button` (index.css, 0,1,1) sets
-   `padding: 0` and `background: transparent`, which beat these single-class
-   component rules and silently stripped BOTH off every chip that is a
-   `<button>`. Measured on origin/main: the interactive chips rendered at
-   `padding: 0px` with `background: rgba(0,0,0,0)` while the inert read-only
-   `<span>` — exempt from that selector — kept its `0 6px` padding and its
-   filled background. The row therefore read exactly backwards: the controls
-   you can click looked like loose text, and the one thing you cannot click
-   looked like the only real control. That file already documents this
-   clobbering hazard for `color` (station#763); this is the same trap for the
-   two properties that make a pill a pill. */
 .chat-input__meta .chat-input__approval-chip {
   flex: 0 0 auto;
-  /* 24, not 32: this row is a status readout above the composer, and at a
-     10px label 32px was mostly empty box (#1010 item 1). The mobile block
-     below restores the 44px touch floor where a finger has to hit it. */
-  min-height: 24px;
-  padding: 0 var(--space-3);
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
   white-space: nowrap;
-  cursor: pointer;
 }
 
 .chat-input__approval-chip-label {
@@ -1329,10 +1244,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.chat-input__approval-chip-caret {
-  opacity: 0.7;
 }
 
 @media (max-width: 480px) {
@@ -1348,17 +1259,6 @@
      mobile block below — 480px is a subset of that block's condition, so a
      second, narrower copy of the same declaration here could never change
      a computed value. See that rule's comment for the full reasoning. */
-}
-
-.chat-input__meta .chat-input__approval-chip--default {
-  /* --text-secondary, not --text-muted: at 10px this is normal text and needs
-     4.5:1; --text-muted measured 3.95:1 over --accent-subtle. */
-  color: var(--text-secondary);
-  background: var(--accent-subtle);
-}
-
-.chat-input__meta .chat-input__approval-chip--default:hover {
-  background: var(--accent-light);
 }
 
 .chat-input__meta .chat-input__approval-chip--override {
@@ -2117,7 +2017,7 @@
      `.chat-input button`'s clobber. Dropping the scope here would silently
      hand the 44px touch floor back to a 24px desktop value on a phone. */
   .chat-input__meta .chat-input__model-btn {
-    flex: 1 1 0;
+    flex: 0 1 auto;
     /* 44px for the same reason as the approval chip below: this scoped rule
        (0,2,0) outranks `.chat-input button`'s (0,1,1) touch floor, so a bare
        `min-width: 0` silently removes it. Not reachable today — the button

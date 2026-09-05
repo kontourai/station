@@ -78,7 +78,15 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 - Favorites, recents, hidden models, and explicit order use one versioned
   device-settings record. Provider details own favorite/hide/reorder controls;
   the picker consumes the same record.
-- Drafts belongs in the secondary action row, leaving the textarea its full width.
+- Compact value pickers use the shared `.choice-trigger` / `.choice-caret` styles
+  and `ArrowDownGlyph`, also used by the layout switcher and scheduler agent picker.
+  Standard actions continue to use `Button`.
+- Agent, Model, and approval mode share control geometry and chevrons. Values size
+  naturally and truncate when needed; Model does not stretch into unused space.
+- The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
+  their individual focus indicator.
+- Drafts and the labeled Clear action belong in the secondary action row, leaving
+  the textarea its full width. Clear appears only when there is text.
 - Model controls render only when the Provider reports support. A named reset
   restores the original default Provider and model for the chat.
 - Station-managed chats may switch Model Providers. Externally managed agent
