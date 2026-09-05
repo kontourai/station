@@ -9,7 +9,12 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import {
+  clearAll,
+  getProvider,
+} from '../../../providers/registries/registry.js';
 import { createPluginOperationalEventSubscriptionService } from '../../../runtime/plugins/plugin-operational-event-subscriptions.js';
+import { loadRuntimePluginProviders } from '../../../runtime/plugins/runtime-plugin-loader.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { verifyPluginActivation } from '../../../services/plugins/plugin-activation-plan.js';
@@ -39,6 +44,7 @@ async function fixture() {
     name: 'public-fixture',
     version: '1.0.0',
     serverModule: 'server.mjs',
+    providers: [{ type: 'branding', module: './provider.mjs' }],
     operationalEventSubscriptions: [
       {
         id: 'ready',
@@ -56,6 +62,10 @@ async function fixture() {
   writeFileSync(
     join(source, 'dist', 'bundle.js'),
     'export const ready = true;',
+  );
+  writeFileSync(
+    join(source, 'provider.mjs'),
+    "globalThis.__stationReadyProviderImports = (globalThis.__stationReadyProviderImports ?? 0) + 1; export default function () { globalThis.__stationReadyProviderFactoryGate?.(); return { getAppName: () => 'Ready provider' }; }",
   );
   const digest = computePluginContentDigest(dirname(source), basename(source))!;
   const store = new EventStore(join(home, 'events.sqlite'));
@@ -276,5 +286,65 @@ test('background subscriptions discover a ready journal selection without its al
     expect(globals.__stationPublicReadinessEvents).toBe(before + 1);
   } finally {
     await service.close();
+  }
+});
+
+test('ordinary provider boot imports only ready journal selections and refuses publication if selection changes during construction', async () => {
+  const f = await fixture();
+  const globals = globalThis as typeof globalThis & {
+    __stationReadyProviderImports?: number;
+    __stationReadyProviderFactoryGate?: () => void;
+  };
+  const before = globals.__stationReadyProviderImports ?? 0;
+  await clearAll();
+  const context = {
+    logger,
+    projectHomeDir: f.home,
+    packageMcpJournal: f.journal,
+    loadPluginOverrides: async () => ({}),
+  };
+  try {
+    await loadRuntimePluginProviders(context);
+    expect(globals.__stationReadyProviderImports ?? 0).toBe(before);
+    expect(getProvider('branding')).toBeNull();
+    await f.ready();
+    const artifact = capturePluginRuntimeArtifact(
+      f.plugins,
+      f.manifest.name,
+      f.journal,
+    )!;
+    await grantPermissions(
+      f.home,
+      f.manifest.name,
+      ['providers.register'],
+      artifact,
+    );
+    unlinkSync(join(f.plugins, f.manifest.name));
+    await loadRuntimePluginProviders(context);
+    expect(
+      getProvider<{ getAppName(): string }>('branding')?.getAppName(),
+    ).toBe('Ready provider');
+    expect(globals.__stationReadyProviderImports).toBe(before + 1);
+    globals.__stationReadyProviderFactoryGate = () => {
+      const current = f.journal.currentInstallation(f.manifest.name);
+      if (current.state !== 'observed')
+        throw new Error('Missing current installation');
+      const result = f.journal.recordInstallation({
+        pluginId: f.manifest.name,
+        contentDigest: artifact.digest,
+        previous: current.installation,
+        materialization: current.installation.materialization,
+        dataScope: current.installation.dataScope,
+        origin: 'a'.repeat(64),
+        activationPlan: f.journal.activationPlan(current.installation)!,
+      });
+      expect(result.state).toBe('recorded');
+    };
+    await loadRuntimePluginProviders(context);
+    expect(globals.__stationReadyProviderImports).toBe(before + 2);
+    expect(getProvider('branding')).toBeNull();
+  } finally {
+    delete globals.__stationReadyProviderFactoryGate;
+    await clearAll();
   }
 });

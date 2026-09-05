@@ -175,7 +175,11 @@ subscription discovery unions journal-selected identities with legacy inventory,
 binds each observer to the captured generation and digest, and rechecks before
 dispatch. Reviewed-source resolution carries the same capture through owner
 module reads and the final contribution publication. Neither background reader
-accepts the installer's private pending-activation composition capability.
+accepts the installer's private pending-activation composition capability. Ordinary provider boot also passes
+ready captured manifests to the existing provider resolver, carries the physical
+artifact into preparation, and checks grants/currentness before construction and
+at registry publication. An object exported before a failed post-import check
+is disposed through the existing provider owner; a refused factory is not run.
 
 ## InstalledPluginInventory
 
