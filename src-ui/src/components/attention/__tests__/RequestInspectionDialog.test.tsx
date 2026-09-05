@@ -220,15 +220,13 @@ test('uncertain decision stays latched after failed and successful refresh and r
   ).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Approve once' })).toBeNull();
   view.unmount();
-  const retained = view.client
-    .getMutationCache()
-    .findAll({
-      mutationKey: [
-        'attention-request-response',
-        authority.apiBase,
-        authority.authorityKey,
-      ],
-    });
+  const retained = view.client.getMutationCache().findAll({
+    mutationKey: [
+      'attention-request-response',
+      authority.apiBase,
+      authority.authorityKey,
+    ],
+  });
   expect(retained).toHaveLength(1);
   expect(retained[0].options.mutationFn).toBeUndefined();
   expect(retained[0].meta?.isAuthorityCurrent).toBe(authority.isCurrent);
