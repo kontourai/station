@@ -134,6 +134,7 @@ docker run --rm --entrypoint sh "$STATION_IMAGE" -c '
   ./station cloud pack-workspace --workspace="$source_root/repo" --key-file="$source_root/key" --output="$source_root/package" --source-paused --json
   ./station cloud inspect-workspace --archive="$source_root/package" --key-file="$source_root/key" --json
   ./station cloud unpack-workspace --archive="$source_root/package" --key-file="$source_root/key" --destination=/workspace/imported --json
+  ./station cloud verify-workspace --archive="$source_root/package" --key-file="$source_root/key" --workspace=/workspace/imported/workspace --workspace-paused --json
   test "$(git -C "$source_root/repo" rev-parse HEAD)" = "$(git -C /workspace/imported/workspace rev-parse HEAD)"
   test "$(git -C /workspace/imported/workspace show :changes.txt)" = staged
   test "$(cat /workspace/imported/workspace/changes.txt)" = working

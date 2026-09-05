@@ -1379,6 +1379,9 @@ export async function clickLiveCommand(page, name) {
     throw new Error(
       `Live command ${name} status ${settled.status()} outcome ${closedLiveOutcome(body?.data?.result?.outcome)}`,
     );
+  // An available transport envelope is not proof that a join was admitted.
+  // Retain only its closed outcome for a later failure diagnostic.
+  return closedLiveOutcome(body?.data?.result?.outcome);
 }
 
 function closedLiveOutcome(value) {
@@ -1405,14 +1408,143 @@ export function liveCommandRequestMatches(request, expectedCommand) {
   }
 }
 
-async function publishPeerPresence(peer, owner, iteration, target, taskId) {
+const UNKNOWN_LIVE_FAILURE_STATE = Object.freeze({
+  stream: 'UNKNOWN',
+  join: 'UNKNOWN',
+  announce: 'UNKNOWN',
+  dialog: 'UNKNOWN',
+  telemetry: 'UNKNOWN',
+});
+
+/** Failure-only DOM observation, never capability or command admission authority. */
+export async function readLiveCommandFailureState(page) {
+  let timer;
+  try {
+    const read = page
+      .evaluate(() => {
+        const visible = (element) => {
+          if (
+            !element ||
+            element.closest('[hidden], [aria-hidden="true"], [inert]')
+          )
+            return false;
+          const style = getComputedStyle(element);
+          return (
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            element.getClientRects().length > 0
+          );
+        };
+        const buttonState = (name) => {
+          const matches = [...document.querySelectorAll('button')].filter(
+            (element) => element.textContent?.trim() === name,
+          );
+          const shown = matches.filter(visible);
+          if (shown.length > 1) return 'AMBIGUOUS';
+          if (!shown.length) return matches.length ? 'HIDDEN' : 'ABSENT';
+          return shown[0].disabled ? 'DISABLED' : 'ENABLED';
+        };
+        const surfaces = [
+          ...document.querySelectorAll(
+            '[data-station-performance-surface="task-room-presence"]',
+          ),
+        ].filter(visible);
+        const copy =
+          surfaces.length === 1
+            ? surfaces[0]
+                .querySelector('header [role="status"]')
+                ?.textContent?.trim()
+            : undefined;
+        const stream =
+          copy === 'Live room connected.'
+            ? 'LIVE'
+            : copy === 'Connecting to the live room.'
+              ? 'CONNECTING'
+              : copy ===
+                  'Live room authorization ended. The last published presence remains visible but cannot be changed.'
+                ? 'TERMINAL'
+                : 'UNKNOWN';
+        const dialogs = [
+          ...document.querySelectorAll('[role="dialog"], dialog[open]'),
+        ].filter(visible);
+        const telemetry = dialogs.some(
+          (element) =>
+            element.getAttribute('aria-label') === 'What Station sends' ||
+            (element.getAttribute('aria-labelledby') ?? '')
+              .split(/\s+/)
+              .some(
+                (id) =>
+                  document.getElementById(id)?.textContent?.trim() ===
+                  'What Station sends',
+              ),
+        );
+        return {
+          stream,
+          join: buttonState('Join room'),
+          announce: buttonState('Announce work'),
+          dialog: dialogs.length ? 'VISIBLE' : 'NONE',
+          telemetry: telemetry ? 'VISIBLE' : 'NONE',
+        };
+      })
+      .then(
+        (value) => {
+          const closed = (key, choices) =>
+            choices.includes(value?.[key]) ? value[key] : 'UNKNOWN';
+          return {
+            stream: closed('stream', ['LIVE', 'CONNECTING', 'TERMINAL']),
+            join: closed('join', [
+              'AMBIGUOUS',
+              'HIDDEN',
+              'ABSENT',
+              'DISABLED',
+              'ENABLED',
+            ]),
+            announce: closed('announce', [
+              'AMBIGUOUS',
+              'HIDDEN',
+              'ABSENT',
+              'DISABLED',
+              'ENABLED',
+            ]),
+            dialog: closed('dialog', ['VISIBLE', 'NONE']),
+            telemetry: closed('telemetry', ['VISIBLE', 'NONE']),
+          };
+        },
+        () => UNKNOWN_LIVE_FAILURE_STATE,
+      );
+    // Teardown or an unresponsive page cannot mask the original error. Both
+    // read outcomes are observed even if this diagnostic-only deadline wins.
+    return await Promise.race([
+      read,
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(UNKNOWN_LIVE_FAILURE_STATE), 500);
+      }),
+    ]);
+  } catch {
+    return UNKNOWN_LIVE_FAILURE_STATE;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export async function publishPeerPresence(
+  peer,
+  owner,
+  iteration,
+  target,
+  taskId,
+) {
+  let joinOutcome = 'NOT_OBSERVED';
   const stage = async (name, work) => {
     try {
       return await work();
     } catch (error) {
       const diagnostic = closedLiveCommandDiagnostic(error);
+      const state = await readLiveCommandFailureState(peer);
+      const index = validDriverIteration(iteration) ? iteration : 'UNKNOWN';
       throw new Error(
-        `Collaboration presence ${name} failed${diagnostic ? `: ${diagnostic}` : ''}`,
+        `Collaboration presence ${name} failed${diagnostic ? `: ${diagnostic}` : ''}; iteration=${index}; joinOutcome=${joinOutcome}; stream=${state.stream}; join=${state.join}; announce=${state.announce}; dialog=${state.dialog}; telemetry=${state.telemetry}`,
+        { cause: error },
       );
     }
   };
@@ -1437,7 +1569,7 @@ async function publishPeerPresence(peer, owner, iteration, target, taskId) {
         .waitFor({ state: 'detached', timeout: 15_000 }),
     );
   }
-  await stage('join', () => clickLiveCommand(peer, 'Join room'));
+  joinOutcome = await stage('join', () => clickLiveCommand(peer, 'Join room'));
   const ingressStartedEpochMs = await epoch(peer);
   // Fence the authoritative peer publish before the command that can make the
   // owner's SSE/layout commit observable. Recording this after the awaited

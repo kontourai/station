@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import { devNull, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as workspacePackage from '@kontourai/station-shared/workspace-package';
 import {
   createWorkspacePackageKey,
   packWorkspace,
@@ -129,6 +130,10 @@ test('imports real Git bytes then creates and reads back a target Project using 
   );
   expect(receipt).toMatchObject({
     status: 'registered',
+    localWorkspaceVerification: {
+      verified: true,
+      executionAuthorityTransferred: false,
+    },
     project: { id: 'new-target-id', slug: 'acme' },
     executionAuthorityTransferred: false,
     targetFilesystemVerification: 'required',
@@ -236,4 +241,27 @@ test('requires an explicit target and absolute server path', {
   ).rejects.toThrow('--api-base');
   expect(f.fetch).not.toHaveBeenCalled();
   expect(existsSync(f.destination)).toBe(false);
+});
+
+test('refuses Project creation if the fresh local import fails read-back verification', {
+  timeout: 30000,
+}, async () => {
+  const f = fixture();
+  f.fetch.mockResolvedValueOnce(reply(null, 404));
+  const original = workspacePackage.unpackWorkspace;
+  vi.spyOn(workspacePackage, 'unpackWorkspace').mockImplementation((input) => {
+    const result = original(input);
+    writeFileSync(join(result.workspace, 'file.txt'), 'changed after import\n');
+    return result;
+  });
+  await expect(runCloudCommand(f.args)).rejects.toThrow(
+    'Local verification failed; no Project creation was attempted',
+  );
+  expect(f.fetch).toHaveBeenCalledTimes(1);
+  expect(
+    readFileSync(join(f.destination, 'workspace', 'file.txt'), 'utf8'),
+  ).toBe('changed after import\n');
+  expect(
+    existsSync(join(f.destination, 'workspace-project-registration.json')),
+  ).toBe(false);
 });

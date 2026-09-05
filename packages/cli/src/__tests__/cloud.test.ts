@@ -148,6 +148,17 @@ test('cloud CLI packages and restores a checkout through its public flags', {
     expect(readFileSync(join(result.workspace, 'hello.txt'), 'utf8')).toBe(
       'after\n',
     );
+    runCloudCommand([
+      'verify-workspace',
+      archive,
+      key,
+      `--workspace=${result.workspace}`,
+      '--workspace-paused',
+    ]);
+    expect(JSON.parse(log.mock.calls.at(-1)?.[0] as string).verified).toBe(
+      true,
+    );
+
     expect(() =>
       runCloudCommand([
         'unpack-workspace',
