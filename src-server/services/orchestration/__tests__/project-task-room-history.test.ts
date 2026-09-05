@@ -1446,6 +1446,16 @@ it('source seal fences already-running history and document workers and survives
     expect(await working.settle(edit('second-edit'))).toMatchObject({
       kind: 'unavailable',
     });
+    expect(
+      await working.agentLifecycle({
+        scope: documentScope,
+        intentId: 'late-lifecycle',
+        value: {},
+      }),
+    ).toBe('unavailable');
+    expect(await working.readAgentLifecycles({ scope: documentScope })).toEqual(
+      [],
+    );
     expect(await working.read({ scope: documentScope })).toEqual(before);
     expect(
       await peer.sealSource({ grant: grant('home-transfer'), ...sealIntent }),

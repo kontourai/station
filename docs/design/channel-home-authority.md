@@ -129,7 +129,11 @@ its startup acknowledgement cannot release the enclosing dispatch record.
 Provider terminal events do not settle that broader ownership, either live or
 through replay. A late provider result cannot undo an indeterminate dispatch.
 Known completion or compensation releases the record; uncertain effects or
-publication preparation retain it. A crashed dispatch therefore needs explicit
+publication preparation retain it. Preparation requires the worker's actual
+durable acknowledgement; an unavailable write cannot be treated as success.
+The outbox refuses a different payload under an existing intent and refuses
+new lifecycle entries after the source seal. Tasks without an Agent have no
+Agent-start publication to prepare. A crashed dispatch therefore needs explicit
 dispatch reconciliation, not an assumption that provider exit completed every
 other phase.
 

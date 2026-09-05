@@ -541,16 +541,41 @@ async function handle(message: any) {
     }
     if (value.type === 'agent-lifecycle') {
       try {
+        const payload = JSON.stringify(value.value);
+        if (typeof payload !== 'string')
+          return send(id, { kind: 'unavailable' });
+        db.exec('BEGIN IMMEDIATE');
+        if (readProjectTaskRoomSourceSeal(db, value.scope)) {
+          db.exec('ROLLBACK');
+          return send(id, { kind: 'unavailable' });
+        }
+        const prior = db
+          .prepare(
+            'SELECT lifecycle_json FROM project_task_room_agent_lifecycle_outbox WHERE project_id=? AND task_id=? AND document_id=? AND intent_id=?',
+          )
+          .get(...key(value.scope), value.intentId) as
+          | { lifecycle_json: string }
+          | undefined;
+        if (prior) {
+          db.exec('ROLLBACK');
+          return send(id, {
+            kind: prior.lifecycle_json === payload ? 'stored' : 'unavailable',
+          });
+        }
         db.prepare(
-          'INSERT INTO project_task_room_agent_lifecycle_outbox(project_id,task_id,document_id,intent_id,lifecycle_json,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(project_id,task_id,document_id,intent_id) DO NOTHING',
+          'INSERT INTO project_task_room_agent_lifecycle_outbox(project_id,task_id,document_id,intent_id,lifecycle_json,created_at) VALUES(?,?,?,?,?,?)',
         ).run(
           ...key(value.scope),
           value.intentId,
-          JSON.stringify(value.value),
+          payload,
           new Date().toISOString(),
         );
+        db.exec('COMMIT');
         return send(id, { kind: 'stored' });
       } catch {
+        try {
+          db.exec('ROLLBACK');
+        } catch {}
         return send(id, { kind: 'unavailable' });
       }
     }
