@@ -6,6 +6,13 @@ import { describe, expect, test, vi } from 'vitest';
 import { ChatDockHeaderMoreMenu } from '../ChatDockHeaderMoreMenu';
 
 const COMMAND = { key: 'a', label: 'Chat settings', onSelect: vi.fn() };
+/**
+ * A SECOND row, because one folded command renders inline instead of behind a
+ * trigger (D2) — a menu of one is a second click for nothing. Every test about
+ * the menu therefore needs at least two.
+ */
+const SECOND = { key: 'b', label: 'Copy project path', onSelect: vi.fn() };
+const TWO = [COMMAND, SECOND];
 
 describe('ChatDockHeaderMoreMenu', () => {
   test('renders nothing when it has no commands to fold', () => {
@@ -13,10 +20,53 @@ describe('ChatDockHeaderMoreMenu', () => {
     expect(container.querySelector('button')).toBeNull();
   });
 
+  /**
+   * D2: a menu holding ONE command costs a click and shows a list of one. The
+   * decision is derived from the row count, not from a guess about which state
+   * produces it — and the inline control carries the row's own LABEL, because an
+   * unlabelled icon is the thing #1536 F set out to remove.
+   */
+  test('a single folded command renders inline, with no trigger and no menu', () => {
+    const onSelect = vi.fn();
+    render(<ChatDockHeaderMoreMenu actions={[{ ...COMMAND, onSelect }]} />);
+
+    expect(
+      screen.queryByRole('button', { name: /^More dock actions/ }),
+    ).toBeNull();
+    const inline = screen.getByRole('button', { name: 'Chat settings' });
+    expect(inline.textContent).toBe('Chat settings');
+    fireEvent.click(inline);
+    expect(onSelect).toHaveBeenCalledWith(inline);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  test('a second command brings the trigger back', () => {
+    render(<ChatDockHeaderMoreMenu actions={TWO} />);
+
+    expect(
+      screen.getByRole('button', { name: /^More dock actions/ }),
+    ).toBeTruthy();
+    // And the single row is no longer a control of its own in the bar.
+    expect(screen.queryByRole('button', { name: 'Chat settings' })).toBeNull();
+  });
+
+  test('the inline form keeps its own click off the header’s dock toggle', () => {
+    const onHeaderClick = vi.fn();
+    render(
+      // biome-ignore lint/a11y/noStaticElementInteractions: stand-in for the dock header's toggle surface.
+      <div onClick={onHeaderClick} onKeyDown={onHeaderClick}>
+        <ChatDockHeaderMoreMenu actions={[COMMAND]} />
+      </div>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Chat settings' }));
+    expect(onHeaderClick).not.toHaveBeenCalled();
+  });
+
   test('opens a portalled menu, so the dock header cannot clip it', () => {
     const onSelect = vi.fn();
     const { container } = render(
-      <ChatDockHeaderMoreMenu actions={[{ ...COMMAND, onSelect }]} />,
+      <ChatDockHeaderMoreMenu actions={[{ ...COMMAND, onSelect }, SECOND]} />,
     );
 
     const trigger = screen.getByLabelText('More dock actions');
@@ -43,7 +93,7 @@ describe('ChatDockHeaderMoreMenu', () => {
     const onSelect = vi.fn();
     render(
       <ChatDockHeaderMoreMenu
-        actions={[{ key: 'i', label: 'Session inventory', onSelect }]}
+        actions={[{ key: 'i', label: 'Session inventory', onSelect }, SECOND]}
       />,
     );
 
@@ -95,7 +145,7 @@ describe('ChatDockHeaderMoreMenu', () => {
   });
 
   test('Escape and a backdrop click both dismiss it, and focus returns to the trigger', () => {
-    render(<ChatDockHeaderMoreMenu actions={[COMMAND]} />);
+    render(<ChatDockHeaderMoreMenu actions={TWO} />);
 
     const trigger = screen.getByLabelText('More dock actions');
     trigger.focus();
@@ -116,7 +166,7 @@ describe('ChatDockHeaderMoreMenu', () => {
     render(
       // biome-ignore lint/a11y/noStaticElementInteractions: stand-in for the dock header's toggle surface.
       <div onClick={onHeaderClick} onKeyDown={onHeaderClick}>
-        <ChatDockHeaderMoreMenu actions={[COMMAND]} />
+        <ChatDockHeaderMoreMenu actions={TWO} />
       </div>,
     );
 
@@ -127,7 +177,7 @@ describe('ChatDockHeaderMoreMenu', () => {
 
   test('adopts a caller-owned trigger ref so an anchored surface has an anchor', () => {
     const ref = createRef<HTMLButtonElement>();
-    render(<ChatDockHeaderMoreMenu actions={[COMMAND]} triggerRef={ref} />);
+    render(<ChatDockHeaderMoreMenu actions={TWO} triggerRef={ref} />);
 
     expect(ref.current).toBe(screen.getByLabelText('More dock actions'));
   });
@@ -138,7 +188,7 @@ describe('ChatDockHeaderMoreMenu', () => {
    * screen in at least one of them. The trigger's own rect decides.
    */
   test('opens downward with room below and upward without it', () => {
-    render(<ChatDockHeaderMoreMenu actions={[COMMAND]} />);
+    render(<ChatDockHeaderMoreMenu actions={TWO} />);
     const trigger = screen.getByLabelText('More dock actions');
 
     vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
@@ -167,7 +217,7 @@ describe('ChatDockHeaderMoreMenu', () => {
   });
 
   test('the menu row family is the dock header’s own, not a new one', () => {
-    render(<ChatDockHeaderMoreMenu actions={[COMMAND]} />);
+    render(<ChatDockHeaderMoreMenu actions={TWO} />);
     fireEvent.click(screen.getByLabelText('More dock actions'));
 
     expect(
@@ -185,7 +235,7 @@ describe('ChatDockHeaderMoreMenu', () => {
    * user walking back out of it. A pointer convenience is not a tab stop.
    */
   test('the dismiss backdrop is not a tab stop', () => {
-    render(<ChatDockHeaderMoreMenu actions={[COMMAND]} />);
+    render(<ChatDockHeaderMoreMenu actions={TWO} />);
     fireEvent.click(screen.getByLabelText('More dock actions'));
 
     expect(
@@ -219,8 +269,76 @@ describe('ChatDockHeaderMoreMenu', () => {
     expect(document.activeElement).toBe(items[0]);
   });
 
+  /** M2: live work behind a folded row has to be visible with the menu closed. */
+  test('carries a caller-supplied count on the trigger, in the badge and in its name', () => {
+    render(
+      <ChatDockHeaderMoreMenu
+        actions={TWO}
+        badgeCount={2}
+        badgeLabel="2 background tasks running"
+      />,
+    );
+
+    const trigger = screen.getByRole('button', {
+      name: 'More dock actions — 2 background tasks running',
+    });
+    expect(trigger.getAttribute('title')).toBe(
+      'More dock actions — 2 background tasks running',
+    );
+    // The painted badge is a glyph for the same fact, hence aria-hidden.
+    const badge = trigger.querySelector('.chat-dock__more-badge');
+    expect(badge?.textContent).toBe('2');
+    expect(badge?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  test('renders no badge at zero, and no count in its name', () => {
+    render(<ChatDockHeaderMoreMenu actions={TWO} badgeCount={0} />);
+
+    const trigger = screen.getByRole('button', { name: 'More dock actions' });
+    expect(trigger.querySelector('.chat-dock__more-badge')).toBeNull();
+  });
+
+  /** M1: a row that cannot act must not look pressable. */
+  test('a disabled row is refused and skipped by roving focus', () => {
+    const onSelect = vi.fn();
+    render(
+      <ChatDockHeaderMoreMenu
+        actions={[
+          COMMAND,
+          {
+            key: 'i',
+            label: 'Session inventory — loading',
+            disabled: true,
+            onSelect,
+          },
+          { key: 'z', label: 'Copy thread ID', onSelect: vi.fn() },
+        ]}
+      />,
+    );
+    const trigger = screen.getByRole('button', { name: /^More dock actions/ });
+    fireEvent.click(trigger);
+    const menu = screen.getByRole('menu', { name: 'More dock actions' });
+
+    const row = screen.getByRole('menuitem', {
+      name: 'Session inventory — loading',
+    });
+    expect(row.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(row);
+    expect(onSelect).not.toHaveBeenCalled();
+
+    // `useMenuFocus`'s focusable query excludes a disabled button, so Down from
+    // the first row skips straight past it rather than parking on a dead row.
+    expect(document.activeElement).toBe(
+      screen.getByRole('menuitem', { name: 'Chat settings' }),
+    );
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(
+      screen.getByRole('menuitem', { name: 'Copy thread ID' }),
+    );
+  });
+
   test('a pointerdown on the backdrop does not dismiss before the click lands', () => {
-    render(<ChatDockHeaderMoreMenu actions={[COMMAND]} />);
+    render(<ChatDockHeaderMoreMenu actions={TWO} />);
     fireEvent.click(screen.getByLabelText('More dock actions'));
 
     const backdrop = screen.getByRole('button', {

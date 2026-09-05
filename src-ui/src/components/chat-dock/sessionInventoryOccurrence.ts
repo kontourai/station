@@ -40,6 +40,11 @@ export function registerSessionInventoryHost(
 ) {
   if (!registration) return () => {};
   registrations.set(hostId, registration);
+  // Notify on the REGISTER path too, not only on teardown: since #1536 F the
+  // control lives in a different component from the host, and it has to know
+  // when this host became pressable. Existing subscribers snapshot
+  // `occurrences`, which this does not touch, so they see no change.
+  notify(hostId);
   return () => {
     if (registrations.get(hostId) !== registration) return;
     registrations.delete(hostId);
@@ -124,5 +129,23 @@ export function useSessionInventoryOccurrence(hostId: string) {
     (listener) => subscribeSessionInventoryOccurrence(hostId, listener),
     () => occurrences.get(hostId) ?? null,
     () => null,
+  );
+}
+
+/**
+ * Whether this host is pressable yet.
+ *
+ * `toggleSessionInventoryOccurrence` refuses without a registration, and since
+ * #1536 F the control is a menu row in a component that does NOT mount the host
+ * — the host arrives with a lazily loaded chunk, and can fail to arrive at all.
+ * A row that silently does nothing until then is the shape this exists to
+ * prevent: it is derived from the registration itself, never from a timer or an
+ * optimistic assumption that the chunk resolved.
+ */
+export function useSessionInventoryHostRegistered(hostId: string) {
+  return useSyncExternalStore(
+    (listener) => subscribeSessionInventoryOccurrence(hostId, listener),
+    () => registrations.has(hostId),
+    () => false,
   );
 }

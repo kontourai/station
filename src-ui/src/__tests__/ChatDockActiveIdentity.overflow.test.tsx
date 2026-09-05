@@ -36,6 +36,7 @@ import {
   resolveCssImports,
 } from '../../../tests/helpers/css-cascade-fixture';
 import { ChatDockActiveIdentity } from '../components/chat-dock/ChatDockActiveIdentity';
+import { ChatDockProjectContext } from '../components/chat-dock/ChatDockProjectContext';
 import type { AgentData } from '../contexts/AgentsContext';
 import type { ChatSession } from '../types';
 
@@ -83,6 +84,16 @@ function markup(): string {
  * `.chat-dock__header` flex line, at a width where the content cannot fit.
  */
 function fixtureHtml(rowMarkup: string, width: number): string {
+  return dockFixtureHtml(
+    `<div class="chat-dock__title">
+       <div class="chat-dock__header-identity">${rowMarkup}</div>
+     </div>`,
+    width,
+  );
+}
+
+/** `.chat-dock__header`'s real contents, whatever they are, at a given width. */
+function dockFixtureHtml(headerMarkup: string, width: number): string {
   const css = resolveCssImports(INDEX_CSS_PATH);
   assertNoImportsSurvive(css);
   return `<!doctype html>
@@ -90,14 +101,57 @@ function fixtureHtml(rowMarkup: string, width: number): string {
   <head><style>${css}</style></head>
   <body style="margin:0">
     <div class="chat-dock" style="width:${width}px">
-      <div class="chat-dock__header">
-        <div class="chat-dock__title">
-          <div class="chat-dock__header-identity">${rowMarkup}</div>
-        </div>
-      </div>
+      <div class="chat-dock__header">${headerMarkup}</div>
     </div>
   </body>
 </html>`;
+}
+
+/**
+ * The whole title cluster as `ChatDockHeader` composes it: the identity block,
+ * the project context, and the empty spacer that owns the row's growth.
+ */
+function titleClusterMarkup(): string {
+  const { container, unmount } = render(
+    <div className="chat-dock__title">
+      <div className="chat-dock__header-identity">
+        <ChatDockActiveIdentity
+          session={
+            {
+              id: 'chat-1',
+              title: 'New chat',
+              agentSlug: 'codex',
+              agentName: 'Claude Code',
+            } as ChatSession
+          }
+          agent={
+            {
+              slug: 'codex',
+              name: 'Claude Code',
+              engineId: 'claude-code',
+              engineDisplayName: 'Claude Code',
+            } as unknown as AgentData
+          }
+          modelLabel="Opus 5"
+          onClose={() => {}}
+        />
+      </div>
+      <div className="chat-dock__header-context">
+        <ChatDockProjectContext
+          projectSlug={null}
+          projectName={null}
+          workingDirectory={null}
+          projects={[]}
+          onSelectProject={() => {}}
+          onSwitchProject={() => {}}
+        />
+      </div>
+      <span className="chat-dock__title-spacer" />
+    </div>,
+  );
+  const html = container.innerHTML;
+  unmount();
+  return html;
 }
 
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
@@ -185,20 +239,94 @@ describe.skipIf(!chromiumAvailable)(
     });
 
     /**
-     * Squeezed past that, the token yields ENTIRELY (its shrink factor is two
-     * orders of magnitude above the title's, so it reaches zero before the
-     * title starts losing characters) and only then does the title truncate.
-     * That is the trade #1536 F asked for, stated plainly: in a ~400px side
-     * dock the engine and model are no longer legible, and the agent's own name
-     * — which never shrinks — is what still identifies who is answering.
+     * Squeezed past that, the token stops at its floor and the title takes over
+     * the yielding. The floor is the point: with `min-width: 0` the token
+     * reached ZERO before the title lost a character, so on a ~400px side dock
+     * nothing named the engine or the model and its `title` tooltip had no box
+     * left to hover — the trade #1536 F asked for, taken one step too far.
+     *
+     * The trade that REMAINS, stated plainly: below ~520px both parts are
+     * truncated. The token keeps a legible prefix and a hover target rather than
+     * the whole string, and the agent's own name — which never shrinks — is what
+     * still identifies who is answering at any width.
      */
-    test('below that the token yields entirely and the title truncates rather than pushing the row open', async () => {
-      const { title, engine, row } = await measure(420);
+    test.each([520, 420, 320, 260])(
+      'at %ipx the token holds its floor and the title yields instead',
+      async (width) => {
+        const { title, engine, row } = await measure(width);
 
-      expect(Math.round(engine.width)).toBe(0);
-      expect(title.clipped).toBe(true);
-      expect(title.width).toBeGreaterThan(100);
-      expect(title.right).toBeLessThanOrEqual(row.right + 1);
+        // Measured floor: 64px renders "Claude…" at this font-size, so what
+        // survives is an identity and something to hover, not a sliver.
+        expect(Math.round(engine.width)).toBe(64);
+        expect(engine.clipped).toBe(true);
+        expect(title.clipped).toBe(true);
+        // The title is still the larger of the two — it yields, it does not
+        // vanish.
+        expect(title.width).toBeGreaterThan(engine.width);
+        expect(engine.right).toBeLessThanOrEqual(row.right + 1);
+      },
+    );
+  },
+);
+
+describe.skipIf(!chromiumAvailable)(
+  'the dock header title cluster reads as one run (#1536 F)',
+  () => {
+    let browser: Awaited<ReturnType<typeof chromium.launch>>;
+
+    beforeAll(async () => {
+      browser = await chromium.launch();
+    });
+    afterAll(async () => {
+      await browser?.close();
+    });
+    afterEach(() => cleanup());
+
+    /**
+     * The reported symptom was fragmentation, which is a distance: the identity
+     * and the project context both GREW, so on a wide dock they split the spare
+     * width and drifted to opposite ends —
+     * `[avatar | New chat] ……… [Opus 5] [×] ……… [No project]`. Growth belongs to
+     * an empty spacer, and this measures that it went there.
+     */
+    test('at a wide dock the badge follows the identity immediately, and the spacer holds the slack', async () => {
+      const page = await browser.newPage({
+        viewport: { width: 1456, height: 800 },
+      });
+      try {
+        await page.setContent(dockFixtureHtml(titleClusterMarkup(), 1400));
+        const measured = await page.evaluate(() => {
+          const box = (selector: string) => {
+            const element = document.querySelector(selector);
+            if (!element) throw new Error(`missing ${selector}`);
+            const rect = element.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, width: rect.width };
+          };
+          return {
+            identity: box('.chat-dock__header-identity'),
+            close: box('.chat-dock__active-identity-close'),
+            badge: box('.chat-dock__project-badge'),
+            spacer: box('.chat-dock__title-spacer'),
+            title: box('.chat-dock__title'),
+          };
+        });
+
+        // One run: the badge starts within a fixed seam of the identity block's
+        // end, not half a row away.
+        expect(measured.badge.left - measured.identity.right).toBeLessThan(16);
+        // The × belongs to the identity cluster, immediately after its token.
+        expect(measured.close.right).toBeLessThanOrEqual(
+          measured.identity.right + 1,
+        );
+        // And the slack really is on the spacer, which is where a 1400px dock's
+        // spare width has to go.
+        expect(measured.spacer.width).toBeGreaterThan(600);
+        expect(measured.spacer.left).toBeGreaterThanOrEqual(
+          measured.badge.right - 1,
+        );
+      } finally {
+        await page.close();
+      }
     });
   },
 );

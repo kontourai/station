@@ -136,7 +136,14 @@ describe('ChatDockProjectContext', () => {
     expect(row.textContent).toBe('Alpha');
   });
 
-  test('a session with no directory says so in the tooltip rather than in the row', () => {
+  /**
+   * L2: the "no project folder set" sentence is a claim about the PROJECT, and
+   * a project chat-scope filter passes `workingDirectory: null` deliberately (a
+   * scope filter has never shown session-specific facts — station#1146/#4525).
+   * So an unknown directory beside a named project must not assert that the
+   * project has no folder.
+   */
+  test('an unknown directory beside a named project claims nothing about its folder', () => {
     render(
       <ChatDockProjectContext
         projectSlug="alpha"
@@ -145,12 +152,34 @@ describe('ChatDockProjectContext', () => {
         projects={PROJECTS}
         onSelectProject={vi.fn()}
         onSwitchProject={vi.fn()}
+        onClearProjectScope={vi.fn()}
       />,
     );
 
-    // #765 F8's sentence, kept — it was `HomeFolderLabel`'s own tooltip before.
+    const title = screen
+      .getByRole('button', { name: 'Alpha' })
+      .getAttribute('title');
+    expect(title).toBe('Alpha');
+    expect(title).not.toContain('no project folder set');
+  });
+
+  test('a chat with NO project says so in the tooltip rather than in the row', () => {
+    render(
+      <ChatDockProjectContext
+        projectSlug={null}
+        projectName={null}
+        workingDirectory={null}
+        projects={PROJECTS}
+        onSelectProject={vi.fn()}
+        onSwitchProject={vi.fn()}
+      />,
+    );
+
+    // #765 F8's sentence, kept — it was `HomeFolderLabel`'s own tooltip before —
+    // and now scoped to the state it is actually true of: nothing is bound, so
+    // a chat here really does start in the home folder.
     expect(
-      screen.getByRole('button', { name: 'Alpha' }).getAttribute('title'),
+      screen.getByRole('button', { name: 'No project' }).getAttribute('title'),
     ).toBe('~ (no project folder set — chats start in your home folder)');
   });
 });

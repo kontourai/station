@@ -1134,10 +1134,19 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * the conversation title, and deleting the link with it would have removed
    * the dock's only route to a session's coding layout when the shell is not
    * already on a project page.
+   *
+   * It carries BOTH halves of the gate the retired link had, and they were
+   * different things: the project is the SESSION's own (`activeSession`), which
+   * is the fact the link was always about — station#4525 review HIGH-2 is
+   * explicit that session facts never gate on the badge's bound project — while
+   * `scopedProjectSlug` suppresses the row entirely, because a project
+   * CHAT-SCOPE filter (or a full-screen placement's immutable project) has
+   * never shown session-specific facts and navigating out of it is not this
+   * row's business. Dropping either one silently changes what the row opens.
    */
   const dockMoreActions: DockMoreAction[] = [
     ...copyActions,
-    ...(sessionCodingLayout && activeSession?.projectSlug
+    ...(!scopedProjectSlug && sessionCodingLayout && activeSession?.projectSlug
       ? [
           {
             key: 'open-code-layout',

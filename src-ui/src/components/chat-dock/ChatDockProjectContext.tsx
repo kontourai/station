@@ -121,9 +121,19 @@ function ChatDockProjectContextImpl({
   // The concrete path answer survives as the hover/assistive detail, including
   // for the no-directory case, whose sentence #765 F8 wrote and which used to
   // be `HomeFolderLabel`'s own tooltip.
+  //
+  // That sentence is a claim about the PROJECT, and this row has one state where
+  // it would be false: a project chat-scope filter passes `workingDirectory:
+  // null` deliberately (a scope filter has never shown session-specific facts —
+  // station#1146/#4525), so a badge naming a real project would have asserted
+  // that project has no folder set. Where the directory is unknown rather than
+  // absent, the tooltip names the project and claims nothing about its folder.
+  const projectLabel = projectName || projectSlug;
   const directoryTitle = workingDirectory
-    ? `${projectName || projectSlug || 'Project'} — ${workingDirectory}`
-    : '~ (no project folder set — chats start in your home folder)';
+    ? `${projectLabel || 'Project'} — ${workingDirectory}`
+    : projectLabel
+      ? projectLabel
+      : '~ (no project folder set — chats start in your home folder)';
 
   return (
     <div className="chat-dock__project-context">
@@ -143,7 +153,7 @@ function ChatDockProjectContextImpl({
           setIsSwitcherOpen(true);
         }}
       >
-        {projectName || projectSlug || 'No project'}
+        {projectLabel || 'No project'}
       </button>
       {isSwitcherOpen && (
         <ProjectSwitcherOverlay

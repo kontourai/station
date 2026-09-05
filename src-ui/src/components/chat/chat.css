@@ -170,6 +170,16 @@
   border-top: 1px solid var(--border-primary);
 }
 
+/* One divider per GROUP, not one per row. `.app-toolbar__overflow-menu button +
+   button` draws a hairline between every row, which is right for the header's
+   flat ⋯ menu but turns a grouped arrangement into a ruled table where the
+   group boundary — the only division that means anything here — reads exactly
+   like the six that do not. The legends and the group border carry the
+   structure. */
+.app-toolbar__region-menu button + button {
+  border-top: 0;
+}
+
 .app-toolbar__region-menu-group > legend {
   padding: 8px 14px 4px;
   color: var(--text-tertiary);

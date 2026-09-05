@@ -242,7 +242,7 @@ export function HeaderActions({
   // the row that runs out of width first. It collapses to its status dot
   // there and keeps every word in the accessible name and the tooltip.
   //
-  // Three conditions, and each one is a thing the chip would otherwise be the
+  // Four conditions, and each one is a thing the chip would otherwise be the
   // only place to read:
   //   `connected`: every other state is NEWS. `connectionIndicatorState` owns
   //     that distinction, so this adds no second opinion about health.

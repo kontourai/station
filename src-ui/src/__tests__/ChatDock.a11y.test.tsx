@@ -191,12 +191,22 @@ describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site
     // #1536 F: the coding layout is no longer a prop of the project-context
     // row (its start-truncated path segment, which carried the link, left the
     // conversation title about one character). It is an "Open code layout" row
-    // of the dock header's More menu, and the fact it must stay ungated on is
-    // the same one: the SESSION's own project, never the badge's.
+    // of the dock header's More menu, and BOTH halves of the retired link's gate
+    // move with it — they are different things and the row is wrong without
+    // either. The project is the SESSION's own, never the badge's (this
+    // ruling); `scopedProjectSlug` suppresses the row, exactly as it suppressed
+    // the prop, because a project chat-scope filter has never shown
+    // session-specific facts.
     expect(source).toMatch(
-      /sessionCodingLayout && activeSession\?\.projectSlug/,
+      /!scopedProjectSlug && sessionCodingLayout && activeSession\?\.projectSlug/,
     );
     expect(source).toMatch(/label: 'Open code layout'/);
+    // And it navigates with the SESSION's slug, not the badge's bound project —
+    // the exact substitution station#4525 review HIGH-2 caught once already.
+    expect(source).toMatch(
+      /handleOpenLayout\(\s*activeSession\.projectSlug as string,\s*sessionCodingLayout\.slug,/,
+    );
+    expect(source).not.toMatch(/handleOpenLayout\(\s*dockProjectSlug[\s,)]/);
     expect(source).toMatch(
       /gitStatus=\{\s*scopedProjectSlug\s*\?\s*undefined\s*:\s*gitStatus\s*\}/,
     );

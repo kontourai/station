@@ -75,7 +75,6 @@ export function ChatDockSessionInventoryHost({
         isMobile: false,
         dockMode: inventory.dockMode,
         fullscreen: inventory.fullscreen,
-        controlsId: `session-inventory-${hostId}`,
         onClose: () => closeSessionInventoryOccurrence(hostId),
       }}
     />,

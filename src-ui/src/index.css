@@ -1686,6 +1686,7 @@ button:hover {
    grab beside it, and its menu is the same `.dock-placement-menu` family —
    this is one more folded menu in that bar, not a new control vocabulary. */
 .chat-dock__more-btn {
+  position: relative;
   display: inline-flex;
   width: 28px;
   height: 28px;
@@ -1706,6 +1707,50 @@ button:hover {
 .chat-dock__more-btn.is-active {
   background: var(--bg-tertiary);
   color: var(--text-primary);
+}
+
+/* Live work behind a folded row (Background tasks' running count), on the
+   trigger so it is visible with the menu closed. Same treatment the retired
+   `.chat-dock__background-tasks-badge` had on the button this replaced; the
+   count is also in the trigger's accessible name, since this glyph is
+   `aria-hidden`. */
+/* The single-folded-command form (see `ChatDockHeaderMoreMenu`): a menu of one
+   is a second click for nothing, so the row renders as its own labelled button
+   in the bar. Text, not a glyph — an unlabelled icon is what #1536 F removed. */
+.chat-dock__more-inline {
+  flex: 0 0 auto;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.chat-dock__more-inline:hover,
+.chat-dock__more-inline:focus-visible {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.chat-dock__more-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: inline-flex;
+  min-width: 15px;
+  height: 15px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  font-size: var(--text-2xs);
+  line-height: 1;
 }
 
 /* The menu is `position: fixed` from the trigger's own rect (the header sits at
@@ -1782,21 +1827,41 @@ button:hover {
 
 /* archive#1064: the project context now shares the header row instead of occupying a
    third chrome bar. It takes the space the "Chat Dock" label used to hold, and
-   must yield before the row's fixed-width controls do. */
+   must yield before the row's fixed-width controls do.
+
+   #1536 F: `flex: 0 1 auto`, not `1 1 auto`. Two blocks that both GREW split
+   the row's spare width between them, so the identity and the project context
+   drifted to opposite ends and the bar read as three unrelated fragments
+   ([avatar | title] ……… [token] [×] ……… [No project]) rather than one
+   left-aligned cluster. They still shrink — that is what makes the title and
+   the token truncate — but the growth lives in `.chat-dock__title-spacer`
+   below, which is empty and therefore cannot look like a gap inside a label. */
 .chat-dock__header-context {
   display: flex;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   align-items: center;
   overflow: hidden;
+  /* A fixed seam after the identity cluster, so the project badge reads as the
+     next thing along rather than as a separate right-hand region. */
+  margin-left: var(--space-4);
 }
 
 .chat-dock__header-identity {
   display: flex;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   align-items: center;
   overflow: hidden;
+}
+
+/* The row's only growing member: everything to the left of it is one cluster,
+   and the actions cluster sits on the far side. Empty by design — put flex
+   growth on a spacer, never inside a run of text, or the row grows a gap
+   between two words that belong together. */
+.chat-dock__title-spacer {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .chat-dock__header-identity .chat-dock__active-identity {
@@ -3229,8 +3294,13 @@ button:hover {
   overflow: hidden;
   padding-left: var(--space-2);
   border-left: 1px solid var(--border-primary);
-  color: var(--text-secondary);
+  /* #1536 F: the row's primary label, so it takes the primary text colour and
+     the weight — it was the muted secondary tone while the engine/model chip
+     beside it read louder than the thing that distinguishes one chat from the
+     next. */
+  color: var(--text-primary);
   font-size: var(--text-sm);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3239,10 +3309,17 @@ button:hover {
    `flex-shrink: 0` spans, which in an `overflow: hidden` row does not truncate
    — it overflows, and the two printed on top of each other ("Claude Code" over
    "Opus 5"). A shrink factor two orders of magnitude above the title's is what
-   makes this give way FIRST rather than merely give way. */
+   makes this give way FIRST rather than merely give way.
+
+   The floor is the other half of that: with `min-width: 0` the token reached
+   ZERO before the title lost a character, so on a ~400px side dock nothing
+   named the engine or the model and the `title` tooltip had no box left to
+   hover. 64px is measured, not chosen — the token's own font-size renders
+   "Claude…" in it, so what survives is a legible identity and a hover target,
+   and the title yields after that. */
 .chat-dock__active-identity-engine {
   flex: 0 100 auto;
-  min-width: 0;
+  min-width: 64px;
   overflow: hidden;
   color: var(--text-tertiary);
   font-size: var(--text-xs);

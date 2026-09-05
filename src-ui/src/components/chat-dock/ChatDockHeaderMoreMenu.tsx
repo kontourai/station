@@ -25,17 +25,30 @@ export interface DockMoreAction {
   /** For a row that opens a surface of its own. */
   haspopup?: 'dialog';
   expanded?: boolean;
+  /**
+   * A row whose command cannot be carried out yet — the session inventory
+   * before its lazily loaded host has registered. Refusing is the point: a row
+   * that looks pressable and does nothing is worse than one that says it is not
+   * ready. `disabled` (not `aria-disabled`) so roving focus skips it too, since
+   * `useMenuFocus`'s focusable query excludes a disabled button.
+   */
+  disabled?: boolean;
   onSelect: (trigger: HTMLElement) => void;
 }
 
 const MENU_GAP_PX = 6;
+/** `.dock-placement-menu__item`'s height, which every row in this menu takes. */
+const MENU_ROW_PX = 32;
+/** `.dock-placement-menu`'s `padding: var(--space-1)`, top and bottom. */
+const MENU_PADDING_PX = 4;
 /**
- * Enough room to open downward. Not the menu's real height (unknown before it
- * renders) — the decision only needs to be right about which side has space,
- * and every row is 32px, so seven rows plus padding is the worst case this
- * header builds.
+ * Room needed to open downward — derived from the rows this menu is actually
+ * about to render, not from a constant that pins a row count some later change
+ * would quietly outgrow. It does not have to equal the rendered height (which
+ * is unknown before layout); it has to be right about which side has space.
  */
-const MENU_ROOM_PX = 260;
+const roomNeededPx = (rowCount: number) =>
+  rowCount * MENU_ROW_PX + MENU_PADDING_PX + MENU_GAP_PX;
 
 /**
  * The dock header's folded secondary commands (#1536 section F).
@@ -54,6 +67,8 @@ const MENU_ROOM_PX = 260;
 export function ChatDockHeaderMoreMenu({
   actions,
   triggerRef,
+  badgeCount = 0,
+  badgeLabel,
 }: {
   actions: readonly DockMoreAction[];
   /**
@@ -62,6 +77,16 @@ export function ChatDockHeaderMoreMenu({
    * anchoring to the control that opened it.
    */
   triggerRef?: React.RefObject<HTMLButtonElement | null>;
+  /**
+   * Live work behind a folded row, surfaced on the trigger. Folding Background
+   * tasks into this menu took its running-count badge off the bar with it, and
+   * a count that only exists inside a closed menu is not a signal: nothing on
+   * screen said work was running. Zero renders nothing rather than an empty
+   * "0".
+   */
+  badgeCount?: number;
+  /** What the count means, for the trigger's accessible name. */
+  badgeLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<React.CSSProperties>({});
@@ -90,14 +115,57 @@ export function ChatDockHeaderMoreMenu({
 
   if (actions.length === 0) return null;
 
+  /**
+   * A menu holding ONE command is a second click for nothing: press ⋯, read a
+   * list of one, press again. Derived from the row count rather than from a
+   * guess about which state produces it — a collapsed dock with no chat open is
+   * the live case (Chat settings is the only row that does not need a pane), but
+   * any future single-row arrangement gets the same treatment.
+   *
+   * The row's own label, not a glyph: this control appears only when the row
+   * that names it is the only thing folded, and an unlabelled icon is what
+   * #1536 F set out to remove.
+   */
+  if (actions.length === 1) {
+    const only = actions[0]!;
+    return (
+      <button
+        ref={setTrigger}
+        type="button"
+        className="chat-dock__more-inline"
+        disabled={only.disabled}
+        title={only.label}
+        onClick={(event) => {
+          event.stopPropagation();
+          const trigger = event.currentTarget;
+          only.onSelect(trigger);
+        }}
+      >
+        {only.label}
+      </button>
+    );
+  }
+
   return (
     <>
       <button
         ref={setTrigger}
         type="button"
         className={`chat-dock__more-btn${open ? ' is-active' : ''}`}
-        aria-label="More dock actions"
-        title="More dock actions"
+        // The count is part of the NAME, not only a painted badge: the badge is
+        // `aria-hidden` (it is a glyph for the same fact), so without this a
+        // screen reader would hear no difference between an idle dock and one
+        // with three background tasks running.
+        aria-label={
+          badgeCount > 0 && badgeLabel
+            ? `More dock actions — ${badgeLabel}`
+            : 'More dock actions'
+        }
+        title={
+          badgeCount > 0 && badgeLabel
+            ? `More dock actions — ${badgeLabel}`
+            : 'More dock actions'
+        }
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={(event) => {
@@ -105,7 +173,7 @@ export function ChatDockHeaderMoreMenu({
           const rect = event.currentTarget.getBoundingClientRect();
           const below = window.innerHeight - rect.bottom;
           setPosition(
-            below < MENU_ROOM_PX
+            below < roomNeededPx(actions.length)
               ? {
                   bottom: `${window.innerHeight - rect.top + MENU_GAP_PX}px`,
                   right: `${window.innerWidth - rect.right}px`,
@@ -119,6 +187,11 @@ export function ChatDockHeaderMoreMenu({
         }}
       >
         <span aria-hidden="true">⋯</span>
+        {badgeCount > 0 && (
+          <span className="chat-dock__more-badge" aria-hidden="true">
+            {badgeCount}
+          </span>
+        )}
       </button>
       {open
         ? createPortal(
@@ -149,6 +222,7 @@ export function ChatDockHeaderMoreMenu({
                     key={action.key}
                     type="button"
                     className="dock-placement-menu__item"
+                    disabled={action.disabled}
                     {...(action.checked === undefined
                       ? { role: 'menuitem' as const }
                       : {

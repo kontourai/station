@@ -22,11 +22,17 @@ import { ChatDockProjectContext } from '../components/chat-dock/ChatDockProjectC
 
 afterEach(cleanup);
 
-function renderRow(workingDirectory: string | null) {
+function renderRow(
+  workingDirectory: string | null,
+  project: { slug: string | null; name: string | null } = {
+    slug: 'default',
+    name: 'Default',
+  },
+) {
   render(
     <ChatDockProjectContext
-      projectSlug="default"
-      projectName="Default"
+      projectSlug={project.slug}
+      projectName={project.name}
       workingDirectory={workingDirectory}
       projects={[]}
       onSelectProject={() => {}}
@@ -35,7 +41,9 @@ function renderRow(workingDirectory: string | null) {
   );
   return {
     row: document.querySelector('.chat-dock__project-context') as HTMLElement,
-    badge: screen.getByRole('button', { name: 'Default' }),
+    badge: screen.getByRole('button', {
+      name: project.name ?? 'No project',
+    }),
   };
 }
 
@@ -47,13 +55,27 @@ describe('ChatDockProjectContext directory (station#1146)', () => {
     expect(badge.getAttribute('title')).not.toContain('home folder');
   });
 
-  test('says so plainly when there is no directory to name', () => {
-    const { badge } = renderRow(null);
+  test('says so plainly when there is no project, and therefore no folder', () => {
+    const { badge } = renderRow(null, { slug: null, name: null });
 
     expect(badge.getAttribute('title')).toBe(
       '~ (no project folder set — chats start in your home folder)',
     );
     expect(badge.getAttribute('title')).not.toContain('defaults to home');
+  });
+
+  /**
+   * The distinction the sentence above depends on: a directory this row was not
+   * GIVEN is not a project without one. A chat-scope filter passes null
+   * deliberately (station#1146/#4525 — a scope filter shows no session facts),
+   * and the badge still names a real project, so claiming it has no folder set
+   * would be a fact nothing derived.
+   */
+  test('an unknown directory beside a named project claims nothing about its folder', () => {
+    const { badge } = renderRow(null);
+
+    expect(badge.getAttribute('title')).toBe('Default');
+    expect(badge.getAttribute('title')).not.toContain('no project folder set');
   });
 
   test('carries an absolute session path whole, with nothing truncated away', () => {

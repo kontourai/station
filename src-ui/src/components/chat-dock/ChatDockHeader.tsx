@@ -1,5 +1,6 @@
 import type React from 'react';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
+import { toastStore } from '../../contexts/ToastContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import type { DockMode } from '../../types';
 import { isSessionExecutionActive } from '../../utils/execution';
@@ -13,6 +14,7 @@ import type { DockSnap } from './dockSnap';
 import { readDockSnap } from './dockSnap';
 import {
   toggleSessionInventoryOccurrence,
+  useSessionInventoryHostRegistered,
   useSessionInventoryOccurrence,
 } from './sessionInventoryOccurrence';
 
@@ -193,6 +195,12 @@ export function ChatDockHeader({
   const inventoryOccurrence = useSessionInventoryOccurrence(
     inventory?.hostId ?? '',
   );
+  // The host arrives with a lazily loaded chunk, so the row is not pressable
+  // the instant it renders — and the chunk can fail to arrive at all. Derived
+  // from the registration the host writes, never from a timer.
+  const inventoryReady = useSessionInventoryHostRegistered(
+    inventory?.hostId ?? '',
+  );
   /**
    * #1536 F: the bar carried thirteen controls in 40px and the conversation
    * title got about one character of what was left. These are the commands
@@ -240,16 +248,32 @@ export function ChatDockHeader({
       ? [
           {
             key: 'session-inventory',
-            label: 'Session inventory',
+            label: inventoryReady
+              ? 'Session inventory'
+              : 'Session inventory — loading',
             haspopup: 'dialog' as const,
             expanded: Boolean(inventoryOccurrence),
+            disabled: !inventoryReady,
             onSelect: (trigger: HTMLElement) => {
-              toggleSessionInventoryOccurrence({
-                hostId: inventory.hostId,
-                projectId: inventory.projectId,
-                executionRead: inventory.executionRead,
-                trigger,
-              });
+              // The backstop, not the mechanism: the row is disabled until the
+              // registration exists, so this refusal means the host went away
+              // between render and click (or its chunk never resolved). A
+              // refusal nobody can see is the defect being closed here, so it
+              // gets words. `toastStore` rather than `useToast`: this component
+              // renders in surfaces with no ToastProvider above it, and the
+              // store is the same one the provider reads (`OverflowMenu` takes
+              // the same route).
+              if (
+                !toggleSessionInventoryOccurrence({
+                  hostId: inventory.hostId,
+                  projectId: inventory.projectId,
+                  executionRead: inventory.executionRead,
+                  trigger,
+                })
+              )
+                toastStore.show(
+                  'Session inventory is not ready for this chat yet.',
+                );
             },
           },
         ]
@@ -343,6 +367,11 @@ export function ChatDockHeader({
         {projectContext ? (
           <div className="chat-dock__header-context">{projectContext}</div>
         ) : null}
+        {/* The row's growth, on an empty element rather than inside any of the
+            labels above: the identity and the project context used to grow
+            themselves, which spread them to opposite ends and made one bar read
+            as three fragments (#1536 F). */}
+        <span className="chat-dock__title-spacer" />
       </div>
       {/* An event shield, not a control: its only handler stops the click
           from reaching the collapse surface above. There is no action here to
@@ -432,6 +461,18 @@ export function ChatDockHeader({
           // The Background tasks sheet anchors to the control that opened it,
           // and since #1536 F that control is this menu's trigger.
           triggerRef={workspaceControls?.backgroundTasksTriggerRef}
+          // Folding Background tasks into the menu took its running-count badge
+          // off the bar with it, and a count that only exists inside a closed
+          // menu is not a signal. It rides the trigger instead.
+          badgeCount={workspaceControls?.backgroundTasksRunningCount ?? 0}
+          badgeLabel={
+            workspaceControls &&
+            workspaceControls.backgroundTasksRunningCount > 0
+              ? `${workspaceControls.backgroundTasksRunningCount} background task${
+                  workspaceControls.backgroundTasksRunningCount === 1 ? '' : 's'
+                } running`
+              : undefined
+          }
         />
         {!fullscreen && (
           <>

@@ -26,8 +26,16 @@ vi.mock('../contexts/NavigationContext', () => ({
   }),
 }));
 
+// A real chord string, not '': `withShortcutHint` returns the bare label for an
+// empty display, so a stub of '' makes every tooltip assertion in this file
+// vacuous — including the one that pins the tooltip as the channel the retired
+// keycap spans left behind (#1536 F).
+const SHORTCUT_DISPLAY: Record<string, string> = {
+  'dock.toggle': '⌘D',
+  'dock.maximize': '⌃⌘M',
+};
 vi.mock('../hooks/useKeyboardShortcut', () => ({
-  useShortcutDisplay: () => '',
+  useShortcutDisplay: (id: string) => SHORTCUT_DISPLAY[id] ?? '',
 }));
 
 import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
@@ -84,7 +92,7 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
   test('collapsing a maximized dock clears the maximized flag', () => {
     renderHeader();
 
-    fireEvent.click(screen.getByTitle('Hide dock region'));
+    fireEvent.click(screen.getByLabelText('Hide dock region'));
 
     expect(onDockSnap).toHaveBeenCalledWith('collapsed');
   });
@@ -95,7 +103,7 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
     window.localStorage.setItem('station.chatDock.snap', 'half');
     renderHeader();
 
-    fireEvent.click(screen.getByTitle('Show dock region'));
+    fireEvent.click(screen.getByLabelText('Show dock region'));
 
     expect(onDockSnap).toHaveBeenCalledWith('half');
   });
@@ -109,7 +117,7 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
     window.localStorage.setItem('station.chatDock.snap', 'full');
     renderHeader();
 
-    fireEvent.click(screen.getByTitle('Show dock region'));
+    fireEvent.click(screen.getByLabelText('Show dock region'));
 
     expect(onDockSnap).toHaveBeenCalledWith('full');
   });
@@ -156,15 +164,21 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     expect(screen.getByText('Start a chat')).toBeTruthy();
   });
 
-  test('the region visibility control carries an accessible name, and Chat settings is a named row of the More menu', () => {
+  test('the region visibility control carries an accessible name, and Chat settings is still one press', () => {
     isDockOpen = false;
     renderHeader();
 
     expect(screen.getByLabelText('Show dock region')).toBeTruthy();
-    // #1536 F: the gear left the bar. The command did not.
-    expect(screen.queryByLabelText('Chat settings')).toBeNull();
-    fireEvent.click(screen.getByLabelText('More dock actions'));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Chat settings' }));
+    // #1536 F: the unlabelled gear left the bar. The command did not — and with
+    // no pane open Chat settings is the ONLY folded command, so it renders as
+    // its own labelled button rather than behind a ⋯ that would open a list of
+    // one (D2).
+    expect(
+      screen.queryByRole('button', { name: /^More dock actions/ }),
+    ).toBeNull();
+    const settings = screen.getByRole('button', { name: 'Chat settings' });
+    expect(settings.textContent).toBe('Chat settings');
+    fireEvent.click(settings);
     expect(setShowChatSettings).toHaveBeenCalledTimes(1);
   });
 
@@ -177,14 +191,22 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     const { container } = renderHeader();
 
     expect(container.querySelector('.chat-dock__toggle-shortcut')).toBeNull();
+    // Every keycap in the bar, not just the one the retired span carried: the
+    // activity dropdown's own ⌘1…⌘9 rows use this class too and are the only
+    // remaining consumer, so an empty count here is only meaningful because the
+    // dropdown is present but has no active sessions in this fixture.
     expect(
       container.querySelectorAll('.chat-dock__header .chat-dock__subtitle'),
     ).toHaveLength(0);
-    // The chord is still announced — `useShortcutDisplay` is stubbed to '' in
-    // this file, so `withShortcutHint` yields the bare label here; what this
-    // pins is that the visibility control's TOOLTIP is the channel.
+    // And the chords moved rather than vanished — the tooltip is the channel,
+    // with a real display string so this cannot pass on an empty one.
     expect(screen.getByLabelText('Hide dock region').title).toBe(
-      'Hide dock region',
+      'Hide dock region (⌘D)',
+    );
+    // This describe's fixture opens maximized, so the extent control reads
+    // Restore; the point is the same — its chord is in the tooltip.
+    expect(screen.getByLabelText('Restore dock region size').title).toBe(
+      'Restore dock region size (⌃⌘M)',
     );
   });
 

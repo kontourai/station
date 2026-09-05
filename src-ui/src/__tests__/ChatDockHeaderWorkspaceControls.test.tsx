@@ -90,7 +90,9 @@ beforeEach(() => {
  * these carry forward against the new host.
  */
 function openMoreMenu() {
-  fireEvent.click(screen.getByLabelText('More dock actions'));
+  // By prefix: the trigger's name carries a running-task count when there is
+  // one (M2), so an exact match would silently stop finding it.
+  fireEvent.click(screen.getByRole('button', { name: /^More dock actions/ }));
   return screen.getByRole('menu', { name: 'More dock actions' });
 }
 
@@ -170,6 +172,81 @@ describe('header background tasks button (from #1064 AC3)', () => {
   });
 
   /**
+   * M2: folding this row into the menu took its running-count badge off the bar
+   * with it, and a count that exists only inside a CLOSED menu is not a signal —
+   * nothing on screen said work was running. It rides the trigger now, in both
+   * channels: a painted badge and the trigger's own accessible name (the badge
+   * is `aria-hidden`, so the name is what a screen reader gets).
+   */
+  test('surfaces the running count on the closed menu’s trigger, in both channels', () => {
+    renderHeader({
+      workspaceControls: workspaceControls({
+        backgroundTasksRunningCount: 3,
+      }),
+    });
+
+    const trigger = screen.getByRole('button', {
+      name: 'More dock actions — 3 background tasks running',
+    });
+    expect(trigger.querySelector('.chat-dock__more-badge')?.textContent).toBe(
+      '3',
+    );
+    // Closed: the count is readable without opening anything.
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  test('a single running task is not pluralised, and zero shows no badge at all', () => {
+    const { unmount } = renderHeader({
+      workspaceControls: workspaceControls({
+        backgroundTasksRunningCount: 1,
+      }),
+    });
+    expect(
+      screen.getByRole('button', {
+        name: 'More dock actions — 1 background task running',
+      }),
+    ).toBeTruthy();
+    unmount();
+
+    renderHeader({ workspaceControls: workspaceControls() });
+    const trigger = screen.getByRole('button', { name: 'More dock actions' });
+    // An empty "0" is worse than nothing.
+    expect(trigger.querySelector('.chat-dock__more-badge')).toBeNull();
+  });
+
+  /**
+   * M1: the inventory's host arrives with a lazily loaded chunk and can fail to
+   * arrive at all. `toggleSessionInventoryOccurrence` refuses without its
+   * registration, and the header used to discard that boolean — so the row
+   * looked pressable and silently did nothing. It is disabled until the
+   * registration exists, derived from the registration itself.
+   */
+  test('the session inventory row refuses to look pressable before its host registers', () => {
+    renderHeader({
+      workspaceControls: workspaceControls({
+        sessionInventory: {
+          hostId: 'session-inventory:test',
+          chatStoreId: 'chat-1',
+          executionId: 'exec-1',
+          executionRead: 'present',
+          mountRef: createRef<HTMLDivElement>(),
+          dockMode: 'bottom',
+          fullscreen: false,
+        },
+      }),
+    });
+    openMoreMenu();
+
+    // The label says why, rather than leaving a dead row to guess at. The host
+    // never registers here: this suite's `useHostRequestAuthorityScope` stub
+    // returns undefined, which is also the real "no authority yet" case.
+    const row = screen.getByRole('menuitem', {
+      name: 'Session inventory — loading',
+    });
+    expect(row.hasAttribute('disabled')).toBe(true);
+  });
+
+  /**
    * The sheet anchors to the control that opened it. That used to be this
    * button; it is the More menu's trigger now, and an unpopulated ref sends
    * `ResponsiveDialogSurface` to its un-anchored fallback — a silently
@@ -222,21 +299,23 @@ describe('one-bar rule (#3309)', () => {
 
   test('a collapsed pane offers none of the workspace controls', () => {
     renderHeader();
-    openMoreMenu();
 
+    expect(screen.queryByTitle('Open Conversation')).toBeNull();
+    expect(screen.queryByTitle('New Chat')).toBeNull();
+    // With every pane command gone, Chat settings — the dock's own command, not
+    // the pane's — is the only one left to fold, so there is no ⋯ at all and it
+    // renders inline (D2). That is also why the two rows below are absent from
+    // a menu that no longer exists.
+    expect(
+      screen.queryByRole('button', { name: /^More dock actions/ }),
+    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'Chat settings' })).toBeTruthy();
     expect(
       screen.queryByRole('menuitemcheckbox', { name: 'Collapse chat list' }),
     ).toBeNull();
     expect(
       screen.queryByRole('menuitem', { name: 'Background tasks' }),
     ).toBeNull();
-    expect(screen.queryByTitle('Open Conversation')).toBeNull();
-    expect(screen.queryByTitle('New Chat')).toBeNull();
-    // Chat settings is the dock's own command, not the pane's, so it survives
-    // a collapse — which is also what keeps the menu from being empty here.
-    expect(
-      screen.getByRole('menuitem', { name: 'Chat settings' }),
-    ).toBeTruthy();
   });
 
   /**
