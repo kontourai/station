@@ -20,6 +20,11 @@ import { Client } from '@modelcontextprotocol/client';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import {
+  listProviders,
+  type PluginProviderReadView,
+  replacePluginProvidersForSource,
+} from '../../../providers/registries/registry.js';
 import { buildPlugin as buildInstalledPlugin } from '../../../routes/plugins/plugin-bundles.js';
 import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
 import {
@@ -1079,4 +1084,81 @@ test('managed namespace build uses the existing builder with validated fields an
   expect(
     readFileSync(join(root.packageRoot, 'dist', 'bundle.js'), 'utf8'),
   ).toContain('namespace-build-witness');
+});
+
+test('managed provider reconciliation uses an expiring private view while public providers wait for ready', async () => {
+  const f = fixture();
+  writeFileSync(
+    join(f.source, 'plugin.json'),
+    JSON.stringify({
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'fixture',
+      version: '1.0.0',
+      extensions: {
+        'io.kontourai.station': {
+          schemaVersion: '1.0',
+          permissions: ['providers.register'],
+          providers: [{ type: 'acpConnections', module: './provider.mjs' }],
+        },
+      },
+    }),
+  );
+  writeFileSync(
+    join(f.source, 'provider.mjs'),
+    "export default Object.freeze({getConnections(){return [{id:'fixture-engine'}]}});",
+  );
+  let privateProvider: any;
+  const observations: Array<{
+    publicCount: number;
+    privateIds: string[];
+    ready: boolean;
+  }> = [];
+  try {
+    const result = await installPluginFromSource(
+      f.source,
+      [],
+      {
+        ...f.deps,
+        reconcileEngineConnections: async (
+          _name: string,
+          view?: PluginProviderReadView,
+        ) => {
+          const selected = f.journal.currentInstallation('fixture');
+          if (selected.state !== 'observed')
+            throw new Error('Installation disappeared');
+          privateProvider = listProviders('acpConnections', view).find(
+            (entry) => entry.source === 'fixture',
+          )?.provider;
+          observations.push({
+            publicCount: listProviders('acpConnections').filter(
+              (entry) => entry.source === 'fixture',
+            ).length,
+            privateIds:
+              privateProvider?.getConnections().map((entry: any) => entry.id) ??
+              [],
+            ready: f.journal.admissionOpen(selected.installation),
+          });
+        },
+      },
+      { consent: await namespaceConsent(f.source) },
+    );
+    expect(result.success).toBe(true);
+    expect(observations).toEqual([
+      { publicCount: 0, privateIds: ['fixture-engine'], ready: false },
+    ]);
+    expect(() => privateProvider.getConnections()).toThrow();
+    const publicProvider = listProviders('acpConnections').find(
+      (entry) => entry.source === 'fixture',
+    )!.provider as any;
+    expect(publicProvider.getConnections()).toEqual([{ id: 'fixture-engine' }]);
+    await uninstallInstalledPlugin('fixture', f.deps);
+    expect(() => publicProvider.getConnections()).toThrow();
+    expect(
+      listProviders('acpConnections').filter(
+        (entry) => entry.source === 'fixture',
+      ),
+    ).toEqual([]);
+  } finally {
+    await replacePluginProvidersForSource('fixture', []);
+  }
 });

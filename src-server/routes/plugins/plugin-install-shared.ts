@@ -2831,11 +2831,21 @@ async function runOwnedPluginMutation<T>(
           activationSession: session,
           ...(deps.reconcileEngineConnections
             ? {
-                reconcileEngineConnections: (plugin: string) =>
-                  deps.reconcileEngineConnections!(
-                    plugin,
-                    pluginActivationProviderReadView(session),
-                  ),
+                reconcileEngineConnections: (plugin: string) => {
+                  const pending =
+                    deps.packageMcpJournal &&
+                    pluginActivationSessionPermit(
+                      session,
+                      deps.packageMcpJournal,
+                      plugin,
+                    );
+                  return pending
+                    ? deps.reconcileEngineConnections!(
+                        plugin,
+                        pluginActivationProviderReadView(session),
+                      )
+                    : deps.reconcileEngineConnections!(plugin);
+                },
               }
             : {}),
         },
