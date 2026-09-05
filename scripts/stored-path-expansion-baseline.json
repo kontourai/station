@@ -1,6 +1,16 @@
 {
   "unguardedReads": [
     {
+      "entry": "packages/cli/src/commands/cloud-project-import.ts :: workingDirectory :: created.workingDirectory !== workingDirectory",
+      "category": 1,
+      "reason": "Exact comparison of authenticated remote Project metadata to the explicitly supplied target path. Never used for local filesystem access; local tilde expansion would compare the wrong host namespace."
+    },
+    {
+      "entry": "packages/cli/src/commands/cloud-project-import.ts :: workingDirectory :: observed.workingDirectory !== workingDirectory",
+      "category": 1,
+      "reason": "Exact comparison of authenticated remote Project metadata to the explicitly supplied target path. Never used for local filesystem access; local tilde expansion would compare the wrong host namespace."
+    },
+    {
       "entry": "packages/sdk/src/query-domains/pullRequests.ts :: workingDirectory :: context.workingDirectory,",
       "category": 1,
       "reason": "Same cache-key construction (usePullRequestContextQuery). Never touches a filesystem."

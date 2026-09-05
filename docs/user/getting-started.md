@@ -1,8 +1,23 @@
 # Getting Started
 
-Station is a local-first workspace for agent work. This guide covers a signed
-macOS/Linux install when its release ring is published, first launch, Provider
-setup, and routine lifecycle.
+Station is a local-first workspace for agent work. This guide covers the ways
+to run Station today, a verified macOS/Linux install when its release ring is
+published, first launch, connection setup, and routine lifecycle.
+
+## Ways To Run Station Today
+
+Station is open source and under active development. No signed stable or beta
+release ring has been published yet, so the verified installer below cannot
+run yet. Choose one of these paths today:
+
+| Path | Platforms | Use it when |
+| --- | --- | --- |
+| Run from source | macOS, Linux | You want the current `main` branch and are comfortable with a Node.js checkout. Follow the [developer guide](https://github.com/kontourai/station/blob/main/docs/guides/development.md#local-runtime). |
+| Nightly desktop build | macOS (Apple silicon) | You want a native app for testing. Download the [Nightly desktop pre-release](https://github.com/kontourai/station/releases/tag/nightly-desktop). It installs alongside a stable Station and is not a stable release. |
+
+Once a signed stable or beta ring is published, [Install Or Upgrade](#install-or-upgrade)
+below becomes the supported macOS and Linux path. The remaining sections
+describe that verified install and the first-run flow that every path shares.
 
 ## Before You Install
 
@@ -47,18 +62,21 @@ the **beta** channel. It uses a separate `~/.station/installs/beta` install root
 retired `STATION_CHANNEL=preview`; the installer refuses it. The exact channel
 identity, launcher, and port mapping are verified by the release installer.
 
-## Choose A Provider
+## Choose A Model Connection Or Engine
 
-A Provider is anything that can power an agent: a local or hosted model service,
-or an external engine that runs its own agent loop.
+Two kinds of connection can power an agent. A **Model connection** is a local
+or hosted model service that Station's own engine runs inference on. An
+**Engine** is an installed agent CLI, or a custom engine you connected, that
+runs its own agent loop.
 
 1. Open **Connections**.
-2. Choose a detected Provider or select **Add Provider**.
+2. On the **Models** tab choose a detected service or **Add model connection**;
+   on the **Engines** tab choose a detected engine or **Add engine**.
 3. Follow its setup action until it reports **Ready**.
 
 For a credential-free first path, use a supported local model service and then
 return to Connections. Detection is read-only: Station does not create a
-connection or read credentials merely because it finds a Provider. The
+connection or read credentials merely because it finds one. The
 [Connections guide](https://github.com/kontourai/station/blob/main/docs/guides/connections.md)
 lists current integrations and their exact setup steps.
 
@@ -66,9 +84,9 @@ Choose the simplest path for what you want to do:
 
 | You want to… | Start with… |
 | --- | --- |
-| Keep inference on this machine | A local Model Provider and a Station agent |
-| Use an existing agent engine | A supported engine Provider and its External agent |
-| Use a hosted model through Station | A hosted Model Provider and a Station agent |
+| Keep inference on this machine | A local Model connection and a Station agent |
+| Use an existing agent engine | A supported Engine and its External agent |
+| Use a hosted model through Station | A hosted Model connection and a Station agent |
 
 ## Start Your First Chat
 
@@ -199,7 +217,7 @@ station stop
 station start
 ```
 
-To uninstall the stable program while preserving Projects, Providers, Tasks,
+To uninstall the stable program while preserving Projects, connections, Tasks,
 and Sessions:
 
 ```bash
