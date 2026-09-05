@@ -736,6 +736,8 @@ export async function initializeRuntime(
   logger.debug('Bedrock model catalog initialized');
 
   await loadRuntimePluginAssets({
+    packageMcpJournal:
+      orchestrationEventStore.createPackageMcpAdmissionJournal(),
     logger,
     projectHomeDir: configLoader.getProjectHomeDir(),
     loadPluginOverrides: () => configLoader.loadPluginOverrides(),
