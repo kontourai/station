@@ -9,15 +9,27 @@ import {
   packWorkspace,
   unpackWorkspace,
 } from '@kontourai/station-shared/workspace-package';
+import { runCloudProjectImport } from './cloud-project-import.js';
 import { parseCoreArgs } from './core-api.js';
 
-export function runCloudCommand(args: string[]): void {
+export function runCloudCommand(args: string[]): void | Promise<void> {
   const { flags, positionals } = parseCoreArgs(args);
   const action = positionals[0];
   const actionOptions: Record<string, string[]> = {
     preview: ['provider', 'region', 'instance-type', 'home', 'json'],
     template: ['provider', 'region', 'instance-type', 'image', 'output'],
     keygen: ['output'],
+    'import-project': [
+      'archive',
+      'key-file',
+      'destination',
+      'target-workspace',
+      'name',
+      'slug',
+      'station',
+      'api-base',
+      'json',
+    ],
     'pack-workspace': [
       'workspace',
       'key-file',
@@ -30,12 +42,14 @@ export function runCloudCommand(args: string[]): void {
   };
   if (positionals.length !== 1 || !Object.hasOwn(actionOptions, action))
     throw new Error(
-      'Usage: station cloud <preview|template|keygen|pack-workspace|inspect-workspace|unpack-workspace> [options]',
+      'Usage: station cloud <preview|template|keygen|pack-workspace|inspect-workspace|unpack-workspace|import-project> [options]',
     );
   const allowed = new Set(actionOptions[action]);
   for (const flag of Object.keys(flags))
     if (!allowed.has(flag))
       throw new Error(`Unsupported cloud ${action} option: --${flag}`);
+  if (action === 'import-project')
+    return runCloudProjectImport({ flags, positionals });
   const required = (key: string) => {
     const value = flags[key];
     if (typeof value !== 'string' || !value.trim())

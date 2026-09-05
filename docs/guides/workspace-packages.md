@@ -5,8 +5,9 @@ into a fresh directory. The same commands apply to a company's own cloud host,
 a development machine, or an operator-managed environment. They require no cloud
 provider adapter or Station server connection.
 
-This is a workspace copy, not a complete Station setup migration. It does not
-register a Project, install dependencies, enroll credentials, or resume agents.
+This is a workspace copy, not a complete Station setup migration. The unpack command does not
+register a Project; the optional combined command below does. Neither installs
+dependencies, enrolls credentials, or resumes agents.
 The [cloud move design](../design/cloud-move.md) tracks those separate steps.
 
 ## Prepare the source
@@ -73,6 +74,50 @@ explicitly. Review project scripts before installing dependencies or running
 code. Use the target's normal pairing/sign-in flow before registration. The package
 commands themselves never execute repository scripts or transfer Station
 execution authority.
+
+## Import and register in one command
+
+For a new import, `import-project` composes unpacking with the same Project API
+used below. Select an already enrolled Station, an unused slug, a fresh local
+destination, and the path that the target server will see after import:
+
+```bash
+station cloud import-project --archive=/private/import/acme.workspace.enc \
+  --key-file=/private/keys/workspace.key --destination=/work/acme-import \
+  --target-workspace=/work/acme-import/workspace \
+  --name="Acme imported workspace" --slug=acme-imported --station=cloud-dev
+```
+
+An explicit `--api-base` may replace `--station` for an already authenticated
+operator CLI; use its existing credential environment/store. Credentials are
+never command output or package content. The first cloud release uses normal
+owner-approved Station pairing; company SSO is a later integration. Cloud IAM
+access never implicitly enrolls a Station browser.
+
+This command requires the package to be present on the machine running the CLI.
+It does not upload to the cloud or discover a Docker mount mapping. Set
+`--target-workspace` to that explicit mapping, as described below. It selects
+`shared` workspace mode so later use of the checkout can see imported working
+bytes. It does not start any agent.
+
+Before import, the CLI checks the exact slug on the selected target. Auth,
+transport and existing-slug failures leave no import. After unpacking it writes
+`workspace-project-request.json` beside the checkout, then sends one create
+request and reads the resulting Project back. Only matching ID/slug/path
+responses produce `workspace-project-registration.json` and a registered receipt.
+Target filesystem verification still requires normal workspace reads; matching
+Project metadata alone does not prove a correct mount or usable provider.
+
+If registration fails, races with another creator, or loses its reply, the
+command preserves the imported files and reports registration as unconfirmed.
+It never silently retries, overwrites a Project, or deletes imported work. Use
+`projects get` on the **same enrolled target** and compare with the saved request
+before taking another action. A missing success receipt does not prove the
+server rejected the request. If no Project exists and you choose to retry, use
+the existing `projects create` command with the `project` object from the saved
+request; do not rerun import over an existing destination. A crash can leave a
+partial import and must be inspected separately. The receipt is an operator
+record, not a signed authority transfer or idempotency key.
 
 ## Register the restored checkout as a target Project
 

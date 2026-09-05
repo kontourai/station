@@ -137,6 +137,9 @@ docker run --rm --entrypoint sh "$STATION_IMAGE" -c '
   test "$(git -C "$source_root/repo" rev-parse HEAD)" = "$(git -C /workspace/imported/workspace rev-parse HEAD)"
   test "$(git -C /workspace/imported/workspace show :changes.txt)" = staged
   test "$(cat /workspace/imported/workspace/changes.txt)" = working
+  mkdir /workspace/import-fixture
+  cp "$source_root/key" /workspace/import-fixture/key
+  cp "$source_root/package" /workspace/import-fixture/package
 '
 "${compose[@]}" run --rm --no-deps -T station node --input-type=module -e \
   'import { verifyNodePtyHandshake } from "/app/scripts/lib/dependency-lifecycle-policy.mjs"; verifyNodePtyHandshake("/app/node_modules/node-pty");'
@@ -166,6 +169,19 @@ until curl --fail --silent \
   fi
   sleep 1
 done
+# Exercise the combined command against the real authenticated target API.
+STATION_API_CREDENTIAL="$credential" "${compose[@]}" exec -T -e STATION_API_CREDENTIAL station \
+  ./station cloud import-project --archive=/workspace/import-fixture/package \
+  --key-file=/workspace/import-fixture/key --destination=/workspace/command-import \
+  --target-workspace=/workspace/command-import/workspace --name="CLI imported Project" \
+  --slug=cli-imported-project --api-base=http://127.0.0.1:3141
+"${compose[@]}" exec -T station sh -ec '
+  test "$(git -C /workspace/command-import/workspace show :changes.txt)" = staged
+  test "$(cat /workspace/command-import/workspace/changes.txt)" = working
+  test -s /workspace/command-import/workspace-project-registration.json
+  rm /workspace/import-fixture/key /workspace/import-fixture/package
+  rmdir /workspace/import-fixture
+'
 STATION_CONTAINER_HOST_CREDENTIAL="$credential" \
 STATION_CONTAINER_WORKSPACE=/workspace/imported/workspace \
 PW_BASE_URL="http://127.0.0.1:${STATION_UI_PORT}" \

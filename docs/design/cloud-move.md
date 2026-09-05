@@ -83,6 +83,18 @@ throttle. The 1-GiB `t3.micro` memory budget is not qualified for Station plus
 agent tools. Inspect bootstrap logs and actual container health before using
 the environment; template validation does not prove boot or runtime readiness.
 
+## Initial enrollment decision
+
+The first cloud release uses the existing owner-approved Station pairing flow.
+The operator approves a browser through Station; cloud IAM membership, matching
+email addresses, or a shared signing key do not create application membership.
+Company SSO is deferred to an explicit identity-provider integration. This choice
+does not authorize automatic operator-token injection into browsers or settle
+multi-human membership. The existing pairing lifecycle owns credential custody,
+expiry, replay refusal and revocation. Automatic bootstrap remains outside this
+initial path; [#1513](https://github.com/kontourai/station/issues/1513) tracks the
+remaining identity integration and browser acceptance requirements.
+
 ## Remaining implementation sequence
 
 1. Validate the selected provider preparation and boot in an explicitly selected

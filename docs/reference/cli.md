@@ -2648,3 +2648,19 @@ not an automatic process stop. All output paths must be new. Import creates the
 checkout at `<destination>/workspace`. See [Workspace packages](../guides/workspace-packages.md)
 for prerequisites, encryption/key handling, exact preserved content, resource
 limits, and recovery. They copy workspace data, not credentials or running agents.
+
+
+### Import and register a target Project
+
+```bash
+station cloud import-project --archive=/private/import/workspace.enc --key-file=/private/keys/workspace.key --destination=/work/imported --target-workspace=/work/imported/workspace --name="Imported project" --slug=imported-project --station=cloud-dev
+```
+
+Requires an explicit already enrolled `--station` or authenticated `--api-base`,
+a fresh import destination, a target-visible absolute workspace path, and an
+unused lowercase hyphenated slug. It imports locally, creates a fresh target
+Project through the existing API, and reads back its identity. Failed or uncertain
+registration retains the checkout and durable request for explicit reconciliation.
+See [combined import and registration](../guides/workspace-packages.md#import-and-register-in-one-command)
+for the exact lifecycle and limits. This does not upload files, enroll credentials,
+verify the target filesystem, or transfer execution authority.
