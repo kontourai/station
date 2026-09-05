@@ -16,6 +16,7 @@ import type {
 import { AsyncEventQueue } from '../../providers/sessions/async-event-queue.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import type { ForegroundInvocationAdmission } from '../../services/orchestration/foreground-invocation-admission.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 
 process.env.STATION_API_BASE = 'http://control-delegation.test';
@@ -137,7 +138,11 @@ function localService() {
       },
     })),
     dispatchWithReceipt: vi.fn(
-      async (command: Record<string, unknown>, _context?: unknown) => ({
+      async (
+        command: Record<string, unknown>,
+        _context?: unknown,
+        _internal?: unknown,
+      ) => ({
         receipt: { commandId: 'command-1', status: 'accepted' },
         result:
           command.type === 'sendTurn'
@@ -147,6 +152,23 @@ function localService() {
     ),
     sessionCommands,
     startSessionInternal,
+  };
+}
+
+function foregroundAdmission(): ForegroundInvocationAdmission {
+  return {
+    agentId: agentId('reviewer'),
+    agentSpec: { name: 'Captured reviewer', prompt: 'Captured instructions' },
+    project: {
+      id: 'project-id-workspace',
+      slug: 'workspace',
+      name: 'Workspace',
+      workingDirectory: '/tmp/workspace',
+      createdAt: '2026-09-04T00:00:00.000Z',
+      updatedAt: '2026-09-04T00:00:00.000Z',
+    },
+    message: 'Captured host action body',
+    invoke: vi.fn(async (_phase, _actual, effect) => effect()),
   };
 }
 
@@ -1646,6 +1668,91 @@ describe('Station Control canonical Environment + Agent execution', () => {
       tenantExecutionContext: { tenantId: 'alpha', source: 'request' },
     });
   });
+
+  test('carries captured Pane admission through the real foreground bridge', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const admission = foregroundAdmission();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+
+    const result = await executeExecutionTargetMessage(
+      {
+        target: {
+          ...currentTarget(),
+          workspace: { kind: 'project', projectSlug: 'workspace' },
+        },
+        message: admission.message,
+        userId: 'shared-user',
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+      admission,
+    );
+
+    expect(result).toMatchObject({
+      target: { kind: 'agent', id: 'reviewer' },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
+      foregroundInvocationAdmission: admission,
+    });
+    expect(service.dispatchWithReceipt.mock.calls[0]?.[2]).toMatchObject({
+      foregroundInvocationAdmission: admission,
+    });
+  });
+
+  test.each([
+    ['saved Environment', { target: savedTarget('reviewer') }],
+    [
+      'model override',
+      { target: { ...currentTarget(), model: { override: 'other' } } },
+    ],
+    [
+      'attachment',
+      {
+        attachments: [
+          {
+            kind: 'file',
+            name: 'x',
+            mediaType: 'text/plain',
+            dataUrl: 'data:text/plain,x',
+          },
+        ],
+      },
+    ],
+    ['ambient context', { ambientContext: 'late replacement' }],
+  ])(
+    'refuses Pane admission with %s before local adapter effects',
+    async (_name, overrides) => {
+      installCurrentStationFetch();
+      const service = localService();
+      const admission = foregroundAdmission();
+      const { executeExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      const target = {
+        ...currentTarget(),
+        workspace: { kind: 'project' as const, projectSlug: 'workspace' },
+      };
+      await expect(
+        executeExecutionTargetMessage(
+          {
+            target,
+            message: admission.message,
+            userId: 'shared-user',
+            readAuthority: hostedAuthority('alpha'),
+            ...overrides,
+          } as never,
+          service as never,
+          admission,
+        ),
+      ).rejects.toThrow('captured Workspace Pane action is unavailable');
+      expect(service.startSessionInternal).not.toHaveBeenCalled();
+      expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+    },
+  );
 
   test('derives webhook admission from the server-owned ephemeral seam', async () => {
     installCurrentStationFetch();
