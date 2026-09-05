@@ -13,15 +13,15 @@ import {
   chatRegion,
   DOCK_REGION_IDS,
   dockMirrorDiff,
-  placeSurface as placeSurfaceInLayout,
+  placeSurface as placeSurfaceInArrangement,
   REGION_SURFACE_REGISTRY,
+  type RegionArrangement,
   type RegionId,
-  type RegionLayout,
   type RegionState,
   revealSurface,
-  seedRegionLayoutFromDock,
+  seedRegionArrangementFromDock,
   showSurfaceAlone,
-  syncRegionLayoutFromDock,
+  syncRegionArrangementFromDock,
   updateRegion,
 } from '../regions/region-model';
 import {
@@ -53,7 +53,7 @@ function withoutSurfaceIntent(
 }
 
 interface RegionModelValue {
-  regions: RegionLayout;
+  regions: RegionArrangement;
   lastShownRegion: RegionId | null;
   surfaces: typeof REGION_SURFACE_REGISTRY;
   setRegion(id: RegionId, patch: Partial<RegionState>): void;
@@ -104,9 +104,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   } = useNavigation();
   const bottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
   const { setDeviceSetting } = useDeviceSettingsActions();
-  const [regions, setRegions] = useState<RegionLayout>(
-    // Step 1 persists region layout via legacy dock keys; its own record arrives when regions become user-visible.
-    () => seedRegionLayoutFromDock(settings, dockMode, isDockOpen),
+  const [regions, setRegions] = useState<RegionArrangement>(
+    // Step 1 persists the region arrangement via legacy dock keys; its own record arrives when regions become user-visible.
+    () => seedRegionArrangementFromDock(settings, dockMode, isDockOpen),
   );
   const [lastShownRegion, setLastShownRegion] = useState<RegionId | null>(
     () => chatRegion(regions) ?? null,
@@ -128,7 +128,11 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const placeSurface = useCallback((surfaceId: string, regionId: RegionId) => {
-    const next = placeSurfaceInLayout(regionsRef.current, surfaceId, regionId);
+    const next = placeSurfaceInArrangement(
+      regionsRef.current,
+      surfaceId,
+      regionId,
+    );
     if (next === regionsRef.current) return;
     regionsRef.current = next;
     setLastShownRegion(regionId);
@@ -142,9 +146,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       const shown = bottomOnly
         ? showSurfaceAlone(regionsRef.current, surfaceId, surface.defaultRegion)
         : revealSurface(regionsRef.current, surfaceId, surface.defaultRegion);
-      regionsRef.current = shown.layout;
+      regionsRef.current = shown.arrangement;
       setLastShownRegion(shown.region);
-      setRegions(shown.layout);
+      setRegions(shown.arrangement);
       if (intent) {
         const token = ++surfaceIntentTokenRef.current;
         // The record is exactly what this caller asked for. It used to
@@ -212,7 +216,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     const placement = chatRegion(current);
     if (placement === dockMode && current[placement].visible === isDockOpen)
       return;
-    const next = syncRegionLayoutFromDock(
+    const next = syncRegionArrangementFromDock(
       regionsRef.current,
       settings,
       isDockOpen,

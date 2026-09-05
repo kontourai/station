@@ -763,9 +763,16 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
   app.get('/', async (c) => {
     try {
       const { agents, stable, catalogAsOf } = await readCatalogWithRetry({});
+      // The catalog is an inventory surface, not a policy dump. The complete
+      // delegated-child denial catalog remains on GET /:slug, where the user
+      // explicitly asks for one Agent's details. Keeping it out of every list
+      // row also avoids implying these patterns are tools the Agent owns.
+      const catalogAgents = agents.map(
+        ({ deniedCommandCatalog: _denials, ...agent }) => agent,
+      );
       return c.json({
         success: true,
-        data: agents,
+        data: catalogAgents,
         // Additive fields (typed on the SDK envelope): a mid-refresh catalog
         // names its state and, when served from cache, its capture time.
         ...(stable ? {} : { catalogState: 'reconciling' as const }),
