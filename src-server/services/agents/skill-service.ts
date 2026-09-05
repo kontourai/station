@@ -1,3 +1,4 @@
+import type { PluginActivationComposition } from '../plugins/plugin-activation-composition.js';
 /**
  * Agent Skills Service — discovers, indexes, and serves skills
  * following the Agent Skills open specification (agentskills.io).
@@ -256,7 +257,9 @@ export class SkillPublicationIndeterminateError extends Error {
 export class SkillService {
   private registry = new Map<string, RegisteredSkill>();
   /** Read-only package-contributed skill roots (e.g. flow-agents, S3). */
-  private readonly canonicalSourceProvider: () => CanonicalSkillSource[];
+  private readonly canonicalSourceProvider: (
+    composition?: PluginActivationComposition,
+  ) => CanonicalSkillSource[];
   private activeCanonicalSources: CanonicalSkillSource[] = [];
   /**
    * Run/outcome counters. A side store rather than `skill.json`, so read-only
@@ -296,7 +299,9 @@ export class SkillService {
     options: {
       canonicalSources?:
         | CanonicalSkillSource[]
-        | (() => CanonicalSkillSource[]);
+        | ((
+            composition?: PluginActivationComposition,
+          ) => CanonicalSkillSource[]);
       usage?: SkillUsageService;
       /**
        * Plugin-contributed command skills, scanned IN PLACE as read-only
@@ -330,10 +335,11 @@ export class SkillService {
   async discoverSkills(
     projectHomeDir: string,
     projectSlug?: string,
+    composition?: PluginActivationComposition,
   ): Promise<void> {
     const start = Date.now();
     this.registry.clear();
-    this.activeCanonicalSources = this.canonicalSourceProvider();
+    this.activeCanonicalSources = this.canonicalSourceProvider(composition);
 
     // Canonical package sources scan FIRST so locally installed or
     // project-scoped skills override a canonical skill on name collision

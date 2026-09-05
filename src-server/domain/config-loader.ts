@@ -1,3 +1,4 @@
+import type { PluginActivationComposition } from '../services/plugins/plugin-activation-composition.js';
 /**
  * Configuration loader for reading and watching .station/ files
  */
@@ -202,8 +203,11 @@ export interface ConfigLoaderOptions {
 
 /** Read-only live ToolDef source; Station-owned integration files still win. */
 export interface IntegrationDefinitionSource {
-  loadIntegration(id: string): ToolDef | undefined;
-  listIntegrations(): ToolMetadata[];
+  loadIntegration(
+    id: string,
+    composition?: PluginActivationComposition,
+  ): ToolDef | undefined;
+  listIntegrations(composition?: PluginActivationComposition): ToolMetadata[];
 }
 
 export interface LoadedIntegrationDefinition {
@@ -754,11 +758,36 @@ export class ConfigLoader {
     }
   }
 
+  /** A temporary read view of this same configuration owner. Only package
+   * definition reads receive the explicit composition capability; ordinary
+   * callers and all persistence methods retain their existing authority. */
+  forPluginActivationComposition(
+    composition: PluginActivationComposition,
+  ): ConfigLoader {
+    return new Proxy(this, {
+      get: (owner, property) => {
+        if (property === 'loadIntegration')
+          return (id: string) => owner.loadIntegration(id, composition);
+        if (property === 'loadIntegrationWithOwnership')
+          return (id: string) =>
+            owner.loadIntegrationWithOwnership(id, composition);
+        if (property === 'listIntegrations')
+          return () => owner.listIntegrations(composition);
+        const value = Reflect.get(owner, property, owner);
+        return typeof value === 'function' ? value.bind(owner) : value;
+      },
+    });
+  }
+
   /**
    * Load tool definition
    */
-  async loadIntegration(id: string): Promise<ToolDef> {
-    return (await this.loadIntegrationWithOwnership(id)).definition;
+  async loadIntegration(
+    id: string,
+    composition?: PluginActivationComposition,
+  ): Promise<ToolDef> {
+    return (await this.loadIntegrationWithOwnership(id, composition))
+      .definition;
   }
 
   /**
@@ -768,11 +797,12 @@ export class ConfigLoader {
    */
   async loadIntegrationWithOwnership(
     id: string,
+    composition?: PluginActivationComposition,
   ): Promise<LoadedIntegrationDefinition> {
     await this.ensureHomeSchema();
     if (!integrationConfigExists(this.projectHomeDir, id)) {
       for (const source of this.integrationSources) {
-        const projected = source.loadIntegration(id);
+        const projected = source.loadIntegration(id, composition);
         if (projected) return { definition: projected, contributed: true };
       }
     }
@@ -901,7 +931,9 @@ export class ConfigLoader {
   /**
    * List all tools in catalog
    */
-  async listIntegrations(): Promise<ToolMetadata[]> {
+  async listIntegrations(
+    composition?: PluginActivationComposition,
+  ): Promise<ToolMetadata[]> {
     await this.ensureHomeSchema();
     const metadata = await listIntegrationMetadata(this.projectHomeDir, logger);
     // archive#3063: the persisted built-in files no longer carry
@@ -926,7 +958,9 @@ export class ConfigLoader {
     });
     const localIds = new Set(local.map((entry) => entry.id));
     const contributed = this.integrationSources.flatMap((source) =>
-      source.listIntegrations().filter((entry) => !localIds.has(entry.id)),
+      source
+        .listIntegrations(composition)
+        .filter((entry) => !localIds.has(entry.id)),
     );
     return [...local, ...contributed];
   }

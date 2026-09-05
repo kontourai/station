@@ -99,6 +99,11 @@ export interface LoadedAgentPlugin {
   reports: AgentPluginLoadReport[];
 }
 
+import {
+  type PluginActivationComposition,
+  pluginActivationCompositionPermit,
+} from './plugin-activation-composition.js';
+
 export interface AgentPluginLoaderOptions {
   /** Station's runtime home, which owns installed packages and persistent data. */
   projectHomeDir: string;
@@ -108,6 +113,8 @@ export interface AgentPluginLoaderOptions {
   schemaModuleUrl?: string;
   report?: (report: AgentPluginLoadReport) => void;
   journal?: () => PackageMcpAdmissionJournal;
+  /** Explicit owner-only composition capability; never used by public readers. */
+  composition?: PluginActivationComposition;
 }
 
 export type AgentPluginLoadOutcome =
@@ -387,7 +394,12 @@ export class AgentPluginLoader {
       if (
         purpose === 'execution' &&
         current.state === 'observed' &&
-        !journal.admissionOpen(current.installation)
+        !journal.admissionOpen(current.installation) &&
+        !pluginActivationCompositionPermit(
+          this.options.composition,
+          journal,
+          pluginId,
+        )
       )
         throw new MCPLocalCustodyError('stale');
       if (
@@ -524,7 +536,16 @@ export class AgentPluginLoader {
               ) !== current.installation.contentDigest
             )
               throw new MCPLocalCustodyError('stale');
-            const reserved = journal.reserve(current.installation, purpose);
+            const activationPermit = journal.admissionOpen(current.installation)
+              ? undefined
+              : pluginActivationCompositionPermit(
+                  this.options.composition,
+                  journal,
+                  manifest.name,
+                );
+            const reserved = activationPermit
+              ? journal.reserveActivation(activationPermit, purpose)
+              : journal.reserve(current.installation, purpose);
             if (reserved.state !== 'reserved')
               throw new MCPLocalCustodyError('stale');
             const shared = reserved.claim;
@@ -608,7 +629,14 @@ export class AgentPluginLoader {
     return loaded;
   }
 
-  skillSources(): CanonicalSkillSource[] {
+  skillSources(
+    composition?: PluginActivationComposition,
+  ): CanonicalSkillSource[] {
+    if (composition)
+      return new AgentPluginLoader({
+        ...this.options,
+        composition,
+      }).skillSources();
     const loadedByRoot = new Map(
       this.listInstalled().map((plugin) => [plugin.root, plugin] as const),
     );
@@ -629,7 +657,12 @@ export class AgentPluginLoader {
               return (
                 !journal ||
                 (selectedAtCapture?.state === 'observed' &&
-                  journal.admissionOpen(selectedAtCapture.installation))
+                  (journal.admissionOpen(selectedAtCapture.installation) ||
+                    !!pluginActivationCompositionPermit(
+                      this.options.composition,
+                      journal,
+                      directoryName,
+                    )))
               );
             } catch {
               return false;
@@ -696,7 +729,15 @@ export class AgentPluginLoader {
       .map(([directoryName, root]) => ({ directoryName, root }));
   }
 
-  loadIntegration(id: string): ToolDef | undefined {
+  loadIntegration(
+    id: string,
+    composition?: PluginActivationComposition,
+  ): ToolDef | undefined {
+    if (composition)
+      return new AgentPluginLoader({
+        ...this.options,
+        composition,
+      }).loadIntegration(id);
     for (const plugin of this.listInstalled()) {
       const found = plugin.tools.find((tool) => tool.id === id);
       if (found) return found;
@@ -704,7 +745,12 @@ export class AgentPluginLoader {
     return undefined;
   }
 
-  listIntegrations(): ToolMetadata[] {
+  listIntegrations(composition?: PluginActivationComposition): ToolMetadata[] {
+    if (composition)
+      return new AgentPluginLoader({
+        ...this.options,
+        composition,
+      }).listIntegrations();
     return this.listInstalled().flatMap((plugin) =>
       plugin.tools.map((tool) => ({
         id: tool.id,

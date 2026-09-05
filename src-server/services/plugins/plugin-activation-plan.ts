@@ -192,6 +192,7 @@ const permits = new WeakMap<
     plan: PluginActivationPlan;
     active: boolean;
     verified: boolean;
+    completed: boolean;
   }
 >();
 /** Opaque installer capability: a JSON value cannot name or construct it. */
@@ -210,6 +211,7 @@ export function issuePluginActivationPermit(
     plan: structuredClone(plan),
     active: true,
     verified: false,
+    completed: false,
   });
   return permit;
 }
@@ -232,6 +234,38 @@ export async function verifyPluginActivation(
   activationPermitPlan(permit, owner);
   permits.get(permit)!.verified = true;
 }
+export function revokePluginActivationPermit(
+  permit: PluginActivationPermit,
+  owner: object,
+): void {
+  const state = permits.get(permit);
+  if (state?.owner === owner) {
+    state.active = false;
+    state.completed = false;
+  }
+}
+
+export function activationPermitExecutionCurrent(
+  permit: PluginActivationPermit,
+  owner: object,
+): boolean {
+  const state = permits.get(permit);
+  return (
+    !!state &&
+    state.owner === owner &&
+    (state.completed || (state.active && state.current()))
+  );
+}
+export function markPluginActivationPermitCompleted(
+  permit: PluginActivationPermit,
+  owner: object,
+): void {
+  const state = permits.get(permit);
+  if (state?.owner !== owner || state.active || !state.verified)
+    throw new Error('Plugin activation receipt is unavailable');
+  state.completed = true;
+}
+
 export function consumePluginActivationPermit(
   permit: PluginActivationPermit,
   owner: object,

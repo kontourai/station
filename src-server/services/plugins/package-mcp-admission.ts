@@ -7,11 +7,14 @@ import { randomUUID } from 'node:crypto';
 import type { SQLInputValue } from 'node:sqlite';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import {
+  activationPermitExecutionCurrent,
   activationPermitPlan,
   consumePluginActivationPermit,
   issuePluginActivationPermit,
+  markPluginActivationPermitCompleted,
   type PluginActivationPermit,
   type PluginActivationPlan,
+  revokePluginActivationPermit,
   validPluginActivationPlan,
 } from './plugin-activation-plan.js';
 
@@ -140,6 +143,11 @@ export interface PackageMcpAdmissionJournal {
     state: 'applied' | 'stale' | 'unavailable';
   };
 
+  closeActivationPermit(permit: PluginActivationPermit): void;
+  reserveActivation(
+    permit: PluginActivationPermit,
+    purpose: PackageMcpPurpose,
+  ): ReturnType<PackageMcpAdmissionJournal['reserve']>;
   installationRecorded(installation: PackageMcpInstallation): boolean;
   admissionOpen(installation: PackageMcpInstallation): boolean;
   selectedInstallations():
@@ -587,6 +595,126 @@ export function createPackageMcpAdmissionJournal(
     PluginActivationPermit,
     PackageMcpInstallation
   >();
+  const reserveClaim = (
+    installation: PackageMcpInstallation,
+    purpose: PackageMcpPurpose,
+    permit?: PluginActivationPermit,
+  ): ReturnType<PackageMcpAdmissionJournal['reserve']> => {
+    const activationCurrent = () => {
+      if (!permit) return false;
+      try {
+        return (
+          activationLeases.get(permit)?.incarnation ===
+            installation.incarnation &&
+          activationPermitExecutionCurrent(permit, journal)
+        );
+      } catch {
+        return false;
+      }
+    };
+
+    if (!accepting || !capturedOwner || !PURPOSES.includes(purpose))
+      return { state: 'unavailable' as const };
+    const captured = Object.freeze({ ...installation });
+    const claimId = randomUUID();
+    const outcome = transaction((state) => {
+      const generation = find(state, captured);
+      if (!generation?.current) return 'stale' as const;
+      if (
+        ((permit || generation.activation === 'pending') &&
+          !activationCurrent()) ||
+        fenced(state, captured.pluginId)
+      )
+        return 'blocked' as const;
+      if (
+        state.generations.reduce(
+          (total, item) => total + item.claims.length,
+          0,
+        ) >= MAX_CLAIMS
+      )
+        return 'unavailable' as const;
+      generation.claims.push({
+        id: claimId,
+        owner: capturedOwner,
+        purpose,
+        state: 'reserved',
+      });
+      return 'reserved' as const;
+    });
+    if (outcome.state !== 'committed') return outcome;
+    if (outcome.result !== 'reserved') return { state: outcome.result };
+    let effectAttempted = false;
+    const transition = (
+      operation: 'enter' | 'release' | 'settled',
+    ): Transition => {
+      if (operation === 'enter') {
+        if (effectAttempted || !accepting) return { state: 'blocked' };
+        effectAttempted = true;
+      }
+      if (operation === 'release' && effectAttempted)
+        return { state: 'blocked' };
+      const result = transaction((state) => {
+        const generation = find(state, captured);
+        const claim = generation?.claims.find(
+          (item) => item.id === claimId && sameOwner(item.owner, capturedOwner),
+        );
+        if (!generation || !claim) return 'stale' as const;
+        if (operation === 'enter') {
+          if (
+            !generation.current ||
+            ((permit || generation.activation === 'pending') &&
+              !activationCurrent()) ||
+            fenced(state, captured.pluginId)
+          )
+            return 'blocked' as const;
+          if (claim.state !== 'reserved') return 'stale' as const;
+          claim.state = 'effect-possible';
+        } else if (operation === 'release') {
+          if (claim.state !== 'reserved') return 'blocked' as const;
+          generation.claims = generation.claims.filter(
+            (item) => item !== claim,
+          );
+        } else {
+          if (claim.state === 'reserved') return 'blocked' as const;
+          claim.state = 'local-settled';
+        }
+        return 'applied' as const;
+      });
+      if (
+        operation === 'enter' &&
+        result.state === 'committed' &&
+        result.result !== 'applied'
+      )
+        effectAttempted = false;
+      return result.state === 'committed' ? { state: result.result } : result;
+    };
+    const claim: PackageMcpClaim = Object.freeze({
+      enterEffectBoundary: () => transition('enter'),
+      releaseNotStarted: () => transition('release'),
+      observeLocalSettlement: () => transition('settled'),
+      isCurrent() {
+        const loaded = read();
+        if (
+          !accepting ||
+          !loaded ||
+          loaded.id !== journalId ||
+          fenced(loaded.value, captured.pluginId)
+        )
+          return false;
+        const generation = find(loaded.value, captured);
+        return (
+          generation?.current === true &&
+          ((!permit && generation.activation !== 'pending') ||
+            activationCurrent()) &&
+          generation.claims.some(
+            (item) =>
+              item.id === claimId && sameOwner(item.owner, capturedOwner),
+          )
+        );
+      },
+    });
+    return { state: 'reserved' as const, claim };
+  };
   const journal: PackageMcpAdmissionJournal = {
     activationState(installation) {
       const loaded = read();
@@ -663,6 +791,8 @@ export function createPackageMcpAdmissionJournal(
         generation.activation = 'ready';
         return 'applied' as const;
       });
+      if (result.state === 'committed' && result.result === 'applied')
+        markPluginActivationPermitCompleted(permit, journal);
       return result.state === 'committed'
         ? { state: result.result }
         : { state: 'unavailable' };
@@ -888,104 +1018,21 @@ export function createPackageMcpAdmissionJournal(
       return outcome.state === 'committed' ? outcome.result : outcome;
     },
     reserve(installation, purpose) {
-      if (!accepting || !capturedOwner || !PURPOSES.includes(purpose))
-        return { state: 'unavailable' as const };
-      const captured = Object.freeze({ ...installation });
-      const claimId = randomUUID();
-      const outcome = transaction((state) => {
-        const generation = find(state, captured);
-        if (!generation?.current) return 'stale' as const;
-        if (
-          generation.activation === 'pending' ||
-          fenced(state, captured.pluginId)
-        )
-          return 'blocked' as const;
-        if (
-          state.generations.reduce(
-            (total, item) => total + item.claims.length,
-            0,
-          ) >= MAX_CLAIMS
-        )
-          return 'unavailable' as const;
-        generation.claims.push({
-          id: claimId,
-          owner: capturedOwner,
+      return reserveClaim(installation, purpose);
+    },
+    reserveActivation(permit, purpose) {
+      try {
+        return reserveClaim(
+          journal.activationInstallation(permit),
           purpose,
-          state: 'reserved',
-        });
-        return 'reserved' as const;
-      });
-      if (outcome.state !== 'committed') return outcome;
-      if (outcome.result !== 'reserved') return { state: outcome.result };
-      let effectAttempted = false;
-      const transition = (
-        operation: 'enter' | 'release' | 'settled',
-      ): Transition => {
-        if (operation === 'enter') {
-          if (effectAttempted || !accepting) return { state: 'blocked' };
-          effectAttempted = true;
-        }
-        if (operation === 'release' && effectAttempted)
-          return { state: 'blocked' };
-        const result = transaction((state) => {
-          const generation = find(state, captured);
-          const claim = generation?.claims.find(
-            (item) =>
-              item.id === claimId && sameOwner(item.owner, capturedOwner),
-          );
-          if (!generation || !claim) return 'stale' as const;
-          if (operation === 'enter') {
-            if (
-              !generation.current ||
-              generation.activation === 'pending' ||
-              fenced(state, captured.pluginId)
-            )
-              return 'blocked' as const;
-            if (claim.state !== 'reserved') return 'stale' as const;
-            claim.state = 'effect-possible';
-          } else if (operation === 'release') {
-            if (claim.state !== 'reserved') return 'blocked' as const;
-            generation.claims = generation.claims.filter(
-              (item) => item !== claim,
-            );
-          } else {
-            if (claim.state === 'reserved') return 'blocked' as const;
-            claim.state = 'local-settled';
-          }
-          return 'applied' as const;
-        });
-        if (
-          operation === 'enter' &&
-          result.state === 'committed' &&
-          result.result !== 'applied'
-        )
-          effectAttempted = false;
-        return result.state === 'committed' ? { state: result.result } : result;
-      };
-      const claim: PackageMcpClaim = Object.freeze({
-        enterEffectBoundary: () => transition('enter'),
-        releaseNotStarted: () => transition('release'),
-        observeLocalSettlement: () => transition('settled'),
-        isCurrent() {
-          const loaded = read();
-          if (
-            !accepting ||
-            !loaded ||
-            loaded.id !== journalId ||
-            fenced(loaded.value, captured.pluginId)
-          )
-            return false;
-          const generation = find(loaded.value, captured);
-          return (
-            generation?.current === true &&
-            generation.claims.some(
-              (item) =>
-                item.id === claimId && sameOwner(item.owner, capturedOwner),
-            )
-          );
-        },
-      });
-      return { state: 'reserved' as const, claim };
+          permit,
+        );
+      } catch {
+        return { state: 'blocked' };
+      }
+    },
+    closeActivationPermit(permit) {
+      revokePluginActivationPermit(permit, journal);
     },
     requestRetirement(installation) {
       if (!accepting || !capturedOwner)

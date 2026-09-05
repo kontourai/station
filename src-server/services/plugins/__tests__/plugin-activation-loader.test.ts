@@ -5,6 +5,12 @@ import { expect, test } from 'vitest';
 import { EventStore } from '../../orchestration/event-store.js';
 import { AgentPluginLoader } from '../agent-plugin-loader.js';
 import {
+  closePluginActivationSession,
+  createPluginActivationSession,
+  preparePluginActivationComposition,
+  registerPluginActivation,
+} from '../plugin-activation-composition.js';
+import {
   pluginActivationDescriptorDigest,
   verifyPluginActivation,
 } from '../plugin-activation-plan.js';
@@ -77,9 +83,46 @@ test('the production Agent Plugin catalog withholds pending core and namespace c
     expect(loader.listIntegrations()).toEqual([]);
     const selected = journal.currentInstallation('pending-loader');
     if (selected.state !== 'observed') throw new Error('Missing installation');
+    const session = createPluginActivationSession();
+    const pendingPermit = registerPluginActivation(
+      session,
+      journal,
+      selected.installation,
+      async () => {},
+    );
+    const composition = await preparePluginActivationComposition(session);
+    const composingSources = loader.skillSources(composition);
+    expect(composingSources[0]!.excludeOnly).toBeUndefined();
+    expect(composingSources[0]!.isCurrent?.()).toBe(true);
+    // Supplying the capability to a composition call does not change the
+    // ordinary loader or give separately scheduled work ambient authority.
+    expect(loader.listInstalled()).toEqual([]);
+    expect(
+      await new Promise((resolve) =>
+        setImmediate(() => resolve(loader.listInstalled())),
+      ),
+    ).toEqual([]);
+    expect(journal.reserve(selected.installation, 'probe')).toEqual({
+      state: 'blocked',
+    });
+    const reserved = journal.reserveActivation(pendingPermit, 'probe');
+    if (reserved.state !== 'reserved')
+      throw new Error('Owned pending probe refused');
+    const started = journal.reserveActivation(pendingPermit, 'probe');
+    if (started.state !== 'reserved')
+      throw new Error('Owned pending probe refused');
+    expect(started.claim.enterEffectBoundary()).toEqual({ state: 'applied' });
+    closePluginActivationSession(session);
+    expect(reserved.claim.isCurrent()).toBe(false);
+    expect(journal.inspect(selected.installation)).toMatchObject({
+      possibleEffects: 1,
+      mutationAllowed: false,
+    });
+    expect(composingSources[0]!.isCurrent?.()).toBe(false);
     const permit = journal.claimActivation(selected.installation);
     await verifyPluginActivation(permit, journal, async () => {});
     expect(journal.completeActivation(permit)).toEqual({ state: 'applied' });
+    expect(reserved.claim.enterEffectBoundary()).toEqual({ state: 'blocked' });
     expect(loader.listInstalled()).toHaveLength(1);
     expect(loader.skillSources()).toHaveLength(1);
   } finally {

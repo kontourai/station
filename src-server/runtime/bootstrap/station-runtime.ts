@@ -1,3 +1,9 @@
+import {
+  closePluginActivationSession,
+  completePluginActivationComposition,
+  type PluginActivationComposition,
+  preparePluginActivationComposition,
+} from '../../services/plugins/plugin-activation-composition.js';
 import { createLocalPluginInstallationHost } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 /**
@@ -1371,6 +1377,10 @@ export class StationRuntime {
     operation: import('../types.js').AgentConfigurationMutationOperation<T>,
     options?: import('../types.js').AgentConfigurationMutationOptions<T>,
   ): Promise<T> {
+    if (options?.activationMode === 'defer' && options.pluginActivation)
+      throw new Error(
+        'Plugin activation requires the owned runtime composition boundary',
+      );
     if (options?.activationMode === 'defer') {
       return this.serializeAgentConfigurationPersistence(async () => {
         let mutationBegan = false;
@@ -1469,14 +1479,26 @@ export class StationRuntime {
                 : undefined;
             const activating = this.trackAgentActivation(
               agentSlug,
-              agentSlug
-                ? this.reloadPersistedAgentFromDisk(agentSlug)
-                : this.reloadConfigurationFromDisk(),
+              (async () => {
+                const composition =
+                  options?.pluginActivation && operationError === undefined
+                    ? await preparePluginActivationComposition(
+                        options.pluginActivation,
+                      )
+                    : undefined;
+                if (agentSlug && !composition)
+                  await this.reloadPersistedAgentFromDisk(agentSlug);
+                else await this.reloadConfigurationFromDisk(composition);
+                if (composition)
+                  await completePluginActivationComposition(composition);
+              })(),
             );
             const outcome =
               await this.awaitActivationWithinDeadline(activating);
             if (outcome.status === 'abandoned') {
               activationAbandoned = true;
+              if (options?.pluginActivation)
+                closePluginActivationSession(options.pluginActivation);
               this.abandonStalledActivation(agentSlug, activating);
             } else if (outcome.error !== undefined) {
               throw outcome.error;
@@ -1489,6 +1511,8 @@ export class StationRuntime {
             this.loadedProviderLaunchabilityRevision = null;
             this.loadedAppConfigLaunchabilityRevision = null;
           } finally {
+            if (options?.pluginActivation)
+              closePluginActivationSession(options.pluginActivation);
             this.agentConfigurationRevision += 1;
           }
         }
@@ -2021,7 +2045,9 @@ export class StationRuntime {
     }
   }
 
-  private async reloadAgentsFromDisk(): Promise<void> {
+  private async reloadAgentsFromDisk(
+    composition?: PluginActivationComposition,
+  ): Promise<void> {
     const configurationBefore = this.captureAgentConfigurationRevisions();
     this.loadedProviderLaunchabilityRevision = null;
     this.loadedAppConfigLaunchabilityRevision = null;
@@ -2054,7 +2080,9 @@ export class StationRuntime {
     }
     let stagedAppConfig: AppConfig | null = null;
     const appConfig = await reloadRuntimeAgents({
-      configLoader: this.configLoader,
+      configLoader: composition
+        ? this.configLoader.forPluginActivationComposition(composition)
+        : this.configLoader,
       activeAgents: this.activeAgents,
       agentMetadataMap: this.agentMetadataMap,
       agentSpecs: this.agentSpecs,
@@ -2074,7 +2102,7 @@ export class StationRuntime {
       eventBus: this.eventBus,
       prepareVoltAgentInstance: (slug, nextAppConfig) =>
         prepareRuntimeAgentInstance(
-          this.runtimeAgentBuilderContext(slug, nextAppConfig),
+          this.runtimeAgentBuilderContext(slug, nextAppConfig, composition),
           preparationState,
         ),
       activateVoltAgentInstance: (prepared) =>
@@ -2082,6 +2110,7 @@ export class StationRuntime {
           ...this.runtimeAgentBuilderContext(
             prepared.slug,
             stagedAppConfig ?? this.appConfig,
+            composition,
           ),
           ...preparationState,
         }),
@@ -2147,7 +2176,7 @@ export class StationRuntime {
         return stagedAppConfig;
       },
     });
-    await this.reloadDefaultAgentFromConfig(appConfig);
+    await this.reloadDefaultAgentFromConfig(appConfig, composition);
     this.rebuildGlobalToolRegistry();
     this.assertAgentConfigurationRevisions(configurationBefore);
     this.appConfig = appConfig;
@@ -2162,7 +2191,9 @@ export class StationRuntime {
    * retry discovery and prevents an older abandoned pass from clearing a newer
    * plugin mutation's obligation.
    */
-  private async reloadConfigurationFromDisk(): Promise<void> {
+  private async reloadConfigurationFromDisk(
+    composition?: PluginActivationComposition,
+  ): Promise<void> {
     const requestedSkillRevision = this.pluginSkillSourceRevision ?? 0;
     if (
       (this.loadedPluginSkillSourceRevision ?? 0) !== requestedSkillRevision
@@ -2170,9 +2201,10 @@ export class StationRuntime {
       await this.skillService.discoverSkills(
         this.configLoader.getProjectHomeDir(),
         getActiveRuntimeProjectSlug(this.storageAdapter),
+        composition,
       );
     }
-    await this.reloadAgentsFromDisk();
+    await this.reloadAgentsFromDisk(composition);
     this.loadedPluginSkillSourceRevision = requestedSkillRevision;
   }
 
@@ -2606,13 +2638,16 @@ export class StationRuntime {
 
   private async reloadDefaultAgentFromConfig(
     appConfig: AppConfig,
+    composition?: PluginActivationComposition,
   ): Promise<void> {
     const builtinEngineBinding =
       await this.resolveBuiltinEngineBinding(appConfig);
     await bootstrapRuntimeDefaultAgent({
       appConfig,
       builtinEngineBinding,
-      configLoader: this.configLoader,
+      configLoader: composition
+        ? this.configLoader.forPluginActivationComposition(composition)
+        : this.configLoader,
       framework: this.framework,
       logger: this.logger,
       usageAggregator: this.usageAggregator,
@@ -3510,11 +3545,17 @@ export class StationRuntime {
     );
   }
 
-  private runtimeAgentBuilderContext(agentSlug: string, appConfig: AppConfig) {
+  private runtimeAgentBuilderContext(
+    agentSlug: string,
+    appConfig: AppConfig,
+    composition?: PluginActivationComposition,
+  ) {
     return {
       agentSlug,
       appConfig,
-      configLoader: this.configLoader,
+      configLoader: composition
+        ? this.configLoader.forPluginActivationComposition(composition)
+        : this.configLoader,
       framework: this.framework,
       skillService: this.skillService,
       logger: this.logger,
