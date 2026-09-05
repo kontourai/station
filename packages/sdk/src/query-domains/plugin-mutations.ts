@@ -40,25 +40,13 @@ export async function reloadPlugins(): Promise<{
   return result;
 }
 
-/**
- * The operator's pre-install decision (station#4288), taken from the preview
- * the operator actually read. `contentDigest` is what makes it a decision
- * about BYTES rather than about a name: the server re-derives it from its own
- * staged copy and refuses — before writing anything — if the two differ.
- */
-export interface PluginInstallConsent {
-  grantRevision?: string;
-  permissions: string[];
-  contentDigest: string;
-  dependencies: string[];
-  dependencyApprovals?: Array<{
-    id: string;
-    grantRevision?: string;
-    permissions: string[];
-    contentDigest: string;
-    dependencies: string[];
-  }>;
-}
+export type { PluginInstallConsent } from '../client/plugins';
+
+import {
+  type PluginInstallConsent,
+  type PluginRecoveryInput,
+  recoverPlugin,
+} from '../client/plugins';
 
 export function usePluginInstallMutation() {
   const queryClient = useQueryClient();
@@ -494,5 +482,23 @@ export function useRevokeWorkspaceHomeRoleMutation() {
         queryKey: [...WORKSPACE_HOME_ROLE_QUERY_KEY],
       });
     },
+  });
+}
+
+export function usePluginRecoveryMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      name,
+      ...input
+    }: PluginRecoveryInput & { name: string }) =>
+      recoverPlugin(await _getApiBase(), name, input),
+    // Pending activation is an accepted outcome too; refresh all derived views.
+    onSuccess: () => {
+      invalidatePluginQueries(queryClient);
+      invalidatePluginGraphQueries(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['plugin-recovery-preview'] });
+    },
+    retry: false,
   });
 }
