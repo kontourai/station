@@ -715,6 +715,64 @@ export function createPackageMcpAdmissionJournal(
     });
     return { state: 'reserved' as const, claim };
   };
+  const persistActivationPlan = (
+    state: Journal,
+    generation: Generation,
+    plan: PluginActivationPlan,
+  ) => {
+    if (plan.parent) {
+      const parent = state.generations.find(
+        (candidate) =>
+          candidate.pluginId === plan.parent!.installation &&
+          candidate.incarnation === plan.parent!.generation,
+      );
+      if (
+        !parent?.current ||
+        parent.activation !== 'pending' ||
+        fenced(state, parent.pluginId)
+      )
+        throw new Error('Parent activation ownership changed');
+      const row = db
+        .prepare(
+          'SELECT plan_json FROM package_plugin_activation_plans WHERE journal_id = ? AND incarnation = ?',
+        )
+        .get(journalId!, parent.incarnation) as
+        | { plan_json: string }
+        | undefined;
+      const parentPlan: unknown = row ? JSON.parse(row.plan_json) : undefined;
+      if (
+        !validPluginActivationPlan(parentPlan) ||
+        parentPlan.consent.kind !== 'operator-decision'
+      )
+        throw new Error('Parent activation consent is unavailable');
+      const approval = parentPlan.consent.dependencyApprovals?.find(
+        (entry) => entry.id === generation.pluginId,
+      );
+      if (
+        !parentPlan.consent.dependencies.includes(generation.pluginId) ||
+        approval?.contentDigest !== plan.sourceDigest
+      )
+        throw new Error('Child activation differs from the parent consent');
+      parentPlan.ownedDependencies = [
+        ...parentPlan.ownedDependencies.filter(
+          (entry) => entry.id !== generation.pluginId,
+        ),
+        {
+          id: generation.pluginId,
+          contentDigest: generation.contentDigest,
+          generation: generation.incarnation,
+        },
+      ];
+      if (!validPluginActivationPlan(parentPlan))
+        throw new Error('Parent activation graph exceeds supported bounds');
+      db.prepare(
+        'UPDATE package_plugin_activation_plans SET plan_json = ? WHERE journal_id = ? AND incarnation = ?',
+      ).run(JSON.stringify(parentPlan), journalId!, parent.incarnation);
+    }
+    db.prepare(
+      'INSERT INTO package_plugin_activation_plans(journal_id, incarnation, plan_json) VALUES (?, ?, ?)',
+    ).run(journalId!, generation.incarnation, JSON.stringify(plan));
+  };
   const journal: PackageMcpAdmissionJournal = {
     activationState(installation) {
       const loaded = read();
@@ -764,7 +822,9 @@ export function createPackageMcpAdmissionJournal(
       };
       if (!current())
         throw new Error('Plugin activation ownership is unavailable');
-      const permit = issuePluginActivationPermit(journal, current, plan);
+      const permit = issuePluginActivationPermit(journal, current, plan, () =>
+        journal.activationPlan(captured),
+      );
       activationLeases.set(permit, captured);
       return permit;
     },
@@ -1005,13 +1065,7 @@ export function createPackageMcpAdmissionJournal(
           claims: [],
         };
         if (input.activationPlan)
-          db.prepare(
-            'INSERT INTO package_plugin_activation_plans(journal_id, incarnation, plan_json) VALUES (?, ?, ?)',
-          ).run(
-            journalId!,
-            generation.incarnation,
-            JSON.stringify(input.activationPlan),
-          );
+          persistActivationPlan(state, generation, input.activationPlan);
         state.generations.push(generation);
         return { state: 'recorded' as const, installation: ref(generation) };
       });
@@ -1095,13 +1149,7 @@ export function createPackageMcpAdmissionJournal(
                 claims: [],
               };
               if (input.activationPlan)
-                db.prepare(
-                  'INSERT INTO package_plugin_activation_plans(journal_id, incarnation, plan_json) VALUES (?, ?, ?)',
-                ).run(
-                  journalId!,
-                  next.incarnation,
-                  JSON.stringify(input.activationPlan),
-                );
+                persistActivationPlan(state, next, input.activationPlan);
               state.generations.push(next);
               return { state: 'recorded' as const, installation: ref(next) };
             });

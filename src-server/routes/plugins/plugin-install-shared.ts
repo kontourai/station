@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { promisify } from 'node:util';
+import { isDeepStrictEqual, promisify } from 'node:util';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { PluginInstallationRevision } from '@kontourai/station-contracts/plugin';
 import {
@@ -1748,6 +1748,34 @@ function reconcilePluginAgentOwnership(options: {
   writeFileSync(agentManifestPath, JSON.stringify(spec, null, 2), 'utf-8');
 }
 
+function resolvePluginAgentDefinitionSource(
+  pluginDir: string,
+  agent: NonNullable<PluginManifest['agents']>[number],
+): { directory: string; manifest: string } {
+  assertPluginNameSegment(agent.slug);
+  const source =
+    !agent.source || agent.source === 'agent.json'
+      ? join(pluginDir, 'agents', agent.slug)
+      : resolve(pluginDir, agent.source);
+  assertPathInside(pluginDir, source, 'Plugin agent source');
+  if (!existsSync(source))
+    throw new Error(`Declared Agent '${agent.slug}' source is missing`);
+  assertPathInside(
+    realpathSync.native(pluginDir),
+    realpathSync.native(source),
+    'Plugin agent source',
+  );
+  const sourceStatus = lstatSync(source);
+  const directory = sourceStatus.isDirectory() ? source : dirname(source);
+  const manifest = sourceStatus.isDirectory()
+    ? join(source, 'agent.json')
+    : source;
+  assertNoSymlinkTree(pluginDir, directory, 'Plugin agent source');
+  if (!lstatSync(manifest).isFile())
+    throw new Error('Plugin agent source manifest must be a regular file');
+  return { directory, manifest };
+}
+
 export async function synchronizePluginAgentDefinitions(options: {
   agentsDir: string;
   pluginDir: string;
@@ -1785,27 +1813,10 @@ export async function synchronizePluginAgentDefinitions(options: {
   for (const agent of options.manifest.agents ?? []) {
     assertPluginNameSegment(agent.slug);
     if (options.include && !options.include(agentId(agent.slug))) continue;
-    const source =
-      !agent.source || agent.source === 'agent.json'
-        ? join(options.pluginDir, 'agents', agent.slug)
-        : resolve(options.pluginDir, agent.source);
-    assertPathInside(options.pluginDir, source, 'Plugin agent source');
-    if (!existsSync(source))
-      throw new Error(`Declared Agent '${agent.slug}' source is missing`);
-    assertPathInside(
-      realpathSync.native(options.pluginDir),
-      realpathSync.native(source),
-      'Plugin agent source',
+    sources.set(
+      agent.slug,
+      resolvePluginAgentDefinitionSource(options.pluginDir, agent),
     );
-    const sourceStatus = lstatSync(source);
-    const directory = sourceStatus.isDirectory() ? source : dirname(source);
-    const manifest = sourceStatus.isDirectory()
-      ? join(source, 'agent.json')
-      : source;
-    assertNoSymlinkTree(options.pluginDir, directory, 'Plugin agent source');
-    if (!lstatSync(manifest).isFile())
-      throw new Error('Plugin agent source manifest must be a regular file');
-    sources.set(agent.slug, { directory, manifest });
   }
   if (options.previousManifest) {
     await removePluginAgentDefinitions(
@@ -2418,6 +2429,7 @@ async function installPluginFromSourceUnderContext(
     registryId?: string;
     registryKey?: string;
     activationSession?: PluginActivationSession;
+    activationParent?: { installation: string; generation: string };
     /** Trusted request-entry observation, never deserialized request data. */
     grantSnapshot?: PluginGrantRevisionSnapshot;
     dataPolicy?: 'preserve' | 'retain-and-reset';
@@ -2475,12 +2487,8 @@ async function installPluginFromSourceUnderContext(
   let releaseInstallPublication: (() => Promise<void>) | undefined;
   let leaveInstallGraph: (() => void) | undefined;
   try {
-    const {
-      manifest,
-      format: manifestFormat,
-      stationExtension,
-    } = await readPluginManifestFileWithFormat(join(tempDir, 'plugin.json'));
-    const hasStationActivation = stationExtension?.status === 'validated';
+    const { manifest, format: manifestFormat } =
+      await readPluginManifestFileWithFormat(join(tempDir, 'plugin.json'));
     const isAgentPlugin = manifestFormat === 'agent-plugin-1.0';
     const pluginName = manifest.name || tempName;
     if (
@@ -2649,6 +2657,14 @@ async function installPluginFromSourceUnderContext(
               }
             : {}),
           activationSession: options?.activationSession,
+          ...(managedLifecycle
+            ? {
+                activationParent: {
+                  installation: pluginName,
+                  generation: managedLifecycle.selected.generation,
+                },
+              }
+            : {}),
           expectedPluginName: dependencyId,
           expectedInstallation: null,
           consent: {
@@ -2838,34 +2854,36 @@ async function installPluginFromSourceUnderContext(
               }),
             )
             .digest('hex');
-          const activationPlan: PluginActivationPlan | undefined =
-            hasStationActivation
-              ? {
-                  version: 1,
-                  artifactDigest: artifact.digest,
-                  sourceDigest: consentBasis.contentDigest,
-                  descriptorDigest: pluginActivationDescriptorDigest(manifest),
-                  origin,
-                  consent:
-                    consent.kind === 'operator-decision'
-                      ? {
-                          ...consent,
-                          grantRevision:
-                            consent.grantRevision ??
-                            requestGrants.revisionFor(pluginName),
-                        }
-                      : consent,
-                  previous: priorInstallation,
-                  agents: (manifest.agents ?? [])
-                    .filter((agent) => !skipSet.has(`agent:${agent.slug}`))
-                    .map((agent) => ({
-                      slug: agent.slug,
-                      previousProject:
-                        persistedAgentOwnership.get(agent.slug) ?? null,
-                    })),
-                  ownedDependencies: retainedDependencyOwnership,
-                }
-              : undefined;
+          const activationPlan: PluginActivationPlan | undefined = isAgentPlugin
+            ? {
+                version: 1,
+                artifactDigest: artifact.digest,
+                sourceDigest: consentBasis.contentDigest,
+                descriptorDigest: pluginActivationDescriptorDigest(manifest),
+                origin,
+                consent:
+                  consent.kind === 'operator-decision'
+                    ? {
+                        ...consent,
+                        grantRevision:
+                          consent.grantRevision ??
+                          requestGrants.revisionFor(pluginName),
+                      }
+                    : consent,
+                previous: priorInstallation,
+                ...(options?.activationParent
+                  ? { parent: options.activationParent }
+                  : {}),
+                agents: (manifest.agents ?? [])
+                  .filter((agent) => !skipSet.has(`agent:${agent.slug}`))
+                  .map((agent) => ({
+                    slug: agent.slug,
+                    previousProject:
+                      persistedAgentOwnership.get(agent.slug) ?? null,
+                  })),
+                ownedDependencies: retainedDependencyOwnership,
+              }
+            : undefined;
           if (
             activationPlan &&
             (!deps.packageMcpJournal || !options?.activationSession)
@@ -2898,7 +2916,7 @@ async function installPluginFromSourceUnderContext(
                   options!.activationSession!,
                   deps.packageMcpJournal!,
                   selected.installation,
-                  async () => {
+                  async (recordedPlan) => {
                     if (
                       computePluginContentDigest(
                         dirname(pluginDir),
@@ -2906,7 +2924,12 @@ async function installPluginFromSourceUnderContext(
                       ) !== artifact.digest
                     )
                       throw new Error('Plugin activation artifact changed');
-                    for (const agent of activationPlan.agents) {
+                    if (
+                      manifest.entrypoint &&
+                      !existsSync(join(pluginDir, 'dist', 'bundle.js'))
+                    )
+                      throw new Error('Plugin activation bundle is missing');
+                    for (const agent of recordedPlan.agents) {
                       const directory = join(agentsDir, agent.slug);
                       if (pluginAgentOwner(directory) !== pluginName)
                         throw new Error(
@@ -2934,6 +2957,29 @@ async function installPluginFromSourceUnderContext(
                       )
                         throw new Error(
                           `Plugin activation Agent '${agent.slug}' definition is unavailable`,
+                        );
+                      const declaration = manifest.agents?.find(
+                        (candidate) => candidate.slug === agent.slug,
+                      );
+                      if (!declaration)
+                        throw new Error(
+                          'Plugin activation Agent declaration changed',
+                        );
+                      const sourceDefinition =
+                        resolvePluginAgentDefinitionSource(
+                          pluginDir,
+                          declaration,
+                        );
+                      const expectedSpec = JSON.parse(
+                        readFileSync(sourceDefinition.manifest, 'utf8'),
+                      );
+                      // Project association has a separate owner; all other
+                      // definition fields must still match the selected artifact.
+                      delete expectedSpec.project;
+                      delete spec.project;
+                      if (!isDeepStrictEqual(expectedSpec, spec))
+                        throw new Error(
+                          `Plugin activation Agent '${agent.slug}' content changed`,
                         );
                     }
                   },

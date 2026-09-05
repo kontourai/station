@@ -596,3 +596,94 @@ test('a terminated journal writer leaves activation pending in a fresh process a
     }),
   ).toMatchObject({ admission: 'open' });
 });
+
+test('parent dependency custody and child selection commit together or both roll back', () => {
+  const { journal, path } = open();
+  const origin = 'b'.repeat(64);
+  const parentPlan: PluginActivationPlan = {
+    version: 1,
+    artifactDigest: digest,
+    descriptorDigest: digest,
+    sourceDigest: digest,
+    origin,
+    consent: {
+      kind: 'operator-decision',
+      contentDigest: digest,
+      permissions: [],
+      dependencies: ['child'],
+      dependencyApprovals: [
+        {
+          id: 'child',
+          contentDigest: digest,
+          permissions: [],
+          dependencies: [],
+        },
+      ],
+    },
+    previous: null,
+    agents: [],
+    ownedDependencies: [],
+  };
+  const parent = journal.recordInstallation({
+    pluginId: 'parent',
+    contentDigest: digest,
+    origin,
+    previous: null,
+    activationPlan: parentPlan,
+  });
+  if (parent.state !== 'recorded') throw new Error('Parent fixture refused');
+  const childInput = {
+    pluginId: 'child',
+    contentDigest: digest,
+    origin,
+    previous: null,
+    activationPlan: {
+      ...parentPlan,
+      consent: {
+        kind: 'no-operator-decision' as const,
+        caller: 'child-fixture',
+      },
+      parent: {
+        installation: 'parent',
+        generation: parent.installation.incarnation,
+      },
+    },
+  };
+  const execute = DatabaseSync.prototype.exec;
+  let failCommit = true;
+  const fault = vi
+    .spyOn(DatabaseSync.prototype, 'exec')
+    .mockImplementation(function (this: DatabaseSync, sql: string) {
+      if (sql === 'COMMIT' && failCommit) {
+        failCommit = false;
+        throw new Error('Interrupted before transaction commit');
+      }
+      return execute.call(this, sql);
+    });
+  expect(journal.recordInstallation(childInput)).toEqual({
+    state: 'unavailable',
+  });
+  fault.mockRestore();
+  expect(journal.currentInstallation('child')).toEqual({
+    state: 'not-observed',
+  });
+  expect(
+    journal.activationPlan(parent.installation)?.ownedDependencies,
+  ).toEqual([]);
+  const child = journal.recordInstallation(childInput);
+  if (child.state !== 'recorded') throw new Error('Child fixture refused');
+  const reopened = open(path).journal;
+  expect(
+    reopened.activationPlan(parent.installation)?.ownedDependencies,
+  ).toEqual([
+    {
+      id: 'child',
+      contentDigest: digest,
+      generation: child.installation.incarnation,
+    },
+  ]);
+  expect(reopened.activationPlan(child.installation)?.parent).toEqual({
+    installation: 'parent',
+    generation: parent.installation.incarnation,
+  });
+});

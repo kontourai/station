@@ -17,6 +17,7 @@ export interface PluginActivationPlan {
   sourceDigest: string;
   consent: PluginInstallConsent;
   previous: PluginInstallationRevision | null;
+  parent?: { installation: string; generation: string };
   agents: Array<{ slug: string; previousProject: string | null }>;
   ownedDependencies: PluginDependencyOwnershipEntry[];
 }
@@ -118,6 +119,7 @@ export function validPluginActivationPlan(
       'previous',
       'agents',
       'ownedDependencies',
+      'parent',
     ]) ||
     value.version !== 1 ||
     !['artifactDigest', 'descriptorDigest', 'sourceDigest'].every(
@@ -126,6 +128,12 @@ export function validPluginActivationPlan(
     ) ||
     typeof value.origin !== 'string' ||
     !/^[0-9a-f]{64}$/.test(value.origin) ||
+    (value.parent !== undefined &&
+      (!object(value.parent) ||
+        !keys(value.parent, ['installation', 'generation']) ||
+        typeof value.parent.installation !== 'string' ||
+        !isCanonicalPluginId(value.parent.installation) ||
+        !opaque(value.parent.generation))) ||
     !validConsent(value.consent) ||
     !Array.isArray(value.agents) ||
     value.agents.length > 256 ||
@@ -190,6 +198,7 @@ const permits = new WeakMap<
     owner: object;
     current: () => boolean;
     plan: PluginActivationPlan;
+    readPlan?: () => PluginActivationPlan | null;
     active: boolean;
     verified: boolean;
     completed: boolean;
@@ -203,12 +212,14 @@ export function issuePluginActivationPermit(
   owner: object,
   current: () => boolean,
   plan: PluginActivationPlan,
+  readPlan?: () => PluginActivationPlan | null,
 ): PluginActivationPermit {
   const permit = Object.freeze({}) as PluginActivationPermit;
   permits.set(permit, {
     owner,
     current,
     plan: structuredClone(plan),
+    readPlan,
     active: true,
     verified: false,
     completed: false,
@@ -222,7 +233,9 @@ export function activationPermitPlan(
   const state = permits.get(permit);
   if (!state || state.owner !== owner || !state.active || !state.current())
     throw new Error('Plugin activation ownership changed');
-  return structuredClone(state.plan);
+  const currentPlan = state.readPlan ? state.readPlan() : state.plan;
+  if (!currentPlan) throw new Error('Plugin activation plan is unavailable');
+  return structuredClone(currentPlan);
 }
 export async function verifyPluginActivation(
   permit: PluginActivationPermit,
@@ -231,7 +244,12 @@ export async function verifyPluginActivation(
 ): Promise<void> {
   const plan = activationPermitPlan(permit, owner);
   await verify(plan);
-  activationPermitPlan(permit, owner);
+  if (
+    JSON.stringify(activationPermitPlan(permit, owner)) !== JSON.stringify(plan)
+  )
+    throw new Error(
+      'Plugin activation ownership plan changed during verification',
+    );
   permits.get(permit)!.verified = true;
 }
 export function revokePluginActivationPermit(

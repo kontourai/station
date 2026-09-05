@@ -4,6 +4,7 @@ import type {
 } from './package-mcp-admission.js';
 import {
   type PluginActivationPermit,
+  type PluginActivationPlan,
   verifyPluginActivation,
 } from './plugin-activation-plan.js';
 
@@ -19,7 +20,7 @@ interface Entry {
   journal: PackageMcpAdmissionJournal;
   installation: PackageMcpInstallation;
   permit: PluginActivationPermit;
-  verifyResources(): Promise<void>;
+  verifyResources(plan: PluginActivationPlan): Promise<void>;
 }
 interface Session {
   phase: 'collecting' | 'composing' | 'completed' | 'closed';
@@ -38,7 +39,7 @@ export function registerPluginActivation(
   session: PluginActivationSession,
   journal: PackageMcpAdmissionJournal,
   installation: PackageMcpInstallation,
-  verifyResources: () => Promise<void>,
+  verifyResources: (plan: PluginActivationPlan) => Promise<void>,
 ): PluginActivationPermit {
   const state = sessions.get(session);
   if (state?.phase !== 'collecting')
@@ -85,6 +86,37 @@ export function pluginActivationSessionPermit(
   return entry.permit;
 }
 
+async function verifyActivationEntry(
+  state: Session,
+  entry: Entry,
+  plan: PluginActivationPlan,
+): Promise<void> {
+  await entry.verifyResources(plan);
+  for (const dependency of plan.ownedDependencies) {
+    if (!dependency.generation) continue; // Legacy custody does not gain generation authority here.
+    const current = entry.journal.currentInstallation(dependency.id);
+    if (
+      current.state !== 'observed' ||
+      current.installation.incarnation !== dependency.generation ||
+      current.installation.contentDigest !== dependency.contentDigest
+    )
+      throw new Error(
+        `Plugin activation dependency '${dependency.id}' changed`,
+      );
+    if (
+      !entry.journal.admissionOpen(current.installation) &&
+      !state.entries.some(
+        (candidate) =>
+          candidate.journal === entry.journal &&
+          candidate.installation.incarnation === dependency.generation,
+      )
+    )
+      throw new Error(
+        `Plugin activation dependency '${dependency.id}' needs its own recovery`,
+      );
+  }
+}
+
 export async function preparePluginActivationComposition(
   session: PluginActivationSession,
 ): Promise<PluginActivationComposition> {
@@ -93,7 +125,9 @@ export async function preparePluginActivationComposition(
     throw new Error('Plugin activation session is unavailable');
   for (const entry of state.entries) {
     entry.journal.activationInstallation(entry.permit);
-    await entry.verifyResources();
+    const plan = entry.journal.activationPlan(entry.installation);
+    if (!plan) throw new Error('Plugin activation plan is unavailable');
+    await verifyActivationEntry(state, entry, plan);
     entry.journal.activationInstallation(entry.permit);
   }
   if (state.phase !== 'collecting')
@@ -138,10 +172,8 @@ export async function completePluginActivationComposition(
   // before their children, so reverse publication keeps a parent pending until
   // its owned children have passed their exact-generation CAS.
   for (const entry of state.entries) {
-    await verifyPluginActivation(
-      entry.permit,
-      entry.journal,
-      entry.verifyResources,
+    await verifyPluginActivation(entry.permit, entry.journal, (plan) =>
+      verifyActivationEntry(state, entry, plan),
     );
     if (state.phase !== 'composing')
       throw new Error('Plugin activation composition was abandoned');
