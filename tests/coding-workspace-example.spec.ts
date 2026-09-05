@@ -48,43 +48,48 @@ test('coding example preserves both Panes and its authored native Agent in a rea
   test.setTimeout(180_000);
   const root = mkdtempSync(join(tmpdir(), 'station-coding-example-'));
   const repo = join(root, 'repository');
-  mkdirSync(repo);
-  execFileSync('git', ['init', '--quiet', repo], { windowsHide: true });
-  execFileSync(
-    'git',
-    [
-      '-C',
-      repo,
-      '-c',
-      'user.name=Fixture',
-      '-c',
-      'user.email=fixture@example.test',
-      'commit',
-      '--allow-empty',
-      '-m',
-      'fixture',
-    ],
-    { windowsHide: true },
-  );
   const requests: unknown[] = [];
-  const fixture = await startOllamaFixture(
-    model,
-    (body) => requests.push(body),
-    answer,
-  );
-  const previous = (await json('/api/config/app')).data;
+  let fixture: Awaited<ReturnType<typeof startOllamaFixture>> | undefined;
+  let previous:
+    | { defaultLLMProvider?: string; defaultModel?: string }
+    | undefined;
+  let primaryFailure: unknown;
   let installed = false;
   let created = false;
   let connected = false;
-  const authored = JSON.parse(
-    readFileSync(
-      resolve(
-        'examples/coding-starter/agents/coding-starter-assistant/agent.json',
-      ),
-      'utf8',
-    ),
-  );
   try {
+    mkdirSync(repo);
+    execFileSync('git', ['init', '--quiet', repo], { windowsHide: true });
+    execFileSync(
+      'git',
+      [
+        '-C',
+        repo,
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'fixture',
+      ],
+      { windowsHide: true },
+    );
+    fixture = await startOllamaFixture(
+      model,
+      (body) => requests.push(body),
+      answer,
+    );
+    previous = (await json('/api/config/app')).data;
+    const authored = JSON.parse(
+      readFileSync(
+        resolve(
+          'examples/coding-starter/agents/coding-starter-assistant/agent.json',
+        ),
+        'utf8',
+      ),
+    );
     await json('/api/connections', 'POST', {
       id: connection,
       name: 'Coding example controlled native model',
@@ -203,15 +208,17 @@ test('coding example preserves both Panes and its authored native Agent in a rea
       exact: true,
     });
     await expect(action).toBeEnabled();
-    const response = page.waitForResponse(
-      (candidate) =>
-        candidate.request().method() === 'POST' &&
-        new URL(candidate.url()).pathname.endsWith(
-          `/pane-host/${slug}/execute`,
-        ),
-    );
-    await action.click();
-    const execution = (await (await response).json()).data;
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (candidate) =>
+          candidate.request().method() === 'POST' &&
+          new URL(candidate.url()).pathname.endsWith(
+            `/pane-host/${slug}/execute`,
+          ),
+      ),
+      action.click(),
+    ]);
+    const execution = (await response.json()).data;
     expect(execution).toMatchObject({ state: 'accepted' });
     await expect(action).toBeDisabled();
     let receipt: any;
@@ -300,15 +307,36 @@ test('coding example preserves both Panes and its authored native Agent in a rea
       page.getByRole('button', { name: 'Review current diff', exact: true }),
     ).toHaveCount(0);
     await expect(page.locator('.coding-shell')).toHaveCount(0);
+  } catch (error) {
+    primaryFailure = error;
+    throw error;
   } finally {
-    if (created) await json(`/api/projects/${slug}`, 'DELETE');
-    if (installed) await json(`/api/registry/plugins/${plugin}`, 'DELETE');
-    await json('/api/config/app', 'PUT', {
-      defaultLLMProvider: previous.defaultLLMProvider ?? '',
-      defaultModel: previous.defaultModel ?? '',
-    });
-    if (connected) await json(`/api/connections/${connection}`, 'DELETE');
-    await closeFixtureServer(fixture.server);
-    rmSync(root, { recursive: true, force: true });
+    const failures: unknown[] = [];
+    const clean = async (operation: () => unknown | Promise<unknown>) => {
+      try {
+        await operation();
+      } catch (error) {
+        failures.push(error);
+      }
+    };
+    if (created) await clean(() => json(`/api/projects/${slug}`, 'DELETE'));
+    if (installed)
+      await clean(() => json(`/api/registry/plugins/${plugin}`, 'DELETE'));
+    if (previous)
+      await clean(() =>
+        json('/api/config/app', 'PUT', {
+          defaultLLMProvider: previous!.defaultLLMProvider ?? '',
+          defaultModel: previous!.defaultModel ?? '',
+        }),
+      );
+    if (connected)
+      await clean(() => json(`/api/connections/${connection}`, 'DELETE'));
+    await clean(() => closeFixtureServer(fixture?.server ?? null));
+    await clean(() => rmSync(root, { recursive: true, force: true }));
+    if (failures.length)
+      throw new AggregateError(
+        primaryFailure ? [primaryFailure, ...failures] : failures,
+        'Coding example cleanup failed',
+      );
   }
 });
