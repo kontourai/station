@@ -38,10 +38,12 @@ function PackageHostActions({
   projectSlug,
   projection,
   reason,
+  displayName,
 }: {
   projectSlug: string;
   projection: WorkspacePaneHostCompositionProjection;
   reason?: WorkspacePaneHostActionUnavailableReason;
+  displayName?: string;
 }) {
   const authority = useHostRequestAuthorityScope();
   const showSurface = useShowSurface();
@@ -120,7 +122,7 @@ function PackageHostActions({
 
   return (
     <fieldset className="workspace-host-actions__package">
-      <legend>{projection.owner.pluginId}</legend>
+      <legend>{displayName ?? projection.owner.pluginId}</legend>
       <div className="workspace-host-actions__controls">
         <label>
           Agent
@@ -164,6 +166,7 @@ function PackageHostActions({
             onClick={() => void run(action)}
           >
             {action.label}
+            {action.agent ? ` (${action.agent.agentId})` : ''}
           </Button>
         ))}
       </div>
@@ -234,18 +237,15 @@ export function WorkspacePaneHostActions({
           using legacy workspace actions.
         </p>
       ) : null}
-      {query.data.contributions.map(({ projection, reason }) => (
+      {query.data.contributions.map(({ projection, reason, displayName }) => (
         <PackageHostActions
           key={`${projectSlug}:${projection.owner.pluginId}:${projection.owner.installationGeneration}`}
           projectSlug={projectSlug}
           projection={projection}
           reason={reason}
+          displayName={displayName}
         />
       ))}
-      <p className="workspace-host-actions__help">
-        Actions use this package’s selected Agent. Fixed action bindings take
-        precedence. Worktree provisioning is not supported yet.
-      </p>
       <Button onClick={() => void query.refetch()}>Refresh actions</Button>
     </section>
   );

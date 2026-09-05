@@ -174,6 +174,11 @@ export function createWorkspacePaneHostActions(input: {
       const projected = await source.project();
       if (projected.state !== 'available') continue;
       contributions.push({
+        displayName:
+          typeof installed.manifest.displayName === 'string' &&
+          installed.manifest.displayName.trim()
+            ? installed.manifest.displayName.trim().slice(0, 160)
+            : pluginId,
         projection: projected.projection,
         ...(!granted
           ? { reason: 'permission-required' as const }

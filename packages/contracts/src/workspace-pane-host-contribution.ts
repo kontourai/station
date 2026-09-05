@@ -133,6 +133,7 @@ export interface WorkspacePaneHostActionCatalog {
   /** False when the bounded inventory cannot establish declaration absence. */
   readonly complete: boolean;
   readonly contributions: readonly {
+    readonly displayName?: string;
     readonly projection: WorkspacePaneHostCompositionProjection;
     readonly reason?: WorkspacePaneHostActionUnavailableReason;
   }[];

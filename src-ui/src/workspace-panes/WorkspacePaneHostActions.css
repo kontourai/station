@@ -41,7 +41,8 @@
   min-height: 44px;
   max-width: 100%;
 }
-.workspace-host-actions__help {
-  color: var(--text-secondary);
-  margin-block: var(--space-2);
+.workspace-host-actions__controls .button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }

@@ -142,7 +142,9 @@ test('fixed action binding is never replaced by the host dropdown', async () => 
     target: { value: 'own-plugin-agent:alternate' },
   });
   await act(async () =>
-    fireEvent.click(screen.getByRole('button', { name: 'Fixed action' })),
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Fixed action (assistant)' }),
+    ),
   );
   expect(mocks.mutateAsync).toHaveBeenCalledExactlyOnceWith({
     ...projection.owner,

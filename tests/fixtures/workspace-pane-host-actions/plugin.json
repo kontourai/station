@@ -1,5 +1,6 @@
 {
   "name": "host-action-browser-proof",
+  "displayName": "Host action proof",
   "version": "1.0.0",
   "description": "Disposable managed-browser host-action proof using Muse echo",
   "permissions": ["agents.invoke"],
