@@ -13,7 +13,8 @@ import { runCloudProjectImport } from './cloud-project-import.js';
 import { parseCoreArgs } from './core-api.js';
 
 export function runCloudCommand(args: string[]): void | Promise<void> {
-  const { flags, positionals } = parseCoreArgs(args);
+  const parsed = parseCoreArgs(args);
+  const { flags, positionals } = parsed;
   const action = positionals[0];
   const actionOptions: Record<string, string[]> = {
     preview: ['provider', 'region', 'instance-type', 'home', 'json'],
@@ -49,7 +50,7 @@ export function runCloudCommand(args: string[]): void | Promise<void> {
     if (!allowed.has(flag))
       throw new Error(`Unsupported cloud ${action} option: --${flag}`);
   if (action === 'import-project')
-    return runCloudProjectImport({ flags, positionals });
+    return runCloudProjectImport(parsed);
   const required = (key: string) => {
     const value = flags[key];
     if (typeof value !== 'string' || !value.trim())
