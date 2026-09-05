@@ -94,8 +94,8 @@ pointer gap; absence is fail-closed and never traversed for cleanup. Native
 Windows junction/publication qualification remains required before claiming
 Windows completion.
 
-Pre-incarnation installed directories are not silently renamed. Mutation is
-refused with an explicit migration instruction because their already-running
+Pre-incarnation Agent Plugin directories are not silently renamed. Managed
+mutation is refused with an explicit migration instruction because their already-running
 processes may still use the original paths. No existing user home is migrated
 by startup or a catalog read.
 

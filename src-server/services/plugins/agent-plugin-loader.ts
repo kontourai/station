@@ -383,6 +383,11 @@ export class AgentPluginLoader {
         throw new MCPLocalCustodyError('stale');
       if (
         current.state === 'observed' &&
+        !journal.admissionOpen(current.installation)
+      )
+        throw new MCPLocalCustodyError('stale');
+      if (
+        current.state === 'observed' &&
         current.installation.materialization
       ) {
         const selected = resolvePluginMaterialization(

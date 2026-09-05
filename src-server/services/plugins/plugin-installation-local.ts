@@ -6,6 +6,10 @@ import type {
   PackageMcpInstallation,
 } from './package-mcp-admission.js';
 import {
+  type PluginActivationPermit,
+  pluginActivationDescriptorDigest,
+} from './plugin-activation-plan.js';
+import {
   localPluginArtifactSource,
   materializePluginArtifact,
 } from './plugin-artifact-local.js';
@@ -30,6 +34,7 @@ import {
   type PluginInstallationStateBackend,
   type PluginMaterializationBackend,
 } from './plugin-installation-service.js';
+import { readPluginManifestFileSyncWithFormat } from './plugin-manifest-loader.js';
 
 export function localPluginInstallationState(
   journal: PackageMcpAdmissionJournal,
@@ -77,6 +82,9 @@ export function localPluginInstallationState(
         materialization: value.reference,
         dataScope: value.dataScope,
         ...(value.origin ? { origin: value.origin } : {}),
+        ...(value.activationPlan
+          ? { activationPlan: value.activationPlan }
+          : {}),
         previous: null,
       });
       if (result.state !== 'recorded') throw new PluginInstallationConflict();
@@ -92,6 +100,9 @@ export function localPluginInstallationState(
             materialization: next.reference,
             dataScope: next.dataScope,
             ...(next.origin ? { origin: next.origin } : {}),
+            ...(next.activationPlan
+              ? { activationPlan: next.activationPlan }
+              : {}),
           });
           if (replaced.state !== 'recorded')
             throw new PluginInstallationConflict();
@@ -124,13 +135,26 @@ export function localPluginMaterializations(
     );
     if (!digest) throw new PluginInstallationConflict();
     roots.set(root.generation, root);
+    const parsed = readPluginManifestFileSyncWithFormat(
+      join(root.packageRoot, 'plugin.json'),
+    );
+    const activationDescriptor =
+      parsed.format === 'agent-plugin-1.0' &&
+      parsed.stationExtension?.status === 'validated'
+        ? pluginActivationDescriptorDigest(parsed.manifest)
+        : undefined;
+
     return {
       reference: root.generation,
       dataScope: root.dataScope!,
       artifact: { digest },
+      ...(activationDescriptor ? { activationDescriptor } : {}),
     };
   };
   return {
+    async describe(id, reference) {
+      return capture(resolvePluginMaterialization(pluginsDir, id, reference));
+    },
     async current(id) {
       const root = resolveInstalledPluginRoot(pluginsDir, id);
       return root ? capture(root) : null;
@@ -336,4 +360,39 @@ export function captureLocalPluginInstallation(
       }
     },
   });
+}
+
+/** Installer-only materialization access; a pending package is never exposed
+ * by a public allowPending flag on the normal execution capture. */
+export function captureLocalPluginActivation(
+  pluginsDir: string,
+  journal: PackageMcpAdmissionJournal,
+  permit: PluginActivationPermit,
+) {
+  const installation = journal.activationInstallation(permit);
+  const root = resolvePluginMaterialization(
+    pluginsDir,
+    installation.pluginId,
+    installation.materialization!,
+  );
+  if (root.dataScope !== installation.dataScope)
+    throw new PluginInstallationConflict();
+  return {
+    root,
+    installation,
+    isCurrent() {
+      try {
+        const current = journal.activationInstallation(permit);
+        return (
+          current.incarnation === installation.incarnation &&
+          computePluginContentDigest(
+            dirname(root.packageRoot),
+            basename(root.packageRoot),
+          ) === installation.contentDigest
+        );
+      } catch {
+        return false;
+      }
+    },
+  };
 }

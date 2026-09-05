@@ -1,3 +1,4 @@
+import type { PluginActivationPlan } from './plugin-activation-plan.js';
 /** Installation intent boundary. Backend adapters carry their own locations;
  * these values never require a filesystem path, process ID, or server account. */
 export interface PluginArtifactReference {
@@ -39,6 +40,8 @@ export interface PluginMaterialization {
   readonly reference: string;
   readonly dataScope: string;
   readonly origin?: string;
+  readonly activationPlan?: PluginActivationPlan;
+  readonly activationDescriptor?: string;
   readonly artifact: PluginArtifactReference;
 }
 export interface PluginInstallationStateBackend {
@@ -55,6 +58,10 @@ export interface PluginInstallationStateBackend {
   }>;
 }
 export interface PluginMaterializationBackend {
+  describe(
+    installation: string,
+    reference: string,
+  ): Promise<PluginMaterialization>;
   current(installation: string): Promise<PluginMaterialization | null>;
   prepare(
     installation: string,
@@ -145,6 +152,7 @@ export class PluginInstallationService {
     artifact: PluginArtifactReference;
     data?: 'preserve' | 'retain-and-reset';
     origin: string;
+    activationPlan?: PluginActivationPlan;
   }) {
     if (!/^[a-f0-9]{64}$/.test(input.origin))
       throw new Error(
@@ -187,9 +195,18 @@ export class PluginInstallationService {
       input.artifact,
       dataScope,
     );
+    if (
+      prepared.activationDescriptor &&
+      (!input.activationPlan ||
+        input.activationPlan.descriptorDigest !== prepared.activationDescriptor)
+    )
+      throw new Error(
+        'Station namespace activation requires its validated installation plan',
+      );
     const next = {
       ...prepared,
       ...(input.origin ? { origin: input.origin } : {}),
+      ...(input.activationPlan ? { activationPlan: input.activationPlan } : {}),
     };
     const fence = input.expected
       ? await this.state.fence(input.expected)
