@@ -107,12 +107,11 @@ export const MAX_TOOL_REQUEST_PREVIEW_LENGTH = 160;
  * unrecognised token in an unrecognised field is rendered as written.
  *
  * BUNDLE NOTE (correcting this branch's earlier commit message, which claimed
- * this was the entry bundle's first eager consumer of `redaction.ts`):
- * `src-ui/src/components/coding-layout/terminalSelectionHandoff.ts` and
- * `src-ui/src/platform/native/sshLauncher.ts` already import it. The measured
- * 1192-gzip-byte cost of importing this module at the eager approval-handler
- * site is what it is; the attribution of which part is `redaction.ts` was a
- * guess and is not load-bearing for anything.
+ * this was the entry bundle's first eager consumer of `redaction.ts`): the UI's
+ * `terminalSelectionHandoff` and `sshLauncher` modules already import it. The
+ * measured gzip cost of importing this module at the eager approval-handler
+ * site is what it is; the attribution of which part of it is `redaction.ts` was
+ * a guess and is not load-bearing for anything.
  *
  * @param toolName the raw tool name as the adapter reported it
  * @param toolInput the raw tool arguments
