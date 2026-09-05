@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import App from '../App';
 import { bannerStore } from '../contexts/banner-store';
 import { openChatsStore } from '../contexts/open-chats-store';
-import { DEFAULT_DEVICE_REGION_LAYOUT } from '../regions/region-model';
+import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
 
 vi.mock('../contexts/open-chats-store', () => ({
   openChatsStore: {
@@ -553,7 +553,7 @@ describe('App home route resolution', () => {
    * against App's real gate rather than against a restatement of it.
    */
   const regionModelStub = () => ({
-    regions: DEFAULT_DEVICE_REGION_LAYOUT,
+    regions: DEFAULT_DEVICE_REGION_ARRANGEMENT,
     lastShownRegion: 'bottom',
     registerRegionSurfaceHost,
     placeSurface: vi.fn(),

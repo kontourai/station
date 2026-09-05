@@ -122,6 +122,8 @@ export function startRuntimeACPConnections(context: {
   acpBridge: ACPBridgeLike;
   logger: RuntimeLogger;
   listProvidersFn?: typeof listProviders;
+  /** Re-resolve role bindings after slow ACP handshakes publish readiness. */
+  onReady?: () => void | Promise<void>;
 }): void {
   const listProvidersFn = context.listProvidersFn || listProviders;
 
@@ -146,9 +148,16 @@ export function startRuntimeACPConnections(context: {
         'background',
       );
     })
-    .then(() => {
+    .then(async () => {
       if (context.acpBridge.isConnected()) {
         context.logger.info('[Runtime] ACP connections established');
+      }
+      try {
+        await context.onReady?.();
+      } catch (error: any) {
+        context.logger.warn('[Runtime] ACP-ready reconciliation failed', {
+          error: error.message,
+        });
       }
     })
     .catch((error: any) => {

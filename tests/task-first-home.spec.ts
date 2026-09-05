@@ -1107,7 +1107,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
         navigation.getByRole('button', { name: 'Advanced' }),
       ).toHaveCount(0);
 
-      // RT-13 (`app-shell/surface-registry.ts`): Agents, Connections and
+      // RT-13 (`app-shell/destination-registry.ts`): Agents, Connections and
       // Activity are a flat, always-visible band now, not members of a
       // disclosure group — the loop below used to prove "Agents" visible for a
       // reason it no longer holds. (origin/main renamed the retired
@@ -1131,7 +1131,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await expect(system).toHaveAttribute('aria-expanded', 'true');
 
       // "Playbooks & skills" is retired to a search keyword; the surface is
-      // Guidance (`surface-registry.ts` `customize(20)`).
+      // Guidance (`destination-registry.ts` `customize(20)`).
       for (const label of ['Guidance', 'Registry', 'Settings']) {
         const item = navigation.getByRole('button', { name: label });
         await expect(item).toBeVisible();

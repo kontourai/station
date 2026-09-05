@@ -362,7 +362,7 @@ describe('AppViewContent — the page header while a route loads', () => {
 
     expect(screen.getByText('Loading route')).toBeTruthy();
     const heading = screen.getByRole('heading', { level: 1 });
-    // The sidebar's own word for this surface, from `surface-registry.ts`,
+    // The sidebar's own word for this surface, from `destination-registry.ts`,
     // not a second copy written into the frame table.
     expect(heading.textContent).toBe('Connections');
   });
