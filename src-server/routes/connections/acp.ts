@@ -245,17 +245,7 @@ export function createACPRoutes(ctx: RuntimeContext) {
   });
 
   app.get('/connections', async (c) => {
-    const config = await ctx.configLoader.loadACPConfig();
-    const providerConns = getProviderConnections();
-    const registeredIds = await registeredRuntimeConnectionIds(
-      ctx.configLoader,
-    );
-    const allConnections = mergeACPConnections(
-      config.connections,
-      providerConns,
-    ).filter((connection) =>
-      isRegisteredRuntimeConnection(connection.id, registeredIds),
-    );
+    const allConnections = await installedACPConnections(ctx.configLoader);
     const status = ctx.acpBridge.getStatus();
     const connections = allConnections.map((cfg) => ({
       ...cfg,
