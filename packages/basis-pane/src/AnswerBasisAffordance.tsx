@@ -6,15 +6,26 @@ import { buildBasisPanelViewModel } from '@kontourai/surface/basis/view';
 import type { MouseEvent, ReactElement } from 'react';
 
 /**
- * #1536 B3: the route's 404 is an ANSWER, not a fault. `GET …/basis` answers
- * 404 when Station recorded no basis for the turn and keeps 503 for a read it
- * could not perform, and this label collapsed both into "Unavailable" — so a
- * healthy instance with nothing recorded for a turn accused itself of a
- * failure. An absence and a failure are different things to tell someone.
+ * #1536 B3: the route's 404 is an ANSWER, not a fault, and it keeps 503 for a
+ * read it could not perform. The label collapsed both into "Unavailable", so a
+ * healthy instance accused itself of a failure over a turn that simply has no
+ * basis to show.
+ *
+ * Review H3: the wording must not claim WHY, either. The route answers 404 for
+ * a missing basis AND for a denied or stale-principal read — deliberately, so
+ * the two are indistinguishable to the caller (`orchestration.routes.test.ts`:
+ * "makes missing and denied answers the same response"). "Not recorded" would
+ * be a claim this client cannot make about the denied case, and would leak the
+ * distinction the route refuses to leak. So it says only what is true of both:
+ * there is no basis Station can show for this turn.
  */
+export const BASIS_NOT_AVAILABLE_LABEL = 'Basis · Not available for this turn';
+export const BASIS_NOT_AVAILABLE_TITLE =
+  'Station has no basis it can show you for this turn.';
+
 function basisErrorLabel(error: unknown): string {
   return error instanceof AnswerBasisRequestError && error.status === 404
-    ? 'Basis · Not recorded'
+    ? BASIS_NOT_AVAILABLE_LABEL
     : 'Basis · Unavailable';
 }
 
@@ -42,6 +53,11 @@ export function AnswerBasisAffordance({
     <button
       type="button"
       className="station-basis-affordance"
+      title={
+        label === BASIS_NOT_AVAILABLE_LABEL
+          ? BASIS_NOT_AVAILABLE_TITLE
+          : undefined
+      }
       onClick={(event: MouseEvent<HTMLButtonElement>) =>
         onOpen(event.currentTarget)
       }

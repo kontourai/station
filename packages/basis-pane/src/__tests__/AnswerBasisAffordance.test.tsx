@@ -51,11 +51,15 @@ describe('AnswerBasisAffordance', () => {
     expect(document.body.textContent).not.toContain('private identity');
   });
   /**
-   * #1536 B3. The route answers 404 when Station recorded no basis for the
-   * turn and keeps 503 for a read it could not perform. Collapsing both into
-   * "Unavailable" made a healthy instance accuse itself of a failure.
+   * #1536 B3. The route answers 404 when there is no basis to show and keeps
+   * 503 for a read it could not perform; collapsing both into "Unavailable"
+   * made a healthy instance accuse itself of a failure.
+   *
+   * Review H3: and 404 also covers a denied or stale-principal read —
+   * deliberately, so the two are indistinguishable to the caller. The label
+   * must therefore claim nothing about WHY, in either direction.
    */
-  test('a recorded-nothing 404 reads as an absence, not a failure', () => {
+  test('a 404 reads as an absence, and claims nothing about recording or denial', () => {
     query.mockReturnValue({
       data: undefined,
       error: new mocks.MockAnswerBasisRequestError(404),
@@ -68,7 +72,14 @@ describe('AnswerBasisAffordance', () => {
         onOpen={() => undefined}
       />,
     );
-    expect(screen.getByRole('button').textContent).toBe('Basis · Not recorded');
+    const button = screen.getByRole('button');
+    expect(button.textContent).toBe('Basis · Not available for this turn');
+    expect(button.title).toBe(
+      'Station has no basis it can show you for this turn.',
+    );
+    // Neither half of the distinction the route refuses to leak.
+    expect(button.textContent).not.toMatch(/recorded|denied|permission/i);
+    expect(button.title).not.toMatch(/recorded|denied|permission/i);
   });
 
   test('a read that could not be performed still reads as unavailable', () => {

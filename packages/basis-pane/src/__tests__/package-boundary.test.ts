@@ -81,10 +81,12 @@ describe('@kontourai/station-basis-pane package boundary', () => {
     expect(await bundledGzipBytes('StationBasisPane.tsx')).toBeLessThanOrEqual(
       5_512,
     );
-    // Raised from 6_800 for #1536 B3: telling a recorded-nothing 404 apart
+    // Raised from 6_800 for #1536 B3: telling the route's deliberate 404 apart
     // from a read that could not be performed costs the affordance the
-    // `AnswerBasisRequestError` check. Measured 6_821 at that change.
-    expect(await bundledGzipBytes('index.ts')).toBeLessThanOrEqual(6_848);
+    // `AnswerBasisRequestError` check, and review H3 added the title that
+    // states what is true of BOTH 404 cases without claiming which.
+    // Measured 6_862 at that change.
+    expect(await bundledGzipBytes('index.ts')).toBeLessThanOrEqual(6_880);
     expect(
       await bundledGzipBytes('workspace-basis-pane.ts'),
     ).toBeLessThanOrEqual(1_536);
