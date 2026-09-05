@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { dismissSetupLauncher } from './helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 /**
@@ -158,14 +159,14 @@ async function seedRoutes(page: Page) {
 
 async function openNewChat(page: Page) {
   await page.goto('/?dock=open');
-  // Secondary chat actions live in the phone header's menu. This fixture has
-  // one ready runtime, so opening the chooser itself uses the same explicit
-  // new-chat command as the command palette rather than the quick-start path.
+  await dismissSetupLauncher(page);
   await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
   await expect(
     page.getByRole('menuitem', { name: 'New chat', exact: true }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Close actions menu' }).click();
+  await page.keyboard.press('Escape');
+  // The single-runtime fixture takes the direct chat path from New chat.
+  // Open the explicit chooser event to exercise workspace selection.
   await page.evaluate(() =>
     window.dispatchEvent(new Event('station:open-new-chat')),
   );
