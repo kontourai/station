@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
 
@@ -40,6 +41,63 @@ function namedStep(job: Job, name: string): Step {
 }
 
 describe('one-revision native promotion contract', () => {
+  test.skipIf(process.platform === 'win32')(
+    'exports expanded verifier paths and writes the key where the verifier will read it',
+    () => {
+      const job = workflow('nightly-native-cohort.yml').jobs?.[
+        'protected-finalize'
+      ];
+      if (!job) throw new Error('missing protected finalizer');
+      const setup = namedStep(job, 'Resolve protected verifier paths');
+      const authenticate = namedStep(
+        job,
+        'Fail closed and authenticate the protected verifier',
+      );
+      const directory = mkdtempSync(join(tmpdir(), 'station verifier paths '));
+      const githubEnv = join(directory, 'github-env');
+      writeFileSync(githubEnv, '');
+      const env = {
+        ...process.env,
+        ANDROID_HOME: join(directory, 'Android SDK'),
+        RUNNER_TEMP: directory,
+        GITHUB_ENV: githubEnv,
+      };
+      try {
+        execFileSync('/bin/bash', ['-e', '-c', setup.run ?? 'exit 1'], {
+          env,
+          windowsHide: true,
+        });
+        const exported = Object.fromEntries(
+          readFileSync(githubEnv, 'utf8')
+            .trim()
+            .split('\n')
+            .map((line) => {
+              const equal = line.indexOf('=');
+              return [line.slice(0, equal), line.slice(equal + 1)];
+            }),
+        );
+        expect(exported.STATION_BUNDLETOOL_PATH).toBe(
+          join(directory, 'bundletool.jar'),
+        );
+        const keyFile = join(directory, 'station-updater.pub');
+        expect(exported.STATION_UPDATER_PUBLIC_KEY_FILE).toBe(keyFile);
+        execFileSync('/bin/bash', ['-e', '-c', authenticate.run ?? 'exit 1'], {
+          windowsHide: true,
+          env: {
+            ...env,
+            ...exported,
+            GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: 'fixture-provider',
+            GCP_PLAY_SERVICE_ACCOUNT: 'fixture-account',
+            TAURI_SIGNING_PUBLIC_KEY: 'fixture-public-key',
+          },
+        });
+        expect(readFileSync(keyFile, 'utf8')).toBe('fixture-public-key');
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   test('binds the caller and complete native cohort to one validated main SHA', () => {
     const nightly = workflow('nightly.yml');
     const stage = workflow('nightly-native-stage.yml');

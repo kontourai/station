@@ -363,7 +363,7 @@ describe('primary CI workflow governance', () => {
       fastSteps?.find(
         (step) => step.name === 'Enforce candidate UI bundle budget',
       )?.run,
-    ).toBe('npm run build:connect && npm run build:ui');
+    ).toBe('npm run build:ui');
     const fastActionlintIndex = fastSteps?.findIndex(
       (step) => step.name === 'Install pinned actionlint',
     );
