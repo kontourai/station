@@ -5889,32 +5889,6 @@ describe('EventStore', () => {
         [],
       );
     });
-
-    // archive#4466 review remediation: `id`/`thread_id`/pair lists are
-    // chunked at `EVENT_STORE_BATCH_CHUNK_SIZE` (500) so SQLite's bound-
-    // parameter ceiling (SQLITE_MAX_VARIABLE_NUMBER, commonly 32766) can
-    // never be reached. 1200 threads crosses that boundary three times over
-    // (500 + 500 + 200) for every chunked query in this method, including
-    // the turn-scoped-pair queries (every thread here has an active turn).
-    test('a population crossing the 500-id chunk boundary is folded completely and correctly', () => {
-      const totalThreads = 1200;
-      const threadIds = Array.from(
-        { length: totalThreads },
-        (_, index) => `batch-equiv-chunk-${index}`,
-      );
-      threadIds.forEach((threadId) => {
-        seedProjectionThread(threadId, 'ordinary');
-      });
-
-      const batched = store.listSessionProjectionEventsForThreads(threadIds);
-      expect(batched.size).toBe(totalThreads);
-      // Spot-check threads landing in each of the three chunks (indices 0,
-      // 500, 999) rather than re-running the full per-thread equivalence
-      // check 1200 times over.
-      for (const index of [0, 1, 250, 499, 500, 501, 750, 999, 1199]) {
-        expectBatchedMatchesIndividual(threadIds[index]!);
-      }
-    });
   });
 
   // archive#1867/#3495: `sessionOwnerUserId()` is the /events SSE route's

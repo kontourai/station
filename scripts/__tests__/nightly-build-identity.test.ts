@@ -440,6 +440,9 @@ describe('the desktop tauri config overlay (station#575)', () => {
       identifier: 'io.kontourai.station.nightly',
       bundle: {
         createUpdaterArtifacts: 'v1Compatible',
+        // The notarization script builds the DMG and updater archive itself;
+        // Tauri must bundle only the .app it consumes (#1479).
+        targets: ['app'],
         macOS: { bundleVersion: '241203' },
       },
       plugins: {
@@ -533,6 +536,9 @@ describe('the desktop tauri config overlay (station#575)', () => {
     expect(config.version).toBe('0.1.2-nightly.2412.3');
     expect(config.identifier).toBe('io.kontourai.station.nightly');
     expect(config.bundle.macOS.bundleVersion).toBe('241203');
+    // The written overlay, not only the in-memory object, restricts bundling:
+    // an overlay array replaces tauri.conf.json's `targets: "all"`.
+    expect(config.bundle.targets).toEqual(['app']);
   });
 });
 
@@ -593,6 +599,25 @@ describe('the nightly workflow keeps its promises', () => {
       callerWorkflow.indexOf('\n  native-cohort:'),
     );
     expect(nativeCaller).toContain('needs: [test-gate, full-regression]');
+  });
+
+  it('retries the registry provenance read that lags npm publish, bounded and fail-closed (#1498)', () => {
+    const receipt = callerWorkflow.slice(
+      callerWorkflow.indexOf(
+        'name: Bind the published CLI receipt to npm registry provenance',
+      ),
+      callerWorkflow.indexOf('id: ledger_token'),
+    );
+    expect(receipt).toContain(
+      'until npm view "@kontourai/station-cli@$CLI_VERSION" gitHead --json',
+    );
+    expect(receipt).toContain('if [ "$attempt" -ge 12 ]; then');
+    expect(receipt).toContain('exit 1');
+    // The gitHead comparison against the exact source stays the receipt's
+    // authority; the retry only decides when to read.
+    expect(receipt).toContain(
+      'node scripts/verify-npm-registry-provenance.mjs "$registry_record" "$SOURCE_SHA"',
+    );
   });
 
   it('publishes only on literal success from both promotion gates', () => {

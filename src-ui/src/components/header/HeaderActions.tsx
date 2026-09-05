@@ -10,7 +10,7 @@ import {
 } from '@kontourai/station-connect';
 import { useAttentionQuery } from '@kontourai/station-sdk';
 import { useEffect, useState } from 'react';
-import { APP_SURFACE_REGISTRY } from '../../app-shell/surface-registry';
+import { APP_DESTINATION_REGISTRY } from '../../app-shell/destination-registry';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { hasRealSavedConnection } from '../../lib/saved-connections';
 import {
@@ -129,12 +129,12 @@ export function HeaderActions({
     pendingApproval: pendingApproval !== null,
   });
   const { data: attention } = useAttentionQuery(apiBase);
-  const notificationSurface = APP_SURFACE_REGISTRY.get('notifications');
-  if (!notificationSurface) {
-    throw new Error('Notifications surface is not registered');
+  const notificationDestination = APP_DESTINATION_REGISTRY.get('notifications');
+  if (!notificationDestination) {
+    throw new Error('Notifications destination is not registered');
   }
-  const notificationLabel = notificationSurface.label();
-  const notificationBadge = notificationSurface.badge?.({
+  const notificationLabel = notificationDestination.label();
+  const notificationBadge = notificationDestination.badge?.({
     attentionCount: attention?.pendingCount ?? 0,
   });
   // Sticky: once the panel has been opened it stays mounted for the rest of the

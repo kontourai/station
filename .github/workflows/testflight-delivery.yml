@@ -174,8 +174,13 @@ jobs:
           for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             ditto "$preserved/$item" "gen/apple/$item"
           done
-          node ../scripts/ensure-ios-privacy-manifest-resource.mjs gen/apple/project.yml
-          grep -Fq 'path: PrivacyInfo.xcprivacy' gen/apple/project.yml
+          # Leave this spec exactly as Tauri rendered it: the signing template
+          # is derived from it below, and Tauri re-renders that template on the
+          # second init BEFORE the preserved files exist again, so a privacy
+          # manifest resource registered here would make xcodegen fail on a
+          # missing path (Nightly 33904147780). It is registered once, after
+          # the final regeneration.
+          test ! -e gen/apple/project.yml || ! grep -Fq 'path: PrivacyInfo.xcprivacy' gen/apple/project.yml
           git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
       - name: Verify App Store Connect app authority before signing
         id: app_store
@@ -246,6 +251,10 @@ jobs:
           for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             ditto "$preserved/$item" "gen/apple/$item"
           done
+          # The preserved manifest exists again now, so register it as a
+          # resource and regenerate the Xcode project from the amended spec:
+          # `tauri ios init` already ran xcodegen against the spec WITHOUT the
+          # resource, and `tauri ios build` reuses the generated project.
           node ../scripts/ensure-ios-privacy-manifest-resource.mjs gen/apple/project.yml
           grep -Fq 'path: PrivacyInfo.xcprivacy' gen/apple/project.yml
           git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
@@ -257,6 +266,22 @@ jobs:
           # stage it again from the same authority before building.
           (cd .. && STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs)
           test -s gen/apple/assets/station-build.json
+          # Every source directory the spec names exists now, so regenerate
+          # the Xcode project from the amended spec and prove the manifest
+          # reached it; `tauri ios build` reuses this project as is.
+          xcodegen generate --spec gen/apple/project.yml --project gen/apple
+          grep -Fq 'PrivacyInfo.xcprivacy' gen/apple/station.xcodeproj/project.pbxproj
+          # xcodegen rewrites `info.path` (station_iOS/Info.plist) from the
+          # spec's `info.properties`, and the Tauri-rendered spec carries no
+          # usage descriptions, so the preserved Info.plist must be restored
+          # AFTER regeneration (Nightly 33910685946 shipped an IPA without
+          # NSCameraUsageDescription). The project references the file by
+          # path, so restoring its bytes is enough.
+          ditto "$preserved/station_iOS/Info.plist" gen/apple/station_iOS/Info.plist
+          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
+          for key in NSCameraUsageDescription NSMicrophoneUsageDescription NSLocalNetworkUsageDescription; do
+            grep -Fq "<key>$key</key>" gen/apple/station_iOS/Info.plist
+          done
       - name: Build signed and channel-audited iOS package
         working-directory: src-desktop
         run: |
@@ -427,7 +452,12 @@ jobs:
           issuer-id: ${{ env.APPLE_API_ISSUER_ID }}
           api-key-id: ${{ env.APPLE_API_KEY_ID }}
           api-private-key: ${{ env.APPLE_API_PRIVATE_KEY }}
-          wait-for-processing: 'true'
+          # The action mints one App Store Connect token at start and its
+          # own processing wait outlived it (401 after ~12 minutes, Nightly
+          # 33929822729, #1499). The step below is the single processing
+          # wait: it mints a fresh token per request under a 30-minute
+          # deadline.
+          wait-for-processing: 'false'
       - name: Reconcile exactly one VALID provider build
         run: >-
           node scripts/app-store-connect-receipt.mjs wait-for-valid-build

@@ -1971,11 +1971,37 @@ for (const requiredHelper of [
   'export function applyStrandsAvailableToolFilter',
   'export async function loadStrandsTools',
   'export async function destroyStrandsAgentTools',
-  'new McpClient({',
-  'new StdioClientTransport({',
+  // #1428 moved MCP client construction behind the local-connection custody
+  // owner so a client cannot exist without a current custody claim. The
+  // loader must obtain every client through that owner, never construct one.
+  "from './strands-mcp-custody.js'",
+  'createCustodiedStrandsClient(',
 ]) {
   if (!strandsToolLoader.includes(requiredHelper)) {
     errors.push(`strands-tool-loader.ts must include ${requiredHelper}.`);
+  }
+}
+for (const retiredLoaderSnippet of [
+  'new McpClient({',
+  'new StdioClientTransport(',
+]) {
+  if (strandsToolLoader.includes(retiredLoaderSnippet)) {
+    errors.push(
+      `strands-tool-loader.ts must not construct MCP clients directly (${retiredLoaderSnippet}); the custody owner does.`,
+    );
+  }
+}
+
+const strandsMcpCustody = readRequiredSource(
+  '../src-server/runtime/frameworks/strands-mcp-custody.ts',
+);
+for (const requiredHelper of [
+  'export function createCustodiedStrandsClient',
+  'new StdioClientTransport(',
+  'new McpClient({',
+]) {
+  if (!strandsMcpCustody.includes(requiredHelper)) {
+    errors.push(`strands-mcp-custody.ts must include ${requiredHelper}.`);
   }
 }
 
@@ -3645,10 +3671,25 @@ for (const requiredHelper of [
   'export function _resolveAgent',
   'export function _getPluginName',
   'export async function _getApiBase',
-  'export function getPluginHeaders',
+  // #1451 moved the implementation to client/plugin-headers.ts; api-core.ts
+  // keeps the public re-export so every consumer path stays unchanged.
+  "export { getPluginHeaders } from './client/plugin-headers';",
 ]) {
   if (!sdkApiCore.includes(requiredHelper)) {
     errors.push(`packages/sdk/src/api-core.ts must include ${requiredHelper}.`);
+  }
+}
+const sdkPluginHeaders = readRequiredSource(
+  '../packages/sdk/src/client/plugin-headers.ts',
+);
+// Presence only: the spoof-resistance of the header itself is a behavioural
+// property, pinned by packages/sdk/src/__tests__/api-core-layout-context.test.ts,
+// which a source scan cannot express without pretending to.
+for (const requiredHelper of ['export function getPluginHeaders(']) {
+  if (!sdkPluginHeaders.includes(requiredHelper)) {
+    errors.push(
+      `packages/sdk/src/client/plugin-headers.ts must include ${requiredHelper}.`,
+    );
   }
 }
 

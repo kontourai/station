@@ -35,6 +35,8 @@ type CatalogAvailabilityEntry = {
 type WorkspacePaneCatalogSnapshot = {
   /** Canonical Project identity issued by the catalog route. */
   projectId: string;
+  /** Canonical slug issued from the same server-side Project record. */
+  projectSlug?: string;
   descriptors: readonly WorkspacePaneDescriptor[];
   instances: readonly WorkspacePaneInstance[];
   /** Optional only while an older server/SDK pair is in flight. */
@@ -66,6 +68,7 @@ export interface ResolvedWorkspacePaneCatalogEntry
 export interface ResolvedWorkspacePaneCatalog {
   /** Absent only while an older server has not issued a canonical identity. */
   projectId?: string;
+  projectSlug?: string;
   entries: readonly ResolvedWorkspacePaneCatalogEntry[];
   /** A display fact for responsive presentation, never a capability verdict. */
   platform: Pick<PlatformProfile, 'target' | 'isMobile' | 'isDesktop'>;
@@ -197,6 +200,7 @@ export function resolveWorkspacePaneCatalogPresentation(
 
   return {
     ...(snapshot?.projectId ? { projectId: snapshot.projectId } : {}),
+    ...(snapshot?.projectSlug ? { projectSlug: snapshot.projectSlug } : {}),
     entries: (snapshot?.descriptors ?? []).flatMap((descriptor) => {
       const instances = instancesByDescriptor.get(descriptor.id) ?? [];
       return instances.length > 0

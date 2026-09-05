@@ -138,7 +138,10 @@ async function nativeStationControlClient(
   return entry.creation;
 }
 
-type StrandsToolLoadOptions = Pick<
+// Exported so callers — tests included — bind to this contract by type
+// rather than by an `as any` fixture. A required option added here must
+// break their compilation, not silently take the loader's failure path.
+export type StrandsToolLoadOptions = Pick<
   CreateAgentOptions,
   | 'configLoader'
   | 'mcpCustody'

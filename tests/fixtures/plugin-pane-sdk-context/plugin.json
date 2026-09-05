@@ -1,0 +1,31 @@
+{
+  "name": "pane-sdk-context-proof",
+  "version": "1.0.0",
+  "displayName": "Pane SDK Context Proof",
+  "description": "Test-only installed plugin for the real Pane host SDK boundary",
+  "entrypoint": "./src/index.tsx",
+  "capabilities": ["chat", "navigation"],
+  "permissions": ["navigation.dock"],
+  "workspacePanes": [
+    {
+      "version": "1.0",
+      "id": "pane:plugin%3Apane-sdk-context-proof:proof:workspace",
+      "name": "SDK context proof",
+      "rendererId": "renderer:plugin%3Apane-sdk-context-proof:plugin-component:pane-sdk-context-proof",
+      "renderer": {
+        "kind": "plugin-component",
+        "name": "pane-sdk-context-proof"
+      },
+      "placement": {
+        "supportedRegions": ["primary"],
+        "preferredRegion": "primary"
+      },
+      "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
+      "provenance": {
+        "origin": "plugin",
+        "pluginId": "pane-sdk-context-proof"
+      },
+      "lifecycle": { "stage": "preview" }
+    }
+  ]
+}

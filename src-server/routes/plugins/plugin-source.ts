@@ -8,14 +8,29 @@ import {
   realpathSync,
   rmSync,
 } from 'node:fs';
-import { basename, join, resolve, sep } from 'node:path';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import type {
   InstallResult,
   RegistryItem,
 } from '@kontourai/station-contracts/catalog';
-import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import {
+  isCanonicalPluginId,
+  type PluginManifest,
+} from '@kontourai/station-contracts/plugin';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
-import { withPluginContentLock } from '../../services/plugins/plugin-content-integrity.js';
+import {
+  computePluginContentDigest,
+  withPluginContentLock,
+} from '../../services/plugins/plugin-content-integrity.js';
+import { derivePluginConsentBasis } from '../../services/plugins/plugin-install-consent.js';
 import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
@@ -37,8 +52,9 @@ interface PluginRegistryInstaller {
   install(
     id: string,
     options?: { expectedInstalledPluginName?: string },
-  ): Promise<InstallResult>;
+  ): Promise<InstallResult & { rollback?: () => Promise<void> }>;
   listAvailable?(): Promise<RegistryItem[]>;
+  resolveSource?(id: string): Promise<string | null>;
 }
 
 export interface PluginGitInfo {
@@ -59,6 +75,30 @@ export interface ResolvedPluginDependency {
   status: 'installed' | 'will-install' | 'missing';
   components?: Array<{ type: string; id: string }>;
   git?: PluginGitInfo;
+  consent?: {
+    contentDigest: string;
+    permissions: string[];
+    dependencies: string[];
+    pendingConsent: Array<{ permission: string; tier: string }>;
+  };
+}
+
+export interface PluginDependencyLifecycle {
+  validateInstalled?(input: {
+    dependencyId: string;
+    manifest: PluginManifest;
+  }): void;
+  validate(input: {
+    dependencyId: string;
+    dependencyDir: string;
+    manifest: PluginManifest;
+  }): void;
+  activate(input: {
+    dependencyId: string;
+    dependencyDir: string;
+    manifest: PluginManifest;
+  }): Promise<void>;
+  rollback(dependencyId: string): Promise<void>;
 }
 
 function extractPluginName(source: string): string {
@@ -120,8 +160,77 @@ function assertSupportedPluginSource(source: string): void {
   }
 }
 
+export function resolvePluginDependencySource(
+  dependency: { id: string; source?: string },
+  parentSourceDir: string,
+  allowedLocalRoot: string = dirname(resolve(parentSourceDir)),
+): { id: string; source?: string } {
+  if (!dependency.source || shouldPreserveDependencySource(dependency.source)) {
+    return dependency;
+  }
+  if (dangerousProtocolOrGitSource(parentSourceDir)) {
+    throw new Error(
+      `Plugin dependency '${dependency.id}' uses a relative source under a non-local parent source`,
+    );
+  }
+  const source = resolve(parentSourceDir, dependency.source);
+  const root = resolve(allowedLocalRoot);
+  const sourceRelative = relative(root, source);
+  if (
+    sourceRelative === '' ||
+    sourceRelative.startsWith('..') ||
+    isAbsolute(sourceRelative)
+  ) {
+    throw new Error(
+      `Plugin dependency '${dependency.id}' relative source escapes its allowed package root`,
+    );
+  }
+  let current = root;
+  for (const segment of sourceRelative.split(sep)) {
+    if (existsSync(current)) {
+      const status = lstatSync(current);
+      if (status.isSymbolicLink() || !status.isDirectory()) {
+        throw new Error(
+          `Plugin dependency '${dependency.id}' relative source has a non-directory or symbolic-link ancestor`,
+        );
+      }
+    }
+    current = join(current, segment);
+  }
+  if (existsSync(current)) {
+    const status = lstatSync(current);
+    if (status.isSymbolicLink() || !status.isDirectory()) {
+      throw new Error(
+        `Plugin dependency '${dependency.id}' relative source must be a physical directory`,
+      );
+    }
+  }
+  return {
+    ...dependency,
+    source,
+  };
+}
+
+function dangerousProtocolOrGitSource(source: string): boolean {
+  return source.startsWith('git@') || sourceProtocol(source) !== null;
+}
+
+function looksLikeWindowsAbsolutePath(source: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(source);
+}
+
+function isPortableAbsoluteSource(source: string): boolean {
+  return isAbsolute(source) || looksLikeWindowsAbsolutePath(source);
+}
+
+function shouldPreserveDependencySource(source: string): boolean {
+  return (
+    dangerousProtocolOrGitSource(source) || isPortableAbsoluteSource(source)
+  );
+}
+
 function assertPluginDependencyId(id: string): void {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id)) {
+  if (!isCanonicalPluginId(id)) {
     throw new Error(`Invalid plugin dependency id: ${id}`);
   }
 }
@@ -227,32 +336,62 @@ async function buildDependencyIfNeeded(
   }
 }
 
-function assertDependencyLifecycleSupported(
-  dependencyId: string,
+function unsupportedDependencyFeatures(
   dependencyDir: string,
   manifest: PluginManifest,
-): void {
+  lifecycle: boolean,
+): string[] {
   const unsupported: string[] = [];
   if (manifest.agents?.length) unsupported.push('agents');
   if (manifest.layout) unsupported.push('layout');
   if (manifest.layouts?.length) unsupported.push('layouts');
-  if (manifest.providers?.length) unsupported.push('providers');
+  if (manifest.workspacePanes?.length) unsupported.push('workspacePanes');
+  if (manifest.operationalEventSubscriptions?.length) {
+    unsupported.push('operationalEventSubscriptions');
+  }
+  if (manifest.providers?.length && !lifecycle) unsupported.push('providers');
   if (manifest.integrations?.required?.length) unsupported.push('integrations');
   if (manifest.tools?.required?.length) unsupported.push('tools');
   if (manifest.knowledge?.namespaces?.length) unsupported.push('knowledge');
   if (manifest.prompts) unsupported.push('prompts');
   if (manifest.skills?.length) unsupported.push('skills');
-  if (manifest.settings?.length) unsupported.push('settings');
-  if (manifest.permissions?.length) unsupported.push('permissions');
+  if (manifest.settings?.length && !lifecycle) unsupported.push('settings');
+  const unsupportedPermissions = (manifest.permissions ?? []).filter(
+    (permission) => !lifecycle || permission !== 'providers.register',
+  );
+  if (unsupportedPermissions.length) unsupported.push('permissions');
   if (manifest.serverModule) unsupported.push('serverModule');
   if (existsSync(join(dependencyDir, 'integrations'))) {
     unsupported.push('bundled integrations');
   }
 
+  return unsupported;
+}
+
+function assertDependencyLifecycleSupported(
+  dependencyId: string,
+  dependencyDir: string,
+  manifest: PluginManifest,
+  lifecycle?: PluginDependencyLifecycle,
+): void {
+  const unsupported = unsupportedDependencyFeatures(
+    dependencyDir,
+    manifest,
+    Boolean(lifecycle),
+  );
   if (unsupported.length) {
     throw new Error(
       `Plugin dependency '${dependencyId}' declares lifecycle features that require canonical install support: ${unsupported.join(', ')}`,
     );
+  }
+}
+
+export class PluginPreviewUnsupportedDependencyError extends Error {
+  constructor(dependencyId: string, features: readonly string[]) {
+    super(
+      `Plugin dependency '${dependencyId}' is not supported by canonical installation: ${features.join(', ')}`,
+    );
+    this.name = 'PluginPreviewUnsupportedDependencyError';
   }
 }
 
@@ -464,6 +603,8 @@ export async function resolvePluginDependencies(
   getPluginRegistryProvider: () => PluginRegistryInstaller,
   logger: Logger,
   seen: Set<string> = new Set(),
+  parentSourceDir: string = pluginsDir,
+  allowedLocalRoot: string = dirname(resolve(parentSourceDir)),
 ): Promise<ResolvedPluginDependency[]> {
   const dependencies: ResolvedPluginDependency[] = [];
   if (!manifest.dependencies?.length) return dependencies;
@@ -475,6 +616,14 @@ export async function resolvePluginDependencies(
     let depManifest: PluginManifest | null = null;
     let depGit: PluginGitInfo | undefined;
     let status: ResolvedPluginDependency['status'] = 'missing';
+    let consent: ResolvedPluginDependency['consent'];
+    let unsupported: string[] = [];
+    const resolvedDependency = resolvePluginDependencySource(
+      dependency,
+      parentSourceDir,
+      allowedLocalRoot,
+    );
+    let dependencySourceContext = resolvedDependency.source;
 
     const dependencyDir = join(pluginsDir, dependency.id);
     if (existsSync(join(dependencyDir, 'plugin.json'))) {
@@ -490,33 +639,105 @@ export async function resolvePluginDependencies(
         });
       }
       depGit = await getPluginGitInfo(dependencyDir, logger);
-    } else if (dependency.source) {
+      if (depManifest) {
+        unsupported = unsupportedDependencyFeatures(
+          dependencyDir,
+          depManifest,
+          true,
+        );
+      }
+      const basis = depManifest
+        ? derivePluginConsentBasis(dependencyDir, depManifest)
+        : null;
+      if (basis) {
+        consent = {
+          contentDigest: basis.contentDigest,
+          permissions: basis.required,
+          dependencies: basis.dependencies,
+          pendingConsent: basis.pendingConsent,
+        };
+      }
+    } else if (resolvedDependency.source) {
       status = 'will-install';
       const result = await fetchPluginSource(
-        dependency.source,
+        resolvedDependency.source,
         pluginsDir,
         logger,
       );
       if (!('error' in result)) {
         try {
-          depManifest = readPluginManifestFileSync(
-            join(result.tempDir, 'plugin.json'),
-          );
-        } catch (error) {
-          logger.debug('Failed to read fetched dependency manifest', {
-            dep: dependency.id,
-            error,
-          });
+          try {
+            depManifest = readPluginManifestFileSync(
+              join(result.tempDir, 'plugin.json'),
+            );
+          } catch (error) {
+            logger.debug('Failed to read fetched dependency manifest', {
+              dep: dependency.id,
+              error,
+            });
+          }
+          depGit = await getPluginGitInfo(result.tempDir, logger);
+          if (depManifest) {
+            unsupported = unsupportedDependencyFeatures(
+              result.tempDir,
+              depManifest,
+              true,
+            );
+            const basis = derivePluginConsentBasis(result.tempDir, depManifest);
+            if (basis) {
+              consent = {
+                contentDigest: basis.contentDigest,
+                permissions: basis.required,
+                dependencies: basis.dependencies,
+                pendingConsent: basis.pendingConsent,
+              };
+            }
+          }
+        } finally {
+          rmSync(result.tempDir, { recursive: true, force: true });
         }
-        depGit = await getPluginGitInfo(result.tempDir, logger);
-        rmSync(result.tempDir, { recursive: true, force: true });
       }
     } else {
       try {
         const available =
           (await getPluginRegistryProvider().listAvailable?.()) ?? [];
-        if (available.find((entry) => entry.id === dependency.id)) {
+        const match = available.find((entry) => entry.id === dependency.id);
+        if (match) {
           status = 'will-install';
+          if (match.source) {
+            dependencySourceContext = match.source;
+            const result = await fetchPluginSource(
+              match.source,
+              pluginsDir,
+              logger,
+            );
+            if (!('error' in result)) {
+              try {
+                depManifest = readPluginManifestFileSync(
+                  join(result.tempDir, 'plugin.json'),
+                );
+                unsupported = unsupportedDependencyFeatures(
+                  result.tempDir,
+                  depManifest,
+                  true,
+                );
+                const basis = derivePluginConsentBasis(
+                  result.tempDir,
+                  depManifest,
+                );
+                if (basis) {
+                  consent = {
+                    contentDigest: basis.contentDigest,
+                    permissions: basis.required,
+                    dependencies: basis.dependencies,
+                    pendingConsent: basis.pendingConsent,
+                  };
+                }
+              } finally {
+                rmSync(result.tempDir, { recursive: true, force: true });
+              }
+            }
+          }
         }
       } catch (error) {
         logger.debug('Failed to check registry for dependency', {
@@ -526,6 +747,12 @@ export async function resolvePluginDependencies(
       }
     }
 
+    if (unsupported.length > 0) {
+      throw new PluginPreviewUnsupportedDependencyError(
+        dependency.id,
+        unsupported,
+      );
+    }
     const components: Array<{ type: string; id: string }> = [];
     if (depManifest) {
       for (const agent of depManifest.agents || []) {
@@ -548,6 +775,7 @@ export async function resolvePluginDependencies(
       status,
       components: components.length ? components : undefined,
       git: depGit,
+      consent,
     });
 
     if (depManifest) {
@@ -558,6 +786,11 @@ export async function resolvePluginDependencies(
           getPluginRegistryProvider,
           logger,
           seen,
+          dependencySourceContext &&
+            !dangerousProtocolOrGitSource(dependencySourceContext)
+            ? dependencySourceContext
+            : dependencyDir,
+          allowedLocalRoot,
         )),
       );
     }
@@ -600,19 +833,76 @@ async function validateAndBuildInstalledDependency(
   pluginsDir: string,
   dependencyId: string,
   buildPlugin: (pluginDir: string, name: string) => Promise<void>,
+  lifecycle?: PluginDependencyLifecycle,
+  stagedSourceAlreadyValidated = false,
 ): Promise<void> {
-  const manifest = readInstalledDependencyManifest(pluginsDir, dependencyId);
-  assertDependencyLifecycleSupported(
-    dependencyId,
-    join(pluginsDir, dependencyId),
-    manifest,
+  await withPluginContentLock(pluginsDir, dependencyId, async () => {
+    const manifest = readInstalledDependencyManifest(pluginsDir, dependencyId);
+    assertDependencyLifecycleSupported(
+      dependencyId,
+      join(pluginsDir, dependencyId),
+      manifest,
+      lifecycle,
+    );
+    if (
+      lifecycle &&
+      (manifest.providers?.length || manifest.settings?.length)
+    ) {
+      lifecycle.validateInstalled?.({ dependencyId, manifest });
+      return;
+    }
+    // Adoption alone is read-only, but an entrypoint rebuild executes a build
+    // and replaces browser bytes. Bind that effect to the installed preview
+    // basis while holding the same content lock through the actual build.
+    if (manifest.entrypoint && !stagedSourceAlreadyValidated) {
+      lifecycle?.validate({
+        dependencyId,
+        dependencyDir: join(pluginsDir, dependencyId),
+        manifest,
+      });
+    }
+    await buildDependencyIfNeeded(
+      pluginsDir,
+      dependencyId,
+      manifest,
+      buildPlugin,
+    );
+  });
+}
+
+async function recordCreatedDependency(options: {
+  dependencyId: string;
+  pluginsDir: string;
+  targetDir: string;
+  createdPluginTrees: Set<string>;
+  createdPluginDigests: Map<string, string>;
+  lifecycle?: PluginDependencyLifecycle;
+}): Promise<void> {
+  const installedDigest = computePluginContentDigest(
+    options.pluginsDir,
+    options.dependencyId,
   );
-  await buildDependencyIfNeeded(
-    pluginsDir,
-    dependencyId,
-    manifest,
-    buildPlugin,
-  );
+  if (!installedDigest) {
+    const digestError = new Error(
+      `Plugin dependency '${options.dependencyId}' could not bind rollback ownership to installed bytes`,
+    );
+    // The creating frame still holds this dependency's content lock, so this
+    // is the last point at which the undigestible tree can be removed without
+    // risking deletion of a later replacement. Never hand a name-only entry
+    // to the outer rollback.
+    try {
+      await options.lifecycle?.rollback(options.dependencyId);
+      rmSync(options.targetDir, { recursive: true, force: true });
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [digestError, rollbackError],
+        `Plugin dependency '${options.dependencyId}' digest binding and rollback both failed`,
+      );
+    }
+    throw digestError;
+  }
+  options.createdPluginTrees.add(options.dependencyId);
+  options.createdPluginDigests.set(options.dependencyId, installedDigest);
 }
 
 /**
@@ -649,6 +939,9 @@ export async function installPluginDependency(
   installing: Set<string> = new Set(),
   createdPluginTrees: Set<string> = new Set(),
   approvedIds?: ReadonlySet<string>,
+  lifecycle?: PluginDependencyLifecycle,
+  allowedLocalRoot?: string,
+  createdPluginDigests: Map<string, string> = new Map(),
 ): Promise<PluginDependencyInstallResult> {
   try {
     assertPluginDependencyId(dependency.id);
@@ -680,30 +973,45 @@ export async function installPluginDependency(
     return dependencyFailure(error);
   }
 
-  if (existsSync(targetDir)) {
-    try {
-      await validateAndBuildInstalledDependency(
-        pluginsDir,
-        dependency.id,
-        buildPlugin,
-      );
-      return { success: true };
-    } catch (error: unknown) {
-      return dependencyFailure(error);
-    }
-  }
+  // Recursion membership is graph authority and must win over filesystem
+  // presence. Registry installers materialize a parent before traversing its
+  // children, so checking the target first turns A -> B -> A into an
+  // "already installed" success instead of a cycle refusal.
   if (installing.has(dependency.id)) {
     return {
       success: false,
       error: `Plugin dependency cycle detected: ${dependency.id}`,
     };
   }
-
+  if (existsSync(targetDir)) {
+    try {
+      await validateAndBuildInstalledDependency(
+        pluginsDir,
+        dependency.id,
+        buildPlugin,
+        lifecycle,
+      );
+      return { success: true };
+    } catch (error: unknown) {
+      return dependencyFailure(error);
+    }
+  }
   installing.add(dependency.id);
-  if (dependency.source) {
+  let dependencySource = dependency.source;
+  if (!dependencySource) {
+    try {
+      dependencySource =
+        (await getPluginRegistryProvider().resolveSource?.(dependency.id)) ??
+        undefined;
+    } catch (error) {
+      installing.delete(dependency.id);
+      return dependencyFailure(error);
+    }
+  }
+  if (dependencySource) {
     try {
       const result = await fetchPluginSource(
-        dependency.source,
+        dependencySource,
         pluginsDir,
         logger,
       );
@@ -718,11 +1026,26 @@ export async function installPluginDependency(
             `Plugin dependency '${dependency.id}' source manifest name does not match`,
           );
         }
-        assertDependencyLifecycleSupported(dependency.id, tempDir, depManifest);
+        assertDependencyLifecycleSupported(
+          dependency.id,
+          tempDir,
+          depManifest,
+          lifecycle,
+        );
+        lifecycle?.validate({
+          dependencyId: dependency.id,
+          dependencyDir: tempDir,
+          manifest: depManifest,
+        });
         await buildPlugin(tempDir, dependency.id);
         for (const transitive of depManifest.dependencies || []) {
-          const transitiveResult = await installPluginDependency(
+          const resolvedTransitive = resolvePluginDependencySource(
             transitive,
+            dependencySource,
+            allowedLocalRoot,
+          );
+          const transitiveResult = await installPluginDependency(
+            resolvedTransitive,
             pluginsDir,
             getPluginRegistryProvider,
             buildPlugin,
@@ -730,6 +1053,9 @@ export async function installPluginDependency(
             installing,
             createdPluginTrees,
             approvedIds,
+            lifecycle,
+            allowedLocalRoot,
+            createdPluginDigests,
           );
           if (!transitiveResult.success) {
             throw new Error(
@@ -768,6 +1094,7 @@ export async function installPluginDependency(
                 pluginsDir,
                 dependency.id,
                 buildPlugin,
+                lifecycle,
               );
               return { success: true };
             }
@@ -777,14 +1104,41 @@ export async function installPluginDependency(
                 pluginsDir,
                 dependency.id,
                 buildPlugin,
+                lifecycle,
+                // This call owns a new tree copied from the staged source
+                // validated before its build; its generated digest differs
+                // legitimately from the source approval. Concurrent adoption
+                // above must instead validate that installed tree's own basis.
+                true,
               );
+              await lifecycle?.activate({
+                dependencyId: dependency.id,
+                dependencyDir: targetDir,
+                manifest: depManifest,
+              });
             } catch (error) {
+              try {
+                await lifecycle?.rollback(dependency.id);
+              } catch (rollbackError) {
+                throw new AggregateError(
+                  [error, rollbackError],
+                  `Plugin dependency '${dependency.id}' activation and rollback both failed`,
+                );
+              }
               // Under this plugin's lock, and only the tree this call created.
               rmSync(targetDir, { recursive: true, force: true });
               throw error;
             }
-            // Created here and left standing: the caller may have to undo it.
-            createdPluginTrees.add(dependency.id);
+            // Created here and left standing: bind deletion authority to its
+            // exact bytes before exposing it to the caller's later rollback.
+            await recordCreatedDependency({
+              dependencyId: dependency.id,
+              pluginsDir,
+              targetDir,
+              createdPluginTrees,
+              createdPluginDigests,
+              lifecycle,
+            });
             return { success: true };
           },
         );
@@ -833,10 +1187,12 @@ export async function installPluginDependency(
           pluginsDir,
           dependency.id,
           buildPlugin,
+          lifecycle,
         );
         return { success: true };
       }
-      const registryResult = await getPluginRegistryProvider().install(
+      const registryProvider = getPluginRegistryProvider();
+      const registryResult = await registryProvider.install(
         dependency.id,
         // See `PluginRegistryInstaller.install`: the provider picks its target
         // from the fetched manifest's name, this call has already committed to
@@ -860,7 +1216,13 @@ export async function installPluginDependency(
           dependency.id,
           targetDir,
           depManifest,
+          lifecycle,
         );
+        lifecycle?.validate({
+          dependencyId: dependency.id,
+          dependencyDir: targetDir,
+          manifest: depManifest,
+        });
         await buildDependencyIfNeeded(
           pluginsDir,
           dependency.id,
@@ -877,6 +1239,9 @@ export async function installPluginDependency(
             installing,
             createdPluginTrees,
             approvedIds,
+            lifecycle,
+            allowedLocalRoot,
+            createdPluginDigests,
           );
           if (!transitiveResult.success) {
             throw new Error(
@@ -886,13 +1251,48 @@ export async function installPluginDependency(
             );
           }
         }
+        await lifecycle?.activate({
+          dependencyId: dependency.id,
+          dependencyDir: targetDir,
+          manifest: depManifest,
+        });
+        // Bind deletion authority before reporting success. Keeping this in
+        // the provider-validation try means an undigestible tree receives the
+        // same registry compensation as any other post-install refusal.
+        await recordCreatedDependency({
+          dependencyId: dependency.id,
+          pluginsDir,
+          targetDir,
+          createdPluginTrees,
+          createdPluginDigests,
+          lifecycle,
+        });
       } catch (error) {
         logger.debug(
           'Failed to validate plugin dependency after registry install',
           { dep: dependency.id, error },
         );
         if (createdHere) {
+          const rollbackFailures: unknown[] = [];
+          try {
+            await lifecycle?.rollback(dependency.id);
+          } catch (rollbackError) {
+            rollbackFailures.push(rollbackError);
+          }
+          try {
+            await registryResult.rollback?.();
+          } catch (rollbackError) {
+            rollbackFailures.push(rollbackError);
+          }
           rmSync(targetDir, { recursive: true, force: true });
+          if (rollbackFailures.length > 0) {
+            return dependencyFailure(
+              new AggregateError(
+                [error, ...rollbackFailures],
+                `Plugin dependency '${dependency.id}' activation and rollback both failed`,
+              ),
+            );
+          }
         } else {
           // The provider reported success but nothing is at `targetDir`: it
           // resolved a different plugin name and wrote somewhere else. That
@@ -906,8 +1306,6 @@ export async function installPluginDependency(
         }
         return dependencyFailure(error);
       }
-      // Created here and left standing: the caller may have to undo it.
-      createdPluginTrees.add(dependency.id);
       return { success: true };
     });
   } catch (error: unknown) {

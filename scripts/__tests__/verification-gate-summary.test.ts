@@ -14,6 +14,11 @@ import { renderBounded } from '../run-verification.mjs';
 // script: the encoding boundary it owns is a property of the string, and a
 // spawned run can only observe it through an excerpt long enough to truncate.
 import { annotationMessage } from '../verification-gate-summary.mjs';
+import {
+  ORDINARY_SHARD_PHASE_ID,
+  ORDINARY_SHARD_STDERR,
+  ORDINARY_SHARD_STDOUT,
+} from './fixtures/full-regression-shard-capture.mjs';
 
 const script = resolve(import.meta.dirname, '../verification-gate-summary.mjs');
 const roots: string[] = [];
@@ -149,6 +154,13 @@ const failingLog = [
   'Tests 2 failed | 4211 passed',
 ].join('\n');
 
+/** The terminal escape byte, spelled rather than embedded in source. */
+const ESC = String.fromCharCode(27);
+
+const INNOCENT_ECHOED_TEST_FILE = 'src-ui/src/__tests__/EchoesABanner.test.tsx';
+/** Coloured exactly as vitest writes it on a runner. */
+const ECHOED_FAIL_LINE = `${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m ${INNOCENT_ECHOED_TEST_FILE}${ESC}[2m > ${ESC}[22mechoes a captured banner`;
+
 describe('verification gate summary', () => {
   test('writes a passing summary and emits no annotations for a green run', () => {
     const root = workspace();
@@ -246,6 +258,73 @@ describe('verification gate summary', () => {
     expect(summary).toContain('ActionOperationsHeader.test.tsx');
     expect(summary).toContain('### Failing test files');
     expect(summary).toContain('Redacted stdout tail');
+  });
+
+  test('names the failing test file for a shard whose FAIL block was on stderr (#1471)', () => {
+    // The regression this closes: Nightly 33904147780 produced exactly one
+    // annotation — "the completion gate reported failed with no causal
+    // excerpt; read the full-regression artifact" — for a run whose failing
+    // file was named in its own captured stderr. The two streams below are a
+    // real phase capture, folded the way the completion collector folds a
+    // phase's output into the parent's.
+    const phase = `\n[completion:${ORDINARY_SHARD_PHASE_ID}]\n`;
+    // An earlier PASSING phase region that echoes a FAIL banner of its own.
+    // The parent capture folds every phase into one stream, so this region is
+    // upstream of the failing one and a plain first-match reaches it first.
+    const earlierPhase = '\n[completion:test-full-ordinary-1-of-8]\n';
+    const root = workspace();
+    const capture = join(root, 'full-regression.stdout.log');
+    writeFileSync(
+      capture,
+      capturedStdout(
+        failingLog,
+        verdictDocument({
+          stdout: `${earlierPhase}an earlier phase that passed${phase}${ORDINARY_SHARD_STDOUT}`,
+          stderr: `${earlierPhase}${ECHOED_FAIL_LINE}${phase}${ORDINARY_SHARD_STDERR}`,
+          status: 'failed',
+          exitCode: 1,
+          counts: {
+            executed: 2959,
+            passed: 2956,
+            failed: 3,
+            infrastructureErrors: 0,
+          },
+          passed: false,
+        }),
+      ),
+    );
+
+    const { status, stdout, summary } = runSummary(root, [
+      '--stdout-file',
+      capture,
+    ]);
+
+    expect(status).toBe(0);
+    const annotations = errorAnnotations(stdout);
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0].startsWith('::error title=full-regression::')).toBe(
+      true,
+    );
+    // The failing FILE and the failing TEST NAME, which together are what let
+    // a reader act without downloading the artifact.
+    expect(annotations[0]).toContain(
+      'scripts/__tests__/android-channel-release-generation.test.ts',
+    );
+    expect(annotations[0]).toContain(
+      'uploads signed nightly artifacts before strict AAB signature verification',
+    );
+    // The earlier PASSING phase's banner is in the same folded stream and must
+    // not be what the rail names.
+    expect(annotations[0]).not.toContain(INNOCENT_ECHOED_TEST_FILE);
+    expect(summary).not.toContain(INNOCENT_ECHOED_TEST_FILE);
+    expect(summary).toContain('### Causal excerpts');
+    expect(summary).toContain(
+      'scripts/__tests__/android-channel-release-generation.test.ts',
+    );
+    // station#1471 review: the excerpt came off a stream carrying no step
+    // marker for the failing step, and the rendering says so rather than
+    // letting silence imply the stronger, scoped claim.
+    expect(summary).toContain('Chosen from stderr, unscoped');
   });
 
   test('states what it could not parse for garbage input rather than failing or staying silent', () => {

@@ -1,4 +1,7 @@
-import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import {
+  type AgentSpec,
+  BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
+} from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   type BuiltinAgentEngineBinding,
@@ -184,8 +187,6 @@ export async function materializeBuiltinIntegrations(
 export async function bootstrapRuntimeDefaultAgent(
   context: RuntimeDefaultAgentContext,
 ): Promise<Record<string, any>> {
-  const { selfIntegrationId } = createRuntimeSelfIntegration();
-  const { docsIntegrationId } = createRuntimeDocsIntegration();
   // archive#1547: materialized BEFORE the external-engine early return below,
   // so an externally-bound built-in agent (which never builds a
   // Station-engine instance) still has a resolvable `station-docs` ToolDef
@@ -202,6 +203,10 @@ export async function bootstrapRuntimeDefaultAgent(
   });
 
   const binding = context.builtinEngineBinding ?? null;
+  const builtinTools: AgentSpec['tools'] = {
+    mcpServers: [...BUILTIN_STATION_AGENT_MCP_SERVER_IDS],
+    autoApprove: context.autoApproveTools,
+  };
   if (binding) {
     // archive#1194 (epic archive#1191, slice B): bound to an external engine via
     // the onboarding picker (or the sensible unchosen default) — Station's
@@ -226,6 +231,7 @@ export async function bootstrapRuntimeDefaultAgent(
       name: 'Station',
       description: 'Default agent with full access to manage Station',
       updatedAt: new Date().toISOString(),
+      tools: builtinTools,
       execution: { agentConnectionId: binding.connectionId },
     });
     context.logger.info(
@@ -246,10 +252,7 @@ export async function bootstrapRuntimeDefaultAgent(
 
   const defaultSpec = {
     model: context.resolveDefaultModelHint() ?? '',
-    tools: {
-      mcpServers: [selfIntegrationId, docsIntegrationId],
-      autoApprove: context.autoApproveTools,
-    },
+    tools: builtinTools,
   } as AgentSpec;
 
   if (!defaultSpec.model?.trim()) {

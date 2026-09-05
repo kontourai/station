@@ -6,8 +6,6 @@ import {
   useIsMobile,
 } from '../../hooks/useIsMobile';
 import {
-  DOCK_REGION_IDS,
-  firstFreeDockRegion,
   foldedDockRegion,
   occupiedDockRegion,
   type RegisteredSurface,
@@ -59,6 +57,15 @@ export interface RegionSurfaceMenu {
  * subtle — an occupied-but-not-folded surface is SHOWN alone rather than
  * hidden — and a second copy would drift from this one silently.
  *
+ * It decides only whether the surface is being shown or hidden. Showing is
+ * the model's own `showSurface`, called directly; this hook does not take
+ * `useShowSurface`'s no-host navigation fallback, so a chord issued while no
+ * region host is registered (a Chat workspace layout) mutates the model and
+ * renders nothing, as it did before. Where an unplaced surface lands, when it
+ * may take a free region rather than evict an occupant, and how a coarse
+ * device folds the other regions are the model's placement rules, and this
+ * used to carry its own copy of them, which drifted twice in one epic (#1420).
+ *
  * Must be called under a `RegionModelProvider`; a consumer that can render
  * outside one gates on `useRegionModelOptional` first, the way
  * `RegionToolbarControls` does.
@@ -70,29 +77,11 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
   const isMobile = useIsMobile();
   const bottomOnly = available.length === 1;
 
-  const showSurfaceAlone = useCallback(
-    (surfaceId: string, regionId: DockMode) => {
-      model.placeSurface(surfaceId, regionId);
-      for (const id of DOCK_REGION_IDS) {
-        if (id !== regionId) model.setRegion(id, { visible: false });
-      }
-      model.setRegion(regionId, { visible: true });
-    },
-    [model],
-  );
-
   const toggleSurface = useCallback(
     (surface: RegisteredSurface) => {
       const occupied = occupiedDockRegion(regions, surface.id);
       if (!occupied) {
-        if (bottomOnly) showSurfaceAlone(surface.id, surface.defaultRegion);
-        else {
-          const destination = firstFreeDockRegion(
-            regions,
-            surface.defaultRegion,
-          );
-          if (destination) model.placeSurface(surface.id, destination);
-        }
+        model.showSurface(surface.id);
         return;
       }
       if (bottomOnly) {
@@ -102,13 +91,13 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
         ) {
           model.setRegion(occupied, { visible: false });
         } else {
-          showSurfaceAlone(surface.id, occupied);
+          model.showSurface(surface.id);
         }
         return;
       }
       model.setRegion(occupied, { visible: !regions[occupied].visible });
     },
-    [bottomOnly, lastShownRegion, model, regions, showSurfaceAlone],
+    [bottomOnly, lastShownRegion, model, regions],
   );
 
   const surfaceList = [...surfaces.values()];
