@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -428,6 +429,27 @@ overrides:
       expect(() => validateInstalledRemediationGraph(root)).toThrow(
         'Invalid installed dependency',
       );
+      const decoy = 'node_modules/glob/node_modules/node_modules';
+      put(decoy, { name: 'decoy-container', version: '1.0.0' });
+      put(`${decoy}/brace-expansion`, {
+        name: 'brace-expansion',
+        version: '2.1.4',
+      });
+      const actualResolver = createRequire(
+        path.join(
+          root,
+          'node_modules/glob/node_modules/minimatch/package.json',
+        ),
+      );
+      expect(actualResolver.resolve('brace-expansion/package.json')).toBe(
+        realpathSync(
+          path.join(root, 'node_modules/brace-expansion/package.json'),
+        ),
+      );
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Invalid installed dependency',
+      );
+      rmSync(path.join(root, decoy), { recursive: true });
       rmSync(path.join(root, 'node_modules/test-exclude'), { recursive: true });
       expect(() => validateInstalledRemediationGraph(root)).toThrow(
         'Missing installed dependency',

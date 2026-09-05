@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import semver from 'semver';
 import { readPnpmWorkspace } from './pnpm-lockfile.mjs';
 
@@ -56,8 +56,11 @@ export function validateInstalledRemediationGraph(root) {
   }
   function lookup(directory, name) {
     for (;;) {
-      const candidate = join(directory, 'node_modules', name);
-      if (existsSync(join(candidate, 'package.json'))) return read(candidate);
+      // Match Node's NODE_MODULES_PATHS: never append node_modules to itself.
+      if (basename(directory) !== 'node_modules') {
+        const candidate = join(directory, 'node_modules', name);
+        if (existsSync(join(candidate, 'package.json'))) return read(candidate);
+      }
       if (directory === root || dirname(directory) === directory) return null;
       directory = dirname(directory);
     }
