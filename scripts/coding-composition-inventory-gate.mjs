@@ -137,6 +137,9 @@ const semantic =
 function walk(root, dir, includeTests = false) {
   const paths = [];
   for (const name of readdirSync(resolve(root, dir))) {
+    // pnpm links workspace dependencies under each package. They are not
+    // authored source and can contain unbuilt executable links or cycles.
+    if (name === 'node_modules') continue;
     const relative = `${dir}/${name}`;
     const stat = statSync(resolve(root, relative));
     if (stat.isDirectory()) paths.push(...walk(root, relative, includeTests));

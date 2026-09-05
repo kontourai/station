@@ -292,6 +292,16 @@ function MessageBubbleComponent({
         </a>
       )}
 
+      {isMobile && msg.role === 'user' && textContent && (
+        <button
+          type="button"
+          onClick={() => onCopy(textContent)}
+          className="message__copy-btn"
+          aria-label="Copy message"
+        >
+          Copy message
+        </button>
+      )}
       {msg.role === 'assistant' && textContent && !hasTurnFooter && (
         <button
           type="button"

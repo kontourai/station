@@ -1596,6 +1596,9 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   });
   await expect(inputTask).toBeVisible();
   expect(await contrastRatio(inputTask)).toBeGreaterThanOrEqual(4.5);
+  await expect(
+    page.getByRole('button', { name: 'Copy message', exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Close message details' }).click();
   await page
     .getByRole('button', { name: 'Answer details and actions', exact: true })
