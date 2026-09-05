@@ -78,7 +78,9 @@ describe('region arrangement record (#928 D)', () => {
 
   test('the persisted size floor is the dock clamps’ shared floor', () => {
     expect(REGION_SIZE_MIN).toBe(DOCK_MIN_HEIGHT);
-    expect(REGION_SIZE_MAX).toBeGreaterThan(REGION_SIZE_MIN);
+    // A literal ceiling: 8K is above any display edge this UI lays out on.
+    // Pinned as a number so widening it is a visible decision, not drift.
+    expect(REGION_SIZE_MAX).toBe(8192);
   });
 
   describe('parse fails closed and never throws', () => {
@@ -143,6 +145,12 @@ describe('region arrangement record (#928 D)', () => {
         '517',
         REGION_SIZE_MIN - 1,
         REGION_SIZE_MAX + 1,
+        // Absolute values, not derived from the constant: an orchestrator
+        // injection widened REGION_SIZE_MAX to MAX_SAFE_INTEGER and this
+        // loop moved with it. A record cannot ask for a dock wider than any
+        // display, whatever the constant says.
+        100_000,
+        1e9,
         -1,
       ]) {
         expect(
