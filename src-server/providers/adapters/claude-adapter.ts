@@ -349,16 +349,38 @@ function preToolPolicyHookOutput(decision: PreToolPolicyDecision) {
       },
     };
   }
-  // `ask` is Station's managed-engine outcome; Claude's existing canUseTool
-  // owns interactive approval, so both it and an explicit `defer` pass through
-  // without opening a second Station approval request.
-  return {
-    continue: true,
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse' as const,
-      permissionDecision: 'defer' as const,
-    },
-  };
+  // `ask` and `defer` both mean the same thing here, in every mode: Station's
+  // policy is not deciding this call, so the engine's own permission flow owns
+  // it and `canUseTool` is where that flow reaches Station's ApprovalRegistry.
+  // Carrying NO `permissionDecision` is what expresses that. The hook never
+  // opens a second Station request from inside itself.
+  //
+  // Deliberately NOT `permissionDecision: 'ask'` in `default`/Ask mode, which
+  // was tried and reverted: `'ask'` is a floor over the engine's OWN
+  // read-only-command classifier as well as over its settings files, so a
+  // coding agent's Read/Grep/Glob sweep turns into one approval per call, each
+  // showing only a tool name. Which of those two costs Station should pay is a
+  // product decision, tracked separately, not something this translation layer
+  // should settle. The settings-file half of the exposure — a workspace's
+  // checked-in `.claude/settings.json` `permissions.allow` running a tool with
+  // no Station request — is real and filed as an owner decision.
+  //
+  // NEVER `permissionDecision: 'defer'`, which this used to return for both.
+  // `'defer'` is not a pass-through in the Claude hook contract: it hands the
+  // tool call BACK to the SDK host to execute. For a SOLO tool call the CLI
+  // ends the turn on the spot with `stop_reason: 'tool_deferred'` and the call
+  // on `result.deferred_tool_use`, and never consults `canUseTool` — so every
+  // solo call reaching this branch (anything not already granted or
+  // auto-approved) died silently: a `tool.started` with no `tool.completed`,
+  // and a turn that read as an ordinary stop (#1536 finding B1, #765 A4). An
+  // assistant message carrying more than one `tool_use` was unaffected — the
+  // engine ignores `defer` for a parallel batch — which is why the defect
+  // presented as intermittent rather than total. Verified live against
+  // `claude` 2.1.261: with `defer`, `permissionMode` `default`, `acceptEdits`
+  // and `bypassPermissions` all returned `stop_reason: 'tool_deferred'`,
+  // `result: ''`, `num_turns: 1` with `canUseTool` uncalled; with no
+  // `permissionDecision` the same prompt reached `canUseTool` and ran.
+  return { continue: true };
 }
 
 async function evaluateClaudePreToolPolicy(

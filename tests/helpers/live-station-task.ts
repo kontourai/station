@@ -40,7 +40,8 @@ export async function allocateLiveStation(
   const uiPort = await findFreePortOutside(serverPort, 4);
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), homePrefix)));
   const home = join(root, 'instances', 'e2e');
-  mkdirSync(home, { recursive: true });
+  // Match the owner-only instance-registry boundary before CLI --clean reads it.
+  mkdirSync(home, { recursive: true, mode: 0o700 });
   return {
     api: `http://127.0.0.1:${serverPort}`,
     // On Windows tmpdir() can be an 8.3 path (for example

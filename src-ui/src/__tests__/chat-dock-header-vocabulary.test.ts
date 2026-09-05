@@ -5,9 +5,8 @@
  * underlined "Start a chat" link) where two families — icon buttons and one
  * plain-text status segment — would say the same things. This pins the
  * three concrete normalizations against the CSS source: jsdom does not
- * apply stylesheets or compute layout (see
- * `settings-save-pill-occlusion.test.ts`), so a real render cannot observe
- * color/font/text-decoration the way a browser paints them.
+ * verify browser layout. These assertions constrain source declarations;
+ * they do not prove the painted color, font, or text decoration.
  */
 
 import { readFileSync } from 'node:fs';

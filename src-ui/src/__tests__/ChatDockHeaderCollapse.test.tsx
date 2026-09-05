@@ -19,8 +19,6 @@ vi.mock('../contexts/NavigationContext', () => ({
     isDockMaximized,
     setDockState,
     dockMode,
-    // station#520: `DockOccupantPicker` now reads `pathname` (its onChoose
-    // seam) — a real string so `resolveViewFromPath` doesn't see `undefined`.
     pathname: '/',
   }),
 }));
@@ -30,7 +28,6 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
 }));
 
 import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
-import { DockOccupantPicker } from '../workspace-panes/DockOccupantPicker';
 
 function renderHeader({
   fullscreen = false,
@@ -250,85 +247,33 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
   });
 });
 
-// archive#4460: Chat's header carried no occupant switcher at all — only
-// Home/Activity's `.dock-slot__header` did. `ChatDockHeader` is the SAME
-// component every ambient occupant (Chat included) now renders through, so
-// this is the direct proof that Chat gets the picker too, without needing
-// to mount the full `ChatWorkspacePane` data-fetching stack.
-describe('occupant picker (station#4460)', () => {
+/**
+ * #928 C2b deleted the dock header's occupant picker (the trigger named the
+ * docked pane) with the docked-Home path it switched to. This pins the header's remaining
+ * control set BY ACCESSIBLE NAME, in order, for the open desktop dock: the
+ * deletion was meant to remove exactly one control, so a header that loses
+ * (or gains, or renames) any other reds here by name instead of shipping as
+ * a quiet chrome regression. Captured against the pre-C2b tree, minus the
+ * picker.
+ */
+describe('the dock header control set (#928 C2b)', () => {
   beforeEach(() => {
-    setDockState.mockClear();
-    onNewChat.mockClear();
-    onDockSnap.mockClear();
     isDockOpen = true;
     isDockMaximized = false;
     dockMode = 'bottom';
   });
 
-  test('renders when supplied, naming the current occupant', () => {
-    // archive#4460: `occupantPicker` is a PRE-RENDERED node (built
-    // by the ambient host's lazy chunk), not `{current, onChoose}` data —
-    // this test constructs the real `DockOccupantPicker` element itself,
-    // the same way the host does.
-    render(
-      <ChatDockHeader
-        chatControls={{
-          sessions: [],
-          unreadCount: 0,
-          focusSession: vi.fn(),
-          onNewChat,
-          setShowChatSettings: vi.fn(),
-        }}
-        isDragging={false}
-        onDockSnap={onDockSnap}
-        availableDockSlotPlacements={['left', 'bottom', 'right']}
-        effectiveDockSlotPlacement={dockMode}
-        onDockPlacementChange={vi.fn()}
-        regionVisible={isDockOpen}
-        shellMaximized={isDockMaximized}
-        occupantPicker={
-          <DockOccupantPicker
-            current={{ id: 'pane:builtin:chat', name: 'Chat' } as never}
-            onChoose={vi.fn()}
-            onChooseAsOnlyContent={vi.fn()}
-          />
-        }
-      />,
-    );
-
+  test('an open bottom dock offers exactly these controls, by accessible name', () => {
+    renderHeader();
     expect(
-      screen.getByRole('button', { name: 'Docked pane: Chat' }),
-    ).toBeTruthy();
-  });
-
-  test('is absent for the full-screen placement, which has no ambient occupant to switch away from', () => {
-    render(
-      <ChatDockHeader
-        chatControls={{
-          sessions: [],
-          unreadCount: 0,
-          focusSession: vi.fn(),
-          onNewChat,
-          setShowChatSettings: vi.fn(),
-        }}
-        isDragging={false}
-        onDockSnap={onDockSnap}
-        availableDockSlotPlacements={['left', 'bottom', 'right']}
-        effectiveDockSlotPlacement={dockMode}
-        onDockPlacementChange={vi.fn()}
-        regionVisible={isDockOpen}
-        shellMaximized={isDockMaximized}
-        fullscreen
-        occupantPicker={
-          <DockOccupantPicker
-            current={{ id: 'pane:builtin:chat', name: 'Chat' } as never}
-            onChoose={vi.fn()}
-            onChooseAsOnlyContent={vi.fn()}
-          />
-        }
-      />,
-    );
-
-    expect(screen.queryByRole('button', { name: /^Docked pane:/ })).toBeNull();
+      screen
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label') ?? ''),
+    ).toEqual([
+      'Move the dock',
+      'Chat settings',
+      'Expand dock region to workspace',
+      'Hide dock region',
+    ]);
   });
 });

@@ -10,17 +10,16 @@ import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/works
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { describe, expect, test } from 'vitest';
 import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
-import { AMBIENT_DOCK_RENDERABLE_PANES } from '../workspace-panes/ambientDockOccupants';
 
 /**
  * station#928: `docked` in `WORKSPACE_PANE_REGIONS` is a capability claim —
  * "a shell region may hold this pane" — and nothing at runtime reads it. The
- * shell decides what can occupy a region from two tables:
- * `REGION_SURFACE_REGISTRY` (registered surfaces) and
- * `AMBIENT_DOCK_RENDERABLE_PANES` (the legacy ambient occupant picker). A
- * declaration nothing derives drifts, so this test pins the claim to those
- * tables in both directions: every placeable built-in declares `docked`, and
- * no built-in that is not placeable does.
+ * shell decides what can occupy a region from one table,
+ * `REGION_SURFACE_REGISTRY` (#928 C2b retired the second, the legacy ambient
+ * occupant table, with the docked-Home path). A declaration nothing derives
+ * drifts, so this test pins the claim to that table in both directions: every
+ * placeable built-in declares `docked`, and no built-in that is not placeable
+ * does.
  */
 
 /**
@@ -155,10 +154,9 @@ describe('docked is a derived capability, pinned to the shell surface registry',
   });
 
   test('the built-ins declaring docked are exactly the built-ins the shell can place', () => {
-    const placeable = new Set<string>([
-      ...Object.values(SURFACE_DESCRIPTORS).map((descriptor) => descriptor.id),
-      ...AMBIENT_DOCK_RENDERABLE_PANES.map((pane) => pane.descriptor.id),
-    ]);
+    const placeable = new Set<string>(
+      Object.values(SURFACE_DESCRIPTORS).map((descriptor) => descriptor.id),
+    );
     const declared = new Set<string>(
       exportedBuiltinDescriptors()
         .filter(({ descriptor }) =>

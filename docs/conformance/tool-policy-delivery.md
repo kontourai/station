@@ -5,13 +5,25 @@ pre-tool blocking or grant decision on the actual tool-call path. It does not
 claim that post-hoc configuration, quality, or uniform-stop gates are absent.
 
 The managed Station engine delivers its full pre-tool chain through
-`beforeToolCall`. Claude Code is partial: its `canUseTool` callback honours a
-resolved agent's matching `tools.autoApprove` patterns, but it does not run
-Station's stale-generation, delegated-tool, config-protection,
-approval-guardian, or unattended-grant chain. ACP is equivalently partial at
-its protocol `requestPermission` callback. Codex has no Station pre-tool
-interception seam. Muse is also unsupported. An unknown external engine fails
-closed with no pre-tool delivery.
+`beforeToolCall`. Claude Code is partial, and the boundary is narrower than it
+once was: alongside `canUseTool` (which honours a resolved agent's matching
+`tools.autoApprove` patterns) a `PreToolUse` hook runs Station's staged
+evaluator, so stale-generation, delegated-tool, config-protection and
+approval-guardian decisions DO reach the actual tool-call path. What it still
+does not deliver is the unattended-grant chain: the staged evaluator hands
+external interaction back to the engine's own permission flow before those
+stages, and the external adapters carry no unattended principal for them to
+read.
+
+Handing interaction back is also all Station does about consent on that path:
+in Ask mode the engine asks before tool calls its own rules and classifier do
+not already allow, and Station adds no floor over it. What that leaves open, and
+what Station ships instead, is the Accepted-gap section below.
+
+ACP is equivalently partial at its protocol `requestPermission`
+callback, through the same staged evaluator and with the same one gap. Codex
+has no Station pre-tool interception seam. Muse is also unsupported. An
+unknown external engine fails closed with no pre-tool delivery.
 
 ## Accepted gap: a trusted workspace's settings can grant a Claude tool call (#1545)
 
@@ -31,7 +43,9 @@ with a real turn in `permissionMode: 'default'`:
   `settings` (flag) tier ran the command with no callback invocation at all.
 - The project and local tiers carry one extra precondition. In a workspace the
   CLI has never had trust accepted for (`~/.claude.json`, per-directory
-  `hasTrustDialogAccepted`), the same rule did **not** shadow the callback.
+  `hasTrustDialogAccepted`), the same rule did **not** shadow the callback. The
+  user tier carries no such precondition: `~/.claude/settings.json` applies to
+  every session regardless, because the operator wrote it for themselves.
 
 So this reaches a workspace the operator has already trusted in Claude Code —
 their own repositories, normally. That makes it a same-user threat model:
