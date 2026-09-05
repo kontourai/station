@@ -76,6 +76,41 @@ code. Use the target's normal pairing/sign-in flow before registration. The pack
 commands themselves never execute repository scripts or transfer Station
 execution authority.
 
+## Verify the restored checkout
+
+Pause writers to the restored checkout, then compare it with the original
+package before accepting the copy:
+
+```bash
+station cloud verify-workspace --archive=/private/import/acme.workspace.enc \
+  --key-file=/private/keys/workspace.key --workspace=/work/acme-import/workspace \
+  --workspace-paused --json
+```
+
+Verification checks HEAD, branch, staged index entries, Git content policy, and
+supported working-file bytes. It reuses the bounded capture/import codecs and
+validates the target-derived Git objects in an isolated temporary import. It
+rechecks target metadata after that import and around the final file read.
+Unexpected nonignored files, missing files, modified bytes, changed staged state,
+or changed branch/policy fail verification. It never repairs or rewrites the
+selected checkout.
+
+The result includes the exact encrypted package's SHA-256 and an observation
+timestamp. They identify what was checked; they are not a lease, freshness
+promise, or permission to execute. Paused-writer acknowledgement does not fence
+processes or provide an atomic live snapshot. Ignored untracked files, other Git
+refs, external configuration and credentials remain outside the comparison.
+On POSIX, physical executable intent is checked even when Git ignores mode
+changes. Windows reports that physical executable-bit verification is unavailable;
+its staged Git mode intent is still compared.
+
+Verification uses private temporary storage, including a temporary plaintext
+checkout for Git validation, and removes it on ordinary success/failure. A crash
+can leave that scratch directory under the system temporary directory; inspect
+ownership before cleanup. The same package limits apply, and sufficient scratch
+space is required. This validates selected captured state, not every unreferenced
+object or configuration file in `.git`.
+
 ## Import and register in one command
 
 For a new import, `import-project` composes unpacking with the same Project API
@@ -102,11 +137,14 @@ It does not upload to the cloud or discover a Docker mount mapping. Set
 bytes. It does not start any agent.
 
 Before import, the CLI checks the exact slug on the selected target. Auth,
-transport and existing-slug failures leave no import. After unpacking it writes
-`workspace-project-request.json` beside the checkout, then sends one create
+transport and existing-slug failures leave no import. After unpacking it verifies the local checkout against the package. A local
+verification failure retains the checkout and attempts no Project creation. On
+success it writes `workspace-project-request.json` beside the checkout, then sends one create
 request and reads the resulting Project back. Only matching ID/slug/path
 responses produce `workspace-project-registration.json` and a registered receipt.
-Target filesystem verification still requires normal workspace reads; matching
+The registration receipt carries the nested local verification result, including
+its package digest and platform limits. Target filesystem verification still
+requires normal workspace reads; matching
 Project metadata alone does not prove a correct mount or usable provider.
 
 If registration fails, races with another creator, or loses its reply, the
@@ -216,7 +254,8 @@ limits is not a deployment tuning interface.
 
 The public Node API is
 `@kontourai/station-shared/workspace-package`: `createWorkspacePackageKey`,
-`packWorkspace`, `inspectWorkspacePackage`, and `unpackWorkspace`. Receipt types
+`packWorkspace`, `inspectWorkspacePackage`, `unpackWorkspace`, and
+`verifyWorkspacePackage`. Receipt types
 live in `@kontourai/station-contracts/cloud-move`. The CLI delegates to this
 implementation so provider integrations can reuse the same semantics. A hosted
 service must add tenant authorization, source/destination ownership, isolated

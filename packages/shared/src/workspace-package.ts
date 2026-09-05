@@ -15,6 +15,7 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 import type {
   WorkspacePackageInspection,
   WorkspacePackageReceipt,
+  WorkspacePackageVerification,
 } from '@kontourai/station-contracts/cloud-move';
 import { STATION_HOME_SCHEMA_FILE } from './station-home-schema.js';
 import { validateWorkspaceGitPacks } from './workspace-git-pack.js';
@@ -247,19 +248,53 @@ function validateIndexObjects(workspace: string, index: IndexEntry[]): void {
     throw new Error('Invalid staged object');
 }
 
-function fingerprintFiles(files: FileEntry[]): string {
+function fingerprintFiles(
+  files: FileEntry[],
+  includeExecutable = true,
+): string {
   return digest(
     Buffer.from(
       JSON.stringify(
-        files.map(({ path, executable, sha256 }) => ({
-          path,
-          executable,
-          sha256,
-        })),
+        [...files]
+          .sort((left, right) =>
+            left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
+          )
+          .map(({ path, executable, sha256 }) => ({
+            path,
+            executable: includeExecutable ? executable : null,
+            sha256,
+          })),
       ),
     ),
   );
 }
+function readContentPolicy(workspace: string): Payload['policy'] {
+  const getPolicy = (name: string, fallback: string) =>
+    packageGit(
+      workspace,
+      [
+        'config',
+        ...(name === 'filemode'
+          ? ['--type=bool']
+          : name === 'autocrlf'
+            ? ['--type=bool-or-str']
+            : []),
+        `--default=${fallback}`,
+        '--get',
+        `core.${name}`,
+      ],
+      undefined,
+      true,
+    )
+      .toString()
+      .trim();
+  return {
+    autocrlf: getPolicy('autocrlf', 'false'),
+    eol: getPolicy('eol', 'native'),
+    filemode: getPolicy('filemode', 'true') === 'true',
+  };
+}
+
 export function packWorkspace(input: {
   workspace: string;
   output: string;
@@ -329,31 +364,7 @@ export function packWorkspace(input: {
       .trim() !== 'false'
   )
     throw new Error('Shallow repositories are unsupported');
-  const getPolicy = (name: string, fallback: string) =>
-    packageGit(
-      workspace,
-      [
-        'config',
-        ...(name === 'filemode'
-          ? ['--type=bool']
-          : name === 'autocrlf'
-            ? ['--type=bool-or-str']
-            : []),
-        `--default=${fallback}`,
-        '--get',
-        `core.${name}`,
-      ],
-      undefined,
-      true,
-    )
-      .toString()
-      .trim();
-  const readPolicy = () => ({
-    autocrlf: getPolicy('autocrlf', 'false'),
-    eol: getPolicy('eol', 'native'),
-    filemode: getPolicy('filemode', 'true') === 'true',
-  });
-  const policy = readPolicy();
+  const policy = readContentPolicy(workspace);
   if (
     !['true', 'false', 'input'].includes(policy.autocrlf) ||
     !['native', 'lf', 'crlf'].includes(policy.eol)
@@ -432,7 +443,7 @@ export function packWorkspace(input: {
   if (plain.length > PACKAGE_MAX_BYTES)
     throw new Error('Workspace package plaintext limit exceeded');
   if (
-    JSON.stringify(readPolicy()) !== JSON.stringify(policy) ||
+    JSON.stringify(readContentPolicy(workspace)) !== JSON.stringify(policy) ||
     !packageGit(workspace, attrArgs, attributePaths, true).equals(
       sourceAttributes,
     ) ||
@@ -472,7 +483,12 @@ function bytes(value: unknown, limit: number): Buffer {
   return result;
 }
 function decode(archive: string, keyFile: string): Payload {
-  const raw = readBoundedFile(archive, PACKAGE_MAX_BYTES + 65536);
+  return decodeEnvelope(
+    readBoundedFile(archive, PACKAGE_MAX_BYTES + 65536),
+    keyFile,
+  );
+}
+function decodeEnvelope(raw: Buffer, keyFile: string): Payload {
   if (
     !raw.subarray(0, MAGIC.length).equals(MAGIC) ||
     raw.length < MAGIC.length + 28
@@ -726,5 +742,125 @@ export function unpackWorkspace(input: {
     throw error;
   } finally {
     if (temporary) rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
+/** Verify an inactive restored checkout through the same bounded capture and
+ * import codecs. All writes belong to a private disposable verification tree;
+ * the selected workspace is only read. This is not an execution fence. */
+export function verifyWorkspacePackage(input: {
+  archive: string;
+  keyFile: string;
+  workspace: string;
+  workspacePaused: boolean;
+}): WorkspacePackageVerification {
+  if (input.workspacePaused !== true)
+    throw new Error(
+      'Pause target writers and pass --workspace-paused before verification',
+    );
+  const envelope = readBoundedFile(input.archive, PACKAGE_MAX_BYTES + 65536);
+  const expected = decodeEnvelope(envelope, input.keyFile);
+  const packageSha256 = digest(envelope);
+  const workspace = realpathSync(input.workspace);
+  const temporary = mkdtempSync(
+    join(tmpdir(), 'station-workspace-verification-'),
+  );
+  try {
+    const capturedArchive = join(temporary, 'captured.enc');
+    packWorkspace({
+      workspace,
+      keyFile: input.keyFile,
+      output: capturedArchive,
+      sourcePaused: true,
+    });
+    const captured = decode(capturedArchive, input.keyFile);
+    if (captured.head !== expected.head || captured.branch !== expected.branch)
+      throw new Error(
+        'Workspace verification failed: HEAD or branch differs from the package',
+      );
+    if (
+      captured.policy.autocrlf !== expected.policy.autocrlf ||
+      captured.policy.eol !== expected.policy.eol ||
+      captured.policy.filemode !== expected.policy.filemode
+    )
+      throw new Error(
+        'Workspace verification failed: Git content policy differs from the package',
+      );
+    const indexIdentity = (entries: IndexEntry[]) =>
+      JSON.stringify(
+        [...entries]
+          .sort((left, right) =>
+            left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
+          )
+          .map(({ path, mode, oid }) => [path, mode, oid]),
+      );
+    if (indexIdentity(captured.index) !== indexIdentity(expected.index))
+      throw new Error(
+        'Workspace verification failed: staged index differs from the package',
+      );
+    if (
+      fingerprintFiles(captured.files, false) !==
+      fingerprintFiles(expected.files, false)
+    )
+      throw new Error(
+        'Workspace verification failed: working files differ from the package',
+      );
+    // Git validates the actual target-derived history and staged objects in an
+    // isolated import. Merely checking object IDs would miss corrupt storage.
+    unpackWorkspace({
+      archive: capturedArchive,
+      keyFile: input.keyFile,
+      destination: join(temporary, 'object-check'),
+    });
+    const assertCurrentMetadata = () => {
+      const policy = readContentPolicy(workspace);
+      const branch = packageGit(workspace, [
+        'rev-parse',
+        '--abbrev-ref',
+        'HEAD',
+      ])
+        .toString()
+        .trim();
+      if (
+        packageGit(workspace, ['rev-parse', 'HEAD']).toString().trim() !==
+          expected.head ||
+        (branch === 'HEAD' ? null : branch) !== expected.branch ||
+        indexIdentity(indexEntries(workspace)) !==
+          indexIdentity(expected.index) ||
+        policy.autocrlf !== expected.policy.autocrlf ||
+        policy.eol !== expected.policy.eol ||
+        policy.filemode !== expected.policy.filemode
+      )
+        throw new Error(
+          'Workspace metadata changed during verification; pause writers and retry',
+        );
+    };
+    assertCurrentMetadata();
+    // On POSIX, inspect physical executable bits even when core.filemode=false.
+    // Windows cannot attest those bits; its Git index intent is checked above.
+    const compareExecutable = process.platform !== 'win32';
+    const currentFiles = fileSnapshot(workspace, captured.index, true);
+    if (
+      fingerprintFiles(currentFiles, compareExecutable) !==
+      fingerprintFiles(expected.files, compareExecutable)
+    )
+      throw new Error(
+        'Workspace verification failed: working files differ from the package',
+      );
+    assertCurrentMetadata();
+    return {
+      ...receipt(expected),
+      workspace,
+      verified: true,
+      verification: 'HEAD-branch-index-policy-working-files',
+      packageSha256,
+      verifiedAt: new Date().toISOString(),
+      gitObjectValidation: 'performed-in-isolated-import',
+      executableModeVerification: compareExecutable
+        ? 'passed'
+        : 'unavailable-on-windows',
+    };
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
   }
 }

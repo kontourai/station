@@ -3,7 +3,14 @@
 .engine-picker {
   position: fixed;
   inset: 0;
-  z-index: var(--layer-notice);
+  /* UX audit 2026-09-05 A1: this is a modal with a scrim, so it lives at
+     `--layer-dialog` like the first-run chapter's other steps. At
+     `--layer-notice` (9000) the chat dock (`--layer-dock`, 9200) painted
+     over it — on a fresh home the dock opens on the bootstrap deep link and
+     covered the "Use this engine" / "Decide later" row of the very step that
+     decides what powers Station, with no way past it but knowing to
+     collapse the dock. */
+  z-index: var(--layer-dialog);
   display: flex;
   align-items: center;
   justify-content: center;
