@@ -367,6 +367,72 @@ describe.skipIf(!chromiumAvailable)(
       expect(collapsed).toBeLessThan(widest - 80);
     });
 
+    /**
+     * #1552 D1's headline claim, and the only thing that holds it: the
+     * fine-pointer row is FOUR controls (Layout, the status dot, Notifications,
+     * the avatar), and the Settings gear is phone-only.
+     *
+     * Added because a fault injection went green without it. Flipping
+     * `.app-toolbar__action--compact-only` from `display: none` to `display:
+     * flex` — the whole mechanism keeping the gear off the desktop row — broke
+     * nothing in this suite, so "four controls" was an assertion nobody made.
+     * `HeaderActions` renders three of the four (Layout is
+     * `RegionToolbarControls`, a sibling in the toolbar, not in this cluster),
+     * so the count here is three and the claim is about which three.
+     *
+     * Both directions, because a `display` rule can fail either way: the gear
+     * must be absent on a fine pointer AND present on a phone, where the avatar
+     * that carries its menu row is itself hidden and
+     * `tests/toolbar-reachability.spec.ts` requires the gear in its inventory.
+     */
+    test('the fine-pointer row holds three named controls and no Settings gear; a phone is the mirror', async () => {
+      const inventory = async (viewport: {
+        width: number;
+        height: number;
+      }): Promise<string[]> => {
+        const page = await browser.newPage({ viewport });
+        try {
+          await page.setContent(
+            buildFixtureHtml(await renderMarkupForState('connected')),
+          );
+          return await page.evaluate(() =>
+            [
+              ...document.querySelectorAll<HTMLElement>(
+                '.app-toolbar__actions button',
+              ),
+            ]
+              // Laid out, not merely present: `display: none` is exactly what
+              // this test is about, and a hidden control has no boxes.
+              .filter((button) => button.getClientRects().length > 0)
+              .map(
+                (button) =>
+                  button.getAttribute('aria-label') ??
+                  button.getAttribute('title') ??
+                  (button.textContent || '').trim(),
+              ),
+          );
+        } finally {
+          await page.close();
+        }
+      };
+
+      const desktop = await inventory({ width: 1280, height: 400 });
+      expect(desktop).toEqual([
+        'Manage Stations — Connected · Default',
+        'Notifications',
+        'Profile and settings',
+      ]);
+      expect(desktop).not.toContain('Open settings');
+
+      const phone = await inventory({ width: 390, height: 600 });
+      expect(
+        phone,
+        'a phone has no avatar menu (the avatar is --secondary there), so the gear IS its route to Settings',
+      ).toContain('Open settings');
+      expect(phone).toContain('More actions');
+      expect(phone).not.toContain('Profile and settings');
+    });
+
     test('the connection chip fits the width a phone row can spare', async () => {
       // #1401. NOT a position assertion: this fixture mounts `HeaderActions`
       // alone, so the cluster starts at x=0 and the Settings control is
