@@ -1172,7 +1172,7 @@ describe('installPluginFromSource', () => {
   });
 
   test.runIf(process.platform !== 'win32')(
-    'refuses Agent Plugin uninstall through a symlinked data ancestor without touching external data',
+    'requires legacy Agent Plugin migration and preserves external data behind a symlinked ancestor',
     async () => {
       const root = mkdtempSync(join(tmpdir(), 'station-agent-plugin-remove-'));
       const outside = mkdtempSync(
@@ -1192,7 +1192,7 @@ describe('installPluginFromSource', () => {
 
       await expect(
         uninstallInstalledPlugin('acme.tools', deps(root)),
-      ).rejects.toThrow(/data.*symbolic link/i);
+      ).rejects.toThrow('migrate');
 
       expect(existsSync(join(pluginDir, 'plugin.json'))).toBe(true);
       expect(readFileSync(marker, 'utf8')).toBe('external');
