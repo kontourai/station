@@ -81,7 +81,7 @@ test('coding example preserves both Panes and its authored native Agent in a rea
       (body) => requests.push(body),
       answer,
     );
-    previous = (await json('/api/config/app')).data;
+    previous = (await json('/config/app')).data;
     const authored = JSON.parse(
       readFileSync(
         resolve(
@@ -103,7 +103,7 @@ test('coding example preserves both Panes and its authored native Agent in a rea
     });
     connected = true;
     // This is explicit operator model configuration, not a rewritten plugin Agent.
-    await json('/api/config/app', 'PUT', {
+    await json('/config/app', 'PUT', {
       defaultLLMProvider: connection,
       defaultModel: model,
     });
@@ -327,7 +327,7 @@ test('coding example preserves both Panes and its authored native Agent in a rea
       await clean(() => json(`/api/registry/plugins/${plugin}`, 'DELETE'));
     if (previous)
       await clean(() =>
-        json('/api/config/app', 'PUT', {
+        json('/config/app', 'PUT', {
           defaultLLMProvider: previous!.defaultLLMProvider ?? '',
           defaultModel: previous!.defaultModel ?? '',
         }),
