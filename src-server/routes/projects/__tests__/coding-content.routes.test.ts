@@ -120,6 +120,23 @@ describe('coding content routes — real git project (no mocks)', () => {
     expect(res.json.data.staged + res.json.data.unstaged).toBeGreaterThan(0);
   });
 
+  /**
+   * #1536 G5: Push had no fact to gate on, so it was live in a checkout with
+   * nowhere to push and the only way to find that out was to press it.
+   */
+  test('observes whether the checkout has a remote to push to', async () => {
+    const before = await get(`/git/status?path=${encodeURIComponent(repo)}`);
+    expect(before.json.data.remote).toBe('absent');
+
+    execGitSync(['remote', 'add', 'origin', 'https://example.test/a/b.git'], {
+      cwd: repo,
+    });
+    const after = await get(`/git/status?path=${encodeURIComponent(repo)}`);
+    expect(after.json.data.remote).toBe('present');
+
+    execGitSync(['remote', 'remove', 'origin'], { cwd: repo });
+  });
+
   test('REGRESSION: a `~` path expands to $HOME, not `<cwd>/~/...`', async () => {
     const tilde = `~/${relative(homedir(), homeProject)}`;
     const res = await get(`/files?path=${encodeURIComponent(tilde)}`);

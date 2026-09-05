@@ -86,6 +86,11 @@ export function BranchToolbar({
   const isClean = statusResolved && !!gitStatus && dirtyCount === 0;
   const ahead = gitStatus?.ahead ?? 0;
   const behind = gitStatus?.behind ?? 0;
+  // #1536 G5: Push was live in a checkout with nowhere to push, so the only
+  // way to learn there was no remote was to press it and read git's error.
+  // `absent` is a positive observation; `unknown` (or an older server that
+  // sends no field) is not, and must not take the action away.
+  const noRemote = gitStatus?.remote === 'absent';
 
   const [message, setMessage] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -600,8 +605,19 @@ export function BranchToolbar({
       <button
         type="button"
         className="branch-toolbar__push-btn"
-        aria-label={ahead > 0 ? `Push ${ahead} commit(s)` : 'Push to remote'}
-        disabled={push.isPending || !hasActions}
+        aria-label={
+          noRemote
+            ? 'Push unavailable — no remote configured'
+            : ahead > 0
+              ? `Push ${ahead} commit(s)`
+              : 'Push to remote'
+        }
+        title={
+          noRemote
+            ? 'This checkout has no remote configured, so there is nowhere to push.'
+            : undefined
+        }
+        disabled={push.isPending || !hasActions || noRemote}
         onClick={() => push.mutate({ setUpstream: true })}
       >
         {push.isPending ? 'Pushing…' : 'Push'}

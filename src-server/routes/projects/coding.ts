@@ -7,6 +7,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { Hono } from 'hono';
+import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import { codingOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
@@ -197,7 +198,7 @@ export function createCodingRoutes(fileTreeService: FileTreeService) {
         windowsHide: true,
       };
 
-      const [branchOut, statusOut, logOut, trackingOut, topLevelOut] =
+      const [branchOut, statusOut, logOut, trackingOut, topLevelOut, remotes] =
         await Promise.all([
           execGit(['rev-parse', '--abbrev-ref', 'HEAD'], opts),
           execGit(['status', '--porcelain'], opts),
@@ -214,6 +215,11 @@ export function createCodingRoutes(fileTreeService: FileTreeService) {
           execGit(['rev-parse', '--show-toplevel'], opts).catch(() => ({
             stdout: '',
           })),
+          // #1536 G5: whether Push has anywhere to go. Through the shared
+          // reader, which is the one place that keeps "this checkout has no
+          // remotes" and "git could not be run" apart — collapsing them would
+          // disable Push over an unreadable config, which is a different fact.
+          readCheckoutRemotes(dir),
         ]);
 
       const changes = statusOut.stdout
@@ -269,6 +275,14 @@ export function createCodingRoutes(fileTreeService: FileTreeService) {
           lastCommit,
           ahead,
           behind,
+          // Three states, never two: `unknown` is a read that could not answer,
+          // and a surface that treated it as `absent` would take Push away on
+          // no evidence (#1536 G5).
+          remote: remotes.ok
+            ? remotes.remotes.length > 0
+              ? ('present' as const)
+              : ('absent' as const)
+            : ('unknown' as const),
         },
       });
     } catch (e: unknown) {
