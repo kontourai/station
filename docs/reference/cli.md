@@ -2589,3 +2589,37 @@ Environment variables are station-only (`STATION_*`). Shared app data resolves
 from `STATION_ROOT` → `~/.station`; runtime state resolves independently from
 `STATION_HOME` → `<STATION_ROOT>/instances/<channel>`. The source launcher is
 `./station`.
+
+
+### `cloud` — cloud move preparation
+
+`station cloud` currently offers read-only preparation, not a live move:
+
+```sh
+station cloud preview --home=/absolute/path/to/station-home --provider=aws-ec2 --region=us-east-1 --instance-type=t3.micro --json
+station cloud template --provider=aws-ec2 --region=us-east-1 --instance-type=t3.micro --image=REGISTRY/IMAGE@sha256:DIGEST --output=station-cloud.json
+```
+
+Replace the image placeholder with a verified, publicly readable Linux/x86 image
+and its 64-character SHA-256 digest. The template command refuses existing output
+files. Use `./station` when running from a source checkout. Neither command
+creates AWS resources, exports credential stores, copies workspaces, stops a local
+instance, or resumes an agent. Unknown actions/options and unsupported target
+profiles fail rather than triggering implicit provisioning.
+
+The preview requires an explicit existing home with the current schema. It lists
+selected Agent/Project metadata and installed plugin directories, reports required
+credential enrollment and ownership checks, and omits configuration contents and
+secret payloads from its output. Corrupt, linked, oversized, or incompatible
+selected configuration fails the preview. This is not an atomic backup, a complete
+compatibility scan, or a credential portability guarantee. Exit zero means a
+preview/template was produced; inspect `transferAvailable` and
+`executionResumeAvailable`, which are currently false.
+
+The AWS template requires VPC/subnet inputs at deployment and IAM creation
+acknowledgement. Deploy in the selected region only after reviewing the resources
+and budget. It has no inbound security-group rules, uses SSM access and an
+encrypted retained EBS root/data volume, and requires a later application-health
+check. Retention does not imply automatic recovery on a replacement instance.
+The [cloud-move design](../design/cloud-move.md) records provider boundaries,
+credential handling, execution ownership, and the remaining implementation.
