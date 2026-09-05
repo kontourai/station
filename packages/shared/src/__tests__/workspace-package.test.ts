@@ -10,6 +10,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -25,6 +26,7 @@ import {
   inspectWorkspacePackage,
   packWorkspace,
   unpackWorkspace,
+  verifyWorkspacePackage,
 } from '../workspace-package.js';
 import * as packageIo from '../workspace-package-io.js';
 
@@ -592,4 +594,169 @@ describe('encrypted workspace package', { timeout: 30000 }, () => {
       }
     },
   );
+});
+
+describe('restored workspace verification', { timeout: 30000 }, () => {
+  function restored() {
+    const f = fixture();
+    f.pack();
+    const imported = f.unpack();
+    return {
+      ...f,
+      workspace: imported.workspace,
+      verify: () =>
+        verifyWorkspacePackage({
+          archive: f.output,
+          keyFile: f.keyFile,
+          workspace: imported.workspace,
+          workspacePaused: true,
+        }),
+    };
+  }
+  test('verifies actual restored bytes and object import without changing the target index or configuration', () => {
+    const f = fixture();
+    writeFileSync(join(f.source, 'a.txt'), 'staged\n');
+    git(f.source, ['add', 'a.txt']);
+    writeFileSync(join(f.source, 'a.txt'), 'working\n');
+    writeFileSync(join(f.source, 'binary'), Buffer.from([0, 255, 10, 128]));
+    f.pack();
+    const { workspace } = f.unpack();
+    const index = readFileSync(join(workspace, '.git', 'index'));
+    const config = readFileSync(join(workspace, '.git', 'config'));
+    const result = verifyWorkspacePackage({
+      archive: f.output,
+      keyFile: f.keyFile,
+      workspace,
+      workspacePaused: true,
+    });
+    expect(result).toMatchObject({
+      verified: true,
+      workspace,
+      verification: 'HEAD-branch-index-policy-working-files',
+      gitObjectValidation: 'performed-in-isolated-import',
+      executionAuthorityTransferred: false,
+    });
+    expect(result.packageSha256).toBe(
+      createHash('sha256').update(readFileSync(f.output)).digest('hex'),
+    );
+    expect(Number.isFinite(Date.parse(result.verifiedAt))).toBe(true);
+    expect(result.executableModeVerification).toBe(
+      process.platform === 'win32' ? 'unavailable-on-windows' : 'passed',
+    );
+    expect(readFileSync(join(workspace, '.git', 'index'))).toEqual(index);
+    expect(readFileSync(join(workspace, '.git', 'config'))).toEqual(config);
+    expect(readFileSync(join(workspace, 'binary'))).toEqual(
+      Buffer.from([0, 255, 10, 128]),
+    );
+  });
+  test.each(['edited', 'missing', 'extra', 'staged', 'branch', 'policy'])(
+    'refuses %s target state without restoring or rewriting it',
+    (change) => {
+      const f = restored();
+      if (change === 'edited')
+        writeFileSync(join(f.workspace, 'a.txt'), 'changed\n');
+      if (change === 'missing') rmSync(join(f.workspace, 'a.txt'));
+      if (change === 'extra')
+        writeFileSync(join(f.workspace, 'extra.txt'), 'extra\n');
+      if (change === 'staged') {
+        writeFileSync(join(f.workspace, 'a.txt'), 'staged change\n');
+        git(f.workspace, ['add', 'a.txt']);
+        writeFileSync(join(f.workspace, 'a.txt'), 'committed\n');
+      }
+      if (change === 'branch')
+        git(f.workspace, ['checkout', '-b', 'different']);
+      if (change === 'policy')
+        git(f.workspace, ['config', 'core.autocrlf', 'true']);
+      const index = readFileSync(join(f.workspace, '.git', 'index'));
+      expect(f.verify).toThrow(
+        change === 'staged'
+          ? 'staged index differs'
+          : change === 'branch'
+            ? 'HEAD or branch differs'
+            : change === 'policy'
+              ? 'Git content policy differs'
+              : 'working files differ',
+      );
+      expect(readFileSync(join(f.workspace, '.git', 'index'))).toEqual(index);
+    },
+  );
+  test('refuses a damaged target Git pack', () => {
+    const f = restored();
+    git(f.workspace, ['repack', '-ad']);
+    const directory = join(f.workspace, '.git', 'objects', 'pack');
+    const name = readdirSync(directory).find((name) => name.endsWith('.pack'));
+    expect(name).toBeTruthy();
+    const path = join(directory, name!);
+    const bytes = readFileSync(path);
+    bytes[0] ^= 1;
+    chmodSync(path, 0o600);
+    writeFileSync(path, bytes);
+    expect(f.verify).toThrow();
+    expect(readFileSync(path)).toEqual(bytes);
+  });
+  test('catches a target HEAD change during isolated object validation', () => {
+    const f = restored();
+    const original = packageIo.packageGit;
+    let changed = false;
+    const spy = vi
+      .spyOn(packageIo, 'packageGit')
+      .mockImplementation((cwd, args, input, policy) => {
+        const result = original(cwd, args, input, policy);
+        if (
+          !changed &&
+          cwd.endsWith(join('object-check', 'workspace')) &&
+          args[0] === 'config' &&
+          args[1] === 'core.filemode'
+        ) {
+          changed = true;
+          git(f.workspace, [
+            '-c',
+            'user.name=Test',
+            '-c',
+            'user.email=test@example.invalid',
+            'commit',
+            '--allow-empty',
+            '-m',
+            'Concurrent change',
+          ]);
+        }
+        return result;
+      });
+    try {
+      expect(f.verify).toThrow('metadata changed during verification');
+      expect(changed).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+  test.skipIf(process.platform === 'win32')(
+    'checks physical executable intent even when Git ignores mode changes',
+    () => {
+      const f = fixture();
+      git(f.source, ['update-index', '--chmod=+x', 'a.txt']);
+      git(f.source, ['config', 'core.filemode', 'false']);
+      f.pack();
+      const { workspace } = f.unpack();
+      chmodSync(join(workspace, 'a.txt'), 0o600);
+      expect(() =>
+        verifyWorkspacePackage({
+          archive: f.output,
+          keyFile: f.keyFile,
+          workspace,
+          workspacePaused: true,
+        }),
+      ).toThrow('working files differ');
+    },
+  );
+  test('requires paused-writer acknowledgement', () => {
+    const f = restored();
+    expect(() =>
+      verifyWorkspacePackage({
+        archive: f.output,
+        keyFile: f.keyFile,
+        workspace: f.workspace,
+        workspacePaused: false,
+      }),
+    ).toThrow('--workspace-paused');
+  });
 });
