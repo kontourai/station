@@ -7,9 +7,7 @@
     "io.kontourai.station": {
       "schemaVersion": "1.0",
       "title": "Host action proof",
-      "permissions": [
-        "agents.invoke"
-      ],
+      "permissions": ["agents.invoke"],
       "agents": [
         {
           "slug": "host-action-echo",
