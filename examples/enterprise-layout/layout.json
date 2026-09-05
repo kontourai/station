@@ -17,12 +17,12 @@
       "actions": [
         {
           "type": "prompt",
-          "label": "Log Activity",
+          "label": "Review Log Activity",
           "data": "enterprise-layout:activity"
         },
         {
           "type": "prompt",
-          "label": "Customer Outreach",
+          "label": "Review Customer Outreach",
           "data": "enterprise-layout:outreach"
         }
       ]
@@ -34,12 +34,12 @@
       "actions": [
         {
           "type": "prompt",
-          "label": "Log Activity",
+          "label": "Review Log Activity",
           "data": "enterprise-layout:activity"
         },
         {
           "type": "prompt",
-          "label": "Generate Report",
+          "label": "Review Generate Report",
           "data": "enterprise-layout:report"
         }
       ]

@@ -13,6 +13,7 @@ import { Button } from '../components/Button';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useShowSurface } from '../contexts/useShowSurface';
+import { workspacePaneHostActionControlId } from './workspacePaneHostActionFocus';
 import './WorkspacePaneHostActions.css';
 
 const reasons: Record<WorkspacePaneHostActionUnavailableReason, string> = {
@@ -24,7 +25,7 @@ const reasons: Record<WorkspacePaneHostActionUnavailableReason, string> = {
   'agent-unavailable':
     'This Agent is not ready. Review its model or engine connection.',
   'shared-workspace-required':
-    'This action needs a shared Project workspace; worktree provisioning is not supported yet.',
+    'This Station requires a shared Project workspace for this action.',
   'installation-changed':
     'This package or its Project changed. Refresh actions before starting new work.',
   'host-unavailable': 'Workspace actions are temporarily unavailable.',
@@ -121,7 +122,7 @@ function PackageHostActions({
   }
 
   return (
-    <fieldset className="workspace-host-actions__package">
+    <fieldset className="workspace-host-actions__package" tabIndex={-1}>
       <legend>{displayName ?? projection.owner.pluginId}</legend>
       <div className="workspace-host-actions__controls">
         <label>
@@ -153,6 +154,11 @@ function PackageHostActions({
         {projection.actions.map((action) => (
           <Button
             key={action.key}
+            id={workspacePaneHostActionControlId(
+              projectSlug,
+              projection.owner.pluginId,
+              action.id,
+            )}
             pending={pendingKey === action.key}
             pendingLabel="Starting…"
             disabled={

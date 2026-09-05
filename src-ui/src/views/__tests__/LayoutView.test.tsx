@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const layoutQueryState = vi.hoisted(() => ({
@@ -16,7 +16,12 @@ const hostQuery = vi.hoisted(() => ({
   isSuccess: true,
   data: {
     complete: true,
-    contributions: [] as Array<{ projection: { owner: { pluginId: string } } }>,
+    contributions: [] as Array<{
+      projection: {
+        owner: { pluginId: string };
+        actions?: Array<{ id: string }>;
+      };
+    }>,
   },
 }));
 vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
@@ -86,15 +91,26 @@ vi.mock('../../hooks/useActiveChatSessions', () => ({
 vi.mock('../../hooks/useSlashCommandHandler', () => ({
   useSlashCommandHandler: () => vi.fn(),
 }));
-const renderedLayout = vi.hoisted(() => ({ value: undefined as any }));
+const renderedLayout = vi.hoisted(() => ({
+  value: undefined as any,
+  launch: undefined as any,
+}));
 vi.mock('../../layouts', () => ({
-  LayoutRenderer: ({ layout }: { layout: unknown }) => {
+  LayoutRenderer: ({
+    layout,
+    onLaunchPrompt,
+  }: {
+    layout: unknown;
+    onLaunchPrompt: unknown;
+  }) => {
     renderedLayout.value = layout;
+    renderedLayout.launch = onLaunchPrompt;
     return <div>Layout rendered</div>;
   },
 }));
 
 import { LAST_PROJECT_LAYOUT_KEY } from '../../contexts/navigation-store';
+import { workspacePaneHostActionControlId } from '../../workspace-panes/workspacePaneHostActionFocus';
 import { LayoutView } from '../LayoutView';
 
 describe('LayoutView terminal states (4-HOME-009)', () => {
@@ -131,6 +147,56 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     expect(renderedLayout.value.actions).toEqual([]);
     expect(renderedLayout.value.globalSkills).toEqual([]);
     expect(renderedLayout.value.tabs[0].actions).toEqual([local]);
+  });
+
+  test('migrated tab Review focuses the existing host action without an ambient Agent', () => {
+    layoutQueryState.data = {
+      slug: 'demo',
+      name: 'Demo',
+      config: {
+        plugin: 'demo-plugin',
+        tabs: [{ id: 'one', label: 'One', component: 'demo' }],
+      },
+    };
+    hostQuery.data.contributions = [
+      {
+        projection: {
+          owner: { pluginId: 'demo-plugin' },
+          actions: [{ id: 'activity' }],
+        },
+      },
+    ];
+    render(
+      <>
+        <button
+          id={workspacePaneHostActionControlId(
+            'one',
+            'demo-plugin',
+            'activity',
+          )}
+        >
+          Log Activity
+        </button>
+        <button
+          onClick={() =>
+            renderedLayout.launch({
+              id: 'demo-plugin:activity',
+              label: 'Review Log Activity',
+            })
+          }
+        >
+          Review Log Activity
+        </button>
+        <LayoutView projectSlug="one" layoutSlug="demo" />
+      </>,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Review Log Activity' }),
+    );
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Log Activity' }),
+    );
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 
   test('unknown host capability does not briefly activate a persisted plugin global action', () => {

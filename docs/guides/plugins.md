@@ -1375,8 +1375,8 @@ availability and never selects an Agent.
 An action's `intent` is either literal `prompt` data or an exact own-package
 `plugin-prompt` id. Label text is never treated as a prompt or routing address.
 An action may fix its own Agent; that binding takes precedence over the host
-selector. Grant `agents.invoke` in Library, configure the Agent's external
-connection, and make the Agent available in the Project before running it.
+selector. Grant `agents.invoke` in Library, configure the native model or external
+engine connection, and make the Agent available in the Project before running it.
 
 The host confirms that a conversation was accepted and offers **Open
 conversation**. If delivery is uncertain, inspect Activity; the host does not
@@ -1385,6 +1385,6 @@ Agents, and unavailable execution modes remain visible failures.
 
 The demo, enterprise, coding, getting-started, and knowledge-docs examples each
 include an explicit old-to-new behavior table. Their package-global declarations
-are migrated; tab-local actions remain local. Existing persisted Layout records
+are migrated. Enterprise tab-local **Review** buttons focus their matching host control; invocation and Agent authority remain with that control. Existing persisted Layout records
 are not rewritten, and this does not claim the entire structural Layout
 migration is complete.

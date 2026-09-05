@@ -1798,7 +1798,7 @@ conversation, execution-session, and provider-turn identities.
 Host actions require the package's current `agents.invoke` permission. They use
 captured Project and Agent authority at provider invocation and cannot substitute
 an ambient Agent, override a fixed action, or revive a retired installation.
-This slice supports native Station Agents and externally connected Agents in shared Project workspaces. Native execution preserves the existing configured Agent and model; a private relay capability verifies its runtime generation and repeats admission immediately before the native model call. Worktree provisioning remains explicitly unavailable.
+Host actions support native Station Agents and externally connected Agents in shared or provisioned Project worktrees. Native execution preserves the existing configured Agent and model; a private relay capability verifies its runtime generation and repeats admission immediately before the native model call. Canonical provisioning mints a private exact Session/Project/CWD binding. The native relay carries that Session directory into Project context, Bash children, and relative file operations; explicit MCP resource roots retain their configured meaning.
 
 A host-created Session retains server-stamped `workspacePaneHostAction` metadata:
 package id, action id, and opaque installation generation. These coordinates

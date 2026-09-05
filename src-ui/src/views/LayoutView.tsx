@@ -25,6 +25,7 @@ import {
 } from '../hooks/useActiveChatSessions';
 import { useSlashCommandHandler } from '../hooks/useSlashCommandHandler';
 import { LayoutRenderer } from '../layouts';
+import { focusWorkspacePaneHostAction } from '../workspace-panes/workspacePaneHostActionFocus';
 import {
   annotateUnavailableAgentLabel,
   type ProjectAgentFilterState,
@@ -206,6 +207,27 @@ export function LayoutView({
 
   const handleLaunchPrompt = useCallback(
     async (prompt: any) => {
+      // Migrated tab links review the single host control. Labels/bodies never
+      // become a second launch route or an unqualified Agent fallback.
+      if (
+        hostOwnsGlobalActions &&
+        typeof packageId === 'string' &&
+        typeof prompt.id === 'string' &&
+        prompt.id.startsWith(`${packageId}:`)
+      ) {
+        const actionId = prompt.id.slice(packageId.length + 1);
+        const contribution = hostActions.data?.contributions.find(
+          ({ projection }) => projection.owner.pluginId === packageId,
+        );
+        if (
+          hostAuthority?.isCurrent() &&
+          contribution?.projection.actions.some(
+            (action) => action.id === actionId,
+          )
+        )
+          focusWorkspacePaneHostAction(projectSlug, packageId, actionId);
+        return;
+      }
       // Never a silent launch (archive#1004): resolves only
       // to an agent actually available in THIS project — an agent owned by
       // a different project is refused here even if it was somehow still
@@ -235,6 +257,10 @@ export function LayoutView({
       await sendMessage(sessionId, targetAgent.slug, undefined, promptText);
     },
     [
+      hostOwnsGlobalActions,
+      packageId,
+      hostActions.data,
+      hostAuthority,
       agents,
       layout?.defaultAgent,
       createChatSession,

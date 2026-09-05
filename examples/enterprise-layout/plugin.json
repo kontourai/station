@@ -57,6 +57,45 @@
           "kind": "plugin-prompt",
           "promptId": "daily"
         }
+      },
+      {
+        "id": "activity",
+        "label": "Log Activity",
+        "presentation": "action",
+        "intent": {
+          "kind": "plugin-prompt",
+          "promptId": "activity",
+          "agent": {
+            "kind": "own-plugin-agent",
+            "agentId": "enterprise-assistant"
+          }
+        }
+      },
+      {
+        "id": "outreach",
+        "label": "Customer Outreach",
+        "presentation": "action",
+        "intent": {
+          "kind": "plugin-prompt",
+          "promptId": "outreach",
+          "agent": {
+            "kind": "own-plugin-agent",
+            "agentId": "enterprise-assistant"
+          }
+        }
+      },
+      {
+        "id": "report",
+        "label": "Generate Report",
+        "presentation": "action",
+        "intent": {
+          "kind": "plugin-prompt",
+          "promptId": "report",
+          "agent": {
+            "kind": "own-plugin-agent",
+            "agentId": "enterprise-assistant"
+          }
+        }
       }
     ],
     "agentSelection": {
