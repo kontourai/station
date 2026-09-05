@@ -45,6 +45,7 @@ import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { createStationHomeBackup } from '@kontourai/station-shared/station-home-archive';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ConfigLoader } from '../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
 import {
@@ -812,6 +813,9 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
 
   it('releases terminal and defers voice when initialization fails, then retries cleanly', async () => {
     home = await createSchemaHome('station-coldstart-retry-');
+    await new ConfigLoader({ projectHomeDir: home }).mutateAppConfig(() => ({
+      registryTrust: { profiles: [] },
+    }));
     const port = TEST_PORT;
     runtime = new StationRuntime({
       projectHomeDir: home,
@@ -819,6 +823,9 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       host: '127.0.0.1',
     });
     const terminalListener = replaceTerminalListener(runtime);
+    const policies = (
+      runtime as unknown as { orchestrationEventStore: EventStore }
+    ).orchestrationEventStore.createRegistryTrustPolicyDecisions();
     const eventLog = (
       runtime as unknown as {
         eventLog: { loadRecentEvents(): Promise<void> };
@@ -834,6 +841,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     routeMocks.deferServerFactory = true;
 
     await expect(runtime.initialize()).rejects.toBe(failure);
+    expect(policies.read()).toBeNull();
     expect(terminalListener.stop).toHaveBeenCalledTimes(1);
     expect(terminalListener.start).toHaveBeenNthCalledWith(
       1,
@@ -856,6 +864,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     expect(failedVoltAgent.shutdown).toHaveBeenCalledTimes(1);
 
     await expect(runtime.initialize()).resolves.toBeUndefined();
+    expect(policies.read()?.identity.configured).toBe(true);
     expect(terminalListener.start).toHaveBeenNthCalledWith(
       2,
       port + 1,

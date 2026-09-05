@@ -1,11 +1,14 @@
 import { createHash, generateKeyPairSync, randomUUID } from 'node:crypto';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -89,7 +92,7 @@ test('policy observation does not migrate existing configuration or change its p
   expect(decisions.read()).toBeNull();
 });
 
-test('applied A→B→A across two configuration owners uses fresh CAS epochs and survives restart', async () => {
+test('applied A→B→A across two configuration owners uses fresh CAS epochs and survives database close/reopen', async () => {
   const directory = root(),
     home = join(directory, 'home'),
     database = join(directory, 'events.sqlite');
@@ -123,6 +126,10 @@ test('applied A→B→A across two configuration owners uses fresh CAS epochs an
   expect(a2?.identity).toEqual(a1?.identity);
   expect(a2?.epoch).not.toBe(a1?.epoch);
   expect(a2?.scope).toBe(a1?.scope);
+  for (const previous of [firstStore, secondStore]) {
+    previous.close();
+    stores.splice(stores.indexOf(previous), 1);
+  }
   const restarted = createLocalRegistryTrustPolicyAuthority(
     home,
     store(database).createRegistryTrustPolicyDecisions(),
@@ -236,4 +243,55 @@ test('a self-consistent hash does not make malformed persisted policy identity v
   expect(() => owner.createRegistryTrustPolicyDecisions().read()).toThrow(
     /Registry trust policy/,
   );
+});
+
+test('an unprofiled stable app-config symlink remains compatible with actual ConfigLoader and policy observation', async () => {
+  const directory = root(),
+    home = join(directory, 'home');
+  mkdirSync(home);
+  await ensureStationHomeSchema(home);
+  const loader = new ConfigLoader({ projectHomeDir: home });
+  const config = await loader.loadAppConfig();
+  const path = join(home, 'config', 'app.json'),
+    target = join(directory, 'linked-app.json');
+  const bytes = readFileSync(path, 'utf8');
+  writeFileSync(target, bytes);
+  unlinkSync(path);
+  symlinkSync(target, path);
+  expect(await loader.loadAppConfig()).toEqual(config);
+  const decisions = store(
+    join(directory, 'events.sqlite'),
+  ).createRegistryTrustPolicyDecisions();
+  expect(
+    await createLocalRegistryTrustPolicyAuthority(home, decisions).current(),
+  ).toBeNull();
+  expect(lstatSync(path).isSymbolicLink()).toBe(true);
+  expect(readFileSync(target, 'utf8')).toBe(bytes);
+  expect(decisions.read()).toBeNull();
+});
+
+test('private key material is refused before app configuration is persisted', async () => {
+  const pair = generateKeyPairSync('ed25519');
+  const privatePem = pair.privateKey
+    .export({ format: 'pem', type: 'pkcs8' })
+    .toString();
+  const publicPem = pair.publicKey
+    .export({ format: 'pem', type: 'spki' })
+    .toString();
+  expect(() => registryTrustPolicyIdentity(profile(privatePem))).toThrow(
+    /public SPKI/,
+  );
+  expect(() => registryTrustPolicyIdentity(profile(publicPem))).not.toThrow();
+  const directory = root(),
+    home = join(directory, 'home');
+  mkdirSync(home);
+  await ensureStationHomeSchema(home);
+  const loader = new ConfigLoader({ projectHomeDir: home });
+  await loader.loadAppConfig();
+  await expect(
+    loader.mutateAppConfig(() => ({ registryTrust: profile(privatePem) })),
+  ).rejects.toThrow();
+  expect(
+    readFileSync(join(home, 'config', 'app.json'), 'utf8').includes(privatePem),
+  ).toBe(false);
 });

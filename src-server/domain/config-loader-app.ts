@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { type BigIntStats, renameSync, statSync } from 'node:fs';
+import {
+  type BigIntStats,
+  constants,
+  realpathSync,
+  renameSync,
+  statSync,
+} from 'node:fs';
 import { chmod, lstat, mkdir, open, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
@@ -99,7 +105,14 @@ async function readAppConfigBounded(
   path: string,
   expectedIdentity?: string,
 ): Promise<string> {
-  const handle = await open(path, 'r');
+  const handle = await open(
+    path,
+    expectedIdentity === undefined
+      ? 'r'
+      : constants.O_RDONLY |
+          (constants.O_NOFOLLOW ?? 0) |
+          (constants.O_NONBLOCK ?? 0),
+  );
   try {
     const opened = await handle.stat({ bigint: true });
     if (
@@ -150,23 +163,27 @@ export async function observeAppConfigFile(
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
   }
-  if (!before.isFile() || before.isSymbolicLink())
+  const signature = (value: BigIntStats) =>
+    [value.dev, value.ino, value.size, value.mtimeNs, value.ctimeNs].join(':');
+  // Preserve an existing stable app-config symlink supported by ConfigLoader.
+  // Open its captured physical target, never a freshly followed replacement.
+  if (!before.isFile() && !before.isSymbolicLink())
     throw new AppConfigConflictError();
-  const signature = [
-    before.dev,
-    before.ino,
-    before.size,
-    before.mtimeNs,
-    before.ctimeNs,
-  ].join(':');
-  const content = await readAppConfigBounded(path, signature);
+  const target = before.isSymbolicLink() ? realpathSync.native(path) : path;
+  const targetBefore = before.isSymbolicLink()
+    ? await lstat(target, { bigint: true })
+    : before;
+  if (!targetBefore.isFile() || targetBefore.isSymbolicLink())
+    throw new AppConfigConflictError();
+  const content = await readAppConfigBounded(target, signature(targetBefore));
   const after = await lstat(path, { bigint: true });
+  const targetAfter = await lstat(target, { bigint: true });
   if (
-    !after.isFile() ||
-    after.isSymbolicLink() ||
-    [after.dev, after.ino, after.size, after.mtimeNs, after.ctimeNs].join(
-      ':',
-    ) !== signature
+    signature(after) !== signature(before) ||
+    signature(targetAfter) !== signature(targetBefore) ||
+    !targetAfter.isFile() ||
+    targetAfter.isSymbolicLink() ||
+    (before.isSymbolicLink() && realpathSync.native(path) !== target)
   )
     throw new AppConfigConflictError();
   const value: unknown = JSON.parse(content);

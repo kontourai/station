@@ -89,7 +89,10 @@ import {
   builtinStationAgentSpec,
   createSessionAgentResolver,
 } from '../../services/orchestration/session-agent-resolution.js';
-import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
+import type {
+  RegistryTrustPolicyApplication,
+  RegistryTrustPolicyAuthority,
+} from '../../services/plugins/registry-trust-policy.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import { observeCwdShadow } from '../../services/projects/project-resource-shadow.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
@@ -282,6 +285,7 @@ export interface InitializeRuntimeDeps {
 }
 
 interface InitializeRuntimeResult {
+  registryPolicyApplication?: RegistryTrustPolicyApplication;
   appConfig: AppConfig;
   framework: RuntimeFramework;
   orchestrationService: OrchestrationService;
@@ -891,11 +895,6 @@ export async function initializeRuntime(
       'Runtime configuration changed while startup agents were being constructed.',
     );
   }
-  if (registryPolicyApplication)
-    await deps.registryTrustPolicyAuthority!.publishApplied(
-      registryPolicyApplication,
-      appConfig.registryTrust,
-    );
   if (configurationBefore) {
     deps.onAgentConfigurationReady?.(configurationBefore);
   }
@@ -1047,6 +1046,7 @@ export async function initializeRuntime(
   logger.debug('Station Runtime initialized', { port });
 
   return {
+    registryPolicyApplication,
     appConfig,
     framework,
     orchestrationService,

@@ -493,6 +493,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // One private Node child with exposed GC proves strong lease custody. No
   // shared state or latency assertion; collection is explicitly requested.
   'src-server/services/plugins/__tests__/plugin-composition-custody-gc.test.ts',
+  'src-server/domain/__tests__/app-config-observation.process.test.ts',
   'src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts',
   // station#2928: retains the durable ConfigLoader/registry adoption seam;
   // production's default CLI detection reaches child_process transitively.

@@ -24,6 +24,8 @@ const opaque = (value: unknown, maximum: number): value is string =>
   });
 const KEY_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
+const PUBLIC_SPKI_PEM =
+  /^\s*-----BEGIN PUBLIC KEY-----[\r\n]+[A-Za-z0-9+/=\r\n]+-----END PUBLIC KEY-----\s*$/;
 const ordinal = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 function object(value: unknown): value is Record<string, unknown> {
   return (
@@ -132,6 +134,8 @@ export function registryTrustPolicyIdentity(
             value.length > 16384
           )
             throw new Error('Registry trust key is invalid');
+          if (!PUBLIC_SPKI_PEM.test(value))
+            throw new Error('Registry trust key must be a public SPKI PEM');
           const key = createPublicKey(value);
           if (key.asymmetricKeyType !== 'ed25519')
             throw new Error('Registry trust requires Ed25519 public keys');

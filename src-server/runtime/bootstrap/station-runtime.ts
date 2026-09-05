@@ -3219,6 +3219,13 @@ export class StationRuntime {
     // Never delay a usable runtime for optional telemetry.
     void this.usageTelemetry.stationStarted();
     this.observeRuntimeConfigurationSources();
+    // This is the last awaited startup step. Failed listeners/services above
+    // cannot leave an accepted policy decision from an incomplete startup.
+    if (initialized.registryPolicyApplication)
+      await this.registryTrustPolicyAuthority!.publishApplied(
+        initialized.registryPolicyApplication,
+        initialized.appConfig.registryTrust,
+      );
     this.recordRuntimeLifecycle('ready');
 
     // archive#1575: detected native engines (claude/codex CLIs) become registry
