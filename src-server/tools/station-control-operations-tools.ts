@@ -421,14 +421,18 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
     {
       cron: z.string().min(1),
       count: z.number().int().min(1).max(100).optional(),
+      // #1536 D1: a cron alone is evaluated as UTC, so an operator previewing a
+      // zoned job's schedule needs the same field the job carries.
+      timezone: z.string().min(1).optional(),
     },
-    async ({ cron, count }) =>
+    async ({ cron, count, timezone }) =>
       jsonToolResult(
         await toOperationsEnvelope(
           previewSchedule(
             controlApiBase(),
             cron,
             count,
+            timezone,
             controlRequestOptions(),
           ),
         ),

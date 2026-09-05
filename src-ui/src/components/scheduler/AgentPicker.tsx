@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   type AgentData,
+  useAgentCatalogRead,
   useAgents,
-  useAgentsLoaded,
 } from '../../contexts/AgentsContext';
 import { agentRunnability } from '../agent-runnability';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -22,7 +22,8 @@ export function AgentPicker({
   onChange: (slug: string) => void;
 }) {
   const agents = useAgents();
-  const agentsLoaded = useAgentsLoaded();
+  const { loaded: agentsLoaded, settled: agentsSettled } =
+    useAgentCatalogRead();
   const { eligible } = useMemo(() => schedulerAgentOptions(agents), [agents]);
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -79,12 +80,32 @@ export function AgentPicker({
 
   // #1536 H1-2: an unanswered catalog is `[]`, which is indistinguishable from
   // one that genuinely holds nothing. "No runnable agents" is a verdict, so it
-  // waits for the answer; until then the trigger says only that it is waiting.
-  if (!agentsLoaded && !eligible.length) {
-    // The control itself is what is waiting, so the shared placeholder stands in
-    // for it — labelled rather than spelled out in a bespoke sentence
-    // (SHELL-13; enforced by `check-prepush-static-gates`).
+  // waits for the answer.
+  //
+  // #1536 D2: and it waits on SETTLED, not on loaded. Gating the skeleton on
+  // `isSuccess` meant a FAILED read kept it spinning forever — beside the
+  // field's own "could not load the Agent catalog / Try again", which is the
+  // sentence that actually explains it. Three states, three renderings.
+  if (!agentsSettled && !eligible.length) {
+    // Still arriving. The control itself is what is waiting, so the shared
+    // placeholder stands in for it — labelled rather than spelled out in a
+    // bespoke sentence (SHELL-13; enforced by `check-prepush-static-gates`).
     return <SkeletonList count={1} label="Loading agents" />;
+  }
+
+  if (!agentsLoaded && !eligible.length) {
+    // The read ANSWERED, with a failure. The trigger says nothing about agents
+    // — there is nothing to say — and the field's error carries the reason and
+    // the retry. A verdict here would be a second, weaker account of the same
+    // failure.
+    return (
+      <button
+        type="button"
+        className="agent-picker__trigger"
+        disabled
+        aria-label="Agent unavailable"
+      />
+    );
   }
 
   // Nothing the runner could resolve even in principle. The trigger stays

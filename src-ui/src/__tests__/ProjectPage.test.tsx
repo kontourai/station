@@ -13,10 +13,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DEGRADED_QUERY_TIMEOUT_MS } from '../hooks/useDegradedQueryState';
-import {
-  OPEN_PROJECT_CHATS_EVENT,
-  PROJECT_CHAT_ENTRY_TELEMETRY_SOURCE,
-} from '../lib/projectChatEvents';
+import { OPEN_PROJECT_CHATS_EVENT } from '../lib/projectChatEvents';
 
 const sdkMocks = vi.hoisted(() => ({
   project: undefined as ProjectConfig | undefined,
@@ -573,13 +570,17 @@ describe('ProjectPage (#762 query-failure regression)', () => {
 
     test('asks the dock for a chat bound to this project, not just an open dock', async () => {
       readyCodex();
-      const requests: Array<{ projectSlug?: string; projectName?: string }> =
-        [];
+      const requests: Array<{
+        projectSlug?: string;
+        projectName?: string;
+        source?: string;
+      }> = [];
       const listener = (event: Event) => {
         requests.push(
           (event as CustomEvent<{ projectSlug?: string }>).detail as {
             projectSlug?: string;
             projectName?: string;
+            source?: string;
           },
         );
       };
@@ -591,21 +592,20 @@ describe('ProjectPage (#762 query-failure regression)', () => {
         window.removeEventListener(OPEN_PROJECT_CHATS_EVENT, listener);
       }
 
+      // #1536 M6/D4: the dispatcher names itself, so the source is observable
+      // right here rather than asserted as a constant against its own literal
+      // (D3). The dock reports what it is told; nothing in it hardcodes a
+      // caller that can outlive its only dispatcher.
       expect(requests).toEqual([
-        { projectSlug: 'demo', projectName: 'Demo Project' },
+        {
+          projectSlug: 'demo',
+          projectName: 'Demo Project',
+          source: 'project-page-cta',
+        },
       ]);
       // The dock has to be revealed too: its New Chat dialog renders inside
       // the dock shell, which is collapsed while closed.
       expect(navigationMocks.setDockState).toHaveBeenCalledWith(true);
-    });
-
-    test("names THIS caller in the dock listener's chat-entry telemetry", () => {
-      // #1536 M6: the listener reported `project-sidebar` — a pill deleted in
-      // archive#1629 — because it outlived its only dispatcher. The dock cannot
-      // be rendered by a test, so the name is single-sourced from the event seam
-      // this CTA dispatches through and pinned here, beside the dispatch.
-      expect(PROJECT_CHAT_ENTRY_TELEMETRY_SOURCE).toBe('project-page-cta');
-      expect(PROJECT_CHAT_ENTRY_TELEMETRY_SOURCE).not.toBe('project-sidebar');
     });
   });
 });

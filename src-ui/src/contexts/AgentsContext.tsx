@@ -92,13 +92,16 @@ export function useAgentCatalogRead(): {
   loaded: boolean;
   settled: boolean;
   failed: boolean;
+  /** A retry is in flight; a caller offering one must say so (#1536 D7). */
+  retrying: boolean;
   retry: () => void;
 } {
-  const { isSuccess, isError, refetch } = useAgentsQuery();
+  const { isSuccess, isError, isFetching, refetch } = useAgentsQuery();
   return {
     loaded: isSuccess,
     settled: isSuccess || isError,
     failed: isError,
+    retrying: isError && isFetching,
     retry: () => void refetch(),
   };
 }

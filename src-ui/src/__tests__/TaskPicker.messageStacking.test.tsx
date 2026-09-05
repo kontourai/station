@@ -219,9 +219,13 @@ describe.skipIf(!chromiumAvailable)(
         // assertion below had stopped proving anything.
         expect(
           Math.abs(panel.trappedTop - panel.top),
-          `the un-portaled clone measured the same top (${panel.trappedTop}) as ` +
-            'the portaled panel, so this fixture no longer reproduces the ' +
-            'containing-block trap and cannot prove the portal escapes it',
+          `the un-portaled clone and the panel measured the same top ` +
+            `(${panel.trappedTop}). EITHER the dialog is no longer portaled — ` +
+            'in which case the panel IS the trapped one and this is the ' +
+            'regression — OR the fixture stopped reproducing the ' +
+            'containing-block trap and can no longer prove anything. The ' +
+            'viewport assertions below tell the two apart: a portal regression ' +
+            'also puts the panel outside the viewport.',
         ).toBeGreaterThan(1);
         // THEN: the portaled panel is positioned against the viewport…
         expect({ top: panel.top >= 0, left: panel.left >= 0 }).toEqual({

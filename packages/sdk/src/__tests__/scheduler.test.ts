@@ -59,6 +59,10 @@ describe('scheduler query domain', () => {
     await getSchedulerStats(apiBase);
     await getSchedulerStatus(apiBase);
     await previewSchedule(apiBase, '0 9 * * *', 3);
+    // #1536 D1: the zone the expression is written in. Without it the server
+    // projects the cron as UTC, so a zoned job's preview names the wrong
+    // instants.
+    await previewSchedule(apiBase, '0 8 * * 1-5', 3, 'Australia/Brisbane');
     await getJobLogs(apiBase, 'daily report', {
       count: 4,
       providerId: 'built-in',
@@ -76,6 +80,10 @@ describe('scheduler query domain', () => {
       [`${apiBase}/scheduler/status`, 'GET'],
       [
         `${apiBase}/scheduler/jobs/preview-schedule?cron=0+9+*+*+*&count=3`,
+        'GET',
+      ],
+      [
+        `${apiBase}/scheduler/jobs/preview-schedule?cron=0+8+*+*+1-5&count=3&timezone=Australia%2FBrisbane`,
         'GET',
       ],
       [

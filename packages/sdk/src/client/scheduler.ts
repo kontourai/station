@@ -297,10 +297,16 @@ export async function previewSchedule(
   apiBase: string,
   cron: string,
   count?: number,
+  /**
+   * IANA zone the expression is written in. Omitted = UTC, which is what the
+   * scheduler does with an unzoned schedule (#1536 D1).
+   */
+  timezone?: string,
   opts?: ClientRequestOptions,
 ): Promise<string[]> {
   const query = new URLSearchParams({ cron });
   if (count !== undefined) query.set('count', String(count));
+  if (timezone) query.set('timezone', timezone);
   return unwrapSchedulerResponse<string[]>(
     await getJson(
       `${apiBase}/scheduler/jobs/preview-schedule?${query.toString()}`,

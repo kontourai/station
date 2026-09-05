@@ -62,6 +62,7 @@ export function JobFormModal({
     loaded: agentsLoaded,
     settled: agentsSettled,
     failed: agentsFailed,
+    retrying: agentsRetrying,
     retry: retryAgents,
   } = useAgentCatalogRead();
   const agentOptions = useMemo(() => schedulerAgentOptions(agents), [agents]);
@@ -144,6 +145,12 @@ export function JobFormModal({
     ...Object.fromEntries(extraFields.map((f) => [f.key, job?.[f.key] || ''])),
   });
   const [cronInput, setCronInput] = useState(form.cron);
+  // #1536 D1/D8: the zone the form's expression is written in — an edited job's
+  // own, or (for a new one) the default schedule's, which is the reader's. The
+  // preview and the field label both read it, so what the form SAYS and what it
+  // will SUBMIT cannot disagree.
+  const cronTimezone =
+    initialSchedule.kind === 'cron' ? initialSchedule.timezone : undefined;
 
   // The catalog can arrive after this form mounts, so the runnable default
   // cannot be settled at first render alone. Correct it once the catalog has
@@ -202,9 +209,7 @@ export function JobFormModal({
     return {
       kind: 'cron',
       expr: form.cron,
-      ...(initialSchedule.kind === 'cron' && initialSchedule.timezone
-        ? { timezone: initialSchedule.timezone }
-        : {}),
+      ...(cronTimezone ? { timezone: cronTimezone } : {}),
     };
   };
 
@@ -422,12 +427,16 @@ export function JobFormModal({
             {agentsFailed && (
               <span className="schedule__field-error">
                 Station could not load the Agent catalog.{' '}
+                {/* #1536 D7: a retry that looks idle while it is in flight
+                    invites a second click at the one moment a second request
+                    helps least. */}
                 <button
                   type="button"
                   className="schedule__field-retry"
                   onClick={retryAgents}
+                  disabled={agentsRetrying}
                 >
-                  Try again
+                  {agentsRetrying ? 'Trying…' : 'Try again'}
                 </button>
               </span>
             )}
@@ -573,6 +582,14 @@ export function JobFormModal({
         <div className="schedule__field">
           <span className="schedule__field-label" id="schedule-mode-label">
             Schedule
+            {form.scheduleKind === 'cron' && (
+              // #1536 D8: a calendar time is meaningless without its zone, and
+              // this is the zone the job will actually be evaluated in.
+              <span className="schedule__field-hint">
+                {' '}
+                · {cronTimezone ?? 'UTC'}
+              </span>
+            )}
           </span>
           <fieldset
             className="schedule-mode-editor__tabs"
@@ -607,7 +624,13 @@ export function JobFormModal({
                 value={form.cron}
                 onChange={(v) => setForm((f) => ({ ...f, cron: v }))}
               />
-              <CronPreview cron={cronInput} />
+              <CronPreview
+                schedule={{
+                  kind: 'cron',
+                  expr: cronInput,
+                  ...(cronTimezone ? { timezone: cronTimezone } : {}),
+                }}
+              />
             </>
           )}
           {form.scheduleKind === 'every' && (

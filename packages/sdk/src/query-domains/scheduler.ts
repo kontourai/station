@@ -86,10 +86,15 @@ export function useJobLogs(target: string | null, providerId?: string) {
   );
 }
 
-export function usePreviewSchedule(cron: string | null) {
+export function usePreviewSchedule(
+  cron: string | null,
+  /** The zone the expression is written in; part of the key, not a detail. */
+  timezone?: string,
+) {
   return useApiQuery(
-    ['scheduler', 'preview', cron ?? ''],
-    async () => previewSchedule(await _getApiBase(), cron!),
+    ['scheduler', 'preview', cron ?? '', timezone ?? ''],
+    async () =>
+      previewSchedule(await _getApiBase(), cron!, undefined, timezone),
     { staleTime: 60_000, enabled: !!cron && cron.trim().length > 0 },
   );
 }

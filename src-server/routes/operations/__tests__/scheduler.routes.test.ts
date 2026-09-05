@@ -266,6 +266,33 @@ describe('Scheduler Routes', () => {
     expect(body.data.length).toBeGreaterThan(0);
   });
 
+  test('GET /jobs/preview-schedule forwards the timezone the expression is written in', async () => {
+    // #1536 D1: without it the service evaluates the expression as UTC, so a
+    // preview of a zoned job returns different instants from the ones it fires
+    // at — the Add Job form showed "Tue 2:00 AM MDT" for a Mon 8:00 AM MDT job.
+    const { app, svc } = setup();
+    await app.request(
+      '/jobs/preview-schedule?cron=0+8+*+*+1-5&count=3&timezone=Australia%2FBrisbane',
+    );
+    expect(svc.previewSchedule).toHaveBeenCalledWith(
+      '0 8 * * 1-5',
+      3,
+      'Australia/Brisbane',
+    );
+  });
+
+  test('GET /jobs/preview-schedule omits the timezone when none is asked for', async () => {
+    // Absent stays absent rather than becoming the server's own zone: the
+    // scheduler treats an unzoned schedule as UTC and the preview must agree.
+    const { app, svc } = setup();
+    await app.request('/jobs/preview-schedule?cron=0+8+*+*+1-5');
+    expect(svc.previewSchedule).toHaveBeenCalledWith(
+      '0 8 * * 1-5',
+      5,
+      undefined,
+    );
+  });
+
   test('GET /jobs/preview-schedule returns 400 without cron', async () => {
     const { app } = setup();
     const res = await app.request('/jobs/preview-schedule');

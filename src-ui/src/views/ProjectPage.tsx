@@ -303,6 +303,7 @@ export function ProjectPage({ slug }: { slug: string }) {
                 requestProjectChat({
                   projectSlug: slug,
                   projectName: project.name || slug,
+                  source: 'project-page-cta',
                 });
               }}
             >

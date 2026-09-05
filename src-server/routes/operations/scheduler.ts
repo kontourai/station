@@ -176,7 +176,14 @@ export function createSchedulerRoutes(
       if (!cron)
         return c.json({ success: false, error: 'cron is required' }, 400);
       const count = parseInt(c.req.query('count') || '5', 10);
-      const data = await schedulerService.previewSchedule(cron, count);
+      // #1536 D1: the zone travels with the expression or the projection is
+      // wrong for every zoned schedule.
+      const timezone = c.req.query('timezone') || undefined;
+      const data = await schedulerService.previewSchedule(
+        cron,
+        count,
+        timezone,
+      );
       return c.json({ success: true, data });
     } catch (error: unknown) {
       logger.error('Failed to preview schedule', { error });

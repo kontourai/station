@@ -16,19 +16,21 @@
 export const OPEN_PROJECT_CHATS_EVENT = 'station:open-project-chats';
 
 /**
- * Who asked, for `ui.chat.entry`. Lives here rather than as a literal in the
- * dock's listener because the dock cannot name its own caller: #1536 M6 found
- * it still reporting `project-sidebar`, a pill deleted in archive#1629, because
- * the listener outlived its only dispatcher. Exported from the seam that
- * identifies the caller, so the event and the telemetry source cannot drift
- * apart — and the value is asserted where the dispatch is
- * (`ProjectPage.test.tsx`), which is the only place both are observable.
+ * Every dispatcher of this event, as `ui.chat.entry` names it.
+ *
+ * #1536 M6/D4: the dock's listener reported `source: 'project-sidebar'` — a pill
+ * deleted in archive#1629 — because it outlived its only dispatcher and had no
+ * way to know. A listener cannot name its caller, so the CALLER carries the
+ * name and the dock reports what it was told. A second dispatcher gets its own
+ * entry here rather than being mislabelled as this one.
  */
-export const PROJECT_CHAT_ENTRY_TELEMETRY_SOURCE = 'project-page-cta';
+export type ProjectChatEntrySource = 'project-page-cta';
 
 export type OpenProjectChatsDetail = {
   projectSlug?: string;
   projectName?: string;
+  /** Absent only from a caller predating this field; the dock says so. */
+  source?: ProjectChatEntrySource;
 };
 
 export function requestProjectChat(detail: OpenProjectChatsDetail): void {
@@ -38,3 +40,6 @@ export function requestProjectChat(detail: OpenProjectChatsDetail): void {
     }),
   );
 }
+
+/** What the dock reports when a dispatcher did not name itself. */
+export const UNNAMED_PROJECT_CHAT_ENTRY_SOURCE = 'project-chat-event';

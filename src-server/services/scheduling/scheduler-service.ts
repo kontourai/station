@@ -351,10 +351,23 @@ export class SchedulerService {
     return provider.readRunFile(log.output);
   }
 
-  async previewSchedule(cron: string, count = 5): Promise<string[]> {
-    // Back-compat: the UI / API passes a bare cron string. Wrap as a UTC
-    // cron schedule and defer to ephemeris for DST-aware projection.
-    const schedule: Schedule = { kind: 'cron', expr: cron };
+  /**
+   * #1536 D1: `timezone` is the whole point of this signature. A cron
+   * expression alone is evaluated as UTC by `nextOccurrences`, so previewing a
+   * ZONED schedule without it returned the wrong instants — the Add Job form
+   * showed "Tue 2:00 AM MDT" for a job that fires Mon 8:00 AM MDT. Absent
+   * still means UTC, which is what an unzoned job actually does.
+   */
+  async previewSchedule(
+    cron: string,
+    count = 5,
+    timezone?: string,
+  ): Promise<string[]> {
+    const schedule: Schedule = {
+      kind: 'cron',
+      expr: cron,
+      ...(timezone ? { timezone } : {}),
+    };
     return nextOccurrences(schedule, count, Date.now()).map((ms) =>
       new Date(ms).toISOString(),
     );

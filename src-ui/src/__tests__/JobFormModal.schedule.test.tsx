@@ -7,8 +7,10 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const agentCatalog = vi.hoisted(() => ({
   agents: [] as EnrichedAgentProjection[],
   /** The READ's state, not the rows: `[]` means both "arriving" and "failed". */
-  read: { loaded: true, settled: true, failed: false },
+  read: { loaded: true, settled: true, failed: false, retrying: false },
   retry: () => {},
+  /** Render the REAL picker, for the cases that are about the picker. */
+  useRealPicker: false,
 }));
 
 vi.mock('../contexts/AgentsContext', () => ({
@@ -48,11 +50,29 @@ vi.mock('../hooks/useScheduler', () => ({
   usePreviewSchedule: () => ({ data: [], isLoading: false }),
 }));
 
-vi.mock('../components/scheduler/AgentPicker', () => ({
-  AgentPicker: ({ value }: { value: string }) => (
-    <input aria-label="Agent" value={value} readOnly />
-  ),
-}));
+/**
+ * The stub keeps the other cases' assertions about the FORM readable — but it
+ * is also why #1536 D2 passed here while the real picker span forever, so the
+ * failed-read case below renders the real one (`unmockAgentPicker`).
+ */
+vi.mock('../components/scheduler/AgentPicker', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../components/scheduler/AgentPicker')
+    >();
+  return {
+    ...actual,
+    AgentPicker: (props: {
+      value: string;
+      onChange: (slug: string) => void;
+    }) =>
+      agentCatalog.useRealPicker ? (
+        <actual.AgentPicker {...props} />
+      ) : (
+        <input aria-label="Agent" value={props.value} readOnly />
+      ),
+  };
+});
 
 describe('JobFormModal schedule compatibility', () => {
   beforeEach(() => {
@@ -63,8 +83,14 @@ describe('JobFormModal schedule compatibility', () => {
     agentCatalog.agents = [
       { slug: 'station', name: 'Station' } as EnrichedAgentProjection,
     ];
-    agentCatalog.read = { loaded: true, settled: true, failed: false };
+    agentCatalog.read = {
+      loaded: true,
+      settled: true,
+      failed: false,
+      retrying: false,
+    };
     agentCatalog.retry = () => {};
+    agentCatalog.useRealPicker = false;
   });
 
   test('opens an exact-interval job without converting its schedule to text', () => {
@@ -342,7 +368,12 @@ describe('JobFormModal schedule compatibility', () => {
   describe('an unanswered Agent catalog', () => {
     test('says it is loading rather than naming a missing Agent', () => {
       agentCatalog.agents = [];
-      agentCatalog.read = { loaded: false, settled: false, failed: false };
+      agentCatalog.read = {
+        loaded: false,
+        settled: false,
+        failed: false,
+        retrying: false,
+      };
 
       render(<JobFormModal onClose={vi.fn()} />);
 
@@ -354,7 +385,12 @@ describe('JobFormModal schedule compatibility', () => {
 
     test('does not refuse a new job on a runnability nobody has computed', () => {
       agentCatalog.agents = [];
-      agentCatalog.read = { loaded: false, settled: false, failed: false };
+      agentCatalog.read = {
+        loaded: false,
+        settled: false,
+        failed: false,
+        retrying: false,
+      };
 
       render(<JobFormModal onClose={vi.fn()} />);
       fireEvent.change(screen.getByLabelText('Name'), {
@@ -373,8 +409,17 @@ describe('JobFormModal schedule compatibility', () => {
     test('names the failed READ, with its retry, when the catalog answered with an error', () => {
       const retry = vi.fn();
       agentCatalog.agents = [];
-      agentCatalog.read = { loaded: false, settled: true, failed: true };
+      agentCatalog.read = {
+        loaded: false,
+        settled: true,
+        failed: true,
+        retrying: false,
+      };
       agentCatalog.retry = retry;
+      // #1536 D2: the REAL picker. With the stub in its place this case passed
+      // while the picker itself showed "Loading agents" forever beside this
+      // very error — the defect the review found.
+      agentCatalog.useRealPicker = true;
 
       render(<JobFormModal onClose={vi.fn()} />);
 
@@ -383,8 +428,26 @@ describe('JobFormModal schedule compatibility', () => {
       ).toBeTruthy();
       expect(screen.queryByText(/No Agent named/)).toBeNull();
       expect(screen.queryByLabelText('Loading agents')).toBeNull();
+      expect(screen.queryByText('No runnable agents')).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
       expect(retry).toHaveBeenCalledTimes(1);
+    });
+
+    test('says the retry is in flight instead of inviting a second click', () => {
+      // #1536 D7.
+      agentCatalog.agents = [];
+      agentCatalog.read = {
+        loaded: false,
+        settled: true,
+        failed: true,
+        retrying: true,
+      };
+
+      render(<JobFormModal onClose={vi.fn()} />);
+
+      const retrying = screen.getByRole('button', { name: 'Trying…' });
+      expect((retrying as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     });
 
     test('still refuses a new job once the catalog HAS answered and the agent cannot run', () => {

@@ -9,11 +9,17 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const useAgents = vi.hoisted(() => vi.fn());
-const agentsLoaded = vi.hoisted(() => ({ value: true }));
+/** The READ's state, so a fixture can express settled-but-FAILED (#1536 D2). */
+const catalogRead = vi.hoisted(() => ({
+  loaded: true,
+  settled: true,
+  failed: false,
+}));
 
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents,
-  useAgentsLoaded: () => agentsLoaded.value,
+  useAgentsLoaded: () => catalogRead.loaded,
+  useAgentCatalogRead: () => ({ ...catalogRead, retry: () => {} }),
 }));
 
 import { AgentPicker } from '../components/scheduler/AgentPicker';
@@ -34,7 +40,9 @@ const agent = (
 
 describe('scheduler Agent options', () => {
   beforeEach(() => {
-    agentsLoaded.value = true;
+    catalogRead.loaded = true;
+    catalogRead.settled = true;
+    catalogRead.failed = false;
   });
 
   test('lists every agent the in-process runner can resolve, and only those', () => {
@@ -172,7 +180,8 @@ describe('scheduler Agent options', () => {
   test('withholds the "no runnable agents" verdict until the catalog answers', () => {
     // #1536 H1-2: an unanswered catalog is `[]`, indistinguishable from one that
     // genuinely holds nothing. A verdict waits for the answer.
-    agentsLoaded.value = false;
+    catalogRead.loaded = false;
+    catalogRead.settled = false;
     useAgents.mockReturnValue([]);
 
     render(<AgentPicker value="station" onChange={vi.fn()} />);
@@ -181,7 +190,28 @@ describe('scheduler Agent options', () => {
     // the placeholder's accessible name.
     expect(screen.getByLabelText('Loading agents')).toBeTruthy();
     expect(screen.queryByText('No runnable agents')).toBeNull();
+  });
 
-    agentsLoaded.value = true;
+  test('stops waiting once the read has ANSWERED with a failure', () => {
+    // #1536 D2: gating the skeleton on `isSuccess` left it spinning forever
+    // after a failed read — beside the field's own "could not load the Agent
+    // catalog / Try again", which is the sentence that explains it.
+    catalogRead.loaded = false;
+    catalogRead.settled = true;
+    catalogRead.failed = true;
+    useAgents.mockReturnValue([]);
+
+    render(<AgentPicker value="station" onChange={vi.fn()} />);
+
+    expect(screen.queryByLabelText('Loading agents')).toBeNull();
+    // No second, weaker account of the same failure either.
+    expect(screen.queryByText('No runnable agents')).toBeNull();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Agent unavailable',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 });

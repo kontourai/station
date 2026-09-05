@@ -67,7 +67,7 @@ import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
-  PROJECT_CHAT_ENTRY_TELEMETRY_SOURCE,
+  UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
 } from '../../lib/projectChatEvents';
 import type {
   ChatSession,
@@ -1818,11 +1818,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       });
       if (outcome === 'focused') {
         telemetry.track('ui.chat.entry', {
-          // #1536 M6: the sidebar pill that used to be this event's only
-          // dispatcher was deleted in archive#1629, so this reported a caller
-          // that no longer existed. The name lives with the event seam, which
-          // is the thing that knows who dispatches it.
-          source: PROJECT_CHAT_ENTRY_TELEMETRY_SOURCE,
+          // #1536 M6/D4: the DISPATCHER names itself. This used to hardcode
+          // `project-sidebar`, a pill deleted in archive#1629 — a listener
+          // cannot know who called it, and outlived the only caller that made
+          // the name true.
+          source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
           outcome: 'focused',
           projectScoped: 1,
         });
@@ -1837,7 +1837,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       });
       setShowNewChatModal(true);
       telemetry.track('ui.chat.entry', {
-        source: PROJECT_CHAT_ENTRY_TELEMETRY_SOURCE,
+        source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
         outcome: 'new-chat',
         projectScoped: 1,
       });
