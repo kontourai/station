@@ -26,28 +26,21 @@
  *    holding this lock across both closes it.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, readlinkSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
+import { computePluginTreeDigest } from '@kontourai/station-shared/plugin-tree-digest';
 import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
 
 /**
- * SHA-256 over every file in the plugin's installed tree, in sorted path
- * order, with path/kind/content folded into the stream NUL-separated so
- * content cannot shift between files undetected. Symlinks contribute their
- * TARGET STRING (never followed — a link out of the tree must not pull
- * foreign content into the digest, and following it could loop).
+ * Installed-root wrapper for station-plugin-tree/v2: a domain-separated,
+ * length-framed encoding of paths, kinds, directories and file/link payloads.
+ * Symlink target bytes are observed without following them. Root .git remains
+ * excluded as VCS metadata; it is outside the signed package-content claim.
  *
- * The plugin's own root `.git` directory is excluded: it is VCS metadata the
- * update route legitimately touches (`git pull` rewrites refs even when the
- * tree is unchanged) and is not part of what executes. `.git`-named entries
- * deeper in the tree ARE digested — nothing stops a manifest pointing
- * `serverModule` into one.
- *
- * Returns null when the tree cannot be read (absent plugin, unreadable file,
- * or an entry that is neither file, directory, nor symlink) — a target whose
- * content cannot be derived must refuse, never grant on a partial digest.
+ * There is no legacy delimiter-format fallback or automatic grant rewrite.
+ * Old bound digests fail current-byte comparison and require explicit review
+ * through the existing installation/consent owners. Observation retains data.
+ * Unreadable or unsupported trees return null and cannot authorize execution.
  */
 export function computePluginContentDigest(
   pluginsDir: string,
@@ -62,39 +55,7 @@ export function computePluginContentDigest(
       return null;
     }
   }
-  const hash = createHash('sha256');
-  const walk = (dir: string, relative: string): void => {
-    const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
-    );
-    for (const entry of entries) {
-      if (relative === '' && entry.name === '.git') continue;
-      const absolute = join(dir, entry.name);
-      const entryRelative =
-        relative === '' ? entry.name : `${relative}/${entry.name}`;
-      if (entry.isSymbolicLink()) {
-        hash.update(entryRelative);
-        hash.update('\0symlink\0');
-        hash.update(readlinkSync(absolute));
-        hash.update('\0');
-      } else if (entry.isDirectory()) {
-        walk(absolute, entryRelative);
-      } else if (entry.isFile()) {
-        hash.update(entryRelative);
-        hash.update('\0file\0');
-        hash.update(readFileSync(absolute));
-        hash.update('\0');
-      } else {
-        throw new Error(`Unsupported entry in plugin tree: ${entryRelative}`);
-      }
-    }
-  };
-  try {
-    walk(root, '');
-  } catch {
-    return null;
-  }
-  return `sha256:${hash.digest('hex')}`;
+  return computePluginTreeDigest(root);
 }
 
 /**
