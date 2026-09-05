@@ -328,7 +328,34 @@ function serverDelegation(
     : undefined;
 }
 
-function preToolPolicyHookOutput(decision: PreToolPolicyDecision) {
+/**
+ * Whether Station's approval mode obliges the hook to force an approval for a
+ * call Station's own policy did not decide.
+ *
+ * `'default'` is what Station's `ask` approval mode resolves to
+ * (claude-approval-mode.ts), and `ask` means ask. The engine's `default` mode
+ * on its own does NOT: it consults its command classifier and every settings
+ * file it loaded first, and `query()` here never narrows `settingSources`, so
+ * the CLI default applies and a workspace's checked-in
+ * `.claude/settings.json` `permissions.allow` (say `Bash(rm:*)`) is honored —
+ * running the tool with no `request.opened` and no chance for the operator to
+ * see it. `permissionDecision: 'ask'` is the hook's floor over all of that,
+ * so it is the only value that makes the chip's promise true.
+ *
+ * `'acceptEdits'` and `'bypassPermissions'` are the opposite promise —
+ * `auto` accepts edits, `never` never asks — so for those the hook must state
+ * no opinion and let the engine's mode mean what it says. `'plan'` (raw
+ * `modelOptions.permissionMode`, no `ApprovalMode` analog) keeps the engine's
+ * own behavior for the same reason.
+ */
+function claudePermissionModeForcesAsk(mode: PermissionMode): boolean {
+  return mode === 'default';
+}
+
+function preToolPolicyHookOutput(
+  decision: PreToolPolicyDecision,
+  permissionMode: PermissionMode,
+) {
   if (decision.behavior === 'allow') {
     return {
       continue: true,
@@ -349,27 +376,39 @@ function preToolPolicyHookOutput(decision: PreToolPolicyDecision) {
       },
     };
   }
-  // `ask` is Station's managed-engine outcome; Claude's existing canUseTool
-  // owns interactive approval, so both it and an explicit `defer` pass through
-  // without opening a second Station approval request. Carrying NO
-  // `permissionDecision` is what expresses that: the hook states no opinion
-  // and the engine's own permission flow — which is what `approvalMode`
-  // selects, via `permissionMode` (claude-approval-mode.ts) — decides, asking
-  // through `canUseTool` whenever it needs consent.
+  // `ask` and `defer` both mean the same thing here: Station's policy is not
+  // deciding this call, so the engine's permission flow owns it and
+  // `canUseTool` is where it reaches Station's ApprovalRegistry. Neither ever
+  // opens a second Station request from inside the hook.
   //
-  // NOT `permissionDecision: 'defer'`, which this used to return.
+  // What the hook says about it depends on the mode Station promised the
+  // operator — see `claudePermissionModeForcesAsk`. In `ask` the hook forces
+  // the request; otherwise it states no opinion at all.
+  //
+  // NEVER `permissionDecision: 'defer'`, which this used to return for both.
   // `'defer'` is not a pass-through in the Claude hook contract: it hands the
-  // tool call BACK to the SDK host to execute. The CLI ends the turn on the
-  // spot with `stop_reason: 'tool_deferred'` and the call on
-  // `result.deferred_tool_use`, and never consults `canUseTool`. Station has
-  // no executor for a deferred call, so every tool call that reached this
-  // branch (i.e. everything not already granted or auto-approved) died
-  // silently: a `tool.started` with no `tool.completed`, and a turn that read
-  // as an ordinary stop (#1536 finding B1, #765 A4). Verified live against
-  // `claude` 2.1.261 in all three modes — `default`, `acceptEdits` and
-  // `bypassPermissions` all returned `stop_reason: 'tool_deferred'`,
-  // `result: ''`, `num_turns: 1` — while the same run with no
-  // `permissionDecision` routed the request to `canUseTool` and completed.
+  // tool call BACK to the SDK host to execute. For a SOLO tool call the CLI
+  // ends the turn on the spot with `stop_reason: 'tool_deferred'` and the call
+  // on `result.deferred_tool_use`, and never consults `canUseTool` — so every
+  // solo call reaching this branch (anything not already granted or
+  // auto-approved) died silently: a `tool.started` with no `tool.completed`,
+  // and a turn that read as an ordinary stop (#1536 finding B1, #765 A4). An
+  // assistant message carrying more than one `tool_use` was unaffected — the
+  // engine ignores `defer` for a parallel batch — which is why the defect
+  // presented as intermittent rather than total. Verified live against
+  // `claude` 2.1.261: with `defer`, `permissionMode` `default`, `acceptEdits`
+  // and `bypassPermissions` all returned `stop_reason: 'tool_deferred'`,
+  // `result: ''`, `num_turns: 1` with `canUseTool` uncalled; with `'ask'` and
+  // with no `permissionDecision` the same prompt reached `canUseTool` and ran.
+  if (claudePermissionModeForcesAsk(permissionMode)) {
+    return {
+      continue: true,
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse' as const,
+        permissionDecision: 'ask' as const,
+      },
+    };
+  }
   return { continue: true };
 }
 
@@ -378,6 +417,14 @@ async function evaluateClaudePreToolPolicy(
   input: { tool_name: string; tool_input: unknown; tool_use_id: string },
   invocation: InvocationContext,
   timeoutMs: number,
+  /**
+   * The mode in force RIGHT NOW, resolved per call rather than captured at
+   * spawn: `sendTurn` can move a live session between approval modes via
+   * `setPermissionMode` (see `record.currentPermissionMode`), and a hook that
+   * answered from a closed-over spawn-time value would keep forcing — or keep
+   * not forcing — an approval the operator has since changed.
+   */
+  resolvePermissionMode: () => PermissionMode,
 ) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -409,13 +456,13 @@ async function evaluateClaudePreToolPolicy(
         );
       }),
     ]);
-    return preToolPolicyHookOutput(decision);
+    return preToolPolicyHookOutput(decision, resolvePermissionMode());
   } catch (error) {
     const reason = `Station pre-tool policy failed; tool execution was denied: ${error instanceof Error ? error.message : String(error)}`;
-    return preToolPolicyHookOutput({
-      behavior: 'deny',
-      denial: { allowed: false, reason },
-    });
+    return preToolPolicyHookOutput(
+      { behavior: 'deny', denial: { allowed: false, reason } },
+      resolvePermissionMode(),
+    );
   } finally {
     if (timeout) clearTimeout(timeout);
   }
@@ -1534,6 +1581,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                         },
                         this.options.preToolPolicyTimeoutMs ??
                           DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
+                        // Read per call, from the record `sendTurn` keeps
+                        // current, so a mid-session approval-mode change is
+                        // honored by the next tool call rather than by the
+                        // next session. The spawn-time argument is the
+                        // fallback for the window before the record exists.
+                        () =>
+                          this.sessions.get(input.threadId)
+                            ?.currentPermissionMode ?? permissionMode,
                       ),
                   ],
                 },

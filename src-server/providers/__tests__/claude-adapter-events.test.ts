@@ -1656,6 +1656,31 @@ describe('a real Claude Bash tool cycle, replayed (#1536 finding B1)', () => {
     expect(record.activeToolCalls?.has(TOOL_CALL_ID)).toBe(false);
   });
 
+  test('terminal_reason tool_deferred_unavailable is recognised by name, without a deferred stop_reason', () => {
+    // The second deferral terminal reason in the SDK's `TerminalReason` union.
+    // Nothing guarantees it also sets `stop_reason: 'tool_deferred'`, so
+    // reading only that string would let this one report a clean stop.
+    const { events } = replay([
+      CLAUDE_BASH_TEXT_ASSISTANT,
+      CLAUDE_BASH_TOOL_USE_ASSISTANT,
+      {
+        ...(CLAUDE_BASH_DEFERRED_RESULT as unknown as Record<string, unknown>),
+        stop_reason: 'end_turn',
+        terminal_reason: 'tool_deferred_unavailable',
+        deferred_tool_use: undefined,
+      } as unknown as SDKMessage,
+    ]);
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'turn.completed',
+          finishReason: 'other',
+        }),
+      ]),
+    );
+  });
+
   test('a deferral the engine describes without a name still refuses a clean stop', () => {
     // Version skew: `deferred_tool_use` present but nameless AND untracked.
     // `tool.completed` requires a `toolName`, and inventing one would be a

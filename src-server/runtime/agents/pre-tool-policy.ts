@@ -21,6 +21,15 @@ type ToolDenialReason =
   | 'no_approval_channel'
   | 'policy_evaluation_failed';
 
+/**
+ * `defer` means "Station's policy is not deciding this call; the engine's own
+ * permission flow owns it". An engine adapter must NEVER translate it into
+ * Claude's `PreToolUse` `permissionDecision: 'defer'`, which is a different
+ * contract entirely — that value asks the engine to hand the call back to the
+ * SDK host to execute, and the engine ends the turn unresolved when nobody
+ * does (#1536 finding B1). Translate it to whatever the engine's own flow is,
+ * or to no opinion at all.
+ */
 export type PreToolPolicyDecision =
   | { behavior: 'allow' }
   | { behavior: 'deny'; denial: ToolCallDenial }
@@ -295,6 +304,18 @@ export function createStagedPreToolPolicyEvaluator(
 
     // The Claude SDK's canUseTool remains its interactive authority. Defer so
     // it asks exactly once rather than creating a second Station request here.
+    // `defer` is Station declining to decide — see `PreToolPolicyDecision`: it
+    // is never Claude's `permissionDecision: 'defer'`.
+    //
+    // KNOWN GAP (#1536 follow-up): this returns before the unattended stages
+    // below, so an external session with nobody to ask waits on an approval
+    // request instead of taking their fail-fast denial. Fixing it needs an
+    // unattended signal the external adapters do not carry —
+    // `invocation.unattendedPrincipal` is populated only by the two managed
+    // framework adapters from `currentScheduledPrincipal()`, so simply moving
+    // the stages up would make `resolveUnattendedGrant` return `false` for
+    // every ATTENDED external call and deny it. Do not reorder without
+    // threading that signal through first.
     if (options.interaction === 'external') return { behavior: 'defer' };
     if (options.hasInteractiveApproval) return { behavior: 'ask' };
 

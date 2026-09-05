@@ -6,10 +6,22 @@ const CLAUDE_APPROVAL_MODE_MAP: Record<
   Exclude<ApprovalMode, 'connection-default'>,
   PermissionMode
 > = {
-  // Claude Code's own default: ask before every tool call.
+  // Claude Code's own default mode. On its OWN that is not "ask before every
+  // tool call" — it consults the engine's command classifier and every
+  // settings file the CLI loaded (`~/.claude/settings.json`, a workspace's
+  // checked-in `.claude/settings.json`, `.claude/settings.local.json`; the
+  // session sets no `settingSources`, so all of them apply) and runs whatever
+  // those already allow without asking anyone. Station's `ask` promise is made
+  // true one layer up, by the `PreToolUse` hook answering
+  // `permissionDecision: 'ask'` for any call Station's own policy did not
+  // decide — see `preToolPolicyHookOutput` and
+  // `claudePermissionModeForcesAsk` in claude-adapter.ts. Without that hook
+  // (an agent-less/synthetic session, which gets no staged policy at all)
+  // this mode means exactly what the engine says and nothing more.
   ask: 'default',
   // Auto-accept file edits within the workspace; still ask before
-  // anything riskier (e.g. shell commands outside that boundary).
+  // anything riskier (e.g. shell commands outside that boundary). The hook
+  // states no opinion here, so this is the engine's own behavior.
   auto: 'acceptEdits',
   // Never ask; the agent runs fully autonomously. Requires
   // `allowDangerouslySkipPermissions: true` in Options — see

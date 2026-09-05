@@ -3,6 +3,7 @@ import type {
   PermissionResult,
   PermissionUpdate,
   SDKMessage,
+  TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
 import { ENGINE_SESSION_BINDING_DEAD_CODE } from '@kontourai/station-contracts/provider';
 import type {
@@ -100,6 +101,30 @@ function claudeContextOccupancyField(usage: unknown): {
 const CLAUDE_DEFERRED_TOOL_STOP_REASON = 'tool_deferred';
 
 /**
+ * The `terminal_reason` values that name a deferral BY NAME rather than
+ * leaving it to the `stop_reason` string. Typed against the SDK's own
+ * `TerminalReason` union, so dropping or renaming either member breaks the
+ * build here instead of quietly falling through to `'stop'` —
+ * `'tool_deferred_unavailable'` in particular is a deferral Station would
+ * otherwise only recognise if it happened to also set `stop_reason`.
+ */
+const CLAUDE_DEFERRED_TERMINAL_REASONS: readonly TerminalReason[] = [
+  'tool_deferred',
+  'tool_deferred_unavailable',
+];
+
+function claudeResultDeferredTurn(message: SDKMessage & { type: 'result' }) {
+  const terminalReason =
+    'terminal_reason' in message ? message.terminal_reason : undefined;
+  return (
+    (terminalReason !== undefined &&
+      CLAUDE_DEFERRED_TERMINAL_REASONS.includes(terminalReason)) ||
+    ('stop_reason' in message &&
+      message.stop_reason === CLAUDE_DEFERRED_TOOL_STOP_REASON)
+  );
+}
+
+/**
  * What a reader is told about a deferred tool call. Station has no executor
  * for one — it does not ask the engine to defer (`preToolPolicyHookOutput`,
  * claude-adapter.ts) — so the honest record is that the call did not run and
@@ -119,9 +144,13 @@ const CLAUDE_DEFERRED_TOOL_ERROR =
  * not.
  */
 function claudeDeferredToolUse(
-  message: Record<string, unknown>,
+  message: SDKMessage & { type: 'result' },
 ): { id: string; name?: string } | undefined {
-  const deferred = message.deferred_tool_use;
+  // Narrowed off the SDK type, not off a `Record<string, unknown>` cast: an
+  // upstream rename of `deferred_tool_use` must break this compile rather than
+  // silently return `undefined` forever and restore the original defect.
+  const deferred =
+    'deferred_tool_use' in message ? message.deferred_tool_use : undefined;
   if (!deferred || typeof deferred !== 'object') return undefined;
   const { id, name } = deferred as { id?: unknown; name?: unknown };
   if (typeof id !== 'string' || !id) return undefined;
@@ -673,9 +702,8 @@ export function mapClaudeSdkMessage({
       // is, before the completion, so the transcript carries a reason instead
       // of a started call with no outcome (#1536 finding B1) — and so this
       // class can never again read as an ordinary stop, whatever produced it.
-      const deferred = claudeDeferredToolUse(
-        message as unknown as Record<string, unknown>,
-      );
+      const deferred = claudeDeferredToolUse(message);
+      const deferredTurn = deferred || claudeResultDeferredTurn(message);
       // The name comes from the tracked `tool_use` this call was started from,
       // or from the engine's own report of it — never invented: with neither,
       // the completion is skipped and `finishReason` below carries the signal
@@ -713,12 +741,11 @@ export function mapClaudeSdkMessage({
         // deliberately carries no clear authority
         // (`PROVIDER_PROVEN_FINISH_REASONS`, finish-reason-authority.ts), so
         // it cannot supersede a recorded runtime error or clear auth health.
-        finishReason:
-          message.stop_reason === CLAUDE_DEFERRED_TOOL_STOP_REASON || deferred
-            ? 'other'
-            : message.stop_reason === 'tool_use'
-              ? 'tool-calls'
-              : 'stop',
+        finishReason: deferredTurn
+          ? 'other'
+          : message.stop_reason === 'tool_use'
+            ? 'tool-calls'
+            : 'stop',
         outputText:
           message.type === 'result' && 'result' in message
             ? message.result
