@@ -145,6 +145,8 @@ export class FileStorageAdapter implements IStorageAdapter {
     }
     return Object.freeze({
       value: stored.value,
+      withCurrentRead: <R>(operation: (value: ProjectConfig) => Promise<R>) =>
+        stored.withCurrentRead!(operation),
       replace: async (next: ProjectConfig) => {
         const parsed = parseProjectConfig(next);
         assertSafeLayoutPathSegment('project slug', parsed.slug);
