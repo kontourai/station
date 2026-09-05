@@ -1,5 +1,4 @@
 ---
-"@kontourai/station-core": patch
 "@kontourai/station-contracts": minor
 ---
 
