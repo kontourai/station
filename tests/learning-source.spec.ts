@@ -2,6 +2,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
 } from 'node:fs';
@@ -51,23 +52,28 @@ async function seed(
   });
   expect(response.ok()).toBeTruthy();
   const root = (await response.json()).data as KnowledgeStoreRoot;
-  const record = await request.post(
-    `${API}/knowledge/roots/${encodeURIComponent(root.id)}/records`,
-    {
-      data: {
-        id: RECORD_ID,
-        type: 'raw',
-        title,
-        category: 'feedback',
-        body: 'Retain the exact check result when reporting a change. This source does not establish learning activation.',
-        provenance: {
-          agent: 'source-proof-owner',
-          note: 'Created through the canonical record API in an isolated test store.',
+  try {
+    const record = await request.post(
+      `${API}/knowledge/roots/${encodeURIComponent(root.id)}/records`,
+      {
+        data: {
+          id: RECORD_ID,
+          type: 'raw',
+          title,
+          category: 'feedback',
+          body: 'Retain the exact check result when reporting a change. This source does not establish learning activation.',
+          provenance: {
+            agent: 'source-proof-owner',
+            note: 'Created through the canonical record API in an isolated test store.',
+          },
         },
       },
-    },
-  );
-  expect(record.ok()).toBeTruthy();
+    );
+    expect(record.ok()).toBeTruthy();
+  } catch (error) {
+    await remove(request, root);
+    throw error;
+  }
   return root;
 }
 async function remove(
@@ -88,8 +94,8 @@ for (const viewport of [
     page,
     authenticatedRequest,
   }, testInfo) => {
-    const directory = mkdtempSync(
-      join(tmpdir(), 'station-learning-source-browser-'),
+    const directory = realpathSync(
+      mkdtempSync(join(tmpdir(), 'station-learning-source-browser-')),
     );
     let root: KnowledgeStoreRoot | undefined;
     try {
@@ -183,8 +189,12 @@ test('learning source inspection refuses a real replacement root with the same r
   page,
   authenticatedRequest,
 }, testInfo) => {
-  const first = mkdtempSync(join(tmpdir(), 'station-source-original-'));
-  const second = mkdtempSync(join(tmpdir(), 'station-source-replacement-'));
+  const first = realpathSync(
+    mkdtempSync(join(tmpdir(), 'station-source-original-')),
+  );
+  const second = realpathSync(
+    mkdtempSync(join(tmpdir(), 'station-source-replacement-')),
+  );
   let root: KnowledgeStoreRoot | undefined;
   try {
     root = await seed(authenticatedRequest, first);

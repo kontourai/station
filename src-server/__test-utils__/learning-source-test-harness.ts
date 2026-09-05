@@ -4,6 +4,7 @@ import { mkdirSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
+import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
 import {
   KNOWLEDGE_ROOT_IDENTITY_HEADER,
   knowledgeRootIncarnationKey,
@@ -18,9 +19,17 @@ import { createKnowledgeSourceRoutes } from '../routes/knowledge/knowledge-sourc
 import { createKnowledgeStoreRoutes } from '../routes/knowledge/knowledge-store-routes.js';
 import { configureRuntimeHttp } from '../runtime/bootstrap/runtime-http.js';
 import { createRuntimeServiceBundle } from '../runtime/bootstrap/runtime-service-bootstrap.js';
+import {
+  createHostedTenantMiddleware,
+  createPersonalRuntimeRequestGuard,
+  getTenantRequestContext,
+} from '../runtime/bootstrap/runtime-tenant-context.js';
 import { EventBus } from '../services/orchestration/event-bus.js';
 
-export async function createLearningSourceFixture(directory: string) {
+export async function createLearningSourceFixture(
+  directory: string,
+  tenantFixture = false,
+) {
   mkdirSync(directory, { recursive: true });
   const fixture = realpathSync(directory);
   const home = join(fixture, 'home');
@@ -148,6 +157,24 @@ export async function createLearningSourceFixture(directory: string) {
   );
   const provider = bundle.knowledgeStoreProvider;
   const app = new Hono();
+  const tenantContexts: string[] = [];
+  if (tenantFixture) {
+    app.use(
+      '*',
+      createHostedTenantMiddleware(
+        parseHostedTenantRegistry({
+          schemaVersion: 1,
+          tenants: [{ id: 'alpha', authority: 'alpha.example.test' }],
+        }),
+      ),
+    );
+    app.use('*', async (c, next) => {
+      const context = getTenantRequestContext(c.req.raw);
+      if (context) tenantContexts.push(context.tenantId);
+      await next();
+    });
+  }
+  const personalRequest = createPersonalRuntimeRequestGuard();
   configureRuntimeHttp({
     app: app as never,
     logger,
@@ -170,7 +197,7 @@ export async function createLearningSourceFixture(directory: string) {
   app.route(
     '/api/knowledge',
     createKnowledgeSourceRoutes(provider, (request) =>
-      isLocalKnowledgeSourceRequestCurrent(request, security),
+      isLocalKnowledgeSourceRequestCurrent(request, security, personalRequest),
     ),
   );
   app.route(
@@ -202,6 +229,7 @@ export async function createLearningSourceFixture(directory: string) {
     path,
     headers,
     provider,
+    tenantContexts,
     persistence,
     producer,
     revoke() {

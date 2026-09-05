@@ -202,7 +202,8 @@ Open **Developer → Memory** and select a record from a personal Default File
 Store, then choose **Inspect learning source**. If Developer is hidden, enable
 developer tools in Settings. The inspector requires local access to the Station
 that owns the store; remote pairing or an operator API credential alone is not
-enough.
+enough. Hosted Stations and tenant-scoped requests are not supported by this
+personal-store inspection.
 
 The inspector shows the source text, provenance, and observation time. **Refresh
 source** reads it again. If the store was replaced, access changed, or the source

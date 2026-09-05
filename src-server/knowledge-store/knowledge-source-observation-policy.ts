@@ -18,9 +18,11 @@ type LocalSourceSecurity = CurrentRuntimeRequestPrincipalSecurity & {
 export function isLocalKnowledgeSourceRequestCurrent(
   authority: unknown,
   security: LocalSourceSecurity,
+  isPersonalRequest: (request: Request) => boolean,
 ): authority is Request {
   if (
     !(authority instanceof Request) ||
+    !isPersonalRequest(authority) ||
     !isBoundRuntimeLocalOperator(authority) ||
     !isRuntimeRequestPrincipalCurrent(authority, security)
   )
@@ -39,11 +41,18 @@ export function createLocalKnowledgeSourceObservationPolicy(options: {
   stationHome: string;
   persistence: KnowledgeStoreRootPersistence;
   security: LocalSourceSecurity;
+  isPersonalRequest: (request: Request) => boolean;
 }): KnowledgeRecordObservationPolicy {
   return {
     stationHome: options.stationHome,
     authorize(target, authority) {
-      if (!isLocalKnowledgeSourceRequestCurrent(authority, options.security))
+      if (
+        !isLocalKnowledgeSourceRequestCurrent(
+          authority,
+          options.security,
+          options.isPersonalRequest,
+        )
+      )
         return 'restricted';
       // A current credential on some other route is not a source-read capability.
       const path = new URL(authority.url).pathname.match(

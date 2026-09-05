@@ -10,7 +10,7 @@ export interface KnowledgeRootObservation {
 }
 
 /**
- * Server composition only. No HTTP/UI caller is wired to this policy yet.
+ * Server composition only. The production HTTP consumer passes its exact authenticated Request.
  * A caller's authority value is opaque and is NEVER itself an allow decision.
  * The host must re-evaluate the exact root/record on each synchronous call.
  */

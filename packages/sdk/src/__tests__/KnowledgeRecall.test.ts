@@ -109,7 +109,7 @@ describe('Knowledge recall contract', () => {
     };
     const recordActions = vi.fn(
       ({ recordId }: { rootId: string; recordId: string }) =>
-        createElement('button', {}, `Inspect ${recordId}`),
+        createElement('button', { type: 'button' }, `Inspect ${recordId}`),
     );
     const refetch = vi.fn(async () => undefined);
     const useRecordQuery = vi.fn((_rootId, recordId) => ({

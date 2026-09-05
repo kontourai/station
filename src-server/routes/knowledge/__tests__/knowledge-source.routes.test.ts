@@ -11,16 +11,23 @@ import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge
 import { afterEach, expect, test, vi } from 'vitest';
 import { createLearningSourceFixture } from '../../../__test-utils__/learning-source-test-harness';
 import * as transactions from '../../../knowledge-store/adapters/shared/file-transactions';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_TENANT_HEADER,
+} from '../../../utils/internal-api-token';
 
 const owned: Array<Awaited<ReturnType<typeof createLearningSourceFixture>>> =
   [];
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   for (const fixture of owned.splice(0).reverse()) fixture.close();
 });
-async function fixture() {
+async function fixture(tenantFixture = false) {
   const value = await createLearningSourceFixture(
     mkdtempSync(join(tmpdir(), 'station-source-route-')),
+    tenantFixture,
   );
   owned.push(value);
   return value;
@@ -191,4 +198,59 @@ test('constructor policy cannot reuse an authenticated request for another exact
     ).data,
   ).toEqual({ state: 'restricted' });
   expect(open).not.toHaveBeenCalled();
+});
+
+test('hosted construction never grants personal source access, even after its environment flag is removed', async () => {
+  vi.stubEnv(
+    'STATION_HOSTED_TENANT_REGISTRY_FILE',
+    '/unopened-hosted-registry',
+  );
+  const f = await fixture();
+  delete process.env.STATION_HOSTED_TENANT_REGISTRY_FILE;
+  const read = vi.spyOn(f.persistence, 'observeKnowledgeStoreRoots');
+  expect(
+    (
+      (await (
+        await f.app.request(f.path, { headers: f.headers() })
+      ).json()) as any
+    ).data,
+  ).toEqual({ state: 'restricted' });
+  expect(read).not.toHaveBeenCalled();
+});
+test('personal construction refuses a later hosted mode', async () => {
+  const f = await fixture();
+  vi.stubEnv(
+    'STATION_HOSTED_TENANT_REGISTRY_FILE',
+    '/unopened-hosted-registry',
+  );
+  const read = vi.spyOn(f.persistence, 'observeKnowledgeStoreRoots');
+  expect(
+    (
+      (await (
+        await f.app.request(f.path, { headers: f.headers() })
+      ).json()) as any
+    ).data,
+  ).toEqual({ state: 'restricted' });
+  expect(read).not.toHaveBeenCalled();
+});
+test('verified tenant ingress cannot inherit internal local personal-store access', async () => {
+  const f = await fixture(true);
+  const read = vi.spyOn(f.persistence, 'observeKnowledgeStoreRoots');
+  const response = await f.app.request(
+    f.path,
+    {
+      headers: {
+        ...f.headers(),
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        [INTERNAL_TENANT_HEADER]: 'alpha',
+      },
+    },
+    { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
+  );
+  expect(response.status).toBe(200);
+  expect(f.tenantContexts).toEqual(['alpha']);
+  expect(((await response.json()) as any).data).toEqual({
+    state: 'restricted',
+  });
+  expect(read).not.toHaveBeenCalled();
 });

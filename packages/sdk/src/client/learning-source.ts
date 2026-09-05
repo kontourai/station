@@ -18,6 +18,13 @@ export async function observeLearningSource(
   options?: ClientRequestOptions,
 ): Promise<LearningSourceObservation> {
   if (
+    typeof reference.rootId !== 'string' ||
+    !reference.rootId ||
+    reference.rootId.length > 200 ||
+    typeof reference.recordId !== 'string' ||
+    !reference.recordId ||
+    reference.recordId.length > 200 ||
+    typeof reference.rootIdentity !== 'string' ||
     !reference.rootIdentity ||
     reference.rootIdentity.length > KNOWLEDGE_ROOT_IDENTITY_MAX_CHARS
   )

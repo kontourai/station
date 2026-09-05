@@ -58,6 +58,7 @@ import {
 import { NovaSonicProvider } from '../../voice/providers/nova-sonic.js';
 import { VoiceSessionService } from '../../voice/voice-session.js';
 import type { IAgentHooks } from '../types.js';
+import { createPersonalRuntimeRequestGuard } from './runtime-tenant-context.js';
 
 type ToolNameMapping = Map<
   string,
@@ -315,6 +316,7 @@ export function createRuntimeServiceBundle(
         stationHome: context.configLoader.getProjectHomeDir(),
         persistence: storageAdapter,
         security: context.environmentSecurityService,
+        isPersonalRequest: createPersonalRuntimeRequestGuard(),
       }),
     );
 

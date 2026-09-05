@@ -1,6 +1,6 @@
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 
-/** Registration identity precondition only: not authorization or an owner revision. */
+/** Registration metadata precondition only: not authorization, an immutable incarnation, or an owner revision. Identically restored metadata can share a key. */
 export const KNOWLEDGE_ROOT_IDENTITY_HEADER =
   'x-station-knowledge-root-identity';
 export const KNOWLEDGE_ROOT_IDENTITY_MAX_CHARS = 8_192;

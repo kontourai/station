@@ -1784,11 +1784,13 @@ requestScope, enabled?)` is available from the SDK root. The reference carries
 `rootId`, exact `recordId`, and `rootIdentity: knowledgeRootIncarnationKey(root)`.
 The existing root identity helper remains exported by the SDK. The client sends
 its URI-encoded value in the bounded `x-station-knowledge-root-identity` header;
-it is a replacement refusal precondition, never an authorization grant.
+it is a metadata mismatch precondition, never an authorization grant or immutable
+incarnation. Identically restored registrations can share the same key.
 
 The GET endpoint is `/api/knowledge/roots/:rootId/records/:id/source-observation`.
 It requires a currently authorized, middleware-bound home-possession credential,
-current route scope, and the exact registered personal `kit-default-store` root.
+current route scope, single-operator deployment without tenant-scoped execution,
+and the exact registered personal `kit-default-store` root.
 Ordinary operator or paired remote credentials do not confer this capability.
 The constructor policy and route recheck authority before publishing the result.
 Other roots and credentials receive an identity-free restricted outcome.

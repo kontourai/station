@@ -90,6 +90,7 @@ test('a stale Station authority cannot dispatch source inspection', async () => 
     requestAuthority: {
       apiBase: 'https://station.test/api',
       authorityKey: 'new',
+      isCurrent: () => true,
     },
   }));
   await expect(

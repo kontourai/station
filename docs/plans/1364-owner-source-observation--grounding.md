@@ -77,7 +77,7 @@ the approved narrower local extension corrects that conclusion.
    inside the existing Station owner. It defaults to `restricted`; only a
    constructor-captured host policy can admit the exact target. A boolean,
    claimed principal, localhost, or registered root is not request authority.
-   There is **no production policy or HTTP/UI caller** in this first slice.
+   The initial owner-only slice had no production policy or HTTP/UI caller; the consumer described below now supplies that narrowly scoped composition.
 2. Support only registered built-in `kit-default-store` roots via a separate
    construction-free observation port of `KnowledgeFileTransactions`, never
    `adapterFor`, ordinary `get`, read-repair, root bootstrap, or plugin adapters.
@@ -95,15 +95,15 @@ the approved narrower local extension corrects that conclusion.
    Absence of a visible journal/lock is not proof that no transaction occurred:
    return explicit `non-atomic`, unknown transaction state and unknown revision.
    Node pathname checks do not supply an atomic ancestor/openat capability.
-3. Later, narrow `packages/contracts/src/learning-review.ts` and the pure view model
-   with an explicit source-only variant. The present full projection requires
+3. Expose `LearningSourceObservation` from `packages/contracts/src/learning-review.ts`
+   as an explicit source-only variant. The present full projection requires
    scope, candidate kind/expected effect and owner projection identity that a
    generic record does not establish. Root location is not deployment scope;
    raw/compiled/concept is not skill/claim/guideline. Unsupported lifecycle
    stages remain gaps, with no approve/apply/retire action.
-4. Add one authenticated read route and existing-query-domain consumer only
-   after review of exact host-derived single-operator/root/record authorization,
-   revalidation and denial semantics. No new source of persistence or truth.
+4. One authenticated read route and existing-query-domain consumer apply exact
+   host-derived single-operator/root/record authorization, revalidation and denial
+   semantics. No new source of persistence or truth.
    Other principals remain unavailable/restricted until supported policy exists.
 
 Flow Agents #417/#1115 still track portable cross-product access and identity;

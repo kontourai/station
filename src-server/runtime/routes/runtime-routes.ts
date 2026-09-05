@@ -432,6 +432,7 @@ import {
 } from '../bootstrap/runtime-http.js';
 import {
   createHostedTenantMiddleware,
+  createPersonalRuntimeRequestGuard,
   currentTenantExecutionContext,
   getTenantRequestContext,
   isHostedTenantExecutionRequired,
@@ -3281,12 +3282,14 @@ export function configureRuntimeRoutes(
       store: context.knowledgeStoreProvider,
     }),
   );
+  const personalSourceRequest = createPersonalRuntimeRequestGuard();
   context.app.route(
     '/api/knowledge',
     createKnowledgeSourceRoutes(context.knowledgeStoreProvider, (request) =>
       isLocalKnowledgeSourceRequestCurrent(
         request,
         context.environmentSecurityService,
+        personalSourceRequest,
       ),
     ),
   );
