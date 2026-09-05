@@ -418,6 +418,7 @@ export function projectRuntimeEventsToMessages(
           if (ev.toolName !== undefined) existing.toolName = ev.toolName;
           existing.state = derivedState;
           existing.output = ev.output;
+          if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
           existing.error = ev.error;
           existing.sourceEventId = ev.eventId;
           existing.cancelled = isCancelled;
@@ -445,6 +446,9 @@ export function projectRuntimeEventsToMessages(
             toolName: ev.toolName,
             state: derivedState,
             output: ev.output,
+            ...(ev.outputReceipt?.truncated
+              ? { outputTruncated: true as const }
+              : {}),
             error: ev.error,
             cancelled: isCancelled,
             isError,
@@ -458,7 +462,10 @@ export function projectRuntimeEventsToMessages(
       }
       case 'tool.progress': {
         const existing = toolsByCallId.get(ev.toolCallId);
-        if (existing) existing.progressMessage = ev.message;
+        if (existing) {
+          existing.progressMessage = ev.message;
+          if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
+        }
         break;
       }
       case 'request.opened': {

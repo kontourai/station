@@ -1,4 +1,11 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
@@ -81,4 +88,84 @@ describe('cloud preview command', () => {
     );
     expect(() => runCloudCommand(['preview'])).toThrow('--home');
   });
+});
+
+test('cloud CLI packages and restores a checkout through its public flags', {
+  timeout: 30000,
+}, () => {
+  const root = mkdtempSync(join(tmpdir(), 'station-cloud-workspace-cli-'));
+  const source = join(root, 'source');
+  mkdirSync(source);
+  const git = (args: string[]) =>
+    execFileSync('git', ['-C', source, ...args], {
+      windowsHide: true,
+      timeout: 10000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+  try {
+    git(['init', '--template=', '--initial-branch=main']);
+    writeFileSync(join(source, 'hello.txt'), 'before\n');
+    git(['add', '.']);
+    git([
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.invalid',
+      'commit',
+      '-m',
+      'Initial',
+    ]);
+    writeFileSync(join(source, 'hello.txt'), 'after\n');
+    const key = `--key-file=${join(root, 'key')}`;
+    const archive = `--archive=${join(root, 'workspace.enc')}`;
+    runCloudCommand(['keygen', `--output=${join(root, 'key')}`]);
+    const args = [
+      'pack-workspace',
+      `--workspace=${source}`,
+      key,
+      `--output=${join(root, 'workspace.enc')}`,
+    ];
+    expect(() => runCloudCommand(args)).toThrow('source-paused');
+    expect(() => runCloudCommand([...args, '--source-paused=false'])).toThrow(
+      'source-paused',
+    );
+    runCloudCommand([...args, '--source-paused', '--json']);
+    runCloudCommand(['inspect-workspace', archive, key, '--json']);
+    const inspection = JSON.parse(log.mock.calls.at(-1)?.[0] as string);
+    expect(inspection.files.map((file: { path: string }) => file.path)).toEqual(
+      ['hello.txt'],
+    );
+    expect(inspection.executionAuthorityTransferred).toBe(false);
+    runCloudCommand([
+      'unpack-workspace',
+      archive,
+      key,
+      `--destination=${join(root, 'restored')}`,
+      '--json',
+    ]);
+    const result = JSON.parse(log.mock.calls.at(-1)?.[0] as string);
+    expect(readFileSync(join(result.workspace, 'hello.txt'), 'utf8')).toBe(
+      'after\n',
+    );
+    expect(() =>
+      runCloudCommand([
+        'unpack-workspace',
+        archive,
+        key,
+        `--destination=${join(root, 'restored')}`,
+      ]),
+    ).toThrow();
+    expect(() =>
+      runCloudCommand([
+        'inspect-workspace',
+        archive,
+        key,
+        '--provider=aws-ec2',
+      ]),
+    ).toThrow('Unsupported');
+  } finally {
+    log.mockRestore();
+    rmSync(root, { recursive: true, force: true });
+  }
 });

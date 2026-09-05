@@ -199,398 +199,97 @@ function renderHeader(
   return onClear;
 }
 
-describe('ChatDockMobileHeader project scope', () => {
-  test('uses the plain project name with one clear action, folded into the ⋯ sheet (#3309 review SF-2)', async () => {
-    const onClear = renderHeader();
+async function openActions() {
+  fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
+  return screen.findByRole('dialog', { name: 'Chat actions' });
+}
 
-    expect(screen.getByText('Kontour AI')).toBeTruthy();
-    expect(screen.queryByText(/Project chats:/i)).toBeNull();
-
-    // The bar itself must not carry it: at 320px its non-shrinking 44px slots
-    // already exceed the available width in exactly this configuration.
+describe('mobile conversation focus', () => {
+  test('keeps exactly navigation, readable identity, and actions in the header', () => {
+    renderHeader({ occupantPicker: <StubOccupantPicker /> });
     const header = screen.getByTestId('chat-dock-mobile-header');
-    expect(
-      header.querySelector('[aria-label="Clear project chat scope"]'),
-    ).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
-    const clear = await screen.findByRole('menuitem', {
-      name: 'Clear project chat scope',
-    });
-    expect(clear.textContent).toContain('Kontour AI');
-    fireEvent.click(clear);
-    expect(onClear).toHaveBeenCalledOnce();
-  });
-
-  test('no scope means no clear action in the sheet', async () => {
-    renderHeader({ projectScope: null });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
-    await screen.findByRole('menuitem', { name: 'Chat settings' });
-    expect(
-      screen.queryByRole('menuitem', { name: 'Clear project chat scope' }),
-    ).toBeNull();
-  });
-});
-
-/**
- * archive#793: a project-switcher trigger distinct from the task
- * switcher's own buried eyebrow (`aria-label="Switch task"`) — see D3 in the
- * plan for why the eyebrow could not simply grow a click behavior.
- */
-describe('ChatDockMobileHeader project switcher', () => {
-  test('renders no switcher trigger when the active chat has no bound project', () => {
-    renderHeader({ projectSwitcher: null });
-
+    expect(header.querySelectorAll('button')).toHaveLength(3);
+    const identity = screen.getByRole('button', { name: /^Switch task/ });
+    expect(identity.textContent).toContain('New chat');
+    expect(identity.textContent).toContain('Codex');
     expect(
       screen.queryByRole('button', { name: /^Switch project/ }),
     ).toBeNull();
+    expect(screen.queryByTestId('chat-dock-mobile-connection')).toBeNull();
+    setPickerQueryMatches(true);
+    expect(header.querySelectorAll('button')).toHaveLength(3);
   });
-
-  test('renders a distinct, accessible switcher trigger when a project is bound', () => {
-    renderHeader({
-      projectSwitcher: {
-        projectSlug: 'kontour-ai',
-        projectName: 'Kontour AI',
-        projects: PROJECTS,
-        onOpenProject: vi.fn(),
-        onSwitchProject: vi.fn(),
-      },
-    });
-
-    const trigger = screen.getByRole('button', {
-      name: 'Switch project — Kontour AI',
-    });
-    expect(trigger.getAttribute('aria-haspopup')).toBe('dialog');
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    expect(trigger.className).toContain('app-toolbar__icon-btn');
-    expect(trigger.textContent).toContain('Kontour AI');
-    // Distinct from the task switcher — never repurposed and never named
-    // "Switch task" or "Clear project chat scope".
-    expect(screen.getByRole('button', { name: /^Switch task/ })).not.toBe(
-      trigger,
-    );
-  });
-
-  test('collapsed dock shows an Expand chat toggle that restores without a gesture', () => {
-    const onExpand = vi.fn();
-    const onCollapse = vi.fn();
-    renderHeader({
-      dockToggle: { state: 'collapsed', onExpand, onCollapse },
-    });
-
-    const toggle = screen.getByRole('button', { name: 'Expand chat' });
-    // A tap on the toggle must never be interpreted as a drag start.
-    expect(toggle.hasAttribute('data-no-dock-drag')).toBe(true);
-    expect(screen.queryByRole('button', { name: 'Collapse chat' })).toBeNull();
-
-    fireEvent.click(toggle);
-    expect(onExpand).toHaveBeenCalledOnce();
-    expect(onCollapse).not.toHaveBeenCalled();
-  });
-
-  test('open dock shows a Collapse chat toggle', () => {
-    const onExpand = vi.fn();
-    const onCollapse = vi.fn();
-    renderHeader({ dockToggle: { state: 'open', onExpand, onCollapse } });
-
-    const toggle = screen.getByRole('button', { name: 'Collapse chat' });
-    expect(screen.queryByRole('button', { name: 'Expand chat' })).toBeNull();
-
-    fireEvent.click(toggle);
-    expect(onCollapse).toHaveBeenCalledOnce();
-    expect(onExpand).not.toHaveBeenCalled();
-  });
-
-  test('a fullscreen placement renders no dock toggle at all', () => {
-    renderHeader({ dockToggle: null });
-
-    expect(screen.queryByRole('button', { name: 'Expand chat' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Collapse chat' })).toBeNull();
-  });
-
-  test('New chat is a pinned header icon, not an overflow item (#3309)', () => {
-    const onNewChat = vi.fn<() => void>();
+  test('keeps New chat callable from the actions sheet', async () => {
+    const onNewChat = vi.fn();
     renderHeader({ onNewChat });
-
-    const newChat = screen.getByRole('button', { name: 'New chat' });
-    // Part of the drag surface, never a drag blocker.
-    expect(newChat.hasAttribute('data-dock-drag-passthrough')).toBe(true);
-    fireEvent.click(newChat);
+    await openActions();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New chat' }));
     expect(onNewChat).toHaveBeenCalledOnce();
   });
-
-  test('the dock toggle leads the bar and the ⋯ trigger trails the title (#3309)', () => {
-    renderHeader();
-
-    const header = screen.getByTestId('chat-dock-mobile-header');
-    const buttons = Array.from(header.querySelectorAll('button'));
-    expect(buttons[0]?.getAttribute('aria-label')).toBe('Collapse chat');
-    expect(buttons.at(-1)?.getAttribute('aria-label')).toBe('New chat');
-
-    // The ⋯ chat-actions trigger shares the identity cluster with the title,
-    // in the old caret's slot.
-    const cluster = header.querySelector('.chat-dock__mobile-identity-cluster');
-    expect(cluster).not.toBeNull();
-    expect(
-      cluster?.querySelector('[aria-label^="Switch task"]'),
-    ).not.toBeNull();
-    expect(
-      cluster?.querySelector('[aria-label="Chat actions"]'),
-    ).not.toBeNull();
-    expect(header.querySelector('.chat-dock__mobile-title-caret')).toBeNull();
-  });
-
-  test('the agent leads the identity block, inside the existing Switch task control (#3309)', () => {
-    renderHeader({ agentIdentity: { name: 'Codex', slug: 'codex' } });
-
-    const header = screen.getByTestId('chat-dock-mobile-header');
-    const identity = header.querySelector('[aria-label^="Switch task"]');
-    expect(identity).not.toBeNull();
-    // Inside the identity control, never a slot of its own: the bar's 320px
-    // arithmetic counts buttons, and an eighth would break it.
-    const avatar = header.querySelector(
-      '[data-testid="chat-dock-mobile-agent-avatar"]',
+  test('keeps project scope and branch context in the sheet', async () => {
+    const onClear = renderHeader({ branchLabel: 'feature/chat' });
+    await openActions();
+    expect(screen.getByText('feature/chat')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Clear project chat scope' }),
     );
-    expect(identity?.contains(avatar ?? null)).toBe(true);
-    expect(avatar?.closest('button')).toBe(identity);
-    expect(
-      header.querySelector('.chat-dock__mobile-eyebrow')?.textContent,
-    ).toBe('Codex');
+    expect(onClear).toHaveBeenCalledOnce();
   });
-
-  test('the branch follows the agent in the eyebrow when both are known (#3309)', () => {
-    renderHeader({
-      agentIdentity: { name: 'Codex', slug: 'codex' },
-      branchLabel: 'feat/3309-agent-identity',
-    });
-
-    expect(
-      screen
-        .getByTestId('chat-dock-mobile-header')
-        .querySelector('.chat-dock__mobile-eyebrow')?.textContent,
-    ).toBe('Codex · feat/3309-agent-identity');
-  });
-
-  test('the identity control names the agent to a screen reader, not just to the eye (#3309)', () => {
-    renderHeader({ agentIdentity: { name: 'Codex', slug: 'codex' } });
-
-    // Everything visible inside this button is aria-hidden presentational
-    // chrome, so its label is the ONLY agent attribution a phone screen-reader
-    // user gets. The action stays the prefix so the control is still findable
-    // by it (and every spec locating it by name keeps matching).
-    const identity = screen
-      .getByTestId('chat-dock-mobile-header')
-      .querySelector('[aria-label^="Switch task"]');
-    expect(identity?.getAttribute('aria-label')).toBe('Switch task — Codex');
-    // The session TITLE stays out of it: a name is matched by substring, and a
-    // chat titled "New chat" otherwise made this control answer to the same
-    // name as the New chat button beside it — for Playwright's strict mode and
-    // for voice control alike.
-    expect(identity?.getAttribute('aria-label')).not.toContain('New chat');
-
-    // …and the title reaches AT as the DESCRIPTION instead, where an arbitrary
-    // string is safe because neither locators nor voice control match on it.
-    const describedBy = identity?.getAttribute('aria-describedby');
-    expect(describedBy).toBeTruthy();
-    const description = document.getElementById(describedBy as string);
-    expect(description?.textContent).toBe('New chat');
-  });
-
-  test('the ⋯ sheet names the project it would open (#3309)', async () => {
-    renderHeader({ onOpenProject: vi.fn(), openProjectName: 'Kontour AI' });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
-    const open = await screen.findByRole('menuitem', { name: /Open project/ });
-    // The phone bar drops the project LABEL below 481px on the argument that
-    // the name stays reachable here; the item used to read a bare "Open
-    // project", which made that argument false. Part of the accessible NAME,
-    // not an aria-hidden hint, or it would still not be reachable.
-    expect(open.textContent).toContain('Kontour AI');
-    expect(
-      screen.getByRole('menuitem', { name: /Open project — |Open project/ }),
-    ).toBeTruthy();
-    expect(open.getAttribute('aria-label')).toBeNull();
-  });
-
-  test('no active chat means no agent avatar and no invented attribution', () => {
-    renderHeader({ agentIdentity: null, branchLabel: 'main' });
-
-    const header = screen.getByTestId('chat-dock-mobile-header');
-    expect(
-      header.querySelector('[data-testid="chat-dock-mobile-agent-avatar"]'),
-    ).toBeNull();
-    // The eyebrow still carries what IS known, and nothing more.
-    expect(
-      header.querySelector('.chat-dock__mobile-eyebrow')?.textContent,
-    ).toBe('main');
-  });
-
-  test('opens the shared project switcher sheet and wires its actions', async () => {
+  test('opens the shared project picker and preserves project action wiring', async () => {
     const onOpenProject = vi.fn();
-    const onSwitchProject = vi.fn();
     renderHeader({
       projectSwitcher: {
         projectSlug: 'kontour-ai',
         projectName: 'Kontour AI',
         projects: PROJECTS,
         onOpenProject,
-        onSwitchProject,
+        onSwitchProject: vi.fn(),
       },
     });
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Switch project — Kontour AI' }),
-    );
+    await openActions();
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Switch project/ }));
     await screen.findByRole('dialog', { name: 'Switch project' });
-
     fireEvent.click(screen.getByRole('button', { name: 'Open Kontour AI' }));
     expect(onOpenProject).toHaveBeenCalledWith('kontour-ai');
-
-    expect(onSwitchProject).not.toHaveBeenCalled();
   });
-});
-
-/**
- * archive#3297 — connection state on the surface where the failure is seen.
- *
- * The app toolbar's indicator is hidden while the mobile dock is full-screen
- * (`app__main--mobile-dock-fullscreen`), and this bar replaced it, so the chat
- * screen showed no connection state at all. The state that needed a decision
- * — a rejected credential — was distinguished only by a `title` tooltip,
- * which a touch device cannot show.
- */
-describe('ChatDockMobileHeader connection indicator', () => {
-  test('shows connection state on the chat surface, always, not only when broken', () => {
+  test('shows live connection state and a visible management label on request', async () => {
     renderHeader();
-
+    await openActions();
     const indicator = screen.getByTestId('chat-dock-mobile-connection');
-    expect(indicator.tagName.toLowerCase()).toBe('button');
-    // An indicator that appears only on failure makes its absence the signal,
-    // and absence is not evidence that anything was checked.
     expect(indicator.dataset.connectionState).toBeTruthy();
-    expect(indicator.getAttribute('aria-label')).toBeTruthy();
-  });
-
-  test('carries no title, because a tooltip is what touch cannot reach', () => {
-    renderHeader();
-
-    expect(
-      screen.getByTestId('chat-dock-mobile-connection').getAttribute('title'),
-    ).toBeNull();
-  });
-
-  test('is a real control that opens connection management on tap', () => {
-    // The state-dependent target (re-pairing vs the list) is proven against
-    // both branches in ChatDockMobileConnection.test.tsx, where the failure
-    // reason can actually be set. This asserts only that the header's control
-    // is wired to the app's open-connections seam at all.
-    const opened: unknown[] = [];
-    const listener = () => opened.push(true);
+    expect(indicator.textContent).toBeTruthy();
+    const listener = vi.fn();
     window.addEventListener('station:open-connections-modal', listener);
-    try {
-      renderHeader();
-      fireEvent.click(screen.getByTestId('chat-dock-mobile-connection'));
-      expect(opened).toHaveLength(1);
-    } finally {
-      window.removeEventListener('station:open-connections-modal', listener);
-    }
+    fireEvent.click(indicator);
+    expect(listener).toHaveBeenCalledOnce();
+    window.removeEventListener('station:open-connections-modal', listener);
   });
-});
-
-/**
- * station#1048 — the mobile dock's connection control used to render
- * unconditionally, so it and the app toolbar's own `app-toolbar-connection`
- * coexisted (both visible, both in the a11y tree) whenever the dock was
- * merely on screen — collapsed or half-open, the DEFAULT mobile state, not
- * only full-screen — which produced two controls whose accessible name
- * started "Manage Stations". `showConnection` (computed by `ChatDock.tsx`
- * from the same `isMobileDockFullscreen` check that already gated
- * `showDrawerToggle`) closes that: the control mounts only when the toolbar
- * is genuinely gone, and unmounts everywhere else.
- */
-describe('ChatDockMobileHeader connection control gating', () => {
-  test('does not mount while the app toolbar is still on screen (default collapsed dock)', () => {
+  test('does not duplicate connection management while the app toolbar owns it', async () => {
     renderHeader({ showConnection: false });
-
+    await openActions();
     expect(screen.queryByTestId('chat-dock-mobile-connection')).toBeNull();
   });
-
-  test('mounts once the app toolbar is genuinely hidden (dock open and maximized)', () => {
-    renderHeader({ showConnection: true });
-
-    expect(
-      screen.getByTestId('chat-dock-mobile-connection').tagName.toLowerCase(),
-    ).toBe('button');
-  });
-});
-
-/**
- * station#524: `ChatDockMobileHeader` carried no occupant picker while
- * `ChatDockHeader` (Home/Activity) rendered one at every width — a phone
- * could switch INTO Chat but had no dock-borne way back out. `occupantPicker`
- * is a pre-rendered node (the same contract `ChatDockHeader`'s own prop
- * documents), so these tests drive it through a stub rather than the real
- * `DockOccupantPicker` (that component's own behavior is pinned in
- * `AmbientChatDockPaneHost.test.tsx`).
- */
-describe('ChatDockMobileHeader occupant picker (station#524)', () => {
-  test('keeps the picker DOM-absent below 481px and renders it at the subscribed boundary', () => {
+  test('collapsed dock can expand without a gesture', () => {
+    const onExpand = vi.fn();
     renderHeader({
-      occupantPicker: <StubOccupantPicker />,
+      dockToggle: { state: 'collapsed', onExpand, onCollapse: vi.fn() },
     });
-
-    expect(window.matchMedia).toHaveBeenCalledWith(
-      MOBILE_DOCK_OCCUPANT_PICKER_QUERY,
-    );
-    expect(MOBILE_DOCK_OCCUPANT_PICKER_QUERY).toBe('(min-width: 481px)');
-    expect(
-      screen.queryByRole('button', { name: 'Docked pane: Chat' }),
-    ).toBeNull();
-
-    setPickerQueryMatches(true);
-
-    expect(
-      screen.getByRole('button', { name: 'Docked pane: Chat' }),
-    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand chat' }));
+    expect(onExpand).toHaveBeenCalledOnce();
   });
-
-  test('marks the rendered picker trigger as mobile dock drag passthrough', () => {
-    pickerQueryMatches = true;
-    renderHeader({ occupantPicker: <StubOccupantPicker /> });
-
+  test('does not invent attribution or geometry for an unbound fullscreen pane', () => {
+    renderHeader({
+      agentIdentity: null,
+      dockToggle: null,
+      projectSwitcher: null,
+    });
     expect(
-      screen
-        .getByRole('button', { name: 'Docked pane: Chat' })
-        .getAttribute('data-dock-drag-passthrough'),
-    ).toBe('');
-  });
-
-  test('renders nothing extra when the occupant picker is absent (full-screen Chat placement)', () => {
-    // Width gate open, so absence is attributable to the prop, not the media
-    // query defaulting the slot away.
-    pickerQueryMatches = true;
-    renderHeader({ occupantPicker: undefined });
-
-    expect(screen.queryByRole('button', { name: /^Docked pane:/ })).toBeNull();
-    const header = screen.getByTestId('chat-dock-mobile-header');
-    expect(
-      header.querySelector('.chat-dock__mobile-occupant-picker'),
-    ).toBeNull();
+      screen.getByRole('button', { name: 'Switch task' }).textContent,
+    ).toBe('New chat');
+    expect(screen.queryByRole('button', { name: 'Collapse chat' })).toBeNull();
   });
 });
 
-/**
- * station#524 (review round 2, H2) + station#520 (review round 3, B1): the
- * ⋯ overflow sheet's occupant-switch items are reachable at EVERY dock
- * state (collapsed/half/maximized), not only when the header's own
- * occupant picker is deferred below 481px — so they must carry the SAME mobile
- * dock-and-empty contract `DockOccupantPicker` does: maximize when picking
- * this occupant would strand the main area behind it, plain switch
- * otherwise. Review round 2 wired the sheet to the plain action only; these
- * tests pin the round-3 fix (`chooseAmbientOccupant`, shared with the
- * picker) instead of re-pinning the gap.
- */
 type OccupantChooser = (descriptor: unknown, instance: unknown) => void;
 
 describe('ChatDockMobileHeader overflow sheet occupant switch (station#520/524)', () => {

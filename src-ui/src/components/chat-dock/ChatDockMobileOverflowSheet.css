@@ -1,0 +1,6 @@
+.chat-dock__mobile-overflow-panel .chat-dock__mobile-conn {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 10px 12px;
+  gap: 10px;
+}

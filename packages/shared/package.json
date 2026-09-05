@@ -78,7 +78,8 @@
     "./terminal-capability": "./src/terminal-capability.ts",
     "./agent-plugin-manifest": "./src/agent-plugin-manifest.ts",
     "./knowledge-root-identity": "./src/knowledge-root-identity.ts",
-    "./cloud-move": "./src/cloud-move.ts"
+    "./cloud-move": "./src/cloud-move.ts",
+    "./workspace-package": "./src/workspace-package.ts"
   },
   "publishConfig": {
     "access": "public"
