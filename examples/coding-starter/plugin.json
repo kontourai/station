@@ -20,7 +20,7 @@
         {
           "version": "1.0",
           "id": "pane:plugin%3Acoding-starter:coding:workspace",
-          "name": "Workspace",
+          "name": "Coding Workspace",
           "rendererId": "renderer:plugin%3Acoding-starter:plugin-component:coding-workspace",
           "renderer": {
             "kind": "plugin-component",
@@ -49,7 +49,7 @@
         {
           "version": "1.0",
           "id": "pane:plugin%3Acoding-starter:coding:diff",
-          "name": "Diff",
+          "name": "Coding Diff Review",
           "rendererId": "renderer:plugin%3Acoding-starter:plugin-component:coding-diff-review",
           "renderer": {
             "kind": "plugin-component",

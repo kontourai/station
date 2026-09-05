@@ -4,7 +4,7 @@ A host-only Agent Plugins 1.0 package with two Station Workspace Panes and one
 owner-qualified review action. The package ID and source directory remain
 `coding-starter`.
 
-**Workspace** shows a labelled sample file list and terminal output. **Diff**
+**Coding Workspace** shows a labelled sample file list and terminal output. **Coding Diff Review**
 shows a labelled example diff and review prompts. These are authored examples,
 not a live repository browser, command runner, or current Git diff. Connect an
 appropriate provider before presenting real project data.
@@ -22,7 +22,7 @@ station plugin install .
 ```
 
 Review the `navigation.dock` and `agents.invoke` permissions. Open the intended
-Project, choose **Add pane**, then **Workspace** or **Diff**. Installation makes
+Project, choose **Add pane**, then **Coding Workspace** or **Coding Diff Review**. Installation makes
 the contribution discoverable; placement is an explicit Project action. Both
 Panes can also be placed in the host's supported Project Layout regions.
 

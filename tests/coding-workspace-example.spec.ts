@@ -161,7 +161,7 @@ test('coding example preserves both Panes and its authored native Agent in a rea
       basename(process.env.STATION_E2E_OUTPUT_DIR ?? 'manual'),
     );
     mkdirSync(evidenceRoot, { recursive: true });
-    for (const name of ['Workspace', 'Diff']) {
+    for (const name of ['Coding Workspace', 'Coding Diff Review']) {
       await page.goto(`/projects/${slug}`);
       await page
         .getByRole('button', { name: '+ Add pane', exact: true })
@@ -172,6 +172,15 @@ test('coding example preserves both Panes and its authored native Agent in a rea
         .filter({ has: page.getByText(name, { exact: true }) })
         .getByRole('button', { name: `Open ${name}`, exact: true })
         .click();
+      const descriptor = descriptors.find((entry: any) => entry.name === name);
+      const occurrence = catalog.instances.find(
+        (entry: any) => entry.descriptorId === descriptor.id,
+      );
+      await expect(page).toHaveURL(
+        (url) =>
+          url.pathname ===
+          `/projects/${slug}/panes/${encodeURIComponent(descriptor.id)}/${encodeURIComponent(occurrence.instanceId)}`,
+      );
       await expect(page.locator('.coding-shell')).toBeVisible();
       await expect(
         page.getByText('Sample data', { exact: true }),
@@ -186,14 +195,19 @@ test('coding example preserves both Panes and its authored native Agent in a rea
         await page.setViewportSize({ width, height: 900 });
         await page.screenshot({
           path: testInfo.outputPath(
-            `coding-${name.toLowerCase()}-${width}.png`,
+            `coding-${name.toLowerCase().replaceAll(' ', '-')}-${width}.png`,
           ),
           fullPage: true,
           animations: 'disabled',
         });
         copyFileSync(
-          testInfo.outputPath(`coding-${name.toLowerCase()}-${width}.png`),
-          join(evidenceRoot, `coding-${name.toLowerCase()}-${width}.png`),
+          testInfo.outputPath(
+            `coding-${name.toLowerCase().replaceAll(' ', '-')}-${width}.png`,
+          ),
+          join(
+            evidenceRoot,
+            `coding-${name.toLowerCase().replaceAll(' ', '-')}-${width}.png`,
+          ),
         );
       }
     }
@@ -205,9 +219,20 @@ test('coding example preserves both Panes and its authored native Agent in a rea
     await page
       .getByRole('dialog', { name: 'Add workspace pane' })
       .getByRole('listitem')
-      .filter({ has: page.getByText('Diff', { exact: true }) })
-      .getByRole('button', { name: 'Open Diff', exact: true })
+      .filter({ has: page.getByText('Coding Diff Review', { exact: true }) })
+      .getByRole('button', { name: 'Open Coding Diff Review', exact: true })
       .click();
+    const diffDescriptor = descriptors.find(
+      (entry: any) => entry.name === 'Coding Diff Review',
+    );
+    const diffOccurrence = catalog.instances.find(
+      (entry: any) => entry.descriptorId === diffDescriptor.id,
+    );
+    await expect(page).toHaveURL(
+      (url) =>
+        url.pathname === `/projects/${slug}/layouts/coding` &&
+        url.searchParams.get('pane') === diffOccurrence.instanceId,
+    );
     await expect(
       page.getByRole('heading', { name: 'Diff review', exact: true }),
     ).toBeVisible();
