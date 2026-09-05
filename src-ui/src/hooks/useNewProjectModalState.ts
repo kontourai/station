@@ -110,7 +110,7 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
     isOpen,
     derivedSlug: draft.derivedSlug,
     normalizedDirectory: draft.normalizedDirectory,
-    resolveLayoutId: starter.resolveLayoutId,
+    starterLayoutId: starter.selectedLayoutId,
     verifySlugAvailability,
     onComplete: (slug) => {
       setProject(slug);

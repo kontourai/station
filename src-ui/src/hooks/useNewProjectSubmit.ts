@@ -54,7 +54,15 @@ interface UseNewProjectSubmitOptions {
   /** The slug the draft currently derives; a refusal older than it is stale. */
   derivedSlug: string;
   normalizedDirectory: string;
-  resolveLayoutId: () => Promise<string | null>;
+  /**
+   * The starter layout the picker currently shows as selected, or `null` for
+   * "Start without a layout". #1536 E4: this used to be a
+   * `resolveLayoutId()` callback that could answer with a layout the picker
+   * showed as unselected, so the created project got a layout the user had
+   * visibly declined. A value, read at submit, cannot diverge from the
+   * rendered selection.
+   */
+  starterLayoutId: string | null;
   /**
    * Re-reads the project list from the SERVER and returns the sentence to show
    * if the slug is still taken, or `null` to proceed. Anything it cannot
@@ -76,7 +84,7 @@ export function useNewProjectSubmit({
   isOpen,
   derivedSlug,
   normalizedDirectory,
-  resolveLayoutId,
+  starterLayoutId,
   verifySlugAvailability,
   onComplete,
 }: UseNewProjectSubmitOptions) {
@@ -179,9 +187,10 @@ export function useNewProjectSubmit({
           setRejectedSlug(null);
         }
 
-        // Resolve before creating so every failure before this point remains a
+        // Captured before creating so a retry applies the same starter the
+        // first attempt did, and every failure before this point remains a
         // normal validation failure, never a duplicate-create retry hazard.
-        const layoutId = await resolveLayoutId();
+        const layoutId = starterLayoutId;
         const created = await createProjectMutation.mutateAsync(draft);
         project = { slug: created.slug, layoutId };
         setCreatedProject(project);

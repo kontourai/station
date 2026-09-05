@@ -140,10 +140,6 @@ describe('WorkspacePaneAvailabilityList', () => {
       />,
     );
 
-    const glyph = document.querySelector(
-      '.workspace-pane-availability-list__preview-glyph',
-    ) as HTMLElement;
-    expect(glyph.textContent).toBe('F');
     // Deterministic: same id, same accent, regardless of catalog order.
     expect(panePreviewAccent('pane.files')).toBe(
       panePreviewAccent('pane.files'),
@@ -160,8 +156,9 @@ describe('WorkspacePaneAvailabilityList', () => {
   });
 
   // #765 F4: Coding and Chat both rendered a giant letter "C". Built-in
-  // panes now carry their real icon on the tile; the letter remains only the
-  // last-resort fallback for renderers this build does not recognise.
+  // panes carry their real icon on the tile; #1536 E8 replaced the remaining
+  // letter fallback with a contributed-pane glyph, so no tile spells one
+  // letter of the name the card already prints beside it.
   test('renders a built-in pane’s real glyph on the tile instead of a letter placeholder', () => {
     const builtinChat: WorkspacePaneAvailabilityCatalogEntry = {
       ...available,
@@ -202,11 +199,15 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect(coding).not.toBe(chat);
   });
 
-  test('keeps the letter fallback for renderers this build does not recognise', () => {
+  // #1536 E8: the audit found a plugin pane's tile rendering a lone capital
+  // "S". A contributed pane with neither `icon` nor `previewImage` gets a real
+  // glyph, and the letter placeholder is gone from every branch.
+  test('renders a contributed-pane glyph, not a name initial, for renderers this build does not recognise', () => {
     const pluginPane: WorkspacePaneAvailabilityCatalogEntry = {
       ...available,
       descriptor: {
         ...available.descriptor,
+        name: 'SDK Patterns',
         renderer: { kind: 'plugin-component', name: 'some-plugin-pane' },
       },
     };
@@ -217,12 +218,40 @@ describe('WorkspacePaneAvailabilityList', () => {
       />,
     );
 
+    const preview = document.querySelector(
+      '.workspace-pane-availability-list__preview',
+    ) as HTMLElement;
     expect(
-      document.querySelector('.workspace-pane-availability-list__preview-glyph')
+      preview.querySelector('.workspace-pane-availability-list__preview-icon'),
+    ).toBeTruthy();
+    expect(preview.textContent).toBe('');
+    expect(
+      document.querySelector(
+        '.workspace-pane-availability-list__preview-glyph',
+      ),
+    ).toBe(null);
+    // The name is still on the card, in full, where it belongs.
+    expect(
+      document.querySelector('.workspace-pane-availability-list__name')
         ?.textContent,
-    ).toBe('F');
+    ).toBe('SDK Patterns');
+  });
+
+  test('a pane with no renderer at all still gets a glyph rather than a letter', () => {
+    render(
+      <WorkspacePaneAvailabilityList
+        entries={[available]}
+        onSelect={vi.fn()}
+      />,
+    );
+
     expect(
       document.querySelector('.workspace-pane-availability-list__preview-icon'),
+    ).toBeTruthy();
+    expect(
+      document.querySelector(
+        '.workspace-pane-availability-list__preview-glyph',
+      ),
     ).toBe(null);
   });
 

@@ -23,14 +23,14 @@ export function ProjectLayoutsSection({
   /**
    * True while the layouts query is still in flight. Without it an unresolved
    * fetch is indistinguishable from a project that genuinely has no layouts,
-   * and the section states "No layouts yet" for a project that has some
+   * and the section states its empty case for a project that has some
    * (archive#801).
    */
   loading?: boolean;
   /**
    * True when the layouts query failed. A failure is not emptiness — react
    * query clears `isLoading` on error, so without this the section would state
-   * "No layouts yet" for a project whose layouts merely could not be fetched
+   * its empty case for a project whose layouts merely could not be fetched
    * (archive#801).
    */
   error?: boolean;
@@ -78,15 +78,22 @@ export function ProjectLayoutsSection({
       ) : (
         <Empty
           variant="prominent"
-          label="No layouts yet"
+          label="Nothing here yet"
+          description="Add a layout or a pane to open one in this project."
+          // #1536 E4: embedded, the Open section header already carries both
+          // "+ Add layout" and "+ Add pane" a few pixels above this card, so a
+          // third button here is the same affordance twice. Standalone, this
+          // card is the only one on screen.
           action={
-            <button
-              type="button"
-              className="button button--primary"
-              onClick={onOpenAddLayout}
-            >
-              Add layout
-            </button>
+            embedded ? undefined : (
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={onOpenAddLayout}
+              >
+                Add layout
+              </button>
+            )
           }
         />
       )}

@@ -736,7 +736,7 @@ describe('catalog application MRU tracking', () => {
 
 // archive#801: the project page renders as soon as the *project* query settles, so a
 // layouts fetch still in flight reached this section as an empty array and
-// stated "No layouts yet" for a project that has layouts.
+// stated its empty case for a project that has layouts.
 describe('ProjectLayoutsSection loading window (#801)', () => {
   test('does not claim emptiness while the layouts query is in flight', () => {
     render(
@@ -749,7 +749,7 @@ describe('ProjectLayoutsSection loading window (#801)', () => {
       />,
     );
 
-    expect(screen.queryByText('No layouts yet')).toBeNull();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
   });
 
   test('states emptiness once the query has settled with no layouts', () => {
@@ -763,7 +763,10 @@ describe('ProjectLayoutsSection loading window (#801)', () => {
       />,
     );
 
-    expect(screen.getByText('No layouts yet')).toBeTruthy();
+    expect(screen.getByText('Nothing here yet')).toBeTruthy();
+    expect(
+      screen.getByText('Add a layout or a pane to open one in this project.'),
+    ).toBeTruthy();
   });
 
   test('renders resolved layouts rather than a skeleton on a background refetch', () => {
@@ -789,7 +792,7 @@ describe('ProjectLayoutsSection loading window (#801)', () => {
   });
 
   // react-query clears `isLoading` once a query settles into error, so without
-  // an explicit error branch a failed fetch reads as "No layouts yet" — the
+  // an explicit error branch a failed fetch reads as the empty case — the
   // same confident-emptiness defect, reached from the error path (archive#801).
   test('states a failure as a failure rather than as emptiness', () => {
     const onRetry = vi.fn();
@@ -805,7 +808,7 @@ describe('ProjectLayoutsSection loading window (#801)', () => {
       />,
     );
 
-    expect(screen.queryByText('No layouts yet')).toBeNull();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
     expect(screen.getByText('Could not load layouts')).toBeTruthy();
 
     fireEvent.click(screen.getByText('Retry'));
