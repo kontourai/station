@@ -132,6 +132,10 @@ export function RequestInspectionDialog({
     if (
       inFlight.current ||
       attempted ||
+      queryClient
+        .getMutationCache()
+        .findAll({ mutationKey, exact: true })
+        .some((mutation) => mutation.state.status !== 'idle') ||
       capacityReached ||
       queryClient
         .getMutationCache()

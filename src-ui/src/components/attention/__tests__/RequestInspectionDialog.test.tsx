@@ -246,16 +246,14 @@ test('uncertain decision stays latched after failed and successful refresh and r
   ).toBeTruthy();
   await waitFor(() =>
     expect(
-      view.client
-        .getMutationCache()
-        .findAll({
-          mutationKey: [
-            'attention-request-response',
-            authority.apiBase,
-            authority.authorityKey,
-          ],
-          exact: false,
-        }),
+      view.client.getMutationCache().findAll({
+        mutationKey: [
+          'attention-request-response',
+          authority.apiBase,
+          authority.authorityKey,
+        ],
+        exact: false,
+      }),
     ).toHaveLength(0),
   );
 });
@@ -306,4 +304,27 @@ test('uncertainty capacity refuses rather than evicts and excludes another autho
   ).toHaveLength(64);
   view.unmount();
   client.clear();
+});
+
+test('overlapping inspectors share immediate exact-event dispatch admission', async () => {
+  const fetch = vi.fn(async (_url: unknown, init?: RequestInit) =>
+    init?.method === 'POST' ? new Promise<Response>(() => {}) : response(open),
+  );
+  vi.stubGlobal('fetch', fetch);
+  const client = new QueryClient();
+  mount(client);
+  mount(client);
+  const buttons = await screen.findAllByRole('button', {
+    name: 'Approve once',
+  });
+  expect(buttons).toHaveLength(2);
+  act(() => {
+    fireEvent.click(buttons[0]);
+    fireEvent.click(buttons[1]);
+  });
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.filter((call) => call[1]?.method === 'POST'),
+    ).toHaveLength(1),
+  );
 });
