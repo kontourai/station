@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { chromium } from '@playwright/test';
+import { type Browser, chromium } from '@playwright/test';
 import { build } from 'esbuild';
 import { expect, test } from 'vitest';
 import {
@@ -15,23 +15,25 @@ test('persists closed driver rejection through a real Chromium binding and produ
   const root = realpathSync(
     mkdtempSync(join(tmpdir(), 'station-driver-artifact-')),
   );
-  const bundled = await build({
-    entryPoints: [
-      resolve(
-        'src-ui/src/performance/interactive-workspace-performance-bridge.ts',
-      ),
-    ],
-    bundle: true,
-    write: false,
-    format: 'iife',
-    globalName: 'performanceBridge',
-    define: {
-      'import.meta.env.MODE': '"test"',
-      'import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE': '"0"',
-    },
-  });
-  const browser = await chromium.launch({ headless: true });
+  let browser: Browser | undefined;
+  const failures: unknown[] = [];
   try {
+    const bundled = await build({
+      entryPoints: [
+        resolve(
+          'src-ui/src/performance/interactive-workspace-performance-bridge.ts',
+        ),
+      ],
+      bundle: true,
+      write: false,
+      format: 'iife',
+      globalName: 'performanceBridge',
+      define: {
+        'import.meta.env.MODE': '"test"',
+        'import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE': '"0"',
+      },
+    });
+    browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
     await page.setContent(
       `<textarea data-station-performance-surface="task-editor" data-station-task-id="task-fixture" data-station-working-revision="swsr-v1:${'a'.repeat(64)}"></textarea><section data-station-performance-surface="task-room-presence"><header><p role="status">Live room connected.</p></header><button>Join room</button><button>Announce work</button><button>Leave room</button></section>`,
@@ -129,8 +131,20 @@ test('persists closed driver rejection through a real Chromium binding and produ
         /private-token|private\.invalid/,
       );
     }
+  } catch (error) {
+    failures.push(error);
   } finally {
-    await browser.close();
-    rmSync(root, { recursive: true, force: true });
+    try {
+      await browser?.close();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      rmSync(root, { recursive: true, force: true });
+    } catch (error) {
+      failures.push(error);
+    }
   }
+  // Setup/assertion failure remains primary; cleanup still runs independently.
+  if (failures.length) throw failures[0];
 }, 30_000);
