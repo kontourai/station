@@ -774,6 +774,91 @@
         }
       }
     },
+    "/api/plugins/{name}/recovery-preview": {
+      "get": {
+        "operationId": "previewPluginRecovery",
+        "summary": "Inspect retained plugin recovery and fresh permission requirements",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "409": {
+            "description": "Installation cannot be recovered in its current state"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Permission storage is unavailable"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/plugins/{name}/recover": {
+      "post": {
+        "operationId": "recoverPlugin",
+        "summary": "Recover a retained plugin with freshly reviewed permission revisions",
+        "tags": [
+          "plugins"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginRecovery"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "202": {
+            "description": "Recovery accepted; runtime activation is still pending"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "409": {
+            "description": "Recovery or permission revision changed; review again"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Permission storage is unavailable"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
     "/api/plugins/{name}/update": {
       "post": {
         "operationId": "updatePlugin",
@@ -946,905 +1031,1007 @@
   "components": {
     "schemas": {
       "AppConfigUpdate": {
-        "$ref": "#/definitions/AppConfigUpdate",
-        "definitions": {
-          "AppConfigUpdate": {
-            "type": "object",
-            "additionalProperties": {}
-          }
-        },
+        "type": "object",
+        "additionalProperties": {},
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
       "AgentCreate": {
-        "$ref": "#/definitions/AgentCreate",
-        "definitions": {
-          "AgentCreate": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100
-              },
-              "slug": {
-                "type": "string",
-                "maxLength": 50,
-                "pattern": "^[a-z0-9-]*$"
-              },
-              "prompt": {
-                "type": "string",
-                "maxLength": 100000
-              },
-              "description": {
-                "type": "string",
-                "maxLength": 500
-              },
-              "model": {
-                "type": "string",
-                "maxLength": 200
-              },
-              "region": {
-                "type": "string",
-                "maxLength": 50
-              },
-              "maxSteps": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "icon": {
-                "type": "string",
-                "maxLength": 10
-              }
-            },
-            "required": [
-              "name"
-            ],
-            "additionalProperties": true
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "slug": {
+            "type": "string",
+            "maxLength": 50,
+            "pattern": "^[a-z0-9-]*$"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 100000
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "region": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "maxSteps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "icon": {
+            "type": "string",
+            "maxLength": 10
           }
         },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
       "AgentCatalogResponse": {
-        "$ref": "#/definitions/AgentCatalogResponse",
-        "definitions": {
-          "AgentCatalogResponse": {}
-        },
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
       "AgentUpdate": {
-        "$ref": "#/definitions/AgentUpdate",
-        "definitions": {
-          "AgentUpdate": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100
-              },
-              "slug": {
-                "type": "string",
-                "maxLength": 50,
-                "pattern": "^[a-z0-9-]*$"
-              },
-              "prompt": {
-                "type": "string",
-                "maxLength": 100000
-              },
-              "description": {
-                "type": "string",
-                "maxLength": 500
-              },
-              "model": {
-                "type": "string",
-                "maxLength": 200
-              },
-              "region": {
-                "type": "string",
-                "maxLength": 50
-              },
-              "maxSteps": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "icon": {
-                "type": "string",
-                "maxLength": 10
-              }
-            },
-            "additionalProperties": true
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "slug": {
+            "type": "string",
+            "maxLength": 50,
+            "pattern": "^[a-z0-9-]*$"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 100000
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "region": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "maxSteps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "icon": {
+            "type": "string",
+            "maxLength": 10
           }
         },
+        "additionalProperties": true,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
       "Integration": {
-        "$ref": "#/definitions/Integration",
-        "definitions": {
-          "Integration": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "disabledTools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "kind": {
+            "type": "string"
+          },
+          "transport": {
+            "type": "string",
+            "enum": [
+              "stdio",
+              "sse",
+              "streamable-http"
+            ]
+          },
+          "command": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "env": {
+            "allOf": [
+              {},
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "secretEnv": {
+            "allOf": [
+              {},
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "removeSecretEnvKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "timeouts": {
             "type": "object",
             "properties": {
-              "id": {
-                "type": "string"
+              "startupMs": {
+                "type": "number"
               },
-              "enabled": {
-                "type": "boolean"
-              },
-              "disabledTools": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "kind": {
-                "type": "string"
-              },
-              "transport": {
-                "type": "string",
-                "enum": [
-                  "stdio",
-                  "sse",
-                  "streamable-http"
-                ]
-              },
-              "command": {
-                "type": "string"
-              },
-              "args": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "endpoint": {
-                "type": "string"
-              },
-              "displayName": {
-                "type": "string"
-              },
-              "description": {
-                "type": "string"
-              },
-              "icon": {
-                "type": "string",
-                "maxLength": 240
-              },
-              "env": {
-                "allOf": [
-                  {},
-                  {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  }
-                ]
-              },
-              "secretEnv": {
-                "allOf": [
-                  {},
-                  {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  }
-                ]
-              },
-              "removeSecretEnvKeys": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "timeouts": {
-                "type": "object",
-                "properties": {
-                  "startupMs": {
-                    "type": "number"
-                  },
-                  "requestMs": {
-                    "type": "number"
-                  }
-                },
-                "additionalProperties": false
-              },
-              "healthCheck": {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "jsonrpc",
-                      "http",
-                      "command"
-                    ]
-                  },
-                  "path": {
-                    "type": "string"
-                  },
-                  "intervalMs": {
-                    "type": "number"
-                  }
-                },
-                "additionalProperties": false
+              "requestMs": {
+                "type": "number"
               }
             },
-            "required": [
-              "id"
-            ],
+            "additionalProperties": false
+          },
+          "healthCheck": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "jsonrpc",
+                  "http",
+                  "command"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "intervalMs": {
+                "type": "number"
+              }
+            },
             "additionalProperties": false
           }
         },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
       "IntegrationUpdate": {
-        "$ref": "#/definitions/IntegrationUpdate",
-        "definitions": {
-          "IntegrationUpdate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "disabledTools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "kind": {
+            "type": "string"
+          },
+          "transport": {
+            "type": "string",
+            "enum": [
+              "stdio",
+              "sse",
+              "streamable-http"
+            ]
+          },
+          "command": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "env": {
+            "allOf": [
+              {},
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "secretEnv": {
+            "allOf": [
+              {},
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "removeSecretEnvKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "timeouts": {
             "type": "object",
             "properties": {
-              "id": {
+              "startupMs": {
+                "type": "number"
+              },
+              "requestMs": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          },
+          "healthCheck": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "jsonrpc",
+                  "http",
+                  "command"
+                ]
+              },
+              "path": {
                 "type": "string"
               },
+              "intervalMs": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "PluginInstall": {
+        "type": "object",
+        "properties": {
+          "dataPolicy": {
+            "type": "string",
+            "enum": [
+              "preserve",
+              "retain-and-reset"
+            ]
+          },
+          "expectedInstallation": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "installation": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "generation": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "materialization": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "dataScope": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "origin": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "artifact": {
+                    "type": "object",
+                    "properties": {
+                      "digest": {
+                        "type": "string",
+                        "pattern": "^sha256:[0-9a-f]{64}$"
+                      }
+                    },
+                    "required": [
+                      "digest"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "scope",
+                  "installation",
+                  "generation",
+                  "materialization",
+                  "dataScope",
+                  "artifact"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "skip": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "consent": {
+            "type": "object",
+            "properties": {
+              "grantRevision": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "permissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 256
+              },
+              "contentDigest": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 256
+              },
+              "dependencyApprovals": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "grantRevision": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 256
+                    },
+                    "contentDigest": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "dependencies": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 256
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "permissions",
+                    "contentDigest",
+                    "dependencies"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 256
+              }
+            },
+            "required": [
+              "permissions",
+              "contentDigest"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "PluginOverrides": {
+        "type": "object",
+        "additionalProperties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "PluginPreview": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "registryId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "PluginRecovery": {
+        "type": "object",
+        "properties": {
+          "recoveryRevision": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "consent": {
+            "type": "object",
+            "properties": {
+              "grantRevision": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "permissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 256
+              },
+              "contentDigest": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 256
+              },
+              "dependencyApprovals": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "grantRevision": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 256
+                    },
+                    "contentDigest": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "dependencies": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 256
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "permissions",
+                    "contentDigest",
+                    "dependencies"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 256
+              }
+            },
+            "required": [
+              "grantRevision",
+              "permissions",
+              "contentDigest"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "recoveryRevision",
+          "consent"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "RegistryInstall": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "SkillCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100000
+          },
+          "description": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "agent": {
+            "type": "string"
+          },
+          "global": {
+            "type": "boolean"
+          },
+          "command": {
+            "type": "object",
+            "properties": {
               "enabled": {
                 "type": "boolean"
               },
-              "disabledTools": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "kind": {
-                "type": "string"
-              },
-              "transport": {
+              "name": {
                 "type": "string",
-                "enum": [
-                  "stdio",
-                  "sse",
-                  "streamable-http"
-                ]
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
               },
-              "command": {
-                "type": "string"
-              },
-              "args": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "endpoint": {
-                "type": "string"
-              },
-              "displayName": {
-                "type": "string"
-              },
-              "description": {
-                "type": "string"
-              },
-              "icon": {
-                "type": "string",
-                "maxLength": 240
-              },
-              "env": {
-                "allOf": [
-                  {},
-                  {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  }
-                ]
-              },
-              "secretEnv": {
-                "allOf": [
-                  {},
-                  {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  }
-                ]
-              },
-              "removeSecretEnvKeys": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "timeouts": {
-                "type": "object",
-                "properties": {
-                  "startupMs": {
-                    "type": "number"
-                  },
-                  "requestMs": {
-                    "type": "number"
-                  }
+              "global": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "enabled"
+            ],
+            "additionalProperties": false
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
                 },
-                "additionalProperties": false
+                "description": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "default": {
+                  "type": "string",
+                  "maxLength": 2000
+                }
               },
-              "healthCheck": {
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 50
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "createdFrom": {
                 "type": "object",
                 "properties": {
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "jsonrpc",
-                      "http",
-                      "command"
+                      "agent",
+                      "plugin",
+                      "user",
+                      "asset"
                     ]
                   },
-                  "path": {
+                  "agentSlug": {
                     "type": "string"
                   },
-                  "intervalMs": {
-                    "type": "number"
-                  }
-                },
-                "additionalProperties": false
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "PluginInstall": {
-        "$ref": "#/definitions/PluginInstall",
-        "definitions": {
-          "PluginInstall": {
-            "type": "object",
-            "properties": {
-              "source": {
-                "type": "string",
-                "minLength": 1
-              },
-              "skip": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "consent": {
-                "type": "object",
-                "properties": {
-                  "permissions": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "maxItems": 256
+                  "conversationId": {
+                    "type": "string"
                   },
-                  "contentDigest": {
+                  "action": {
                     "type": "string",
-                    "minLength": 1,
-                    "maxLength": 256
+                    "enum": [
+                      "provider-capability-to-skill"
+                    ]
                   },
-                  "dependencies": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "maxItems": 256
+                  "convertedAt": {
+                    "type": "string"
                   },
-                  "dependencyApprovals": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128
-                        },
-                        "permissions": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          },
-                          "maxItems": 256
-                        },
-                        "contentDigest": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 256
-                        },
-                        "dependencies": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          },
-                          "maxItems": 256
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "permissions",
-                        "contentDigest",
-                        "dependencies"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "maxItems": 256
-                  }
-                },
-                "required": [
-                  "permissions",
-                  "contentDigest"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "required": [
-              "source"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "PluginOverrides": {
-        "$ref": "#/definitions/PluginOverrides",
-        "definitions": {
-          "PluginOverrides": {
-            "type": "object",
-            "additionalProperties": {}
-          }
-        },
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "PluginPreview": {
-        "$ref": "#/definitions/PluginPreview",
-        "definitions": {
-          "PluginPreview": {
-            "type": "object",
-            "properties": {
-              "source": {
-                "type": "string",
-                "minLength": 1
-              },
-              "registryId": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "RegistryInstall": {
-        "$ref": "#/definitions/RegistryInstall",
-        "definitions": {
-          "RegistryInstall": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "required": [
-              "id"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "SkillCreate": {
-        "$ref": "#/definitions/SkillCreate",
-        "definitions": {
-          "SkillCreate": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200
-              },
-              "body": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100000
-              },
-              "description": {
-                "type": "string"
-              },
-              "category": {
-                "type": "string"
-              },
-              "tags": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "agent": {
-                "type": "string"
-              },
-              "global": {
-                "type": "boolean"
-              },
-              "command": {
-                "type": "object",
-                "properties": {
-                  "enabled": {
-                    "type": "boolean"
-                  },
-                  "name": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 100,
-                    "pattern": "^[a-z0-9][a-z0-9-]*$"
-                  },
-                  "global": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "enabled"
-                ],
-                "additionalProperties": false
-              },
-              "variables": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "name": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 100
-                    },
-                    "description": {
-                      "type": "string",
-                      "maxLength": 500
-                    },
-                    "default": {
-                      "type": "string",
-                      "maxLength": 2000
-                    }
-                  },
-                  "required": [
-                    "name"
-                  ],
-                  "additionalProperties": false
-                },
-                "maxItems": 50
-              },
-              "provenance": {
-                "type": "object",
-                "properties": {
-                  "createdFrom": {
+                  "asset": {
                     "type": "object",
                     "properties": {
                       "kind": {
                         "type": "string",
                         "enum": [
-                          "agent",
-                          "plugin",
-                          "user",
-                          "asset"
+                          "skill",
+                          "provider-capability"
                         ]
                       },
-                      "agentSlug": {
+                      "id": {
                         "type": "string"
                       },
-                      "conversationId": {
+                      "name": {
                         "type": "string"
                       },
-                      "action": {
+                      "owner": {
                         "type": "string",
                         "enum": [
-                          "provider-capability-to-skill"
+                          "user",
+                          "registry",
+                          "plugin",
+                          "provider"
                         ]
                       },
-                      "convertedAt": {
+                      "providerId": {
                         "type": "string"
                       },
-                      "asset": {
-                        "type": "object",
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "skill",
-                              "provider-capability"
-                            ]
-                          },
-                          "id": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "owner": {
-                            "type": "string",
-                            "enum": [
-                              "user",
-                              "registry",
-                              "plugin",
-                              "provider"
-                            ]
-                          },
-                          "providerId": {
-                            "type": "string"
-                          },
-                          "connectionId": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "id",
-                          "name",
-                          "owner"
-                        ],
-                        "additionalProperties": false
+                      "connectionId": {
+                        "type": "string"
                       }
                     },
                     "required": [
-                      "kind"
+                      "kind",
+                      "id",
+                      "name",
+                      "owner"
                     ],
                     "additionalProperties": false
-                  },
-                  "updatedFrom": {
-                    "$ref": "#/definitions/SkillCreate/properties/provenance/properties/createdFrom"
                   }
                 },
+                "required": [
+                  "kind"
+                ],
                 "additionalProperties": false
               },
-              "_sourceContext": {
-                "$ref": "#/definitions/SkillCreate/properties/provenance/properties/createdFrom"
+              "updatedFrom": {
+                "$ref": "#/components/schemas/SkillCreate/properties/provenance/properties/createdFrom"
               }
             },
-            "required": [
-              "name",
-              "body"
-            ],
             "additionalProperties": false
+          },
+          "_sourceContext": {
+            "$ref": "#/components/schemas/SkillCreate/properties/provenance/properties/createdFrom"
           }
         },
+        "required": [
+          "name",
+          "body"
+        ],
+        "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
       "SkillImport": {
-        "$ref": "#/definitions/SkillImport",
-        "definitions": {
-          "SkillImport": {
-            "type": "object",
-            "properties": {
-              "files": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "filename": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 512
-                    },
-                    "content": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 100000
-                    }
-                  },
-                  "required": [
-                    "filename",
-                    "content"
-                  ],
-                  "additionalProperties": false
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "filename": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
                 },
-                "minItems": 1,
-                "maxItems": 50
-              }
+                "content": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100000
+                }
+              },
+              "required": [
+                "filename",
+                "content"
+              ],
+              "additionalProperties": false
             },
-            "required": [
-              "files"
-            ],
-            "additionalProperties": false
+            "minItems": 1,
+            "maxItems": 50
           }
         },
+        "required": [
+          "files"
+        ],
+        "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
       "SkillOutcome": {
-        "$ref": "#/definitions/SkillOutcome",
-        "definitions": {
-          "SkillOutcome": {
-            "type": "object",
-            "properties": {
-              "outcome": {
-                "type": "string",
-                "enum": [
-                  "success",
-                  "failure"
-                ]
-              }
-            },
-            "required": [
-              "outcome"
-            ],
-            "additionalProperties": false
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failure"
+            ]
           }
         },
+        "required": [
+          "outcome"
+        ],
+        "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
       "SkillUpdate": {
-        "$ref": "#/definitions/SkillUpdate",
-        "definitions": {
-          "SkillUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100000
+          },
+          "description": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "agent": {
+            "type": "string"
+          },
+          "global": {
+            "type": "boolean"
+          },
+          "command": {
             "type": "object",
             "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
               "name": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 200
-              },
-              "body": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100000
-              },
-              "description": {
-                "type": "string"
-              },
-              "category": {
-                "type": "string"
-              },
-              "tags": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "agent": {
-                "type": "string"
+                "maxLength": 100,
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
               },
               "global": {
                 "type": "boolean"
+              }
+            },
+            "required": [
+              "enabled"
+            ],
+            "additionalProperties": false
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "default": {
+                  "type": "string",
+                  "maxLength": 2000
+                }
               },
-              "command": {
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 50
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "createdFrom": {
                 "type": "object",
                 "properties": {
-                  "enabled": {
-                    "type": "boolean"
-                  },
-                  "name": {
+                  "kind": {
                     "type": "string",
-                    "minLength": 1,
-                    "maxLength": 100,
-                    "pattern": "^[a-z0-9][a-z0-9-]*$"
+                    "enum": [
+                      "agent",
+                      "plugin",
+                      "user",
+                      "asset"
+                    ]
                   },
-                  "global": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "enabled"
-                ],
-                "additionalProperties": false
-              },
-              "variables": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "name": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 100
-                    },
-                    "description": {
-                      "type": "string",
-                      "maxLength": 500
-                    },
-                    "default": {
-                      "type": "string",
-                      "maxLength": 2000
-                    }
+                  "agentSlug": {
+                    "type": "string"
                   },
-                  "required": [
-                    "name"
-                  ],
-                  "additionalProperties": false
-                },
-                "maxItems": 50
-              },
-              "provenance": {
-                "type": "object",
-                "properties": {
-                  "createdFrom": {
+                  "conversationId": {
+                    "type": "string"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "provider-capability-to-skill"
+                    ]
+                  },
+                  "convertedAt": {
+                    "type": "string"
+                  },
+                  "asset": {
                     "type": "object",
                     "properties": {
                       "kind": {
                         "type": "string",
                         "enum": [
-                          "agent",
-                          "plugin",
-                          "user",
-                          "asset"
+                          "skill",
+                          "provider-capability"
                         ]
                       },
-                      "agentSlug": {
+                      "id": {
                         "type": "string"
                       },
-                      "conversationId": {
+                      "name": {
                         "type": "string"
                       },
-                      "action": {
+                      "owner": {
                         "type": "string",
                         "enum": [
-                          "provider-capability-to-skill"
+                          "user",
+                          "registry",
+                          "plugin",
+                          "provider"
                         ]
                       },
-                      "convertedAt": {
+                      "providerId": {
                         "type": "string"
                       },
-                      "asset": {
-                        "type": "object",
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "skill",
-                              "provider-capability"
-                            ]
-                          },
-                          "id": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "owner": {
-                            "type": "string",
-                            "enum": [
-                              "user",
-                              "registry",
-                              "plugin",
-                              "provider"
-                            ]
-                          },
-                          "providerId": {
-                            "type": "string"
-                          },
-                          "connectionId": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "id",
-                          "name",
-                          "owner"
-                        ],
-                        "additionalProperties": false
+                      "connectionId": {
+                        "type": "string"
                       }
                     },
                     "required": [
-                      "kind"
+                      "kind",
+                      "id",
+                      "name",
+                      "owner"
                     ],
                     "additionalProperties": false
-                  },
-                  "updatedFrom": {
-                    "$ref": "#/definitions/SkillUpdate/properties/provenance/properties/createdFrom"
                   }
                 },
+                "required": [
+                  "kind"
+                ],
                 "additionalProperties": false
               },
-              "_sourceContext": {
-                "$ref": "#/definitions/SkillUpdate/properties/provenance/properties/createdFrom"
+              "updatedFrom": {
+                "$ref": "#/components/schemas/SkillUpdate/properties/provenance/properties/createdFrom"
               }
             },
             "additionalProperties": false
+          },
+          "_sourceContext": {
+            "$ref": "#/components/schemas/SkillUpdate/properties/provenance/properties/createdFrom"
           }
         },
+        "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       }
     }
