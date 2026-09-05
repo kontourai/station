@@ -255,8 +255,8 @@ function fingerprintFiles(
   return digest(
     Buffer.from(
       JSON.stringify(
-        files
-          .toSorted((left, right) =>
+        [...files]
+          .sort((left, right) =>
             left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
           )
           .map(({ path, executable, sha256 }) => ({
@@ -788,8 +788,8 @@ export function verifyWorkspacePackage(input: {
       );
     const indexIdentity = (entries: IndexEntry[]) =>
       JSON.stringify(
-        entries
-          .toSorted((left, right) =>
+        [...entries]
+          .sort((left, right) =>
             left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
           )
           .map(({ path, mode, oid }) => [path, mode, oid]),
