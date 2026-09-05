@@ -526,10 +526,11 @@ describe('Workspace Pane host invocation admission', () => {
             success: true,
             data: { ...nativeSpec, slug },
           });
-        if (path === `/api/projects/${projectSlug}`)
+        if (path.startsWith('/api/projects/'))
           return Response.json({
             success: true,
-            data: storage.projectRevision(projectSlug).value,
+            data: storage.projectRevision(path.slice('/api/projects/'.length))
+              .value,
           });
         if (!String(url).endsWith('/.well-known/station/v1'))
           throw new Error(`Unexpected native proof network request: ${path}`);
@@ -1276,6 +1277,35 @@ describe('Workspace Pane host invocation admission', () => {
     );
     expect(proof.streamText).toHaveBeenCalledOnce();
     ordinaryLookupAllowed = true;
+    await storage.createProject({
+      ...storage.projectRevision(projectSlug).value,
+      id: 'project-b-id',
+      slug: 'project-b',
+      name: 'Same repository, different Project',
+    });
+    await expect(
+      executeExecutionTargetMessage(
+        {
+          conversationId: result.conversationId,
+          target: {
+            environment: { kind: 'current' },
+            agent: slug,
+            workspace: { kind: 'project', projectSlug: 'project-b' },
+          },
+          message: 'Must not cross Project identity.',
+          userId: proof.actor.principal.id,
+          principal: proof.actor.principal,
+          readAuthority: proof.actor.readAuthority,
+        },
+        service,
+      ),
+    ).rejects.toMatchObject({
+      code: 'continuation_workspace_different_project',
+    });
+    expect(proof.streamText).toHaveBeenCalledOnce();
+    expect(service.currentConversationSessionId(result.conversationId)).toBe(
+      result.sessionId,
+    );
     const registeredBefore = execFileSync(
       'git',
       ['-C', repo, 'worktree', 'list', '--porcelain'],
@@ -1338,6 +1368,52 @@ describe('Workspace Pane host invocation admission', () => {
             )?.session.lifecycleState,
         )
         .toBe('completed');
+      const third = await executeExecutionTargetMessage(
+        {
+          conversationId: result.conversationId,
+          target: {
+            environment: { kind: 'current' },
+            agent: slug,
+            workspace: { kind: 'project', projectSlug },
+          },
+          message: 'Third turn in the original owned worktree.',
+          userId: proof.actor.principal.id,
+          principal: proof.actor.principal,
+          readAuthority: proof.actor.readAuthority,
+        },
+        service,
+      );
+      await expect.poll(() => observed.length).toBe(3);
+      expect(third.sessionId).not.toBe(continued.sessionId);
+      expect(third.sessionId).not.toBe(result.sessionId);
+      expect(observed[2]).toMatchObject({
+        output: realpathSync(session!.session.cwd!),
+      });
+      expect(
+        (
+          await service.readSession(
+            third.sessionId,
+            INTERNAL_SESSION_READ_SCOPE,
+          )
+        )?.session.cwd,
+      ).toBe(session!.session.cwd);
+      expect(
+        execFileSync('git', ['-C', repo, 'worktree', 'list', '--porcelain'], {
+          windowsHide: true,
+          encoding: 'utf8',
+        }),
+      ).toBe(registeredBefore);
+      await expect
+        .poll(
+          async () =>
+            (
+              await service.readSession(
+                third.sessionId,
+                INTERNAL_SESSION_READ_SCOPE,
+              )
+            )?.session.lifecycleState,
+        )
+        .toBe('completed');
       proofOptions.dropWorkspaceMarker = true;
       await expect(
         executeExecutionTargetMessage(
@@ -1356,7 +1432,7 @@ describe('Workspace Pane host invocation admission', () => {
           service,
         ),
       ).rejects.toThrow();
-      expect(proof.streamText).toHaveBeenCalledTimes(2);
+      expect(proof.streamText).toHaveBeenCalledTimes(3);
     } finally {
       optionalGrant.mockRestore();
       steering.mockRestore();

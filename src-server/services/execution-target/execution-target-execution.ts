@@ -926,6 +926,11 @@ function validateContinuationWorkspace(
         'continuation_workspace_project_context_missing',
         'This conversation must be resumed from its original project.',
       );
+    if (binding.projectSlug !== workspace.projectSlug)
+      throw new ContinuationWorkspaceError(
+        'continuation_workspace_different_project',
+        'This conversation belongs to a different project.',
+      );
     if (originalIsolation !== requestedIsolation) {
       throw new Error(
         'The requested conversation belongs to a different workspace isolation',
