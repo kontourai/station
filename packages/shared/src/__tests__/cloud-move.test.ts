@@ -107,6 +107,25 @@ describe('cloud move preview', () => {
       prepareCloudEnvironment({ target: gcp, image: 'unused' }),
     ).toThrow('does not support environment preparation');
   });
+  test('treats tilde-literal and nonexistent workspaces as metadata rather than opening them', () => {
+    const { root, put } = fixture();
+    for (const workingDirectory of [
+      '~/station-preview-workspace-not-inspected',
+      join(root, 'missing-workspace'),
+    ]) {
+      put('projects/demo/project.json', {
+        id: 'project-id',
+        slug: 'demo',
+        workingDirectory,
+      });
+      const result = previewCloudMove({ homeDir: root, target });
+      expect(
+        result.items.find((item) => item.kind === 'project'),
+      ).toMatchObject({ disposition: 'review-required' });
+      expect(JSON.stringify(result)).not.toContain(workingDirectory);
+      expect(result.transferAvailable).toBe(false);
+    }
+  });
   test('rejects unsupported target configuration before inspecting a home', () => {
     expect(() =>
       previewCloudMove({
