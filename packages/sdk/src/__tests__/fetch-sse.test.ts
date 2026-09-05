@@ -283,6 +283,55 @@ describe('fetchSSE', () => {
     expect(stream.signal.aborted).toBe(true);
   });
 
+  it('does not advance Last-Event-ID when the consumer rejects a frame', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        failingSseResponse('id: rejected-7\ndata: malformed\n\n'),
+      )
+      .mockImplementationOnce(
+        async () => new Promise<Response>(() => undefined),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      retryDelayMs: 10,
+      onMessage: () => false,
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(10);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const reconnectInit = (fetchMock.mock.calls as unknown[][])[1]?.[1] as
+      | RequestInit
+      | undefined;
+    expect(new Headers(reconnectInit?.headers).get('Last-Event-ID')).toBeNull();
+
+    stream.close();
+  });
+
+  it('exhausts capped retries when every delivered frame is rejected', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () =>
+      failingSseResponse('id: rejected\ndata: malformed\n\n'),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const stream = fetchSSE('https://station.example.test/events', {
+      maxRetries: 2,
+      retryDelayMs: 1,
+      maxRetryDelayMs: 1,
+      onMessage: () => false,
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    try {
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+
   it('exhausts capped retries for repeated post-open stream errors', async () => {
     vi.useFakeTimers();
     const onError = vi.fn();
