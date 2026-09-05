@@ -546,10 +546,6 @@ function boundedPortableJsonBytes(
   }
 }
 
-function clone<T>(value: T): T {
-  return structuredClone(value);
-}
-
 function canonicalDigest(value: unknown): string {
   return createHash('sha256')
     .update(JSON.stringify(canonicalizeForDigest(value)) ?? 'null')
@@ -1119,14 +1115,14 @@ export class RevisionEvidenceModule {
         });
       return this.#freezeResult({
         outcome: persisted.inserted === 1 ? 'committed' : 'duplicate',
-        revision: clone(durable),
+        revision: structuredClone(durable),
       });
     }
     const existing = this.#revisions.get(parsed.record.revisionId);
     if (existing)
       return this.#freezeResult(
         this.#active(generation) && sameReceiptIdentity(existing, parsed.record)
-          ? { outcome: 'duplicate', revision: clone(existing) }
+          ? { outcome: 'duplicate', revision: structuredClone(existing) }
           : { outcome: 'rejected', reason: 'identity_collision' },
       );
     if (this.#revisions.size >= this.#bounds.maxRevisions)
@@ -1150,7 +1146,10 @@ export class RevisionEvidenceModule {
         outcome: 'rejected',
         reason: 'persistence_unavailable',
       });
-    this.#revisions.set(parsed.record.revisionId, clone(parsed.record));
+    this.#revisions.set(
+      parsed.record.revisionId,
+      structuredClone(parsed.record),
+    );
     if (!this.#active(generation)) {
       this.#revisions.delete(parsed.record.revisionId);
       return this.#freezeResult({
@@ -1160,7 +1159,7 @@ export class RevisionEvidenceModule {
     }
     return this.#freezeResult({
       outcome: 'committed',
-      revision: clone(parsed.record),
+      revision: structuredClone(parsed.record),
     });
   }
 
@@ -1182,7 +1181,7 @@ export class RevisionEvidenceModule {
         reason: 'revision_unavailable',
         revisionId,
       };
-    return record ? clone(record) : undefined;
+    return record ? structuredClone(record) : undefined;
   }
 
   /** EventStore fences retained capabilities before closing its SQLite owner. */
@@ -1358,11 +1357,11 @@ export class RevisionEvidenceModule {
         id: change.id,
         status: 'approved',
         sessionId: change.sessionId,
-        baseSnapshot: clone(change.baseSnapshot),
-        proposedSnapshot: clone(change.proposedSnapshot),
+        baseSnapshot: structuredClone(change.baseSnapshot),
+        proposedSnapshot: structuredClone(change.proposedSnapshot),
         decision,
       },
-      diff: clone(diff(before, after)),
+      diff: structuredClone(diff(before, after)),
     });
   }
 
@@ -1377,7 +1376,7 @@ export class RevisionEvidenceModule {
       return { state: 'UNAVAILABLE', reason: 'revision_unavailable' };
     return {
       schemaVersion: REVISION_EVIDENCE_SCHEMA_VERSION,
-      revisions: clone(
+      revisions: structuredClone(
         [...this.#revisions.values()].sort((left, right) =>
           compareWorkingStateIds(left.revisionId, right.revisionId),
         ),
@@ -1484,7 +1483,7 @@ export class RevisionEvidenceModule {
             outcome: 'rejected',
             reason: 'wrong_scope',
           });
-        staged.set(record.revisionId, clone(record));
+        staged.set(record.revisionId, structuredClone(record));
         remaining.delete(record.revisionId);
       }
     }
@@ -1730,7 +1729,8 @@ export class RevisionEvidenceModule {
     }
     if (admitted.size !== intendedById.size) return false;
     if (!this.#active(generation)) return false;
-    for (const [id, record] of admitted) this.#revisions.set(id, clone(record));
+    for (const [id, record] of admitted)
+      this.#revisions.set(id, structuredClone(record));
     if (!this.#active(generation)) {
       for (const id of admitted.keys()) this.#revisions.delete(id);
       return false;
@@ -1795,7 +1795,7 @@ export class RevisionEvidenceModule {
     return this.#resolutionResult(
       operation,
       revision
-        ? { state: 'AVAILABLE', revision: clone(revision) }
+        ? { state: 'AVAILABLE', revision: structuredClone(revision) }
         : {
             state: 'UNAVAILABLE',
             reason: 'revision_missing',
@@ -1849,7 +1849,7 @@ export class RevisionEvidenceModule {
       };
     return {
       state: 'AVAILABLE',
-      revision: clone({
+      revision: structuredClone({
         revisionId: revision.revisionId,
         scope: revision.scope,
         text: revision.text,

@@ -3231,3 +3231,36 @@ test('every mobile dock header control is part of the drag surface (#1052)', asy
     ).toHaveAttribute('data-dock-drag-passthrough', '');
   }
 });
+
+for (const width of [320, 390, 600]) {
+  test(`composer control rail contains its controls at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await mockChatShell(page);
+    await openComposer(page);
+    const rail = page.locator('.chat-input__meta');
+    await expect(rail).toBeVisible();
+    const controls = rail.locator(
+      '.chat-input__agent-btn, .chat-input__model-btn',
+    );
+    await expect(controls).toHaveCount(2);
+    const railBox = await rail.boundingBox();
+    expect(railBox).not.toBeNull();
+    for (const control of await controls.all()) {
+      await expect(control).toBeVisible();
+      const box = (await control.boundingBox())!;
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.x).toBeGreaterThanOrEqual(railBox!.x - 1);
+      expect(box.x + box.width).toBeLessThanOrEqual(
+        railBox!.x + railBox!.width + 1,
+      );
+    }
+    expect(
+      await rail.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth + 1,
+      ),
+    ).toBe(true);
+  });
+}

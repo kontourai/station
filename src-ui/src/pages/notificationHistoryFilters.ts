@@ -1,7 +1,6 @@
 import type { AttentionItem } from '@kontourai/station-contracts/attention';
 import type { Notification } from '@kontourai/station-contracts/notification';
 import { attentionKindLabel } from '../utils/attention';
-import { notificationCategoryLabel } from '../utils/notificationLabels';
 
 export interface NotificationHistoryFilters {
   query: string;
@@ -112,10 +111,6 @@ export function notificationHistoryCategories(
       ...selected,
     ]),
   ].sort();
-}
-
-export function notificationHistoryCategoryLabel(category: string): string {
-  return notificationCategoryLabel(category);
 }
 
 interface FilterableHistoryEntry {
