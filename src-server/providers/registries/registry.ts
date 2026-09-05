@@ -364,7 +364,7 @@ function providerHandle(
         return (...args: unknown[]) => {
           if (!cleanup.has(key)) assertCurrent();
           const result = Reflect.apply(value, target, args);
-        return result === target ? handle : result;
+          return result === target ? handle : result;
         };
       },
       has(_target, key) {
