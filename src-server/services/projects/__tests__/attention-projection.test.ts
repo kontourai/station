@@ -2503,3 +2503,71 @@ describe('device pairing requests need attention (#765 D5)', () => {
     ]);
   });
 });
+
+describe('exact attention request references', () => {
+  test('permission references capture their exact open event and Session', async () => {
+    const projection = makeService({
+      sessions: [
+        baseSession({
+          threadId: 'exact-session',
+          lifecycleState: 'review_pending',
+        }),
+      ],
+      sessionEvents: {
+        'exact-session': [
+          requestOpened({
+            threadId: 'exact-session',
+            requestId: 'exact-request',
+            eventId: 'exact-event',
+            requestType: 'permission',
+          }),
+        ],
+      },
+    });
+    const item = (await projection.list()).items[0];
+    expect(item).toMatchObject({
+      requestReference: {
+        threadId: 'exact-session',
+        requestId: 'exact-request',
+        requestEventId: 'exact-event',
+      },
+    });
+  });
+  test.each(['input', 'confirmation'])(
+    '%s requests retain the ordinary Session fallback',
+    async (requestType) => {
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'fallback-session',
+            lifecycleState: 'review_pending',
+          }),
+        ],
+        sessionEvents: {
+          'fallback-session': [
+            requestOpened({ threadId: 'fallback-session', requestType }),
+          ],
+        },
+      });
+      expect((await projection.list()).items[0]).not.toHaveProperty(
+        'requestReference',
+      );
+    },
+  );
+  test('a request payload cannot retarget the Session that owns its attention row', async () => {
+    const projection = makeService({
+      sessions: [
+        baseSession({
+          threadId: 'owner-session',
+          lifecycleState: 'review_pending',
+        }),
+      ],
+      sessionEvents: {
+        'owner-session': [requestOpened({ threadId: 'foreign-session' })],
+      },
+    });
+    expect((await projection.list()).items[0]).not.toHaveProperty(
+      'requestReference',
+    );
+  });
+});

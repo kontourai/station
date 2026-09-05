@@ -12,7 +12,7 @@ import { serializeMarkdown } from '../adapters/shared/frontmatter.js';
 import type { KnowledgeRecordObservationPolicy } from '../knowledge-record-observation.js';
 import { KnowledgeStoreProvider } from '../knowledge-store-provider.js';
 
-describe('registered owner source observation (no HTTP exposure)', () => {
+describe('registered owner source observation without adapter construction', () => {
   let fixture: string;
   let home: string;
   let root: string;

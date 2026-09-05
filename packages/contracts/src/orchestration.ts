@@ -74,6 +74,8 @@ export type OrchestrationCommand =
       type: 'respondToRequest';
       threadId: string;
       requestId: string;
+      /** Compare this exact opened event immediately before responding. */
+      expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
     }
   | { type: 'stopSession'; threadId: string };
