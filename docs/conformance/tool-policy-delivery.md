@@ -63,12 +63,21 @@ already allow is therefore prompted with its subject visible, never as a bare
 tool name. The Ask-mode chip copy says the engine asks before calls its own rules
 do not already allow, rather than claiming a floor Station does not impose.
 
-Both surfaces read the payload through the same `toolRequestFromPayload`, whose
-`TOOL_REQUEST_ARGS_FIELDS` is the one list of the names the adapters publish
+Both surfaces read the payload through the same `toolRequestPreviewFromPayload`,
+whose `TOOL_REQUEST_ARGS_FIELDS` is the one list of the names the adapters publish
 arguments under — `toolInput` (Claude's `canUseTool`), `toolArgs` (station-agent,
 and Claude's `PreToolUse` path), `rawInput` (ACP, so every ACP engine including
 Gemini). Two readers with two lists is exactly how the toast came to show a bare
 tool name for ACP sessions while the inbox row showed the command.
+
+**Codex** names no argument bag at all — it has no Station pre-tool interception
+seam, so its `request.opened` payload is the app-server's raw request params. The
+same helper falls back to reading the payload itself, which is why
+`item/commandExecution/requestApproval` previews its `command` and
+`item/fileChange/requestApproval` previews the paths in `changes[]`. Without that
+fallback a Codex file-change approval named no file on either surface, and the
+"every approval carries a preview" claim above was false for exactly the engine
+Station can do least about.
 
 Two limits on "the preview", stated because a consent surface must not be read as
 promising more than it does:

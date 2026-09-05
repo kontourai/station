@@ -838,6 +838,66 @@ describe('AttentionProjectionService', () => {
       expect(result.items[0].body).toContain('ls -la');
     });
 
+    test('a Codex file-change approval names the files it will change (#1545 D4)', async () => {
+      // Codex publishes the app-server's raw request params, so there is no
+      // named argument bag at all — this row said only "Approve file changes".
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'thread-codex-files',
+            lifecycleState: 'review_pending',
+          }),
+        ],
+        sessionEvents: {
+          'thread-codex-files': [
+            requestOpened({
+              threadId: 'thread-codex-files',
+              requestType: 'approval',
+              title: 'Approve file changes',
+              payload: {
+                changes: [
+                  { path: 'src/index.ts', diff: '@@ -1 +1 @@' },
+                  { path: 'README.md', diff: 'x'.repeat(4_000) },
+                ],
+              },
+            }),
+          ],
+        },
+      });
+
+      const result = await projection.list();
+
+      expect(result.items[0].body).toContain('src/index.ts, README.md');
+      // The diff bodies must not be what the line gets spent on.
+      expect(result.items[0].body).not.toContain('@@');
+      expect(result.items[0].body).not.toContain('xxxx');
+    });
+
+    test('a Codex command approval names the command (#1545 D4)', async () => {
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'thread-codex-cmd',
+            lifecycleState: 'review_pending',
+          }),
+        ],
+        sessionEvents: {
+          'thread-codex-cmd': [
+            requestOpened({
+              threadId: 'thread-codex-cmd',
+              requestType: 'approval',
+              title: 'rm -rf tmp',
+              payload: { command: 'rm -rf tmp', reason: 'Needs approval' },
+            }),
+          ],
+        },
+      });
+
+      const result = await projection.list();
+
+      expect(result.items[0].body).toContain('rm -rf tmp');
+    });
+
     test('a permission request produces a title naming the tool', async () => {
       const projection = makeService({
         sessions: [

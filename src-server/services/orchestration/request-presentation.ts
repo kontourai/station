@@ -2,7 +2,7 @@ import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-ev
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
   toolRequestFromPayload,
-  toolRequestPreview,
+  toolRequestPreviewFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 
 /**
@@ -109,8 +109,8 @@ export const MAX_DESCRIPTION_LENGTH = 400;
  */
 const MAX_RAW_TITLE_LENGTH = 200;
 /**
- * A bounded, redacted preview of a `request.opened` payload's tool name and
- * what the call will actually do.
+ * A bounded, redacted preview of a `request.opened` payload's tool name and of
+ * which command, or which file, the call will touch.
  *
  * This used to be a shape summary — argument field NAMES only, never values
  * (archive#1185, deliver #3), on the reasoning that a value may be large or
@@ -134,8 +134,8 @@ function summarizeToolPayload(
   // and the client toast grew its own one-key version of it — so ACP and
   // station-agent approvals had a command in this row and a bare tool name in
   // the toast. One reader, one list.
-  const { toolName, toolInput } = toolRequestFromPayload(payload);
-  const preview = toolRequestPreview(toolName, toolInput);
+  const { toolName } = toolRequestFromPayload(payload);
+  const preview = toolRequestPreviewFromPayload(payload);
   if (!toolName && !preview) return null;
   return {
     ...(toolName ? { toolName } : {}),

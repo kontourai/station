@@ -2,7 +2,7 @@ import { resolveOrchestrationRequest } from '@kontourai/station-sdk';
 import {
   toolRequestDisplayName,
   toolRequestFromPayload,
-  toolRequestPreview,
+  toolRequestPreviewFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
@@ -44,15 +44,13 @@ export function handleRequestOpenedEvent(
   // what the call will do — the command, the file, the pattern — bounded,
   // single-line and secret-redacted.
   //
-  // Read the payload through `toolRequestFromPayload`, never by indexing one
-  // key: the adapters do not agree on a name. Claude's `canUseTool` publishes
+  // Read the payload through the shared helpers, never by indexing one key: the
+  // adapters do not agree on a name. Claude's `canUseTool` publishes
   // `toolInput`, ACP publishes `rawInput` (so every ACP engine, Gemini
-  // included), the station-agent adapter publishes `toolArgs`. Indexing
-  // `toolInput` alone left those sessions with no preview here while the
-  // durable inbox row, which reads all five names, showed the command.
-  const { toolName: payloadToolName, toolInput } = toolRequestFromPayload(
-    event.payload,
-  );
+  // included), the station-agent adapter publishes `toolArgs`, and Codex — which
+  // Station cannot intercept at all — publishes its raw request params with no
+  // argument bag, handled by `toolRequestPreviewFromPayload`'s fallback.
+  const { toolName: payloadToolName } = toolRequestFromPayload(event.payload);
   const displayName = toolRequestDisplayName(payloadToolName);
   const toolName = String(displayName || event.title || 'Tool request');
   // Only name the tool in the grant label when the payload actually reported
@@ -65,7 +63,7 @@ export function handleRequestOpenedEvent(
   const toastId = toastStore.showToolApproval({
     sessionId: event.threadId,
     toolName,
-    toolPreview: toolRequestPreview(payloadToolName, toolInput),
+    toolPreview: toolRequestPreviewFromPayload(event.payload),
     agentName,
     conversationTitle: chat.title,
     actions: [

@@ -296,6 +296,43 @@ describe('#1545: credential vocabulary reachable from a tool-call preview', () =
     expect(redactSecrets(input)).toBe(expected);
   });
 
+  // An unquoted value used to run to the end of the line, so ONE non-secret pair
+  // earlier on a command line consumed the rest of it and the secret pair was
+  // never examined. Every case below came through verbatim before the value
+  // learned to stop at a following flag.
+  test.each([
+    [
+      'mysql --user=root --password=hunter2 -h db',
+      'mysql --user=root --password=[REDACTED] -h db',
+    ],
+    [
+      'curl --header=x -d a=1 --password=p2',
+      'curl --header=x -d a=1 --password=[REDACTED]',
+    ],
+    [
+      '--config=/etc/app.conf --password=hunter2 --verbose',
+      '--config=/etc/app.conf --password=[REDACTED] --verbose',
+    ],
+    [
+      'llm --max-tokens=100 --auth-token=abc123',
+      'llm --max-tokens=100 --auth-token=[REDACTED]',
+    ],
+  ])(
+    'examines a secret pair that follows a non-secret one: %j',
+    (input, expected) => {
+      expect(redactSecrets(input)).toBe(expected);
+    },
+  );
+
+  test('a quoted value still spans spaces and dashes, so it is not cut at a word that looks like a flag', () => {
+    // `-m 'password=hunter2'` is one argument. The quoted-value alternative must
+    // keep matching across the whole quoted run, and this string is a commit
+    // message rather than a credential assignment, so nothing is redacted.
+    expect(redactSecrets("git commit -m 'password=hunter2' --no-verify")).toBe(
+      "git commit -m 'password=hunter2' --no-verify",
+    );
+  });
+
   test('leaves a non-secret flag alone, dashes and all', () => {
     expect(redactSecrets('--host=db --port=5432')).toBe(
       '--host=db --port=5432',

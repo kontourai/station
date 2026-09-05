@@ -203,7 +203,16 @@ function redactContextualFields(text: string): string {
     // are re-emitted unchanged. Deliberately NOT extended to the attached form
     // (`-phunter2`, mysql's password flag): with no separator to anchor on,
     // a single letter followed by anything is too ambiguous to redact safely.
-    /((?:^|[?&;\s])--?|^|[?&;\s])(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([A-Za-z][A-Za-z0-9_-]*))(\s*(?:=|:)\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^&;\r\n]*)(?=$|[&;\r\n])/gim,
+    //
+    // The unquoted VALUE stops before a following flag (`(?!\s-)`, and `\s-`
+    // joins the lookahead) rather than running to the end of the line. Without
+    // that, one NON-secret pair earlier on a command line consumed the rest of
+    // it and the secret pair was never examined at all: `mysql --user=root
+    // --password=hunter2 -h db` came through verbatim, because `--user=`'s value
+    // had already eaten `--password=hunter2 -h db`. A quoted value is unaffected
+    // and still spans spaces and dashes, so `-m 'password=hunter2'` stays the
+    // single argument it is.
+    /((?:^|[?&;\s])--?|^|[?&;\s])(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([A-Za-z][A-Za-z0-9_-]*))(\s*(?:=|:)\s*)("(?:\\.|[^"\\])*"|'[^']*'|(?:(?!\s-)[^&;\r\n])*)(?=$|[&;\r\n]|\s-)/gim,
     (
       match,
       boundary: string,

@@ -165,6 +165,41 @@ describe('toolRequestPreview', () => {
       ).toBe('echo one --password=[REDACTED]');
     });
 
+    test('does not cut a length-anchored token in half at the pre-redaction slice', () => {
+      // The prefix slice is 4096 characters. `ghp_` + 40 straddling that cut
+      // arrives as a fragment too short for the length-anchored pattern to
+      // match, and redaction SHORTENS what precedes it — `password=<4052>`
+      // becomes `password=[REDACTED]` — which pulls the unredacted fragment
+      // into the visible 160 characters. The trailing-token trim removes it.
+      const command = `password=${'j'.repeat(4052)};ghp_${'A'.repeat(40)} rest`;
+      const preview = toolRequestPreview('Bash', { command });
+
+      expect(preview).toBe('password=[REDACTED];');
+      expect(preview).not.toContain('ghp_');
+    });
+
+    test('the trim leaves a long ordinary argument alone', () => {
+      // A run longer than `MAX_TRUNCATED_TOKEN_TRIM` is not a truncated
+      // credential — any recognised shape that long still matches its own
+      // length-anchored pattern — so trimming it would throw the preview away.
+      // Trimming unconditionally reduced this whole command to `echo`.
+      const preview = toolRequestPreview('Bash', {
+        command: `echo ${'y'.repeat(5_000)}`,
+      });
+      expect(preview).toHaveLength(MAX_TOOL_REQUEST_PREVIEW_LENGTH);
+      expect(preview?.startsWith('echo yyy')).toBe(true);
+
+      // A prefix that is one unbroken run has no delimiter to trim back to; a
+      // `\S+$` trim would delete everything and show nothing at all.
+      expect(
+        toolRequestPreview('Bash', { command: 'z'.repeat(9_000) }),
+      ).toMatch(/^z+…$/);
+      // A short input keeps its last word.
+      expect(toolRequestPreview('Bash', { command: 'echo hello' })).toBe(
+        'echo hello',
+      );
+    });
+
     test('collapses newlines and control characters into one line', () => {
       // A multi-line value must not be able to push a toast's buttons out of
       // view, and a second command below a newline must stay readable.
@@ -267,5 +302,77 @@ describe('toolRequestFromPayload — adapters do not agree on a field name', () 
     expect(toolRequestFromPayload(undefined)).toEqual({});
     expect(toolRequestFromPayload({ toolCallId: 'x' })).toEqual({});
     expect(toolRequestPreviewFromPayload({ toolCallId: 'x' })).toBeUndefined();
+  });
+});
+
+describe('#1545 D4: an engine that names no argument bag (Codex)', () => {
+  // Codex has no Station pre-tool interception seam, so its `request.opened`
+  // payload is the app-server's raw request params — no `toolInput`/`toolArgs`/
+  // `rawInput` anywhere. Before the payload fallback, a command approval showed
+  // a bare title and a file-change approval named no file on either surface.
+  test('previews the command from item/commandExecution/requestApproval', () => {
+    expect(
+      toolRequestPreviewFromPayload({
+        command: 'rm -rf tmp',
+        reason: 'Needs approval',
+      }),
+    ).toBe('rm -rf tmp');
+  });
+
+  test('previews the paths from item/fileChange/requestApproval', () => {
+    expect(
+      toolRequestPreviewFromPayload({
+        changes: [
+          { path: 'src/index.ts', diff: '@@ -1 +1 @@\n-a\n+b' },
+          { path: 'README.md', diff: 'x'.repeat(5_000) },
+        ],
+        reason: 'Needs approval',
+      }),
+    ).toBe('src/index.ts, README.md');
+  });
+
+  test('counts the rest rather than spending the line on the first few paths', () => {
+    expect(
+      toolRequestPreviewFromPayload({
+        changes: Array.from({ length: 12 }, (_unused, index) => ({
+          path: `file-${index}.ts`,
+          diff: 'y'.repeat(1_000),
+        })),
+      }),
+    ).toBe('file-0.ts, file-1.ts, file-2.ts and 9 more');
+  });
+
+  test('reads changes[] wherever it arrives, including a named argument bag', () => {
+    // `deriveToolArguments` builds `{ changes }` for an apply_patch tool call,
+    // which reaches the surfaces as `toolArgs` rather than as the payload.
+    expect(
+      toolRequestPreviewFromPayload({
+        toolName: 'apply_patch',
+        toolArgs: { changes: [{ path: 'a.ts', diff: 'z'.repeat(5_000) }] },
+      }),
+    ).toBe('a.ts');
+  });
+
+  test('does not claim the payload IS the arguments, only previews from it', () => {
+    // `toolRequestFromPayload` must keep answering "the adapter named none",
+    // because that is the truth a caller reasoning about provenance needs.
+    expect(toolRequestFromPayload({ command: 'rm -rf tmp' })).toEqual({});
+  });
+
+  test('a changes array with nothing readable falls through rather than inventing a path', () => {
+    expect(toolRequestPreviewFromPayload({ changes: [] })).toBeUndefined();
+    // No path anywhere, so nothing to name. The whole payload is NOT serialized
+    // in the fallback: a payload is request scaffolding, not an argument bag.
+    expect(
+      toolRequestPreviewFromPayload({ changes: [{ diff: 'x' }] }),
+    ).toBeUndefined();
+    expect(
+      toolRequestPreviewFromPayload({ toolCallId: 'x', reason: 'because' }),
+    ).toBeUndefined();
+    // An explicitly-handed argument bag still serializes, which is what makes an
+    // MCP tool's server-defined arguments visible.
+    expect(toolRequestPreview('mcp__x__y', { changes: [{ diff: 'x' }] })).toBe(
+      '{"changes":[{"diff":"x"}]}',
+    );
   });
 });

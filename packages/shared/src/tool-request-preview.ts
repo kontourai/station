@@ -58,12 +58,39 @@ export function toolRequestFromPayload(
   };
 }
 
-/** `toolRequestPreview` over a whole `request.opened` payload. */
+/**
+ * `toolRequestPreview` over a whole `request.opened` payload — the form both
+ * approval surfaces use, because it also handles the engines that name no
+ * argument bag at all.
+ *
+ * When no `TOOL_REQUEST_ARGS_FIELDS` name matches, the payload IS the arguments.
+ * An engine with no Station pre-tool seam publishes its raw request params as
+ * the payload: Codex's `item/commandExecution/requestApproval` carries
+ * `command` (which lands in the Bash family) and its
+ * `item/fileChange/requestApproval` carries `changes[].path`. Without this
+ * fallback those approvals showed a bare title on the toast and named no file at
+ * all on either surface, which made the conformance doc's "every approval
+ * carries a preview" false for the one engine Station cannot intercept.
+ *
+ * Deliberately not folded into `toolRequestFromPayload`: that function answers
+ * "what did the adapter say the arguments are", and for these payloads the
+ * answer is genuinely nothing. Guessing belongs here, where the caller has
+ * already asked for a best-effort preview.
+ */
 export function toolRequestPreviewFromPayload(
   payload: Record<string, unknown> | undefined,
 ): string | undefined {
   const { toolName, toolInput } = toolRequestFromPayload(payload);
-  return toolRequestPreview(toolName, toolInput);
+  if (toolInput !== undefined) return toolRequestPreview(toolName, toolInput);
+  if (!payload) return undefined;
+  // Named fields and `changes[]` only. The whole-input serializer is off here
+  // because a payload is not an argument bag: dumping one renders the request's
+  // own scaffolding — `toolCallId`, `reason`, `_meta`, `options` — as if it were
+  // the call. Better to say nothing and let the surface fall back to the tool
+  // name than to show `{"toolCallId":"x"}`.
+  return toolRequestPreview(toolName, payload, {
+    serializeWholeInput: false,
+  });
 }
 
 /**
@@ -75,8 +102,9 @@ export function toolRequestPreviewFromPayload(
 export const MAX_TOOL_REQUEST_PREVIEW_LENGTH = 160;
 
 /**
- * A one-line preview of what a pending tool call will actually do, derived
- * from the `request.opened` payload's tool name and input (#1545).
+ * A one-line preview naming WHICH COMMAND, or WHICH FILE, a pending tool call
+ * will touch — derived from the `request.opened` payload's tool name and input
+ * (#1545). Not what the call will do: see NOT A FULL DISCLOSURE below.
  *
  * Approval surfaces used to render the tool NAME alone — "<Agent> wants to use
  * Bash" — which is not a decision an operator can make: `Bash` is both
@@ -120,6 +148,7 @@ export const MAX_TOOL_REQUEST_PREVIEW_LENGTH = 160;
 export function toolRequestPreview(
   toolName: string | undefined,
   toolInput: unknown,
+  options?: { serializeWholeInput?: boolean },
 ): string | undefined {
   if (!toolInput || typeof toolInput !== 'object') {
     return renderValue(toolInput);
@@ -133,14 +162,60 @@ export function toolRequestPreview(
     if (rendered) return rendered;
   }
 
+  // A patch-shaped call names its files in `changes[].path` — Codex's
+  // `item/fileChange/requestApproval` payload and the `apply_patch` tool
+  // arguments `deriveToolArguments` builds from it. Serializing that object
+  // whole would spend the whole line on the first diff body, so read the paths.
+  const changed = changedPathsPreview(args.changes);
+  if (changed) return changed;
+
+  if (options?.serializeWholeInput === false) return undefined;
+
   // Reached when no named field carried anything — an MCP tool (whose arguments
   // are the server's vocabulary, not Station's, so no field name can be claimed
   // ahead of time) or a tool shape Station has not seen. Serialize the whole
   // input: within one bounded line that shows every key AND its value, which is
   // strictly more than either a field-name list or a single hand-picked
   // argument, and it does not have to guess which argument matters.
+  //
+  // Only safe because the caller HANDED us an argument bag. A payload read as
+  // arguments by `toolRequestPreviewFromPayload` must not reach here — see the
+  // `whole` flag there.
   return renderValue(args);
 }
+
+/** The paths a patch-shaped `changes` array touches, bounded like any preview. */
+function changedPathsPreview(value: unknown): string | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const paths: string[] = [];
+  for (const entry of value) {
+    const path =
+      entry && typeof entry === 'object'
+        ? (entry as Record<string, unknown>).path
+        : undefined;
+    if (typeof path === 'string' && path.trim()) paths.push(path.trim());
+  }
+  if (paths.length === 0) return undefined;
+  // Name up to three and count the rest: an apply_patch can touch hundreds, and
+  // "and N more" is the honest way to say so inside one line.
+  const shown = paths.slice(0, MAX_CHANGED_PATHS);
+  const more = paths.length - shown.length;
+  return boundedPreviewLine(
+    more > 0 ? `${shown.join(', ')} and ${more} more` : shown.join(', '),
+  );
+}
+
+const MAX_CHANGED_PATHS = 3;
+
+/**
+ * How long a run at the pre-redaction cut may be and still be treated as a
+ * possibly-truncated credential token. 64 is comfortably above the largest
+ * minimum body length in `SECRET_PATTERNS` (36, for `ghp_`), so anything longer
+ * that IS a recognised shape matches its own pattern anyway and does not need
+ * trimming — while anything longer that is not is an ordinary argument the
+ * preview should keep.
+ */
+const MAX_TRUNCATED_TOKEN_TRIM = 64;
 
 /**
  * `Allow <this> for this session`, and the subject of "wants to use <this>".
@@ -258,13 +333,36 @@ function boundedPreviewLine(value: string): string | undefined {
   // Slice to a coarse prefix BEFORE redacting. A tool input is unbounded
   // (a `Write` body, a serialized blob), and running the secret patterns over
   // megabytes to then keep 160 characters is pure cost with a backtracking
-  // hazard attached. The direction is the safe one: the prefix is a superset of
-  // what survives the final bound, so nothing reaches the output that redaction
-  // has not seen. Truncating AFTER redaction would be equally safe but not
-  // equally cheap; truncating to near the OUTPUT bound before redacting would
-  // not be safe, because collapsing whitespace afterwards pulls later
-  // characters into view.
-  const oneLine = redactSecrets(value.slice(0, MAX_SANITIZED_TEXT_LENGTH))
+  // hazard attached. Two properties make that safe: redaction sees everything
+  // that reaches the output (the prefix is a superset of what survives the final
+  // bound), and nothing is cut mid-token.
+  //
+  // The second one needs the trailing-fragment trim below. Several
+  // `SECRET_PATTERNS` are LENGTH-ANCHORED — `ghp_` plus 36+ characters, `sk-`
+  // plus 20+ — so a token straddling the cut can arrive too short to match, go
+  // unredacted, and still land inside the 160-character output, because
+  // redaction SHORTENS what precedes it: `password=<4052 chars>;ghp_<40>`
+  // becomes `password=[REDACTED];` and pulls the fragment into view.
+  //
+  // Only a SHORT run at the cut can do that, and that bound is provable rather
+  // than guessed: every length-anchored pattern's minimum body is at most 36
+  // characters, so a fragment longer than `MAX_TRUNCATED_TOKEN_TRIM` still
+  // satisfies its own minimum and is redacted normally. Runs longer than that
+  // are therefore left alone — which is the point, because they are ordinary
+  // arguments. Trimming unconditionally turned `echo <4091 chars>` into `echo`
+  // and threw the preview away, and a `\S+$` class also deleted the whole
+  // reviewer counterexample, whose prefix contains no whitespace at all. The
+  // class is `[^\s&;]`: `&` and `;` are the delimiters the contextual pass
+  // already anchors values on, so they are exactly the boundaries that make a
+  // fragment visible.
+  const cut = value.slice(0, MAX_SANITIZED_TEXT_LENGTH);
+  const trailingRun = /[^\s&;]+$/.exec(cut)?.[0] ?? '';
+  const sliced =
+    value.length > MAX_SANITIZED_TEXT_LENGTH &&
+    trailingRun.length <= MAX_TRUNCATED_TOKEN_TRIM
+      ? cut.slice(0, cut.length - trailingRun.length)
+      : cut;
+  const oneLine = redactSecrets(sliced)
     // biome-ignore lint/suspicious/noControlCharactersInRegex: collapsing raw control characters into spaces is the point.
     .replace(/[\u0000-\u001F\u007F]+/g, ' ')
     .replace(/\s+/g, ' ')

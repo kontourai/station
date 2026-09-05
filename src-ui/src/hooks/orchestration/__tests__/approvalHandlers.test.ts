@@ -142,6 +142,31 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     expect(toast.actions[1].label).toBe('Allow this tool for this session');
   });
 
+  // Codex has no Station pre-tool seam, so its payload is the app-server's raw
+  // request params: no `toolInput`/`toolArgs`/`rawInput` to read. The command
+  // approval showed only its title and the file-change approval named no file.
+  test.each([
+    [
+      'item/commandExecution/requestApproval',
+      { command: 'rm -rf tmp', reason: 'Needs approval' },
+      'rm -rf tmp',
+    ],
+    [
+      'item/fileChange/requestApproval',
+      {
+        changes: [
+          { path: 'src/index.ts', diff: '@@ -1 +1 @@' },
+          { path: 'README.md', diff: 'x'.repeat(4_000) },
+        ],
+      },
+      'src/index.ts, README.md',
+    ],
+  ])('previews a Codex %s payload', (_method, payload, expected) => {
+    handleRequestOpenedEvent('http://localhost:1', requestOpened(payload));
+
+    expect(approvalToast().toolPreview).toBe(expected);
+  });
+
   test('the toast subject reads an MCP wire name the way a person would', () => {
     handleRequestOpenedEvent(
       'http://localhost:1',

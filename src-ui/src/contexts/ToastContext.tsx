@@ -47,11 +47,12 @@ type Toast = {
   type?: ToastTone | 'tool-approval' | 'tool-activity' | 'pairing-request';
   toolName?: string;
   /**
-   * #1545: a bounded, single-line, secret-redacted preview of what the tool
-   * call will actually do (the command, the file, the pattern) — derived by
+   * #1545: a bounded, single-line, redacted preview naming which command, or
+   * which file, the tool call will touch — derived by
    * `@kontourai/station-shared/tool-request-preview`, never composed here. The
    * tool name alone cannot tell an operator whether they are approving
-   * `git status` or `rm -rf /`.
+   * `git status` or `rm -rf /`. It is not the whole call: for a write it names
+   * the file and never the content (see that module's docblock).
    */
   toolPreview?: string;
   agentName?: string;
