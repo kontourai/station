@@ -78,6 +78,21 @@ every other route. Four rules make it a region rather than a special case
   sidebar's two Home affordances (the header's app-name button and the Work
   list's Home row, `ProjectSidebar.tsx`) and the `?surface=home` deep link.
   Home is `hiddenFromNav` and has no palette entry.
+- **A `main` occupant's toggle returns it to the dock.** A surface's chord
+  (⌘⇧A for Activity) and its row in the folded Regions menu are one model
+  command, `toggleSurface` (#1523; the toolbar carries no placement rule of its
+  own, #1420): a dock occupant's region is hidden or shown, and a surface
+  occupying `main` is moved to its default dock region — visible, Home left in
+  `main` — so the folded menu offers `Move Activity to the dock` there rather
+  than a `Show Activity` that would reveal it where it already is. Home, whose
+  default is `main`, has no chord and toggles to nothing.
+- **"Go to `/`" and "show Home" are different producers.** Since `/` renders
+  `main`'s occupant, a caller that means Home by name — the not-found view's
+  "Go home", the landing after a project is deleted — reveals the Home surface
+  (`useShowSurface()('home')`), while a dismissal that means "back to where I
+  was" — the settings and profile toggles' return, Escape from Settings or
+  Skills, the store's `setAgent(null)` fallback — navigates to `/` and shows
+  whatever occupies `main`. Each site says which meaning it holds (#1523).
 
 **Layer 2: pane hosts.** Inside a surface, or inside a project layout, a
 `WorkspacePaneHost` renders a persisted tree of **panes**. The tree has two
