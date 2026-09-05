@@ -161,6 +161,17 @@ incarnation ABA, commit uncertainty and fixed-capacity refusal. See
 dead-parent/TTL release, declaration absence as historical proof, or a mutable
 caller flag that upgrades this evidence into package deletion authority.
 
+Public executable readers use `capturePluginRuntimeArtifact()` in
+`src-server/services/plugins/plugin-runtime-artifact.ts`: the local installation
+adapter supplies the selected physical root and admission state, and the reader
+checks its fresh content digest. Pending activation cannot supply manifests,
+bundles, or server imports. Public routes retain the captured artifact through
+module acquisition and recheck currentness and grants before plugin callbacks;
+bundle delivery checks currentness again after the asynchronous read. The
+runtime helper has no activation bypass and no independent persisted state.
+`plugin-runtime-readiness.test.ts` exercises the real journal and HTTP routes
+across pending/ready selection, content mutation, and stale caller declarations.
+
 ## InstalledPluginInventory
 
 **Intent and Interface.** `scanInstalledPluginInventory()` performs one fresh deterministic scan of the existing installed-plugin directory. A readable valid manifest returns its parsed manifest; a missing, unreadable, unsafe, malformed, or invalid manifest returns a rejected entry naming only the directory plus a bounded path-free reason and recovery instruction. Rejections are not persisted in a second registry.

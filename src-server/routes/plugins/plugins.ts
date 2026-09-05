@@ -214,6 +214,7 @@ export function createPluginRoutes(
     grantReconciliation,
   });
   registerPluginPublicRoutes(app, {
+    packageMcpJournal: runtime?.packageMcpJournal,
     eventBus,
     logger,
     pluginsDir,
