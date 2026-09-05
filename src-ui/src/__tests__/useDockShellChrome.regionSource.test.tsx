@@ -22,6 +22,7 @@ const harness = vi.hoisted(() => ({
     chatDockHeight: 320,
     chatDockWidth: 400,
     dockSlotPlacement: 'bottom' as const,
+    regionArrangement: undefined as unknown,
   },
   isDockOpen: true,
   dockMode: 'bottom' as 'left' | 'bottom' | 'right',
@@ -59,7 +60,81 @@ describe('useDockShellChrome reads its open state from the region model', () => 
   beforeEach(() => {
     harness.isDockOpen = true;
     harness.dockMode = 'bottom';
+    harness.settings.chatDockWidth = 400;
+    harness.settings.regionArrangement = undefined;
     harness.setDeviceSetting.mockReset();
+  });
+
+  // #928 D, closes #1380: a persisted region size renders. The record says
+  // 517 and the legacy key says 400; the shell for that region must show 517.
+  test('an Activity shell seeds its width from the persisted region size, not the legacy chatDockWidth', () => {
+    harness.settings.regionArrangement = {
+      version: 1,
+      regions: {
+        main: {
+          visible: true,
+          size: 0,
+          occupant: { kind: 'surface', id: 'home' },
+        },
+        left: { visible: false, size: 400, occupant: null },
+        right: {
+          visible: true,
+          size: 517,
+          occupant: { kind: 'surface', id: 'activity' },
+        },
+        bottom: {
+          visible: false,
+          size: 320,
+          occupant: { kind: 'surface', id: 'chat' },
+        },
+      },
+    };
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+          regionId: 'right',
+        }),
+        model: useRegionModel(),
+      }),
+      { wrapper },
+    );
+    expect(result.current.model.regions.right.size).toBe(517);
+    expect(result.current.chrome.dockWidth).toBe(517);
+    // Reading the record never wrote the legacy key.
+    expect(harness.setDeviceSetting).not.toHaveBeenCalledWith(
+      'chatDockWidth',
+      expect.anything(),
+    );
+  });
+
+  test('without a region model the shell still seeds from the legacy keys', () => {
+    harness.settings.chatDockWidth = 444;
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () =>
+        useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+        }),
+      { wrapper },
+    );
+    expect(result.current.dockWidth).toBe(444);
+    expect(result.current.dockHeight).toBe(320);
   });
 
   test('follows the region model when it diverges from navigation', () => {

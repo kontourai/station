@@ -164,13 +164,43 @@ Two facts that follow from the map and are easy to get wrong:
 
 ## Persistence today
 
-- **Arrangement (regions):** not persisted as a record. `RegionModelContext`
-  seeds from the legacy dock keys (`chatDockHeight`/`chatDockWidth` in device
-  settings, `dock`/`maximize`/`dockSlotPlacement` in the URL) and mirrors chat's
-  placement, visibility and size back to them. Any other surface's placement
-  is lost on reload, including `main`'s occupant, which reloads as Home. The `?surface=` deep link reveals a surface once and then
-  clears itself; it is a command, not persistence. Slice D adds the per-device
-  record.
+- **Arrangement (regions):** the `regionArrangement` device setting
+  (`packages/contracts/src/device-settings.ts`), one versioned record per
+  device inside the device-settings envelope: for each of `main`, `left`,
+  `right` and `bottom`, its `visible`, its `size` along its own edge, and its
+  occupant as `{ kind: 'surface', id }` or `null`. `occupant.kind` is the
+  extension point for the pane-host direction below: `{ kind: 'pane-host',
+  documentId }` is an additive second variant. A newer variant survives being
+  READ by an older build (the parser treats an unknown `kind` as an empty
+  region rather than rejecting the record), but the older build's next write
+  drops it — the protection is for the same-device stale-tab window while a
+  newer build is rolling out, not a migration story. `RegionModelContext`
+  writes the record on every arrangement change, coalesced to one write per
+  burst (150 ms trailing edge, flushed on `pagehide`), and adopts another
+  tab's write through the store's `storage` listener without writing it back.
+  A mount never writes.
+  Precedence at load, highest first: a URL deep link, for Chat only —
+  `dockSlotPlacement` places Chat there through `placeSurface`, relocating an
+  occupant by the model's own rule, and `dock=open` shows it; then the
+  record, when it differs from the registry default, for every surface's
+  placement, size and visibility, Chat's included; then the legacy dock seed
+  (`chatDockHeight`/`chatDockWidth`, the `dockSlotPlacement` device setting),
+  which is all a pre-record device has. A record equal to the default is one
+  the device has never written and reads as absent, which is what carries a
+  pre-record device's dock position through the upgrade. Sizes render from
+  the record: a shell seeds its own region's size and falls back to the
+  legacy keys only without a region model (`useDockShellChrome`). A record
+  and legacy keys that disagree are reconciled by Chat's mirror on the next
+  user change. The parser (`src-ui/src/regions/region-arrangement-record.ts`)
+  is the record's only validation and fails closed per field: a surface the
+  registry no longer has (retired since the record was written), or one that
+  does not declare the region it was stored in, reads as an empty region; a
+  surface named by two regions keeps the first in `main`, `left`, `right`,
+  `bottom` order and the rest read as empty and hidden; `main` is always
+  visible. Chat's placement, visibility and size are still mirrored to the
+  legacy keys, which keep every existing reader working. The `?surface=` deep
+  link reveals a surface once and then clears itself; it is a command, not
+  persistence.
 - **Pane hosts:** each host persists its own document in localStorage under
   `station:workspace-pane-host:v2:` plus a scope segment (project/layout, task,
   or `ambient:chat-dock`). The parser rejects malformed data and reconstructs a
