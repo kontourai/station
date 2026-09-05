@@ -1,4 +1,4 @@
-import { lstatSync, readdirSync } from 'node:fs';
+import { type Dirent, lstatSync, opendirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type {
   CloudMoveItem,
@@ -98,14 +98,26 @@ export function previewCloudMove(input: {
       );
     }
   }
-  for (const section of ['agents', 'projects', 'plugins'] as const) {
+  for (const section of ['agents', 'projects'] as const) {
     const root = join(home, section);
     if (!directory(root, true)) continue;
-    const entries = readdirSync(root, { withFileTypes: true });
-    if (entries.length > 1000)
-      throw new Error(
-        'Cloud preview configuration inventory exceeds its bound',
-      );
+    const entries: Dirent[] = [];
+    const handle = opendirSync(root, { bufferSize: 1 });
+    try {
+      for (
+        let entry = handle.readSync();
+        entry !== null;
+        entry = handle.readSync()
+      ) {
+        if (entries.length === 1000)
+          throw new Error(
+            'Cloud preview configuration inventory exceeds its bound',
+          );
+        entries.push(entry);
+      }
+    } finally {
+      handle.closeSync();
+    }
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       if (entry.isSymbolicLink())
         throw new Error(
@@ -118,17 +130,6 @@ export function previewCloudMove(input: {
         );
       const path = join(root, entry.name);
       directory(path);
-      if (section === 'plugins') {
-        items.push({
-          kind: 'plugin',
-          id: entry.name,
-          disposition: 'review-required',
-          reasons: [
-            'Reinstall a compatible artifact and obtain fresh target grants; installation journals and live plugin data are not portable authority.',
-          ],
-        });
-        continue;
-      }
       const value = record(
         join(path, section === 'agents' ? 'agent.json' : 'project.json'),
       );
@@ -175,11 +176,19 @@ export function previewCloudMove(input: {
   }
   items.push(
     {
+      kind: 'plugin',
+      id: 'plugin-inventory',
+      disposition: 'review-required',
+      reasons: [
+        'Active plugin inventory has not been queried from its lifecycle owner. Reinstall and obtain fresh target grants; storage directories, compatibility links, and journals do not establish portable authority.',
+      ],
+    },
+    {
       kind: 'credentials',
       id: 'credential-enrollment',
       disposition: 'reauthentication-required',
       reasons: [
-        'Credential values, OS keychains, and provider login directories are not inspected or exported. Enroll credentials on the target through supported provider flows.',
+        'Dedicated credential stores, OS keychains, and provider login directories are not accessed. Selected configuration bytes may contain sensitive fields; those fields are not projected. Enroll credentials on the target through supported provider flows.',
       ],
     },
     {

@@ -30,6 +30,14 @@ export function awsEc2EnvironmentTemplate(input: {
         Default:
           '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64',
       },
+      LocalUiPort: {
+        Type: 'Number',
+        Default: 23000,
+        MinValue: 1024,
+        MaxValue: 65535,
+        Description:
+          'Available local port for SSM forwarding; open http://127.0.0.1 on this port.',
+      },
       RootVolumeGiB: {
         Type: 'Number',
         Default: 30,
@@ -108,15 +116,17 @@ export function awsEc2EnvironmentTemplate(input: {
           // biome-ignore lint/suspicious/noTemplateCurlyInString: CloudFormation substitution, not JavaScript.
           Tags: [{ Key: 'Name', Value: sub('${AWS::StackName}-station') }],
           UserData: {
-            'Fn::Base64': [
-              '#!/bin/bash',
-              'set -euo pipefail',
-              'dnf install -y docker',
-              'systemctl enable --now docker',
-              'install -d -m 0700 -o 1000 -g 1000 /var/lib/station/home /var/lib/station/workspace',
-              `docker pull '${input.image}'`,
-              `docker run -d --name station --restart unless-stopped --security-opt no-new-privileges:true --stop-timeout 30 --log-driver local --log-opt max-size=10m --log-opt max-file=3 -p 127.0.0.1:3000:3000 --mount type=bind,src=/var/lib/station/home,dst=/data/station --mount type=bind,src=/var/lib/station/workspace,dst=/workspace '${input.image}'`,
-            ].join('\n'),
+            'Fn::Base64': sub(
+              [
+                '#!/bin/bash',
+                'set -euo pipefail',
+                'dnf install -y docker',
+                'systemctl enable --now docker',
+                'install -d -m 0700 -o 1000 -g 1000 /var/lib/station/home /var/lib/station/workspace',
+                `docker pull '${input.image}'`,
+                `docker run -d --name station --restart unless-stopped --security-opt no-new-privileges:true --stop-timeout 30 --log-driver local --log-opt max-size=10m --log-opt max-file=3 -p 127.0.0.1:3000:3000 -e 'ALLOWED_ORIGINS=http://127.0.0.1:\${LocalUiPort}' --mount type=bind,src=/var/lib/station/home,dst=/data/station --mount type=bind,src=/var/lib/station/workspace,dst=/workspace '${input.image}'`,
+              ].join('\n'),
+            ),
           },
         },
       },
@@ -124,9 +134,10 @@ export function awsEc2EnvironmentTemplate(input: {
     Outputs: {
       InstanceId: { Value: ref('Station') },
       Region: { Value: ref('AWS::Region') },
+      LocalUiPort: { Value: ref('LocalUiPort') },
       Access: {
         Value:
-          'Use AWS Systems Manager port forwarding to remote port 3000; local port is operator-selected. Station authentication is still required.',
+          'Use AWS Systems Manager forwarding to remote port 3000 and the configured LocalUiPort. Open http://127.0.0.1 at that local port. Station authentication is still required.',
       },
       Persistence: {
         Value:

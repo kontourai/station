@@ -52,7 +52,12 @@ describe('cloud preview command', () => {
       expect(
         template.Resources.SecurityGroup.Properties.SecurityGroupIngress,
       ).toEqual([]);
-      expect(instance.UserData['Fn::Base64']).toContain(image);
+      expect(instance.UserData['Fn::Base64']['Fn::Sub']).toContain(image);
+      expect(instance.UserData['Fn::Base64']['Fn::Sub']).toContain(
+        'ALLOWED_ORIGINS=http://127.0.0.1:' + '$' + '{LocalUiPort}',
+      );
+      expect(template.Parameters.LocalUiPort.MinValue).toBe(1024);
+      expect(template.Parameters.LocalUiPort.MaxValue).toBe(65535);
       expect(() => runCloudCommand(args)).toThrow();
       expect(() =>
         runCloudCommand(

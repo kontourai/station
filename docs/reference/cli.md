@@ -2609,9 +2609,11 @@ instance, or resumes an agent. Unknown actions/options and unsupported target
 profiles fail rather than triggering implicit provisioning.
 
 The preview requires an explicit existing home with the current schema. It lists
-selected Agent/Project metadata and installed plugin directories, reports required
+selected Agent/Project metadata, leaves plugin inventory unverified pending its
+lifecycle owner, and reports required
 credential enrollment and ownership checks, and omits configuration contents and
-secret payloads from its output. Corrupt, linked, oversized, or incompatible
+secret payloads from its output. Selected configuration bytes may themselves contain
+sensitive fields; dedicated credential stores are not accessed. Corrupt, linked, oversized, or incompatible
 selected configuration fails the preview. This is not an atomic backup, a complete
 compatibility scan, or a credential portability guarantee. Exit zero means a
 preview/template was produced; inspect `transferAvailable` and

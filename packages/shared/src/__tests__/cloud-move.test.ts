@@ -1,4 +1,5 @@
 import {
+  Dir,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -8,7 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { previewCloudMove } from '../cloud-move.js';
 import {
   ensureStationHomeSchemaSync,
@@ -140,6 +141,43 @@ describe('cloud move preview', () => {
     expect(readFileSync(join(root, STATION_HOME_SCHEMA_FILE), 'utf8')).toBe(
       before,
     );
+  });
+  test('stops directory reads at the configured entry bound', () => {
+    const { root } = fixture();
+    mkdirSync(join(root, 'agents'));
+    for (let index = 0; index < 1005; index++)
+      mkdirSync(join(root, 'agents', `agent-${index}`));
+    const reads = vi.spyOn(Dir.prototype, 'readSync');
+    try {
+      expect(() => previewCloudMove({ homeDir: root, target })).toThrow(
+        'inventory exceeds its bound',
+      );
+      expect(reads).toHaveBeenCalledTimes(1001);
+    } finally {
+      reads.mockRestore();
+    }
+  });
+  test('does not interpret managed plugin storage, reserved directories, or compatibility links as active plugins', () => {
+    const { root } = fixture();
+    const other = fixture();
+    mkdirSync(join(root, 'plugins', '.incarnations'), { recursive: true });
+    symlinkSync(
+      other.root,
+      join(root, 'plugins', 'compatibility'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    const result = previewCloudMove({ homeDir: root, target });
+    expect(result.items.filter((item) => item.kind === 'plugin')).toEqual([
+      expect.objectContaining({
+        id: 'plugin-inventory',
+        disposition: 'review-required',
+      }),
+    ]);
+    expect(
+      result.items
+        .filter((item) => item.kind === 'plugin')
+        .map((item) => item.id),
+    ).not.toContain('compatibility');
   });
   test('refuses linked configuration directories', () => {
     const { root } = fixture();

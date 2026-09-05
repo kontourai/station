@@ -30,10 +30,12 @@ The [CLI reference](../reference/cli.md#cloud--cloud-move-preparation) owns comm
 provider. The CLI is a thin caller. Future API/UI callers must reuse these
 semantics and add their own authenticated source-selection boundary.
 
-The preview reads bounded selected Agent/Project metadata and lists plugin
-installation directories. It does not read credential stores, external engine
+The preview reads bounded selected Agent/Project metadata and reports plugin
+inventory as unverified pending its lifecycle owner. Storage directories and
+compatibility links are not classified as active plugin installations. It does not read credential stores, external engine
 homes, plugin journals, workspace bytes, or session databases. It is a
-non-atomic observation and provides no capture-consistency or compatibility
+non-atomic observation; selected configuration bytes may contain sensitive
+fields, which are not projected. It provides no capture-consistency or compatibility
 proof. A valid preview always reports transfer and resume unavailable until
 their corresponding operations are implemented. Exit zero means the preview
 ran, not that a move is ready.
@@ -59,7 +61,9 @@ AWS-managed SSM instance role and permits no inbound security-group traffic.
 The host downloads Docker and the selected image over outbound networking.
 IMDSv2 is required with hop limit one; the container receives no AWS credentials,
 Docker socket, or host home directory. Access uses authenticated SSM forwarding
-to host-loopback port 3000 and still requires Station authentication.
+to host-loopback port 3000. Set `LocalUiPort` to an available client port and
+open `http://127.0.0.1` on that port; the template configures this exact allowed
+origin. Station authentication is still required.
 
 The root/data volume survives stop/start and is retained after termination.
 A replacement instance does not adopt that volume automatically. Retained volumes
