@@ -1,10 +1,16 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { ChatDockMobileConnection } from './ChatDockMobileConnection';
+import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
+import './ChatDockMobileOverflowSheet.css';
 import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
-import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
+import type {
+  ChatDockMobileOverflowActions,
+  ChatDockMobileProjectSwitcher,
+} from './ChatDockMobileHeader';
 
 const loadSessionInventoryFullFallback = () =>
   import('./SessionInventoryFullFallback').then((module) => ({
@@ -22,20 +28,45 @@ const loadSessionInventoryFullFallback = () =>
 export function ChatDockMobileOverflowSheet({
   overflow,
   projectScope,
+  projectSwitcher,
+  showConnection,
+  onNewChat,
+  onOpenActivity,
+  activeCount,
+  branchLabel,
   returnFocusTarget,
   onClose,
 }: {
   overflow: ChatDockMobileOverflowActions;
+  projectSwitcher?: ChatDockMobileProjectSwitcher | null;
+  showConnection?: boolean;
+  onNewChat?: () => void;
+  onOpenActivity?: () => void;
+  activeCount?: number;
+  branchLabel?: string | null;
   /** Folded out of the bar at #3309 review SF-2 — see ChatDockMobileHeader. */
   projectScope?: { name: string; onClear: () => void };
   returnFocusTarget?: HTMLElement | null;
   onClose: () => void;
 }) {
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [projectOpen, setProjectOpen] = useState(false);
+  const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const run = (action: () => void) => {
     onClose();
     action();
   };
+  if (projectOpen && projectSwitcher)
+    return (
+      <ProjectSwitcherOverlay
+        anchorRef={projectTriggerRef}
+        boundProjectSlug={projectSwitcher.projectSlug}
+        projects={projectSwitcher.projects}
+        onOpenProject={projectSwitcher.onOpenProject}
+        onSwitchProject={projectSwitcher.onSwitchProject}
+        onClose={() => setProjectOpen(false)}
+      />
+    );
 
   if (inventoryOpen && overflow.sessionInventory)
     return (
@@ -63,6 +94,7 @@ export function ChatDockMobileOverflowSheet({
       ariaLabel="Chat actions"
       onClose={onClose}
       historyMode="entry"
+      returnFocusTarget={returnFocusTarget}
       overlayClassName="composer-popover-overlay composer-popover-overlay--end"
       panelClassName="composer-popover-panel chat-dock__mobile-overflow-panel"
     >
@@ -76,8 +108,47 @@ export function ChatDockMobileOverflowSheet({
         role="menu"
         aria-label="Chat actions"
       >
-        {/* #3309: "New chat" left this sheet for a pinned header icon — a
-            primary action should not live behind an overflow tap. */}
+        {onNewChat && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() => run(onNewChat)}
+          >
+            New chat
+          </button>
+        )}
+        {onOpenActivity && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() => run(onOpenActivity)}
+          >
+            Activity
+            {activeCount ? (
+              <span className="composer-actions-menu__item-hint">
+                {activeCount} working
+              </span>
+            ) : null}
+          </button>
+        )}
+        {projectSwitcher && (
+          <button
+            ref={projectTriggerRef}
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() => setProjectOpen(true)}
+          >
+            Switch project
+            <span className="composer-actions-menu__item-hint">
+              {projectSwitcher.projectName}
+            </span>
+          </button>
+        )}
+        {branchLabel && <p>{branchLabel}</p>}
+        {showConnection && <ChatDockMobileConnection showLabel />}
         <button
           type="button"
           role="menuitem"
