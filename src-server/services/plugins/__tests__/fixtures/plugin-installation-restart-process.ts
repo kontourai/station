@@ -1,7 +1,11 @@
 /** Disposable real installer. Checkpoints terminate without running cleanup. */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { installPluginFromSource } from '../../../../routes/plugins/plugin-install-shared.js';
+import {
+  installPluginFromSource,
+  previewInstalledPluginRecovery,
+  recoverInstalledPlugin,
+} from '../../../../routes/plugins/plugin-install-shared.js';
 import { EventStore } from '../../../orchestration/event-store.js';
 import { derivePluginConsentBasis } from '../../plugin-install-consent.js';
 import { createLocalPluginInstallationHost } from '../../plugin-installation-local.js';
@@ -48,7 +52,41 @@ const host = {
     });
   },
 };
+const deps = {
+  projectHomeDir: home,
+  pluginsDir: join(home, 'plugins'),
+  agentsDir: join(home, 'agents'),
+  packageMcpJournal: journal,
+  installationHost: host,
+  buildPlugin: async () => {
+    if (stage === 'offline')
+      throw new Error('Offline recovery must not rebuild');
+  },
+  reconcileEngineConnections: async () => {
+    if (stage === 'after-host') interrupt('after-host');
+  },
+  logger: { info() {}, warn() {}, debug() {}, error() {} } as any,
+};
 try {
+  if (stage === 'offline') {
+    const preview = await previewInstalledPluginRecovery('recoverable', deps);
+    await recoverInstalledPlugin('recoverable', deps, {
+      recoveryRevision: preview.recoveryRevision,
+      consent: {
+        kind: 'operator-decision',
+        contentDigest: preview.contentDigest,
+        permissions: preview.permissions.required,
+        grantRevision: preview.grantRevision,
+        dependencies: preview.dependencies.map((entry) => entry.id),
+        dependencyApprovals: preview.dependencies.map((entry) => ({
+          id: entry.id,
+          ...entry.consent,
+        })),
+      },
+    });
+    store.close();
+    process.exit(0);
+  }
   const manifest = await readPluginManifestFile(join(source, 'plugin.json'));
   const basis = derivePluginConsentBasis(source, manifest)!;
   const consent =
@@ -63,23 +101,7 @@ try {
         };
   if (['selected', 'after-host', 'before-ready'].includes(stage))
     writeFileSync(join(home, 'initial-consent.json'), JSON.stringify(consent));
-  await installPluginFromSource(
-    source,
-    [],
-    {
-      projectHomeDir: home,
-      pluginsDir: join(home, 'plugins'),
-      agentsDir: join(home, 'agents'),
-      packageMcpJournal: journal,
-      installationHost: host,
-      buildPlugin: async () => {},
-      reconcileEngineConnections: async () => {
-        if (stage === 'after-host') interrupt('after-host');
-      },
-      logger: { info() {}, warn() {}, debug() {}, error() {} } as any,
-    },
-    { consent },
-  );
+  await installPluginFromSource(source, [], deps, { consent });
   store.close();
   process.exit(0);
 } catch (error) {

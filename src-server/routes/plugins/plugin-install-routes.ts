@@ -36,8 +36,10 @@ import type { Logger } from '../../utils/logger.js';
 import {
   errorMessage,
   getBody,
+  param,
   pluginInstallSchema,
   pluginPreviewSchema,
+  pluginRecoverySchema,
   validate,
 } from '../schemas/schemas.js';
 import {
@@ -48,6 +50,9 @@ import { buildPlugin } from './plugin-bundles.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 import {
   installPluginFromSource,
+  type PluginInstallSharedDeps,
+  previewInstalledPluginRecovery,
+  recoverInstalledPlugin,
   resolvePluginRegistrySource,
 } from './plugin-install-shared.js';
 import {
@@ -191,6 +196,83 @@ export function registerPluginInstallRoutes(
     }
 
     return c.json({ plugins });
+  });
+
+  const recoveryDependencies: PluginInstallSharedDeps = {
+    agentsDir,
+    pluginsDir,
+    projectHomeDir,
+    logger,
+    eventBus,
+    installationHost: deps.installationHost,
+    packageMcpJournal: deps.packageMcpJournal,
+    buildPlugin: (directory, name, manifest) =>
+      buildPlugin(directory, name, logger, manifest),
+    settleProviderAdapterRetirements,
+    reconcileEngineConnections,
+    quiesceEventSubscriptions,
+  };
+  app.get('/:name/recovery-preview', async (c) => {
+    try {
+      return c.json(
+        await previewInstalledPluginRecovery(
+          param(c, 'name'),
+          recoveryDependencies,
+        ),
+      );
+    } catch (error) {
+      return c.json(
+        { success: false, error: errorMessage(error) },
+        error instanceof PluginGrantsUnavailableError
+          ? 503
+          : error instanceof AggregateError
+            ? 500
+            : 409,
+      );
+    }
+  });
+  app.post('/:name/recover', validate(pluginRecoverySchema), async (c) => {
+    try {
+      const body = getBody(c);
+      const mutation = await capturePluginConfigurationMutation(
+        applyConfigurationMutation,
+        async (beginMutation, _activation, activationSession) =>
+          recoverInstalledPlugin(
+            param(c, 'name'),
+            {
+              ...recoveryDependencies,
+              beginConfigurationMutation: beginMutation,
+              activationSession,
+            },
+            {
+              recoveryRevision: body.recoveryRevision,
+              consent: {
+                ...body.consent,
+                kind: 'operator-decision',
+                dependencies: body.consent.dependencies ?? [],
+              },
+            },
+          ),
+        { rediscoverSkills: true },
+      );
+      return c.json(
+        {
+          ...mutation.value,
+          success: mutation.activation?.status !== 'pending',
+          ...configurationActivationPayload(mutation.activation),
+        },
+        configurationMutationStatus(mutation.activation, 200),
+      );
+    } catch (error) {
+      return c.json(
+        { success: false, error: errorMessage(error) },
+        error instanceof PluginGrantsUnavailableError
+          ? 503
+          : error instanceof AggregateError
+            ? 500
+            : 409,
+      );
+    }
   });
 
   app.post('/preview', validate(pluginPreviewSchema), async (c) => {

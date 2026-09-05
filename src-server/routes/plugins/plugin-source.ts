@@ -28,6 +28,7 @@ import {
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import {
   computePluginContentDigest,
+  PLUGIN_TREE_COPY,
   withPluginContentLock,
 } from '../../services/plugins/plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from '../../services/plugins/plugin-incarnation.js';
@@ -532,7 +533,7 @@ export async function fetchPluginSource(
       rmSync(tempDir, { recursive: true });
       return { error: 'Not a valid plugin: plugin.json not found' };
     }
-    cpSync(source, tempDir, { recursive: true });
+    cpSync(source, tempDir, PLUGIN_TREE_COPY);
   }
 
   if (!existsSync(join(tempDir, 'plugin.json'))) {

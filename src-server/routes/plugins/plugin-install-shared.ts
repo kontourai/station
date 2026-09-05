@@ -80,6 +80,7 @@ import {
 import {
   PluginIncarnationError,
   resolveInstalledPluginRoot,
+  resolvePluginMaterialization,
 } from '../../services/plugins/plugin-incarnation.js';
 import {
   assertPluginInstallConsent,
@@ -2499,6 +2500,251 @@ async function readManifestForRemoval(
   }
 }
 
+interface RetainedRecoveryAuthorization {
+  readonly __retainedRecoveryAuthorization: unique symbol;
+}
+const retainedRecoveryAuthorizations = new WeakMap<
+  RetainedRecoveryAuthorization,
+  {
+    source: string;
+    origin: string;
+    current(): boolean;
+    dependencies: Map<string, PluginInstallationRevision>;
+  }
+>();
+
+async function inspectRetainedPluginRecovery(
+  name: string,
+  deps: PluginInstallSharedDeps,
+) {
+  assertPluginNameSegment(name);
+  const journal = deps.packageMcpJournal;
+  if (!journal)
+    throw new Error(
+      'Retained recovery is unavailable for this execution adapter',
+    );
+  const observed = journal.currentInstallation(name);
+  if (
+    observed.state !== 'observed' ||
+    journal.activationState(observed.installation) !== 'pending'
+  )
+    throw new Error('This plugin has no pending installation to recover');
+  const origin = observed.installation.origin;
+  const plan = journal.activationPlan(observed.installation);
+  if (!origin || !plan)
+    throw new Error(
+      'Recovery provenance is unavailable; retained data needs reviewed migration',
+    );
+  const revision = (
+    entry: typeof observed.installation,
+  ): PluginInstallationRevision => {
+    if (!entry.materialization || !entry.dataScope)
+      throw new Error('Retained execution materialization is unavailable');
+    return {
+      scope: entry.journalId,
+      installation: entry.pluginId,
+      generation: entry.incarnation,
+      artifact: { digest: entry.contentDigest },
+      materialization: entry.materialization,
+      dataScope: entry.dataScope,
+      ...(entry.origin ? { origin: entry.origin } : {}),
+    };
+  };
+  const grantRevisions = observePluginGrantRevisions(deps.projectHomeDir);
+  const root = resolvePluginMaterialization(
+    deps.pluginsDir,
+    name,
+    observed.installation.materialization!,
+  );
+  const manifest = await readPluginManifestFile(
+    join(root.packageRoot, 'plugin.json'),
+  );
+  const basis = derivePluginConsentBasis(root.packageRoot, manifest);
+  if (
+    manifest.name !== name ||
+    !basis ||
+    basis.contentDigest !== observed.installation.contentDigest ||
+    root.dataScope !== observed.installation.dataScope
+  )
+    throw new Error(
+      'Retained plugin bytes changed; recover from a verified original source',
+    );
+  const dependencies = new Map<string, PluginInstallationRevision>();
+  const captures: Array<
+    NonNullable<ReturnType<typeof captureLocalPluginInstallation>>
+  > = [];
+  const approvals: Array<{
+    id: string;
+    expectedInstallation: PluginInstallationRevision;
+    consent: {
+      contentDigest: string;
+      permissions: string[];
+      dependencies: string[];
+      grantRevision: string;
+    };
+  }> = [];
+  const visiting = new Set([name]);
+  const walk = async (parent: PluginManifest): Promise<void> => {
+    for (const dependency of parent.dependencies ?? []) {
+      if (visiting.has(dependency.id))
+        throw new Error(`Retained dependency cycle detected: ${dependency.id}`);
+      if (dependencies.has(dependency.id)) continue;
+      const captured = captureLocalPluginInstallation(
+        deps.pluginsDir,
+        journal,
+        dependency.id,
+      );
+      if (!captured?.installation)
+        throw new Error(
+          `Install managed dependency '${dependency.id}' before recovering '${name}'`,
+        );
+      if (!captured.isCurrent())
+        throw new Error(
+          `Recover dependency '${dependency.id}' before recovering '${name}'`,
+        );
+      const child = await readPluginManifestFile(
+        join(captured.root.packageRoot, 'plugin.json'),
+      );
+      const childBasis = derivePluginConsentBasis(
+        captured.root.packageRoot,
+        child,
+      );
+      if (
+        child.name !== dependency.id ||
+        !childBasis ||
+        childBasis.contentDigest !== captured.installation.contentDigest
+      )
+        throw new Error(`Dependency '${dependency.id}' bytes changed`);
+      if (
+        dependency.version &&
+        dependency.version !== '*' &&
+        dependency.version !== child.version
+      )
+        throw new Error(
+          `Dependency '${dependency.id}' does not match required version '${dependency.version}'`,
+        );
+      const expectedInstallation = revision(captured.installation);
+      dependencies.set(dependency.id, expectedInstallation);
+      captures.push(captured);
+      approvals.push({
+        id: dependency.id,
+        expectedInstallation,
+        consent: {
+          contentDigest: childBasis.contentDigest,
+          permissions: childBasis.required,
+          dependencies: childBasis.dependencies,
+          grantRevision: grantRevisions.revisionFor(dependency.id),
+        },
+      });
+      visiting.add(dependency.id);
+      await walk(child);
+      visiting.delete(dependency.id);
+    }
+  };
+  await walk(manifest);
+  const expectedInstallation = revision(observed.installation);
+  const current = () => {
+    const now = journal.currentInstallation(name);
+    return (
+      now.state === 'observed' &&
+      now.installation.incarnation === expectedInstallation.generation &&
+      journal.activationState(now.installation) === 'pending' &&
+      JSON.stringify(journal.activationPlan(now.installation)) ===
+        JSON.stringify(plan) &&
+      computePluginContentDigest(
+        dirname(root.packageRoot),
+        basename(root.packageRoot),
+      ) === expectedInstallation.artifact.digest &&
+      captures.every(
+        (capture) =>
+          capture.isCurrent() &&
+          computePluginContentDigest(
+            dirname(capture.root.packageRoot),
+            basename(capture.root.packageRoot),
+          ) === capture.installation!.contentDigest,
+      )
+    );
+  };
+  if (!current())
+    throw new Error(
+      'Recovery changed while it was being inspected; preview again',
+    );
+  const grantRevision = grantRevisions.revisionFor(name);
+  const recoveryRevision = `sha256:${createHash('sha256')
+    .update(
+      JSON.stringify({
+        expectedInstallation,
+        plan,
+        grantRevision,
+        dependencies: approvals,
+      }),
+    )
+    .digest('hex')}`;
+  return {
+    source: root.packageRoot,
+    origin,
+    current,
+    dependencies,
+    view: {
+      manifest,
+      expectedInstallation,
+      recoveryRevision,
+      contentDigest: basis.contentDigest,
+      grantRevision,
+      permissions: {
+        required: basis.required,
+        autoGranted: basis.autoGranted,
+        pendingConsent: basis.pendingConsent,
+      },
+      dependencies: approvals,
+      skip: plan.skipped ?? [],
+    },
+  };
+}
+
+export async function previewInstalledPluginRecovery(
+  name: string,
+  deps: PluginInstallSharedDeps,
+) {
+  return (await inspectRetainedPluginRecovery(name, deps)).view;
+}
+
+/** Recovery continues the selected immutable bytes and data scope. Missing or
+ * pending dependencies have an explicit dependency-first remedy; they are not
+ * fetched or silently adopted by this offline recovery operation. */
+export async function recoverInstalledPlugin(
+  name: string,
+  deps: PluginInstallSharedDeps,
+  decision: { recoveryRevision: string; consent: PluginInstallConsent },
+) {
+  const captured = await inspectRetainedPluginRecovery(name, deps);
+  if (
+    decision.consent.kind !== 'operator-decision' ||
+    decision.consent.grantRevision !== captured.view.grantRevision
+  )
+    throw new PluginGrantMutationSupersededError();
+  if (decision.recoveryRevision !== captured.view.recoveryRevision)
+    throw new Error('Recovery changed; preview it again before continuing');
+  const authorization = Object.freeze({}) as RetainedRecoveryAuthorization;
+  retainedRecoveryAuthorizations.set(authorization, captured);
+  try {
+    return await installPluginFromSource(
+      captured.source,
+      captured.view.skip,
+      deps,
+      {
+        consent: decision.consent,
+        expectedPluginName: name,
+        expectedInstallation: captured.view.expectedInstallation,
+        activationSession: deps.activationSession,
+        retainedRecovery: authorization,
+      },
+    );
+  } finally {
+    retainedRecoveryAuthorizations.delete(authorization);
+  }
+}
+
 async function runOwnedPluginMutation<T>(
   deps: PluginInstallSharedDeps,
   provided: PluginActivationSession | undefined,
@@ -2563,6 +2809,7 @@ async function installPluginFromSourceUnderContext(
     registryKey?: string;
     activationSession?: PluginActivationSession;
     activationParent?: { installation: string; generation: string };
+    retainedRecovery?: RetainedRecoveryAuthorization;
     /** Trusted request-entry observation, never deserialized request data. */
     grantSnapshot?: PluginGrantRevisionSnapshot;
     dataPolicy?: 'preserve' | 'retain-and-reset';
@@ -2585,6 +2832,14 @@ async function installPluginFromSourceUnderContext(
     pluginsDir,
     projectHomeDir,
   } = deps;
+  const recovery = options?.retainedRecovery
+    ? retainedRecoveryAuthorizations.get(options.retainedRecovery)
+    : undefined;
+  if (
+    options?.retainedRecovery &&
+    (!recovery || recovery.source !== source || !recovery.current())
+  )
+    throw new Error('Retained recovery changed; preview again');
   const requestGrants = publicationGrantRevisions(
     () => options?.grantSnapshot ?? observePluginGrantRevisions(projectHomeDir),
   );
@@ -2821,6 +3076,20 @@ async function installPluginFromSourceUnderContext(
         dependency.id,
       );
       if (!captured?.installation) return false;
+      const expectedRecoveryDependency = recovery?.dependencies.get(
+        dependency.id,
+      );
+      if (
+        recovery &&
+        (!expectedRecoveryDependency ||
+          expectedRecoveryDependency.generation !==
+            captured.installation.incarnation ||
+          expectedRecoveryDependency.artifact.digest !==
+            captured.installation.contentDigest)
+      )
+        throw new Error(
+          `Recovery dependency '${dependency.id}' changed; preview again`,
+        );
       if (
         !captured.isCurrent() ||
         computePluginContentDigest(
@@ -2973,19 +3242,32 @@ async function installPluginFromSourceUnderContext(
       options?.registryKey,
       pluginName,
     );
-    const selectedRoot = resolveInstalledPluginRoot(pluginsDir, pluginName);
-    if (
-      isAgentPlugin
-        ? selectedRoot?.kind === 'legacy'
-        : selectedRoot?.kind === 'incarnation'
-    )
-      throw new PluginIncarnationError('migration-required');
-    const installationService = isAgentPlugin
-      ? await installationHostFor(deps).service()
-      : null;
+    const installationService =
+      isAgentPlugin || deps.installationHost || deps.packageMcpJournal
+        ? await installationHostFor(deps).service()
+        : null;
     const priorInstallation = installationService
       ? await installationService.inspect(pluginName)
       : null;
+    const selectedRoot = priorInstallation
+      ? resolvePluginMaterialization(
+          pluginsDir,
+          pluginName,
+          priorInstallation.materialization,
+        )
+      : resolveInstalledPluginRoot(pluginsDir, pluginName);
+    if (
+      (priorInstallation && !isAgentPlugin) ||
+      (isAgentPlugin
+        ? selectedRoot?.kind === 'legacy'
+        : selectedRoot?.kind === 'incarnation')
+    )
+      throw new PluginIncarnationError('migration-required');
+    if (
+      priorInstallation &&
+      selectedRoot?.dataScope !== priorInstallation.dataScope
+    )
+      throw new Error('Installed data scope does not match its authority');
     const priorJournalInstallation =
       deps.packageMcpJournal?.currentInstallation(pluginName);
     const priorWasReady =
@@ -3015,9 +3297,16 @@ async function installPluginFromSourceUnderContext(
       ? capturePersistedAgentOwnership(agentsDir, pluginName, existingManifest)
       : new Map<string, string | undefined>();
     const hadExistingPlugin = existingManifest !== null;
-    const retainedDependencyOwnership = hadExistingPlugin
-      ? readPluginDependencyOwnership(projectHomeDir, pluginName)
-      : [];
+    const retainedDependencyOwnership = (
+      hadExistingPlugin
+        ? readPluginDependencyOwnership(projectHomeDir, pluginName)
+        : []
+    ).filter(
+      (entry) =>
+        !recovery ||
+        (entry.generation !== undefined &&
+          recovery.dependencies.get(entry.id)?.generation === entry.generation),
+    );
     if (hadExistingPlugin) {
       eventSubscriptionQuiescence =
         (await deps.quiesceEventSubscriptions?.(pluginName)) ?? null;
@@ -3076,7 +3365,7 @@ async function installPluginFromSourceUnderContext(
         // dependency activation, and rollback retains the same outer fence.
 
         if (isAgentPlugin) {
-          await buildPlugin(tempDir, pluginName, manifest);
+          if (!recovery) await buildPlugin(tempDir, pluginName, manifest);
           assertPluginBundleAssetsContained(tempDir);
           const artifact = captureLocalPluginArtifact(tempDir);
           const service = await installationHostFor(deps).service(artifact);
@@ -3092,16 +3381,20 @@ async function installPluginFromSourceUnderContext(
           const acquisitionSource = existsSync(source)
             ? realpathSync.native(source)
             : source;
-          const origin = createHash('sha256')
-            .update(
-              JSON.stringify({
-                owner: realpathSync.native(projectHomeDir),
-                registryId: options?.registryId ?? null,
-                registryKey: options?.registryKey ?? null,
-                source: acquisitionSource,
-              }),
-            )
-            .digest('hex');
+          if (recovery && !recovery.current())
+            throw new Error('Retained recovery changed; preview again');
+          const origin =
+            recovery?.origin ??
+            createHash('sha256')
+              .update(
+                JSON.stringify({
+                  owner: realpathSync.native(projectHomeDir),
+                  registryId: options?.registryId ?? null,
+                  registryKey: options?.registryKey ?? null,
+                  source: acquisitionSource,
+                }),
+              )
+              .digest('hex');
           const activationPlan: PluginActivationPlan | undefined = isAgentPlugin
             ? {
                 version: 1,
@@ -3130,6 +3423,7 @@ async function installPluginFromSourceUnderContext(
                       persistedAgentOwnership.get(agent.slug) ?? null,
                   })),
                 ownedDependencies: retainedDependencyOwnership,
+                skipped: [...skipSet],
               }
             : undefined;
           if (

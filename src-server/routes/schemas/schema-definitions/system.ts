@@ -160,6 +160,15 @@ const pluginInstallationRevisionSchema = z
   })
   .strict();
 
+export const pluginRecoverySchema = z
+  .object({
+    recoveryRevision: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+    consent: pluginInstallConsentSchema.extend({
+      grantRevision: z.string().min(1).max(256),
+    }),
+  })
+  .strict();
+
 export const pluginInstallSchema = z.object({
   dataPolicy: z.enum(['preserve', 'retain-and-reset']).optional(),
   expectedInstallation: pluginInstallationRevisionSchema.nullable().optional(),

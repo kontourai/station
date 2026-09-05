@@ -20,6 +20,7 @@ export interface PluginActivationPlan {
   parent?: { installation: string; generation: string };
   agents: Array<{ slug: string; previousProject: string | null }>;
   ownedDependencies: PluginDependencyOwnershipEntry[];
+  skipped?: string[];
 }
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 function strings(
@@ -120,8 +121,10 @@ export function validPluginActivationPlan(
       'agents',
       'ownedDependencies',
       'parent',
+      'skipped',
     ]) ||
     value.version !== 1 ||
+    (value.skipped !== undefined && !strings(value.skipped, 256, 256)) ||
     !['artifactDigest', 'descriptorDigest', 'sourceDigest'].every(
       (key) =>
         typeof value[key] === 'string' && DIGEST.test(value[key] as string),

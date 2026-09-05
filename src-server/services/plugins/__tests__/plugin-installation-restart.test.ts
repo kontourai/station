@@ -7,12 +7,15 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, expect, test } from 'vitest';
+import { Hono } from 'hono';
+import { afterEach, expect, test, vi } from 'vitest';
+import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { AgentPluginLoader } from '../agent-plugin-loader.js';
 import { resolveInstalledPluginRoot } from '../plugin-incarnation.js';
@@ -59,42 +62,47 @@ async function run(home: string, source: string, stage: string) {
   return { code, signal };
 }
 
+function fixture() {
+  const home = mkdtempSync(join(tmpdir(), 'station-installer-restart-'));
+  homes.push(home);
+  const source = join(home, 'source');
+  mkdirSync(join(source, 'agents', 'recoverable-agent'), { recursive: true });
+  mkdirSync(join(home, 'plugins'));
+  writeFileSync(
+    join(source, 'plugin.json'),
+    JSON.stringify({
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'recoverable',
+      version: '1.0.0',
+      extensions: {
+        'io.kontourai.station': {
+          schemaVersion: '1.0',
+          permissions: ['agents.invoke'],
+          agents: [
+            {
+              slug: 'recoverable-agent',
+              source: './agents/recoverable-agent/agent.json',
+            },
+          ],
+        },
+      },
+    }),
+  );
+  writeFileSync(
+    join(source, 'agents', 'recoverable-agent', 'agent.json'),
+    JSON.stringify({
+      name: 'Recoverable Agent',
+      prompt: 'Recoverable fixture',
+    }),
+  );
+  return { home, source };
+}
+
 test.each(['selected', 'after-host', 'before-ready'])(
   'real installer interruption at %s stays pending; a fresh process needs fresh consent and preserves data',
   { timeout: 45_000 },
   async (stage) => {
-    const home = mkdtempSync(join(tmpdir(), 'station-installer-restart-'));
-    homes.push(home);
-    const source = join(home, 'source');
-    mkdirSync(join(source, 'agents', 'recoverable-agent'), { recursive: true });
-    mkdirSync(join(home, 'plugins'));
-    writeFileSync(
-      join(source, 'plugin.json'),
-      JSON.stringify({
-        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
-        name: 'recoverable',
-        version: '1.0.0',
-        extensions: {
-          'io.kontourai.station': {
-            schemaVersion: '1.0',
-            permissions: ['agents.invoke'],
-            agents: [
-              {
-                slug: 'recoverable-agent',
-                source: './agents/recoverable-agent/agent.json',
-              },
-            ],
-          },
-        },
-      }),
-    );
-    writeFileSync(
-      join(source, 'agents', 'recoverable-agent', 'agent.json'),
-      JSON.stringify({
-        name: 'Recoverable Agent',
-        prompt: 'Recoverable fixture',
-      }),
-    );
+    const { home, source } = fixture();
     expect((await run(home, source, stage)).signal).toBe('SIGKILL');
     expect(readFileSync(join(home, 'interrupted-at'), 'utf8')).toBe(stage);
     const store = new EventStore(join(home, 'events.sqlite'));
@@ -151,3 +159,116 @@ test.each(['selected', 'after-host', 'before-ready'])(
     }
   },
 );
+
+test('a fresh process recovers retained bytes with the original source absent and never rebuilds or resets data', {
+  timeout: 45_000,
+}, async () => {
+  const { home, source } = fixture();
+  expect((await run(home, source, 'after-host')).signal).toBe('SIGKILL');
+  const store = new EventStore(join(home, 'events.sqlite'));
+  try {
+    const journal = store.createPackageMcpAdmissionJournal();
+    const original = resolveInstalledPluginRoot(
+      join(home, 'plugins'),
+      'recoverable',
+    )!;
+    writeFileSync(join(original.dataRoot!, 'state.txt'), 'offline data');
+    rmSync(source, { recursive: true, force: true });
+    unlinkSync(join(home, 'plugins', 'recoverable'));
+    expect((await run(home, source, 'offline')).code).toBe(0);
+    const current = journal.currentInstallation('recoverable');
+    if (current.state !== 'observed')
+      throw new Error('Recovery did not retain its installation');
+    expect(journal.admissionOpen(current.installation)).toBe(true);
+    expect(current.installation.dataScope).toBe(original.dataScope);
+    expect(readFileSync(join(original.dataRoot!, 'state.txt'), 'utf8')).toBe(
+      'offline data',
+    );
+    expect((await run(home, source, 'offline')).code).toBe(2);
+    expect(journal.currentInstallation('recoverable')).toEqual(current);
+    expect(
+      readdirSync(join(home, 'agents')).filter((name) => !name.startsWith('.')),
+    ).toEqual(['recoverable-agent']);
+  } finally {
+    store.close();
+  }
+});
+
+test('the public recovery preview and mutation require fresh consent and preserve an alias-free retained installation', {
+  timeout: 30_000,
+}, async () => {
+  const { home, source } = fixture();
+  expect((await run(home, source, 'after-host')).signal).toBe('SIGKILL');
+  const store = new EventStore(join(home, 'events.sqlite'));
+  try {
+    const journal = store.createPackageMcpAdmissionJournal();
+    const original = journal.currentInstallation('recoverable');
+    const installed = resolveInstalledPluginRoot(
+      join(home, 'plugins'),
+      'recoverable',
+    )!;
+    writeFileSync(join(installed.dataRoot!, 'state.txt'), 'route data');
+    rmSync(source, { recursive: true, force: true });
+    unlinkSync(join(home, 'plugins', 'recoverable'));
+    const app = new Hono();
+    registerPluginInstallRoutes(app, {
+      projectHomeDir: home,
+      pluginsDir: join(home, 'plugins'),
+      agentsDir: join(home, 'agents'),
+      packageMcpJournal: journal,
+      logger: {
+        info: vi.fn(),
+        error: vi.fn(),
+        warn: vi.fn(),
+        debug: vi.fn(),
+      } as any,
+    });
+    const preview = async () => {
+      const response = await app.request('/recoverable/recovery-preview');
+      expect(response.status).toBe(200);
+      return response.json() as Promise<any>;
+    };
+    const send = (value: any) =>
+      app.request('/recoverable/recover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recoveryRevision: value.recoveryRevision,
+          consent: {
+            contentDigest: value.contentDigest,
+            grantRevision: value.grantRevision,
+            permissions: value.permissions.required,
+            dependencies: value.dependencies.map((entry: any) => entry.id),
+            dependencyApprovals: value.dependencies.map((entry: any) => ({
+              id: entry.id,
+              ...entry.consent,
+            })),
+          },
+        }),
+      });
+    const stale = await preview();
+    await revokeGrants(home, 'recoverable', ['agents.invoke']);
+    expect((await send(stale)).status).toBe(409);
+    expect(journal.currentInstallation('recoverable')).toEqual(original);
+    expect(getPluginGrants(home, 'recoverable')).not.toContain('agents.invoke');
+    const fresh = await preview();
+    const response = await send(fresh);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      plugin: { name: 'recoverable' },
+    });
+    const recovered = journal.currentInstallation('recoverable');
+    if (recovered.state !== 'observed')
+      throw new Error('Recovery lost its installation');
+    expect(journal.admissionOpen(recovered.installation)).toBe(true);
+    expect(recovered.installation.dataScope).toBe(installed.dataScope);
+    expect(readFileSync(join(installed.dataRoot!, 'state.txt'), 'utf8')).toBe(
+      'route data',
+    );
+    expect((await send(fresh)).status).toBe(409);
+    expect(journal.currentInstallation('recoverable')).toEqual(recovered);
+  } finally {
+    store.close();
+  }
+});
