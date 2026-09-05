@@ -62,7 +62,7 @@
     "veritas:evidence": "npm exec -- veritas readiness --check evidence --working-tree",
     "veritas:shadow": "npm exec -- veritas readiness --working-tree",
     "trust-reconcile-verify": "npm run full:regression",
-    "verification:policy:gate": "node scripts/verification-policy-gate.mjs && node scripts/product-law-gate.mjs && npm run test:fixtures:check",
+    "verification:policy:gate": "node scripts/verification-policy-gate.mjs && node scripts/product-law-gate.mjs && npm run test:fixtures:guard",
     "verification:stress": "node scripts/run-verification-stress.mjs",
     "verification:stress:run": "node scripts/run-verification-stress.mjs --run",
     "coding-composition:gate": "node scripts/coding-composition-inventory-gate.mjs",
@@ -260,7 +260,8 @@
     "dependencies:lock": "node scripts/dependency-lifecycle.mjs lock",
     "test:fixtures:check": "node scripts/test-fixture-policy.mjs",
     "test:journeys:profile": "node scripts/run-journey-profiles.mjs",
-    "test:mutation:smoke": "node scripts/run-test-mutations.mjs"
+    "test:mutation:smoke": "node scripts/run-test-mutations.mjs",
+    "test:fixtures:guard": "npm run test:fixtures:check && npm run test:focused -- scripts/__tests__/test-fixture-policy.test.ts scripts/__tests__/fixture-audit.test.ts scripts/__tests__/connection-fixtures.test.ts scripts/__tests__/test-mutations.test.ts scripts/__tests__/journey-profiles.test.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.4.0",

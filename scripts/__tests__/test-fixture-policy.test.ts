@@ -71,7 +71,7 @@ describe('browser fixture syntax policy', () => {
 
   test('routes relevant agent changes to the executable check and its guide', () => {
     expect(fixturePolicyCommands(['tests/helpers/example.ts'])).toContain(
-      'npm run test:fixtures:check',
+      'npm run test:fixtures:guard',
     );
     expect(fixturePolicyCommands(['src-server/main.ts'])).toEqual([]);
   });

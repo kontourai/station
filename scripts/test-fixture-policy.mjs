@@ -203,7 +203,7 @@ export function fixturePolicyCommands(paths) {
     /^(tests\/|src-ui\/|scripts\/.*(fixture|mutation|journey))/.test(path),
   )
     ? [
-        'npm run test:fixtures:check',
+        'npm run test:fixtures:guard',
         'docs/guides/testing.md#fixture-fidelity-and-test-effectiveness',
       ]
     : [];

@@ -61,15 +61,13 @@ queue is part of it. What that means in practice:
   session first (`ListAgents` / `SendMessage`); a merge is not yours to make
   because the checks happen to be green.
 
-## A test must execute the seam it is named for
+## Test and performance evidence
 
-Before adding or accepting a test, answer both: does it reach the code its name claims, and would it fail if the fix were reverted? A test that satisfies its name without touching its subject is worse than no test — it retires the question, so the next reader sees coverage and stops looking. Recurring shapes to reject: a constant asserted against its own literal; a source-text or config-shape scan (a regex over a file, a substring of workflow YAML) standing in for behaviour; a pure reducer or helper exercised while the defect lives in the integration that calls it; an assertion sitting behind a catch-all that converts the tested condition into an ordinary return.
+Tests must reach the behavior their names claim and fail when it breaks. Structural scans prove structural rules; helper tests do not prove caller integration. Missing prerequisites and caught errors must not become success.
 
-When a mutation is the only convincing evidence, commit first and confirm `git status --short` is empty before injecting — restoring a dirty tree discards uncommitted work. Report the red result, not only the green: an injection that does not fail means the test lacks power or the mutation never reached the case. A fix round is where defects are introduced most often, so review the delta of a fix, not only the original change.
+For fixture repair, cleanup, or performance work, follow [the test-effectiveness route](docs/guides/testing.md#fixture-fidelity-and-test-effectiveness). `npm run gate:for -- <paths>` prints the executable checks. Use typed fixtures and real user actions; profile before adding performance abstractions.
 
-## Fixture, performance, and cleanup work
-
-Read [the test-effectiveness route](docs/guides/testing.md#fixture-fidelity-and-test-effectiveness) before changing browser fixtures or retiring coverage. `npm run gate:for -- <paths>` routes to the executable checks. Use the typed fixture owners, real user interactions, and targeted mutation cases; profile the real journey before adding a performance abstraction. Source-policy checks establish syntax/ownership rules, not rendered behavior. Keep measurements bound to their revision and environment.
+Commit and confirm a clean tree before mutation. Preserve intervening edits and report baseline, injected failure, and restored outcomes. Review the delta of a fix, and bind measurements to their revision and environment.
 
 ## Issue references
 

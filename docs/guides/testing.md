@@ -9,7 +9,7 @@ Use this route for weak-test cleanup, fixture repairs, and performance work. The
 | Engine fixtures | `tests/helpers/connection-fixtures.ts` | Canonical `config.engineId` and typed connection envelope; obsolete `executionClass` alone cannot bind a fixture. |
 | Restored conversation fixtures | `tests/helpers/runtime-conversation-fixture.ts` | An explicit backend `/open` result and canonical conversation event window, independently of client storage seeds. The caller declares continuation authority. |
 | Unknown API reads | `tests/helpers/fixture-audit.ts`, `station-shell-fixtures.ts` | Explicit method/response shapes; omitted requests fail the audited test instead of returning false empty inventories. |
-| User interaction policy | `npm run test:fixtures:check` | Detects known source patterns that bypass Playwright actionability. The check runs inside `verification:policy:gate` and therefore `ci:fast`. |
+| User interaction policy | `npm run test:fixtures:check` | Detects known source patterns that bypass Playwright actionability. The `test:fixtures:guard` command runs this check plus its known-bad, fixture, recovery, and profile-schema tests inside `verification:policy:gate` and therefore `ci:fast`. |
 | Critical assertion strength | `npm run test:mutation:smoke` | Baseline green, known injected defect caught by the named assertion, source restored, restored green. |
 | Journey diagnosis | `npm run test:journeys:profile -- --samples=3` | Raw browser CPU/heap profiles, React commit counts, DOM mutations, storage calls, and timings on three actual journeys. No uncalibrated latency threshold. |
 
@@ -27,7 +27,7 @@ Commit first, then run `npm run test:journeys:profile -- --samples=3`. `--allow-
 
 The workloads are a 10,000-turn corpus with bounded loaded windows and streaming updates, an authoritative two-conversation round trip, and Home with 1,000 session records. The harness records its actual build mode and host/browser versions. CPU profiles include idle time; use script/layout metrics and source maps to locate work. Heap allocation is sampled, not an exact allocation census. Storage counters cover the browser's synchronous Storage calls, not server filesystem I/O. Instrumentation adds overhead; compare like-for-like samples and use the established production reference performance contract for release claims.
 
-Profiles retain `.cpuprofile`, `.heapprofile`, per-journey JSON, source maps when emitted by the opt-in build, and a median summary. Inspect before choosing a fix. Preserve the real journey's assertions, then compare the same workload after the change. A counter can become a regression assertion when it represents a deterministic contract, such as one store read per request. Do not turn a noisy single-host timing into a blocking gate merely because a cleanup improved one sample.
+Per-journey files describe the measured phase; only a completed wrapper summary means every selected test, including fixture teardown, succeeded. Profiles retain `.cpuprofile`, `.heapprofile`, per-journey JSON, source maps when emitted by the opt-in build, and a median summary. Inspect before choosing a fix. Preserve the real journey's assertions, then compare the same workload after the change. A counter can become a regression assertion when it represents a deterministic contract, such as one store read per request. Do not turn a noisy single-host timing into a blocking gate merely because a cleanup improved one sample.
 
 ### Mutation safety and interpretation
 

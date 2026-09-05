@@ -9,6 +9,7 @@ const READS: Readonly<Record<string, unknown>> = {
     voice: { stt: [], tts: [] },
     context: { providers: [] },
   },
+  '/api/feedback/ratings': { success: true, data: [] },
   '/api/tasks': { success: true, data: [] },
   '/api/plugins/home-role': { success: true, status: { state: 'none' } },
   '/api/environments/ssh/sessions': {
@@ -51,6 +52,76 @@ const READS: Readonly<Record<string, unknown>> = {
 export async function fulfillStationShellRead(route: Route): Promise<boolean> {
   const request = route.request();
   const path = new URL(request.url()).pathname;
+  if (
+    request.method() === 'GET' &&
+    path === '/api/orchestration/attachment-staging/capability'
+  ) {
+    // This default fixture exercises a negotiated legacy peer; staging tests override it.
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: false,
+        error: 'Legacy fixture has no staging endpoint',
+      }),
+    });
+    return true;
+  }
+  if (
+    request.method() === 'GET' &&
+    /^\/api\/orchestration\/sessions\/(?:claude|station)%3A\d+\/checkpoints$/.test(
+      path,
+    )
+  ) {
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: false,
+        error: 'Client-only draft has no execution Session',
+      }),
+    });
+    return true;
+  }
+  if (
+    request.method() === 'GET' &&
+    [
+      '/api/action-operations',
+      '/api/environments/peers',
+      '/api/environments/ssh',
+      '/api/live-activity',
+      '/api/orchestration/commands/receipts',
+      '/api/projects/default/workflow/tasks',
+      '/api/pull-requests/context',
+    ].includes(path)
+  ) {
+    // Optional Activity sources are explicitly unavailable in the conversation fixture.
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: false,
+        error: 'Optional Activity source unavailable in this fixture',
+      }),
+    });
+    return true;
+  }
+  if (
+    request.method() === 'GET' &&
+    /^\/api\/orchestration\/sessions\/chat-(?:running|review)\/checkpoints$/.test(
+      path,
+    )
+  ) {
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: false,
+        error: 'Client storage key is not an execution Session',
+      }),
+    });
+    return true;
+  }
   if (request.method() === 'GET' && path === '/api/orchestration/events') {
     await route.abort();
     return true;
