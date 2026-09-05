@@ -1749,6 +1749,7 @@ button:hover {
   padding: 0;
   border: 0;
   background: none;
+  overflow: hidden;
 }
 
 .chat-dock__scope {
@@ -1916,6 +1917,7 @@ button:hover {
 /* Project context breadcrumb between tabs and body */
 .chat-dock__project-context {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
@@ -1938,6 +1940,12 @@ button:hover {
    affordance survives as an underline on hover/focus, same as any other
    text trigger in this bar. */
 .chat-dock__project-badge {
+  /* A <button> wraps its label by default, so a squeezed header printed
+     "Demo Project" on two lines inside a one-line row. The project name is
+     the row's subject: it stays on one line and the path beside it — which
+     already ellipsises from the start — is what yields. */
+  flex-shrink: 0;
+  white-space: nowrap;
   border: none;
   border-radius: 3px;
   padding: 0 2px;
@@ -2039,6 +2047,7 @@ button:hover {
   text-decoration: underline;
 }
 .chat-dock__project-context > .git-tooltip-anchor {
+  min-width: 0;
   margin-left: auto;
 }
 
@@ -2815,9 +2824,17 @@ button:hover {
   gap: 4px;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+  /* The branch glyph and the branch name are one token; without this the
+     header squeezed "main" onto a second line under the ⎇, and a long branch
+     name broke across three. A squeezed badge ellipsises instead. */
+  min-width: 0;
+  white-space: nowrap;
 }
 .git-badge__branch {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-secondary);
+  text-overflow: ellipsis;
 }
 .git-badge__dirty {
   color: var(--warning, #e5c07b);
@@ -3202,19 +3219,30 @@ button:hover {
 .chat-dock__active-identity-text {
   display: flex;
   min-width: 0;
+  flex: 1 1 auto;
   align-items: center;
   gap: var(--space-2);
+  /* With a project bound this row shares the header with the project context,
+     so the box it gets can be narrower than its contents. `flex-shrink: 0` on
+     the agent name and model meant they refused to yield and, with no clip
+     here, painted OUTSIDE this box — over the session title beside them. The
+     clip is the floor; the shrink weights below are what keeps every part
+     readable rather than merely contained. */
+  overflow: hidden;
 }
 
-/* archive#3309: agent-first. The avatar and the agent's name hold their size;
-   the session title is the one part that yields, because it is the label that
-   changes per chat while the agent identity is what the row is about. */
+/* archive#3309: agent-first. The avatar holds its size; the session title
+   yields FIRST, because it is the label that changes per chat while the agent
+   identity is what the row is about. The agent name and model may still
+   ellipsise as a last resort — refusing to shrink at all is what produced the
+   overprint, and an ellipsised name reads better than a hidden title. */
 .chat-dock__active-identity-avatar {
   flex-shrink: 0;
 }
 
 .chat-dock__active-identity-agent {
-  flex-shrink: 0;
+  min-width: 0;
+  flex-shrink: 1;
   overflow: hidden;
   font-size: var(--text-sm);
   text-overflow: ellipsis;
@@ -3222,7 +3250,8 @@ button:hover {
 }
 
 .chat-dock__active-identity-model {
-  flex-shrink: 0;
+  min-width: 0;
+  flex-shrink: 1;
   overflow: hidden;
   color: var(--text-tertiary);
   font-size: var(--text-xs);
@@ -3235,6 +3264,9 @@ button:hover {
    triple, not a fourth member of it. */
 .chat-dock__active-identity-title {
   min-width: 0;
+  /* Yields several times faster than the agent/model beside it, so the
+     priority above is expressed in the layout rather than only in prose. */
+  flex-shrink: 4;
   overflow: hidden;
   padding-left: var(--space-2);
   border-left: 1px solid var(--border-primary);
