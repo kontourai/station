@@ -162,11 +162,12 @@
     "./workspace-coding-diff-composition": "./src/workspace-coding-diff-composition.ts",
     "./workspace-evidence-panels": "./src/workspace-evidence-panels.ts",
     "./workspace-file-preview": "./src/workspace-file-preview.ts",
-    "./workspace-isolation": "./src/workspace-isolation.ts"
+    "./workspace-isolation": "./src/workspace-isolation.ts",
+    "./cloud-move": "./src/cloud-move.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",
-    "@kontourai/flow": "5.1.0",
+    "@kontourai/flow": "5.1.1",
     "@kontourai/flow-agents": "6.2.0",
     "@kontourai/surface": "^3.2.0",
     "@kontourai/thread": "0.5.0"

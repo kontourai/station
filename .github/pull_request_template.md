@@ -10,6 +10,7 @@ Describe the user-visible outcome this change delivers.
 ## Documentation impact
 
 - Affected public docs and generated sources (exact repository-relative paths):
+- For integration/deployment/adapter changes: external-team guide/example, prerequisites, operational lifecycle, and implemented versus planned behavior (see `docs/guides/integrating-station.md`):
 - No documentation impact (explicit reason; do not write "none", "N/A", or leave this blank):
 - Intentional NOT_VERIFIED platform/UI claims retained or introduced (claim and reason, if applicable):
 

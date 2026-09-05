@@ -382,6 +382,55 @@ function runExactHook(packageRoot, hook) {
  * an aborted install. One fixed, greppable line shape so `install.sh` logs,
  * CI receipts, and humans all find it: `DEGRADED <capability>: ...`.
  */
+/**
+ * Every message in an error's `cause` chain, outermost first.
+ *
+ * `retireDependencyInstall` (scripts/lib/dependency-install-retirement.mjs)
+ * reports a verification failure as "Dependencies are not verified. Installer
+ * state is retained at <dir>" and attaches the real reason as `cause`. This
+ * CLI printed only `error.message`, so CI logs named a directory on the runner
+ * -- which is never uploaded -- and no constraint at all. The failure was
+ * diagnosable only by reproducing it locally.
+ *
+ * Bounded rather than trusted: a dependency's own error text lands in this
+ * chain, so depth is capped and each message truncated.
+ */
+export function describeFailure(
+  error,
+  { maxDepth = 8, maxLength = 2000 } = {},
+) {
+  const lines = [];
+  const seen = new Set();
+  let current = error;
+  for (let depth = 0; current !== undefined && depth < maxDepth; depth += 1) {
+    if (typeof current === 'object' && current !== null) {
+      if (seen.has(current)) break;
+      seen.add(current);
+    }
+    const message = String(
+      current instanceof Error ? current.message : current,
+    ).slice(0, maxLength);
+    if (message !== '')
+      lines.push(depth === 0 ? message : `  caused by: ${message}`);
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return lines.length > 0 ? lines.join('\n') : String(error);
+}
+
+/**
+ * What the CLI prints, and the exit code it sets, when an operation throws.
+ *
+ * Separated from `main`'s catch so the REPORTING is covered rather than only
+ * the formatter: a test that exercises `describeFailure` alone still passes if
+ * the catch goes back to printing `error.message`, which is how the cause was
+ * being discarded in the first place. Verified by fault injection -- reverting
+ * this to `error.message` reddens `reports the cause chain` below.
+ */
+export function reportCliFailure(error, { log = console.error } = {}) {
+  log(describeFailure(error));
+  return 1;
+}
+
 function reportDegradedCapability(entry, phase, error) {
   const degradable = degradableLifecycleCapability(entry);
   const cause = String(error instanceof Error ? error.message : error)
@@ -629,7 +678,6 @@ if (process.argv[1]?.endsWith('dependency-lifecycle.mjs')) {
       process.exitCode = 2;
     }
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+    process.exitCode = reportCliFailure(error);
   }
 }

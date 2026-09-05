@@ -340,13 +340,14 @@ container port-map is indistinguishable from a direct same-host process at
 that layer, so an unauthenticated `station acp status
 --api-base=http://127.0.0.1:<port>` fails with `authentication_required` even
 though nothing but this OS user could plausibly have reached that port. This
-is correct fail-closed behavior, not a bug — but the sanctioned way to satisfy
-it non-interactively is documented only in the implementation, not here.
+is expected authentication enforcement. The supported non-interactive
+local-grant exchange is documented below.
 
-The interactive paths (`station setup local`, `station setup existing <name> <endpoint> --pair`,
-and the bare `station` launcher's browser bootstrap) all end up minting a
-device-session credential through the same underlying primitive: **local
-grant**. A per-boot, owner-only secret file under the Station home is proof of
+Local setup, remote pairing, and browser bootstrap issue device-session
+credentials through distinct authority paths. `station setup local` uses
+**local grant**; `station setup existing <name> <endpoint> --pair` uses pairing,
+and the launcher’s browser bootstrap retains its separate `ui-bootstrap` mint
+kind. These paths do not confer interchangeable approval authority. A per-boot, owner-only secret file under the Station home is proof of
 authority, because whoever can already read that file has unconfined access to
 everything the exchange grants — same-user code execution is already
 unauthenticated with respect to the filesystem. See
@@ -2589,3 +2590,39 @@ Environment variables are station-only (`STATION_*`). Shared app data resolves
 from `STATION_ROOT` → `~/.station`; runtime state resolves independently from
 `STATION_HOME` → `<STATION_ROOT>/instances/<channel>`. The source launcher is
 `./station`.
+
+
+### `cloud` — cloud move preparation
+
+`station cloud` currently offers read-only preparation, not a live move:
+
+```sh
+station cloud preview --home=/absolute/path/to/station-home --provider=aws-ec2 --region=us-east-1 --instance-type=t3.micro --json
+station cloud template --provider=aws-ec2 --region=us-east-1 --instance-type=t3.micro --image=REGISTRY/IMAGE@sha256:DIGEST --output=station-cloud.json
+```
+
+Replace the image placeholder with a verified, publicly readable Linux/x86 image
+and its 64-character SHA-256 digest. The template command refuses existing output
+files. Use `./station` when running from a source checkout. Neither command
+creates AWS resources, exports credential stores, copies workspaces, stops a local
+instance, or resumes an agent. Unknown actions/options and unsupported target
+profiles fail rather than triggering implicit provisioning.
+
+The preview requires an explicit existing home with the current schema. It lists
+selected Agent/Project metadata, leaves plugin inventory unverified pending its
+lifecycle owner, and reports required
+credential enrollment and ownership checks, and omits configuration contents and
+secret payloads from its output. Selected configuration bytes may themselves contain
+sensitive fields; dedicated credential stores are not accessed. Corrupt, linked, oversized, or incompatible
+selected configuration fails the preview. This is not an atomic backup, a complete
+compatibility scan, or a credential portability guarantee. Exit zero means a
+preview/template was produced; inspect `transferAvailable` and
+`executionResumeAvailable`, which are currently false.
+
+The AWS template requires VPC/subnet inputs at deployment and IAM creation
+acknowledgement. Deploy in the selected region only after reviewing the resources
+and budget. It has no inbound security-group rules, uses SSM access and an
+encrypted retained EBS root/data volume, and requires a later application-health
+check. Retention does not imply automatic recovery on a replacement instance.
+The [cloud-move design](../design/cloud-move.md) records provider boundaries,
+credential handling, execution ownership, and the remaining implementation.
