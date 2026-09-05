@@ -230,6 +230,7 @@
     "tauri:docs": "node scripts/tauri-context.mjs",
     "volt": "volt",
     "changeset": "changeset",
+    "changesets:check": "node scripts/check-changesets.mjs",
     "version-packages": "changeset version && npm run dependencies:lock && npm run dependencies:check && npm run lockfile-sync:gate",
     "publish-packages": "changeset publish",
     "test:coverage": "node scripts/run-verification.mjs request test-coverage",
