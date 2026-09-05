@@ -38,8 +38,12 @@ async function json(path: string, method = 'GET', body?: unknown) {
           body: JSON.stringify(body),
         }),
   });
-  expect(response.ok, `${method} ${path}: ${response.status}`).toBe(true);
-  return response.json();
+  const payload = await response.text();
+  expect(
+    response.ok,
+    `${method} ${path}: ${response.status} ${response.ok ? '' : payload.slice(0, 2000)}`,
+  ).toBe(true);
+  return JSON.parse(payload);
 }
 
 test('coding example preserves both Panes and its authored native Agent in a real worktree action', async ({
