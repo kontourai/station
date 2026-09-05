@@ -83,11 +83,14 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
   ask: {
     // #1545: Station imposes no approval floor over Claude's own permission
     // flow in this mode, so the copy has to name whose rules can skip an
-    // approval. `settingSources: ['user']` (claude-adapter.ts) is what makes
-    // "user-level" true — a workspace's checked-in `.claude/settings.json` no
-    // longer applies.
+    // approval. It says "and this workspace's" because Station sets no
+    // `settingSources` (claude-adapter.ts, accepted gap): a workspace the
+    // operator has trusted in Claude Code has its checked-in
+    // `.claude/settings.json` in the cascade too. An earlier draft said "only
+    // your user-level Claude settings apply", which was true only while the
+    // narrowing was in place — do not restore that wording without it.
     claude:
-      "Claude asks before tool calls its own rules don't already allow; only your user-level Claude settings apply.",
+      "Claude asks before tool calls its own rules don't already allow — your Claude settings and a trusted workspace's both count.",
   },
 };
 

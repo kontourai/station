@@ -109,11 +109,15 @@ describe('approvalModeDescription', () => {
   test('ask is provider-aware for Claude: names whose settings can skip an approval (#1545)', () => {
     // Station adds no approval floor over Claude's own permission flow in this
     // mode, so the copy has to say which rules can still allow a call without
-    // one — and it must stay true to `settingSources: ['user']`.
+    // one. Station also sets no `settingSources`, so a trusted workspace's
+    // checked-in settings are among them — the copy must not narrow the claim
+    // to the operator's own file, which an earlier draft did while the
+    // (now-reverted) narrowing was in place.
     expect(approvalModeDescription('ask', 'claude')).toBe(
-      "Claude asks before tool calls its own rules don't already allow; only your user-level Claude settings apply.",
+      "Claude asks before tool calls its own rules don't already allow — your Claude settings and a trusted workspace's both count.",
     );
     expect(approvalModeDescription('ask', 'claude')).not.toMatch(/every time/i);
+    expect(approvalModeDescription('ask', 'claude')).not.toMatch(/only your/i);
   });
 
   test('ask falls back to generic copy that still claims no floor', () => {

@@ -8,10 +8,17 @@ const CLAUDE_APPROVAL_MODE_MAP: Record<
 > = {
   // Claude Code's own default mode — NOT "ask before every tool call". The
   // engine asks before calls its own rules and read-only classifier do not
-  // already allow, and Station adds no floor over that. Which rules can skip
-  // an approval is bounded by `STATION_SESSION_SETTING_SOURCES` in
-  // claude-adapter.ts (#1545): the operator's own `~/.claude/settings.json`
-  // only, never a workspace's checked-in `.claude/settings.json`.
+  // already allow, and Station adds no floor over that.
+  //
+  // Accepted gap (#1545): Station sets no `settingSources`, so those rules
+  // include a trusted workspace's checked-in `.claude/settings.json`. A
+  // repository the operator has trusted in Claude Code can allow a tool call
+  // with no Station approval request — a same-user threat model, and narrowing
+  // the cascade would cost that repository's own `CLAUDE.md` and `.mcp.json`
+  // servers. What Station guarantees instead is that a call which IS prompted
+  // arrives with its command shown (`toolRequestPreview`), never a bare tool
+  // name. See the `settingSources` comment in claude-adapter.ts and
+  // docs/conformance/tool-policy-delivery.md.
   ask: 'default',
   // Auto-accept file edits within the workspace; still ask before
   // anything riskier (e.g. shell commands outside that boundary).

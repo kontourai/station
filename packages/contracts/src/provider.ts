@@ -382,10 +382,10 @@ export function modelLaunchTelemetryAttributes(
  * - `ask` — the engine asks before actions its own rules do not already
  *   allow. NOT "asks every time": each engine keeps its own allow list and
  *   read-only classifier underneath this mode, so some calls run without a
- *   Station approval request. For Claude that list is the operator's
- *   `~/.claude/settings.json` only — Station narrows `settingSources` to
- *   `['user']` so a workspace's checked-in `.claude/settings.json` cannot
- *   grant tool permissions (#1545, claude-adapter.ts).
+ *   Station approval request. For Claude that list includes the operator's
+ *   `~/.claude/settings.json` AND a trusted workspace's checked-in
+ *   `.claude/settings.json` — an accepted gap with a same-user threat model
+ *   (#1545, and the `settingSources` comment in claude-adapter.ts).
  * - `auto` — run some actions automatically; the exact boundary is
  *   provider-specific (see each adapter's mapping — e.g. Codex asks at its
  *   own discretion within a workspace-scoped sandbox, Claude auto-accepts

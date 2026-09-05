@@ -671,13 +671,16 @@ describe('ClaudeAdapter', () => {
     await adapter.stopSession('thread-invalid-utf8');
   });
 
-  describe('#1545: a repository is not a permission authority', () => {
-    // The SDK loads every tier it is given. Left unset, that is the CLI
-    // cascade — user, then the workspace's checked-in `.claude/settings.json`,
-    // then `.claude/settings.local.json` — so a repository's committed
-    // `permissions.allow` granted tools with no Station approval request and
-    // no Station receipt. Assert the option EXACTLY: a workspace tier back in
-    // the list is the defect itself, and `toContain('user')` would not see it.
+  describe("#1545: a session loads the engine's own settings cascade (accepted gap)", () => {
+    // The option is UNSET on purpose, which means the SDK loads all sources —
+    // including a workspace's checked-in `.claude/settings.json`, whose
+    // `permissions.allow` rules can then run a tool with no Station approval
+    // request. That gap is accepted (same-user threat model; narrowing to
+    // `['user']` would cost the workspace's CLAUDE.md and its `.mcp.json`
+    // servers — see the comment at the call site). These assert ABSENCE rather
+    // than a value so that setting it later is a deliberate, visible change
+    // rather than something that lands unnoticed: `toBeUndefined()` alone would
+    // pass for a key explicitly present as `undefined`, so pin the key too.
     const cases: Array<[string, Record<string, unknown> | undefined]> = [
       ['a plain session', undefined],
       ['an Ask-mode session', { approvalMode: 'ask' }],
@@ -685,7 +688,7 @@ describe('ClaudeAdapter', () => {
       ['a plan-mode session', { permissionMode: 'plan' }],
     ];
     for (const [label, modelOptions] of cases) {
-      test(`loads only the operator user settings for ${label}`, async () => {
+      test(`sets no settingSources for ${label}`, async () => {
         mockQuery.mockReturnValue(createMockQuery([]));
         const adapter = new ClaudeAdapter();
 
@@ -696,11 +699,22 @@ describe('ClaudeAdapter', () => {
           ...(modelOptions ? { modelOptions } : {}),
         });
 
-        expect(mockQuery.mock.calls[0][0].options.settingSources).toEqual([
-          'user',
-        ]);
+        const options = mockQuery.mock.calls[0][0].options as Record<
+          string,
+          unknown
+        >;
+        expect('settingSources' in options).toBe(false);
       });
     }
+
+    test('the model-catalog probe still pins settingSources to none at all', async () => {
+      // The one Station-owned Claude spawn that DOES narrow: it runs no tools,
+      // so its isolation is not the same decision as a session's.
+      mockQuery.mockReturnValue(createMockQuery([], []));
+      await new ClaudeAdapter().listModelCatalog?.();
+
+      expect(mockQuery.mock.calls[0][0].options.settingSources).toEqual([]);
+    });
   });
 
   test('opens and resolves permission requests through canUseTool', async () => {
@@ -2596,9 +2610,6 @@ describe('ClaudeAdapter', () => {
           TMPDIR: engineSpawnTmpDirPath(),
         }),
         canUseTool: expect.any(Function),
-        // #1545: a Station-managed session reads the operator's own settings
-        // and neither of the two repository-writable tiers.
-        settingSources: ['user'],
         permissionMode: 'default',
         allowDangerouslySkipPermissions: undefined,
         thinking: undefined,
