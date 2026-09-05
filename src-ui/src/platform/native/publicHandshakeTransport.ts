@@ -1,7 +1,7 @@
 /** Native, credential-free transport for Station's one public handshake. */
 
-import { invoke } from '@tauri-apps/api/core';
 import { readNativeCommandError } from './nativeCommandError';
+import { invokeTauri } from './tauriInvoke';
 
 interface NativePublicHandshakeResponse {
   status: number;
@@ -16,7 +16,7 @@ export const nativePublicHandshakeTransport: typeof fetch = async (
     init?.signal ?? (input instanceof Request ? input.signal : null);
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   const url = input instanceof Request ? input.url : String(input);
-  const request = invoke<NativePublicHandshakeResponse>(
+  const request = invokeTauri<NativePublicHandshakeResponse>(
     'station_native_public_handshake',
     { url },
   ).catch((error) => {

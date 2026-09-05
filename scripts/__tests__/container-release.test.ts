@@ -736,10 +736,23 @@ describe('container source contract', () => {
     expect(stage, 'Dockerfile must define stage "dependencies"').toBeTruthy();
     const copied = new Set(parseCopySources(stage));
 
-    const entry = 'scripts/dependency-lifecycle.mjs';
+    // Derived from the COPY list, not named here. The stage copies more than
+    // one entry script (`node-runtime-contract.mjs` alongside
+    // `dependency-lifecycle.mjs`), and a hardcoded entry covers whichever one
+    // its author had in mind — leaving a local import added to the other
+    // invisible to exactly the check written to see it. Deriving is also what
+    // this test's own comment argues for, one level up.
+    const entries = [...copied].filter((source) =>
+      /^scripts\/[^/]+\.mjs$/.test(source),
+    );
+    expect(
+      entries.length,
+      'no top-level scripts/*.mjs entries found in the dependencies stage COPY list',
+    ).toBeGreaterThan(1);
+
     const seen = new Set<string>();
     const required = new Set<string>();
-    const queue: string[] = [entry];
+    const queue: string[] = [...entries];
     while (queue.length > 0) {
       const current = queue.shift();
       if (current === undefined || seen.has(current)) continue;
@@ -770,14 +783,15 @@ describe('container source contract', () => {
     // that the walk actually found the graph before reading its verdict.
     expect(
       required.size,
-      `no local imports discovered from ${entry}; the walk found nothing`,
+      `no local imports discovered from ${entries.join(' / ')}; the walk found nothing`,
     ).toBeGreaterThan(0);
 
     for (const module of required) {
       expect(
         copied.has(module),
         `Dockerfile stage "dependencies" must COPY "${module}", which ` +
-          `${entry} imports (transitively) — otherwise the image builds and ` +
+          `${entries.join(' / ')} imports (transitively) — otherwise the image ` +
+          'builds and ' +
           '`npm run dependencies:ci` fails with ERR_MODULE_NOT_FOUND (#1469).',
       ).toBe(true);
     }
