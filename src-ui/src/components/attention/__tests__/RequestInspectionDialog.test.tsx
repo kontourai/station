@@ -186,7 +186,7 @@ test('read failures offer retry and unanswerable requests never offer decisions'
   expect(screen.queryByRole('button', { name: 'Approve once' })).toBeNull();
 });
 
-test('uncertain decision stays latched through a failed refresh until a fresh inspection succeeds', async () => {
+test('uncertain decision stays latched after failed and successful refresh and reopening', async () => {
   let reads = 0;
   let finish!: (value: Response) => void;
   const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
@@ -200,7 +200,7 @@ test('uncertain decision stays latched through a failed refresh until a fresh in
     });
   });
   vi.stubGlobal('fetch', fetch);
-  mount();
+  const view = mount();
   fireEvent.click(await screen.findByRole('button', { name: 'Approve once' }));
   fireEvent.click(
     await screen.findByRole('button', { name: 'Check request again' }),
@@ -216,9 +216,94 @@ test('uncertain decision stays latched through a failed refresh until a fresh in
   ).toHaveLength(1);
   await act(async () => finish(response(open)));
   expect(
-    await screen.findByRole('button', { name: 'Approve once' }),
+    await screen.findByText(/A decision was already attempted/),
   ).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Approve once' })).toBeNull();
+  view.unmount();
+  fetch.mockImplementation(async () => response(open));
+  mount(view.client);
+  expect(
+    await screen.findByText(/A decision was already attempted/),
+  ).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Approve once' })).toBeNull();
   expect(
     fetch.mock.calls.filter((call) => call[1]?.method === 'POST'),
   ).toHaveLength(1);
+  fetch.mockImplementation(async () =>
+    response({
+      state: 'resolved',
+      reference,
+      message: 'The exact request is resolved.',
+    }),
+  );
+  await act(async () => {
+    await view.client.invalidateQueries({
+      queryKey: attentionRequestQueryKey(reference, authority),
+    });
+  });
+  expect(
+    await screen.findByText('The exact request is resolved.'),
+  ).toBeTruthy();
+  await waitFor(() =>
+    expect(
+      view.client
+        .getMutationCache()
+        .findAll({
+          mutationKey: [
+            'attention-request-response',
+            authority.apiBase,
+            authority.authorityKey,
+          ],
+          exact: false,
+        }),
+    ).toHaveLength(0),
+  );
+});
+
+test('uncertainty capacity refuses rather than evicts and excludes another authority', async () => {
+  const client = new QueryClient();
+  const seed = async (scope: string, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const mutation = client.getMutationCache().build(client, {
+        mutationKey: [
+          'attention-request-response',
+          authority.apiBase,
+          scope,
+          `session-${i}`,
+          `request-${i}`,
+          `event-${i}`,
+        ],
+        mutationFn: async () => {
+          throw new Error('uncertain fixture');
+        },
+        gcTime: Infinity,
+      });
+      await mutation.execute(undefined).catch(() => {});
+    }
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => response(open)),
+  );
+  await seed('other-authority', 64);
+  const view = mount(client);
+  expect(
+    await screen.findByRole('button', { name: 'Approve once' }),
+  ).toBeTruthy();
+  await act(async () => seed(authority.authorityKey, 64));
+  expect(
+    await screen.findByText(/too many unconfirmed decisions/),
+  ).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Approve once' })).toBeNull();
+  expect(
+    client.getMutationCache().findAll({
+      mutationKey: [
+        'attention-request-response',
+        authority.apiBase,
+        authority.authorityKey,
+      ],
+    }),
+  ).toHaveLength(64);
+  view.unmount();
+  client.clear();
 });

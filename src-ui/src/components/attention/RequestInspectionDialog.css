@@ -37,3 +37,23 @@
 .request-inspection-dialog code {
   overflow-wrap: anywhere;
 }
+
+.request-inspection-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding-block: var(--space-4, 16px);
+}
+.request-inspection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2, 8px);
+}
+.request-inspection-session {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch-target-min, 44px);
+  margin-right: auto;
+}

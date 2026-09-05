@@ -168,7 +168,7 @@ describe('exact attention request route and immediate response guard', () => {
     const response = await f.app.request(READ);
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('private, no-store');
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.data).toMatchObject({
       state: 'open',
       reference: REFERENCE,
@@ -178,7 +178,7 @@ describe('exact attention request route and immediate response guard', () => {
     expect(JSON.stringify(body)).not.toContain('secret-value-must-not-appear');
     const decision = await respondRequest(f.app);
     expect(decision.status).toBe(200);
-    const result = await decision.json();
+    const result = (await decision.json()) as any;
     expect(f.respond).toHaveBeenCalledTimes(1);
     expect(f.store.readCommandReceipt(result.receipt.commandId)?.status).toBe(
       'accepted',
@@ -242,7 +242,7 @@ describe('exact attention request route and immediate response guard', () => {
         });
       const response = await respondRequest(f.app);
       expect(response.status).toBe(409);
-      const result = await response.json();
+      const result = (await response.json()) as any;
       expect(result.code).toBe('request_event_changed');
       expect(f.respond).not.toHaveBeenCalled();
       expect(f.store.readCommandReceipt(result.receipt.commandId)?.status).toBe(
@@ -276,11 +276,11 @@ describe('exact attention request route and immediate response guard', () => {
       );
     expect(
       (
-        await (
+        (await (
           await f.app.request(
             '/sessions/session-a/requests/request-a?eventId=opened-large',
           )
-        ).json()
+        ).json()) as any
       ).data.state,
     ).toBe('unavailable');
     expect((await respondRequest(f.app, 'opened-large')).status).toBe(409);
@@ -288,7 +288,7 @@ describe('exact attention request route and immediate response guard', () => {
     vi.spyOn(f.store, 'readCurrentRequestEvent').mockImplementation(() => {
       throw new Error('database locked');
     });
-    expect((await (await f.app.request(READ)).json()).data.state).toBe(
+    expect(((await (await f.app.request(READ)).json()) as any).data.state).toBe(
       'unavailable',
     );
   });
@@ -316,14 +316,14 @@ describe('exact attention request route and immediate response guard', () => {
     const response = await f.app.request(
       '/sessions/session-a/requests/request-a?eventId=current-final',
     );
-    expect((await response.json()).data.state).toBe('open');
+    expect(((await response.json()) as any).data.state).toBe('open');
     expect(mapped).toHaveBeenCalledTimes(baselineMapped);
   });
   test('provider absence preserves inspectability without response affordance', async () => {
     const f = await fixture();
     await Promise.resolve();
     f.removeProvider();
-    const result = await (await f.app.request(READ)).json();
+    const result = (await (await f.app.request(READ)).json()) as any;
     expect(result.data.state).toBe('open');
     expect(result.data.canRespond).toBe(false);
   });
@@ -371,7 +371,9 @@ test.each([
     expect(text).not.toContain('CROSS_SCOPE_CANARY');
     const write = await respondRequest(f.app);
     expect(write.status).toBe(409);
-    expect((await write.json()).code).toBe('request_verification_unavailable');
+    expect(((await write.json()) as any).code).toBe(
+      'request_verification_unavailable',
+    );
     expect(f.respond).not.toHaveBeenCalled();
   },
 );
@@ -396,7 +398,7 @@ test.each([
       }),
     );
     const response = await f.app.request(READ);
-    const result = await response.json();
+    const result = (await response.json()) as any;
     expect(result.data.state).toBe('open');
     expect(result.data.canRespond).toBe(canRespond);
     if (!canRespond) {
@@ -420,12 +422,12 @@ test('another oversized lifecycle fact fails closed before payload mapping', asy
       'other-open',
     );
   const mapper = vi.spyOn(f.store as any, 'mapEventRow');
-  expect((await (await f.app.request(READ)).json()).data.state).toBe(
+  expect(((await (await f.app.request(READ)).json()) as any).data.state).toBe(
     'unavailable',
   );
   expect(
     mapper.mock.calls.every(
-      ([row]) =>
+      ([row]: any[]) =>
         row.payload === null ||
         Buffer.byteLength(row.payload) <= ATTENTION_REQUEST_MAX_BYTES,
     ),
@@ -443,7 +445,8 @@ test('selected pending request survives another request opening and resolving', 
     provider: 'claude',
     method: 'request.resolved',
     requestId: 'other-request',
-    decision: 'accept',
+    status: 'approved',
+    response: { decision: 'accept' },
     createdAt: NOW,
   });
   const session = f.store.readSessionByThread('session-a')!;
@@ -461,5 +464,7 @@ test('selected pending request survives another request opening and resolving', 
   });
   expect(canonical.lifecycleState).toBe('review_pending');
   expect(bounded.lifecycleState).toBe(canonical.lifecycleState);
-  expect((await (await f.app.request(READ)).json()).data.canRespond).toBe(true);
+  expect(
+    ((await (await f.app.request(READ)).json()) as any).data.canRespond,
+  ).toBe(true);
 });

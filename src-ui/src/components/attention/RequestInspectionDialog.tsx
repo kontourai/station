@@ -4,8 +4,8 @@ import {
   useQueryClient,
 } from '@kontourai/station-sdk';
 import { respondToRequest } from '@kontourai/station-sdk/client';
-import { useMutation } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useMutation, useMutationState } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
 import {
@@ -36,7 +36,66 @@ export function RequestInspectionDialog({
   const queryClient = useQueryClient();
   const inFlight = useRef(false);
   const [checking, setChecking] = useState(false);
+  const mutationKey = [
+    'attention-request-response',
+    authority.apiBase,
+    authority.authorityKey,
+    reference.threadId,
+    reference.requestId,
+    reference.requestEventId,
+  ] as const;
+  const attempts = useMutationState({
+    filters: { mutationKey, exact: true },
+    select: (mutation) => mutation.state.status,
+  });
+  const uncertain = useMutationState({
+    filters: { mutationKey: mutationKey.slice(0, 3) },
+    select: (mutation) => mutation.state.status === 'error',
+  });
+  const capacityReached = uncertain.filter(Boolean).length >= 64;
+  useEffect(() => {
+    const cache = queryClient.getMutationCache();
+    for (const mutation of cache.findAll({
+      mutationKey: ['attention-request-response'],
+    })) {
+      const isCurrent = mutation.meta?.isAuthorityCurrent;
+      if (typeof isCurrent === 'function' && !isCurrent())
+        cache.remove(mutation);
+    }
+    return () => {
+      if (!authority.isCurrent()) {
+        for (const mutation of cache.findAll({
+          mutationKey: [
+            'attention-request-response',
+            authority.apiBase,
+            authority.authorityKey,
+          ],
+        }))
+          cache.remove(mutation);
+      }
+    };
+  }, [queryClient, authority]);
+  useEffect(() => {
+    if (query.data?.state !== 'resolved' && query.data?.state !== 'changed')
+      return;
+    const cache = queryClient.getMutationCache();
+    for (const mutation of cache.findAll({
+      mutationKey: [
+        'attention-request-response',
+        authority.apiBase,
+        authority.authorityKey,
+        reference.threadId,
+        reference.requestId,
+        reference.requestEventId,
+      ],
+      exact: true,
+    })) {
+      if (mutation.state.status === 'error') cache.remove(mutation);
+    }
+  }, [query.data, queryClient, authority, reference]);
+  const attempted = attempts.some((status) => status !== 'idle');
   const response = useMutation({
+    mutationKey,
     mutationFn: async (decision: 'accept' | 'decline') => {
       if (!authority.isCurrent())
         throw new Error(
@@ -53,6 +112,18 @@ export function RequestInspectionDialog({
         { requestScope: authority },
       );
     },
+    onError: () => {
+      for (const mutation of queryClient
+        .getMutationCache()
+        .findAll({ mutationKey, exact: true })) {
+        // Preserve only uncertain attempt identity, not this dialog's callbacks.
+        mutation.setOptions({
+          mutationKey,
+          gcTime: Infinity,
+          meta: { isAuthorityCurrent: authority.isCurrent },
+        });
+      }
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['attention'] });
     },
@@ -60,6 +131,16 @@ export function RequestInspectionDialog({
   const decide = (decision: 'accept' | 'decline') => {
     if (
       inFlight.current ||
+      attempted ||
+      capacityReached ||
+      queryClient
+        .getMutationCache()
+        .findAll({ mutationKey: mutationKey.slice(0, 3) })
+        .filter(
+          (mutation) =>
+            mutation.state.status === 'error' ||
+            mutation.state.status === 'pending',
+        ).length >= 64 ||
       response.isError ||
       query.isError ||
       query.isFetching ||
@@ -93,115 +174,138 @@ export function RequestInspectionDialog({
         closeLabel="Close request inspection"
         onClose={onClose}
       />
-      {!current ? (
-        <p role="alert">
-          Station authorization changed. Close and inspect the request again.
-        </p>
-      ) : query.isError ? (
-        <ErrorState
-          variant="compact"
-          title="Couldn't inspect this request"
-          description={describeReadFailure(query.error)}
-          action={
-            <Button
-              onClick={() => {
-                void query.refetch();
-              }}
-            >
-              Retry inspection
-            </Button>
-          }
-        />
-      ) : query.isLoading ? (
-        <SkeletonList count={3} label="Checking the exact request" />
-      ) : response.isSuccess ? (
-        <div role="status">
-          <p>Decision accepted.</p>
-          {receiptId ? (
-            <p>
-              Receipt: <code>{receiptId}</code>
-            </p>
-          ) : null}
-        </div>
-      ) : response.isError ? null : result?.state === 'open' ? (
-        <>
-          <h3>{result.title}</h3>
-          {result.body ? (
-            <p className="request-inspection-detail">{result.body}</p>
-          ) : null}
-          <details>
-            <summary>Request identity</summary>
-            <dl className="request-inspection-identity">
-              <dt>Engine</dt>
-              <dd>{result.provider}</dd>
-              <dt>Opened event</dt>
-              <dd>{reference.requestEventId}</dd>
-              <dt>Session</dt>
-              <dd>{reference.threadId}</dd>
-              <dt>Request</dt>
-              <dd>{reference.requestId}</dd>
-              <dt>Opened</dt>
-              <dd>{result.openedAt}</dd>
-            </dl>
-          </details>
-          {!result.canRespond ? (
-            <p role="status">
-              This session cannot currently answer the request. Open the session
-              for its current status.
-            </p>
-          ) : (
-            <ResponsiveSurfaceActions>
+      <div className="request-inspection-body">
+        {!current ? (
+          <p role="alert">
+            Station authorization changed. Close and inspect the request again.
+          </p>
+        ) : query.isError ? (
+          <ErrorState
+            variant="compact"
+            title="Couldn't inspect this request"
+            description={describeReadFailure(query.error)}
+            action={
               <Button
-                variant="secondary"
-                disabled={response.isPending || response.isError}
-                onClick={() => decide('decline')}
+                onClick={() => {
+                  void query.refetch();
+                }}
               >
-                Deny
+                Retry inspection
               </Button>
+            }
+          />
+        ) : query.isLoading ? (
+          <SkeletonList count={3} label="Checking the exact request" />
+        ) : response.isSuccess ? (
+          <div role="status">
+            <p>Decision accepted.</p>
+            {receiptId ? (
+              <p>
+                Receipt: <code>{receiptId}</code>
+              </p>
+            ) : null}
+          </div>
+        ) : response.isError ? null : result?.state === 'open' ? (
+          <>
+            <h3>{result.title}</h3>
+            {result.body ? (
+              <p className="request-inspection-detail">{result.body}</p>
+            ) : null}
+            <details>
+              <summary>Request identity</summary>
+              <dl className="request-inspection-identity">
+                <dt>Engine</dt>
+                <dd>{result.provider}</dd>
+                <dt>Opened event</dt>
+                <dd>{reference.requestEventId}</dd>
+                <dt>Session</dt>
+                <dd>{reference.threadId}</dd>
+                <dt>Request</dt>
+                <dd>{reference.requestId}</dd>
+                <dt>Opened</dt>
+                <dd>{result.openedAt}</dd>
+              </dl>
+            </details>
+            {!result.canRespond ? (
+              <p role="status">
+                This session cannot currently answer the request. Open the
+                session for its current status.
+              </p>
+            ) : capacityReached ? (
+              <p role="status">
+                This Station has too many unconfirmed decisions. Open the
+                session to confirm their outcomes before sending another
+                decision here.
+              </p>
+            ) : attempted ? (
+              <p role="status">
+                A decision was already attempted for this request. Open the
+                session to confirm its outcome; this inspector will not send it
+                again.
+              </p>
+            ) : (
+              <ResponsiveSurfaceActions className="request-inspection-actions">
+                <Button
+                  variant="secondary"
+                  disabled={response.isPending || response.isError}
+                  onClick={() => decide('decline')}
+                >
+                  Deny
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={response.isPending || response.isError}
+                  onClick={() => decide('accept')}
+                >
+                  Approve once
+                </Button>
+              </ResponsiveSurfaceActions>
+            )}
+          </>
+        ) : result ? (
+          <p role="status">{result.message}</p>
+        ) : null}
+        {response.isError && current ? (
+          <ErrorState
+            variant="compact"
+            title="Couldn't confirm the decision"
+            description={describeReadFailure(response.error)}
+            action={
               <Button
-                disabled={response.isPending || response.isError}
-                onClick={() => decide('accept')}
+                disabled={checking}
+                onClick={() => {
+                  if (checking || !authority.isCurrent()) return;
+                  setChecking(true);
+                  void query
+                    .refetch()
+                    .then((fresh) => {
+                      if (
+                        authority.isCurrent() &&
+                        fresh.isSuccess &&
+                        fresh.data
+                      ) {
+                        response.reset();
+                        if (
+                          fresh.data.state === 'resolved' ||
+                          fresh.data.state === 'changed'
+                        ) {
+                          for (const mutation of queryClient
+                            .getMutationCache()
+                            .findAll({ mutationKey, exact: true }))
+                            queryClient.getMutationCache().remove(mutation);
+                        }
+                      }
+                    })
+                    .finally(() => setChecking(false));
+                }}
               >
-                Approve once
+                Check request again
               </Button>
-            </ResponsiveSurfaceActions>
-          )}
-        </>
-      ) : result ? (
-        <p role="status">{result.message}</p>
-      ) : null}
-      {response.isError && current ? (
-        <ErrorState
-          variant="compact"
-          title="Couldn't confirm the decision"
-          description={describeReadFailure(response.error)}
-          action={
-            <Button
-              disabled={checking}
-              onClick={() => {
-                if (checking || !authority.isCurrent()) return;
-                setChecking(true);
-                void query
-                  .refetch()
-                  .then((fresh) => {
-                    if (
-                      authority.isCurrent() &&
-                      fresh.isSuccess &&
-                      fresh.data
-                    ) {
-                      response.reset();
-                      inFlight.current = false;
-                    }
-                  })
-                  .finally(() => setChecking(false));
-              }}
-            >
-              Check request again
-            </Button>
-          }
-        />
-      ) : null}
-      <ResponsiveSurfaceActions>
+            }
+          />
+        ) : null}
+      </div>
+      <ResponsiveSurfaceActions className="request-inspection-actions">
         {openHref ? (
           <a className="request-inspection-session" href={openHref}>
             Open session

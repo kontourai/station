@@ -93,7 +93,7 @@ export async function exactRequestBackend(page: Page, databasePath: string) {
     undefined,
   );
   const attention = new AttentionProjectionService(
-    { list: () => [] },
+    { list: async () => [] },
     service,
     { getRunConsole: async () => ({ gates: [] }) } as never,
     undefined,

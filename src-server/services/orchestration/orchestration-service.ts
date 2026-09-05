@@ -3975,6 +3975,7 @@ export class OrchestrationService {
        * keeps working; the emitted event simply carries no `principal`.
        */
       principal?: PrincipalRef;
+      requestCurrent?: () => boolean;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<

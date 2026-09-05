@@ -363,7 +363,13 @@ grant. Freeform input and lifecycle-only attention retain their existing surface
 
 An event comparison prevents answering a replaced request; it is not an
 idempotency key for provider effects. A transport failure after dispatch can leave
-the decision outcome uncertain. The inspector never retries a decision
-automatically and keeps its action latch until an explicit fresh inspection
-succeeds. If the same request remains open, a user can decide again; whether that
-repeated provider call is deduplicated remains the adapter's responsibility.
+the decision outcome uncertain. The inspector never retries a decision. It retains
+uncertain exact-event attempts in its existing QueryClient mutation cache across
+closing and reopening the dialog. A fresh same-open inspection cannot re-enable
+decisions; a resolved or changed event releases the uncertainty. Expired authority
+records are pruned when another inspector opens. Successful decisions use ordinary
+cache expiry. At 64 uncertain attempts for one Station authority, further inspector
+decisions are refused rather than evicting uncertainty into permission to retry.
+Open the session to confirm an uncertain outcome. A client restart clears this
+in-memory history; cross-client or restart-safe effect deduplication remains the
+adapter's responsibility.
