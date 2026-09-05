@@ -40,8 +40,11 @@ import {
   workspacePaneDirectRoute,
   workspacePaneRequiresLayoutIdentity,
 } from '../workspace-panes/workspacePaneDirectRoute';
+import { Button } from './Button';
+import { Dialog } from './Dialog';
 import { requestFirstRunTour } from './first-run/first-run-store';
-import { Empty, SkeletonBlock } from './state';
+import { LazyBoundary } from './LazyBoundary';
+import { Empty, ErrorState, SkeletonBlock } from './state';
 import './CommandPalette.css';
 import type {
   formatSettingsMessage,
@@ -58,6 +61,61 @@ import {
 
 /** `dock.session1` … `dock.session9` — the ⌘1–⌘9 chat-switch bindings. */
 const SESSION_SWITCH_SHORTCUT = /^dock\.session[1-9]$/;
+const loadWorkspaceSearch = () => import('./search/WorkspaceSearchPalette');
+export function WorkspaceSearchBoundary({
+  load = loadWorkspaceSearch,
+  ...props
+}: {
+  load?: typeof loadWorkspaceSearch;
+  query: string;
+  onQueryChange: (query: string) => void;
+  onClose: () => void;
+  onCommands: () => void;
+}) {
+  const frame = (children: ReactNode) => (
+    <Dialog
+      title="Workspace search (this Station)"
+      closeLabel="Close workspace search"
+      historyMode="none"
+      onClose={props.onClose}
+    >
+      {children}
+    </Dialog>
+  );
+  return (
+    <LazyBoundary
+      load={load}
+      componentProps={props}
+      pending={frame(
+        <SkeletonBlock count={1} label="Opening workspace search" />,
+      )}
+      unavailable={(retry) =>
+        frame(
+          <ErrorState
+            title="Workspace search unavailable"
+            description="The workspace search view could not be loaded."
+            action={<Button onClick={retry}>Retry workspace search</Button>}
+          />,
+        )
+      }
+    />
+  );
+}
+type LegacySearchData = ReturnType<typeof useMessageSearchQuery>['data'];
+/** Unmounting the owning observer cancels its consumed AbortSignal on mode switch. */
+function LegacyMessageSearch({
+  query,
+  onData,
+}: {
+  query: string;
+  onData: (data: LegacySearchData) => void;
+}) {
+  const { data } = useMessageSearchQuery(query);
+  useEffect(() => {
+    onData(data);
+  }, [data, onData]);
+  return null;
+}
 
 function settingsScopeDetail(
   scope: SettingsPaletteCommand['scope'],
@@ -112,6 +170,8 @@ const SearchIcon = (
 export function CommandPalette() {
   const showSurface = useShowSurface();
   const [open, setOpen] = useState(false);
+  const [workspaceSearch, setWorkspaceSearch] = useState(false);
+  const [messageSearch, setMessageSearch] = useState<LegacySearchData>();
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [debouncedMessageQuery, setDebouncedMessageQuery] = useState('');
@@ -239,7 +299,6 @@ export function CommandPalette() {
     const timer = window.setTimeout(() => setDebouncedMessageQuery(query), 200);
     return () => window.clearTimeout(timer);
   }, [query]);
-  const { data: messageSearch } = useMessageSearchQuery(debouncedMessageQuery);
   const messageMatches = messageSearch?.matches ?? [];
   const remoteSearchStates =
     messageSearch?.instances.filter(
@@ -275,6 +334,7 @@ export function CommandPalette() {
 
   const close = useCallback(() => {
     setOpen(false);
+    setWorkspaceSearch(false);
     setQuery('');
     setActiveIndex(0);
     setPaneNotice(null);
@@ -698,6 +758,15 @@ export function CommandPalette() {
   );
 
   if (!open) return null;
+  if (workspaceSearch)
+    return (
+      <WorkspaceSearchBoundary
+        query={query}
+        onQueryChange={setQuery}
+        onClose={close}
+        onCommands={() => setWorkspaceSearch(false)}
+      />
+    );
 
   // Flat index across groups for aria-selected / highlight tracking.
   let flatIndex = -1;
@@ -715,6 +784,10 @@ export function CommandPalette() {
         if (e.target === e.currentTarget) close();
       }}
     >
+      <LegacyMessageSearch
+        query={debouncedMessageQuery}
+        onData={setMessageSearch}
+      />
       <div
         className="command-palette"
         role="dialog"
@@ -723,6 +796,9 @@ export function CommandPalette() {
         onKeyDown={onKeyDown}
       >
         <div className="command-palette__input-row">
+          <Button variant="secondary" onClick={() => setWorkspaceSearch(true)}>
+            Workspace search (this Station)
+          </Button>
           {SearchIcon}
           <input
             ref={inputRef}

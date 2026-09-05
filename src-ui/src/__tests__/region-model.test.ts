@@ -7,11 +7,13 @@ import {
   firstFreeDockRegion,
   foldedDockRegion,
   occupiedDockRegion,
+  occupiedRegion,
   placeSurface,
   REGION_SURFACE_REGISTRY,
   revealSurface,
   seedRegionArrangementFromDock,
   showSurfaceAlone,
+  surfaceMayOccupy,
   syncRegionArrangementFromDock,
   updateRegion,
 } from '../regions/region-model';
@@ -167,13 +169,14 @@ describe('region model', () => {
     ).toEqual(['right']);
   });
 
-  test('registers Chat and Activity with their default regions', () => {
+  test('registers Chat, Activity and Home with their default regions and the regions each declares', () => {
     expect([...REGION_SURFACE_REGISTRY.values()]).toEqual([
       expect.objectContaining({
         id: 'chat',
         title: 'Chat',
         icon: 'chat',
         shortcut: { id: 'dock.toggle', key: 'd', modifiers: ['cmd'] },
+        regions: ['left', 'right', 'bottom'],
         defaultRegion: 'bottom',
       }),
       expect.objectContaining({
@@ -185,9 +188,145 @@ describe('region model', () => {
           key: 'a',
           modifiers: ['cmd', 'shift'],
         },
+        regions: ['main', 'left', 'right', 'bottom'],
         defaultRegion: 'right',
       }),
+      expect.objectContaining({
+        id: 'home',
+        title: 'Home',
+        icon: 'home',
+        regions: ['main'],
+        defaultRegion: 'main',
+      }),
     ]);
+    expect(REGION_SURFACE_REGISTRY.get('home')?.shortcut).toBeUndefined();
+  });
+
+  test('Home is the default main occupant and the legacy dock seed preserves it', () => {
+    expect(DEFAULT_DEVICE_REGION_ARRANGEMENT.main).toEqual({
+      visible: true,
+      size: 0,
+      occupant: 'home',
+    });
+    const seeded = seedRegionArrangementFromDock(
+      { chatDockHeight: 320, chatDockWidth: 400 },
+      'right',
+      true,
+    );
+    expect(seeded.main).toEqual(DEFAULT_DEVICE_REGION_ARRANGEMENT.main);
+  });
+
+  // #928 C2a: `main` is the primary area. A surface taking it replaces what
+  // it shows; the replaced surface must not turn into a dock panel nobody
+  // asked for.
+  test('placing a surface into main unplaces the previous main occupant instead of relocating it', () => {
+    const placed = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'activity',
+      'main',
+    );
+
+    expect(placed.main).toEqual({
+      visible: true,
+      size: 0,
+      occupant: 'activity',
+    });
+    expect(occupiedRegion(placed, 'home')).toBeUndefined();
+    expect(placed.left.occupant).toBeNull();
+    expect(placed.right.occupant).toBeNull();
+    expect(placed.bottom).toEqual(DEFAULT_DEVICE_REGION_ARRANGEMENT.bottom);
+  });
+
+  test('placing a surface into main from a dock region vacates that dock region and still unplaces the displaced occupant', () => {
+    const activityAtRight = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'activity',
+      'right',
+    );
+    const placed = placeSurface(activityAtRight, 'activity', 'main');
+
+    expect(placed.main.occupant).toBe('activity');
+    expect(placed.right).toEqual({ visible: false, size: 400, occupant: null });
+    expect(occupiedRegion(placed, 'home')).toBeUndefined();
+  });
+
+  test('a surface leaving main for a dock region leaves main empty and visible, and the displaced dock occupant relocates', () => {
+    const activityInMain = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'activity',
+      'main',
+    );
+    const moved = placeSurface(activityInMain, 'activity', 'bottom');
+
+    expect(moved.main).toEqual({ visible: true, size: 0, occupant: null });
+    expect(moved.bottom).toMatchObject({ occupant: 'activity', visible: true });
+    // Chat, displaced from bottom, follows the homeless rule — it does not
+    // jump into `main`, which it does not declare.
+    expect(moved.right).toMatchObject({ occupant: 'chat' });
+  });
+
+  test('placing a surface into a region it does not declare is a no-op', () => {
+    expect(surfaceMayOccupy('home', 'right')).toBe(false);
+    expect(surfaceMayOccupy('chat', 'main')).toBe(false);
+    expect(surfaceMayOccupy('activity', 'main')).toBe(true);
+
+    expect(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'home', 'right'),
+    ).toBe(DEFAULT_DEVICE_REGION_ARRANGEMENT);
+    expect(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'chat', 'main'),
+    ).toBe(DEFAULT_DEVICE_REGION_ARRANGEMENT);
+    // An unregistered surface may take a dock region (fixtures rely on it)
+    // but never `main`.
+    expect(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'fixture', 'main'),
+    ).toBe(DEFAULT_DEVICE_REGION_ARRANGEMENT);
+  });
+
+  test('dock swaps still relocate the displaced occupant into the vacated dock region', () => {
+    const activityAtRight = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'activity',
+      'right',
+    );
+    const swapped = placeSurface(activityAtRight, 'activity', 'bottom');
+
+    expect(swapped.bottom.occupant).toBe('activity');
+    expect(swapped.right.occupant).toBe('chat');
+    expect(swapped.main.occupant).toBe('home');
+  });
+
+  test('revealSurface targets main for Home and reveals a main occupant in place', () => {
+    const shown = revealSurface(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'main'),
+      'home',
+      REGION_SURFACE_REGISTRY.get('home')!.defaultRegion,
+    );
+
+    expect(shown.region).toBe('main');
+    expect(shown.arrangement.main.occupant).toBe('home');
+    expect(occupiedRegion(shown.arrangement, 'activity')).toBeUndefined();
+
+    const alreadyThere = revealSurface(shown.arrangement, 'home', 'main');
+    expect(alreadyThere.region).toBe('main');
+    expect(alreadyThere.arrangement).toBe(shown.arrangement);
+  });
+
+  test('showSurfaceAlone with a main target does not hide the dock regions', () => {
+    const chatVisible = updateRegion(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'main'),
+      'bottom',
+      { visible: true },
+    );
+
+    const shown = showSurfaceAlone(chatVisible, 'home', 'main');
+
+    expect(shown.region).toBe('main');
+    expect(shown.arrangement.main.occupant).toBe('home');
+    expect(shown.arrangement.bottom).toMatchObject({
+      occupant: 'chat',
+      visible: true,
+    });
   });
 
   test('placing an already-mounted surface swaps occupants without moving region sizes', () => {

@@ -257,7 +257,14 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 
 const navigateMock = vi.fn();
+const showSurfaceMock = vi.fn();
 const platformProfile = vi.hoisted(() => ({ isTauri: false }));
+
+// #928 C2a: "Open a Project to Add Layout" means Home by name and reveals
+// the Home surface through the shared command hook.
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceMock,
+}));
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
@@ -620,7 +627,9 @@ describe('RegistryView', () => {
             name: 'Open a Project to Add Layout',
           }),
         );
-        expect(navigateMock).toHaveBeenCalledWith('/');
+        // #928 C2a: Home is revealed as a surface, not navigated to.
+        expect(showSurfaceMock).toHaveBeenCalledWith('home');
+        expect(navigateMock).not.toHaveBeenCalledWith('/');
         expect(
           within(installedDetail).getByRole('button', {
             name: 'Manage Plugin',
@@ -789,6 +798,29 @@ describe('RegistryView', () => {
       }),
     ).toBeTruthy();
     expect(screen.getAllByText('Installed').length).toBeGreaterThan(0);
+  });
+
+  test('"Open a Project to Add Layout" reveals the Home surface instead of navigating to / (#928 C2a)', () => {
+    staleAfterMutationTabs.add('plugins');
+    previewResults.set('demo-layout', validDemoPreview());
+    navigateMock.mockClear();
+    showSurfaceMock.mockClear();
+
+    render(<RegistryView initialTab="plugins" />);
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Open a Project to Add Layout',
+      }),
+    );
+
+    expect(showSurfaceMock).toHaveBeenCalledWith('home');
+    expect(navigateMock).not.toHaveBeenCalledWith('/');
   });
 
   test('reconciles an optimistic install against contradictory fresh server state', async () => {

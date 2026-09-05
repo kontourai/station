@@ -17,6 +17,15 @@ import {
 } from '../workspace-panes/openFilePreviewIntent';
 import { parseSurfaceDeepLink } from './surface-deep-link';
 
+/** An exact temporary return location, owned and restored by this navigator. */
+export type NavigationLocation = Readonly<{ pathname: string; search: string }>;
+
+function canonicalSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  params.sort();
+  return params.toString();
+}
+
 export type NavigationState = {
   pathname: string;
   selectedAgent: string | null;
@@ -139,12 +148,15 @@ class NavigationStore {
   private isNavigating = false;
   private navigationGuardBypass = false;
   private historyIndex = 0;
+  private navigationGeneration = {};
+  private guardGeneration = {};
+  private navigationHref = '';
   private restoringPop = false;
   private replayingPop = false;
   private pendingPopDelta: number | undefined;
   private readonly navigationGuards = new Map<
     symbol,
-    (continueNavigation: () => void) => void
+    (continueNavigation: () => void, cancelNavigation?: () => void) => void
   >();
   lastProject: string | null;
   lastProjectLayout: string | null;
@@ -223,7 +235,11 @@ class NavigationStore {
    * `this.state` from a `parseUrl` result routes through here so that
    * memory stays in sync regardless of how the URL got there (initial load,
    * `navigate`, `updateParams`, or a `popstate`). */
-  private commitState(state: NavigationState) {
+  private commitState(state: NavigationState, newEntry = false) {
+    const href = typeof window === 'undefined' ? '' : window.location.href;
+    if (newEntry || href !== this.navigationHref)
+      this.navigationGeneration = {};
+    this.navigationHref = href;
     this.state = state;
     if (state.isDockMaximized) this.lastDockMaximized = true;
   }
@@ -254,6 +270,8 @@ class NavigationStore {
 
   private handlePopState = (event: PopStateEvent) => {
     const targetIndex = historyIndex(event.state);
+    if (targetIndex !== undefined && targetIndex !== this.historyIndex)
+      this.navigationGeneration = {};
     if (this.replayingPop) {
       this.replayingPop = false;
       if (targetIndex !== undefined) this.historyIndex = targetIndex;
@@ -468,18 +486,30 @@ class NavigationStore {
 
   registerNavigationGuard(
     identity: symbol,
-    guard: (continueNavigation: () => void) => void,
+    guard: (
+      continueNavigation: () => void,
+      cancelNavigation?: () => void,
+    ) => void,
   ): () => void {
+    this.guardGeneration = {};
     this.navigationGuards.set(identity, guard);
-    return () => this.navigationGuards.delete(identity);
+    return () => {
+      if (this.navigationGuards.get(identity) !== guard) return;
+      this.navigationGuards.delete(identity);
+      // An approved form may become clean while preparation awaits. Removal
+      // only loosens the guard set; additions/replacements revoke admission.
+    };
   }
 
-  private runNavigationGuards(continuation: () => void): void {
+  private runNavigationGuards(
+    continuation: () => void,
+    cancelled?: () => void,
+  ): void {
     const guards = [...this.navigationGuards.values()];
     const continueAt = (index: number): void => {
       const guard = guards[index];
       if (guard) {
-        guard(() => continueAt(index + 1));
+        guard(() => continueAt(index + 1), cancelled);
         return;
       }
       continuation();
@@ -490,6 +520,80 @@ class NavigationStore {
   private notify = () => {
     this.listeners.forEach((listener) => listener());
   };
+
+  captureLocation(): NavigationLocation {
+    return {
+      pathname: window.location.pathname,
+      search: window.location.search,
+    };
+  }
+
+  isCurrentLocation(location: NavigationLocation): boolean {
+    return (
+      window.location.pathname === location.pathname &&
+      canonicalSearch(window.location.search) ===
+        canonicalSearch(location.search)
+    );
+  }
+
+  restoreLocation(
+    location: NavigationLocation,
+    admission: Parameters<NavigationStore['navigateWithPrecommit']>[1],
+  ): Promise<boolean> {
+    const captured = new URLSearchParams(location.search);
+    const clear: Record<string, null> = {};
+    for (const key of new URLSearchParams(window.location.search).keys()) {
+      if (!captured.has(key)) clear[key] = null;
+    }
+    // Keep exact Pane paths, tabs, and query selections through the same
+    // guarded navigation path. A Project-only projection cannot restore them.
+    return this.navigateWithPrecommit(
+      `${location.pathname}${location.search}`,
+      admission,
+      clear,
+    );
+  }
+
+  /** Fixed destination, fresh admission after any dirty-state delay. No alternate router. */
+  navigateWithPrecommit(
+    pathname: string,
+    admission: {
+      current: () => boolean;
+      prepare: () => Promise<boolean>;
+      signal: AbortSignal;
+    },
+    params?: Record<string, string | null>,
+  ): Promise<boolean> {
+    const captured = { ...admission };
+    const capturedParams = params ? { ...params } : undefined;
+    const navigation = this.navigationGeneration;
+    return import('./navigation-precommit')
+      .then(({ runNavigationPrecommit }) => {
+        const guards = this.guardGeneration;
+        return runNavigationPrecommit(
+          {
+            ...captured,
+            current: () =>
+              this.navigationGeneration === navigation &&
+              this.guardGeneration === guards &&
+              captured.current(),
+          },
+          (proceed, cancel) => this.runNavigationGuards(proceed, cancel),
+          () => {
+            if (this.isNavigating) return false;
+            const previousBypass = this.navigationGuardBypass;
+            this.navigationGuardBypass = true;
+            try {
+              this.navigate(pathname, capturedParams);
+            } finally {
+              this.navigationGuardBypass = previousBypass;
+            }
+            return true;
+          },
+        );
+      })
+      .catch(() => false);
+  }
 
   navigate(pathname: string, params?: Record<string, string | null>) {
     const target = parseNavigationTarget(pathname, window.location.href);
@@ -598,7 +702,7 @@ class NavigationStore {
     delete nextHistoryState[DIALOG_HISTORY_KEY];
     window.history.pushState(nextHistoryState, '', url.toString());
     this.historyIndex = nextIndex;
-    this.commitState(this.parseUrl());
+    this.commitState(this.parseUrl(), true);
     this.notify();
     window.dispatchEvent(new PopStateEvent('popstate'));
     this.isNavigating = false;
@@ -630,7 +734,7 @@ class NavigationStore {
       '',
       url.toString(),
     );
-    this.commitState(this.parseUrl());
+    this.commitState(this.parseUrl(), true);
     this.notify();
   }
 

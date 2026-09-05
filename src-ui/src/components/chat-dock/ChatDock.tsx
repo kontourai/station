@@ -679,7 +679,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     showChatSettings,
     setShowChatSettings,
     showNewChatModal,
-    setShowNewChatModal,
+    setShowNewChatModal: setShowNewChatModalState,
     showSessionPicker,
     setShowSessionPicker,
     activeSessionId,
@@ -694,6 +694,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeSessionCount,
     onAutoCollapse: handleAutoCollapse,
   });
+  const [newChatRequestEpoch, setNewChatRequestEpoch] = useState(0);
+  const setShowNewChatModal = useCallback(
+    (open: boolean) => {
+      if (open) setNewChatRequestEpoch((epoch) => epoch + 1);
+      setShowNewChatModalState(open);
+    },
+    [setShowNewChatModalState],
+  );
+
   // A non-tab recovery is still committed UI state (not a toast). It is used
   // only when Station cannot safely hydrate an existing transcript into a
   // tab; once a tab exists its `conversationOpenState` is the canonical copy.
@@ -2739,6 +2748,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           newChatProjectOverride,
           sessions,
           showNewChatModal,
+          newChatRequestEpoch,
           showChatSettings,
           showSessionPicker,
           chatFontSize,

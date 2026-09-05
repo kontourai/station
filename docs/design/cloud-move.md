@@ -46,6 +46,15 @@ same narrow preparation contract; registering one does not grant access to
 credentials or execution. Configuration cannot bypass the source and target
 ownership requirements. CloudFormation completion is not application readiness.
 
+## GCP development profile
+
+The `gcp-compute` preview reuses the same bounded inventory and non-transfer
+contract for `e2-micro`, `e2-small`, and `e2-medium`. It does not inspect cloud
+credentials, billing, quotas, or target readiness. GCP template generation is
+not implemented; use the [operator-run development recipe](../../deploy/gcp-dev/README.md)
+for an isolated persistent test host. Provider selection never turns preparation
+into permission to move a home or resume work.
+
 ## AWS development template
 
 Preparation requires an explicit region, instance type, digest-pinned public
@@ -75,8 +84,9 @@ the environment; template validation does not prove boot or runtime readiness.
 
 ## Remaining implementation sequence
 
-1. Validate the generated template and boot in an explicitly selected AWS test
-   account/region/budget. Prove private access, image identity, persistence, cost
+1. Validate the selected provider preparation and boot in an explicitly selected
+   cloud test account/region/budget. AWS template qualification and GCP host
+   qualification retain separate evidence. Prove private access, image identity, persistence, cost
    visibility, and recovery. Retain portable evidence without credentials.
 2. Add consistent setup packaging and target application. Reuse the existing
    home maintenance and backup primitives where their contracts apply, and the
@@ -87,7 +97,10 @@ the environment; template validation does not prove boot or runtime readiness.
    portable material through an authenticated encrypted mechanism; OS-keychain,
    device-bound, and unsupported engine credentials require sign-in. Never
    include credential payloads in ordinary export documents or templates.
-4. Add the UI to the same operation contract: preview, cost/compatibility review,
+4. Resolve [cloud principal/enrollment authority](https://github.com/kontourai/station/issues/1513)
+   before adding automatic bootstrap. Cloud IAM, host-admin access, and shared
+   signing material do not by themselves define a Station browser principal.
+   Add the UI to the same operation contract: preview, cost/compatibility review,
    target preparation, setup transfer, sign-in, verification, and continuation.
    The first authorized setup may need decisions; a repeat move can be simpler.
 5. Implement durable ownership transfer and supported session continuation.
@@ -99,7 +112,9 @@ the environment; template validation does not prove boot or runtime readiness.
    revocation, plugin lifecycle races, and move-back. Measure real continuation
    with a supported agent before advertising unattended running work.
 
-An account/region/budget decision and real AWS evidence remain outstanding.
+Real AWS qualification remains outstanding. The GCP development profile has a
+separate operator-run qualification path; neither provider can claim a complete
+setup transfer or execution handoff from a healthy empty target.
 The initial preview/template slice must not close #495 or claim live migration.
 
 ## External-team delivery

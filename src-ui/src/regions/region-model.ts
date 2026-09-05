@@ -15,7 +15,8 @@ export interface RegionState {
 export type RegionArrangement = Record<RegionId, RegionState>;
 
 export const DEFAULT_DEVICE_REGION_ARRANGEMENT: RegionArrangement = {
-  main: { visible: true, size: 0, occupant: null },
+  // `main` is always visible and Home is its default occupant (#928 C2a).
+  main: { visible: true, size: 0, occupant: 'home' },
   left: { visible: false, size: 400, occupant: null },
   right: { visible: false, size: 400, occupant: null },
   bottom: { visible: false, size: 320, occupant: 'chat' },
@@ -33,6 +34,33 @@ export function occupiedDockRegion(
   surfaceId: string,
 ): DockRegionId | undefined {
   return DOCK_REGION_IDS.find((id) => arrangement[id].occupant === surfaceId);
+}
+
+/** The region (dock or `main`) holding a surface, if any. */
+export function occupiedRegion(
+  arrangement: RegionArrangement,
+  surfaceId: string,
+): RegionId | undefined {
+  return REGION_IDS.find((id) => arrangement[id].occupant === surfaceId);
+}
+
+export function isDockRegion(id: RegionId): id is DockRegionId {
+  return (DOCK_REGION_IDS as readonly RegionId[]).includes(id);
+}
+
+/**
+ * Whether a surface declares `regionId` among the regions it may occupy
+ * (`RegisteredSurface.regions`). A surface the registry does not know — a
+ * test fixture, a pane a later slice registers at runtime — may take a dock
+ * region and never `main`: the primary area is only ever handed to a surface
+ * that declared it, so an undeclared id cannot displace Home by accident.
+ */
+export function surfaceMayOccupy(
+  surfaceId: string,
+  regionId: RegionId,
+): boolean {
+  const surface = REGION_SURFACE_REGISTRY.get(surfaceId);
+  return surface ? surface.regions.includes(regionId) : isDockRegion(regionId);
 }
 
 export function firstFreeDockRegion(
@@ -124,66 +152,110 @@ export function syncRegionArrangementFromDock(
     : next;
 }
 
+/**
+ * Place `surfaceId` in `regionId`, honouring the surface's declared regions
+ * (`surfaceMayOccupy`; an ineligible placement returns the arrangement
+ * unchanged — the toolbar never offers one, this is the backstop) and vacating
+ * whichever region the surface came from.
+ *
+ * What happens to the region's previous occupant depends on the target:
+ *
+ * - into a dock region, the displaced surface relocates — back into the
+ *   region the incoming surface vacated when it may occupy it (a swap), else
+ *   into the first free dock region, else it is unplaced;
+ * - into `main`, the displaced surface is UNPLACED, never relocated. `main`
+ *   is the primary area: replacing what it shows must not spawn a dock panel
+ *   the user did not ask for (#928 C2a, owner decision).
+ *
+ * `main` is always visible; the `visible` argument only applies to a dock
+ * region.
+ */
 export function placeSurface(
   arrangement: RegionArrangement,
   surfaceId: string,
   regionId: RegionId,
   visible = true,
 ): RegionArrangement {
+  if (!surfaceMayOccupy(surfaceId, regionId)) return arrangement;
   const previousRegion = REGION_IDS.find(
     (id) => id !== regionId && arrangement[id].occupant === surfaceId,
   );
   const displacedSurface = arrangement[regionId].occupant;
-  const next = updateRegion(arrangement, regionId, {
+  let next = updateRegion(arrangement, regionId, {
     occupant: surfaceId,
-    visible,
+    visible: regionId === 'main' || visible,
   });
   if (previousRegion) {
-    return updateRegion(next, previousRegion, {
-      occupant: displacedSurface,
-      visible:
-        displacedSurface === null ? false : arrangement[regionId].visible,
+    // An emptied dock region hides; an emptied `main` stays visible (the
+    // outlet treats a null occupant as Home).
+    next = updateRegion(next, previousRegion, {
+      occupant: null,
+      visible: previousRegion === 'main',
     });
   }
-  if (displacedSurface !== null && displacedSurface !== surfaceId) {
-    const freeRegion = firstFreeDockRegion(
-      next,
-      DOCK_REGION_IDS.includes(regionId as DockRegionId)
-        ? (regionId as DockRegionId)
-        : 'bottom',
-    );
-    if (freeRegion) {
-      return updateRegion(next, freeRegion, {
-        occupant: displacedSurface,
-        visible: arrangement[regionId].visible,
-      });
-    }
+  if (displacedSurface === null || displacedSurface === surfaceId) return next;
+  if (regionId === 'main') return next;
+  const displacedVisible = arrangement[regionId].visible;
+  if (
+    previousRegion &&
+    previousRegion !== 'main' &&
+    surfaceMayOccupy(displacedSurface, previousRegion)
+  ) {
+    return updateRegion(next, previousRegion, {
+      occupant: displacedSurface,
+      visible: displacedVisible,
+    });
+  }
+  const freeRegion = firstFreeDockRegion(next, regionId);
+  if (freeRegion && surfaceMayOccupy(displacedSurface, freeRegion)) {
+    return updateRegion(next, freeRegion, {
+      occupant: displacedSurface,
+      visible: displacedVisible,
+    });
   }
   return next;
 }
 
+/**
+ * Make a surface visible where it is, or place it where it belongs. A surface
+ * already in a region (dock or `main`) is revealed there; an unplaced one
+ * goes to `main` when that is its target, else to its preferred free dock
+ * region.
+ */
 export function revealSurface(
   arrangement: RegionArrangement,
   surfaceId: string,
-  preferred: DockRegionId,
-): { arrangement: RegionArrangement; region: DockRegionId } {
-  const occupied = occupiedDockRegion(arrangement, surfaceId);
+  preferred: RegionId,
+): { arrangement: RegionArrangement; region: RegionId } {
+  const occupied = occupiedRegion(arrangement, surfaceId);
   if (occupied) {
     return {
       arrangement: updateRegion(arrangement, occupied, { visible: true }),
       region: occupied,
     };
   }
+  if (preferred === 'main') {
+    return {
+      arrangement: placeSurface(arrangement, surfaceId, 'main'),
+      region: 'main',
+    };
+  }
   const region = firstFreeDockRegion(arrangement, preferred) ?? preferred;
   return { arrangement: placeSurface(arrangement, surfaceId, region), region };
 }
 
+/**
+ * The coarse-device reveal: the revealed dock region becomes the only visible
+ * one. A reveal into `main` folds nothing — `main` is not a dock region, and
+ * the dock's fold state is the user's, not this surface's.
+ */
 export function showSurfaceAlone(
   arrangement: RegionArrangement,
   surfaceId: string,
-  preferred: DockRegionId,
-): { arrangement: RegionArrangement; region: DockRegionId } {
+  preferred: RegionId,
+): { arrangement: RegionArrangement; region: RegionId } {
   const revealed = revealSurface(arrangement, surfaceId, preferred);
+  if (revealed.region === 'main') return revealed;
   let next = revealed.arrangement;
   for (const id of DOCK_REGION_IDS) {
     if (id !== revealed.region)
@@ -241,8 +313,14 @@ export interface RegisteredSurface {
   id: string;
   title: string;
   icon: string;
-  shortcut: SurfaceShortcut;
-  defaultRegion: DockRegionId;
+  /** The toggle chord, where the surface has one. Home has none. */
+  shortcut?: SurfaceShortcut;
+  /**
+   * Where this surface may be placed. `placeSurface` refuses anything else;
+   * the region toolbar offers a surface only for the regions it declares.
+   */
+  regions: readonly RegionId[];
+  defaultRegion: RegionId;
   /** Repository-relative renderer source, used by the architecture ratchet. */
   sourceFile: string;
 }
@@ -266,6 +344,14 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     title: 'Chat',
     icon: 'chat',
     shortcut: { id: 'dock.toggle', key: 'd', modifiers: ['cmd'] },
+    // Dock regions only for now. Chat's `main` placement would be a
+    // projectless full-screen `ChatWorkspacePane`, a mount no entry point has
+    // ever made: the full-screen placement is layout-bound (`layoutSlug` is
+    // required for cross-project routing), owns its own dock-shortcut
+    // registration, and `App.tsx` treats a full-screen Chat as owning the
+    // whole viewport (no region host). Declaring `main` here without that
+    // mount would advertise a placement the outlet cannot render (#928 C2a).
+    regions: DOCK_REGION_IDS,
     defaultRegion: 'bottom',
     sourceFile: 'src-ui/src/components/chat-dock/ChatDock.tsx',
   },
@@ -278,8 +364,22 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
       key: 'a',
       modifiers: ['cmd', 'shift'],
     },
+    regions: REGION_IDS,
     defaultRegion: 'right',
     sourceFile: 'src-ui/src/views/activity/ActivityWorkspacePane.tsx',
+  },
+  {
+    // Home is a surface whose only placement is the primary area: its default
+    // region is `main` and it declares no other, so no dock control ever
+    // offers it and a dock swap can never carry it out of `main` (#928 C2a).
+    // No chord: the destination registry has no Home shortcut and this slice
+    // invents none.
+    id: 'home',
+    title: 'Home',
+    icon: 'home',
+    regions: ['main'],
+    defaultRegion: 'main',
+    sourceFile: 'src-ui/src/views/home/HomeSurface.tsx',
   },
 ]);
 

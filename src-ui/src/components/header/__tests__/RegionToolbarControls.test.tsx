@@ -1,14 +1,20 @@
 /** @vitest-environment jsdom */
 
 import { readFileSync } from 'node:fs';
-import { createEvent, fireEvent, render, screen } from '@testing-library/react';
+import {
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const chatCss = readFileSync('src-ui/src/components/chat/chat.css', 'utf8');
 
 const harness = vi.hoisted(() => ({
   regions: {
-    main: { visible: true, size: 0, occupant: null },
+    main: { visible: true, size: 0, occupant: 'home' as string | null },
     left: { visible: false, size: 400, occupant: null },
     right: { visible: false, size: 400, occupant: null },
     bottom: { visible: true, size: 320, occupant: 'chat' },
@@ -97,6 +103,11 @@ import { RegionToolbarControls } from '../RegionToolbarControls';
 
 describe('RegionToolbarControls', () => {
   beforeEach(() => {
+    Object.assign(harness.regions.main, {
+      visible: true,
+      size: 0,
+      occupant: 'home',
+    });
     Object.assign(harness.regions.left, {
       visible: false,
       size: 400,
@@ -253,6 +264,137 @@ describe('RegionToolbarControls', () => {
     expect(screen.queryByRole('menu')).not.toBeNull();
     fireEvent.click(backdrop);
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  /**
+   * #928 C2a: `main` is a choosable region. Its control has no show/hide half
+   * (`main` is always visible), so the primary click opens the placement
+   * menu; the menu offers the surfaces that declare `main`, minus the one in
+   * it. Home declares only `main`, so no dock menu ever offers Home.
+   */
+  const dockControlLabels = () =>
+    [
+      ...screen
+        .getByRole('group', { name: 'Regions' })
+        .querySelectorAll(
+          'button:not([aria-label="Change Main region surface"])',
+        ),
+    ].map((button) => button.getAttribute('aria-label'));
+
+  test('the main control opens a placement menu of the surfaces that declare main, minus its occupant', () => {
+    render(<RegionToolbarControls />);
+
+    const trigger = screen.getByRole('button', {
+      name: 'Change Main region surface',
+    });
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+    expect(trigger.hasAttribute('aria-pressed')).toBe(false);
+    expect(
+      screen.getByRole('group', { name: 'Regions' }).querySelector('button'),
+      'main comes before the dock controls',
+    ).toBe(trigger);
+    fireEvent.click(trigger);
+
+    const menu = screen.getByRole('menu', { name: 'Main region surfaces' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Place Activity here']);
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Place Activity here' }),
+    );
+    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'main');
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  test('with Activity in main the control offers Home back, and no dock menu offers Home', () => {
+    harness.regions.main.occupant = 'activity';
+    render(<RegionToolbarControls />);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Change Main region surface' }),
+    );
+    expect(
+      within(screen.getByRole('menu', { name: 'Main region surfaces' }))
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Place Home here']);
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Choose a surface for Left region' }),
+    );
+    expect(
+      within(screen.getByRole('menu', { name: 'Left region surfaces' }))
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Place Chat here', 'Place Activity here']);
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Change Bottom region surface' }),
+    );
+    expect(
+      within(screen.getByRole('menu', { name: 'Bottom region surfaces' }))
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Swap in Activity']);
+  });
+
+  test('an empty main (Activity left it) is Home on screen, so the menu does not offer Home', () => {
+    harness.regions.main.occupant = null;
+    render(<RegionToolbarControls />);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Change Main region surface' }),
+    );
+    expect(
+      within(screen.getByRole('menu', { name: 'Main region surfaces' }))
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Place Activity here']);
+  });
+
+  test('the dock control labels are what they were before main became choosable', () => {
+    render(<RegionToolbarControls />);
+
+    // The exact strings the pre-C2a toolbar rendered for the default
+    // arrangement, in order. A relabel of any dock control reds this.
+    expect(dockControlLabels()).toEqual([
+      'Choose a surface for Left region',
+      'Choose a surface for Right region',
+      'Hide Chat Bottom region',
+      'Change Bottom region surface',
+    ]);
+  });
+
+  test('a bottom-only device gets no main control (#1400 occlusion floor)', () => {
+    harness.bottomOnly = true;
+    harness.isMobile = false;
+    render(<RegionToolbarControls />);
+
+    expect(
+      screen.queryByRole('button', { name: 'Change Main region surface' }),
+    ).toBeNull();
+    expect(
+      screen.getByRole('group', { name: 'Regions' }).querySelectorAll('button'),
+    ).toHaveLength(1);
+    // Nor does the folded menu list Home: it is not a dock toggle.
+    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
+    expect(
+      within(screen.getByRole('menu', { name: 'Region surfaces' }))
+        .getAllByRole('menuitemcheckbox')
+        .map((item) => item.textContent),
+    ).toEqual(['Hide Chat', 'Show Activity']);
+  });
+
+  test('Home registers no chord', () => {
+    render(<RegionToolbarControls />);
+    expect([...harness.shortcuts.keys()].sort()).toEqual([
+      'activity.toggle',
+      'dock.toggle',
+    ]);
   });
 
   test('the region fieldset holds its controls\u2019 width (#917)', () => {

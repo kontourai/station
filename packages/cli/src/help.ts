@@ -178,11 +178,12 @@ const VERBS: Record<string, VerbSpec> = {
       'Preview cloud setup compatibility without transferring or provisioning',
     actions: ['preview', 'template'],
     usage: [
-      'station cloud preview --home=<path> --provider=aws-ec2 --region=<region> --instance-type=<type> [--json]',
+      'station cloud preview --home=<path> --provider=<aws-ec2|gcp-compute> --region=<region> --instance-type=<type> [--json]',
       'station cloud template --provider=aws-ec2 --region=<region> --instance-type=<type> --image=<digest-pinned-image> --output=<new-file>',
     ],
     detail: [
       'Read-only metadata preview. Does not export credentials or move running work.',
+      'GCP preview supports e2-micro, e2-small, and e2-medium; template generation is currently AWS-only.',
       'Transfer and resume remain unavailable until target and ownership verification are implemented.',
     ],
   },

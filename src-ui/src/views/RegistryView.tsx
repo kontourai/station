@@ -25,6 +25,7 @@ import {
 } from '../components/registry/RegistryLayoutActions';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { useShowSurface } from '../contexts/useShowSurface';
 import { usePermissions } from '../core/PermissionManager';
 import { pluginRegistry } from '../core/PluginRegistry';
 import {
@@ -53,6 +54,8 @@ export function RegistryView({
   initialTab?: RegistryCatalogTab;
 } = {}) {
   const { navigate } = useNavigation();
+  // #928 C2a: "Open a Project" means Home by name; reveal the surface.
+  const showSurface = useShowSurface();
   const { isTauri } = usePlatformProfile();
   const { apiBase } = useApiBase();
   const { activeConnection } = useConnections();
@@ -486,7 +489,7 @@ export function RegistryView({
           },
           manageSkills: () => navigate('/guidance?tab=skills'),
           managePlugins: () => navigate('/plugins'),
-          openProjects: () => navigate('/'),
+          openProjects: () => showSurface('home'),
           retryInstalled: () => {
             void refetchInstalled();
           },
