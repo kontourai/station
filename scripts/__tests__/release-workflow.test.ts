@@ -753,21 +753,14 @@ describe('native release workflow topology', () => {
     }
   });
 
-  it('runs the pinned lockfile-only production npm producer after a clean install', () => {
+  it('runs the pnpm production SBOM producer against the authoritative lock', () => {
     const directory = mkdtempSync(resolve(tmpdir(), 'station-npm-sbom-probe-'));
     try {
       const output = resolve(directory, 'npm.cdx.json');
       execFileSync(
-        resolve(root, 'node_modules/.bin/cyclonedx-npm'),
-        [
-          '--package-lock-only',
-          '--omit',
-          'dev',
-          '--ignore-npm-errors',
-          '--output-file',
-          output,
-        ],
-        { cwd: root, stdio: 'pipe', timeout: 30_000 },
+        process.execPath,
+        ['scripts/generate-pnpm-sbom.mjs', '--output-file', output],
+        { cwd: root, stdio: 'pipe', timeout: 30_000, windowsHide: true },
       );
       const inventory = JSON.parse(readFileSync(output, 'utf8'));
       expect(inventory.specVersion).toBe('1.6');
@@ -792,8 +785,7 @@ describe('native release workflow topology', () => {
       const sharedPurl = `pkg:npm/%40kontourai/station-shared@${sharedVersion}`;
       expect(inventory.components).toContainEqual(
         expect.objectContaining({
-          group: '@kontourai',
-          name: 'station-shared',
+          name: '@kontourai/station-shared',
           purl: sharedPurl,
         }),
       );
@@ -828,7 +820,9 @@ describe('native release workflow topology', () => {
           'scripts/lib/android-build-manifest.mjs',
           'scripts/lib/desktop-build-manifest.mjs',
           'package.json',
-          'package-lock.json',
+          'pnpm-lock.yaml',
+          'pnpm-workspace.yaml',
+          'patches/**',
         ],
       },
     });

@@ -114,6 +114,7 @@ import {
 } from '../turn-completion-notifications.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
+  agentCapabilityUndelivered: { add: vi.fn() },
   attachedSessionMutationRejected: { add: vi.fn() },
   adapterReadiness: { add: vi.fn() },
   adapterSessionStartDuration: { record: vi.fn() },
@@ -6779,6 +6780,7 @@ describe('OrchestrationService', () => {
         provider: 'claude',
         metadata: { agentSlug: 'delegated-agent', delegation },
       }),
+      undefined,
     );
     expect(lifecycle).toEqual(['pre-tool-installed', 'replayed']);
     await restartService.shutdown();
@@ -11649,6 +11651,7 @@ describe('OrchestrationService', () => {
 
     expect(resolveSessionAgent).toHaveBeenCalledWith(
       expect.objectContaining({ threadId: 'thread-resolve-agent' }),
+      undefined,
     );
     expect(claude.startSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -12058,6 +12061,7 @@ describe('OrchestrationService', () => {
       expect.objectContaining({
         metadata: expect.objectContaining({ agentSlug: 'my-agent' }),
       }),
+      undefined,
     );
     expect(claude.startSession).toHaveBeenCalledWith(
       expect.objectContaining({

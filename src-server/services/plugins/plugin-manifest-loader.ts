@@ -11,6 +11,7 @@ import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/works
 import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
 import { AgentPluginLoader } from './agent-plugin-loader.js';
+import { parseWorkspacePaneHostContribution } from './workspace-pane-host-contributions.js';
 
 const SUBSCRIPTION_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 const SUBSCRIPTION_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$/;
@@ -296,6 +297,17 @@ export function parsePluginManifest(
       'missing-version',
       'Plugin manifest version must be a non-empty string',
     );
+  }
+  if (candidate.workspacePaneHost !== undefined) {
+    const contribution = parseWorkspacePaneHostContribution(
+      candidate.workspacePaneHost,
+    );
+    if (!contribution)
+      invalidManifest(
+        'invalid-manifest',
+        'Invalid Workspace Pane host contribution',
+      );
+    candidate.workspacePaneHost = contribution;
   }
   // archive#4307 review: a declared setting's `key` is a STORE KEY too — it is
   // written into `overrides[plugin].settings` by `PUT /:name/settings` and

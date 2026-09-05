@@ -58,12 +58,16 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         timeout-minutes: 5
         with:
           node-version-file: .nvmrc
-          cache: npm
-
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       # `full:regression` runs `gate:workflows`, and `actionlint-gate.mjs` is
       # fail-closed: with no `actionlint` on PATH it exits 2 rather than
       # reporting an unvalidated surface as a pass. Provisioning it here is

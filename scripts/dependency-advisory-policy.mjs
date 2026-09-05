@@ -10,6 +10,7 @@ import {
   DEPENDENCY_SCOPE_ROOTS,
 } from './classify-ci-change.mjs';
 import { createAuditAttemptDiagnostics } from './lib/dependency-audit-diagnostics.mjs';
+import { collectPnpmAudits, runPnpmAudit } from './lib/pnpm-advisory.mjs';
 
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 const RESIDUAL_SEVERITIES = new Set(['moderate', 'low']);
@@ -425,7 +426,8 @@ export function evaluateAuditPolicy(
   if (!Array.isArray(auditDocuments) || auditDocuments.length === 0) {
     throw new Error('at least one scoped audit document is required');
   }
-  const scopes = new Set();
+  const knownScopes = new Set(ALL_DEPENDENCY_SCOPES);
+  const auditedScopes = new Set();
   const documentKeys = new Set();
   const parsed = [];
   for (const document of auditDocuments) {
@@ -436,6 +438,8 @@ export function evaluateAuditPolicy(
     ) {
       throw new Error('each audit document requires a non-empty scope');
     }
+    if (!knownScopes.has(document.scope))
+      throw new Error(`unknown audit document scope: ${document.scope}`);
     const reachability = document.reachability ?? 'full';
     if (!REACHABILITY.has(reachability))
       throw new Error(
@@ -447,7 +451,7 @@ export function evaluateAuditPolicy(
         `duplicate audit document: ${document.scope}:${reachability}`,
       );
     documentKeys.add(documentKey);
-    scopes.add(document.scope);
+    auditedScopes.add(document.scope);
     parsed.push({
       scope: document.scope,
       reachability,
@@ -460,11 +464,14 @@ export function evaluateAuditPolicy(
     });
   }
   const now = options.now instanceof Date ? options.now : new Date();
+  // Partial scans still validate the entire committed policy. An unscanned
+  // scope is not unknown, and filtering its rules here would hide typos,
+  // malformed entries, or expired approvals until that scope was scanned.
   const {
     errors: exceptionErrors,
     validated: exceptions,
     residuals,
-  } = validateExceptions(exceptionConfig, scopes, now);
+  } = validateExceptions(exceptionConfig, knownScopes, now);
   const allFindings = parsed.flatMap((entry) => entry.findings);
   const acceptedFindings = [];
   const blockingFindings = [];
@@ -522,14 +529,19 @@ export function evaluateAuditPolicy(
     acceptedFindings.push(finding);
   }
   for (const exception of exceptions) {
-    if (!usedExceptions.has(exception)) {
+    if (auditedScopes.has(exception.scope) && !usedExceptions.has(exception)) {
       exceptionErrors.push(
         `unused exception for ${exception.scope}:${exception.package}:${exception.advisory}`,
       );
     }
   }
   for (const residual of residuals) {
-    if (!usedResiduals.has(residual)) {
+    // A full-graph audit does not establish production reachability. Only
+    // the corresponding production document can prove a residual is unused.
+    if (
+      documentKeys.has(`${residual.scope}\u0000production`) &&
+      !usedResiduals.has(residual)
+    ) {
       exceptionErrors.push(
         `unused residual for ${residual.scope}:${residual.package}:${residual.version}:${residual.advisory}`,
       );
@@ -798,12 +810,12 @@ export async function withAuditRetries(
       lastError = error;
       if (attempt < attempts)
         console.warn(
-          `npm audit operational attempt ${attempt}/${attempts} failed for ${scope}; retrying: ${error.message}`,
+          `dependency audit operational attempt ${attempt}/${attempts} failed for ${scope}; retrying: ${error.message}`,
         );
     }
   }
   throw new Error(
-    `npm audit failed for ${scope} after ${attempts} attempts: ${lastError?.message ?? 'unknown error'}`,
+    `dependency audit failed for ${scope} after ${attempts} attempts: ${lastError?.message ?? 'unknown error'}`,
   );
 }
 
@@ -824,6 +836,18 @@ export function collectAudits(
   auditRunner = runAudit,
   versionResolver = resolvedVersions,
 ) {
+  if (
+    auditRunner === runAudit &&
+    readJson(
+      path.join(REPO_ROOT, 'package.json'),
+      'manifest',
+    ).packageManager?.startsWith('pnpm@')
+  )
+    return collectPnpmAudits(scopes, {
+      root: REPO_ROOT,
+      run: (root) =>
+        withAuditRetries('pnpm workspace', () => runPnpmAudit(root)),
+    });
   const requests = scopes.flatMap(({ scope, cwd }) => [
     { scope, cwd, reachability: 'full', productionOnly: false },
     { scope, cwd, reachability: 'production', productionOnly: true },

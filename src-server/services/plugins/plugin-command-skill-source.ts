@@ -24,6 +24,7 @@ import { basename, join } from 'node:path';
 import type { SkillCommand } from '@kontourai/station-contracts/catalog';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { skillCommandSlug } from '@kontourai/station-contracts/skill-command';
+import { readRegularFileNoFollow } from '../../domain/home-schema-gate.js';
 import { isSafeSkillName } from '../../domain/skill-paths.js';
 import { assertExistingPathInside } from '../../utils/path-containment.js';
 import {
@@ -126,6 +127,7 @@ export interface BlockedPluginPromptFile {
 function collectPluginPromptFiles(
   pluginDir: string,
   pluginName: string,
+  limits?: { maxFiles: number; maxFileBytes: number },
 ): { prompts: PluginPromptFile[]; blockedFiles: BlockedPluginPromptFile[] } {
   const manifestPath = join(pluginDir, 'plugin.json');
   if (!existsSync(manifestPath)) return { prompts: [], blockedFiles: [] };
@@ -136,10 +138,17 @@ function collectPluginPromptFiles(
   if (!manifest.prompts?.source) return { prompts: [], blockedFiles: [] };
   const promptsDir = join(pluginDir, manifest.prompts.source);
   assertExistingPathInside(pluginDir, promptsDir, 'Plugin prompts source');
-  for (const file of readdirSync(promptsDir)) {
+  const files = readdirSync(promptsDir).filter((file) => file.endsWith('.md'));
+  if (limits && files.length > limits.maxFiles)
+    throw new Error('Plugin prompt inventory exceeds invocation limits');
+  for (const file of files) {
     if (!file.endsWith('.md')) continue;
     const stat = lstatSync(join(promptsDir, file));
-    if (!stat.isFile() || stat.isSymbolicLink()) {
+    if (
+      !stat.isFile() ||
+      stat.isSymbolicLink() ||
+      (limits && stat.size > limits.maxFileBytes)
+    ) {
       throw new ContextSafetyError({
         blocked: true,
         findings: [
@@ -157,10 +166,12 @@ function collectPluginPromptFiles(
   }
   const prompts: PluginPromptFile[] = [];
   const blockedFiles: BlockedPluginPromptFile[] = [];
-  for (const file of readdirSync(promptsDir).filter((entry) =>
-    entry.endsWith('.md'),
-  )) {
-    const raw = readFileSync(join(promptsDir, file), 'utf-8');
+  for (const file of files) {
+    const raw = limits
+      ? readRegularFileNoFollow(pluginDir, join(promptsDir, file), {
+          maxBytes: limits.maxFileBytes,
+        })
+      : readFileSync(join(promptsDir, file), 'utf-8');
     const hidden = scanContextText(raw, {
       profile: 'hidden-only',
       source: `plugin prompt '${pluginName}/${file}'`,
@@ -199,10 +210,12 @@ function collectPluginPromptFiles(
 export function scanPluginPromptGeneration(
   pluginDir: string,
   pluginName: string,
+  limits?: { maxFiles: number; maxFileBytes: number },
 ): PluginPromptFile[] {
   const { prompts, blockedFiles } = collectPluginPromptFiles(
     pluginDir,
     pluginName,
+    limits,
   );
   if (blockedFiles.length > 0) {
     throw new ContextSafetyError({

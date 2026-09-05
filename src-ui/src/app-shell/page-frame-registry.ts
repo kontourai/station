@@ -1,6 +1,6 @@
 import type { PageFrameSpec } from '../components/page-frame';
 import type { NavigationView } from '../types';
-import { APP_SURFACE_REGISTRY } from './surface-registry';
+import { APP_DESTINATION_REGISTRY } from './destination-registry';
 
 /**
  * Which frame each route renders inside.
@@ -152,7 +152,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
 /**
  * Fallback titles for the two framed routes the sidebar has no surface for.
  *
- * Every other framed route resolves its fallback from `surface-registry.ts`
+ * Every other framed route resolves its fallback from `destination-registry.ts`
  * the SAME `label` the sidebar row and the command palette render, so the
  * word in the header while a chunk loads is by construction the word the user
  * just clicked. These two are reached from inside a project, not from the
@@ -187,13 +187,13 @@ const RESOLVED_FRAMES = ((): Record<
       resolved[type] = spec;
       continue;
     }
-    // `getSurfaceForView` reads `view.type` and nothing else (it is a lookup
+    // `getDestinationForView` reads `view.type` and nothing else (it is a lookup
     // in the registry's `managementViewTypes` index), so the type alone is
     // the whole input a fallback title can depend on.
-    const surface = APP_SURFACE_REGISTRY.getSurfaceForView({
+    const destination = APP_DESTINATION_REGISTRY.getDestinationForView({
       type,
     } as NavigationView);
-    const title = surface?.label() ?? UNSURFACED_FALLBACK_TITLES[type];
+    const title = destination?.label() ?? UNSURFACED_FALLBACK_TITLES[type];
     resolved[type] = title ? { ...spec, title } : spec;
   }
   return resolved;

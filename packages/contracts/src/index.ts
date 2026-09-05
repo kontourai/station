@@ -100,6 +100,7 @@ export * from './workspace-pane.js';
 export * from './workspace-pane-availability.js';
 export * from './workspace-pane-host.js';
 export * from './workspace-pane-host-contract.js';
+export * from './workspace-pane-host-contribution.js';
 export * from './workspace-pane-layout-adapter.js';
 export * from './workspace-pane-operational-event.js';
 export * from './workspace-pane-renderer-selection.js';

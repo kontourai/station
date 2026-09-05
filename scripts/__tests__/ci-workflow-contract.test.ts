@@ -639,9 +639,7 @@ describe('CI verification workflow contracts', () => {
     expect(fastChecks).toContain('STATION_CI_FAST_BASE');
     expect(fastChecks).toContain('run: npm run ci:fast');
     expect(fastChecks).toContain('name: Enforce candidate UI bundle budget');
-    expect(fastChecks).toContain(
-      'run: npm run build:connect && npm run build:ui',
-    );
+    expect(fastChecks).toContain('run: npm run build:ui');
     expect(fastChecks.indexOf('run: npm run ci:fast')).toBeLessThan(
       fastChecks.indexOf('name: Enforce candidate UI bundle budget'),
     );

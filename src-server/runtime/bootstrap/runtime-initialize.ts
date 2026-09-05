@@ -196,6 +196,8 @@ export interface InitializeRuntimeDeps {
   resolveBuiltinEngineBinding?: (
     appConfig: AppConfig,
   ) => Promise<BuiltinAgentEngineBinding | null>;
+  /** Reconcile the built-in role after background ACP readiness settles. */
+  onACPConnectionsReady?: () => void | Promise<void>;
   orchestrationEventStore: EventStore;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -297,10 +299,11 @@ interface InitializeRuntimeResult {
 export function initializeRuntimeBackgroundTasks(
   deps: Pick<
     InitializeRuntimeDeps,
-    'timers' | 'logger' | 'configLoader' | 'acpBridge'
+    'timers' | 'logger' | 'configLoader' | 'acpBridge' | 'onACPConnectionsReady'
   >,
 ): void {
-  const { timers, logger, configLoader, acpBridge } = deps;
+  const { timers, logger, configLoader, acpBridge, onACPConnectionsReady } =
+    deps;
 
   scheduleRuntimeEngineSpawnTmpReaping({ timers, logger });
   startRuntimeACPConnections({
@@ -311,6 +314,7 @@ export function initializeRuntimeBackgroundTasks(
     },
     acpBridge,
     logger,
+    onReady: onACPConnectionsReady,
   });
 }
 
@@ -992,6 +996,7 @@ export async function initializeRuntime(
     logger,
     configLoader,
     acpBridge,
+    onACPConnectionsReady: deps.onACPConnectionsReady,
   });
 
   scheduleRuntimePluginUpdateCheck({
