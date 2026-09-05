@@ -349,7 +349,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/diff-review-annotations.spec.ts',
     'tests/review-queue-comments.spec.ts',
     'tests/first-run-zero-provider.spec.ts',
-    'tests/learning-source.spec.ts',
     'tests/knowledge-onboarding.spec.ts',
     'tests/root-route-restore.spec.ts',
     'tests/task-first-home.spec.ts',
@@ -389,6 +388,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/external-session-follow.spec.ts',
     'tests/builder-delivery-viewer.spec.ts',
     'tests/meeting-notes.spec.ts',
+    'tests/learning-source.spec.ts',
     'tests/knowledge-library.spec.ts',
     // Both drive the REAL API and mutate shared instance state — the agents
     // lane disables every LLM connection to prove the empty case, the skills
