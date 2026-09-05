@@ -380,6 +380,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // Creates and repairs one invalid plugin directory in the runner-owned
     // temporary home, then removes it and reloads before yielding the server.
     'tests/plugin-rejection-visibility.spec.ts',
+    // Seeds exact historical/current-child events only in the managed temporary home.
+    'tests/workspace-search-exact-message.spec.ts',
     'tests/plugin-system.spec.ts',
     'tests/plugin-dependency-lifecycle.spec.ts',
     'tests/survey-review-workbench.spec.ts',
@@ -577,6 +579,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Global ⌘K command palette: open via keybind, fuzzy filter, Enter navigates, Esc closes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/workspace-search-exact-message.spec.ts',
+    bucket: 'product',
+    surface: 'Workspace search',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real runner-owned EventStore, authenticated runtime and browser: exact historical Session/event selection, old target outside newest history window, canonical text pagination and keyboard focus without current-child substitution or parallel legacy search.',
     exceptions: [],
   },
   {

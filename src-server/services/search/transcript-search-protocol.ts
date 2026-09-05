@@ -4,6 +4,16 @@ import { boundedTaskText } from './task-search-protocol.js';
 
 export type TranscriptReadRequest =
   | {
+      type: 'message-page';
+      id: number;
+      threadId: string;
+      matchedEventId: string;
+      ownerUserId: string;
+      legacyOwnerUserId?: string;
+      tenantId?: string;
+      continuation?: string;
+    }
+  | {
       type: 'message-search';
       id: number;
       query: string;
@@ -52,7 +62,19 @@ export interface TranscriptSessionOpenFact {
   conversationId: string;
   projectSlug?: string;
 }
+export interface TranscriptMessagePageFact {
+  sessionId: string;
+  matchedEventId: string;
+  role: 'user' | 'assistant';
+  text: string;
+  contentRevision: string;
+  offset: number;
+  nextContinuation?: string;
+  projectId?: string;
+  agentSlug?: string;
+}
 export type TranscriptReadResult =
+  | { state: 'available'; page: TranscriptMessagePageFact | null }
   | { state: 'available'; rows: TranscriptSearchMatch[] }
   | { state: 'available'; owner: string | null }
   | { state: 'available'; target: TranscriptMessageOpenFact | null }
@@ -149,6 +171,7 @@ export function parseTranscriptReadRequest(
       'limit',
       'threadId',
       'matchedEventId',
+      'continuation',
     ],
     ['type', 'id'],
   );
@@ -157,6 +180,8 @@ export function parseTranscriptReadRequest(
     !Number.isSafeInteger(request.id) ||
     (request.id as number) < 1
   )
+    return null;
+  if (request.type !== 'message-page' && Object.hasOwn(request, 'continuation'))
     return null;
   if (
     request.legacyOwnerUserId !== undefined &&
@@ -181,7 +206,10 @@ export function parseTranscriptReadRequest(
         !boundedTaskText(request.tenantId, 256))
     )
       return null;
-  } else if (request.type === 'message-open') {
+  } else if (
+    request.type === 'message-open' ||
+    request.type === 'message-page'
+  ) {
     if (
       ['query', 'projectId', 'limit'].some((key) =>
         Object.hasOwn(request, key),
@@ -190,7 +218,11 @@ export function parseTranscriptReadRequest(
       !boundedTaskText(request.matchedEventId, 256) ||
       !boundedTaskText(request.ownerUserId, 256) ||
       (request.tenantId !== undefined &&
-        !boundedTaskText(request.tenantId, 256))
+        !boundedTaskText(request.tenantId, 256)) ||
+      (request.type === 'message-open' &&
+        Object.hasOwn(request, 'continuation')) ||
+      (request.continuation !== undefined &&
+        !boundedTaskText(request.continuation, 256))
     )
       return null;
   } else if (request.type === 'message-search') {
@@ -217,7 +249,7 @@ export function parseTranscriptReadResult(
 ): TranscriptReadResult | null {
   const result = exact(
     value,
-    ['state', 'rows', 'owner', 'target', 'session'],
+    ['state', 'rows', 'owner', 'target', 'session', 'page'],
     ['state'],
   );
   if (!result) return null;
@@ -229,6 +261,53 @@ export function parseTranscriptReadResult(
     return result.owner === null || boundedTaskText(result.owner, 256)
       ? { state: 'available', owner: result.owner }
       : null;
+  }
+  if (request.type === 'message-page') {
+    if (result.page === null) return { state: 'available', page: null };
+    const page = exact(
+      result.page,
+      [
+        'sessionId',
+        'matchedEventId',
+        'role',
+        'text',
+        'contentRevision',
+        'offset',
+        'nextContinuation',
+        'projectId',
+        'agentSlug',
+      ],
+      [
+        'sessionId',
+        'matchedEventId',
+        'role',
+        'text',
+        'contentRevision',
+        'offset',
+      ],
+    );
+    if (
+      !page ||
+      page.sessionId !== request.threadId ||
+      page.matchedEventId !== request.matchedEventId ||
+      !['user', 'assistant'].includes(String(page.role)) ||
+      typeof page.text !== 'string' ||
+      Buffer.byteLength(page.text) > 16384 ||
+      Array.from(page.text).length > 4096 ||
+      typeof page.contentRevision !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(page.contentRevision) ||
+      !Number.isSafeInteger(page.offset) ||
+      (page.offset as number) < 0 ||
+      (page.offset as number) > 131072 ||
+      ['nextContinuation', 'projectId', 'agentSlug'].some(
+        (key) => page[key] !== undefined && !boundedTaskText(page[key], 256),
+      )
+    )
+      return null;
+    return {
+      state: 'available',
+      page: page as unknown as TranscriptMessagePageFact,
+    };
   }
   if (request.type === 'message-open') {
     if (result.target === null) return { state: 'available', target: null };
