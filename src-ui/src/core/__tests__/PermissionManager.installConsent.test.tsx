@@ -41,9 +41,11 @@ const TRUSTED_ONLY = [
 function Harness({
   onResult,
   permissions,
+  recovery = false,
 }: {
   onResult: (granted: boolean) => void;
   permissions: typeof TRUSTED_AND_ACTIVE;
+  recovery?: boolean;
 }) {
   const { requestInstallConsent } = usePermissions();
   return (
@@ -54,6 +56,7 @@ function Harness({
           'demo-plugin',
           'Demo Plugin',
           permissions,
+          ...(recovery ? [{ action: 'recover' as const }] : []),
         ).then(onResult);
       }}
     >
@@ -62,13 +65,14 @@ function Harness({
   );
 }
 
-function ask(permissions = TRUSTED_AND_ACTIVE) {
+function ask(permissions = TRUSTED_AND_ACTIVE, recovery = false) {
   const results: boolean[] = [];
   render(
     <PermissionManager>
       <Harness
         onResult={(granted) => results.push(granted)}
         permissions={permissions}
+        recovery={recovery}
       />
     </PermissionManager>,
   );
@@ -148,5 +152,17 @@ test('renders the pre-install copy when the only pending permission is trusted',
   await waitFor(() => expect(results).toEqual([true]));
   // Approving an install decision grants nothing — least of all the trusted
   // tier this prompt just said it cannot decide.
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test('recovery review names retained activation and returns only a decision without granting trusted access', async () => {
+  const results = ask(TRUSTED_AND_ACTIVE, true);
+  expect(await screen.findByText('Recover this plugin?')).toBeTruthy();
+  expect(
+    screen.getByText(/has retained files awaiting activation/),
+  ).toBeTruthy();
+  expect(screen.queryByText(/has not been installed yet/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Recover plugin' }));
+  await waitFor(() => expect(results).toEqual([true]));
   expect(fetchMock).not.toHaveBeenCalled();
 });

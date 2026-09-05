@@ -3,7 +3,11 @@ import {
   isSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
-import type { UnifiedSearchOpenResolution } from '@kontourai/station-contracts/unified-search';
+import type {
+  UnifiedSearchMessagePageOutcome,
+  UnifiedSearchOpenResolution,
+} from '@kontourai/station-contracts/unified-search';
+import { publicAgentIdFromRuntimeKey } from '../../routes/agents/runtime-agent-identity.js';
 import type { IsolatedTranscriptReads } from '../search/isolated-transcript-search.js';
 import { boundedTaskText } from '../search/task-search-protocol.js';
 import type { TranscriptSearchMatch } from '../search/transcript-search-protocol.js';
@@ -81,6 +85,61 @@ export function createIsolatedSessionTranscriptSearch(
       closed = true;
       active?.abort();
       return source.close();
+    },
+    async readMessagePage(
+      input: IsolatedSessionReadInput & {
+        sessionId: string;
+        matchedEventId: string;
+        continuation?: string;
+      },
+    ): Promise<UnifiedSearchMessagePageOutcome> {
+      const outcome = await readAuthorized<UnifiedSearchMessagePageOutcome>(
+        input,
+        async (current, signal) => {
+          const page = await source.readMessagePage(
+            {
+              threadId: input.sessionId,
+              matchedEventId: input.matchedEventId,
+              ...authorization.transcriptOwnerConstraint(input.authority),
+              ...(input.authority.mode === 'hosted'
+                ? { tenantId: input.authority.tenantExecutionContext!.tenantId }
+                : {}),
+              ...(input.continuation !== undefined
+                ? { continuation: input.continuation }
+                : {}),
+            },
+            signal,
+          );
+          if (
+            !current() ||
+            !page ||
+            !(await authorization.canReadSessionAsync(
+              input.sessionId,
+              input.authority,
+              current,
+              signal,
+            ))
+          )
+            return { state: 'not-found' };
+          const { agentSlug, ...textPage } = page;
+          let assignedAgentId: string | undefined;
+          if (agentSlug) {
+            try {
+              assignedAgentId = publicAgentIdFromRuntimeKey(agentSlug);
+            } catch {
+              /* Missing clean identity does not prevent a read-only view. */
+            }
+          }
+          return {
+            state: 'available',
+            page: {
+              ...textPage,
+              ...(assignedAgentId ? { assignedAgentId } : {}),
+            },
+          };
+        },
+      );
+      return outcome ?? { state: 'unavailable' };
     },
     async search(
       input: IsolatedSessionReadInput & {

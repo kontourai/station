@@ -54,6 +54,7 @@ export function PluginRecoveryPanel({
             })),
           ),
         ],
+        { action: 'recover' },
       );
       if (!approved) return;
       const result = await recovery.mutateAsync({

@@ -5,14 +5,17 @@
  */
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { getOrchestrationDatabasePath } from '../src-server/domain/migrations/003-orchestration-events.js';
+import { EventStore } from '../src-server/services/orchestration/event-store.js';
 import {
   authenticatedE2EFetch,
   createAuthenticatedE2ERequest,
@@ -26,6 +29,42 @@ const plugin = 'host-action-browser-proof';
 let workspace = '';
 let installed = false;
 let created = false;
+
+/** Deliberately models an interrupted owner in the runner's disposable home.
+ * Recovery itself still goes through the actual browser/SDK/HTTP/runtime owner. */
+function leaveRetainedActivationPending() {
+  const home = process.env.STATION_E2E_HOME;
+  if (process.env.STATION_E2E_RUNNER !== '1' || !home || !isAbsolute(home))
+    throw new Error('Recovery proof requires the managed runner-owned home.');
+  const database = getOrchestrationDatabasePath(home);
+  if (!existsSync(database))
+    throw new Error('Managed runtime EventStore must already exist.');
+  const store = new EventStore(database);
+  try {
+    const journal = store.createPackageMcpAdmissionJournal();
+    const current = journal.currentInstallation(plugin);
+    if (current.state !== 'observed')
+      throw new Error('Installed fixture selection is missing.');
+    const plan = journal.activationPlan(current.installation);
+    if (!plan) throw new Error('Installed fixture activation plan is missing.');
+    const pending = journal.recordInstallation({
+      pluginId: plugin,
+      contentDigest: current.installation.contentDigest,
+      previous: current.installation,
+      materialization: current.installation.materialization,
+      dataScope: current.installation.dataScope,
+      origin: current.installation.origin,
+      activationPlan: plan,
+    });
+    if (
+      pending.state !== 'recorded' ||
+      journal.admissionOpen(pending.installation)
+    )
+      throw new Error('Fixture must remain activation-pending.');
+  } finally {
+    store.close();
+  }
+}
 
 test.afterAll(async () => {
   if (created) {
@@ -45,7 +84,7 @@ test.afterAll(async () => {
   if (workspace) rmSync(workspace, { recursive: true, force: true });
 });
 
-test('portable installed host default Agent action completes one real echo turn and exposes its durable evidence', async ({
+test('retained plugin recovers through responsive UI and its host default Agent action completes one real echo turn', async ({
   page,
 }, testInfo) => {
   test.setTimeout(120_000);
@@ -94,6 +133,155 @@ test('portable installed host default Agent action completes one real echo turn 
     },
   );
   expect(layout.status).toBe(201);
+  leaveRetainedActivationPending();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/plugins');
+  await page
+    .getByRole('button', { name: /Host action proof.*Activation pending/ })
+    .click();
+  const observer = await page.context().newPage();
+  await observer.goto('/plugins');
+  await observer
+    .getByRole('button', { name: /Host action proof.*Activation pending/ })
+    .click();
+  await expect(
+    observer
+      .locator('.detail-panel')
+      .getByText('Activation pending', { exact: true }),
+  ).toBeVisible();
+  const recoveryEvidenceRoot = join(
+    process.cwd(),
+    '.kontourai',
+    'pane-host-actions-browser',
+    basename(process.env.STATION_E2E_OUTPUT_DIR ?? 'manual'),
+  );
+  mkdirSync(recoveryEvidenceRoot, { recursive: true });
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(
+      page
+        .locator('.detail-panel')
+        .getByText('Activation pending', { exact: true }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth + 1,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`recovery-pending-${width}.png`),
+      animations: 'disabled',
+    });
+    copyFileSync(
+      testInfo.outputPath(`recovery-pending-${width}.png`),
+      join(recoveryEvidenceRoot, `recovery-pending-${width}.png`),
+    );
+  }
+  await page
+    .getByRole('button', { name: 'Review recovery', exact: true })
+    .click();
+  const review = page.getByRole('region', { name: 'Recovery review' });
+  await expect(review).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('recovery-review-390.png'),
+    animations: 'disabled',
+  });
+  copyFileSync(
+    testInfo.outputPath('recovery-review-390.png'),
+    join(recoveryEvidenceRoot, 'recovery-review-390.png'),
+  );
+  await review
+    .getByRole('button', { name: 'Recover plugin', exact: true })
+    .click();
+  const consent = page.getByRole('dialog', {
+    name: 'Recover plugin permissions',
+  });
+  await expect(consent).toBeVisible();
+  await expect(
+    consent.getByText('Recover this plugin?', { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('recovery-consent-390.png'),
+    animations: 'disabled',
+  });
+  copyFileSync(
+    testInfo.outputPath('recovery-consent-390.png'),
+    join(recoveryEvidenceRoot, 'recovery-consent-390.png'),
+  );
+  const recoveredResponse = page.waitForResponse(
+    (candidate) =>
+      candidate.request().method() === 'POST' &&
+      new URL(candidate.url()).pathname.endsWith(`/plugins/${plugin}/recover`),
+  );
+  await consent
+    .getByRole('button', { name: 'Recover plugin', exact: true })
+    .click();
+  const recoveryReceipt = await (await recoveredResponse).json();
+  expect(recoveryReceipt.success).toBe(true);
+  // No reload or user refresh in the other already-connected client.
+  await expect(
+    observer
+      .locator('.detail-panel')
+      .getByText('Activation pending', { exact: true }),
+  ).toHaveCount(0, { timeout: 30_000 });
+  await expect(
+    page
+      .locator('.detail-panel')
+      .getByText('Activation pending', { exact: true }),
+  ).toHaveCount(0, { timeout: 30_000 });
+  await expect
+    .poll(async () => {
+      const inventory = await (
+        await authenticatedE2EFetch(`${api}/api/plugins`)
+      ).json();
+      return inventory.plugins.find((entry: any) => entry.name === plugin)
+        ?.installationReadiness?.state;
+    })
+    .toBe('ready');
+  await expect(
+    page
+      .locator('.detail-panel')
+      .getByRole('button', { name: 'Remove', exact: true }),
+  ).toBeVisible();
+  await expect(
+    observer
+      .locator('.detail-panel')
+      .getByRole('button', { name: 'Remove', exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('recovery-ready-390.png'),
+    animations: 'disabled',
+  });
+  copyFileSync(
+    testInfo.outputPath('recovery-ready-390.png'),
+    join(recoveryEvidenceRoot, 'recovery-ready-390.png'),
+  );
+  await observer.setViewportSize({ width: 1280, height: 900 });
+  await observer.screenshot({
+    path: testInfo.outputPath('recovery-ready-1280.png'),
+    animations: 'disabled',
+  });
+  copyFileSync(
+    testInfo.outputPath('recovery-ready-1280.png'),
+    join(recoveryEvidenceRoot, 'recovery-ready-1280.png'),
+  );
+  await observer.close();
+  writeFileSync(
+    join(recoveryEvidenceRoot, 'recovery-receipt.json'),
+    JSON.stringify(
+      {
+        plugin,
+        success: recoveryReceipt.success,
+        configurationActivation: recoveryReceipt.configurationActivation,
+        otherClientConverged: true,
+      },
+      null,
+      2,
+    ),
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/projects/${slug}/layouts/coding`);
   const bar = page.getByRole('region', {
     name: 'Workspace actions',

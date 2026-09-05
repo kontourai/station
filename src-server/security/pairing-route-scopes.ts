@@ -236,7 +236,11 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // Body-shaped reads, including fresh open resolution, have no navigation or mutation effect.
-  ...['/api/search', '/api/search/resolve-open'].map(
+  ...[
+    '/api/search',
+    '/api/search/resolve-open',
+    '/api/search/read-message',
+  ].map(
     (prefix): PairingScopeRouteRule => ({
       id: `${prefix}:query`,
       method: 'POST',

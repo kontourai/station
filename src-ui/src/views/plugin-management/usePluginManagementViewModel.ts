@@ -151,7 +151,9 @@ export function usePluginManagementViewModel() {
     enabled: !!selectedReady?.git,
   });
 
-  const saveSettingsMutation = usePluginSettingsMutation();
+  const saveSettingsMutation = usePluginSettingsMutation({
+    onError: (error) => setMessage({ type: 'error', text: error.message }),
+  });
   const previewMutation = usePluginPreviewMutation();
   const installMutation = usePluginInstallMutation();
   const createProjectMutation = useCreateProjectMutation();
@@ -292,6 +294,7 @@ export function usePluginManagementViewModel() {
     toggleProviderMutation.mutate(
       { pluginName, disabled },
       {
+        onError: (error) => setMessage({ type: 'error', text: error.message }),
         onSuccess: () =>
           queryClient.invalidateQueries({
             queryKey: ['plugin-providers', pluginName],

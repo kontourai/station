@@ -215,3 +215,26 @@ export type UnifiedSearchOpenResolution =
   /** Deliberately indistinguishable from authorization denial. */
   | { state: 'not-found' }
   | { state: 'unavailable' };
+
+/** Exact canonical text only. A continuation never grants read authority. */
+export interface UnifiedSearchMessagePageRequest {
+  sessionId: string;
+  matchedEventId: string;
+  continuation?: string;
+}
+export interface UnifiedSearchMessagePage {
+  sessionId: string;
+  matchedEventId: string;
+  role: 'user' | 'assistant';
+  text: string;
+  contentRevision: string;
+  /** Unicode code-point offset, not a byte offset or another event identity. */
+  offset: number;
+  nextContinuation?: string;
+  projectId?: string;
+  assignedAgentId?: string;
+}
+export type UnifiedSearchMessagePageOutcome =
+  | { state: 'available'; page: UnifiedSearchMessagePage }
+  | { state: 'not-found' }
+  | { state: 'unavailable' };

@@ -261,6 +261,22 @@ storage. Retry constructs a fresh Orchestration reader; old wrappers and old
 async authorizers remain stopped and cannot borrow its worker. No broad provider
 shutdown or source replacement is inferred from a failed search cleanup.
 
+**Exact-message inspector (#1436).** The palette has an explicit local
+Workspace-search mode, separate from existing command/remote-message search;
+the inactive search mode sends no queries. A lazy read-only inspector consumes
+`POST /api/search/read-message` through the public SDK with captured authority.
+The same isolated transcript owner selects prompt/output text from the exact
+canonical event, bounded in SQL before JavaScript materialization. Search-index
+text is never a displayed-message authority. Content-bound pages preserve the
+Session/event and reject mutation, deletion and authority loss. An optional
+assigned Agent identity is projected only from recorded owner metadata. No
+ChatDock current-conversation resolution, default Agent, second index or worker
+is introduced. Task navigation passes existing unsaved guards, then performs a
+fresh exact-open read and a final synchronous currentness check before the
+canonical route commit. The managed-browser exact-message proof and focused
+owner/SDK/UI tests qualify this tracer; broader source and platform qualification
+remains separate.
+
 ## WorkspacePaneHostContributions
 
 **Intent and Interface.** `createWorkspacePaneHostContribution()` binds one versioned package-level contribution to an exact plugin installation generation and Project. It projects host-level prompt actions plus explicit available/default Agent state and dispatches only an owner-qualified action key. Pane-local actions remain on their descriptor; a host action is declared once and is never duplicated across every Pane.
