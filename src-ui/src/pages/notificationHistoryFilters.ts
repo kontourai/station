@@ -65,35 +65,54 @@ export function filterNotificationHistory(
   notifications: Notification[],
   filters: NotificationHistoryFilters,
 ) {
-  const matches = (entry: FilterableHistoryEntry) =>
-    matchesCategory(entry.category, filters.categories) &&
-    matchesDate(entry.timestamp, filters) &&
-    matchesQuery(entry.searchText, filters.query);
+  if (!isNotificationHistoryDateRangeValid(filters))
+    return { items: [], notifications: [] };
+  const terms = filters.query
+    .trim()
+    .toLocaleLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  const matches = (entry: FilterableHistoryEntry) => {
+    if (
+      !matchesCategory(entry.category, filters.categories) ||
+      !matchesDate(entry.timestamp, filters)
+    )
+      return false;
+    if (terms.length === 0) return true;
+    const haystack = entry.searchText.toLocaleLowerCase();
+    return terms.every((term) => haystack.includes(term));
+  };
 
   return {
     items: items.filter((item) =>
       matches({
         category: item.kind,
         timestamp: item.updatedAt || item.createdAt,
-        searchText: [
-          attentionKindLabel(item.kind),
-          item.kind,
-          item.title,
-          item.body,
-          'requestType' in item ? item.requestType : undefined,
-        ].join(' '),
+        searchText:
+          terms.length === 0
+            ? ''
+            : [
+                attentionKindLabel(item.kind),
+                item.kind,
+                item.title,
+                item.body,
+                'requestType' in item ? item.requestType : undefined,
+              ].join(' '),
       }),
     ),
     notifications: notifications.filter((notification) =>
       matches({
         category: notification.category,
         timestamp: notification.updatedAt || notification.createdAt,
-        searchText: [
-          notification.category,
-          notification.source,
-          notification.title,
-          notification.body,
-        ].join(' '),
+        searchText:
+          terms.length === 0
+            ? ''
+            : [
+                notification.category,
+                notification.source,
+                notification.title,
+                notification.body,
+              ].join(' '),
       }),
     ),
   };
@@ -123,17 +142,10 @@ function matchesCategory(category: string, selected: string[]): boolean {
   return selected.length === 0 || selected.includes(category);
 }
 
-function matchesQuery(searchText: string, query: string): boolean {
-  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  const haystack = searchText.toLocaleLowerCase();
-  return terms.every((term) => haystack.includes(term));
-}
-
 function matchesDate(
   timestamp: string,
   filters: NotificationHistoryFilters,
 ): boolean {
-  if (!isNotificationHistoryDateRangeValid(filters)) return false;
   const date = localDate(timestamp);
   if (!date) return false;
   return (
