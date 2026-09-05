@@ -116,6 +116,13 @@ STATION_CHANNEL=stable &quot;${STATION_ROOT:-$HOME/.station}/installs/stable/cur
 <li>Review the <a href="https://kontourai.io/privacy/station/">Station privacy policy</a>.
 </li>
 </ul>
+<h2>Inspect a learning source</h2>
+<p>Open <strong>Developer → Memory</strong> and select a record from a personal Default File Store, then choose <strong>Inspect learning source</strong>. If Developer is hidden, enable developer tools in Settings. The inspector requires local access to the Station that owns the store; remote pairing or an operator API credential alone is not enough. Hosted Stations and tenant-scoped requests are not supported by this personal-store inspection.</p>
+<p>The inspector shows the source text, provenance, and observation time. <strong>Refresh source</strong> reads it again. If the store was replaced, access changed, or the source cannot be verified, the old content is withheld. Inspection does not repair or change the source.</p>
+<p>A record marked active is not evidence that a learning was activated. This view shows source records only; candidate decisions, active learning revisions, and observed effects require records from their respective owners. It offers no promotion or retirement action.</p>
+<h2>Return to a decision</h2>
+<p>Open Notifications to find work that needs your attention. When an approval or permission has recorded request evidence, <strong>Inspect request</strong> opens its current details. Choose <strong>Approve once</strong> or <strong>Deny</strong> only after reviewing the request. You can expand <strong>Request identity</strong> for its exact record or open the Session for more context.</p>
+<p>A resolved or changed request must be inspected again from refreshed attention. A request that cannot currently be answered remains visible without decision buttons. If the decision cannot be confirmed, <strong>Check request again</strong> refreshes its state before another attempt. Other notifications retain their existing Session and action controls.</p>
           </article>
         </div>
       </main>
