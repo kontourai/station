@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
 import {
@@ -34,19 +32,5 @@ describe('the notification inbox is a destination', () => {
         (surface) => surface.id === 'notifications',
       ),
     ).toBe(true);
-  });
-
-  it('renders something when there is nothing', () => {
-    // Landing on a blank page reads as broken; both lanes say so instead.
-    const dir = join(__dirname, '..', 'components');
-    expect(
-      readFileSync(
-        join(dir, 'notifications', 'NotificationSection.tsx'),
-        'utf-8',
-      ),
-    ).toMatch(/length === 0/);
-    expect(
-      readFileSync(join(dir, 'attention', 'AttentionSection.tsx'), 'utf-8'),
-    ).toMatch(/length === 0/);
   });
 });

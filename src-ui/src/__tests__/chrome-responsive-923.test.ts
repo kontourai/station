@@ -12,10 +12,6 @@ const chatCss = readFileSync(
   join(ui, 'components', 'chat', 'chat.css'),
   'utf8',
 );
-const occupantPicker = readFileSync(
-  join(ui, 'workspace-panes', 'DockOccupantPicker.tsx'),
-  'utf8',
-);
 const detailHeaderCss = readFileSync(
   join(ui, 'components', 'DetailHeader.css'),
   'utf8',
@@ -90,11 +86,5 @@ describe('station#923 responsive chrome contract', () => {
     expect(sidebarHeader).toContain("flexDirection: 'column'");
     expect(sidebarHeader).toContain("alignItems: 'flex-start'");
     expect(sidebarHeader).toContain('marginTop: 2');
-  });
-
-  test('the Chat picker caret shares the label centerline', () => {
-    expect(occupantPicker).toContain("display: 'inline-flex'");
-    expect(occupantPicker).toContain("alignItems: 'center'");
-    expect(occupantPicker).toContain('lineHeight: 1');
   });
 });

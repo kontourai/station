@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type AgentData, useAgents } from '../../contexts/AgentsContext';
 import { AgentIcon } from '../icons/AgentIcon';
-import { CheckGlyph } from '../icons/Glyph';
+import { ArrowDownGlyph, CheckGlyph } from '../icons/Glyph';
 import { Empty } from '../state';
 
 export function schedulerRunnableAgents(agents: AgentData[]): AgentData[] {
@@ -77,7 +77,11 @@ export function AgentPicker({
 
   if (!runnableAgents.length) {
     return (
-      <button type="button" className="agent-picker__trigger" disabled>
+      <button
+        type="button"
+        className="choice-trigger agent-picker__trigger"
+        disabled
+      >
         {selected ? (
           <>
             <AgentIcon agent={selected} size="small" />
@@ -99,7 +103,7 @@ export function AgentPicker({
         type="button"
         ref={triggerRef}
         onClick={() => setOpen(!open)}
-        className="agent-picker__trigger"
+        className="choice-trigger agent-picker__trigger"
       >
         {selected && <AgentIcon agent={selected} size="small" />}
         <span className="agent-picker__trigger-name">
@@ -110,7 +114,7 @@ export function AgentPicker({
             {selected.model || 'default model'}
           </span>
         )}
-        <span className="agent-picker__trigger-caret">▼</span>
+        <ArrowDownGlyph className="choice-caret" />
       </button>
       {open &&
         pos &&

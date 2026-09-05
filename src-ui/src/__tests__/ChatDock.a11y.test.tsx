@@ -29,11 +29,10 @@ describe('ChatDock activity region', () => {
   test('keeps the named dock root, every passive reset modality, and shortcut focus wiring together', () => {
     const onActivity = vi.fn();
     const onFocusWithinChange = vi.fn();
-    // The ambient host publishes the slot's placement and size for whichever
-    // occupant holds it (archive#3929), so it reads navigation. Mounting the
-    // REAL provider rather than mocking it keeps this a test of the host
-    // rather than of a stand-in. Device settings need no provider — they come
-    // from a store.
+    // The ambient host publishes the slot's placement and size
+    // (archive#3929), so it reads navigation. Mounting the REAL provider
+    // rather than mocking it keeps this a test of the host rather than of a
+    // stand-in. Device settings need no provider — they come from a store.
     const { container } = render(
       // `DockShell` (archive#4460) registers `dock.toggle`/`dock.maximize`
       // through the real `useKeyboardShortcut`, which needs this provider —
@@ -65,7 +64,7 @@ describe('ChatDock activity region', () => {
     // The real ambient host stays chromeless, so `DockShell` (archive#4460)
     // not this boundary — is the shell's direct child, and the CSS child
     // combinators keep THAT as their target (it carries the `.chat-dock`
-    // class every occupant now shares). The boundary is a descendant of it.
+    // class). The boundary is a descendant of it.
     const shellRoot = container.firstElementChild;
     expect(shellRoot?.className).toContain('chat-dock');
     expect(shellRoot?.contains(pane)).toBe(true);
@@ -138,9 +137,9 @@ function extractBalancedBody(source: string, anchor: string): string {
 }
 
 /**
- * archive#4525/archive#4524: `AmbientChatDockProjectBinding.test.tsx`
+ * archive#4525/archive#4524: `DockShellProjectBinding.test.tsx`
  * proves the fix's foundation (DockShell-owned chrome state survives the
- * real occupant-switch/remount mechanics) through the REAL host, and
+ * real remount mechanics) through the REAL shell, and
  * `chat-dock-utils.test.ts` table-tests every piece of the actual
  * project-binding LOGIC as pure functions
  * (`resolveDockBadgeProjectName`/`resolveSessionProjectMismatchLabel`/

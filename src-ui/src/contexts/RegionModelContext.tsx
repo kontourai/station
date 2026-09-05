@@ -1,3 +1,7 @@
+import type {
+  DeviceSettings,
+  RegionArrangementRecord,
+} from '@kontourai/station-contracts/device-settings';
 import {
   createContext,
   type ReactNode,
@@ -10,8 +14,15 @@ import {
 } from 'react';
 import { availablePlacements, useDockSlotDevice } from '../hooks/useIsMobile';
 import {
+  isDefaultRegionArrangementRecord,
+  parseRegionArrangementRecord,
+  regionArrangementRecordsEqual,
+  toRegionArrangementRecord,
+} from '../regions/region-arrangement-record';
+import {
   chatRegion,
   DOCK_REGION_IDS,
+  type DockRegionId,
   dockMirrorDiff,
   placeSurface as placeSurfaceInArrangement,
   REGION_SURFACE_REGISTRY,
@@ -25,6 +36,7 @@ import {
   syncRegionArrangementFromDock,
   updateRegion,
 } from '../regions/region-model';
+import { normalizeDockMode } from '../types';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -105,6 +117,77 @@ function navigateToMainOutlet() {
   if (window.location.pathname !== '/') navigationStore.navigate('/');
 }
 
+/**
+ * Trailing-edge coalescing window for the `regionArrangement` write (#928 D).
+ * A drag resolves to one `setRegion` today, but a toggle-and-place burst is
+ * several writes in one frame; one record lands per burst, holding the
+ * latest state at the moment the timer fires. A `pagehide` flush covers the
+ * tab closing inside the window.
+ */
+const REGION_ARRANGEMENT_PERSIST_DELAY_MS = 150;
+
+/**
+ * Where the arrangement starts (#928 D). Precedence, highest first:
+ *
+ * 1. A URL deep link, for Chat only: `dockSlotPlacement` PLACES Chat there
+ *    (`placeSurface`, relocating whatever held the region by the model's own
+ *    rule — the previous Chat region when it may, else the first free dock
+ *    region), and `dock=open` shows it. Read from the URL itself, not from
+ *    navigation's blended `dockMode`, which falls back to the device setting.
+ * 2. The `regionArrangement` record: every surface's placement, every size,
+ *    every visibility — Chat's included when the URL says nothing. A record
+ *    equal to the registry default is one this device has never written and
+ *    reads as absent, which is what carries a pre-record device's dock
+ *    position through the upgrade (its only state is the legacy keys).
+ * 3. The legacy dock seed (`chatDockHeight`/`chatDockWidth`, the
+ *    `dockSlotPlacement` device setting, navigation's `dock`), which is all
+ *    an older device has. Only this path reads the legacy size keys; a record
+ *    keeps its own sizes.
+ *
+ * A mount is not a write: nothing here reaches navigation or device settings.
+ * A record and legacy keys that disagree are reconciled by the mirror on the
+ * next user change (see `mirroredRegionsRef` and `seenNavigationRef`).
+ */
+function initialRegionArrangement(
+  settings: DeviceSettings,
+  dockMode: DockRegionId,
+  isDockOpen: boolean,
+): RegionArrangement {
+  const stored = parseRegionArrangementRecord(settings.regionArrangement);
+  if (
+    !stored ||
+    isDefaultRegionArrangementRecord(toRegionArrangementRecord(stored))
+  ) {
+    return seedRegionArrangementFromDock(settings, dockMode, isDockOpen);
+  }
+  const linkedPlacement = normalizeDockMode(
+    new URLSearchParams(window.location.search).get('dockSlotPlacement'),
+  );
+  const chatAt = chatRegion(stored);
+  // `isDockOpen` is a URL fact (`dock=open`; navigation-store.ts), so an
+  // absent param defers to the record's own visibility for Chat.
+  const chatVisible = isDockOpen || (chatAt ? stored[chatAt].visible : false);
+  if (linkedPlacement) {
+    return placeSurfaceInArrangement(
+      stored,
+      'chat',
+      linkedPlacement,
+      chatVisible,
+    );
+  }
+  if (isDockOpen) {
+    return chatAt
+      ? updateRegion(stored, chatAt, { visible: true })
+      : placeSurfaceInArrangement(stored, 'chat', dockMode, true);
+  }
+  return stored;
+}
+
+function recordOf(value: unknown): RegionArrangementRecord | null {
+  const parsed = parseRegionArrangementRecord(value);
+  return parsed ? toRegionArrangementRecord(parsed) : null;
+}
+
 export function RegionModelProvider({ children }: { children: ReactNode }) {
   const settings = useDeviceSettings();
   const {
@@ -118,9 +201,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   } = useNavigation();
   const bottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
   const { setDeviceSetting } = useDeviceSettingsActions();
-  const [regions, setRegions] = useState<RegionArrangement>(
-    // Step 1 persists the region arrangement via legacy dock keys; its own record arrives when regions become user-visible.
-    () => seedRegionArrangementFromDock(settings, dockMode, isDockOpen),
+  const [regions, setRegions] = useState<RegionArrangement>(() =>
+    initialRegionArrangement(settings, dockMode, isDockOpen),
   );
   const [lastShownRegion, setLastShownRegion] = useState<RegionId | null>(
     () => chatRegion(regions) ?? null,
@@ -132,6 +214,30 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   const regionsRef = useRef(regions);
   const mirroredRegionsRef = useRef(regions);
   regionsRef.current = regions;
+  // The record this provider last wrote or adopted. Seeded from the mount
+  // state rather than from storage, so a mount is never itself a write: what
+  // the URL did to Chat at load stays a navigation fact, and a device whose
+  // record equals the default keeps holding the default until the user
+  // changes something.
+  const persistedRecordRef = useRef<RegionArrangementRecord | null>(null);
+  if (persistedRecordRef.current === null)
+    persistedRecordRef.current = toRegionArrangementRecord(regions);
+  // The stored record as last seen, canonicalized (null when unparseable).
+  // Compared by CONTENT, not identity: the store re-materializes every value
+  // from JSON on any setting's write, so an unrelated write hands this
+  // provider an equal record under a new reference.
+  const seenStoredRecordRef = useRef<
+    RegionArrangementRecord | null | undefined
+  >(undefined);
+  if (seenStoredRecordRef.current === undefined)
+    seenStoredRecordRef.current = recordOf(settings.regionArrangement);
+  // Navigation as last acted on. The legacy-sync effect below runs on the
+  // dependency change React reports, and a MOUNT is one of those; only a
+  // change since this snapshot is an inbound navigation event. Without it, a
+  // record whose Chat placement disagrees with the legacy keys would be
+  // "corrected" at mount — and `setDockMode` would write the device setting
+  // before the user touched anything.
+  const seenNavigationRef = useRef({ dockMode, isDockOpen });
 
   const setRegion = useCallback((id: RegionId, patch: Partial<RegionState>) => {
     const next = updateRegion(regionsRef.current, id, patch);
@@ -211,6 +317,96 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const persistRegionArrangement = useCallback(() => {
+    const latest = toRegionArrangementRecord(regionsRef.current);
+    if (
+      persistedRecordRef.current &&
+      regionArrangementRecordsEqual(latest, persistedRecordRef.current)
+    )
+      return;
+    persistedRecordRef.current = latest;
+    setDeviceSetting('regionArrangement', latest);
+  }, [setDeviceSetting]);
+
+  // Every arrangement write — `setRegion`, `placeSurface`, `showSurface`, the
+  // in-place legacy sync below — lands here through `regions`, and one record
+  // is written per burst on the trailing edge (#928 D).
+  useEffect(() => {
+    if (
+      persistedRecordRef.current &&
+      regionArrangementRecordsEqual(
+        toRegionArrangementRecord(regions),
+        persistedRecordRef.current,
+      )
+    )
+      return;
+    const timer = window.setTimeout(
+      persistRegionArrangement,
+      REGION_ARRANGEMENT_PERSIST_DELAY_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [regions, persistRegionArrangement]);
+
+  useEffect(() => {
+    window.addEventListener('pagehide', persistRegionArrangement);
+    return () =>
+      window.removeEventListener('pagehide', persistRegionArrangement);
+  }, [persistRegionArrangement]);
+
+  // Cross-tab adoption (#928 D): another tab's write reaches this one through
+  // the store's `storage` listener as a new `settings.regionArrangement`.
+  // Adoption is a READ. What this path writes: nothing to the record —
+  // `persistedRecordRef` is set to the adopted record first, so the persist
+  // effect above sees an already-persisted state and stays silent. The Chat
+  // mirror effect below MAY fire (`setDockMode`/`setDockState`/the legacy
+  // size keys), which is correct: the other tab's Chat placement is now this
+  // tab's too, and navigation must say so.
+  useEffect(() => {
+    const incoming = recordOf(settings.regionArrangement);
+    const seen = seenStoredRecordRef.current;
+    if (incoming === null) {
+      seenStoredRecordRef.current = null;
+      return;
+    }
+    if (seen && regionArrangementRecordsEqual(incoming, seen)) return;
+    seenStoredRecordRef.current = incoming;
+    // This tab's own write coming back: the store echoes every `set` to its
+    // listeners in the same document, and a `storage` event from another tab
+    // can carry a record we wrote a moment ago.
+    if (
+      regionArrangementRecordsEqual(
+        incoming,
+        toRegionArrangementRecord(regionsRef.current),
+      )
+    )
+      return;
+    if (
+      persistedRecordRef.current &&
+      regionArrangementRecordsEqual(incoming, persistedRecordRef.current)
+    )
+      return;
+    const adopted = parseRegionArrangementRecord(settings.regionArrangement);
+    if (!adopted) return;
+    persistedRecordRef.current = incoming;
+    regionsRef.current = adopted;
+    // The other tab may have hidden or emptied the region this tab last
+    // showed; the fold then points at the first dock region still showing
+    // something, so the next fold/unfold acts on a region that exists.
+    setLastShownRegion((previous) => {
+      const stillShown =
+        previous !== null &&
+        adopted[previous].visible &&
+        (previous === 'main' || adopted[previous].occupant !== null);
+      if (stillShown) return previous;
+      return (
+        DOCK_REGION_IDS.find(
+          (id) => adopted[id].visible && adopted[id].occupant !== null,
+        ) ?? previous
+      );
+    });
+    setRegions(adopted);
+  }, [settings.regionArrangement]);
+
   useEffect(() => {
     const previous = mirroredRegionsRef.current;
     const diff = dockMirrorDiff(previous, regions);
@@ -232,6 +428,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // Navigation remains an inbound source for deep links and browser history.
   // biome-ignore lint/correctness/useExhaustiveDependencies: device-setting notifications are mirror traffic, not inbound navigation.
   useEffect(() => {
+    const seen = seenNavigationRef.current;
+    if (seen.dockMode === dockMode && seen.isDockOpen === isDockOpen) return;
+    seenNavigationRef.current = { dockMode, isDockOpen };
     const current = regionsRef.current;
     const placement = chatRegion(current);
     if (placement === dockMode && current[placement].visible === isDockOpen)

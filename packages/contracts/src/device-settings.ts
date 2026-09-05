@@ -158,6 +158,66 @@ export const DEFAULT_FIRST_RUN_PROGRESS: FirstRunProgress = {
   chapter: 'connect',
 };
 
+/**
+ * The persisted per-device region arrangement (#928 slice D).
+ *
+ * Mirrors `RegionId` in `src-ui/src/regions/region-model.ts` exactly (same
+ * literal union), kept as its own alias here for the same reason as
+ * `ChatDockMode` above: this module imports nothing from `src-ui`. The UI
+ * pins the two in lockstep (`region-arrangement-record.test.ts`).
+ */
+export type RegionArrangementRecordRegionId =
+  | 'main'
+  | 'left'
+  | 'right'
+  | 'bottom';
+
+/**
+ * What a region holds. `kind` is the extension point: a region occupied by
+ * a surface today is `{ kind: 'surface', id }`; the pane-host direction
+ * (docs/design/placement.md) adds `{ kind: 'pane-host', documentId }` as a
+ * second variant with no migration, because a reader that meets an unknown
+ * `kind` treats the region as empty rather than failing the record.
+ */
+export type RegionOccupantRecord = { kind: 'surface'; id: string };
+
+export interface RegionArrangementRecordRegion {
+  visible: boolean;
+  size: number;
+  occupant: RegionOccupantRecord | null;
+}
+
+export interface RegionArrangementRecord {
+  version: 1;
+  regions: Record<
+    RegionArrangementRecordRegionId,
+    RegionArrangementRecordRegion
+  >;
+}
+
+/**
+ * Byte-for-byte the record of `DEFAULT_DEVICE_REGION_ARRANGEMENT`
+ * (`src-ui/src/regions/region-model.ts`), which a UI test pins
+ * (`region-arrangement-record.test.ts`): the arrangement's default lives in
+ * the UI, this literal is its serialized form for a module that cannot
+ * import it. A device holding exactly this value has never written the
+ * record, and the region model reads it as "no record" so the legacy dock
+ * keys keep governing first run.
+ */
+export const DEFAULT_REGION_ARRANGEMENT_RECORD: RegionArrangementRecord = {
+  version: 1,
+  regions: {
+    main: { visible: true, size: 0, occupant: { kind: 'surface', id: 'home' } },
+    left: { visible: false, size: 400, occupant: null },
+    right: { visible: false, size: 400, occupant: null },
+    bottom: {
+      visible: false,
+      size: 320,
+      occupant: { kind: 'surface', id: 'chat' },
+    },
+  },
+};
+
 export interface DeviceSettings {
   theme: 'light' | 'dark';
   accentColor: string | null;
@@ -227,6 +287,21 @@ export interface DeviceSettings {
    * deletion — never as a side effect of losing track of the active session.
    */
   chatDockProjectSlug: string | null;
+  /**
+   * #928 slice D: which surface occupies which region, with each region's
+   * size and visibility, on this device. Per device on purpose — never per
+   * project or layout (owner decision, docs/design/placement.md).
+   * Precedence at load, highest first: a URL deep link for Chat
+   * (`dockSlotPlacement` places Chat there, relocating an occupant;
+   * `dock=open` shows it) > this record when it differs from the default
+   * (every surface, size and visibility, Chat's included) > the legacy dock
+   * seed (`chatDockHeight`/`chatDockWidth`, `dockSlotPlacement`). Sizes
+   * render from the record. A mount never writes. Validated by
+   * `src-ui/src/regions/region-arrangement-record.ts` on every read — a
+   * malformed value falls back to the legacy dock seed, never a crash.
+   * Never had a prior key: no arrangement record existed before it.
+   */
+  regionArrangement: RegionArrangementRecord;
 }
 
 export interface DeviceSettingDefinition<
@@ -724,6 +799,17 @@ export const DEVICE_SETTINGS_REGISTRY = [
     // archive#4525: new device setting — the dock's project badge previously
     // derived entirely, and unpersisted, from the active chat session.
     defaultValue: null,
+  }),
+  defineDeviceSetting({
+    key: 'regionArrangement',
+    scope: 'device',
+    descriptor: { kind: 'composite' },
+    label: 'Region arrangement',
+    description:
+      "Which surfaces occupy the main, left, right, and bottom regions on this device, with each region's size and visibility.",
+    // #928 slice D: new device setting; the arrangement was previously seeded
+    // from the chat dock's own keys on every load and nothing else survived.
+    defaultValue: DEFAULT_REGION_ARRANGEMENT_RECORD,
   }),
 ] as const satisfies readonly DeviceSettingDefinition[];
 

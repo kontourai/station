@@ -3,7 +3,7 @@
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { createRef, type ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const setDockState = vi.fn();
@@ -20,8 +20,6 @@ vi.mock('../contexts/NavigationContext', () => ({
     isDockMaximized,
     setDockState,
     dockMode,
-    // station#520: `DockOccupantPicker` now reads `pathname` (its onChoose
-    // seam) — a real string so `resolveViewFromPath` doesn't see `undefined`.
     pathname: '/',
   }),
 }));
@@ -38,17 +36,21 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: (id: string) => SHORTCUT_DISPLAY[id] ?? '',
 }));
 
-import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
-import { DockOccupantPicker } from '../workspace-panes/DockOccupantPicker';
+import {
+  ChatDockHeader,
+  type ChatDockWorkspaceControls,
+} from '../components/chat-dock/ChatDockHeader';
 
 function renderHeader({
   fullscreen = false,
   chatIdentity,
   projectContext,
+  workspaceControls,
 }: {
   fullscreen?: boolean;
   chatIdentity?: ReactNode;
   projectContext?: ReactNode;
+  workspaceControls?: ChatDockWorkspaceControls;
 } = {}) {
   return render(
     <ChatDockHeader
@@ -69,6 +71,7 @@ function renderHeader({
       fullscreen={fullscreen}
       regionVisible={isDockOpen}
       shellMaximized={isDockMaximized}
+      workspaceControls={workspaceControls}
     />,
   );
 }
@@ -290,12 +293,26 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
   });
 });
 
-// archive#4460: Chat's header carried no occupant switcher at all — only
-// Home/Activity's `.dock-slot__header` did. `ChatDockHeader` is the SAME
-// component every ambient occupant (Chat included) now renders through, so
-// this is the direct proof that Chat gets the picker too, without needing
-// to mount the full `ChatWorkspacePane` data-fetching stack.
-describe('occupant picker (station#4460)', () => {
+/**
+ * #928 C2b deleted the dock header's occupant picker (the trigger named the
+ * docked pane) with the docked-Home path it switched to. This pins the header's
+ * remaining control set BY ACCESSIBLE NAME, in order, for the open desktop
+ * dock, so a header that loses (or gains, or renames) a control reds here by
+ * name instead of shipping as a quiet chrome regression.
+ *
+ * #1536 F emptied the same row from the other side, and the list carries both
+ * deletions now: the unlabelled chat-settings gear and the bare ⌘D keycap left
+ * with the pane commands that joined them in the More menu, and with no pane
+ * open Chat settings is the only folded command — so it renders as its own
+ * labelled button rather than behind a ⋯ that would open a list of one. What
+ * remains is the placement grab, that one command, and the two region controls.
+ *
+ * Projected as aria-label OR text content, not aria-label alone: an
+ * icon-only control is named by its label and a text control by its text, and
+ * reading only the first scored the labelled text button as `''` — a set with a
+ * hole in it still "matched" as long as the hole stayed the same size.
+ */
+describe('the dock header control set (#928 C2b)', () => {
   beforeEach(() => {
     setDockState.mockClear();
     onNewChat.mockClear();
@@ -306,70 +323,28 @@ describe('occupant picker (station#4460)', () => {
     dockMode = 'bottom';
   });
 
-  test('renders when supplied, naming the current occupant', () => {
-    // archive#4460: `occupantPicker` is a PRE-RENDERED node (built
-    // by the ambient host's lazy chunk), not `{current, onChoose}` data —
-    // this test constructs the real `DockOccupantPicker` element itself,
-    // the same way the host does.
-    render(
-      <ChatDockHeader
-        chatControls={{
-          sessions: [],
-          unreadCount: 0,
-          focusSession: vi.fn(),
-          onNewChat,
-          setShowChatSettings: vi.fn(),
-        }}
-        isDragging={false}
-        onDockSnap={onDockSnap}
-        availableDockSlotPlacements={['left', 'bottom', 'right']}
-        effectiveDockSlotPlacement={dockMode}
-        onDockPlacementChange={vi.fn()}
-        regionVisible={isDockOpen}
-        shellMaximized={isDockMaximized}
-        occupantPicker={
-          <DockOccupantPicker
-            current={{ id: 'pane:builtin:chat', name: 'Chat' } as never}
-            onChoose={vi.fn()}
-            onChooseAsOnlyContent={vi.fn()}
-          />
-        }
-      />,
-    );
+  const controlNames = () =>
+    screen
+      .getAllByRole('button')
+      .map(
+        (button) =>
+          button.getAttribute('aria-label') ?? button.textContent ?? '',
+      );
 
-    expect(
-      screen.getByRole('button', { name: 'Docked pane: Chat' }),
-    ).toBeTruthy();
+  test('an open bottom dock offers exactly these controls, by accessible name', () => {
+    renderHeader();
+    expect(controlNames()).toEqual([
+      'Move the dock',
+      'Chat settings',
+      'Expand dock region to workspace',
+      'Hide dock region',
+    ]);
   });
 
-  test('is absent for the full-screen placement, which has no ambient occupant to switch away from', () => {
-    render(
-      <ChatDockHeader
-        chatControls={{
-          sessions: [],
-          unreadCount: 0,
-          focusSession: vi.fn(),
-          onNewChat,
-          setShowChatSettings: vi.fn(),
-        }}
-        isDragging={false}
-        onDockSnap={onDockSnap}
-        availableDockSlotPlacements={['left', 'bottom', 'right']}
-        effectiveDockSlotPlacement={dockMode}
-        onDockPlacementChange={vi.fn()}
-        regionVisible={isDockOpen}
-        shellMaximized={isDockMaximized}
-        fullscreen
-        occupantPicker={
-          <DockOccupantPicker
-            current={{ id: 'pane:builtin:chat', name: 'Chat' } as never}
-            onChoose={vi.fn()}
-            onChooseAsOnlyContent={vi.fn()}
-          />
-        }
-      />,
-    );
-
-    expect(screen.queryByRole('button', { name: /^Docked pane:/ })).toBeNull();
-  });
+  /**
+   * The open-pane half of this set — the ⋯ replacing that single command, plus
+   * the pane's Open/New pair — lives in
+   * `ChatDockHeaderWorkspaceControls.test.tsx`, whose harness already mocks what
+   * the lazily loaded Open/New pair needs.
+   */
 });

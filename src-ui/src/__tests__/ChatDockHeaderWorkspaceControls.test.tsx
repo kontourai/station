@@ -396,6 +396,42 @@ describe('one-bar rule (#3309)', () => {
     ).toBe('false');
   });
 
+  /**
+   * The open-pane half of #928 C2b's control-set pin (the collapsed half is in
+   * `ChatDockHeaderCollapse.test.tsx`). Two deletions meet in this row —
+   * C2b's occupant picker and #1536 F's gear plus two keycaps — and "one
+   * control per state" is what five buttons were traded for, so the set is
+   * pinned by accessible name rather than left to be eroded a control at a time.
+   *
+   * aria-label OR text content: an icon-only control is named by its label and a
+   * text control by its text.
+   */
+  test('an open pane offers exactly these controls, by accessible name', async () => {
+    renderHeader({ workspaceControls: workspaceControls() });
+    await screen.findByTitle('Open Conversation');
+
+    expect(
+      screen
+        .getAllByRole('button')
+        .map(
+          (button) =>
+            button.getAttribute('aria-label') ?? button.textContent ?? '',
+        ),
+    ).toEqual([
+      'Move the dock',
+      // Open/New are labelled by their visible text; their chords are in the
+      // tooltips ("Open Conversation", "New Chat"), which is where every
+      // shortcut in this bar lives since #1536 F retired the keycap spans.
+      'Open',
+      'New',
+      'More dock actions',
+      'Expand dock region to workspace',
+      'Hide dock region',
+    ]);
+    // The gear is a row of that one menu now, not a control of its own.
+    expect(screen.queryByRole('button', { name: 'Chat settings' })).toBeNull();
+  });
+
   test('renders the context meter beside identity when supplied', () => {
     renderHeader({
       contextMeter: <span data-testid="meter">42%</span>,
