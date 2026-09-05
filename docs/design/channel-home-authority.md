@@ -108,8 +108,15 @@ its provider callback runs. Binding cannot be changed to another room or added
 to a session with an active unbound invocation. This is an association, not a
 second execution ledger or a grant inferred from session metadata.
 
-Automatic binding at Task dispatch and durable admission for session creation
-are not yet connected. Existing or unbound sessions therefore remain an
+Session creation now uses the same durable boundary owner with a distinct
+start claim and no invented provider turn ID. Production interactive starts,
+credential-recovery starts and lazy materialization acquire it at adapter
+invocation, after resource and launch-policy checks. Confirmed startup clears
+the claim; an ambiguous adapter failure retains possible-effect truth and
+reports an indeterminate, non-retryable outcome. The resulting diagnostic
+`runtime.error` does not clear that record, either live or during replay.
+
+Automatic binding at Task dispatch is not yet connected. Existing or unbound sessions therefore remain an
 explicit missing integration; a future move caller must not claim full source
 quiescence from the private room seal alone. Lifecycle cleanup remains allowed
 after a seal so the old source can stop idle sessions.

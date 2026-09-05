@@ -767,6 +767,38 @@ describe('OrchestrationService', () => {
     receiptBus.resetForTest();
   });
 
+  test('retains a possibly completed adapter start and refuses a duplicate provider call', async () => {
+    claude.startSession.mockRejectedValueOnce(
+      new Error('response lost after provider invocation'),
+    );
+    const command = {
+      type: 'start-session' as const,
+      input: {
+        threadId: 'uncertain-provider-start',
+        provider: 'claude' as const,
+      },
+    };
+    const result = await service.sessionCommands.execute(command, {
+      userId: 'owner-user',
+    });
+    expect(result).toMatchObject({
+      status: 'indeterminate',
+      receiptStatus: 'unavailable',
+    });
+    expect(
+      eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect(command.input.threadId),
+    ).toEqual({ kind: 'available', active: true });
+    expect(eventStore.readCommandReceipt(result.receipt.commandId)).toBeNull();
+    expect(claude.startSession).toHaveBeenCalledTimes(1);
+    const retry = await service.sessionCommands.execute(command, {
+      userId: 'owner-user',
+    });
+    expect(retry.status).not.toBe('accepted');
+    expect(claude.startSession).toHaveBeenCalledTimes(1);
+  });
+
   test('starts a session through the closed SessionCommandModule with its durable receipt', async () => {
     const outcome = await service.sessionCommands.execute(
       {
@@ -785,6 +817,11 @@ describe('OrchestrationService', () => {
     expect(eventStore.readCommandReceipt(outcome.receipt.commandId)).toEqual(
       outcome.receipt,
     );
+    expect(
+      eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect('module-start'),
+    ).toEqual({ kind: 'available', active: false });
   });
 
   /**
@@ -18495,10 +18532,15 @@ describe('OrchestrationService', () => {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]).toMatchObject({
       severity: 'error',
-      code: 'session_recovery_failed',
-      retriable: true,
-      message: 'This conversation could not be reopened: resume failed',
+      code: 'SESSION_START_INDETERMINATE',
+      retriable: false,
+      message: expect.stringContaining('resume failed'),
     });
+    expect(
+      eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect('thread-closed'),
+    ).toEqual({ kind: 'available', active: true });
   });
 
   test('recovery re-settles a project-bound session that was persisted without a cwd (#1011)', async () => {

@@ -287,7 +287,11 @@ import {
 } from './session-query-module.js';
 import { SessionRecoveryCoordinator } from './session-recovery-coordinator.js';
 import { SessionTranscriptReads } from './session-transcript-reads.js';
-import { createInMemorySessionTurnBoundaryAuthority } from './session-turn-boundary.js';
+import {
+  createInMemorySessionTurnBoundaryAuthority,
+  runSessionStartWithBoundary,
+  type SessionTurnBoundaryAuthority,
+} from './session-turn-boundary.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
@@ -1029,6 +1033,7 @@ export class OrchestrationService {
   readonly sessionLifecycles: SessionLifecycleModule;
   private usageTelemetry?: UsageTelemetryObserver;
   private readonly sessionExecutionCoordinator: SessionExecutionCoordinator;
+  private readonly sessionStartBoundaries: SessionTurnBoundaryAuthority;
   /** Private native-output authority; no public Session/Thread API exposes it. */
   private readonly nativeOutputGrants = createNativeOutputGrantAuthority();
   /** Pending opaque handles; durable admission occurs only at terminal append. */
@@ -1343,9 +1348,11 @@ export class OrchestrationService {
           payload,
         ),
     });
-    this.sessionExecutionCoordinator = new SessionExecutionCoordinator(
+    this.sessionStartBoundaries =
       options.eventStore?.sessionTurnBoundaryAuthority() ??
-        createInMemorySessionTurnBoundaryAuthority(),
+      createInMemorySessionTurnBoundaryAuthority();
+    this.sessionExecutionCoordinator = new SessionExecutionCoordinator(
+      this.sessionStartBoundaries,
     );
     this.turnDeduplicator =
       options.turnDeduplicator ?? options.eventStore?.createTurnDeduplicator();
@@ -2193,7 +2200,11 @@ export class OrchestrationService {
       let session: ProviderSession;
       try {
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
-          adapter.startSession(startInput),
+          runSessionStartWithBoundary(
+            this.sessionStartBoundaries,
+            startInput.threadId,
+            () => adapter.startSession(startInput),
+          ),
         );
       } finally {
         admissionLease?.release();
@@ -3928,7 +3939,11 @@ export class OrchestrationService {
           try {
             const invoke = () =>
               withTenantExecutionContext(context.tenantExecutionContext, () =>
-                adapter.startSession(input),
+                runSessionStartWithBoundary(
+                  this.sessionStartBoundaries,
+                  input.threadId,
+                  () => adapter.startSession(input),
+                ),
               );
             session = await (internal?.foregroundInvocationAdmission
               ? internal.foregroundInvocationAdmission.invoke(
@@ -6529,6 +6544,12 @@ export class OrchestrationService {
    */
   private recoveredSessionStartOptions(): RecoveredSessionStartOptions {
     return {
+      invokeSessionStart: (threadId, invoke) =>
+        runSessionStartWithBoundary(
+          this.sessionStartBoundaries,
+          threadId,
+          invoke,
+        ),
       eventStore: this.options.eventStore,
       assertAdapterReady: (adapter, connectionId) =>
         this.assertAdapterReady(adapter, connectionId),

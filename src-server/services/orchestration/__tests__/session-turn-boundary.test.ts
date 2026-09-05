@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { EventStore } from '../event-store.js';
 import {
   createSessionTurnBoundaryAuthority,
+  SESSION_START_INDETERMINATE_CODE,
   SESSION_TURN_ACCEPTED_CAPACITY,
   type SessionTurnBoundaryCoordinator,
   type SessionTurnBoundaryRecord,
@@ -37,6 +38,116 @@ describe('SessionTurnBoundaryAuthority', () => {
     roots.push(root);
     return join(root, 'orchestration.sqlite');
   }
+
+  test('session creation settles without inventing a provider turn and cannot reopen after settlement', () => {
+    const store = new EventStore(databasePath());
+    try {
+      const authority = store.sessionTurnBoundaryAuthority();
+      const prepared = authority.claimSessionStart(
+        'new-session',
+        '2026-09-05T00:00:00.000Z',
+      );
+      if (prepared.kind !== 'owner')
+        throw new Error('Expected start admission');
+      expect(prepared.claim.started()).toEqual({ kind: 'stale' });
+      expect(
+        authority.claim('new-session', '2026-09-05T00:00:00.000Z'),
+      ).toEqual({ kind: 'busy' });
+      expect(
+        prepared.claim.beginInvocation('2026-09-05T00:00:01.000Z'),
+      ).toEqual({ kind: 'applied' });
+      expect(prepared.claim.notInvoked()).toEqual({ kind: 'stale' });
+      expect(authority.hasPossibleEffect('new-session')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+      expect(prepared.claim.started()).toEqual({ kind: 'applied' });
+      expect(prepared.claim.started()).toEqual({ kind: 'applied' });
+      expect(
+        prepared.claim.beginInvocation('2026-09-05T00:00:02.000Z'),
+      ).toEqual({ kind: 'stale' });
+      expect(prepared.claim.indeterminate('2026-09-05T00:00:02.000Z')).toEqual({
+        kind: 'stale',
+      });
+      expect(authority.hasPossibleEffect('new-session')).toEqual({
+        kind: 'available',
+        active: false,
+      });
+      const unused = authority.claimSessionStart(
+        'never-invoked',
+        '2026-09-05T00:00:00.000Z',
+      );
+      if (unused.kind !== 'owner') throw new Error('Expected unused admission');
+      expect(unused.claim.notInvoked()).toEqual({ kind: 'applied' });
+      expect(unused.claim.beginInvocation('2026-09-05T00:00:01.000Z')).toEqual({
+        kind: 'stale',
+      });
+    } finally {
+      expect(store.close()).toEqual({ kind: 'closed' });
+    }
+  });
+
+  test('uncertain session creation remains protected across restart until exact session terminal evidence', () => {
+    const path = databasePath();
+    const first = new EventStore(path);
+    const claimed = first
+      .sessionTurnBoundaryAuthority()
+      .claimSessionStart('uncertain-start', '2026-09-05T00:00:00.000Z');
+    if (claimed.kind !== 'owner') throw new Error('Expected start admission');
+    expect(claimed.claim.beginInvocation('2026-09-05T00:00:01.000Z')).toEqual({
+      kind: 'applied',
+    });
+    const diagnostic: CanonicalRuntimeEvent = {
+      eventId: 'uncertain-start-diagnostic',
+      provider: 'claude',
+      threadId: 'uncertain-start',
+      method: 'runtime.error',
+      createdAt: '2026-09-05T00:00:02.000Z',
+      severity: 'error',
+      code: SESSION_START_INDETERMINATE_CODE,
+      retriable: false,
+      message: 'Start outcome is unresolved',
+    };
+    first.appendEvent(diagnostic);
+    expect(first.sessionTurnBoundaryAuthority().observe(diagnostic)).toEqual({
+      kind: 'applied',
+    });
+    expect(
+      first.sessionTurnBoundaryAuthority().hasPossibleEffect('uncertain-start'),
+    ).toEqual({ kind: 'available', active: true });
+    expect(first.close()).toEqual({ kind: 'closed' });
+    const restarted = new EventStore(path);
+    try {
+      const authority = restarted.sessionTurnBoundaryAuthority();
+      expect(authority.hasPossibleEffect('uncertain-start')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+      expect(
+        authority.claimSessionStart(
+          'uncertain-start',
+          '2026-09-05T00:05:00.000Z',
+        ),
+      ).toEqual({ kind: 'busy' });
+      expect(
+        authority.observe({
+          eventId: 'terminal:uncertain-start',
+          provider: 'claude',
+          threadId: 'uncertain-start',
+          sessionId: 'uncertain-start',
+          method: 'session.exited',
+          createdAt: '2026-09-05T00:05:01.000Z',
+          exitCode: 0,
+        }),
+      ).toEqual({ kind: 'applied' });
+      expect(authority.hasPossibleEffect('uncertain-start')).toEqual({
+        kind: 'available',
+        active: false,
+      });
+    } finally {
+      expect(restarted.close()).toEqual({ kind: 'closed' });
+    }
+  });
 
   test('reconciles a dead invoking owner to indeterminate and never replays it after restart', () => {
     const path = databasePath();

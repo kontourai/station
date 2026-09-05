@@ -12,6 +12,7 @@ import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
 import type { RuntimeEngineStartIntent } from '../infra/resource-posture.js';
 import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
+import { SessionStartIndeterminateError } from './session-turn-boundary.js';
 
 /** The only start-session intent callers may issue. */
 export type SessionCommand = {
@@ -40,12 +41,13 @@ export type SessionCommandOutcome =
       code?: string;
     }
   | {
-      /** Session effects completed, but accepted-receipt durability is unknown. */
+      /** Provider creation or accepted-receipt durability is uncertain. */
       status: 'indeterminate';
       receipt: OrchestrationCommandReceipt;
       receiptStatus: 'unavailable';
-      session: ProviderSession;
+      session?: ProviderSession;
       message: string;
+      code?: string;
     };
 
 /** Closed, total command Interface shared by routes, tools, and tests. */
@@ -489,6 +491,14 @@ export function createSessionCommandModule(
         deps.sessionState.releaseStart(input.threadId);
       }
     } catch (error) {
+      if (error instanceof SessionStartIndeterminateError)
+        return {
+          status: 'indeterminate',
+          receipt,
+          receiptStatus: 'unavailable',
+          message: error.message,
+          code: error.code,
+        };
       return fail(error, deps.isRejectedError(error));
     }
   };

@@ -213,6 +213,7 @@ import type {
 import {
   createSessionTurnBoundaryAuthority,
   releaseSessionTurnBoundaryOwner,
+  SESSION_START_INDETERMINATE_CODE,
   SESSION_TURN_ACCEPTED_CAPACITY,
   type SessionTurnBoundaryAuthority,
   type SessionTurnBoundaryCoordinator,
@@ -8584,7 +8585,8 @@ export class EventStore {
                  AND event.created_at >= orchestration_turn_boundaries.created_at
                  AND (
                    event.method = 'session.exited'
-                   OR (event.method = 'runtime.error' AND event.turn_id IS NULL)
+                   OR (event.method = 'runtime.error' AND event.turn_id IS NULL
+                       AND COALESCE(json_extract(event.payload, '$.code'), '') != ?)
                    OR (
                      orchestration_turn_boundaries.state = 'accepted'
                      AND event.turn_id = orchestration_turn_boundaries.provider_turn_id
@@ -8593,7 +8595,11 @@ export class EventStore {
                  )
             )`,
       )
-      .run(threadId ?? null, threadId ?? null);
+      .run(
+        threadId ?? null,
+        threadId ?? null,
+        SESSION_START_INDETERMINATE_CODE,
+      );
   }
 
   /** Deliberate composition seam; SQLite coordination stays private. */

@@ -21,6 +21,7 @@ import {
 } from '../project-task-room-history.js';
 import { createProjectTaskRoomWorkingState } from '../project-task-room-working-state.js';
 import { SessionExecutionCoordinator } from '../session-execution-coordinator.js';
+import { runSessionStartWithBoundary } from '../session-turn-boundary.js';
 
 const TEST_RETENTION = 16;
 function sortJson(value: unknown): unknown {
@@ -1655,6 +1656,12 @@ it('source closure joins durable provider admission and refuses a new bound turn
         invoked = true;
       }),
     ).rejects.toThrow('coordination is temporarily unavailable');
+    expect(invoked).toBe(false);
+    await expect(
+      runSessionStartWithBoundary(authority, binding.sessionId, async () => {
+        invoked = true;
+      }),
+    ).rejects.toThrow('no provider call was made');
     expect(invoked).toBe(false);
     // The immutable association is readable, but cannot admit another session.
     expect(events.bindProjectTaskRoomExecution(binding)).toEqual({
