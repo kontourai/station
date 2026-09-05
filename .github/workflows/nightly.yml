@@ -141,7 +141,7 @@ jobs:
     needs: [test-gate, full-regression]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-22.04
-    permissions: { contents: write, id-token: write }
+    permissions: { contents: write, id-token: write, actions: read }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -170,11 +170,15 @@ jobs:
         name: Build exact-SHA CLI nightly identity
         if: steps.cli_source_decide.outputs.build == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           STATION_CLI_BUILD_CHANNEL: nightly
           STATION_CLI_SOURCE_SHA: ${{ needs.test-gate.outputs.source_sha }}
         run: |
           npm run dependencies:ci
-          version=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; import {nightlyVersion} from "./scripts/lib/nightly-build-identity.mjs"; process.stdout.write(nightlyVersion(JSON.parse(readFileSync("packages/cli/package.json")).version,new Date()))')
+          # Run creation time is immutable across reruns, including midnight.
+          export NIGHTLY_RUN_CREATED_AT
+          NIGHTLY_RUN_CREATED_AT=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq '.created_at')
+          version=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; import {nightlyCliVersion} from "./scripts/lib/nightly-build-identity.mjs"; process.stdout.write(nightlyCliVersion(JSON.parse(readFileSync("packages/cli/package.json")).version,new Date(process.env.NIGHTLY_RUN_CREATED_AT),process.env.GITHUB_RUN_ID))')
           (cd packages/cli && npm version "$version" --no-git-tag-version --allow-same-version)
           npm run build:cli
           echo "version=$version" >> "$GITHUB_OUTPUT"

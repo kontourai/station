@@ -285,6 +285,25 @@ export function nightlyVersion(packageVersion, date, build = 0) {
     : `${packageVersion}-nightly.${day}.${build}`;
 }
 
+/**
+ * npm versions are immutable. A day-only CLI identity collides when a repair
+ * ships another source on the same day (including runs crossing midnight).
+ * GitHub's immutable run ID separates publications without depending on the
+ * native reservation job; run attempts deliberately retain the same identity.
+ */
+export function nightlyCliVersion(packageVersion, date, runId) {
+  if (
+    typeof runId !== 'string' ||
+    !/^[1-9]\d*$/.test(runId) ||
+    !Number.isSafeInteger(Number(runId))
+  ) {
+    throw new Error(
+      'nightly CLI identity requires a positive safe GitHub run ID',
+    );
+  }
+  return `${nightlyVersion(packageVersion, date)}.${runId}`;
+}
+
 /** A distinct application, not a variant of the production one. */
 export function nightlyIdentifier(productionIdentifier) {
   if (
