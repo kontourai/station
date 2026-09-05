@@ -1,3 +1,5 @@
+import { createLocalPluginInstallationHost } from '../../services/plugins/plugin-installation-local.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 /**
  * VoltAgent runtime integration for Station
  * Handles dynamic agent loading, switching, and MCP tool management
@@ -5,7 +7,7 @@
 
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   type EngineConnectionId,
@@ -362,6 +364,7 @@ type PersistedAgentReloadTarget =
   | { kind: 'managed'; metadata: any; spec: AgentSpec };
 
 export interface StationRuntimeOptions {
+  pluginInstallationHost?: PluginInstallationHost;
   projectHomeDir?: string;
   port?: number;
   host?: string;
@@ -379,6 +382,7 @@ export interface StationRuntimeOptions {
  * Manages VoltAgent instances with dynamic agent loading
  */
 export class StationRuntime {
+  private readonly pluginInstallationHost: PluginInstallationHost;
   private configLoader: ConfigLoader;
   private appConfig!: AppConfig;
   private logger: Logger;
@@ -917,6 +921,12 @@ export class StationRuntime {
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
       );
+      this.pluginInstallationHost =
+        options.pluginInstallationHost ??
+        createLocalPluginInstallationHost(
+          join(projectHomeDir, 'plugins'),
+          this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
+        );
       this.operationalEventPublisher =
         this.orchestrationEventStore.createOperationalEventPublisher({
           appended: ({ journalSequence, event }) => {
@@ -2775,6 +2785,11 @@ export class StationRuntime {
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
     this.stationEnvironmentId = identity.environmentId;
+    const packageProjections = await this.pluginInstallationHost.reconcile();
+    if (packageProjections.status === 'pending')
+      this.logger.warn('Plugin catalog projection remains pending', {
+        plugins: packageProjections.pending,
+      });
     await this.sshEnvironmentService.initialize();
     // Terminal sessions are process-global and have no durable tenant
     // binding. A hosted tenant-isolated runtime must not bind the separate
@@ -3319,6 +3334,7 @@ export class StationRuntime {
       orchestrationService: this.orchestrationService,
       resourcePosture: this.resourcePosture,
       orchestrationEventStore: this.orchestrationEventStore,
+      pluginInstallationHost: this.pluginInstallationHost,
       pluginOperationalEventSubscriptions:
         this.pluginOperationalEventSubscriptions,
       orchestrationStreamPresence: this.orchestrationStreamPresence,

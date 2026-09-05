@@ -4,6 +4,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   realpathSync,
@@ -12,11 +13,33 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const WINDOWS_DEVICE_STEM = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
+export function localPluginStorageKey(pluginId: string): string {
+  if (!isCanonicalPluginId(pluginId))
+    throw new PluginIncarnationError('unsafe-pointer');
+  return `plugin-${pluginId}`;
+}
+function selectionAlias(parent: string, pluginId: string): string {
+  return WINDOWS_DEVICE_STEM.test(pluginId)
+    ? join(parent, '.selected', localPluginStorageKey(pluginId))
+    : join(parent, pluginId);
+}
+export function localManagedPluginAliases(pluginsDir: string): string[] {
+  const root = join(realpathSync(pluginsDir), '.selected');
+  if (!existsSync(root)) return [];
+  directory(root);
+  return readdirSync(root, { withFileTypes: true })
+    .filter(
+      (entry) => entry.isSymbolicLink() && entry.name.startsWith('plugin-'),
+    )
+    .map((entry) => entry.name.slice(7))
+    .filter((id) => isCanonicalPluginId(id) && WINDOWS_DEVICE_STEM.test(id));
+}
 export interface InstalledPluginRoot {
   readonly kind: 'legacy' | 'incarnation';
   readonly packageRoot: string;
@@ -58,12 +81,29 @@ export function resolveInstalledPluginRoot(
   if (!isCanonicalPluginId(pluginId))
     throw new PluginIncarnationError('unsafe-pointer');
   const parent = realpathSync(pluginsDir);
-  const alias = join(parent, pluginId);
+  const alias = selectionAlias(parent, pluginId);
+  if (dirname(alias) !== parent && existsSync(dirname(alias)))
+    directory(dirname(alias));
   let stat: ReturnType<typeof lstatSync>;
   try {
     stat = lstatSync(alias);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (dirname(alias) !== parent && process.platform !== 'win32') {
+        const legacy = join(parent, pluginId);
+        if (existsSync(legacy)) {
+          directory(legacy);
+          return Object.freeze({
+            kind: 'legacy',
+            packageRoot: legacy,
+            generation: null,
+            dataRoot: null,
+            dataScope: null,
+          });
+        }
+      }
+      return null;
+    }
     throw error;
   }
   if (!stat.isSymbolicLink()) {
@@ -82,48 +122,15 @@ export function resolveInstalledPluginRoot(
   if (
     parts.length !== 4 ||
     parts[0] !== '.generations' ||
-    parts[1] !== pluginId ||
+    parts[1] !== localPluginStorageKey(pluginId) ||
     !UUID.test(parts[2]!) ||
     parts[3] !== 'package'
   )
     throw new PluginIncarnationError('unsafe-pointer');
-  let path = parent;
-  for (const part of parts) {
-    path = join(path, part);
-    directory(path);
-  }
-  const dataIdentityFile = join(
-    parent,
-    '.generations',
-    pluginId,
-    parts[2]!,
-    'data-scope',
-  );
-  const dataIdentityStat = lstatSync(dataIdentityFile);
-  if (
-    !dataIdentityStat.isFile() ||
-    dataIdentityStat.isSymbolicLink() ||
-    dataIdentityStat.size !== 36
-  )
-    throw new PluginIncarnationError('unsafe-pointer');
-  const dataScope = readFileSync(dataIdentityFile, 'utf8');
-  if (!UUID.test(dataScope)) throw new PluginIncarnationError('unsafe-pointer');
-  const dataRoot = join(parent, '.data', pluginId, dataScope);
-  for (const path of [
-    join(parent, '.data'),
-    join(parent, '.data', pluginId),
-    dataRoot,
-  ])
-    directory(path);
+  const captured = resolvePluginMaterialization(parent, pluginId, parts[2]!);
   if (readlinkSync(alias) !== target || realpathSync(alias) !== physical)
     throw new PluginIncarnationError('unsafe-pointer');
-  return Object.freeze({
-    kind: 'incarnation',
-    packageRoot: physical,
-    generation: parts[2]!,
-    dataRoot,
-    dataScope,
-  });
+  return captured;
 }
 
 export function pluginIncarnationIsCurrent(
@@ -158,20 +165,30 @@ export function preparePluginIncarnation(
   const parent = realpathSync(pluginsDir);
   for (const path of [
     join(parent, '.generations'),
-    join(parent, '.generations', pluginId),
+    join(parent, '.generations', localPluginStorageKey(pluginId)),
   ]) {
     if (!existsSync(path)) mkdirSync(path, { mode: 0o700 });
     directory(path);
   }
   const generation = randomUUID();
-  const root = join(parent, '.generations', pluginId, generation);
+  const root = join(
+    parent,
+    '.generations',
+    localPluginStorageKey(pluginId),
+    generation,
+  );
   mkdirSync(root, { mode: 0o700 });
   const packageRoot = join(root, 'package');
   if (!UUID.test(dataScope)) throw new PluginIncarnationError('unsafe-pointer');
-  const dataRoot = join(parent, '.data', pluginId, dataScope);
+  const dataRoot = join(
+    parent,
+    '.data',
+    localPluginStorageKey(pluginId),
+    dataScope,
+  );
   for (const path of [
     join(parent, '.data'),
-    join(parent, '.data', pluginId),
+    join(parent, '.data', localPluginStorageKey(pluginId)),
     dataRoot,
   ])
     directory(path);
@@ -202,7 +219,7 @@ export function publishPluginIncarnation(
   const current = resolveInstalledPluginRoot(parent, pluginId);
   if (current?.kind === 'legacy' || (target && target.kind !== 'incarnation'))
     throw new PluginIncarnationError('migration-required');
-  const alias = join(parent, pluginId);
+  const alias = selectionAlias(parent, pluginId);
   if (!target) {
     if (current) unlinkSync(alias);
     return;
@@ -212,7 +229,7 @@ export function publishPluginIncarnation(
   const expected = join(
     parent,
     '.generations',
-    pluginId,
+    localPluginStorageKey(pluginId),
     target.generation!,
     'package',
   );
@@ -220,20 +237,29 @@ export function publishPluginIncarnation(
     resolve(target.packageRoot) !== expected ||
     !UUID.test(target.generation ?? '') ||
     !UUID.test(target.dataScope ?? '') ||
-    target.dataRoot !== join(parent, '.data', pluginId, target.dataScope!)
+    target.dataRoot !==
+      join(parent, '.data', localPluginStorageKey(pluginId), target.dataScope!)
   )
     throw new PluginIncarnationError('unsafe-pointer');
   for (const path of [
     join(parent, '.generations'),
-    join(parent, '.generations', pluginId),
-    join(parent, '.generations', pluginId, target.generation!),
+    join(parent, '.generations', localPluginStorageKey(pluginId)),
+    join(
+      parent,
+      '.generations',
+      localPluginStorageKey(pluginId),
+      target.generation!,
+    ),
     expected,
     join(parent, '.data'),
-    join(parent, '.data', pluginId),
+    join(parent, '.data', localPluginStorageKey(pluginId)),
     target.dataRoot!,
   ])
     directory(path);
-  const temporary = join(parent, `.pointer-${randomUUID()}`);
+  const aliasDirectory = dirname(alias);
+  if (!existsSync(aliasDirectory)) mkdirSync(aliasDirectory, { mode: 0o700 });
+  directory(aliasDirectory);
+  const temporary = join(aliasDirectory, `.pointer-${randomUUID()}`);
   symlinkSync(
     expected,
     temporary,
@@ -273,15 +299,81 @@ export function prepareLocalPluginDataScope(
   )
     throw new PluginIncarnationError('unsafe-pointer');
   const parent = realpathSync(pluginsDir);
-  for (const path of [join(parent, '.data'), join(parent, '.data', pluginId)]) {
+  for (const path of [
+    join(parent, '.data'),
+    join(parent, '.data', localPluginStorageKey(pluginId)),
+  ]) {
     if (!existsSync(path)) mkdirSync(path, { mode: 0o700 });
     directory(path);
   }
   if (choice === 'preserve' && previous) {
-    directory(join(parent, '.data', pluginId, previous));
+    directory(join(parent, '.data', localPluginStorageKey(pluginId), previous));
     return previous;
   }
   const scope = randomUUID();
-  mkdirSync(join(parent, '.data', pluginId, scope), { mode: 0o700 });
+  mkdirSync(join(parent, '.data', localPluginStorageKey(pluginId), scope), {
+    mode: 0o700,
+  });
   return scope;
+}
+
+export function resolvePluginMaterialization(
+  pluginsDir: string,
+  pluginId: string,
+  generation: string,
+): InstalledPluginRoot {
+  if (!isCanonicalPluginId(pluginId) || !UUID.test(generation))
+    throw new PluginIncarnationError('unsafe-pointer');
+  const parent = realpathSync(pluginsDir);
+  let path = parent;
+  for (const part of [
+    '.generations',
+    localPluginStorageKey(pluginId),
+    generation,
+    'package',
+  ]) {
+    path = join(path, part);
+    directory(path);
+  }
+  const dataIdentityFile = join(
+    parent,
+    '.generations',
+    localPluginStorageKey(pluginId),
+    generation,
+    'data-scope',
+  );
+  const dataIdentityStat = lstatSync(dataIdentityFile);
+  if (
+    !dataIdentityStat.isFile() ||
+    dataIdentityStat.isSymbolicLink() ||
+    dataIdentityStat.size !== 36
+  )
+    throw new PluginIncarnationError('unsafe-pointer');
+  const dataScope = readFileSync(dataIdentityFile, 'utf8');
+  if (!UUID.test(dataScope)) throw new PluginIncarnationError('unsafe-pointer');
+  const dataRoot = join(
+    parent,
+    '.data',
+    localPluginStorageKey(pluginId),
+    dataScope,
+  );
+  for (const path of [
+    join(parent, '.data'),
+    join(parent, '.data', localPluginStorageKey(pluginId)),
+    dataRoot,
+  ])
+    directory(path);
+  return Object.freeze({
+    kind: 'incarnation',
+    packageRoot: join(
+      parent,
+      '.generations',
+      localPluginStorageKey(pluginId),
+      generation,
+      'package',
+    ),
+    generation,
+    dataRoot,
+    dataScope,
+  });
 }

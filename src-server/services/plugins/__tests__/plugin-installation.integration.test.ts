@@ -16,8 +16,11 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
+import { Client } from '@modelcontextprotocol/client';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { ConfigLoader } from '../../../domain/config-loader.js';
+import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
 import {
   installPluginFromSource,
   uninstallInstalledPlugin,
@@ -26,15 +29,20 @@ import { registerPluginLifecycleRoutes } from '../../../routes/plugins/plugin-li
 import { installPluginDependency } from '../../../routes/plugins/plugin-source.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { AgentPluginLoader } from '../agent-plugin-loader.js';
+import { MCPService } from '../mcp-service.js';
 import { computePluginContentDigest } from '../plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from '../plugin-incarnation.js';
+import { derivePluginConsentBasis } from '../plugin-install-consent.js';
 import {
   createLocalPluginInstallationService,
   localPluginDataScopes,
   localPluginInstallationState,
   localPluginMaterializations,
+  reconcileLocalPluginInstallations,
 } from '../plugin-installation-local.js';
+import type { PluginInstallationHost } from '../plugin-installation-service.js';
 import { PluginInstallationService } from '../plugin-installation-service.js';
+import { readPluginManifestFile } from '../plugin-manifest-loader.js';
 
 const homes: string[] = [],
   stores: EventStore[] = [],
@@ -52,6 +60,7 @@ afterEach(async () => {
   for (const store of stores.splice(0)) store.close();
   for (const home of homes.splice(0))
     rmSync(home, { recursive: true, force: true });
+  vi.restoreAllMocks();
 });
 function fixture() {
   const home = mkdtempSync(join(tmpdir(), 'station-incarnation-'));
@@ -240,6 +249,118 @@ test('separate-process async service uses opaque CAS revisions, retains old data
   );
 });
 
+test('the actual install route injects a transport-backed host that receives artifact bytes and owns selection', async () => {
+  const f = fixture();
+  const remote = await peer(f.home, join(f.home, 'no-shared-source-path'));
+  const payloads: string[] = [];
+  const request = async (operation: string, input: unknown) => {
+    payloads.push(JSON.stringify({ operation, input }));
+    return remote(operation, input);
+  };
+  const host: PluginInstallationHost = {
+    async service(artifact) {
+      if (artifact) {
+        const entries = [];
+        for await (const entry of artifact.readEntries())
+          entries.push(
+            entry.kind === 'file'
+              ? { ...entry, bytes: Buffer.from(entry.bytes).toString('base64') }
+              : entry,
+          );
+        expect(
+          await request('artifact', { digest: artifact.digest, entries }),
+        ).toEqual({ digest: artifact.digest });
+      }
+      return {
+        inspect: (id) => request('inspect', id),
+        install: (input) => request('install', input),
+        withdraw: (revision) => request('withdraw', revision),
+        reconcile: (id) => request('reconcile', id),
+      };
+    },
+    reconcile: () => request('reconcile-all', null),
+  };
+  const app = new Hono();
+  registerPluginInstallRoutes(app, {
+    ...f.deps,
+    packageMcpJournal: undefined,
+    installationHost: host,
+  });
+  const basis = derivePluginConsentBasis(
+    f.source,
+    await readPluginManifestFile(join(f.source, 'plugin.json')),
+  )!;
+  const response = await app.request('/install', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      source: f.source,
+      consent: {
+        permissions: basis.required,
+        contentDigest: basis.contentDigest,
+        dependencies: basis.dependencies,
+      },
+    }),
+  });
+  const result = (await response.json()) as {
+    lifecycle: { selected: { artifact: { digest: string } } };
+  };
+  expect(result).toMatchObject({ success: true, plugin: { name: 'fixture' } });
+  expect(result.lifecycle.selected.artifact.digest).toBe(f.digest());
+  const installed = new AgentPluginLoader({
+    projectHomeDir: f.home,
+    journal: () => f.journal,
+  }).listInstalled()[0]!;
+  expect(readFileSync(installed.skills[0]!.manifestPath, 'utf8')).toContain(
+    'Source generation one',
+  );
+  expect(payloads.join('\n')).not.toContain(f.home);
+  expect(
+    payloads.some((payload) => payload.includes('"operation":"artifact"')),
+  ).toBe(true);
+});
+
+test.each(['con', 'nul', 'com1', 'con.foo'])(
+  'logical name %s uses a safe local key without narrowing the package grammar',
+  async (name) => {
+    const f = fixture();
+    writeFileSync(
+      join(f.source, 'plugin.json'),
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name,
+        version: '1.0.0',
+      }),
+    );
+    await installPluginFromSource(f.source, [], f.deps);
+    const installed = resolveInstalledPluginRoot(f.plugins, name)!;
+    expect(installed.packageRoot).toContain(`plugin-${name}`);
+    expect(installed.dataRoot).toContain(`plugin-${name}`);
+    expect(
+      new AgentPluginLoader({
+        projectHomeDir: f.home,
+        journal: () => f.journal,
+      })
+        .listInstalled()
+        .map((plugin) => plugin.manifest.name),
+    ).toEqual([name]);
+    const app = new Hono();
+    registerPluginInstallRoutes(app, f.deps);
+    registerPluginLifecycleRoutes(app, f.deps);
+    const listed = (await (await app.request('/')).json()) as {
+      plugins: unknown[];
+    };
+    expect(listed.plugins).toMatchObject([{ name, retainedOnRemoval: true }]);
+    const response = await app.request(`/${name}`, { method: 'DELETE' });
+    const removed = await response.json();
+    expect(removed, JSON.stringify(removed)).toMatchObject({
+      success: true,
+      lifecycle: { reclamation: 'not-proven' },
+    });
+    expect(existsSync(installed.packageRoot)).toBe(true);
+  },
+);
+
 test('the Update route installs a new code generation from its source and keeps the exact data scope', async () => {
   const f = fixture();
   const git = (...args: string[]) =>
@@ -284,7 +405,7 @@ test('the Update route installs a new code generation from its source and keeps 
   registerPluginLifecycleRoutes(app, f.deps);
   const response = await app.request('/fixture/update', { method: 'POST' });
   const body = await response.json();
-  expect(body).toMatchObject({
+  expect(body, JSON.stringify(body)).toMatchObject({
     success: true,
     plugin: { version: '2.0.0' },
     lifecycle: { data: 'preserved' },
@@ -383,6 +504,181 @@ test('legacy dependency creation refuses a portable copy, then adopts an indepen
   ).toMatchObject({ success: true });
   expect(build).not.toHaveBeenCalled();
 });
+
+test.each(['before', 'after'] as const)(
+  'fresh publication failure %s pointer write is repairable from durable selection after restart',
+  async (moment) => {
+    const f = fixture();
+    const materializer = localPluginMaterializations(f.plugins, f.source);
+    const faulty = new PluginInstallationService(
+      localPluginInstallationState(f.journal),
+      {
+        ...materializer,
+        async select(id, next, expected) {
+          if (moment === 'after') await materializer.select(id, next, expected);
+          throw new Error('publication interrupted');
+        },
+      },
+      localPluginDataScopes(f.plugins),
+    );
+    await expect(
+      faulty.install({
+        installation: 'fixture',
+        expected: null,
+        artifact: { digest: f.digest() },
+      }),
+    ).rejects.toMatchObject({ code: 'plugin-projection-pending' });
+    const recorded = await f.service().inspect('fixture');
+    expect(recorded).not.toBeNull();
+    // The selected immutable artifact, not an absent/stale alias, owns reads.
+    expect(
+      new AgentPluginLoader({
+        projectHomeDir: f.home,
+        journal: () => f.journal,
+      })
+        .listInstalled()
+        .map((item) => item.manifest.name),
+    ).toEqual(['fixture']);
+    stores.splice(stores.indexOf(f.store), 1);
+    f.store.close();
+    const restarted = new EventStore(join(f.home, 'events.sqlite'));
+    stores.push(restarted);
+    expect(
+      await reconcileLocalPluginInstallations(
+        f.plugins,
+        restarted.createPackageMcpAdmissionJournal(),
+      ),
+    ).toEqual({ status: 'applied', pending: [] });
+    const recovered = createLocalPluginInstallationService(
+      f.plugins,
+      restarted.createPackageMcpAdmissionJournal(),
+      f.source,
+    );
+    expect(await recovered.inspect('fixture')).toEqual(recorded);
+    expect(resolveInstalledPluginRoot(f.plugins, 'fixture')!.generation).toBe(
+      recorded!.materialization,
+    );
+    await expect(
+      recovered.install({
+        installation: 'fixture',
+        expected: recorded,
+        artifact: { digest: f.digest() },
+      }),
+    ).resolves.toMatchObject({ data: 'preserved' });
+  },
+);
+
+test('a delayed projection cannot replace a newer selected materialization', async () => {
+  const f = fixture();
+  const first = await f.service().install({
+    installation: 'fixture',
+    expected: null,
+    artifact: { digest: f.digest() },
+  });
+  const staleMaterializer = localPluginMaterializations(f.plugins, f.source);
+  const captured = await staleMaterializer.current('fixture');
+  const replacement = await f.service().install({
+    installation: 'fixture',
+    expected: first.selected,
+    artifact: { digest: f.digest() },
+  });
+  await expect(
+    staleMaterializer.select('fixture', captured, captured),
+  ).rejects.toThrow('changed');
+  expect(resolveInstalledPluginRoot(f.plugins, 'fixture')!.generation).toBe(
+    replacement.selected.materialization,
+  );
+});
+
+test('more than 512 actual service probes retain audit evidence without consuming the live-claim quota', async () => {
+  const f = fixture();
+  writeFileSync(
+    join(f.source, 'mcp.json'),
+    JSON.stringify({
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json',
+      mcpServers: { fixture: { type: 'stdio', command: 'node' } },
+    }),
+  );
+  await installPluginFromSource(f.source, [], f.deps);
+  const source = new AgentPluginLoader({
+    projectHomeDir: f.home,
+    journal: () => f.journal,
+  });
+  const loader = new ConfigLoader({
+    projectHomeDir: f.home,
+    integrationSources: [source],
+  });
+  const custody = new MCPLocalConnectionCustody();
+  custodies.push(custody);
+  const service = new MCPService(
+    loader,
+    new Map(),
+    new Map(),
+    new Map(),
+    new Map(),
+    new Map(),
+    f.deps.logger,
+    undefined,
+    43149,
+    undefined,
+    undefined,
+    custody,
+  );
+  vi.spyOn(Client.prototype, 'connect').mockResolvedValue(undefined);
+  vi.spyOn(Client.prototype, 'listTools').mockResolvedValue({ tools: [] });
+  vi.spyOn(Client.prototype, 'close').mockResolvedValue(undefined);
+  const definition = source.listInstalled()[0]!.tools[0]!;
+  try {
+    for (let index = 0; index < 520; index++)
+      expect((await service.probeIntegration(definition.id)).probe?.ok).toBe(
+        true,
+      );
+    const current = f.journal.currentInstallation('fixture');
+    if (current.state !== 'observed') throw new Error('missing selection');
+    expect(f.journal.inspect(current.installation)).toMatchObject({
+      localSettled: 520,
+      possibleEffects: 520,
+      reserved: 0,
+      mutationAllowed: false,
+    });
+    expect(custody.inspect().retained).toBe(0);
+    expect(existsSync(source.listInstalled()[0]!.root)).toBe(true);
+  } finally {
+    await loader.dispose();
+  }
+}, 20000);
+
+test('more than 256 sequential updates use paged durable history while retaining the first code and data', async () => {
+  const f = fixture();
+  let outcome = await f.service().install({
+    installation: 'fixture',
+    expected: null,
+    artifact: { digest: f.digest() },
+  });
+  const first = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
+  for (let index = 0; index < 260; index++)
+    outcome = await f.service().install({
+      installation: 'fixture',
+      expected: outcome.selected,
+      artifact: { digest: f.digest() },
+    });
+  expect(resolveInstalledPluginRoot(f.plugins, 'fixture')!.dataScope).toBe(
+    first.dataScope,
+  );
+  expect(existsSync(first.packageRoot)).toBe(true);
+  const generations = new Set<string>();
+  let after: number | undefined;
+  do {
+    const page = f.journal.history('fixture', { after, limit: 25 });
+    if (page.state !== 'observed') throw new Error('history unavailable');
+    for (const entry of page.generations) {
+      expect(entry.reclamation).toBe('not-proven');
+      generations.add(entry.installation.incarnation);
+    }
+    after = page.nextCursor;
+  } while (after !== undefined);
+  expect(generations.size).toBe(261);
+}, 20000);
 
 test('failed state replacement restores the prior pointer without copying a mutable data snapshot', async () => {
   const f = fixture();

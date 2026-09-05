@@ -451,7 +451,7 @@ export class SkillService {
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
 
       const entryDir = join(dir, entry.name);
       if (options.excludedRoots) {

@@ -45,6 +45,7 @@ import {
 } from '../../providers/registries/registry-install-aliases.js';
 import { ContextSafetyError } from '../../services/orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import { captureLocalPluginArtifact } from '../../services/plugins/plugin-artifact-local.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   computePluginContentDigest,
@@ -63,7 +64,8 @@ import {
   findPluginConsentRefusedError,
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
-import { createLocalPluginInstallationService } from '../../services/plugins/plugin-installation-local.js';
+import { createLocalPluginInstallationHost } from '../../services/plugins/plugin-installation-local.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import {
   readPluginManifestFile,
   readPluginManifestFileSync,
@@ -314,6 +316,7 @@ export interface PluginLifecycleEventBus {
 }
 
 export interface PluginInstallSharedDeps {
+  installationHost?: PluginInstallationHost;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: PluginLifecycleEventBus;
@@ -328,6 +331,20 @@ export interface PluginInstallSharedDeps {
   quiesceEventSubscriptions?: (
     pluginName: string,
   ) => Promise<{ release(): void }>;
+}
+
+export function installationHostFor(
+  deps: PluginInstallSharedDeps,
+): PluginInstallationHost {
+  if (deps.installationHost) return deps.installationHost;
+  if (!deps.packageMcpJournal)
+    throw new Error(
+      'Package installation authority is unavailable; use a running Station instance.',
+    );
+  return createLocalPluginInstallationHost(
+    deps.pluginsDir,
+    deps.packageMcpJournal,
+  );
 }
 
 export interface InstalledPluginResult extends PluginInstallResult {
@@ -1501,7 +1518,11 @@ function assertRegistryInstallTargetAvailable(
   const ownsExistingTarget =
     existingAlias?.pluginName === pluginName &&
     existingAlias.registryKey === registryKey;
-  if (existsSync(pluginDir) && !ownsExistingTarget) {
+  if (
+    (existsSync(pluginDir) ||
+      resolveInstalledPluginRoot(pluginsDir, pluginName)) &&
+    !ownsExistingTarget
+  ) {
     throw new Error(
       `Plugin '${pluginName}' is already installed outside registry item '${registryId}'`,
     );
@@ -2086,10 +2107,6 @@ export async function installPluginFromSource(
       pluginName,
     );
     if (isAgentPlugin) {
-      if (!deps.packageMcpJournal)
-        throw new Error(
-          'Package installation authority is unavailable; use a running Station instance.',
-        );
       return await withPluginContentLock(pluginsDir, pluginName, async () => {
         const current = resolveInstalledPluginRoot(pluginsDir, pluginName);
         if (current?.kind === 'legacy')
@@ -2099,11 +2116,8 @@ export async function installPluginFromSource(
           basename(tempDir),
         );
         if (!digest) throw new Error('Staged package digest is unavailable');
-        const service = createLocalPluginInstallationService(
-          pluginsDir,
-          deps.packageMcpJournal!,
-          tempDir,
-        );
+        const artifact = captureLocalPluginArtifact(tempDir);
+        const service = await installationHostFor(deps).service(artifact);
         if (
           options?.dataPolicy === 'retain-and-reset' &&
           options.expectedInstallation === undefined
@@ -2119,7 +2133,7 @@ export async function installPluginFromSource(
         const lifecycle = await service.install({
           installation: pluginName,
           expected,
-          artifact: { digest },
+          artifact,
           data: options?.dataPolicy,
         });
         if (options?.registryId && options.registryKey)
@@ -2738,7 +2752,9 @@ async function uninstallPluginUnderPublication(
   installedPluginName: string,
 ): Promise<{ success: true; lifecycle?: unknown }> {
   const { agentsDir, eventBus, logger, pluginsDir, projectHomeDir } = deps;
-  const pluginDir = join(pluginsDir, installedPluginName);
+  const pluginDir =
+    resolveInstalledPluginRoot(pluginsDir, installedPluginName)?.packageRoot ??
+    join(pluginsDir, installedPluginName);
   // The selected installed directory is the uninstall identity. A mutable
   // manifest may describe what needs cleanup, but it cannot rename the
   // principal whose grants, providers, integrations, or host record are
@@ -2776,14 +2792,7 @@ async function uninstallPluginUnderPublication(
       );
     if (selectedRoot?.kind !== 'incarnation')
       throw new PluginIncarnationError('migration-required');
-    if (!deps.packageMcpJournal)
-      throw new Error(
-        'Package installation authority is unavailable; use a running Station instance.',
-      );
-    const service = createLocalPluginInstallationService(
-      pluginsDir,
-      deps.packageMcpJournal,
-    );
+    const service = await installationHostFor(deps).service();
     const current = await service.inspect(pluginName);
     if (!current)
       throw new Error('Package installation authority is unavailable');

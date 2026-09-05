@@ -25,6 +25,9 @@ import {
   withPluginContentLock,
 } from '../../services/plugins/plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from '../../services/plugins/plugin-incarnation.js';
+import { reconcileLocalPluginInstallations } from '../../services/plugins/plugin-installation-local.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import {
   readPluginManifestFileSync,
   readPluginManifestFileWithFormat,
@@ -63,6 +66,7 @@ import {
 } from './plugin-public-server.js';
 
 interface PluginLifecycleRouteDeps {
+  installationHost?: PluginInstallationHost;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: {
@@ -92,14 +96,22 @@ function assertExistingPluginRootInside(
   pluginsDir: string,
   pluginDir: string,
 ): void {
-  assertPathInside(pluginsDir, pluginDir, 'Plugin update target');
-  if (!existsSync(pluginDir)) return;
+  if (!existsSync(pluginDir)) {
+    assertPathInside(pluginsDir, pluginDir, 'Plugin update target');
+    return;
+  }
   if (lstatSync(pluginDir).isSymbolicLink()) {
-    if (
-      resolveInstalledPluginRoot(pluginsDir, basename(pluginDir))?.kind !==
-      'incarnation'
-    )
-      throw new Error('Plugin update target cannot be a symbolic link');
+    try {
+      if (
+        resolveInstalledPluginRoot(pluginsDir, basename(pluginDir))?.kind !==
+        'incarnation'
+      )
+        throw new Error('unsupported pointer');
+    } catch {
+      throw new Error(
+        'Plugin update target cannot be an unsupported symbolic link',
+      );
+    }
   }
   const pluginsRoot = realpathSync(pluginsDir);
   const pluginRoot = realpathSync(pluginDir);
@@ -409,6 +421,8 @@ export function registerPluginLifecycleRoutes(
     let pluginDir = join(pluginsDir, name);
     try {
       assertPathInside(pluginsDir, pluginDir, 'Plugin update target');
+      pluginDir =
+        resolveInstalledPluginRoot(pluginsDir, name)?.packageRoot ?? pluginDir;
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
@@ -433,9 +447,15 @@ export function registerPluginLifecycleRoutes(
         );
       }
       installedPluginName = registryOwner.installedName;
-      pluginDir = join(pluginsDir, installedPluginName);
+      pluginDir =
+        resolveInstalledPluginRoot(pluginsDir, installedPluginName)
+          ?.packageRoot ?? join(pluginsDir, installedPluginName);
       try {
-        assertPathInside(pluginsDir, pluginDir, 'Plugin update target');
+        assertPathInside(
+          pluginsDir,
+          join(pluginsDir, installedPluginName),
+          'Plugin update target',
+        );
       } catch (error) {
         return c.json({ success: false, error: errorMessage(error) }, 400);
       }
@@ -492,6 +512,7 @@ export function registerPluginLifecycleRoutes(
                 logger,
                 buildPlugin,
                 packageMcpJournal: deps.packageMcpJournal,
+                installationHost: deps.installationHost,
                 beginConfigurationMutation: beginMutation,
                 eventBus,
               },
@@ -515,11 +536,25 @@ export function registerPluginLifecycleRoutes(
         return c.json(
           {
             ...mutation.value,
+            success: mutation.activation?.status !== 'pending',
             ...configurationActivationPayload(mutation.activation),
           },
           configurationMutationStatus(mutation.activation, 200),
         );
       } catch (error) {
+        if (error instanceof PluginInstallationPending)
+          return c.json(
+            {
+              success: false,
+              error: error.message,
+              lifecycle: {
+                status: 'pending',
+                selected: error.selected,
+                code: error.code,
+              },
+            },
+            202,
+          );
         return c.json({ success: false, error: errorMessage(error) }, 409);
       }
     }
@@ -832,6 +867,8 @@ export function registerPluginLifecycleRoutes(
     let pluginDir = join(pluginsDir, name);
     try {
       assertPathInside(pluginsDir, pluginDir, 'Plugin removal target');
+      pluginDir =
+        resolveInstalledPluginRoot(pluginsDir, name)?.packageRoot ?? pluginDir;
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
@@ -863,6 +900,9 @@ export function registerPluginLifecycleRoutes(
     pluginDir = join(pluginsDir, installedPluginName);
     try {
       assertPathInside(pluginsDir, pluginDir, 'Plugin removal target');
+      pluginDir =
+        resolveInstalledPluginRoot(pluginsDir, installedPluginName)
+          ?.packageRoot ?? pluginDir;
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
@@ -888,6 +928,7 @@ export function registerPluginLifecycleRoutes(
           const result = await uninstallInstalledPlugin(installedPluginName, {
             agentsDir,
             packageMcpJournal: deps.packageMcpJournal,
+            installationHost: deps.installationHost,
             beginConfigurationMutation: beginMutation,
             buildPlugin,
             eventBus,
@@ -931,6 +972,24 @@ export function registerPluginLifecycleRoutes(
   });
 
   app.post('/reload', async (c) => {
+    if (deps.installationHost || deps.packageMcpJournal) {
+      const projection = deps.installationHost
+        ? await deps.installationHost.reconcile()
+        : await reconcileLocalPluginInstallations(
+            pluginsDir,
+            deps.packageMcpJournal!,
+          );
+      if (projection.status === 'pending')
+        return c.json(
+          {
+            success: false,
+            error:
+              'Plugin catalog projection remains pending; inspect retained generations.',
+            lifecycle: projection,
+          },
+          202,
+        );
+    }
     const eventSubscriptionQuiescence =
       await quiesceEventSubscriptions?.().catch((error) => {
         logger.error(

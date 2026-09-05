@@ -71,8 +71,13 @@ the historical generation, including after local SDK settlement.
 For first installation, the journal claims the absent installation before
 publishing execution materialization. A losing concurrent create cannot remove
 the winner's pointer. The local adapter serializes installer publication with
-the existing publication/content locks. A pointer/backend acknowledgement gap
-is unavailable execution, not permission to guess a current generation.
+the existing publication/content locks. The journal is the sole selection authority; the local directory alias is a
+compatibility projection. Portable source reads resolve the recorded immutable
+materialization directly. Alias/backend acknowledgement gaps return a typed
+pending outcome and are reconciled on reload or startup, without guessing a
+new generation. Projection writes compare their expected prior materialization
+under the existing local content lock so a delayed repair cannot replace a
+newer projection.
 
 If publication fails before state commits, compensation restores the previous
 pointer and cancels its exact fence. It does not restore mutable package/data
@@ -106,3 +111,57 @@ This change does not replicate authorization through a multi-writer cache,
 introduce last-write-wins grant synchronization, or publish a hosted adapter.
 Organization policy remains evaluated by its owning authority; offline local
 scope does not become authority for an enterprise-managed installation.
+
+## Bounded live state and durable retention
+
+The admission journal bounds concurrent unresolved claims and hot generations,
+not lifetime probes or updates. Once an SDK handle settles, its exact claim and
+owner remain in an EventStore-owned audit table; the hot generation carries a
+count of possible external effects. This compaction never grants deletion or
+pretends descendants stopped. Retired generations with no remaining local
+claims move to indexed durable history, served in cursor pages. Their physical
+code and independent data scopes remain retained. Tests exceed 512 sequential
+service probes and 256 updates while keeping the concurrent-claim cap enforced.
+
+Automatic creation of portable dependencies through the legacy directory-copy
+path is refused. Install such a dependency through Plugins first; existing
+owned portable installations can be adopted read-only by legacy parents. This
+avoids creating a package whose runtime admission has no installation owner.
+
+## Composition and artifact transfer
+
+`StationRuntimeOptions.pluginInstallationHost` injects the installation host at
+runtime composition. Direct and registry installation, update, removal and
+reload use that host. Its asynchronous service accepts a prepared artifact
+reference with an entry-reader capability, so a worker can receive and verify
+the actual bytes without knowing the acquisition adapter's temporary path.
+The local host keeps a private direct-path optimization and also supports
+materializing a foreign reader capability. The route-level transport test
+transfers artifact entries to another process, checks the digest there and
+commits actual installation state; it does not return a synthetic success.
+
+Local materialization and data keys are injectively prefixed. Logical package
+names remain unchanged, including Windows device stems such as `con`, `nul`,
+`com1`, and `con.foo`; those names use a dedicated compatibility-alias namespace.
+A native Windows helper run with Node24.5 verified key mapping, actual junction
+replacement, data preservation, retained code, projection removal/repair and
+hostile-pointer refusal at source hash
+`074338124699f50b9fa0b8a3f181ed10f8e20ee3822f30f14dc191e6c6e5d779`.
+This is adapter-only diagnostic evidence, not full application qualification
+under the standard development runtime or a hosted deployment claim.
+
+The transferable-artifact adapter rejects unsupported Windows content-path
+spellings (drive/ADS syntax, trailing dots/spaces, device basenames and case
+collisions). It never encodes package content paths, whose relative references
+must retain meaning. Native Windows Node24.5 execution verified these refusals
+and positive reader/digest materialization in bundle
+`d0796995eaaf53fec65a1d8b183e0ad454b2ea109113a8adbff39af7be4db27b`.
+Hashing preserves symlink text and does not prove containment. The transfer
+adapter separately validates lexical targets and native-resolved chains before
+publication; dangling/cyclic links are unsupported there. The direct local
+source path retains the existing component-level package containment checks.
+
+The native-resolution regression includes an actual outside-read witness;
+Node's JavaScript realpath normalization can disagree with the path the OS
+opens for a symlink chain containing `..`. Existing containment owners are
+tracked separately in #1502; this change does not claim they were all audited.

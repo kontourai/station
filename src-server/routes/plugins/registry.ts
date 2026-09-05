@@ -1,5 +1,7 @@
 import type { PluginInstallationRevision } from '@kontourai/station-contracts/plugin';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 /**
  * Registry Routes — browse, install, and uninstall agents and tools
  * from pluggable registry providers.
@@ -55,6 +57,7 @@ import {
 } from './plugin-install-shared.js';
 
 interface RegistryRouteDeps {
+  installationHost?: PluginInstallationHost;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   applyConfigurationMutation?: AgentConfigurationMutationRunner;
   approveKitOperatorAction?: (
@@ -107,6 +110,7 @@ export function createRegistryRoutes(
   const pluginInstallDeps = deps
     ? {
         packageMcpJournal: deps.packageMcpJournal,
+        installationHost: deps.installationHost,
         agentsDir: join(projectHomeDir, 'agents'),
         buildPlugin: async (pluginDir: string, name: string) => {
           const { buildPlugin } = await import('./plugin-bundles.js');
@@ -772,6 +776,20 @@ export function createRegistryRoutes(
           : 500,
       );
     } catch (error: unknown) {
+      if (error instanceof PluginInstallationPending)
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            lifecycle: {
+              status: 'pending',
+              selected: error.selected,
+              code: error.code,
+            },
+          },
+          202,
+        );
+
       // Same refusal, same shape as the direct install route: the request and
       // the plugin disagree about what was approved. Earlier dependency effects
       // may have been compensated; failed rollback is not a simple consent 400.

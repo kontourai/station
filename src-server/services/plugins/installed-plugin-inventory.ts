@@ -8,7 +8,10 @@ import type {
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import type { Logger } from '../../utils/logger.js';
 import { ContextSafetyError } from '../orchestration/context-safety.js';
-import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
+import {
+  localManagedPluginAliases,
+  resolveInstalledPluginRoot,
+} from './plugin-incarnation.js';
 import {
   PluginManifestValidationError,
   readPluginManifestFileSync,
@@ -188,18 +191,30 @@ export function scanInstalledPluginInventory(
 ): InstalledPluginInventoryEntry[] {
   if (!existsSync(pluginsDir)) return [];
   const inventory: InstalledPluginInventoryEntry[] = [];
-  const entries = readdirSync(pluginsDir, { withFileTypes: true }).sort(
-    (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
-  );
+  const entries = [
+    ...readdirSync(pluginsDir, { withFileTypes: true }),
+    ...localManagedPluginAliases(pluginsDir).map((name) => ({
+      name,
+      isDirectory: () => false,
+      isSymbolicLink: () => true,
+    })),
+  ].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const seen = new Set<string>();
   for (const entry of entries) {
+    if (seen.has(entry.name)) continue;
+    seen.add(entry.name);
     if (
       (!entry.isDirectory() && !entry.isSymbolicLink()) ||
       entry.name.startsWith('.')
     )
       continue;
+    let manifestPath = join(pluginsDir, entry.name, 'plugin.json');
     if (entry.isSymbolicLink()) {
       try {
-        resolveInstalledPluginRoot(pluginsDir, entry.name);
+        manifestPath = join(
+          resolveInstalledPluginRoot(pluginsDir, entry.name)!.packageRoot,
+          'plugin.json',
+        );
       } catch (error) {
         inventory.push({
           state: 'rejected',
@@ -209,7 +224,6 @@ export function scanInstalledPluginInventory(
         continue;
       }
     }
-    const manifestPath = join(pluginsDir, entry.name, 'plugin.json');
     if (!existsSync(manifestPath)) {
       const missing = rejection(
         'manifest-missing',

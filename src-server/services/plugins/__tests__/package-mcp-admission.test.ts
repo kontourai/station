@@ -158,7 +158,7 @@ describe('package MCP shared admission evidence (no destructive authority)', {
     expect(retirement.retirement.cancel()).toEqual({ state: 'stale' });
   });
   test('only an exact no-effect capability releases; SDK settlement retains possible effects', () => {
-    const { journal } = open();
+    const { journal, path } = open();
     const installed = record(journal);
     const first = reserve(journal, installed);
     expect(first.releaseNotStarted()).toEqual({ state: 'applied' });
@@ -177,12 +177,31 @@ describe('package MCP shared admission evidence (no destructive authority)', {
       reserved: 0,
       possibleEffects: 1,
       localSettled: 1,
-      reasons: [
-        'compatibility-unproved',
-        'claims-pending',
-        'external-effect-unproved',
-      ],
+      reasons: ['compatibility-unproved', 'external-effect-unproved'],
     });
+    const audit = new DatabaseSync(path, { readOnly: true });
+    try {
+      const archived = audit
+        .prepare(
+          'SELECT claim_json FROM package_mcp_settled_effects WHERE journal_id = ? AND incarnation = ?',
+        )
+        .get(installed.journalId, installed.incarnation) as {
+        claim_json: string;
+      };
+      expect(JSON.parse(archived.claim_json)).toMatchObject({
+        purpose: 'managed',
+        state: 'local-settled',
+        owner: { pid: process.pid },
+      });
+      const hot = audit
+        .prepare(
+          'SELECT state_json FROM package_mcp_admission_journal WHERE singleton = 1',
+        )
+        .get() as { state_json: string };
+      expect(JSON.parse(hot.state_json).generations[0].claims).toEqual([]);
+    } finally {
+      audit.close();
+    }
   });
   test('reinstalling identical bytes changes host incarnation and old tokens cannot enter or cancel its work', () => {
     const { journal } = open();

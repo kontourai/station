@@ -3,6 +3,35 @@
 export interface PluginArtifactReference {
   readonly digest: string;
 }
+export type PluginArtifactEntry =
+  | { readonly path: string; readonly kind: 'directory' }
+  | {
+      readonly path: string;
+      readonly kind: 'file';
+      readonly bytes: Uint8Array;
+      readonly executable?: boolean;
+    }
+  | {
+      readonly path: string;
+      readonly kind: 'symlink';
+      readonly target: string;
+    };
+/** Content capability issued by the acquisition owner; alternate hosts can
+ * consume bytes without knowing any local staging path. */
+export interface PreparedPluginArtifact extends PluginArtifactReference {
+  readEntries(): AsyncIterable<PluginArtifactEntry>;
+}
+export interface PluginInstallationHost {
+  service(
+    artifact?: PreparedPluginArtifact,
+  ): Promise<
+    Pick<
+      PluginInstallationService,
+      'inspect' | 'install' | 'withdraw' | 'reconcile'
+    >
+  >;
+  reconcile(): Promise<{ status: 'applied' | 'pending'; pending: string[] }>;
+}
 export type { PluginInstallationRevision } from '@kontourai/station-contracts/plugin';
 
 import type { PluginInstallationRevision } from '@kontourai/station-contracts/plugin';
@@ -33,6 +62,7 @@ export interface PluginMaterializationBackend {
   select(
     installation: string,
     next: PluginMaterialization | null,
+    expected: PluginMaterialization | null,
   ): Promise<void>;
 }
 export interface PluginDataScopeBackend {
@@ -48,6 +78,15 @@ export class PluginInstallationConflict extends Error {
       'Plugin installation changed or its authority is unavailable; inspect and retry.',
     );
     this.name = 'PluginInstallationConflict';
+  }
+}
+export class PluginInstallationPending extends Error {
+  readonly code = 'plugin-projection-pending';
+  constructor(readonly selected: PluginInstallationRevision | null) {
+    super(
+      'Plugin selection is recorded but its catalog projection is pending. Reload plugins to reconcile it; stored code and data are retained.',
+    );
+    this.name = 'PluginInstallationPending';
   }
 }
 function same(
@@ -75,12 +114,35 @@ export class PluginInstallationService {
   async inspect(installation: string) {
     return this.state.current(installation);
   }
+  async reconcile(
+    installation: string,
+  ): Promise<PluginInstallationRevision | null> {
+    const selected = await this.state.current(installation);
+    const prior = await this.materializations.current(installation);
+    const next = selected
+      ? {
+          reference: selected.materialization,
+          artifact: selected.artifact,
+          dataScope: selected.dataScope,
+        }
+      : null;
+    if (
+      (prior?.reference ?? null) !== (next?.reference ?? null) ||
+      prior?.dataScope !== next?.dataScope
+    ) {
+      await this.materializations.select(installation, next, prior);
+    }
+    if (!same(await this.state.current(installation), selected))
+      throw new PluginInstallationConflict();
+    return selected;
+  }
   async install(input: {
     installation: string;
     expected: PluginInstallationRevision | null;
     artifact: PluginArtifactReference;
     data?: 'preserve' | 'retain-and-reset';
   }) {
+    await this.reconcile(input.installation);
     if (!same(await this.state.current(input.installation), input.expected))
       throw new PluginInstallationConflict();
     const prior = await this.materializations.current(input.installation);
@@ -115,7 +177,7 @@ export class PluginInstallationService {
       const created = fence
         ? null
         : await this.state.create(input.installation, next);
-      await this.materializations.select(input.installation, next);
+      await this.materializations.select(input.installation, next, prior);
       const selected = fence ? await fence.replace(next) : created!;
       published = true;
       return {
@@ -134,15 +196,27 @@ export class PluginInstallationService {
       const observed = await this.state
         .current(input.installation)
         .catch(() => undefined);
-      if (observed && observed.materialization === next.reference) throw error;
-      if (observed === undefined || !same(observed, input.expected))
-        throw error;
-      await this.materializations.select(input.installation, prior);
+      if (observed && observed.materialization === next.reference)
+        throw new PluginInstallationPending(observed);
+      if (observed === undefined) throw new PluginInstallationPending(null);
+      if (!same(observed, input.expected)) throw error;
+      const projection = await this.materializations.current(
+        input.installation,
+      );
+      if (projection?.reference === next.reference)
+        await this.materializations.select(
+          input.installation,
+          prior,
+          projection,
+        );
+      else if ((projection?.reference ?? null) !== (prior?.reference ?? null))
+        throw new PluginInstallationPending(observed);
       if (!published) await fence?.cancel();
       throw error;
     }
   }
   async withdraw(expected: PluginInstallationRevision) {
+    await this.reconcile(expected.installation);
     if (!same(await this.state.current(expected.installation), expected))
       throw new PluginInstallationConflict();
     const prior = await this.materializations.current(expected.installation);
@@ -150,7 +224,7 @@ export class PluginInstallationService {
       throw new PluginInstallationConflict();
     const fence = await this.state.fence(expected);
     try {
-      await this.materializations.select(expected.installation, null);
+      await this.materializations.select(expected.installation, null, prior);
       await fence.withdraw();
       return {
         withdrawn: true as const,
@@ -162,7 +236,7 @@ export class PluginInstallationService {
         .current(expected.installation)
         .catch(() => undefined);
       if (observed !== undefined && same(observed, expected)) {
-        await this.materializations.select(expected.installation, prior);
+        await this.materializations.select(expected.installation, prior, null);
         await fence.cancel();
       }
       throw error;

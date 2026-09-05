@@ -38,9 +38,10 @@ import { assertSafeContextText } from '../orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import { computePluginContentDigest } from './plugin-content-integrity.js';
 import {
+  localManagedPluginAliases,
   PluginIncarnationError,
-  pluginIncarnationIsCurrent,
   resolveInstalledPluginRoot,
+  resolvePluginMaterialization,
 } from './plugin-incarnation.js';
 
 const MAX_CONFIGURATION_BYTES = 2 * 1024 * 1024;
@@ -374,6 +375,31 @@ export class AgentPluginLoader {
     this.validateStationExtension = validators.stationExtension;
   }
 
+  private selectedRoot(pluginId: string) {
+    const journal = this.options.journal?.();
+    if (journal) {
+      const current = journal.currentInstallation(pluginId);
+      if (current.state === 'unavailable')
+        throw new MCPLocalCustodyError('stale');
+      if (
+        current.state === 'observed' &&
+        current.installation.materialization
+      ) {
+        const selected = resolvePluginMaterialization(
+          this.pluginsDir,
+          pluginId,
+          current.installation.materialization,
+        );
+        if (selected.dataScope !== current.installation.dataScope)
+          throw new MCPLocalCustodyError('stale');
+        return selected;
+      }
+      const fallback = resolveInstalledPluginRoot(this.pluginsDir, pluginId);
+      return fallback?.kind === 'incarnation' ? null : fallback;
+    }
+    return resolveInstalledPluginRoot(this.pluginsDir, pluginId);
+  }
+
   loadPackage(
     pluginRoot: string,
     options: AgentPluginLoadOptions = {},
@@ -439,7 +465,7 @@ export class AgentPluginLoader {
     let dataRoot: string;
     try {
       const installed = existsSync(this.pluginsDir)
-        ? resolveInstalledPluginRoot(this.pluginsDir, manifest.name)
+        ? this.selectedRoot(manifest.name)
         : null;
       dataRoot =
         installed?.kind === 'incarnation' && installed.packageRoot === root
@@ -465,10 +491,7 @@ export class AgentPluginLoader {
       options.provisionData !== false,
     );
     if (existsSync(this.pluginsDir)) {
-      const installed = resolveInstalledPluginRoot(
-        this.pluginsDir,
-        manifest.name,
-      );
+      const installed = this.selectedRoot(manifest.name);
       if (installed?.packageRoot === root) {
         for (const tool of tools)
           bindMCPDefinitionAdmission(tool, (purpose) => {
@@ -481,11 +504,8 @@ export class AgentPluginLoader {
               current?.state !== 'observed' ||
               current.installation.materialization !== installed.generation ||
               current.installation.dataScope !== installed.dataScope ||
-              !pluginIncarnationIsCurrent(
-                this.pluginsDir,
-                manifest.name,
-                installed,
-              )
+              this.selectedRoot(manifest.name)?.generation !==
+                installed.generation
             )
               throw new MCPLocalCustodyError('stale');
             if (
@@ -499,13 +519,17 @@ export class AgentPluginLoader {
             if (reserved.state !== 'reserved')
               throw new MCPLocalCustodyError('stale');
             const shared = reserved.claim;
-            const isCurrent = () =>
-              shared.isCurrent() &&
-              pluginIncarnationIsCurrent(
-                this.pluginsDir,
-                manifest.name,
-                installed,
-              );
+            const isCurrent = () => {
+              try {
+                return (
+                  shared.isCurrent() &&
+                  this.selectedRoot(manifest.name)?.generation ===
+                    installed.generation
+                );
+              } catch {
+                return false;
+              }
+            };
             return {
               isCurrent,
               enter() {
@@ -585,26 +609,18 @@ export class AgentPluginLoader {
     return this.recognizedInstalledPackageRoots().map(
       ({ directoryName, root }) => {
         const plugin = loadedByRoot.get(root);
+        const journal = this.options.journal?.();
+        const selectedAtCapture = journal?.currentInstallation(directoryName);
         return {
           root: join(root, 'skills'),
           isCurrent: () => {
             try {
-              if (
-                resolveInstalledPluginRoot(this.pluginsDir, directoryName)
-                  ?.packageRoot !== root
-              )
+              if (this.selectedRoot(directoryName)?.packageRoot !== root)
                 return false;
-              const journal = this.options.journal?.();
-              if (!journal) return true;
-              const current = journal.currentInstallation(directoryName);
               return (
-                current.state === 'observed' &&
-                journal.inspect(current.installation).state === 'observed' &&
-                (
-                  journal.inspect(current.installation) as {
-                    admission?: string;
-                  }
-                ).admission === 'open'
+                !journal ||
+                (selectedAtCapture?.state === 'observed' &&
+                  journal.admissionOpen(selectedAtCapture.installation))
               );
             } catch {
               return false;
@@ -629,28 +645,43 @@ export class AgentPluginLoader {
     root: string;
   }> {
     if (!existsSync(this.pluginsDir)) return [];
-    return readdirSync(this.pluginsDir, { withFileTypes: true })
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .flatMap((entry) => {
-        if (
-          (!entry.isDirectory() && !entry.isSymbolicLink()) ||
-          !isCanonicalPluginId(entry.name)
-        ) {
-          return [];
-        }
-        let root: string;
+    const candidates = new Map<string, string>();
+    const directories = [
+      ...readdirSync(this.pluginsDir, { withFileTypes: true }),
+      ...localManagedPluginAliases(this.pluginsDir).map((name) => ({
+        name,
+        isDirectory: () => false,
+        isSymbolicLink: () => true,
+      })),
+    ];
+    for (const entry of directories) {
+      if (
+        (!entry.isDirectory() && !entry.isSymbolicLink()) ||
+        !isCanonicalPluginId(entry.name)
+      )
+        continue;
+      try {
+        const root = this.selectedRoot(entry.name);
+        if (root && this.hasAgentPluginSchema(root.packageRoot))
+          candidates.set(entry.name, root.packageRoot);
+      } catch {
+        /* Reported as unavailable by installed inventory. */
+      }
+    }
+    const selected = this.options.journal?.().selectedInstallations();
+    if (selected?.state === 'observed')
+      for (const installation of selected.installations) {
         try {
-          root = resolveInstalledPluginRoot(
-            this.pluginsDir,
-            entry.name,
-          )!.packageRoot;
+          const root = this.selectedRoot(installation.pluginId);
+          if (root && this.hasAgentPluginSchema(root.packageRoot))
+            candidates.set(installation.pluginId, root.packageRoot);
         } catch {
-          return [];
+          candidates.delete(installation.pluginId);
         }
-        return this.hasAgentPluginSchema(root)
-          ? [{ directoryName: entry.name, root }]
-          : [];
-      });
+      }
+    return [...candidates]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([directoryName, root]) => ({ directoryName, root }));
   }
 
   loadIntegration(id: string): ToolDef | undefined {
@@ -1025,7 +1056,7 @@ export class AgentPluginLoader {
         }
         if (provisionData) {
           const installed = existsSync(this.pluginsDir)
-            ? resolveInstalledPluginRoot(this.pluginsDir, manifest.name)
+            ? this.selectedRoot(manifest.name)
             : null;
           dataRoot =
             installed?.kind === 'incarnation' && installed.packageRoot === root

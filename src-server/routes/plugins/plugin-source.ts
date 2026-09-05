@@ -267,9 +267,12 @@ function readInstalledDependencyManifest(
   }
   const dependencyStat = lstatSync(dependencyDir);
   if (dependencyStat.isSymbolicLink()) {
-    throw new Error('Plugin dependency target escapes root');
-  }
-  if (!dependencyStat.isDirectory()) {
+    if (
+      resolveInstalledPluginRoot(pluginsDir, dependencyId)?.kind !==
+      'incarnation'
+    )
+      throw new Error('Plugin dependency target escapes root');
+  } else if (!dependencyStat.isDirectory()) {
     throw new Error(
       `Plugin dependency '${dependencyId}' target is not a directory`,
     );

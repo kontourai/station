@@ -321,6 +321,7 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
 import { DiffCommentService } from '../../services/projects/diff-comment-service.js';
@@ -522,6 +523,7 @@ export interface ConfigureRuntimeRoutesContext {
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
   actionOperations: ActionOperationService;
   orchestrationEventStore?: EventStore;
+  pluginInstallationHost?: PluginInstallationHost;
   pluginOperationalEventSubscriptions: Pick<
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
     'quiesce' | 'reconcile'
@@ -1531,6 +1533,7 @@ export function configureRuntimeRoutes(
         consentChannel: context.consentChannel,
         packageMcpJournal:
           context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+        installationHost: context.pluginInstallationHost,
         applyConfigurationMutation: context.applyAgentConfigurationMutation,
         refreshKitObservability: () =>
           kitObservabilityRegistry.discoverInstalled([
@@ -1579,6 +1582,7 @@ export function configureRuntimeRoutes(
       {
         packageMcpJournal:
           context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+        installationHost: context.pluginInstallationHost,
         applyConfigurationMutation: context.applyAgentConfigurationMutation,
         approveKitOperatorAction: (candidate) =>
           context.approvalRegistry.register(
