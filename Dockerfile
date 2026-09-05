@@ -58,7 +58,7 @@ RUN STATION_UI_BUNDLE_BUDGET=observe ./station build --instance=container --base
 FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS runtime
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install --no-install-recommends -y tini \
+  && apt-get install --no-install-recommends -y tini git openssh-client ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /app/.station /data/station /workspace \
   && chown -R node:node /app/.station /data /workspace \
@@ -85,6 +85,6 @@ EXPOSE 3000 3141 3142 3143 3144
 VOLUME ["/data/station"]
 USER node
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000/__station/identity').then(async(response)=>{if(!response.ok)throw new Error(String(response.status));const identity=await response.json();if(identity.sha!==process.env.STATION_IMAGE_SHA)throw new Error('image identity mismatch')})" || exit 1
+  CMD ["node", "/app/scripts/container-healthcheck.mjs"]
 ENTRYPOINT ["tini", "--"]
 CMD ["./station", "service", "run", "--instance=container", "--base=/data/station", "--port=3141", "--ui-port=3000", "--host=0.0.0.0"]

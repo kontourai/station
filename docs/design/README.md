@@ -68,6 +68,7 @@ category.
 - [pnpm-workspace-installation.md](pnpm-workspace-installation.md) — pnpm workspace installation
 - [portable-project-identity.md](portable-project-identity.md) — Design: portable Project identity — remote-keyed resources, per-Station bindings
 - [principals.md](principals.md) — Design: Principals — what "people" means in Station, and when it changes
+- [private-cloud-environment.md](private-cloud-environment.md) — Private cloud Station environment
 - [project-task-room-history.md](project-task-room-history.md) — Project/Task room history
 - [revision-bound-evidence.md](revision-bound-evidence.md) — Design: revision-bound evidence
 - [settings-architecture.md](settings-architecture.md) — Settings Architecture: scope-first settings for Station
