@@ -225,7 +225,7 @@ export function renderMarkdown(source) {
   // Markdown wraps prose across source lines; a wrapped paragraph or list
   // item is one block, not one block per line. Open blocks collect their
   // continuation lines until a blank line or another block starts. Lists
-  // nest by indentation: a deeper item opens a <ul> inside the current <li>.
+  // nest by indentation: a deeper item opens a list inside the current <li>.
   let listStack = [];
   let openItem = null;
   let paragraph = [];
@@ -247,7 +247,7 @@ export function renderMarkdown(source) {
 
   const popListLevel = () => {
     closeCurrentItem();
-    html.push('</ul>');
+    html.push(`</${listStack[listStack.length - 1].tag}>`);
     listStack.pop();
     const parent = listStack[listStack.length - 1];
     if (parent?.itemOpen) {
@@ -319,19 +319,17 @@ export function renderMarkdown(source) {
       continue;
     }
 
-    const listItem = line.match(/^(\s*)[-*]\s+(.+)$/);
+    const listItem = line.match(/^(\s*)([-*]|\d+\.)\s+(.+)$/);
     if (listItem) {
       closeParagraph();
       const indent = listItem[1].length;
+      const tag = /^\d/.test(listItem[2]) ? 'ol' : 'ul';
       const top = listStack[listStack.length - 1];
-      if (!top) {
-        html.push('<ul>');
-        listStack.push({ indent, itemOpen: false });
-      } else if (indent > top.indent) {
+      if (top && indent > top.indent) {
         flushItemText();
-        html.push('<ul>');
-        listStack.push({ indent, itemOpen: false });
-      } else {
+        html.push(`<${tag}>`);
+        listStack.push({ indent, itemOpen: false, tag });
+      } else if (top) {
         while (
           listStack.length > 1 &&
           indent < listStack[listStack.length - 1].indent
@@ -339,9 +337,16 @@ export function renderMarkdown(source) {
           popListLevel();
         }
         closeCurrentItem();
+        if (listStack[listStack.length - 1].tag !== tag) {
+          closeList();
+        }
+      }
+      if (listStack.length === 0) {
+        html.push(`<${tag}>`);
+        listStack.push({ indent, itemOpen: false, tag });
       }
       listStack[listStack.length - 1].itemOpen = true;
-      openItem = [listItem[2]];
+      openItem = [listItem[3]];
       continue;
     }
 

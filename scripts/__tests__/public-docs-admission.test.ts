@@ -289,6 +289,31 @@ describe('public documentation markdown rendering', () => {
     );
   });
 
+  it('renders numbered steps as an ordered list and switches list kinds at a boundary', () => {
+    const html = renderMarkdown(
+      [
+        '1. Open **Connections**.',
+        '2. Choose a service',
+        '   until it reports Ready.',
+        '- a bullet after the steps',
+      ].join('\n'),
+    );
+    expect(html).toBe(
+      [
+        '<ol>',
+        '<li>Open <strong>Connections</strong>.',
+        '</li>',
+        '<li>Choose a service until it reports Ready.',
+        '</li>',
+        '</ol>',
+        '<ul>',
+        '<li>a bullet after the steps',
+        '</li>',
+        '</ul>',
+      ].join('\n'),
+    );
+  });
+
   it('closes every open list level at the end of the document', () => {
     const html = renderMarkdown(['- outer', '  - inner'].join('\n'));
     expect(html).toBe(
