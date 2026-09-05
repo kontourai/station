@@ -8,6 +8,10 @@ import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import {
+  mockMobileAttachmentStaging,
+  mockMobileConversationOpen,
+} from './helpers/mobile-chat-contracts';
+import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
@@ -184,6 +188,14 @@ async function mockChatShell(
               engineDefault: true,
               available: true,
               model: 'model-default',
+              execution: {
+                agentConnectionId: 'station-engine',
+                modelId: 'model-default',
+                runtimeOptions: {
+                  executionMode: 'station',
+                  providerKind: 'bedrock',
+                },
+              },
             },
             {
               slug: 'claude',
@@ -224,6 +236,17 @@ async function mockChatShell(
           success: true,
           data: [
             agentConnectionFixture({
+              id: 'station-engine',
+              capabilities: ['agent-runtime', 'image-input', 'file-input'],
+              type: 'station-agent',
+              name: 'Station',
+              config: {
+                engineId: 'station',
+                executionClass: 'station',
+                defaultModel: 'model-default',
+              },
+            }),
+            agentConnectionFixture({
               id: 'claude',
               kind: 'agent',
               type: 'claude',
@@ -231,6 +254,7 @@ async function mockChatShell(
               enabled: true,
               capabilities: ['agent-runtime', 'image-input', 'file-input'],
               config: {
+                engineId: 'claude',
                 executionClass: 'external',
                 defaultModel: 'model-selected',
               },
@@ -500,10 +524,19 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   let liveTurnPersisted = false;
   const requestedWindows: string[] = [];
   let messagesRequested = false;
+  await mockMobileConversationOpen(page, {
+    conversationId: threadId,
+    currentSessionId: threadId,
+    title: 'Long transcript',
+    messageCount: 20000,
+  });
   await page.route(
-    `**/api/orchestration/sessions/${threadId}/event-window**`,
+    new RegExp(
+      `/api/orchestration/(?:sessions|conversations)/${threadId}/event-window`,
+    ),
     createLongSessionEventWindowHandler({
       threadId,
+      conversationId: threadId,
       availableTurns: () =>
         liveTurnPersisted ? [...turns, persistedLiveTurn] : turns,
       onRequest: (url) => requestedWindows.push(url),
@@ -972,42 +1005,8 @@ test('stages a current-host attachment before dispatching only its opaque refere
   await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
 
-  const stageId = 'stage_11111111-1111-4111-8111-111111111111';
-  let prepared: Record<string, unknown> | undefined;
+  const uploads = await mockMobileAttachmentStaging(page);
   const dispatched: unknown[] = [];
-  await page.route(
-    /\/api\/orchestration\/attachment-staging(?:\/.*)?$/u,
-    async (route) => {
-      const request = route.request();
-      const path = new URL(request.url()).pathname;
-      if (path.endsWith('/capability'))
-        return route.fulfill(
-          json({ state: 'supported', version: 1, maxConcurrentUploads: 3 }),
-        );
-      if (path.endsWith('/prepare')) {
-        prepared = request.postDataJSON() as Record<string, unknown>;
-        return route.fulfill(
-          json({
-            ...prepared,
-            stageId,
-            uploadGrant: 'a'.repeat(43),
-            expiresAt: '2030-01-01T00:00:00.000Z',
-          }),
-        );
-      }
-      if (path.endsWith(`/${stageId}`) && request.method() === 'PUT')
-        return route.fulfill(
-          json({
-            ...prepared,
-            stageId,
-            source: 'current-composer',
-            digest: `sha256-${'a'.repeat(64)}`,
-            expiresAt: '2030-01-01T00:00:00.000Z',
-          }),
-        );
-      return route.abort();
-    },
-  );
   await page.route('**/api/orchestration/chat', async (route) => {
     dispatched.push(route.request().postDataJSON());
     return route.fulfill(
@@ -1037,12 +1036,14 @@ test('stages a current-host attachment before dispatching only its opaque refere
   expect(dispatched[0]).toMatchObject({
     attachmentRefs: [
       {
-        stageId,
+        stageId: uploads[0].reference.stageId,
         source: 'current-composer',
         name: 'staged-notes.txt',
       },
     ],
   });
+  expect(uploads).toHaveLength(1);
+  expect(uploads[0].bytes.toString()).toBe('stage me');
   expect(JSON.stringify(dispatched[0])).not.toContain('c3RhZ2UgbWU=');
 });
 
@@ -1050,15 +1051,15 @@ test('stages a current-host attachment before dispatching only its opaque refere
 // unbound Station agent uses, and the one whose composer used to refuse every
 // image because no signal it read said yes. Three claims, each of which failed
 // before the fix or would fail if the transport regressed: the paste attaches,
-// the attachment is visible without opening a menu, and the dispatched turn
-// carries the image bytes.
-test('pasting an image into a Station-engine composer attaches it and sends it as image content', async ({
+// the attachment is visible without opening a menu, and the staged upload carries the image bytes while the turn names its reference.
+test('pasting an image into a Station-engine composer stages its bytes and sends its reference', async ({
   page,
 }) => {
   test.setTimeout(30_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
 
+  const uploads = await mockMobileAttachmentStaging(page);
   const dispatched: unknown[] = [];
   await page.route('**/api/orchestration/chat', async (route) => {
     dispatched.push(route.request().postDataJSON());
@@ -1120,26 +1121,18 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
   await expect(() => expect(dispatched.length).toBeGreaterThan(0)).toPass({
     timeout: 10_000,
   });
-  const body = dispatched[0] as {
-    attachments?: {
-      kind?: string;
-      mimeType?: string;
-      name?: string;
-      dataUrl?: string;
-      size?: number;
-    }[];
-  };
-  // The payload assertion is the point: an attach that does not put image
-  // bytes on the dispatched turn is the fake attach this issue is about.
-  expect(body.attachments).toHaveLength(1);
-  expect(body.attachments?.[0]).toMatchObject({
+  expect(uploads).toHaveLength(1);
+  expect(uploads[0].bytes).toEqual(Buffer.from(PNG_BASE64, 'base64'));
+  expect(uploads[0].reference).toMatchObject({
     kind: 'image',
     mimeType: 'image/png',
     name: 'pasted-screenshot.png',
   });
-  expect(body.attachments?.[0]?.dataUrl).toBe(
-    `data:image/png;base64,${PNG_BASE64}`,
-  );
+  expect(dispatched[0]).toMatchObject({
+    attachmentRefs: [uploads[0].reference],
+  });
+  expect(dispatched[0]).not.toHaveProperty('attachments');
+  expect(JSON.stringify(dispatched[0])).not.toContain(PNG_BASE64);
 });
 
 /**
@@ -1150,6 +1143,47 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
  */
 async function seedMobileTaskSwitcher(page: Page) {
   await mockChatShell(page);
+  for (const conversationId of [
+    'conv-running',
+    'conv-review',
+    'delegated-review',
+  ]) {
+    await mockMobileConversationOpen(page, {
+      conversationId,
+      currentSessionId: conversationId,
+      title:
+        conversationId === 'delegated-review'
+          ? 'Delegated review'
+          : 'Station Chat',
+      messageCount: 2,
+    });
+    await page.route(
+      `**/api/orchestration/conversations/${conversationId}/event-window**`,
+      (route) =>
+        route.fulfill(
+          json({
+            success: true,
+            data: {
+              protocolVersion: 1,
+              conversationId,
+              currentSessionId: conversationId,
+              sessionLineage: [
+                {
+                  sessionId: conversationId,
+                  agentSlug: 'station',
+                  agentDisplayName: 'Station',
+                },
+              ],
+              handoffs: [],
+              contextBoundaries: [],
+              events: [],
+              hasMore: false,
+              watermark: 0,
+            },
+          }),
+        ),
+    );
+  }
   await seedActiveChats(page, [
     {
       sessionId: 'chat-running',
@@ -1196,6 +1230,8 @@ async function seedMobileTaskSwitcher(page: Page) {
         data: [
           {
             threadId: 'delegated-review',
+            conversationId: 'delegated-review',
+            displayTitle: 'Delegated review',
             provider: 'codex',
             model: 'model-selected',
             projectSlug: 'default',
@@ -1313,7 +1349,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     .click();
   await expect(textarea).toHaveValue('return to this draft');
   await expect(page.locator('.chat-input__model-name')).toHaveText(
-    'model-selected',
+    'Selected Test Model',
   );
 
   await switcher.click();
@@ -1327,9 +1363,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   // Anchored: the sibling snooze control's name is "Snooze <title>", so an
   // unanchored title match would resolve to both. The delegated row is titled
   // by its task, "Worker task · delegated review".
-  await menu
-    .getByRole('button', { name: /^Worker task · delegated review,/i })
-    .click();
+  await menu.getByRole('button', { name: /^Delegated review,/i }).click();
   await expect
     .poll(() => new URL(page.url()).searchParams.get('chat'))
     .toBe('delegated-review');
@@ -1348,13 +1382,14 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect(new URL(page.url()).searchParams.get('dock')).toBe('open');
   expect(new URL(page.url()).searchParams.get('maximize')).toBeNull();
   await expect(textarea).toHaveValue('return to this draft');
-  // The standalone project-context row is desktop-only now; on a phone the
-  // project switcher carries the visible name instead of a folder-only glyph.
+  // Project context remains reachable through the phone header actions menu.
+  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: 'Switch project — Default' }),
+    page.getByRole('menuitem', { name: /^Switch project/ }),
   ).toContainText('Default');
+  await page.getByRole('button', { name: 'Close actions menu' }).click();
   await expect(page.locator('.chat-input__model-name')).toHaveText(
-    'model-selected',
+    'Selected Test Model',
   );
 
   await page.setViewportSize({ width: 320, height: 568 });
@@ -1371,14 +1406,10 @@ test('switches between mobile tasks and restores the exact active chat context',
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-running');
   await switcher.click();
-  // Same task, different row title: opening it above created its local chat,
-  // and the switcher names a chat by its title — an unstarted one has none, so
-  // the row that read "Worker task · delegated review" now reads "New chat".
-  // (Worth its own look: a delegated task's row loses its task identity the
-  // moment you open it.)
+  // The reopened row retains its server-supplied conversation title.
   await page
     .getByRole('dialog', { name: 'Switch task' })
-    .getByRole('button', { name: 'New chat, default', exact: true })
+    .getByRole('button', { name: 'Delegated review, default', exact: true })
     .click();
   await expect
     .poll(() => new URL(page.url()).searchParams.get('chat'))
@@ -1745,6 +1776,19 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
       return route.fulfill(
         json({ success: true, data: [otherSession, delegatedSession] }),
       );
+    if (last === 'event-window')
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            protocolVersion: 1,
+            session: delegatedSession,
+            events: [],
+            hasMore: false,
+            watermark: 0,
+          },
+        }),
+      );
     if (last === 'flow-run')
       return route.fulfill(json({ success: true, data: null }));
     return route.fulfill(
@@ -1826,7 +1870,9 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
    * it was told to show.
    */
   await expect(
-    page.locator('#chat-dock').getByRole('button', { name: 'Hide Activity' }),
+    page
+      .getByRole('region', { name: 'Activity', exact: true })
+      .getByRole('button', { name: 'Hide Activity' }),
   ).toBeVisible({ timeout: 10_000 });
   const revealed = page.getByTestId('session-detail');
   await expect(revealed).toBeVisible({ timeout: 10_000 });
@@ -2068,12 +2114,12 @@ for (const viewport of [
     await expandMobileDock(page);
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     const selectedModel = page.locator('.chat-input__model-name');
-    await expect(selectedModel).toHaveText('test-model');
+    await expect(selectedModel).toHaveText('Selected Test Model');
     await expect(page.locator('.chat-input__model-btn')).toHaveAttribute(
       'aria-label',
       /agent default/,
     );
-    const selectedModelLabel = 'test-model';
+    const selectedModelLabel = 'Selected Test Model';
     const activeChatParam = new URL(page.url()).searchParams.get('chat');
     const switcher = page.getByRole('button', { name: /^Switch task/ });
     await expect(switcher).toContainText('New chat');
@@ -2260,7 +2306,7 @@ for (const viewport of [
       'Model',
     );
     await expect(modelButton.locator('.chat-input__model-name')).toHaveText(
-      'test-model',
+      'Selected Test Model',
     );
     await expect(modelButton).toContainText('⌄');
     const modelBox = await modelButton.boundingBox();
