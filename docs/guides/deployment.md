@@ -150,6 +150,8 @@ readiness. Application and workspace files need their own retention/backup polic
 
 ## Reverse Proxy
 
+For a complete optional Compose proxy profile, see [Public HTTPS ingress](../../deploy/public-ingress/README.md). It keeps the root deployment private unless explicitly applied and removes direct Station host ports.
+
 Terminate TLS in a reverse proxy that forwards the one public origin. Do not
 split UI and API onto separate origins:
 
