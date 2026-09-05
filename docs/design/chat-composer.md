@@ -102,3 +102,16 @@ Owner-directed API-first: session-api parity slice → detection/back-end slices
 composer overhaul + badges land together in the final UI-confirm pass, verified live
 with role-based Playwright selectors (no forceClickRole in the new specs) and
 screenshots.
+
+## Mobile conversation focus (2026-09-05)
+
+Owner-directed revision: the phone header prioritizes navigation, the readable
+conversation title, and one Chat actions menu. New chat, Activity, project
+switching, connection management, and dock sizing remain explicit actions in
+that menu. The collapsed dock also keeps a direct Expand chat control. No
+resize or navigation action requires a gesture.
+
+Mobile message rows prioritize the authored text and essential live approval or
+error state. A separate 44px actions button opens attribution, model facts,
+provenance, copy, ratings, and Task references on demand. These details retain
+their original event-backed identities. Desktop attribution stays inline.

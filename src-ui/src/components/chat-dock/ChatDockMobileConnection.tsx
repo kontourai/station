@@ -80,7 +80,11 @@ function needsAttention(state: ConnectionIndicatorState): boolean {
  * toolbar chip and the banner layer — the same locally-tracked pending-
  * exchange fact, read once per surface, not three drifting copies of it.
  */
-export function ChatDockMobileConnection() {
+export function ChatDockMobileConnection({
+  showLabel = false,
+}: {
+  showLabel?: boolean;
+}) {
   const { activeConnection } = useConnections();
   const { apiBase } = useApiBase();
   const { status, reason, recheck } = useConnectionStatus({
@@ -135,8 +139,12 @@ export function ChatDockMobileConnection() {
       }}
     >
       <ConnectionStatusDot status={state} size={isRepairLike(state) ? 11 : 8} />
-      {actionLabel && (
-        <span className="chat-dock__mobile-conn-label">{actionLabel}</span>
+      {(showLabel || actionLabel) && (
+        <span className="chat-dock__mobile-conn-label">
+          {showLabel
+            ? `${activeConnection?.name ?? 'Station'} · ${actionLabel ?? 'Manage Stations'}`
+            : actionLabel}
+        </span>
       )}
     </button>
   );

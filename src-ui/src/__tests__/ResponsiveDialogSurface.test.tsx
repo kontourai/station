@@ -158,6 +158,45 @@ describe('ResponsiveDialogSurface', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  test('StrictMode keeps focus inside a mounted dialog and returns it only after closing', async () => {
+    setMobileViewport(true);
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open details
+          </button>
+          {open && (
+            <ResponsiveDialogSurface
+              ariaLabel="Details"
+              onClose={() => setOpen(false)}
+            >
+              <button type="button">Action</button>
+            </ResponsiveDialogSurface>
+          )}
+        </>
+      );
+    }
+    render(
+      <StrictMode>
+        <Harness />
+      </StrictMode>,
+    );
+    const trigger = screen.getByRole('button', { name: 'Open details' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    await act(async () => {
+      await new Promise(requestAnimationFrame);
+    });
+    expect(document.activeElement).toBe(
+      screen.getByRole('dialog', { name: 'Details' }),
+    );
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Details' })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
   test('restores the trigger after the dialog unmounts', async () => {
     setMobileViewport(false);
 

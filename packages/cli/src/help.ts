@@ -174,17 +174,29 @@ const VERBS: Record<string, VerbSpec> = {
   },
   cloud: {
     group: 'Lifecycle',
-    summary:
-      'Preview cloud setup compatibility without transferring or provisioning',
-    actions: ['preview', 'template'],
+    summary: 'Prepare cloud environments and copy encrypted Git workspaces',
+    actions: [
+      'preview',
+      'template',
+      'keygen',
+      'pack-workspace',
+      'inspect-workspace',
+      'unpack-workspace',
+    ],
     usage: [
       'station cloud preview --home=<path> --provider=<aws-ec2|gcp-compute> --region=<region> --instance-type=<type> [--json]',
       'station cloud template --provider=aws-ec2 --region=<region> --instance-type=<type> --image=<digest-pinned-image> --output=<new-file>',
+      'station cloud keygen --output=<new-key-file>',
+      'station cloud pack-workspace --workspace=<checkout-root> --key-file=<key> --output=<new-package> --source-paused',
+      'station cloud inspect-workspace --archive=<package> --key-file=<key>',
+      'station cloud unpack-workspace --archive=<package> --key-file=<key> --destination=<new-directory>',
     ],
     detail: [
       'Read-only metadata preview. Does not export credentials or move running work.',
       'GCP preview supports e2-micro, e2-small, and e2-medium; template generation is currently AWS-only.',
-      'Transfer and resume remain unavailable until target and ownership verification are implemented.',
+      'Whole-setup transfer and resume remain unavailable. Workspace packages copy data only.',
+      'Packages include reachable Git history and non-ignored working files, which may contain secrets.',
+      'Import creates a fresh workspace and does not enroll credentials, register a Project, or execute code.',
     ],
   },
   home: {
