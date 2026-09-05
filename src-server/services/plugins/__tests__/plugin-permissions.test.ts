@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -48,6 +49,7 @@ import {
   requiredPermissionsForManifest,
   revokeAllGrants,
   revokeGrants,
+  withPluginProviderGrantPublication,
 } from '../plugin-permissions.js';
 
 /**
@@ -1045,6 +1047,82 @@ describe('grants are bound to plugin content (station#4288)', () => {
       'plugin.server',
     ]);
     expect(changed.withheld).toEqual(changed.recorded);
+  });
+
+  test('retained artifact publication and rebind use current physical bytes without an alias', async () => {
+    await grantPermissions(dir, 'bound-plugin', [
+      'navigation.dock',
+      'providers.register',
+    ]);
+    const physical = join(dir, 'retained-artifact');
+    renameSync(join(dir, 'plugins', 'bound-plugin'), physical);
+    let current = true;
+    const digest = computePluginContentDigest(dir, 'retained-artifact')!;
+    const artifact = {
+      pluginId: 'bound-plugin',
+      digest,
+      isCurrent: () =>
+        current &&
+        computePluginContentDigest(dir, 'retained-artifact') === digest,
+    };
+    const publish = vi.fn(async () => 'published');
+    await expect(
+      withPluginProviderGrantPublication(
+        dir,
+        'bound-plugin',
+        publish,
+        artifact,
+      ),
+    ).resolves.toEqual({ kind: 'applied', value: 'published' });
+    await expect(
+      rebindGrantsAfterContentChange(
+        dir,
+        'bound-plugin',
+        {
+          permissions: ['navigation.dock'],
+          providers: [{ type: 'model', module: './provider.mjs' }],
+        },
+        artifact,
+      ),
+    ).resolves.toEqual({
+      retained: ['navigation.dock'],
+      withdrawn: ['providers.register'],
+    });
+    await recordPluginDependencyOwnership(
+      dir,
+      'bound-plugin',
+      [{ id: 'dependency', contentDigest: digest }],
+      artifact,
+    );
+    await grantPermissions(
+      dir,
+      'bound-plugin',
+      ['providers.register'],
+      artifact,
+    );
+    const before = readPluginGrantRecord(dir, 'bound-plugin');
+    current = false;
+    await expect(
+      rebindGrantsAfterContentChange(
+        dir,
+        'bound-plugin',
+        { permissions: [] },
+        artifact,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      recordPluginDependencyOwnership(dir, 'bound-plugin', [], artifact),
+    ).rejects.toThrow();
+    await expect(
+      withPluginProviderGrantPublication(
+        dir,
+        'bound-plugin',
+        publish,
+        artifact,
+      ),
+    ).resolves.toEqual({ kind: 'superseded' });
+    expect(publish).toHaveBeenCalledOnce();
+    expect(readPluginGrantRecord(dir, 'bound-plugin')).toEqual(before);
   });
 
   test('acceptance 3: an update that newly derives a permission does not inherit consent for it', async () => {
