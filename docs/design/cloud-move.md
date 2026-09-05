@@ -2,8 +2,9 @@
 
 > Status: staged implementation under [#495](https://github.com/kontourai/station/issues/495)
 > and [#580](https://github.com/kontourai/station/issues/580). The initial slice
-> implements a read-only setup preview and AWS template preparation. It does
-> not provision an account, copy setup, enroll credentials, move execution,
+> implements a read-only setup preview, AWS template preparation, and encrypted
+> [Git workspace copies](../guides/workspace-packages.md). It does
+> not provision an account, copy a complete setup, enroll credentials, move execution,
 > or provide a one-click UI. Those are required follow-through, not completed
 > features. The existing private-cloud design remains a single-host baseline.
 
