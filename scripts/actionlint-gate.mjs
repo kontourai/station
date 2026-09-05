@@ -37,6 +37,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
+import { collectRequiredBrowserSmokeFindings } from './ci-workflow-governance.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -1478,7 +1479,9 @@ function primaryCiRouterFindings(file, document) {
   }
   if (file !== '.github/workflows/ci.yml') return [];
 
-  const findings = [];
+  const findings = collectRequiredBrowserSmokeFindings(document).map(
+    (message) => ({ file, jobId: 'fast-checks', message }),
+  );
   const jobs = document?.jobs ?? {};
   if (!hasOnlyReadContentsPermission(document.permissions))
     findings.push({

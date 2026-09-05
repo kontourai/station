@@ -463,7 +463,10 @@ export const REQUIRED_FAST_CHECKS_CONDITION =
 export function collectRequiredBrowserSmokeFindings(workflowText) {
   let document;
   try {
-    document = load(workflowText, { schema: JSON_SCHEMA });
+    document =
+      typeof workflowText === 'string'
+        ? load(workflowText, { schema: JSON_SCHEMA })
+        : workflowText;
   } catch {
     return ['Required browser smoke needs an unambiguous workflow document.'];
   }

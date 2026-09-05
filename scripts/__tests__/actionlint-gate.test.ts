@@ -1335,6 +1335,23 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test('the always-on workflow gate rejects removal of required browser smoke', () => {
+    const findings = persistentRunnerPolicyFindings(
+      primaryCiJobFixture('fast-checks', (job) => {
+        job.steps = (job.steps as Array<Record<string, unknown>>).filter(
+          (step) =>
+            step.name !== 'Verify critical browser journeys before merge',
+        );
+      }),
+    );
+    expect(findings).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks',
+      message:
+        'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks.',
+    });
+  });
+
   test('rejects unreviewed fork shell execution', () => {
     expect(
       persistentRunnerPolicyFindings(
