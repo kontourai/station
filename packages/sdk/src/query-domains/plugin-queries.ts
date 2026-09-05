@@ -1,5 +1,10 @@
 import { _getApiBase } from '../api';
-import { type InstalledPluginRecord, listPlugins } from '../client/plugins';
+import {
+  type InstalledPluginRecord,
+  listPlugins,
+  type PluginRecoveryPreview,
+  previewPluginRecovery,
+} from '../client/plugins';
 import type { QueryConfig } from '../query-core';
 import { useApiQuery } from '../query-core';
 import type {
@@ -343,4 +348,22 @@ export async function revokeWorkspaceHomeRoleGrant(): Promise<void> {
       apiErrorMessage(result ?? {}, 'Failed to revoke the Home role'),
     );
   }
+}
+
+export async function requestPluginRecoveryPreview(name: string) {
+  return previewPluginRecovery(await _getApiBase(), name);
+}
+
+export function usePluginRecoveryPreviewQuery(
+  name: string | undefined,
+  config?: QueryConfig<PluginRecoveryPreview>,
+) {
+  return useApiQuery(
+    ['plugin-recovery-preview', name ?? 'unknown'],
+    () => requestPluginRecoveryPreview(name!),
+    {
+      ...config,
+      enabled: !!name && (config?.enabled ?? true),
+    },
+  );
 }

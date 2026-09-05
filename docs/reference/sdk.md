@@ -866,6 +866,57 @@ const { mutate } = usePluginPreviewMutation();
 mutate('https://github.com/org/my-plugin.git');
 ```
 
+### Retained plugin recovery
+
+`usePluginRecoveryPreviewQuery(name, config?)` reads the retained selection through
+`GET /api/plugins/:name/recovery-preview`. `requestPluginRecoveryPreview(name)`
+provides the same read without a hook. The React-free client entry exports
+`previewPluginRecovery(apiBase, name, options?)` and
+`recoverPlugin(apiBase, name, input, options?)`; use the normal Station credential
+and origin options. No local paths or internal runtime imports are required.
+
+The preview carries the exact installation, retained content digest, opaque
+`recoveryRevision`, current `grantRevision`, permission review, skipped components,
+and dependency installation/consent rows. These are review preconditions, not
+permission grants. Show the review and obtain an explicit decision before calling
+`usePluginRecoveryMutation()`. Its input is `{ name, recoveryRevision, consent }`;
+recovery consent requires the fresh grant revision, including each dependency
+approval. Never derive approval merely from a cached preview or retry an old
+consent automatically.
+
+```ts
+import { previewPluginRecovery, recoverPlugin } from '@kontourai/station-sdk/client';
+
+const preview = await previewPluginRecovery(apiBase, name, requestOptions);
+// Present preview.permissions and preview.dependencies in your application's
+// review UI. Continue only with the operator's explicit selected permissions.
+const result = await recoverPlugin(apiBase, name, {
+  recoveryRevision: preview.recoveryRevision,
+  consent: {
+    contentDigest: preview.contentDigest,
+    grantRevision: preview.grantRevision,
+    permissions: operatorDecision.permissions,
+    dependencies: preview.dependencies.map(({ id }) => id),
+    dependencyApprovals: preview.dependencies.map(({ id, consent }) => ({
+      ...consent, id,
+      permissions: operatorDecision.dependencies[id],
+    })),
+  },
+}, requestOptions);
+// A 202 receipt with configurationActivation.status === 'pending' is retained
+// work awaiting activation. It is not completed installation or a retry signal.
+```
+
+Recovery continues retained bytes and their data scope; it does not fetch missing
+dependencies or adopt unrelated installations. A changed selection/decision yields
+HTTP 409; unavailable grant evidence can yield 503. Surface the error and require
+a fresh preview and decision. `PluginRecoveryResult` preserves the existing
+`PluginInstallResult` plus the acceptance-time `configurationActivation` receipt.
+The mutation disables retries and refreshes plugin, recovery, layout, Agent, and
+Project queries after an accepted response, including pending activation. A network
+failure does not prove that the server had no effect; inspect current state before
+asking for another recovery decision.
+
 ### `usePluginUpdateMutation()`
 
 Updates an installed plugin. Invalidates plugins cache on success.

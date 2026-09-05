@@ -36,3 +36,10 @@ export interface AgentHealthStatus {
   checks?: Record<string, boolean>;
   status?: string;
 }
+
+export type {
+  PluginRecoveryConsent,
+  PluginRecoveryInput,
+  PluginRecoveryPreview,
+  PluginRecoveryResult,
+} from '../client/plugins';
