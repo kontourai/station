@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use tauri::Manager;
 
+#[cfg(target_os = "android")]
+mod android_dns;
 #[cfg(not(mobile))]
 mod bundled_server_state;
 mod channel_ports_generated;
@@ -2318,7 +2320,7 @@ fn cancel_native_http_request(
 }
 
 pub(crate) fn native_http_agent() -> ureq::Agent {
-    ureq::Agent::config_builder()
+    let config = ureq::Agent::config_builder()
         .max_redirects(0)
         // SSE bodies are intentionally open-ended. Bound connection and
         // response-header phases only; cancellation is checked between
@@ -2327,8 +2329,15 @@ pub(crate) fn native_http_agent() -> ureq::Agent {
         .timeout_recv_response(Some(Duration::from_secs(20)))
         .timeout_recv_body(Some(Duration::from_secs(1)))
         .http_status_as_error(false)
-        .build()
-        .into()
+        .build();
+    #[cfg(target_os = "android")]
+    return ureq::Agent::with_parts(
+        config,
+        ureq::unversioned::transport::DefaultConnector::default(),
+        android_dns::AndroidSystemResolver,
+    );
+    #[cfg(not(target_os = "android"))]
+    return config.into();
 }
 
 fn native_request_transport_detail(error: &ureq::Error) -> NativeHttpTransportDetail {
@@ -2375,6 +2384,78 @@ fn native_request_transport_detail(error: &ureq::Error) -> NativeHttpTransportDe
             detail: format!("Station request failed: {error}"),
         },
     }
+}
+
+const NATIVE_PUBLIC_HANDSHAKE_PATH: &str = "/.well-known/station/v1";
+const NATIVE_PUBLIC_HANDSHAKE_BODY_LIMIT: u64 = 1024 * 1024;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativePublicHandshakeResponse {
+    status: u16,
+    body: String,
+}
+
+fn validate_native_public_handshake_url(url: &str) -> Result<url::Url, NativeCommandError> {
+    let parsed = url::Url::parse(url)
+        .map_err(|_| NativeCommandError::new("invalid_request", "invalid Station handshake URL"))?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.path() != NATIVE_PUBLIC_HANDSHAKE_PATH
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err(NativeCommandError::new(
+            "invalid_request",
+            "native compatibility requests are limited to the public Station handshake",
+        ));
+    }
+    Ok(parsed)
+}
+
+fn station_native_public_handshake_blocking(
+    url: String,
+) -> Result<NativePublicHandshakeResponse, NativeCommandError> {
+    validate_native_public_handshake_url(&url)?;
+    let mut response = native_http_agent()
+        .get(&url)
+        .header("Accept", "application/json")
+        .call()
+        .map_err(|error| {
+            let detail = native_request_transport_detail(&error);
+            NativeCommandError::new(detail.code, detail.detail)
+        })?;
+    if response.body().content_length().is_some_and(|length| {
+        length > NATIVE_PUBLIC_HANDSHAKE_BODY_LIMIT
+    }) {
+        return Err(NativeCommandError::new(
+            "response_too_large",
+            "Station public handshake exceeded the native response limit",
+        ));
+    }
+    let status = response.status().as_u16();
+    let body = response
+        .body_mut()
+        .with_config()
+        .limit(NATIVE_PUBLIC_HANDSHAKE_BODY_LIMIT)
+        .read_to_string()
+        .map_err(|error| {
+            let detail = native_request_transport_detail(&error);
+            NativeCommandError::new(detail.code, detail.detail)
+        })?;
+    Ok(NativePublicHandshakeResponse { status, body })
+}
+
+#[tauri::command]
+async fn station_native_public_handshake(
+    url: String,
+) -> Result<NativePublicHandshakeResponse, NativeCommandError> {
+    tauri::async_runtime::spawn_blocking(move || station_native_public_handshake_blocking(url))
+        .await
+        .map_err(|error| {
+            NativeCommandError::from(format!("native Station handshake task failed: {error}"))
+        })?
 }
 
 fn native_response_transport_detail(error: &std::io::Error) -> NativeHttpTransportDetail {
@@ -9499,6 +9580,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         station_ensure_bundled_local_profile,
         station_local_self_provision,
         station_native_http_request,
+        station_native_public_handshake,
         station_native_http_cancel,
         station_native_consent_review,
         station_native_pairing_exchange,
@@ -9535,6 +9617,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         credential_vault_commit_pairing,
         station_profile_authorize_active,
         station_native_http_request,
+        station_native_public_handshake,
         station_native_http_cancel,
         station_native_consent_review,
         station_native_pairing_exchange,
@@ -9779,6 +9862,29 @@ If a stable instance is running, this launch will focus its window and exit.",
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_public_handshake_admits_only_the_exact_public_route() {
+        assert!(validate_native_public_handshake_url(
+            "https://station.example.test/.well-known/station/v1"
+        )
+        .is_ok());
+        assert!(validate_native_public_handshake_url(
+            "http://127.0.0.1:3141/.well-known/station/v1"
+        )
+        .is_ok());
+        for refused in [
+            "file:///etc/passwd",
+            "https://user:secret@station.example.test/.well-known/station/v1",
+            "https://station.example.test/.well-known/station/v1?credential=secret",
+            "https://station.example.test/api/system/identity",
+        ] {
+            assert!(
+                validate_native_public_handshake_url(refused).is_err(),
+                "unexpectedly admitted {refused}"
+            );
+        }
+    }
 
     #[test]
     #[cfg(not(mobile))]
