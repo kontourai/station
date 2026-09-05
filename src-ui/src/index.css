@@ -8910,29 +8910,6 @@ button.tool-call__line:hover {
   transform: rotate(180deg);
 }
 
-/* Match desktop's named project badge instead of making phone users infer the
-   current project from a folder-only icon. The label yields before the task
-   title and keeps the 44px mobile target supplied by app-toolbar__icon-btn. */
-.chat-dock__mobile-project-trigger {
-  flex: 0 1 min(34vw, 132px);
-  min-width: 44px;
-  max-width: min(34vw, 132px);
-  color: var(--accent-primary);
-}
-
-.chat-dock__mobile-project-icon {
-  display: inline-flex;
-  flex: 0 0 auto;
-}
-
-.chat-dock__mobile-project-name {
-  min-width: 0;
-  overflow: hidden;
-  font-size: var(--text-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* archive#3309, carrying out what the rule above already says it wants: "the
    label yields before the task title". `flex: 0 1` shrinks it but never to
    nothing, so on a phone it held ~86px to render "No pr…" while the identity
@@ -8950,16 +8927,6 @@ button.tool-call__line:hover {
    `aria-hidden`. It renders the name now
    (ChatDockMobileOverflowSheet.tsx). A justification that names a channel is
    only as good as the channel. */
-@media (max-width: 430px) {
-  .chat-dock__mobile-project-name {
-    display: none;
-  }
-
-  .chat-dock__mobile-project-trigger {
-    flex: 0 0 auto;
-    max-width: none;
-  }
-}
 
 /* And the maximized bar holds the label back a band further, so the label and
    the agent avatar do not return at the same width. They did at exactly 431px:
@@ -8988,36 +8955,12 @@ button.tool-call__line:hover {
   .modal-dialog .button {
     min-height: 44px;
   }
-
-  .chat-dock__mobile-header--with-drawer .chat-dock__mobile-project-name {
-    display: none;
-  }
-
-  .chat-dock__mobile-header--with-drawer .chat-dock__mobile-project-trigger {
-    flex: 0 0 auto;
-    max-width: none;
-  }
-}
-
-/* archive#3309: the identity block and the ⋯ chat-actions trigger travel together —
-   the cluster owns the bar's flexible space so the ⋯ hugs the title text
-   (the caret's old slot) instead of drifting to the right edge. */
-.chat-dock__mobile-identity-cluster {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.chat-dock__mobile-identity-cluster > .chat-dock__mobile-overflow-trigger {
-  padding: 0 var(--space-2);
 }
 
 /* Project above, chat name below — the hierarchy reads parent → child, and it
    is what the old standalone project-context row used to carry. */
 .chat-dock__mobile-identity {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -9044,87 +8987,6 @@ button.tool-call__line:hover {
   justify-content: center;
   gap: 0;
   min-width: 0;
-}
-
-/* archive#3309: the agent's face on the phone, and the rule that the NAME
-   outranks it. The identity block is the bar's flex absorber — it is what pays
-   for every pinned 44px slot — so a fixed 18px avatar is taken out of the
-   agent name and the chat title, the two things this issue exists to surface.
-   The picture is therefore the first thing dropped, never the text.
-   `flex-shrink: 0` says the avatar will not give ground once shown, which is
-   exactly why the decision of WHETHER to show it has to be made here.
-
-   Two gates, because the bar has two configurations:
-
-   - Below 361px it is off outright. Nothing else fits.
-   - Between 361px and 430px it is off in the MAXIMIZED bar specifically. That
-     bar hides the app toolbar and takes over the drawer toggle, and the
-     `max-width: 360px` rule above hands the dock toggle back at exactly
-     361px — so an eighth control and the avatar would arrive in the same
-     breath, both paid for out of the same block. Measured live at 375px
-     maximized, avatar on: eyebrow 0px, title 0px, with the avatar overflowing
-     its own button. Avatar off at that width: 21px and 21px. Zero characters
-     of agent name is a worse answer than no picture, and it is the same
-     standard applied to the project label below.
-
-   The non-maximized bar keeps seven controls at every width and is healthy
-   from 361px up, so it is not gated twice.
-
-   Pinned by `the maximized phone bar keeps the agent name and chat title
-   legible` in tests/mobile-chat-composer.spec.ts, which measures the eyebrow
-   and title TEXT at 361/375/390. The 320px containment spec beside it does not
-   pin this: it measures boxes, and the identity control's padding floor stays
-   positive with both strings at zero. */
-.chat-dock__mobile-agent-avatar {
-  display: none;
-}
-
-@media (min-width: 361px) {
-  .chat-dock__mobile-agent-avatar {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-  }
-}
-
-@media (max-width: 430px) {
-  .chat-dock__mobile-header--with-drawer .chat-dock__mobile-agent-avatar {
-    display: none;
-  }
-}
-
-/* The picker's own footprint: same shrink-and-ellipsize treatment as the
-   project-switcher trigger beside it (`.chat-dock__mobile-project-trigger`
-   above), not a hard floor beyond the 44px touch target every mobile
-   trigger already carries — so a narrow phone gets a short, tappable
-   "Ch…" rather than either an overflowing full-width label or a control
-   that vanishes outright.
-
-   This rule applies only when React renders the slot. `mobile-chrome.ts`
-   subscribes to `(min-width: 481px)` and leaves the picker DOM-absent below
-   that boundary in BOTH mobile bars. That is the same 481px identity-extras
-   deferral the eyebrow/title width assertions pin (the loop at
-   tests/mobile-chat-composer.spec.ts ~:1863-1873 over the widths at :1842 -
-   it measured the eyebrow at 0px when the picker rendered at 431px): below
-   481px the bar cannot afford the picker alongside its legible agent/title identity,
-   so the ⋯ overflow sheet is the occupant-switch path. */
-.chat-dock__mobile-occupant-picker {
-  flex: 0 1 min(28vw, 108px);
-  min-width: 44px;
-  max-width: min(28vw, 108px);
-}
-
-.chat-dock__mobile-occupant-picker .dock-occupant-picker,
-.chat-dock__mobile-occupant-picker .dock-occupant-picker__trigger {
-  width: 100%;
-  min-width: 0;
-}
-
-.chat-dock__mobile-occupant-picker .dock-occupant-picker__label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .chat-dock__mobile-identity:hover,
@@ -9164,24 +9026,6 @@ button.tool-call__line:hover {
 
 .chat-dock__mobile-activity.is-active {
   color: var(--accent-primary);
-}
-
-.chat-dock__mobile-activity-count {
-  position: absolute;
-  top: 4px;
-  right: 2px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-pill);
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  font-size: var(--text-2xs);
-  font-weight: 700;
-  line-height: 1;
 }
 
 .chat-dock__mobile-activity-dot {

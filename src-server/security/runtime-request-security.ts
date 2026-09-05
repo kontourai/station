@@ -4,6 +4,7 @@ import {
   type ClientOrigin,
   parseClientReportedOrigin,
 } from '@kontourai/station-contracts/client-origin';
+import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
 
 export type RuntimePeerClass = 'loopback' | 'remote' | 'absent';
 export type PairedDeviceLastSeenFrom = 'loopback' | 'lan' | 'tailnet';
@@ -1061,3 +1062,46 @@ import {
   isTrustedInternalApiToken,
 } from '../utils/internal-api-token.js';
 import { requiredExternalSurfaceCapability } from './pairing-route-scopes.js';
+
+export interface CurrentRuntimeRequestPrincipalSecurity {
+  authorizeCredential(
+    credential: string,
+    request: { method: string; path: string },
+  ): boolean;
+  resolveGrantedScope(credential: string): string | undefined;
+}
+
+export function isRuntimeRequestPrincipalCurrent(
+  request: Request,
+  security: CurrentRuntimeRequestPrincipalSecurity,
+): boolean {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  if (!principal) return false;
+  if (principal.kind === 'internal')
+    return isTrustedInternalApiToken(
+      request.headers.get(INTERNAL_API_TOKEN_HEADER) ?? undefined,
+    );
+  const path = new URL(request.url).pathname;
+  if (
+    !security.authorizeCredential(principal.credential, {
+      method: request.method,
+      path,
+    })
+  ) {
+    return false;
+  }
+  // Match ingress exactly: an unmapped capability or a no-longer-granted
+  // pairing scope both fail closed at the delayed publication boundary.
+  const capability = requiredExternalSurfaceCapability(
+    'http',
+    request.method,
+    path,
+  );
+  if (capability?.capability !== 'pairing-scope' || !capability.scope)
+    return false;
+  const grantedScope = security.resolveGrantedScope(principal.credential);
+  return (
+    grantedScope !== undefined &&
+    pairingScopeIncludes(grantedScope, capability.scope)
+  );
+}

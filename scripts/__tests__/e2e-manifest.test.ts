@@ -218,6 +218,7 @@ describe('e2e manifest', () => {
       'tests/external-session-follow.spec.ts',
       'tests/builder-delivery-viewer.spec.ts',
       'tests/meeting-notes.spec.ts',
+      'tests/learning-source.spec.ts',
       'tests/knowledge-library.spec.ts',
       // Both mutate shared instance state through the real API rather than
       // isolating with `page.route` (station#3736/#3743 both hid behind a
