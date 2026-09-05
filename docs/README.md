@@ -52,13 +52,16 @@ clearly mark the stale document.
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
 - **[Architecture](architecture/)** — current module boundaries and ownership.
+- **[Private cloud environment](design/private-cloud-environment.md)** — working
+  single-VM deployment and execution design.
 - **[Design records](design/README.md)** — proposals, accepted decisions, and
   superseded designs. A design file is not current merely because it remains
   in the repository; read its status and follow its named successor.
 - **[Strategy](strategy/)** — durable identity, decisions, historical phase
-  records, and private execution context.
+  records, and maintainer execution context. Repository contents are public;
+  exclusion from Pages is not a privacy boundary.
 - **[Plans](plans/)** — implementation plans and staged initiatives; lifecycle
-  cleanup is tracked separately in issue #273.
+  and current work status must be checked against the owning GitHub issue.
 - **[Migration records](migration/)** — cutover-era identifier maps retained for
   historical lookup; GitHub issues and pull requests remain the authority for
   live work.
@@ -79,8 +82,8 @@ clearly mark the stale document.
 
 Root-level records: [glossary.md](glossary.md) (vocabulary authority),
 [architecture.md](architecture.md) (defers to the module map),
-[acp-chat-architecture.md](acp-chat-architecture.md),
-[strands-migration.md](strands-migration.md),
+[acp-chat-architecture.md](acp-chat-architecture.md) (historical proposal),
+[strands-migration.md](strands-migration.md) (historical assessment),
 [privacy-policy.md](privacy-policy.md), and
 a historical audit retained in the repository archive.
 User-facing docs not named in the audience table:
@@ -89,6 +92,10 @@ User-facing docs not named in the audience table:
 [user/contributing.md](user/contributing.md).
 
 ## Public Site
+
+For file placement, naming, source authority, and retiring old material, use
+[Maintaining documentation](guides/documentation.md). For code and tooling
+placement, use [Repository layout](guides/repository-layout.md).
 
 The public site is an intentionally small product and end-user projection. Its
 source boundary is:

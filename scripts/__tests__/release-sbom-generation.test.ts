@@ -10,9 +10,16 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import Ajv from 'ajv';
 import { afterEach, describe, expect, it } from 'vitest';
+import { createPnpmSbom, integrityHashes } from '../generate-pnpm-sbom.mjs';
+import {
+  pnpmDependencyGraph,
+  readPnpmDependencyGraph,
+} from '../lib/pnpm-dependency-graph.mjs';
 import { releaseVariants } from '../lib/release-artifacts.mjs';
 import { generateReleaseSboms } from '../lib/release-sbom-generation.mjs';
 import {
@@ -184,6 +191,134 @@ afterEach(() =>
 );
 
 describe('release SBOM generation', () => {
+  it('generates a schema-valid production graph with aliases, workspace links, peer instances, optional packages, and tarball hashes', async () => {
+    const integrity = `sha512-${Buffer.alloc(64, 171).toString('base64')}`;
+    const lock = {
+      importers: {
+        '.': {
+          dependencies: {
+            alias: { version: 'dep@1.0.0(peer@1.0.0)' },
+            second: { version: 'dep@1.0.0(peer@2.0.0)' },
+            local: { version: 'link:packages/local' },
+          },
+          devDependencies: { dev: { version: '1.0.0' } },
+        },
+        'packages/unlinked': {
+          dependencies: { unique: { version: '1.0.0' } },
+          devDependencies: { 'workspace-dev': { version: '1.0.0' } },
+        },
+        'packages/local': {
+          dependencies: {
+            nested: { version: `1.0.0(patch_hash=${'f'.repeat(64)})` },
+          },
+          optionalDependencies: { native: { version: '1.0.0' } },
+          devDependencies: { 'workspace-dev': { version: '1.0.0' } },
+        },
+      },
+      packages: Object.fromEntries(
+        ['dep', 'peer', 'nested', 'native', 'dev', 'workspace-dev', 'unique']
+          .map((name) => [
+            `${name}@1.0.0`,
+            {
+              resolution: { integrity },
+              ...(name === 'native' ? { os: ['darwin'] } : {}),
+            },
+          ])
+          .concat([['peer@2.0.0', { resolution: { integrity } }]]),
+      ),
+      snapshots: {
+        'dep@1.0.0(peer@1.0.0)': { dependencies: { peer: '1.0.0' } },
+        'dep@1.0.0(peer@2.0.0)': { dependencies: { peer: '2.0.0' } },
+        'peer@1.0.0': {},
+        'peer@2.0.0': {},
+        [`nested@1.0.0(patch_hash=${'f'.repeat(64)})`]: {},
+        'native@1.0.0': {},
+        'dev@1.0.0': {},
+        'workspace-dev@1.0.0': {},
+        'unique@1.0.0': {},
+      },
+    };
+    const graph = pnpmDependencyGraph(lock);
+    const bom = createPnpmSbom({
+      graph,
+      manifestForImporter: (path: string) => ({
+        name:
+          path === '.'
+            ? 'app'
+            : path === 'packages/local'
+              ? '@test/local'
+              : '@test/unlinked',
+        version: '1.0.0',
+      }),
+    });
+    expect(
+      bom.components.map((component: any) => component.purl).sort(),
+    ).toEqual([
+      'pkg:npm/%40test/local@1.0.0',
+      'pkg:npm/%40test/unlinked@1.0.0',
+      'pkg:npm/dep@1.0.0',
+      'pkg:npm/native@1.0.0',
+      'pkg:npm/nested@1.0.0',
+      'pkg:npm/peer@1.0.0',
+      'pkg:npm/peer@2.0.0',
+      'pkg:npm/unique@1.0.0',
+    ]);
+    expect(bom.dependencies).toContainEqual({
+      ref: 'pkg:npm/dep@1.0.0',
+      dependsOn: ['pkg:npm/peer@1.0.0', 'pkg:npm/peer@2.0.0'],
+    });
+    expect(bom.dependencies).toContainEqual({
+      ref: 'pkg:npm/%40test/local@1.0.0',
+      dependsOn: ['pkg:npm/native@1.0.0', 'pkg:npm/nested@1.0.0'],
+    });
+    const dep = cyclonedxComponents(bom, 'npm').find(
+      (component: any) => component.name === 'dep',
+    );
+    expect(dep?.hashes).toEqual([{ alg: 'SHA-512', content: 'ab'.repeat(64) }]);
+    expect(
+      cyclonedxComponents(bom, 'npm').find(
+        (component: any) => component.name === 'nested',
+      )?.properties,
+    ).toEqual([{ name: 'station:pnpm-patch-hash', value: 'f'.repeat(64) }]);
+    const require = createRequire(import.meta.url);
+    const cdxRequire = createRequire(
+      require.resolve('@cyclonedx/cyclonedx-npm'),
+    );
+    const { Validation } = cdxRequire('@cyclonedx/cyclonedx-library');
+    const validator = new Validation.JsonValidator('1.6');
+    expect(await validator.validate(JSON.stringify(bom))).toBeNull();
+    const malformed = structuredClone(bom);
+    malformed.components[0].hashes = [{ alg: 'SHA-512', content: 'invalid' }];
+    expect(await validator.validate(JSON.stringify(malformed))).not.toBeNull();
+    const lifecycle = releaseDependencyLifecycle({
+      graph,
+      allowlist: {
+        entries: ['dep', 'native', 'dev', 'workspace-dev'].map((name) => ({
+          name,
+          version: '1.0.0',
+          purl: `pkg:npm/${name}@1.0.0`,
+          path: 'irrelevant-hoisted-path',
+          scope: 'root',
+        })),
+      },
+    });
+    expect(lifecycle.purlsByScope.portable).toEqual(['pkg:npm/dep@1.0.0']);
+    expect(lifecycle.purlsByScope.container).toEqual([
+      'pkg:npm/dep@1.0.0',
+      'pkg:npm/dev@1.0.0',
+      'pkg:npm/workspace-dev@1.0.0',
+    ]);
+    const incomplete: any = structuredClone(lock);
+    delete incomplete.snapshots[`nested@1.0.0(patch_hash=${'f'.repeat(64)})`];
+    expect(() =>
+      createPnpmSbom({
+        graph: pnpmDependencyGraph(incomplete),
+        manifestForImporter: () => ({ name: 'app', version: '1.0.0' }),
+      }),
+    ).toThrow(/Unresolved dependency/);
+    expect(() => integrityHashes('sha512-broken')).toThrow(/integrity digest/);
+  });
+
   it('derives runtime and container lifecycle applicability from their independent root-lock installs', () => {
     const production = {
       name: 'production-native',
@@ -291,9 +426,7 @@ describe('release SBOM generation', () => {
           'utf8',
         ),
       ),
-      rootLock: JSON.parse(
-        readFileSync(resolve(root, 'package-lock.json'), 'utf8'),
-      ),
+      graph: readPnpmDependencyGraph(root),
     });
     expect(lifecycle.purlsByScope).toEqual({
       portable: [
@@ -537,7 +670,8 @@ describe('release SBOM generation', () => {
       name: 'npm-dep',
       version: '1.0.0',
       purl: 'pkg:npm/npm-dep@1.0.0',
-      hashes: [{ alg: 'SHA-256', content: 'c'.repeat(64) }],
+      hashes: [{ alg: 'SHA-512', content: 'c'.repeat(128) }],
+      properties: [{ name: 'station:pnpm-patch-hash', value: 'f'.repeat(64) }],
       licenses: ['MIT'],
     };
     const { assetsDir, fragmentsDir, context, fragments } = fixture({
@@ -587,6 +721,7 @@ describe('release SBOM generation', () => {
       version: rich.version,
       purl: rich.purl,
       hashes: rich.hashes,
+      properties: rich.properties,
       licenses: [{ license: { id: 'MIT' } }],
     });
     const metadata = JSON.parse(
@@ -606,6 +741,33 @@ describe('release SBOM generation', () => {
         },
       ]),
     );
+    const spdx = JSON.parse(
+      readFileSync(join(assetsDir, SBOM_ASSETS.container), 'utf8'),
+    );
+    expect(
+      spdx.packages.find((item: any) => item.name === rich.name).sourceInfo,
+    ).toContain('f'.repeat(64));
+    expect(
+      spdx.packages.find((item: any) => item.name === rich.name).checksums,
+    ).toEqual([{ algorithm: 'SHA512', checksumValue: 'c'.repeat(128) }]);
+    const ajv = new Ajv({ strict: false });
+    const schemaRequire = createRequire(
+      createRequire(import.meta.url).resolve('@cyclonedx/cyclonedx-npm'),
+    );
+    schemaRequire('ajv-formats')(ajv);
+    const schema = JSON.parse(
+      readFileSync(
+        resolve(root, 'scripts/__tests__/fixtures/sbom/spdx-2.3.schema.json'),
+        'utf8',
+      ),
+    );
+    const validate = ajv.compile(schema);
+    expect(validate(spdx), JSON.stringify(validate.errors)).toBe(true);
+    const badChecksum = structuredClone(spdx);
+    badChecksum.packages.find(
+      (item: any) => item.name === rich.name,
+    ).checksums[0].algorithm = 'SHA-512';
+    expect(validate(badChecksum)).toBe(false);
     expect(() => validateReleaseSbomPredicates(assetsDir)).not.toThrow();
     expect(readdirSync(fragmentsDir)).toHaveLength(3);
   });

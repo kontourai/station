@@ -9,14 +9,12 @@ WORKDIR /app
 RUN apt-get update \
   && apt-get install --no-install-recommends -y g++ make python3 \
   && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/sdk/package.json packages/sdk/
-COPY packages/sdk/package-lock.json packages/sdk/
 COPY packages/basis-pane/package.json packages/basis-pane/
 COPY packages/board-pane/package.json packages/board-pane/
 COPY packages/shared/package.json packages/shared/
-COPY packages/shared/package-lock.json packages/shared/
 COPY packages/cli/package.json packages/cli/
 COPY packages/connect/package.json packages/connect/
 COPY examples/builder-delivery-viewer/package.json examples/builder-delivery-viewer/
@@ -28,7 +26,7 @@ COPY patches ./patches
 # staging read this whether or not the manifest pins artifacts.
 COPY packaging/node-pty-prebuilds packaging/node-pty-prebuilds
 COPY scripts/node-runtime-contract.mjs scripts/dependency-lifecycle.mjs scripts/
-COPY scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/workspace-dependency-satisfaction.mjs scripts/lib/dependency-install-retirement.mjs scripts/lib/
+COPY scripts/lib/dependency-install-retirement.mjs scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/workspace-dependency-satisfaction.mjs scripts/lib/pnpm-lockfile.mjs scripts/lib/
 RUN npm run dependencies:ci
 
 FROM dependencies AS build
@@ -60,7 +58,7 @@ RUN STATION_UI_BUNDLE_BUDGET=observe ./station build --instance=container --base
 FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS runtime
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install --no-install-recommends -y tini \
+  && apt-get install --no-install-recommends -y tini git openssh-client ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /app/.station /data/station /workspace \
   && chown -R node:node /app/.station /data /workspace \
@@ -69,7 +67,7 @@ RUN apt-get update \
 # The build stage inherits it, but source changes invalidate that stage and
 # would otherwise force an expensive recursive copy into the runtime image.
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/package.json /app/package-lock.json /app/station /app/.station-release.json ./
+COPY --from=build --chown=node:node /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml /app/station /app/.station-release.json ./
 COPY --from=build --chown=node:node /app/scripts ./scripts
 COPY --from=build --chown=node:node /app/config ./config
 COPY --from=build --chown=node:node /app/packages ./packages
@@ -87,6 +85,6 @@ EXPOSE 3000 3141 3142 3143 3144
 VOLUME ["/data/station"]
 USER node
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000/__station/identity').then(async(response)=>{if(!response.ok)throw new Error(String(response.status));const identity=await response.json();if(identity.sha!==process.env.STATION_IMAGE_SHA)throw new Error('image identity mismatch')})" || exit 1
+  CMD ["node", "/app/scripts/container-healthcheck.mjs"]
 ENTRYPOINT ["tini", "--"]
 CMD ["./station", "service", "run", "--instance=container", "--base=/data/station", "--port=3141", "--ui-port=3000", "--host=0.0.0.0"]

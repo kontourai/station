@@ -27,10 +27,12 @@ export const SCOPES = Object.freeze([
   Object.freeze({ directory: 'src-ui', routes: ['src-ui/'] }),
   Object.freeze({
     directory: 'scripts',
-    routes: ['scripts/', '.github/'],
+    routes: ['scripts/', '.github/', 'patches/'],
     rootFiles: [
       'package.json',
       'package-lock.json',
+      'pnpm-lock.yaml',
+      'pnpm-workspace.yaml',
       'tsconfig.json',
       'vitest.config.ts',
       'biome.json',
