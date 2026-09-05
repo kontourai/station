@@ -109,6 +109,55 @@ entitlement changes, usage reporting where required, cancellation, and recovery
 from duplicated or delayed notifications. Partner status, listing approval,
 pricing, and marketplace availability are not established by this design.
 
+## Cost target and sizing assumptions
+
+Planning estimate, checked 2026-09-05: use US East (N. Virginia), USD, 730 hours
+per month, on-demand pricing, modest traffic, and no promotional credits or
+long-term commitments. These are budgeting envelopes, not a measured Station
+capacity result, AWS quote, or customer subscription price.
+
+| Shared service cost | Small pilot monthly allowance |
+| --- | --- |
+| Web/API compute, roughly 1 vCPU and 2 GiB continuously | $35–45 |
+| Small single-AZ PostgreSQL database and initial storage | $30–60 |
+| Load balancer, low traffic, and public IPv4 allowance | $25–40 |
+| Modest artifacts, logs, secrets, DNS, and backup overhead | $10–30 |
+| Combined baseline, before execution and model usage | $100–175; reserve approximately $200 for planning |
+
+A redundant web tier and multi-AZ database justify a separate roughly $300–600
+planning envelope, depending on sizing and network design. Neither envelope is
+a capacity commitment or includes sustained heavy traffic. Validate the actual
+resource list in the AWS calculator before provisioning. Sources:
+[Fargate pricing](https://aws.amazon.com/fargate/pricing/),
+[RDS PostgreSQL pricing](https://aws.amazon.com/rds/postgresql/pricing/),
+[load-balancer pricing](https://aws.amazon.com/elasticloadbalancing/pricing/),
+[VPC pricing](https://aws.amazon.com/vpc/pricing/), and
+[S3 pricing](https://aws.amazon.com/s3/pricing/).
+
+Execution is a separate usage budget. At the published Linux/x86 Fargate
+N. Virginia example rates, a 2-vCPU/4-GiB task is approximately $0.099 per
+running hour: about $2 for 20 hours or $72 for 730 hours, before persistent
+workspace storage, network, logs, and model calls. Startup and idle time count.
+This resource size is an illustration, not a validated agent-workload minimum.
+
+Keep the shared service independent of the number of registered tenants. Start
+isolated workers on demand, bound concurrency, and stop idle workers only after
+preserving workspace state and respecting active execution ownership. Separate
+model-provider spending from platform and execution allowances; make per-tenant
+usage and limits visible. Bring-your-own provider credentials can shift model
+billing to the customer but do not remove execution costs or credential controls.
+
+Do not deploy a permanent compute stack per basic-tier tenant, add Kubernetes or
+extra databases without a workload need, or accept an unbounded log/artifact
+retention default. Evaluate networking explicitly: one $0.045/hour NAT gateway
+adds $32.85 per 730-hour month before processing and address charges. Gateway
+endpoints, task networking, and private connectivity have different costs and
+security properties; choose a reviewed design rather than removing isolation to
+save money. Budget alarms notify; application admission limits must enforce
+execution and provider budgets. Marketplace fees, tax, payment processing,
+engineering/support labor, and development/staging environments are outside the
+infrastructure estimates above.
+
 ## The integration material every shipped slice needs
 
 Publish the following alongside each adapter, deployment option, or integration:
