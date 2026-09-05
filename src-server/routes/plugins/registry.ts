@@ -795,7 +795,7 @@ export function createRegistryRoutes(
         return c.json(
           {
             success: false,
-            error: error.message,
+            error: errorMessage(error),
             lifecycle: {
               status: 'pending',
               selected: error.selected,
