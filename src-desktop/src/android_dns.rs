@@ -1,15 +1,12 @@
 //! Android's application-network DNS resolver.
 //!
 //! Rust's `ToSocketAddrs` does not enter Android's per-UID resolver and therefore
-//! misses VPN DNS such as Tailscale MagicDNS. The application context is
-//! initialized before Tauri starts by the credential bootstrap; resolve through
-//! the active Android `Network` so DNS and routing describe the same VPN-bound
-//! application identity.
+//! misses VPN DNS such as Tailscale MagicDNS. The Java system resolver enters
+//! Android's per-UID network policy and therefore sees the app's VPN DNS.
 
-use jni::objects::{JObject, JObjectArray, JString, JValue};
+use jni::objects::{JObjectArray, JString, JValue};
 use jni::JavaVM;
 use std::fmt;
-use std::mem::ManuallyDrop;
 use std::net::{IpAddr, SocketAddr};
 use ureq::http::Uri;
 use ureq::unversioned::resolver::{ResolvedSocketAddrs, Resolver};
@@ -53,44 +50,22 @@ fn android_network_addresses(host: &str, port: u16) -> Option<ResolvedSocketAddr
     let android = ndk_context::android_context();
     let vm = unsafe { JavaVM::from_raw(android.vm().cast()) }.ok()?;
     let mut env = vm.attach_current_thread().ok()?;
-    // `ndk_context` owns this global reference. Do not let the temporary JNI
-    // wrapper delete it when this call returns.
-    let context = ManuallyDrop::new(unsafe {
-        JObject::from_raw(android.context().cast::<jni::sys::_jobject>())
-    });
-    let service_name = env.new_string("connectivity").ok()?;
-    let manager = env
-        .call_method(
-            &*context,
-            "getSystemService",
-            "(Ljava/lang/String;)Ljava/lang/Object;",
-            &[JValue::Object(&service_name)],
-        )
-        .ok()?
-        .l()
-        .ok()?;
-    if manager.is_null() {
-        return None;
-    }
-    let network = env
-        .call_method(&manager, "getActiveNetwork", "()Landroid/net/Network;", &[])
-        .ok()?
-        .l()
-        .ok()?;
-    if network.is_null() {
-        return None;
-    }
     let host = env.new_string(host).ok()?;
-    let addresses = env
-        .call_method(
-            &network,
-            "getAllByName",
-            "(Ljava/lang/String;)[Ljava/net/InetAddress;",
-            &[JValue::Object(&host)],
-        )
-        .ok()?
-        .l()
-        .ok()?;
+    let addresses = match env.call_static_method(
+        "java/net/InetAddress",
+        "getAllByName",
+        "(Ljava/lang/String;)[Ljava/net/InetAddress;",
+        &[JValue::Object(&host)],
+    ) {
+        Ok(value) => value.l().ok()?,
+        Err(_) => {
+            // UnknownHostException is an ordinary resolver miss. A pending
+            // JNI exception must be cleared before returning to Tauri's worker
+            // or Android terminates the entire process at the native boundary.
+            let _ = env.exception_clear();
+            return None;
+        }
+    };
     let addresses = JObjectArray::from(addresses);
     let count = env.get_array_length(&addresses).ok()?;
     let mut result = AndroidSystemResolver.empty();
