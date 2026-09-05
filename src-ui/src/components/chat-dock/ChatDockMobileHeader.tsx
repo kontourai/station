@@ -1,9 +1,4 @@
 import type {
-  WorkspacePaneDescriptor,
-  WorkspacePaneInstance,
-} from '@kontourai/station-contracts/workspace-pane';
-import type {
-  ReactElement,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   RefObject,
@@ -36,16 +31,6 @@ export interface ChatDockMobileOverflowActions {
   onRestoreDock: () => void;
   isDockMaximized: boolean;
   dockControls?: boolean;
-  onSwitchOccupant: {
-    onChoose: (
-      descriptor: WorkspacePaneDescriptor,
-      instance: WorkspacePaneInstance,
-    ) => void;
-    onChooseAsOnlyContent: (
-      descriptor: WorkspacePaneDescriptor,
-      instance: WorkspacePaneInstance,
-    ) => void;
-  } | null;
 }
 
 export interface ChatDockMobileProjectSwitcher {
@@ -82,7 +67,6 @@ interface ChatDockMobileHeaderProps {
   dockToggle: ChatDockMobileDockToggle | null;
   onNewChat: () => void;
   overflow: ChatDockMobileOverflowActions;
-  occupantPicker?: ReactElement<{ mobileDragPassthrough?: boolean }> | null;
 }
 
 /** Project and conversation context stay directly operable; secondary actions use the sheet. */

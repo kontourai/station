@@ -114,17 +114,6 @@ interface ChatDockHeaderProps {
   availableDockSlotPlacements: readonly DockMode[];
   effectiveDockSlotPlacement: DockMode;
   onDockPlacementChange: (placement: DockMode) => void;
-  /**
-   * A pre-rendered `DockOccupantPicker`, not `{current, onChoose}` data
-   * (station#4460 review M4): this component is imported by the EAGER entry
-   * path (`ChatDock.tsx` → `App.tsx`), and `DockOccupantPicker` pulls in
-   * `ambientDockOccupants.ts` plus all three pane-descriptor contracts
-   * modules — real weight that belongs in the ambient host's LAZY chunk,
-   * which is the only place that still imports `DockOccupantPicker` and
-   * builds this node. Absent only for the full-screen Chat layout
-   * placement, which has no ambient occupant to switch away from.
-   */
-  occupantPicker?: React.ReactNode;
   regionVisible: boolean;
   shellMaximized: boolean;
   /** Registered visibility shortcut for the shell's surface. */
@@ -147,7 +136,6 @@ export function ChatDockHeader({
   availableDockSlotPlacements,
   effectiveDockSlotPlacement,
   onDockPlacementChange,
-  occupantPicker,
   regionVisible,
   shellMaximized,
   surfaceShortcutId = 'dock.toggle',
@@ -223,14 +211,6 @@ export function ChatDockHeader({
             onPlacementChange={onDockPlacementChange}
           />
         ) : null}
-        {/* station#4460: every ambient occupant carries the SAME switcher —
-            Chat is one entry in the menu, not a special case with no way
-            back in. Replaces the old fixed "Dock this pane"/"return to
-            Chat" idea entirely: choosing THIS occupant again is a no-op
-            (`DockOccupantPicker` itself guards that), so there is no
-            meaningful second control to suppress. Pre-rendered by the
-            caller — see the `occupantPicker` prop doc. */}
-        {!fullscreen ? occupantPicker : null}
         {chatControls && (
           <button
             type="button"
