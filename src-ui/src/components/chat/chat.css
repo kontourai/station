@@ -131,11 +131,6 @@
   color: var(--text-primary);
 }
 
-.app-toolbar__region-btn[aria-pressed="true"] {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
-}
-
 .app-toolbar__region-btn svg {
   width: 18px;
   height: 14px;
