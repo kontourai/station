@@ -1,5 +1,6 @@
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
 import { type CSSProperties, useId, useState } from 'react';
+import { PlugGlyph } from '../components/icons/Glyph';
 import {
   presentWorkspacePaneAvailability,
   type WorkspacePaneAvailabilityCatalogEntry,
@@ -144,9 +145,15 @@ function WorkspacePaneAvailabilityCard({
           // Coding and Chat both rendered a giant letter "C" before this.
           <PaneGlyph className="workspace-pane-availability-list__preview-icon" />
         ) : (
-          <span className="workspace-pane-availability-list__preview-glyph">
-            {entry.descriptor.name.charAt(0).toUpperCase()}
-          </span>
+          // #1536 E8: #765 F4 fixed the built-ins and left this branch as the
+          // pane name's first letter, so a contributed pane with no `icon` and
+          // no `previewImage` still rendered a lone capital ("S" for the
+          // starter plugin's SDK Patterns). Everything that reaches here is
+          // outside the built-in renderer inventory — a plugin, an MCP app, a
+          // standard-data view, or a renderer name this build does not know —
+          // so the tile says "contributed" rather than spelling one letter of
+          // a name the card already prints in full beside it.
+          <PlugGlyph className="workspace-pane-availability-list__preview-icon" />
         )}
       </div>
       <div className="workspace-pane-availability-list__body">

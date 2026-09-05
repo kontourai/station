@@ -8,6 +8,7 @@ import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import {
   inspectWorkspacePackage,
   unpackWorkspace,
+  verifyWorkspacePackage,
 } from '@kontourai/station-shared/workspace-package';
 import {
   configureApiCredential,
@@ -81,6 +82,21 @@ export async function runCloudProjectImport(
 
   async function importAndRegister(): Promise<void> {
     const imported = unpackWorkspace({ archive, keyFile, destination });
+    let localWorkspaceVerification: ReturnType<typeof verifyWorkspacePackage>;
+    try {
+      // The command owns a new, unregistered private checkout and has not
+      // started execution. Read it back before publishing Project registration.
+      localWorkspaceVerification = verifyWorkspacePackage({
+        archive,
+        keyFile,
+        workspace: imported.workspace,
+        workspacePaused: true,
+      });
+    } catch {
+      throw new Error(
+        `Workspace retained at ${imported.workspace}. Local verification failed; no Project creation was attempted. Inspect the import before retrying.`,
+      );
+    }
     const request = {
       name,
       slug,
@@ -95,6 +111,7 @@ export async function runCloudProjectImport(
       targetOrigin: new URL(apiBase).origin,
       workspace: imported.workspace,
       head: imported.head,
+      packageSha256: localWorkspaceVerification.packageSha256,
       project: request,
       executionAuthorityTransferred: false,
     });
@@ -127,6 +144,7 @@ export async function runCloudProjectImport(
         targetWorkspace: workingDirectory,
         head: imported.head,
         project: { id: created.id, slug },
+        localWorkspaceVerification,
         targetFilesystemVerification: 'required',
         credentialEnrollment: 'not-performed',
         executionAuthorityTransferred: false,

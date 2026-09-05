@@ -4603,8 +4603,10 @@ button.tool-call__line:hover {
   transition: border-color var(--motion-base) var(--ease-standard);
 }
 
-.chat-input__capsule:focus-within {
-  border-color: var(--accent-primary);
+/* The capsule owns the textarea focus indicator, avoiding nested rings. */
+.chat-input__capsule:has(textarea:focus) {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
 }
 
 .chat-input__textarea-wrapper {
@@ -4683,7 +4685,6 @@ button.tool-call__line:hover {
   color: var(--text-primary);
 }
 
-.chat-controls-row button:focus,
 .chat-controls-row button:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
@@ -4760,9 +4761,9 @@ button.tool-call__line:hover {
 .chat-input textarea {
   flex: 1;
   padding: 12px 16px;
-  border: 1px solid var(--border-primary);
+  border: 0;
   border-radius: 8px;
-  background: var(--bg-input);
+  background: transparent;
   color: var(--text-primary);
   font-family: inherit;
   font-size: var(--text-lg);
@@ -4772,11 +4773,12 @@ button.tool-call__line:hover {
 }
 
 .chat-input textarea:focus {
-  outline: none;
-  border-color: var(--accent-primary);
+  /* Focus remains visible on the containing capsule. */
+  outline: none !important;
+  box-shadow: none;
 }
 
-.chat-input button {
+.chat-input button:where(:not(.choice-trigger)) {
   padding: 0;
   border: none;
   border-radius: 8px;
@@ -4796,7 +4798,11 @@ button.tool-call__line:hover {
   transition: opacity var(--motion-base) var(--ease-standard);
 }
 
-.chat-input button:hover:not(:disabled, [aria-disabled="true"]) {
+.chat-input
+  button:where(:not(.choice-trigger)):hover:not(
+    :disabled,
+    [aria-disabled="true"]
+  ) {
   opacity: 0.8;
 }
 
@@ -4866,6 +4872,53 @@ button.tool-call__line:hover {
 }
 
 /* Workspace dashboard styles are provided by plugins via their CSS bundles */
+
+/* Shared value-picker treatment. Callers own labels, menus and authority. */
+.choice-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 36px;
+  max-width: 100%;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
+.choice-trigger[aria-expanded="true"] {
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
+}
+
+.choice-trigger:disabled,
+.choice-trigger[aria-disabled="true"] {
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.choice-caret {
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-left: auto;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+  .choice-trigger {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
 
 /* Buttons */
 .button {
@@ -6471,7 +6524,7 @@ button.tool-call__line:hover {
   }
 
   .chat-dock__maximize-btn,
-  .chat-input button {
+  .chat-input button:where(:not(.choice-trigger)) {
     min-width: 44px;
     min-height: 44px;
   }
@@ -7501,6 +7554,21 @@ button.tool-call__line:hover {
     display: none;
   }
 
+  /* UX audit 2026-09-05 D3: a side region collapsed to its 36px rail kept
+     rendering the occupant's whole body inside the rail — the first 36px of
+     Activity's list ("Act", "Wat host", "Dele are c") stayed visible as a
+     clipped sliver on every route. Chat already clips through
+     `.chat-dock__body`; a non-chat occupant renders `.dock-slot__body`, which
+     nothing hid. The bottom dock deliberately keeps a collapsed non-chat
+     occupant's height (#765 C1, `.chat-dock.is-collapsed` above) because its
+     content stays reachable there; a vertical rail cannot show content at
+     all, so hiding the body loses nothing. */
+  .app__main
+    > :is([data-region="left"], [data-region="right"]).is-collapsed
+    .dock-slot__body {
+    display: none;
+  }
+
   .app__main
     > :is([data-region="left"], [data-region="right"]).is-collapsed
     .chat-dock__maximize-btn,
@@ -8237,13 +8305,6 @@ button.tool-call__line:hover {
 .new-chat-modal__context-dir--fallback {
   font-family: var(--font-sans);
   font-style: normal;
-}
-
-.new-chat-modal__chevron {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  margin-left: auto;
-  flex-shrink: 0;
 }
 
 /* Mobile context sheet — a true bottom sheet rendered in place of the

@@ -20,6 +20,7 @@ import {
 } from './check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from './check-prepush-static-gates.mjs';
 import { decideBundleScope } from './check-prepush-ui-bundle.mjs';
+import { fixturePolicyCommands } from './test-fixture-policy.mjs';
 
 function resolveBaseSha(base) {
   try {
@@ -80,6 +81,13 @@ export function gateReport({ changedPaths, baseSha }) {
     lines.push(`          ${reason}`);
     if (applies) lines.push(`          ${command}`);
   }
+  const fixtureCommands = fixturePolicyCommands(changedPaths);
+  if (fixtureCommands.length)
+    lines.push(
+      '',
+      'Fixture and test-effectiveness route:',
+      ...fixtureCommands.map((command) => `  ${command}`),
+    );
   lines.push(
     '',
     'Tests — derive the focused selection (do not guess):',

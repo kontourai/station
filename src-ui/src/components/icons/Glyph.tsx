@@ -30,7 +30,7 @@ export const AgentGlyph = /* @__PURE__ */ glyph(
 export const ArchiveGlyph = /* @__PURE__ */ glyph(
   'M2.5 5.5h11v8h-11v-8ZM2 2.5h12v3H2v-3Zm4 6h4',
 );
-export const ArrowDownGlyph = /* @__PURE__ */ glyph('M3 6l5 5 5-5');
+export const ArrowDownGlyph = /* @__PURE__ */ glyph('M3 5.5l5 5 5-5');
 export const ArrowLeftGlyph = /* @__PURE__ */ glyph('M10.5 3 5.5 8l5 5');
 export const ArrowRightGlyph = /* @__PURE__ */ glyph('M5.5 3l5 5-5 5');
 export const ArrowUpGlyph = /* @__PURE__ */ glyph('M3 10l5-5 5 5');

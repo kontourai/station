@@ -32,6 +32,19 @@ const sdkMocks = vi.hoisted(() => ({
   sessions: [] as Array<Record<string, unknown>>,
 }));
 
+// The remote-isolation renderer gate is a PluginRegistry load-status fact.
+// One test sets it; the default is the ordinary settled-with-no-failure shape.
+const pluginRegistryState = vi.hoisted(() => ({
+  loadStatus: {} as { failure?: string },
+}));
+vi.mock('../core/PluginRegistry', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../core/PluginRegistry')>()),
+  pluginRegistry: {
+    subscribe: () => () => undefined,
+    getLoadStatus: () => pluginRegistryState.loadStatus,
+  },
+}));
+
 const navigationMocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   setLayout: vi.fn(),
@@ -135,6 +148,47 @@ const projectFixture: ProjectConfig = {
   updatedAt: '2026-07-07T12:00:00.000Z',
 };
 
+/**
+ * One Coding-hosted pane occurrence, exactly as the layout adapter derives it
+ * from a built-in layout tab — the shape `/api/projects/:slug/panes` returns.
+ */
+function codingPaneAdaptation(label: string, layoutSlug: string) {
+  const adaptation = paneAdaptationFromLayoutTab(
+    {
+      id: 'coding',
+      label,
+      component: { kind: 'builtin-component', name: 'coding' },
+    },
+    {
+      layoutSlug,
+      instanceScope: 'project:project-demo:source:builtin:coding',
+      modeContextRequirement: { project: true, source: true },
+      boundContext: { projectId: 'project-demo', sourceId: 'builtin:coding' },
+    },
+  );
+  if (!adaptation) throw new Error('pane adaptation fixture is invalid');
+  return adaptation;
+}
+
+/** The server availability projection for a pane nothing is wrong with. */
+function availableFor(descriptorId: string) {
+  return {
+    descriptorId,
+    availability: {
+      state: 'available',
+      reason: { code: 'ready', source: 'resolver' },
+    },
+    input: {
+      rollout: 'available',
+      distribution: 'enabled',
+      host: { state: 'supported' },
+      deployment: { state: 'supported' },
+      renderer: 'present',
+      context: { project: 'present' },
+    },
+  };
+}
+
 async function renderProjectPage(waitForRenderTick = true) {
   const values = new Map<string, string>();
   const store = new ConnectionStore({
@@ -176,6 +230,7 @@ async function renderProjectPage(waitForRenderTick = true) {
 describe('ProjectPage (#762 query-failure regression)', () => {
   afterEach(() => vi.useRealTimers());
   beforeEach(() => {
+    pluginRegistryState.loadStatus = {};
     sdkMocks.project = projectFixture;
     sdkMocks.isLoading = false;
     sdkMocks.isError = false;
@@ -300,7 +355,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     expect(sdkMocks.refetch).toHaveBeenCalledTimes(1);
   });
 
-  test('groups layouts and workspace panes under one Open section', async () => {
+  test('offers both add actions under one Open section', async () => {
     await renderProjectPage();
 
     expect(
@@ -315,47 +370,68 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     ).toBeTruthy();
   });
 
-  test('keeps healthy panes visible when the layouts query fails', async () => {
+  // #1536 E8: the page carried a second grid listing every pane the
+  // distribution installs — a catalog rendered as this project's state, and a
+  // duplicate of the "+ Add pane" picker. The picker is now the only place the
+  // catalog is presented, and it lists strictly more than the grid could (the
+  // grid filtered the same entries down to placed occurrences).
+  test('lists no pane catalog on the page, and reaches every catalog pane through the picker', async () => {
+    const placed = codingPaneAdaptation('Files', 'placed');
+    sdkMocks.panes = [placed.descriptor];
+    sdkMocks.paneInstances = [placed.instance];
+    sdkMocks.paneAvailability = [availableFor(placed.descriptor.id)];
+
+    await renderProjectPage();
+
+    // Not on the page: no card, no subsection label, no "Open Files" action.
+    expect(screen.queryByText('Workspace panes')).toBeNull();
+    expect(screen.queryByText('Files')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Open Files$/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
+
+    expect(
+      screen.getByRole('heading', { name: 'Add workspace pane' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Open Files$/ })).toBeTruthy();
+  });
+
+  // #1536 E4: with no layouts the section must say so once and keep the two
+  // actions that fix it, rather than render an empty band.
+  test('states the empty case once and keeps both add actions when the project has no layouts', async () => {
+    sdkMocks.layouts = [];
+
+    await renderProjectPage();
+
+    expect(screen.getByText('Nothing here yet')).toBeTruthy();
+    expect(
+      screen.getByText('Add a layout or a pane to open one in this project.'),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: '+ Add layout' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '+ Add pane' })).toBeTruthy();
+    // One affordance per action: the empty card does not repeat the header's.
+    expect(screen.queryByRole('button', { name: 'Add layout' })).toBeNull();
+  });
+
+  // archive#801 kept this shape: a layouts FAILURE is not emptiness, and it
+  // must not take the pane catalog down with it. The catalog now lives in the
+  // picker, so that is where the pane has to stay reachable from.
+  test('states a layouts failure as a failure and leaves panes reachable through the picker', async () => {
     sdkMocks.layoutsError = true;
-    const healthy = paneAdaptationFromLayoutTab(
-      {
-        id: 'coding',
-        label: 'Healthy pane',
-        component: { kind: 'builtin-component', name: 'coding' },
-      },
-      {
-        layoutSlug: 'healthy',
-        instanceScope: 'project:project-demo:source:builtin:coding',
-        modeContextRequirement: { project: true, source: true },
-        boundContext: {
-          projectId: 'project-demo',
-          sourceId: 'builtin:coding',
-        },
-      },
-    )!;
+    const healthy = codingPaneAdaptation('Healthy pane', 'healthy');
     sdkMocks.panes = [healthy.descriptor];
-    sdkMocks.paneAvailability = [
-      {
-        descriptorId: healthy.descriptor.id,
-        availability: {
-          state: 'available',
-          reason: { code: 'ready', source: 'resolver' },
-        },
-        input: {
-          rollout: 'available',
-          distribution: 'enabled',
-          host: { state: 'supported' },
-          deployment: { state: 'supported' },
-          renderer: 'present',
-          context: { project: 'present' },
-        },
-      },
-    ];
+    sdkMocks.paneAvailability = [availableFor(healthy.descriptor.id)];
     sdkMocks.paneInstances = [healthy.instance];
 
     await renderProjectPage();
 
     expect(screen.getByText('Could not load layouts')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /^Open Healthy pane$/ }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
+
     expect(
       screen.getByRole('button', { name: /^Open Healthy pane$/ }),
     ).toBeTruthy();
@@ -376,46 +452,13 @@ describe('ProjectPage (#762 query-failure regression)', () => {
         type: 'coding',
       },
     ];
-    const pane = paneAdaptationFromLayoutTab(
-      {
-        id: 'coding',
-        label: 'Terminal',
-        component: {
-          kind: 'builtin-component',
-          name: 'coding',
-        },
-      },
-      {
-        layoutSlug: 'coding',
-        instanceScope: 'project:project-demo:source:builtin:coding',
-        modeContextRequirement: { project: true, source: true },
-        boundContext: {
-          projectId: 'project-demo',
-          sourceId: 'builtin:coding',
-        },
-      },
-    )!;
+    const pane = codingPaneAdaptation('Terminal', 'coding');
     sdkMocks.panes = [pane.descriptor];
-    sdkMocks.paneAvailability = [
-      {
-        descriptorId: pane.descriptor.id,
-        availability: {
-          state: 'available',
-          reason: { code: 'ready', source: 'resolver' },
-        },
-        input: {
-          rollout: 'available',
-          distribution: 'enabled',
-          host: { state: 'supported' },
-          deployment: { state: 'supported' },
-          renderer: 'present',
-          context: { project: 'present' },
-        },
-      },
-    ];
+    sdkMocks.paneAvailability = [availableFor(pane.descriptor.id)];
     sdkMocks.paneInstances = [pane.instance];
 
     await renderProjectPage();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
     fireEvent.click(screen.getByRole('button', { name: /^Open Terminal$/ }));
 
     expect(navigationMocks.setLayout).toHaveBeenCalledWith('demo', 'coding');
@@ -425,22 +468,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
   });
 
   test('does not present a positively unavailable pane as healthy', async () => {
-    const unavailable = paneAdaptationFromLayoutTab(
-      {
-        id: 'coding',
-        label: 'Coding',
-        component: { kind: 'builtin-component', name: 'coding' },
-      },
-      {
-        layoutSlug: 'unavailable',
-        instanceScope: 'project:project-demo:source:builtin:coding',
-        modeContextRequirement: { project: true, source: true },
-        boundContext: {
-          projectId: 'project-demo',
-          sourceId: 'builtin:coding',
-        },
-      },
-    )!;
+    const unavailable = codingPaneAdaptation('Coding', 'unavailable');
     sdkMocks.panes = [unavailable.descriptor];
     sdkMocks.paneAvailability = [
       {
@@ -462,6 +490,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     ];
     sdkMocks.paneInstances = [unavailable.instance];
     await renderProjectPage();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
     expect(screen.getByText('Temporarily unavailable')).toBeTruthy();
     fireEvent.click(
       screen.getByRole('button', {
@@ -476,7 +505,43 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     expect(screen.queryByRole('button', { name: /^Open Coding$/ })).toBeNull();
   });
 
-  test('keeps healthy layout cards visible when the panes catalog fails', async () => {
+  // #1536 E8: the removed page grid was the ONLY surface that passed
+  // `onReviewInRegistry`. Without it a card whose availability names the
+  // Registry silently falls back to a bounded action
+  // (`WorkspacePaneAvailabilityList.tsx` `actionPresentation`), so the remedy
+  // the copy promises has no affordance. The gate here is derived, not stated:
+  // a plugin-hosted descriptor plus a remote-isolation registry load failure is
+  // what makes `reviewInRegistry` true.
+  test('the picker can reach the Registry for a pane whose remedy is there', async () => {
+    pluginRegistryState.loadStatus = { failure: 'remote-isolation' };
+    const contributed = paneAdaptationFromLayoutTab(
+      {
+        id: 'starter',
+        label: 'SDK Patterns',
+        component: { kind: 'plugin-component', name: 'sdk-patterns' },
+      },
+      {
+        layoutSlug: 'starter',
+        instanceScope: 'project:project-demo:source:plugin:starter',
+        pluginId: 'getting-started-starter',
+        modeContextRequirement: { project: true, source: true },
+        boundContext: { projectId: 'project-demo', sourceId: 'plugin:starter' },
+      },
+    );
+    if (!contributed) throw new Error('plugin pane fixture is invalid');
+    sdkMocks.panes = [contributed.descriptor];
+    sdkMocks.paneInstances = [contributed.instance];
+    sdkMocks.paneAvailability = [availableFor(contributed.descriptor.id)];
+
+    await renderProjectPage();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
+
+    const review = screen.getByRole('button', { name: 'Review in Registry' });
+    fireEvent.click(review);
+    expect(navigationMocks.navigate).toHaveBeenCalledWith('/registry');
+  });
+
+  test('keeps layout cards visible when the panes catalog fails, and reports the failure in the picker', async () => {
     sdkMocks.layouts = [
       {
         id: 'coding',
@@ -490,6 +555,13 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     await renderProjectPage();
 
     expect(screen.getByRole('button', { name: /Coding/ })).toBeTruthy();
+    // A pane-catalog failure is not the project page's failure any more.
+    expect(screen.queryByText('Could not load workspace panes')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
+
     expect(screen.getByText('Could not load workspace panes')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(sdkMocks.refetchPanes).toHaveBeenCalledTimes(1);
   });
 });
