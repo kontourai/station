@@ -1,4 +1,9 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { PluginActivationComposition } from '../services/plugins/plugin-activation-composition.js';
+import {
+  PLUGIN_AGENT_OWNER_FILE,
+  pluginAgentInstallationBinding,
+} from './plugin-agent-ownership.js';
 /**
  * Configuration loader for reading and watching .station/ files
  */
@@ -199,6 +204,11 @@ export interface ConfigLoaderOptions {
    */
   enforceHomeSchema?: boolean;
   integrationSources?: IntegrationDefinitionSource[];
+  pluginAgentAdmission?: (
+    pluginId: string,
+    generation: string | undefined,
+    composition?: PluginActivationComposition,
+  ) => boolean;
 }
 
 /** Read-only live ToolDef source; Station-owned integration files still win. */
@@ -273,12 +283,14 @@ export class ConfigLoader {
     () => Pick<ToolDef, 'command' | 'args' | 'env'>
   >();
   private readonly integrationSources: IntegrationDefinitionSource[];
+  private readonly pluginAgentAdmission?: ConfigLoaderOptions['pluginAgentAdmission'];
 
   constructor(options: ConfigLoaderOptions = {}) {
     this.projectHomeDir = resolve(options.projectHomeDir || resolveHomeDir());
     this.listeners = new Map();
     this.enforceHomeSchema = options.enforceHomeSchema === true;
     this.integrationSources = [...(options.integrationSources ?? [])];
+    this.pluginAgentAdmission = options.pluginAgentAdmission;
     this.homeSchemaReady = this.enforceHomeSchema
       ? ensureStationHomeSchema(this.projectHomeDir)
       : Promise.resolve();
@@ -461,9 +473,30 @@ export class ConfigLoader {
   /**
    * Load agent specification
    */
-  async loadAgent(slug: string) {
+  private admittedPluginAgentBinding(
+    slug: string,
+    composition?: PluginActivationComposition,
+  ): string | null {
+    if (!this.pluginAgentAdmission) return 'unfiltered-domain-caller';
+    const directory = join(this.projectHomeDir, 'agents', agentId(slug));
+    if (!existsSync(join(directory, PLUGIN_AGENT_OWNER_FILE)))
+      return 'station-owned';
+    const binding = pluginAgentInstallationBinding(directory);
+    return binding &&
+      this.pluginAgentAdmission(binding.plugin, binding.generation, composition)
+      ? JSON.stringify(binding)
+      : null;
+  }
+
+  async loadAgent(slug: string, composition?: PluginActivationComposition) {
     await this.ensureHomeSchema();
-    return loadAgentConfig(this.projectHomeDir, slug);
+    const binding = this.admittedPluginAgentBinding(slug, composition);
+    if (binding === null)
+      throw new Error(`Agent '${slug}' plugin installation is not ready`);
+    const spec = await loadAgentConfig(this.projectHomeDir, slug);
+    if (this.admittedPluginAgentBinding(slug, composition) !== binding)
+      throw new Error(`Agent '${slug}' plugin ownership changed while loading`);
+    return spec;
   }
 
   /**
@@ -582,9 +615,13 @@ export class ConfigLoader {
   /**
    * List all agents
    */
-  async listAgents() {
+  async listAgents(composition?: PluginActivationComposition) {
     await this.ensureHomeSchema();
-    return listAgentConfigs(this.projectHomeDir);
+    const agents = await listAgentConfigs(this.projectHomeDir);
+    return agents.filter(
+      (agent) =>
+        this.admittedPluginAgentBinding(agent.slug, composition) !== null,
+    );
   }
 
   async listAgentWorkflows(slug: string) {
@@ -766,6 +803,10 @@ export class ConfigLoader {
   ): ConfigLoader {
     return new Proxy(this, {
       get: (owner, property) => {
+        if (property === 'loadAgent')
+          return (slug: string) => owner.loadAgent(slug, composition);
+        if (property === 'listAgents')
+          return () => owner.listAgents(composition);
         if (property === 'loadIntegration')
           return (id: string) => owner.loadIntegration(id, composition);
         if (property === 'loadIntegrationWithOwnership')

@@ -907,6 +907,12 @@ export class StationRuntime {
         watchFiles: true,
         enforceHomeSchema: true,
         integrationSources: [agentPluginLoader],
+        pluginAgentAdmission: (pluginId, generation, composition) =>
+          agentPluginLoader.admitsPluginAgent(
+            pluginId,
+            generation,
+            composition,
+          ),
       });
       // archive#3063: the built-in tool servers' spawn identity (dist path,
       // STATION_API_BASE/STATION_PORT) is THIS instance's property, resolved

@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { expect, test } from 'vitest';
+import { ConfigLoader } from '../../../domain/config-loader.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { AgentPluginLoader } from '../agent-plugin-loader.js';
 import {
@@ -83,6 +84,29 @@ test('the production Agent Plugin catalog withholds pending core and namespace c
     expect(loader.listIntegrations()).toEqual([]);
     const selected = journal.currentInstallation('pending-loader');
     if (selected.state !== 'observed') throw new Error('Missing installation');
+    const config = new ConfigLoader({
+      projectHomeDir: home,
+      pluginAgentAdmission: (id, generation, capability) =>
+        loader.admitsPluginAgent(id, generation, capability),
+    });
+    for (const slug of ['owned-agent', 'independent-agent']) {
+      mkdirSync(join(home, 'agents', slug), { recursive: true });
+      writeFileSync(
+        join(home, 'agents', slug, 'agent.json'),
+        JSON.stringify({ name: slug, prompt: 'Fixture Agent' }),
+      );
+    }
+    writeFileSync(
+      join(home, 'agents', 'owned-agent', '.station-plugin-owner.json'),
+      JSON.stringify({
+        plugin: 'pending-loader',
+        generation: selected.installation.incarnation,
+      }),
+    );
+    expect((await config.listAgents()).map((agent) => agent.slug)).toEqual([
+      'independent-agent',
+    ]);
+    await expect(config.loadAgent('owned-agent')).rejects.toThrow('not ready');
     const session = createPluginActivationSession();
     const pendingPermit = registerPluginActivation(
       session,
@@ -92,6 +116,13 @@ test('the production Agent Plugin catalog withholds pending core and namespace c
     );
     const composition = await preparePluginActivationComposition(session);
     const composingSources = loader.skillSources(composition);
+    const composingConfig = config.forPluginActivationComposition(composition);
+    expect((await composingConfig.loadAgent('owned-agent')).name).toBe(
+      'owned-agent',
+    );
+    expect((await config.listAgents()).map((agent) => agent.slug)).toEqual([
+      'independent-agent',
+    ]);
     expect(composingSources[0]!.excludeOnly).toBeUndefined();
     expect(composingSources[0]!.isCurrent?.()).toBe(true);
     // Supplying the capability to a composition call does not change the
@@ -119,11 +150,15 @@ test('the production Agent Plugin catalog withholds pending core and namespace c
       mutationAllowed: false,
     });
     expect(composingSources[0]!.isCurrent?.()).toBe(false);
+    await expect(composingConfig.loadAgent('owned-agent')).rejects.toThrow(
+      'not ready',
+    );
     const permit = journal.claimActivation(selected.installation);
     await verifyPluginActivation(permit, journal, async () => {});
     expect(journal.completeActivation(permit)).toEqual({ state: 'applied' });
     expect(reserved.claim.enterEffectBoundary()).toEqual({ state: 'blocked' });
     expect(loader.listInstalled()).toHaveLength(1);
+    expect((await config.loadAgent('owned-agent')).name).toBe('owned-agent');
     expect(loader.skillSources()).toHaveLength(1);
   } finally {
     store.close();

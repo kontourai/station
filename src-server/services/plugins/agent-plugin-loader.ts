@@ -11,7 +11,15 @@ import {
   realpathSync,
   statSync,
 } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA_1_0,
@@ -419,6 +427,45 @@ export class AgentPluginLoader {
       return fallback?.kind === 'incarnation' ? null : fallback;
     }
     return resolveInstalledPluginRoot(this.pluginsDir, pluginId);
+  }
+
+  admitsPluginAgent(
+    pluginId: string,
+    generation: string | undefined,
+    composition?: PluginActivationComposition,
+  ): boolean {
+    try {
+      const journal = this.options.journal?.();
+      if (!journal) return false;
+      const selected = journal.currentInstallation(pluginId);
+      if (selected.state !== 'observed')
+        return (
+          selected.state === 'not-observed' &&
+          generation === undefined &&
+          resolveInstalledPluginRoot(this.pluginsDir, pluginId)?.kind ===
+            'legacy'
+        );
+      if (generation !== selected.installation.incarnation) return false;
+      if (
+        !journal.admissionOpen(selected.installation) &&
+        !pluginActivationCompositionPermit(composition, journal, pluginId)
+      )
+        return false;
+      const root = resolvePluginMaterialization(
+        this.pluginsDir,
+        pluginId,
+        selected.installation.materialization!,
+      );
+      return (
+        root.dataScope === selected.installation.dataScope &&
+        computePluginContentDigest(
+          dirname(root.packageRoot),
+          basename(root.packageRoot),
+        ) === selected.installation.contentDigest
+      );
+    } catch {
+      return false;
+    }
   }
 
   loadPackage(
