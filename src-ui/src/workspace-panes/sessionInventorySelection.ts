@@ -20,7 +20,7 @@ const values = new Map<string, SessionInventorySelection>();
  * Exact scopes are a separate, in-memory occurrence history. They are never
  * derived from a session's latest turn or Task: a caller must commit one.
  */
-const knownScopes = new Map<string, readonly SessionInventoryScope[]>();
+const knownScopes = new Map<string, Map<string, SessionInventoryScope>>();
 const listeners = new Map<string, Set<() => void>>();
 const keyOf = ({
   apiBase,
@@ -45,20 +45,20 @@ export function commitSessionInventorySelection(
 ) {
   const encoded = keyOf(key);
   values.set(encoded, selection);
-  const known = knownScopes.get(encoded) ?? [];
-  if (
-    !known.some(
-      (scope) => JSON.stringify(scope) === JSON.stringify(selection.scope),
-    )
-  )
-    knownScopes.set(encoded, [...known, selection.scope]);
+  let known = knownScopes.get(encoded);
+  if (!known) {
+    known = new Map();
+    knownScopes.set(encoded, known);
+  }
+  const scopeKey = sessionInventoryScopeKey(selection.scope);
+  if (!known.has(scopeKey)) known.set(scopeKey, selection.scope);
   notify(encoded);
 }
 
 export function readSessionInventoryKnownScopes(
   key: SessionInventorySelectionKey,
 ) {
-  return knownScopes.get(keyOf(key)) ?? [];
+  return [...(knownScopes.get(keyOf(key))?.values() ?? [])];
 }
 
 export function clearSessionInventorySelection(
@@ -106,4 +106,17 @@ export function useSessionInventorySelection(
     () => (key ? (values.get(encoded) ?? fallback) : fallback),
     () => fallback,
   );
+}
+
+/** Scope identity is independent of object insertion order. */
+export function sessionInventoryScopeKey(scope: SessionInventoryScope): string {
+  return JSON.stringify([
+    scope.kind,
+    scope.sessionId,
+    scope.kind === 'current-answer'
+      ? scope.turnId
+      : scope.kind === 'kept-in-task'
+        ? scope.taskId
+        : null,
+  ]);
 }

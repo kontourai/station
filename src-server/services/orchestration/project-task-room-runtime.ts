@@ -45,17 +45,23 @@ import {
   sharedWorkingStateEditBatchDigest,
 } from '../../domain/shared-working-state-editing.js';
 import { ProjectTaskLiveWorkHistoryAdapter } from './project-task-live-work-history-adapter.js';
-import { projectTaskRoomDocumentId } from './project-task-room-document-id.js';
+import {
+  projectTaskRoomDocumentId,
+  projectTaskRoomRevisionPublicationId,
+} from './project-task-room-document-id.js';
 import type {
   ProjectTaskRoomAgentGrantAuthority,
   ProjectTaskRoomCapabilityAuthority,
   ProjectTaskRoomCapabilityResolution,
+  ProjectTaskRoomHistory,
   ProjectTaskRoomLinkAuthority,
 } from './project-task-room-history.js';
 import type { ProjectTaskRoomRevisionEvidencePort } from './project-task-room-revision-evidence-bridge.js';
 import type { ProjectTaskRoomWorkingState } from './project-task-room-working-state.js';
 import { createOrchestrationRunId } from './run-projection.js';
 
+type RecoverableRoomHistory = ProjectTaskRoomAuthority &
+  Partial<Pick<ProjectTaskRoomHistory, 'findByProposal'>>;
 type BrowserCapability = 'discover' | 'history-read' | 'message-write';
 type RoomCapability =
   | BrowserCapability
@@ -125,7 +131,7 @@ export interface ProjectTaskRoomRuntimeDeps {
     capabilities: ProjectTaskRoomCapabilityAuthority;
     agents: ProjectTaskRoomAgentGrantAuthority;
     links?: ProjectTaskRoomLinkAuthority;
-  }) => ProjectTaskRoomAuthority;
+  }) => RecoverableRoomHistory;
   /** archive#3546 bridge: recorder, scope-bound resolver, and lifecycle owner. */
   readonly revisionEvidence?: ProjectTaskRoomRevisionEvidencePort;
   readonly working: ProjectTaskRoomWorkingState;
@@ -249,7 +255,7 @@ export class ProjectTaskRoomRuntime {
   readonly #activeLiveMaterial = new Map<string, Request>();
   /** System recovery is explicit and never borrows a subscriber request. */
   readonly #activeLiveRecovery = new Set<string>();
-  readonly #history: ProjectTaskRoomAuthority;
+  readonly #history: RecoverableRoomHistory;
   readonly #live = new Map<string, LiveRoomEntry>();
   readonly #recovery = new Map<string, Promise<boolean>>();
   readonly #subscribers = new Map<string, Set<RoomSubscriber>>();
@@ -802,11 +808,51 @@ export class ProjectTaskRoomRuntime {
       if (receipt.kind === 'duplicate') {
         input.onDurableSettlementForDiagnostic?.();
         await this.#notify(scope, { type: 'document', ...receipt });
-        const revisionEvidence = await this.#drainRevisionPublication({
+        let revisionEvidence = await this.#drainRevisionPublication({
           taskId: input.taskId,
           request: input.request,
           scope,
+          expectedIntentId: projectTaskRoomRevisionPublicationId(
+            input.intentId,
+          ),
         });
+        if (revisionEvidence.kind !== 'linked' && receipt.revision) {
+          const grant = await this.#issue(
+            input.taskId,
+            input.request,
+            'history-read',
+          );
+          const record = grant
+            ? await this.#history.findByProposal?.({
+                grant,
+                proposalId: projectTaskRoomRevisionPublicationId(
+                  input.intentId,
+                ),
+              })
+            : undefined;
+          if (
+            record?.body.kind === 'outcome-link' &&
+            record.body.link.kind === 'revision' &&
+            this.#deps.revisionEvidence?.matchesCommittedRevision?.({
+              scope,
+              workingRevision: receipt.revision,
+              evidenceRevision: record.body.link.stableId,
+            })
+          )
+            revisionEvidence = {
+              kind: 'linked',
+              revisionId: record.body.link.stableId,
+            };
+        }
+        if (
+          !(await this.#sameAuthorizedDocument(
+            input.taskId,
+            input.request,
+            scope,
+            principal,
+          ))
+        )
+          return { kind: 'not-found' } as const;
         return { ...receipt, revisionEvidence };
       }
       return receipt.kind === 'conflict'
@@ -882,6 +928,7 @@ export class ProjectTaskRoomRuntime {
     scope: { projectId: string; taskId: string; documentId: string };
     historyOpened?: boolean;
     systemRecovery?: boolean;
+    expectedIntentId?: string;
   }): Promise<
     | { readonly kind: 'linked'; readonly revisionId: string }
     | { readonly kind: 'unavailable' }
@@ -900,6 +947,11 @@ export class ProjectTaskRoomRuntime {
       });
       if (read.kind !== 'available') return { kind: 'unavailable' };
       const publication = read.publication;
+      if (
+        input.expectedIntentId &&
+        publication.intentId !== input.expectedIntentId
+      )
+        return { kind: 'unavailable' };
       let revisionId = publication.evidenceRevision;
       if (!revisionId) {
         const recorded = bridge.recordPublication(publication);

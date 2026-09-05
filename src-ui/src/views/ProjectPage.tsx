@@ -18,10 +18,7 @@ import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
 import { trackRecentLayout } from '../hooks/useRecentLayouts';
 import { errorText } from '../utils/errorText';
-import {
-  ProjectWorkspacePaneModal,
-  ProjectWorkspacePaneSection,
-} from '../workspace-panes/ProjectWorkspacePaneCatalog';
+import { ProjectWorkspacePaneModal } from '../workspace-panes/ProjectWorkspacePaneCatalog';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspace-panes/workspacePaneAvailabilityPresentation';
 import {
@@ -62,7 +59,7 @@ export function ProjectPage({ slug }: { slug: string }) {
   });
   // #801: the page renders as soon as the *project* query settles, so a
   // layouts fetch still in flight used to reach the section as an empty array
-  // and render "No layouts yet" for a project that has layouts.
+  // and render the empty state for a project that has layouts.
   const {
     data: layouts = [],
     isLoading: layoutsLoading,
@@ -355,6 +352,13 @@ export function ProjectPage({ slug }: { slug: string }) {
           <p className="project-page__section-explainer">
             Workspace views open in this project.
           </p>
+          {/* #1536 E8: this section lists what the user ADDED to this
+              project. It used to carry a second grid of every pane in the
+              distribution — a catalog rendered as project state, duplicating
+              the "+ Add pane" picker above. The picker's entry list is a
+              superset of what that grid could show (the grid filtered the same
+              catalog down to placed occurrences), so nothing became
+              unreachable. */}
           <ProjectLayoutsSection
             slug={slug}
             layouts={layouts as any[]}
@@ -362,20 +366,6 @@ export function ProjectPage({ slug }: { slug: string }) {
             error={layoutsError}
             onRetry={() => void refetchLayouts()}
             setLayout={setLayout}
-            onOpenAddLayout={() => setShowAddLayout(true)}
-            embedded
-          />
-          <ProjectWorkspacePaneSection
-            entries={paneCatalog.entries}
-            loading={paneCatalog.isLoading}
-            error={paneCatalog.isError}
-            onRetry={() => void paneCatalog.refetch()}
-            onSelect={openPane}
-            onAction={handlePaneAction}
-            canExecuteAction={canExecutePaneAction}
-            onOpen={() => setShowAddPane(true)}
-            onReviewInRegistry={() => navigate('/registry')}
-            embedded
           />
         </section>
 
@@ -424,6 +414,10 @@ export function ProjectPage({ slug }: { slug: string }) {
           onSelect={openPane}
           onAction={handlePaneAction}
           canExecuteAction={canExecutePaneAction}
+          // The removed page grid was the only surface that supplied this, and
+          // without it a card whose availability names the Registry falls back
+          // to a bounded action instead of the navigation that resolves it.
+          onReviewInRegistry={() => navigate('/registry')}
           onClose={() => setShowAddPane(false)}
         />
       </div>
