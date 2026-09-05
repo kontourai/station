@@ -1,6 +1,10 @@
 import { cpSync, existsSync, lstatSync, realpathSync, rmSync } from 'node:fs';
 import { basename, isAbsolute, join, relative } from 'node:path';
-import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import { isDeepStrictEqual } from 'node:util';
+import type {
+  PluginInstallationRevision,
+  PluginManifest,
+} from '@kontourai/station-contracts/plugin';
 import {
   SERVER_EVENTS,
   type ServerEventName,
@@ -429,6 +433,48 @@ export function registerPluginLifecycleRoutes(
     }
   });
 
+  const captureUpdateTarget = (pluginName: string) => {
+    const captured = deps.packageMcpJournal
+      ? captureLocalPluginInstallation(
+          pluginsDir,
+          deps.packageMcpJournal,
+          pluginName,
+        )
+      : null;
+    const root = deps.packageMcpJournal
+      ? (captured?.root ?? null)
+      : resolveInstalledPluginRoot(pluginsDir, pluginName);
+    if (!root) return null;
+    const installation = captured?.installation ?? null;
+    return {
+      root,
+      installation,
+      isCurrent: () => {
+        try {
+          if (deps.packageMcpJournal) {
+            const current = captureLocalPluginInstallation(
+              pluginsDir,
+              deps.packageMcpJournal,
+              pluginName,
+            );
+            return (
+              !!current &&
+              isDeepStrictEqual(current.installation, installation) &&
+              current.root.packageRoot === root.packageRoot
+            );
+          }
+          const current = resolveInstalledPluginRoot(pluginsDir, pluginName);
+          return (
+            current?.kind === root.kind &&
+            current.packageRoot === root.packageRoot
+          );
+        } catch {
+          return false;
+        }
+      },
+    };
+  };
+
   app.post('/:name/update', async (c) => {
     const name = param(c, 'name');
     try {
@@ -446,10 +492,12 @@ export function registerPluginLifecycleRoutes(
       ReturnType<typeof findOwningPluginRegistryProvider>
     > | null = null;
     let installedPluginName = name;
+    let updateTarget: ReturnType<typeof captureUpdateTarget> = null;
     let pluginDir = join(pluginsDir, name);
     try {
       assertPathInside(pluginsDir, pluginDir, 'Plugin update target');
-      pluginDir = resolveLifecycleRoot(name)?.packageRoot ?? pluginDir;
+      updateTarget = captureUpdateTarget(name);
+      pluginDir = updateTarget?.root.packageRoot ?? pluginDir;
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
@@ -459,6 +507,15 @@ export function registerPluginLifecycleRoutes(
       name,
       projectHomeDir,
     );
+    if (updateTarget && !updateTarget.isCurrent())
+      return c.json(
+        {
+          success: false,
+          error:
+            'Plugin installation changed before update; reload before retrying',
+        },
+        409,
+      );
     if (!registryOwner.success && registryOwner.message.includes('multiple')) {
       return c.json({ success: false, error: registryOwner.message }, 400);
     }
@@ -474,9 +531,10 @@ export function registerPluginLifecycleRoutes(
         );
       }
       installedPluginName = registryOwner.installedName;
+      if (!updateTarget)
+        updateTarget = captureUpdateTarget(installedPluginName);
       pluginDir =
-        resolveLifecycleRoot(installedPluginName)?.packageRoot ??
-        join(pluginsDir, installedPluginName);
+        updateTarget?.root.packageRoot ?? join(pluginsDir, installedPluginName);
       try {
         assertPathInside(
           pluginsDir,
@@ -500,9 +558,40 @@ export function registerPluginLifecycleRoutes(
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
 
-    const installedRoot = resolveLifecycleRoot(installedPluginName);
+    if (updateTarget && !updateTarget.isCurrent())
+      return c.json(
+        {
+          success: false,
+          error:
+            'Plugin installation changed before update; reload before retrying',
+        },
+        409,
+      );
+    if (!updateTarget)
+      return c.json(
+        {
+          success: false,
+          error: 'Plugin installation is unavailable; reload before retrying',
+        },
+        409,
+      );
+    const installedRoot = updateTarget.root;
     if (installedRoot?.kind === 'incarnation') {
       try {
+        const selected = updateTarget!.installation;
+        if (!selected?.materialization || !selected.dataScope)
+          throw new PluginUpdateRejectedError(
+            'Plugin installation authority is unavailable',
+          );
+        const expectedInstallation: PluginInstallationRevision = {
+          scope: selected.journalId,
+          installation: selected.pluginId,
+          generation: selected.incarnation,
+          artifact: { digest: selected.contentDigest },
+          materialization: selected.materialization,
+          dataScope: selected.dataScope,
+          ...(selected.origin ? { origin: selected.origin } : {}),
+        };
         const registryInstall = registryOwner?.success
           ? await resolvePluginRegistryInstall(registryOwner.registryId)
           : null;
@@ -522,6 +611,10 @@ export function registerPluginLifecycleRoutes(
                 'This package has no update source. Preview and install the new version from its source.',
             },
             409,
+          );
+        if (!updateTarget!.isCurrent())
+          throw new PluginUpdateRejectedError(
+            'Plugin installation changed while resolving its update source; reload before retrying',
           );
         const mutation = await capturePluginConfigurationMutation(
           applyConfigurationMutation,
@@ -555,6 +648,7 @@ export function registerPluginLifecycleRoutes(
                 },
                 dataPolicy: 'preserve',
                 expectedPluginName: installedPluginName,
+                expectedInstallation,
               },
             ),
           { rediscoverSkills: true },
@@ -616,6 +710,10 @@ export function registerPluginLifecycleRoutes(
           captureConfigurationMutation(
             applyConfigurationMutation,
             async (beginMutation) => {
+              if (updateTarget && !updateTarget.isCurrent())
+                throw new PluginUpdateRejectedError(
+                  'Plugin installation changed before legacy update; reload before retrying',
+                );
               backupRoot = createStationTempDirSync('plugin-update');
               const backupDir = join(backupRoot, 'plugin');
               cpSync(pluginDir, backupDir, PLUGIN_TREE_COPY);

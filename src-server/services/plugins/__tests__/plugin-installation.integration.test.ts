@@ -33,6 +33,7 @@ import {
 } from '../../../routes/plugins/plugin-install-shared.js';
 import { registerPluginLifecycleRoutes } from '../../../routes/plugins/plugin-lifecycle-routes.js';
 import { installPluginDependency } from '../../../routes/plugins/plugin-source.js';
+import * as gitExecution from '../../../utils/git-exec.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { AgentPluginLoader } from '../agent-plugin-loader.js';
 import { MCPService } from '../mcp-service.js';
@@ -1273,3 +1274,154 @@ test('the public portable author example installs its Skill and Station Agent th
       .some((plugin) => plugin.manifest.name === 'portable-author-kit'),
   ).toBe(false);
 });
+
+test.each(['registry', 'source', 'mutation'] as const)(
+  'Update pins its captured installation across the %s await',
+  async (barrier) => {
+    for (const concurrent of ['withdraw', 'replace'] as const) {
+      const f = fixture();
+      const git = (...args: string[]) =>
+        execFileSync('git', ['-C', f.source, ...args], {
+          windowsHide: true,
+          stdio: 'ignore',
+        });
+      git('init', '-b', 'main');
+      git('remote', 'add', 'origin', f.source);
+      git('add', '.');
+      git(
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        'commit',
+        '-m',
+        'Initial fixture',
+      );
+      await installPluginFromSource(f.source, [], f.deps);
+      const before = captureLocalPluginInstallation(
+        f.plugins,
+        f.journal,
+        'fixture',
+      )!;
+      const beforeDigest = computePluginContentDigest(
+        dirname(before.root.packageRoot),
+        basename(before.root.packageRoot),
+      );
+      writeFileSync(join(before.root.dataRoot!, 'race-value'), 'retained data');
+      writeFileSync(
+        join(f.source, 'plugin.json'),
+        JSON.stringify({
+          $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+          name: 'fixture',
+          version: '2.0.0',
+        }),
+      );
+      git('add', '.');
+      git(
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        'commit',
+        '-m',
+        'Next fixture',
+      );
+      let enter!: () => void, release!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        enter = resolve;
+      });
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let held = false;
+      const wait = async () => {
+        if (!held) {
+          held = true;
+          enter();
+          await blocked;
+        }
+      };
+      const originalGit = gitExecution.execGit;
+      const retiredPulls: string[] = [];
+      const spy = vi
+        .spyOn(gitExecution, 'execGit')
+        .mockImplementation(async (...args) => {
+          const result = await originalGit(...args);
+          if (args[1]?.cwd === before.root.packageRoot && args[0][0] === 'pull')
+            retiredPulls.push(before.root.packageRoot);
+          if (
+            barrier === 'source' &&
+            args[1]?.cwd === before.root.packageRoot &&
+            args[0].join(' ') === 'remote get-url origin'
+          )
+            await wait();
+          return result;
+        });
+      if (barrier === 'registry')
+        await replacePluginProvidersForSource('update-race-registry', [
+          {
+            type: 'pluginRegistry',
+            source: 'update-race-registry',
+            provider: {
+              listInstalled: async () => {
+                await wait();
+                return [];
+              },
+            },
+          },
+        ]);
+      const app = new Hono();
+      registerPluginLifecycleRoutes(app, {
+        ...f.deps,
+        ...(barrier === 'mutation'
+          ? {
+              applyConfigurationMutation: async (operation: any) => {
+                await wait();
+                return operation(() => {}, { status: 'applied' });
+              },
+            }
+          : {}),
+      });
+      const updating = app.request('/fixture/update', { method: 'POST' });
+      try {
+        await entered;
+        if (concurrent === 'withdraw')
+          await uninstallInstalledPlugin('fixture', f.deps);
+        else await installPluginFromSource(f.source, [], f.deps);
+        const expected = f.journal.currentInstallation('fixture');
+        const expectedHistory = f.journal.history('fixture');
+        release();
+        const response = await updating;
+        expect(
+          response.status,
+          JSON.stringify({
+            barrier,
+            concurrent,
+            body: await response.clone().json(),
+          }),
+        ).toBe(409);
+        expect(f.journal.currentInstallation('fixture')).toEqual(expected);
+        expect(f.journal.history('fixture')).toEqual(expectedHistory);
+        expect(retiredPulls).toEqual([]);
+        expect(
+          computePluginContentDigest(
+            dirname(before.root.packageRoot),
+            basename(before.root.packageRoot),
+          ),
+        ).toBe(beforeDigest);
+        expect(
+          readFileSync(join(before.root.dataRoot!, 'race-value'), 'utf8'),
+        ).toBe('retained data');
+        if (expected.state === 'observed')
+          expect(expected.installation.dataScope).toBe(
+            before.installation!.dataScope,
+          );
+      } finally {
+        release();
+        await updating;
+        spy.mockRestore();
+        await replacePluginProvidersForSource('update-race-registry', []);
+      }
+    }
+  },
+);
