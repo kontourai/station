@@ -21,7 +21,9 @@ flowchart LR
 
 Run one Station runtime per home. Clients pair with that environment; paths
 such as `/workspace/repository` refer to files on the VM. Persist the home and
-projects outside the container's writable layer. Replacing an image should
+projects outside the container's writable layer. Keep a stable Compose project name per
+environment so moving deployment files does not silently select new named
+volumes. Replacing an image should
 preserve projects, uncommitted work, authentication state, and managed profiles.
 Docker volumes supply persistence independently of container lifetime;
 see [Docker's volume reference](https://docs.docker.com/reference/compose-file/volumes/).

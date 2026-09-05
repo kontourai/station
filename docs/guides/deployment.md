@@ -10,7 +10,7 @@
 
 ## Docker Production
 
-Station publishes one same-origin image: its lifecycle UI proxy serves the UI,
+Station's container image has one public origin: its lifecycle UI proxy serves the UI,
 API, streaming, terminal/voice WebSockets, identity, and device pairing from
 port 3000. It runs as Node's unprivileged UID/GID `1000` and persists its home
 in the `station-data` volume.
@@ -45,9 +45,11 @@ docker compose up -d
 Use a comma-separated list only when the same Station is deliberately reachable
 through multiple exact origins. Do not use wildcard origins.
 
-The published `ghcr.io/kontourai/station:latest` image is the stable channel;
-preview releases use `:preview`. Releases also publish the exact `vX.Y.Z`,
-semver-without-`v`, and immutable `sha-<40-character-SHA>` tags. Inspect the
+Stable publication targets `ghcr.io/kontourai/station:latest`; preview
+publication targets `:preview`. The release pipeline also defines exact
+`vX.Y.Z`, semver-without-`v`, and immutable `sha-<40-character-SHA>` tags.
+Check the registry and release record for availability before selecting a tag;
+use the source-build path below when the selected artifact is not published. Inspect the
 runtime identity through the public same-origin endpoint:
 
 ```bash
