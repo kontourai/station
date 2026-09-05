@@ -741,6 +741,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/coding-workspace-example.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Actual portable coding example with both Project renderers and one captured native model action through a controlled HTTP provider into the owned worktree Session receipt.',
+    exceptions: [],
+  },
+  {
     path: 'tests/minimal-workspace-example.spec.ts',
     bucket: 'smoke-live',
     surface: 'Plugins',

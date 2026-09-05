@@ -1,7 +1,4 @@
-import {
-  useNavigation,
-  type WorkspaceComponentProps,
-} from '@kontourai/station-sdk';
+import { useNavigation } from '@kontourai/station-sdk';
 import './layout.css';
 
 const files = [
@@ -10,12 +7,11 @@ const files = [
   { path: 'tests/session.spec.ts', status: 'added' },
 ];
 
-function CodingWorkspace({ onShowChat }: WorkspaceComponentProps) {
+function CodingWorkspace() {
   const { setDockState } = useNavigation();
 
   const askAboutCode = () => {
     setDockState(true);
-    onShowChat?.();
   };
 
   return (
@@ -46,7 +42,7 @@ PASS tests/session.spec.ts
 3 tests passed`}</pre>
         </section>
         <button className="coding-primary" type="button" onClick={askAboutCode}>
-          Ask agent about this workspace
+          Open Chat Dock
         </button>
       </section>
     </main>
