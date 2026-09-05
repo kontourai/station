@@ -206,6 +206,40 @@ export function createRuntimeSystemRouteDeps(
  * asking a model-resolution probe about Claude Code reports a working Agent as
  * broken (the `deriveAgentCatalog` lesson).
  */
+/**
+ * Ceiling on how long a setup-requirement observation is reused across
+ * `/api/attention` reads. The inbox polls every 10s, and each read costs an
+ * agent-directory listing plus one spec read plus the provider-connection
+ * list; the projection bounds `readSessionFlowRun` the same way and for the
+ * same reason. Short enough that configuring a connection clears the item
+ * within one poll.
+ */
+const STATION_SETUP_REQUIREMENT_CACHE_TTL_MS = 5_000;
+
+/**
+ * Reuses a setup-requirement observation for {@link
+ * STATION_SETUP_REQUIREMENT_CACHE_TTL_MS}. Concurrent reads share one
+ * in-flight read rather than each starting their own.
+ */
+export function memoizeStationSetupRequirement<T>(
+  read: () => Promise<T>,
+  ttlMs: number = STATION_SETUP_REQUIREMENT_CACHE_TTL_MS,
+  now: () => number = Date.now,
+): () => Promise<T> {
+  let cached: { at: number; value: Promise<T> } | undefined;
+  return () => {
+    const observedAt = now();
+    if (cached && observedAt - cached.at < ttlMs) return cached.value;
+    const value = read();
+    cached = { at: observedAt, value };
+    // A read that rejected must not be cached as an answer.
+    void value.catch(() => {
+      if (cached?.value === value) cached = undefined;
+    });
+    return value;
+  };
+}
+
 export async function readStationSetupRequirement(
   context: ConfigureRuntimeRoutesContext,
 ): Promise<{ agentSlug: string; agentName: string; reason: string } | null> {
@@ -490,7 +524,7 @@ export function configureRuntimeSupportServices(
     // An inbox that reads "Nothing needs you right now" while that row says
     // "Needs: No enabled LLM provider connection is configured" is reading a
     // fact nobody projected, not a quiet Station.
-    () => readStationSetupRequirement(context),
+    memoizeStationSetupRequirement(() => readStationSetupRequirement(context)),
   );
   return {
     schedulerService,

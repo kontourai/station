@@ -7,7 +7,10 @@
  */
 
 import { describe, expect, test } from 'vitest';
-import { readStationSetupRequirement } from '../runtime-route-support.js';
+import {
+  memoizeStationSetupRequirement,
+  readStationSetupRequirement,
+} from '../runtime-route-support.js';
 import type { ConfigureRuntimeRoutesContext } from '../runtime-routes.js';
 
 const warnings: unknown[] = [];
@@ -126,5 +129,57 @@ describe('readStationSetupRequirement (#1536 D8)', () => {
     );
 
     expect(requirement).toBeNull();
+  });
+});
+
+/**
+ * `/api/attention` polls every 10s and each read of this fact costs an
+ * agent-directory listing, a spec read and the provider-connection list. The
+ * projection bounds `readSessionFlowRun` the same way for the same reason.
+ */
+describe('memoizeStationSetupRequirement', () => {
+  test('reuses one observation within the window and re-reads after it', async () => {
+    let calls = 0;
+    let clock = 1_000;
+    const read = memoizeStationSetupRequirement(
+      async () => ++calls,
+      5_000,
+      () => clock,
+    );
+
+    expect(await read()).toBe(1);
+    clock += 4_999;
+    expect(await read()).toBe(1);
+    expect(calls).toBe(1);
+
+    clock += 1;
+    expect(await read()).toBe(2);
+    expect(calls).toBe(2);
+  });
+
+  test('shares one in-flight read rather than starting two', async () => {
+    let calls = 0;
+    const read = memoizeStationSetupRequirement(async () => {
+      calls += 1;
+      await Promise.resolve();
+      return calls;
+    });
+
+    const [a, b] = await Promise.all([read(), read()]);
+    expect([a, b]).toEqual([1, 1]);
+    expect(calls).toBe(1);
+  });
+
+  test('does not cache a rejection as an answer', async () => {
+    let calls = 0;
+    const read = memoizeStationSetupRequirement(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('store unavailable');
+      return calls;
+    });
+
+    await expect(read()).rejects.toThrow('store unavailable');
+    // Same window, but there is no observation to reuse.
+    await expect(read()).resolves.toBe(2);
   });
 });
