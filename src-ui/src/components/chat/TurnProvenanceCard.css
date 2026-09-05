@@ -103,6 +103,16 @@
   font-size: var(--k-text-xs);
 }
 
+/* #1536 B3: the same styling for the collapsed one-sentence form, which
+   replaced the row-per-slot list (and its heading — the sentence names the
+   slots itself, so a heading repeating "not yet captured" was the third place
+   one fact was stated). Not lower-contrast, for the reason above. */
+.turn-provenance__not-captured {
+  margin: var(--k-space-3) 0 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
 .turn-provenance__section-label {
   margin: var(--k-space-3) 0 var(--k-space-1);
   color: var(--k-text-muted);

@@ -22,6 +22,7 @@ import { MessageRating } from './message-bubble/MessageRating';
 import {
   resolveTurnEngine,
   resolveTurnModelIdentity,
+  turnCompletedNormally,
 } from './message-bubble/utils';
 import { TurnProvenanceCard } from './TurnProvenanceCard';
 import './chat.css';
@@ -507,6 +508,11 @@ function MessageBubbleComponent({
                 msg.turnId &&
                 answerSessionId &&
                 msg.answerEligible === true &&
+                // #1536 B3: the same precondition the Basis route applies. A
+                // turn whose envelope records an aborted outcome can only ever
+                // be answered 404, and the affordance rendered that refusal as
+                // "Basis · Unavailable" on a healthy instance.
+                turnCompletedNormally(msg) &&
                 (!isLastMessage || !activeSession.isThinking) ? (
                   <LazyBoundary
                     load={loadConnectedAnswerBasisAffordance}

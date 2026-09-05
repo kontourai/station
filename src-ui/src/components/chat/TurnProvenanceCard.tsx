@@ -116,6 +116,32 @@ interface ProvenanceRow {
   trustReportRef?: TurnProvenanceTrustReportRef;
 }
 
+/**
+ * The backlog block as ONE sentence (#1536 B3).
+ *
+ * It used to be a row per slot — "Routing receipt: Not captured by Station
+ * yet", "Sources: Not captured by Station yet", "Trust report: Not captured by
+ * Station yet" — three rows repeating one fact, under a heading that had
+ * already said it. Every field is still NAMED, which is what the module's
+ * no-omission rule requires; what is gone is saying the same thing about each
+ * of them separately.
+ *
+ * The names come from the rows, so a slot added to the envelope reaches this
+ * sentence with no change here. Every row in this block carries
+ * `not-captured-by-station` by construction (the filter that builds it), so
+ * one shared predicate is accurate for all of them.
+ */
+export function notYetCapturedSentence(labels: readonly string[]): string {
+  const names = labels.map((label, index) =>
+    index === 0 ? label : label.toLowerCase(),
+  );
+  const listed =
+    names.length > 1
+      ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+      : names[0];
+  return `${listed} ${names.length > 1 ? 'are' : 'is'} not captured by Station yet.`;
+}
+
 function slotRow<TValue>(
   label: string,
   slot: TurnProvenanceSlot<TValue>,
@@ -631,25 +657,15 @@ export function TurnProvenanceCard({
           )}
 
           {backlogRows.length > 0 && (
-            <>
-              {/* archive#1802: kept (not deleted — see the module docblock's
-                  no-omission rule) but visually demoted into its own block,
-                  out of the checkable facts and out of the badge. This is
-                  Station's roadmap, not a finding about this answer. */}
-              <p className="turn-provenance__section-label">
-                Not yet captured by Station
-              </p>
-              <dl className="turn-provenance__facts turn-provenance__facts--backlog">
-                {backlogRows.map((row) => (
-                  <div className="turn-provenance__row" key={row.label}>
-                    <dt className="turn-provenance__label">{row.label}</dt>
-                    <dd className="turn-provenance__value turn-provenance__value--not-captured">
-                      {unavailableText(row.gap ?? 'not-captured-by-station')}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </>
+            /* archive#1802: kept (not deleted — see the module docblock's
+               no-omission rule) but visually demoted, out of the checkable
+               facts and out of the badge. This is Station's roadmap, not a
+               finding about this answer.
+               #1536 B3: and one sentence rather than a row per slot, each
+               repeating the heading's own words. */
+            <p className="turn-provenance__not-captured">
+              {notYetCapturedSentence(backlogRows.map((row) => row.label))}
+            </p>
           )}
 
           <p className="turn-provenance__section-label">Metadata</p>

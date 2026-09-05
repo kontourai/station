@@ -38,6 +38,25 @@ function readEnvelope(msg: TurnIdentitySource): TurnProvenanceEnvelope | null {
 }
 
 /**
+ * Whether this turn's own envelope records a COMPLETED outcome (#1536 B3).
+ *
+ * The Basis read is the reason this matters. `GET …/turns/:turnId/basis`
+ * answers 404 unless the turn's ordered lifecycle says it completed normally
+ * (`session-query-module.ts`'s `hasSuccessfulCompletion`), and 404 is a real
+ * answer there rather than a fault — the route keeps 503 for a read that
+ * could not be performed. The client's own precondition for offering the
+ * affordance was `answerEligible` alone, which is a weaker claim, so an
+ * aborted turn asked for a basis the server can only ever refuse and the
+ * affordance rendered "Basis · Unavailable" over a healthy instance.
+ *
+ * `false` for an unreadable or absent envelope: an outcome nobody recorded is
+ * not a completed one.
+ */
+export function turnCompletedNormally(msg: TurnIdentitySource): boolean {
+  return readEnvelope(msg)?.outcome === 'completed';
+}
+
+/**
  * The engine that executed THIS turn, read from the turn's own provenance
  * envelope (archive#1434, closing archive#1424's residual 1).
  *

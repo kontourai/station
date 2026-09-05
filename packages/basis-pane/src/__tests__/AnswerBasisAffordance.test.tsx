@@ -4,8 +4,17 @@ import { describe, expect, test, vi } from 'vitest';
 import { AnswerBasisAffordance } from '../AnswerBasisAffordance';
 
 const query = vi.hoisted(() => vi.fn());
+const mocks = vi.hoisted(() => {
+  class MockAnswerBasisRequestError extends Error {
+    constructor(readonly status: number) {
+      super('Answer basis unavailable');
+    }
+  }
+  return { MockAnswerBasisRequestError };
+});
 vi.mock('@kontourai/station-sdk/answer-basis', () => ({
   useAnswerBasisQuery: query,
+  AnswerBasisRequestError: mocks.MockAnswerBasisRequestError,
 }));
 
 describe('AnswerBasisAffordance', () => {
@@ -40,5 +49,41 @@ describe('AnswerBasisAffordance', () => {
     );
     expect(screen.getByRole('button').textContent).toBe('Basis · Unavailable');
     expect(document.body.textContent).not.toContain('private identity');
+  });
+  /**
+   * #1536 B3. The route answers 404 when Station recorded no basis for the
+   * turn and keeps 503 for a read it could not perform. Collapsing both into
+   * "Unavailable" made a healthy instance accuse itself of a failure.
+   */
+  test('a recorded-nothing 404 reads as an absence, not a failure', () => {
+    query.mockReturnValue({
+      data: undefined,
+      error: new mocks.MockAnswerBasisRequestError(404),
+    });
+    render(
+      <AnswerBasisAffordance
+        sessionId="session"
+        turnId="turn"
+        enabled
+        onOpen={() => undefined}
+      />,
+    );
+    expect(screen.getByRole('button').textContent).toBe('Basis · Not recorded');
+  });
+
+  test('a read that could not be performed still reads as unavailable', () => {
+    query.mockReturnValue({
+      data: undefined,
+      error: new mocks.MockAnswerBasisRequestError(503),
+    });
+    render(
+      <AnswerBasisAffordance
+        sessionId="session"
+        turnId="turn"
+        enabled
+        onOpen={() => undefined}
+      />,
+    );
+    expect(screen.getByRole('button').textContent).toBe('Basis · Unavailable');
   });
 });
