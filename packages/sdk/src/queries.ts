@@ -6,7 +6,9 @@
 export {
   type ACPConnectionInfo,
   type ACPConnectionRegistryEntry,
+  type ACPRegistryInstallAgentReceipt,
   type AcpSlashCommandDescriptor,
+  connectAndMaterializeACPRegistryEngine,
   createACPConnection,
   deleteACPConnection,
   type FileSystemBrowseEntry,
