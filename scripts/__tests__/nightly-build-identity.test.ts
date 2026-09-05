@@ -601,6 +601,25 @@ describe('the nightly workflow keeps its promises', () => {
     expect(nativeCaller).toContain('needs: [test-gate, full-regression]');
   });
 
+  it('retries the registry provenance read that lags npm publish, bounded and fail-closed (#1498)', () => {
+    const receipt = callerWorkflow.slice(
+      callerWorkflow.indexOf(
+        'name: Bind the published CLI receipt to npm registry provenance',
+      ),
+      callerWorkflow.indexOf('id: ledger_token'),
+    );
+    expect(receipt).toContain(
+      'until npm view "@kontourai/station-cli@$CLI_VERSION" gitHead --json',
+    );
+    expect(receipt).toContain('if [ "$attempt" -ge 12 ]; then');
+    expect(receipt).toContain('exit 1');
+    // The gitHead comparison against the exact source stays the receipt's
+    // authority; the retry only decides when to read.
+    expect(receipt).toContain(
+      'node scripts/verify-npm-registry-provenance.mjs "$registry_record" "$SOURCE_SHA"',
+    );
+  });
+
   it('publishes only on literal success from both promotion gates', () => {
     // `!= 'failure'` would admit a skipped or cancelled gate — the exact
     // green-looking hole this predicate exists to close. Pinned as one

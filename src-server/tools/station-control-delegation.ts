@@ -67,6 +67,10 @@ import {
   matchVerifiedRemoteProjectPath,
   resolveExecutionTarget,
 } from '../services/execution-target/execution-target-resolver.js';
+import {
+  type ForegroundInvocationAdmission,
+  ForegroundInvocationUnavailableError,
+} from '../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
 import {
   delegatedTaskFollowUps,
@@ -3281,7 +3285,45 @@ export async function delegateTask(
 export async function executeExecutionTargetMessage(
   input: AuthorityBearingForegroundMessageInput,
   orchestrationService?: OrchestrationService,
+  admission?: ForegroundInvocationAdmission,
 ): Promise<ForegroundMessageHandle> {
+  const capturedProject = admission?.project;
+  const capturedAgent = admission?.agentSpec;
+  if (admission) {
+    if (
+      !orchestrationService ||
+      input.target.environment.kind !== 'current' ||
+      input.target.agent !== admission.agentId ||
+      input.target.model !== undefined ||
+      input.target.workspace?.kind !== 'project' ||
+      input.target.workspace.projectSlug !== capturedProject!.slug ||
+      input.message !== admission.message ||
+      input.conversationId !== undefined ||
+      !input.readAuthority ||
+      !input.userId?.trim() ||
+      input.attachments?.length ||
+      input.resolveAttachments ||
+      input.ambientContext ||
+      input.delegation ||
+      input.automaticBackground ||
+      input.ephemeral ||
+      input.webhookTokenId ||
+      input.handoffCapability ||
+      input.handoffIntent
+    )
+      throw new ForegroundInvocationUnavailableError();
+    // Capture the admitted authored inputs before any resolver awaits. Never
+    // follow a mutable caller target or reread another Agent/Project later.
+    input = {
+      ...input,
+      message: admission.message,
+      target: {
+        environment: { kind: 'current' },
+        agent: admission.agentId,
+        workspace: { kind: 'project', projectSlug: capturedProject!.slug },
+      },
+    };
+  }
   const readAuthority = readAuthorityForInput(input);
   const selectedTarget = await resolveTarget({
     environmentId:
@@ -3289,6 +3331,8 @@ export async function executeExecutionTargetMessage(
         ? input.target.environment.id
         : undefined,
   });
+  if (admission && selectedTarget.kind !== 'current')
+    throw new ForegroundInvocationUnavailableError();
   localServiceRequiredInHostedMode(
     selectedTarget,
     readAuthority,
@@ -3336,19 +3380,35 @@ export async function executeExecutionTargetMessage(
           : {}),
       } satisfies EnvironmentAccess;
     },
-    getAgent: async (access: EnvironmentAccess, id: AgentId) =>
-      (await getAgent(
+    getAgent: async (access: EnvironmentAccess, id: AgentId) => {
+      if (capturedAgent) {
+        if (admission?.agentId !== id)
+          throw new ForegroundInvocationUnavailableError();
+        return structuredClone(capturedAgent);
+      }
+      return (await getAgent(
         access.apiBase,
         id,
         access.requestOptions,
-      )) as ExecutionTargetAgentView,
+      )) as ExecutionTargetAgentView;
+    },
     getConnection: async (access: EnvironmentAccess, id) =>
       readConnection(access as DelegationTarget, id),
-    getProject: async (access: EnvironmentAccess, slug: string) =>
-      (await getProject(access.apiBase, slug, access.requestOptions)) as {
+    getProject: async (access: EnvironmentAccess, slug: string) => {
+      if (capturedProject) {
+        if (capturedProject.slug !== slug)
+          throw new ForegroundInvocationUnavailableError();
+        return structuredClone(capturedProject);
+      }
+      return (await getProject(
+        access.apiBase,
+        slug,
+        access.requestOptions,
+      )) as {
         workingDirectory?: string;
         defaultWorkspaceIsolation?: 'shared' | 'worktree';
-      },
+      };
+    },
     getProviderAdapter: (provider) =>
       orchestrationService.getProviderAdapter(provider),
     readSessionBinding: async (
@@ -3561,6 +3621,7 @@ export async function executeExecutionTargetMessage(
         ),
         {
           ...(ephemeral ? { ephemeralSessionVisibility: true } : {}),
+          ...(admission ? { foregroundInvocationAdmission: admission } : {}),
           resourceAdmissionIntent:
             startContext?.resourceAdmissionIntent ??
             (ephemeral
@@ -3607,14 +3668,22 @@ export async function executeExecutionTargetMessage(
       };
     },
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
-      const dispatched = await orchestrationService.dispatchWithReceipt(
-        { type: 'sendTurn', input: turnInput },
-        dispatchContextForAuthority(
-          readAuthority,
-          context?.clientOrigin,
-          context?.principal,
-        ),
+      const command = { type: 'sendTurn' as const, input: turnInput };
+      const dispatchContext = dispatchContextForAuthority(
+        readAuthority,
+        context?.clientOrigin,
+        context?.principal,
       );
+      const dispatched = admission
+        ? await orchestrationService.dispatchWithReceipt(
+            command,
+            dispatchContext,
+            { foregroundInvocationAdmission: admission },
+          )
+        : await orchestrationService.dispatchWithReceipt(
+            command,
+            dispatchContext,
+          );
       if (!dispatched.result || !('turnId' in dispatched.result)) {
         throw new ForegroundMessageTurnIdentityUnavailableError(
           'Foreground turn acceptance did not include a provider turn id',

@@ -4,6 +4,7 @@ import type {
   OperationalEventScope,
 } from './operational-event.js';
 import type { WorkspacePaneDescriptor } from './workspace-pane.js';
+import type { WorkspacePaneHostContributionV1 } from './workspace-pane-host-contribution.js';
 
 /**
  * Canonical persisted plugin identity. Plugin directories and registry aliases
@@ -231,6 +232,8 @@ export interface PluginManifest {
   layouts?: Array<{ slug: string; source: string }>;
   /** Versioned, inert Pane declarations parsed before any renderer can load. */
   workspacePanes?: WorkspacePaneDescriptor[];
+  /** Inert package-level actions/Agent selection; admission is server-owned. */
+  workspacePaneHost?: WorkspacePaneHostContributionV1;
   /** Versioned declarations whose execution remains host-authorized. */
   operationalEventSubscriptions?: PluginOperationalEventSubscriptionEntry[];
   providers?: PluginProviderEntry[];

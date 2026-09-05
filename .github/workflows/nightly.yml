@@ -237,7 +237,20 @@ jobs:
           set -euo pipefail
           mkdir -p provider-receipts
           registry_record="$RUNNER_TEMP/nightly-cli-registry-githead.json"
-          npm view "@kontourai/station-cli@$CLI_VERSION" gitHead --json > "$registry_record"
+          # npm's registry read lags its write: the first Nightly through this
+          # step read E404 for a version the publish had just confirmed
+          # (#1498). Bounded retry; a persistent miss still fails closed.
+          attempt=0
+          until npm view "@kontourai/station-cli@$CLI_VERSION" gitHead --json > "$registry_record" 2> "$RUNNER_TEMP/nightly-cli-registry-view.err"; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -ge 12 ]; then
+              cat "$RUNNER_TEMP/nightly-cli-registry-view.err" >&2
+              echo "::error::npm registry never returned @kontourai/station-cli@$CLI_VERSION after $attempt reads" >&2
+              exit 1
+            fi
+            echo "registry read $attempt did not return $CLI_VERSION yet; retrying in 15s"
+            sleep 15
+          done
           registry_sha=$(node scripts/verify-npm-registry-provenance.mjs "$registry_record" "$SOURCE_SHA")
           REGISTRY_SHA="$registry_sha" node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync(process.argv[1], JSON.stringify({schemaVersion:1,kind:"station.npm-publish-receipt",package:"@kontourai/station-cli",version:process.env.CLI_VERSION,sourceSha:process.env.SOURCE_SHA,registryGitHead:process.env.REGISTRY_SHA,artifactBuiltAt:null,artifactBuiltAtReason:"npm package has no native artifact manifest",sourceBinding:"npm registry gitHead",},null,2)+"\n")' provider-receipts/nightly-cli.json
       - id: ledger_token
