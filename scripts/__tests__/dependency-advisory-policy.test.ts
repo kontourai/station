@@ -1,5 +1,14 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -18,6 +27,7 @@ import {
   selectAuditScopes,
   withAuditRetries,
 } from '../dependency-advisory-policy.mjs';
+import { validateInstalledRemediationGraph } from '../lib/installed-remediation-graph.mjs';
 import {
   collectPnpmAudits,
   normalizePnpmAudit,
@@ -322,32 +332,131 @@ function productionLowDocument() {
   };
 }
 
-// #1019: the contract-validation case runs the real remediation graph
-// (~2.2s quiet) — under parallel workers or a sibling session the 5s default
-// budget starves. Cap, not expectation.
-describe('dependency advisory policy', { timeout: 20_000 }, () => {
+describe('dependency advisory policy', () => {
   it('keeps the patched brace-expansion graph behaviorally compatible', () => {
     expect(minimatch('app.ts', '{app,test}.ts')).toBe(true);
   });
 
   it('keeps the remediated dependency graph contract-valid', () => {
-    const npmArgs = [
-      'ls',
-      'glob',
-      'test-exclude',
-      'minimatch',
-      'brace-expansion',
-      '--all',
-    ];
-    const executable =
-      process.platform === 'win32' ? (process.env.ComSpec ?? 'cmd.exe') : 'npm';
-    const args =
-      process.platform === 'win32'
-        ? ['/d', '/s', '/c', 'npm.cmd', ...npmArgs]
-        : npmArgs;
-    expect(() =>
-      execFileSync(executable, args, { encoding: 'utf8', windowsHide: true }),
-    ).not.toThrow();
+    const edges = validateInstalledRemediationGraph(process.cwd());
+    for (const directory of new Set(
+      edges
+        .filter((edge) => edge.name === 'minimatch')
+        .map((edge) => edge.directory),
+    )) {
+      const installed = createRequire(path.join(directory, 'package.json'))(
+        directory,
+      );
+      const match =
+        typeof installed === 'function' ? installed : installed.minimatch;
+      expect(match('app.ts', '{app,test}.ts')).toBe(true);
+      expect(match('other.ts', '{app,test}.ts')).toBe(false);
+    }
+
+    expect(
+      edges.some(
+        (edge) =>
+          edge.parent === 'minimatch' && edge.name === 'brace-expansion',
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects broken installed edges even when configuration is unchanged', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'station-remediation-'));
+    const put = (directory: string, manifest: object) => {
+      mkdirSync(path.join(root, directory), { recursive: true });
+      writeFileSync(
+        path.join(root, directory, 'package.json'),
+        JSON.stringify(manifest),
+      );
+    };
+    const child =
+      'node_modules/glob/node_modules/minimatch/node_modules/brace-expansion';
+    try {
+      writeFileSync(
+        path.join(root, 'pnpm-workspace.yaml'),
+        `packages: []
+nodeLinker: hoisted
+overrides:
+  minimatch@^10.0.0>brace-expansion: ^5.0.9
+  brace-expansion@^2.0.2: ^2.1.4
+`,
+      );
+      put('.', {
+        name: 'fixture',
+        dependencies: { glob: '^10.0.0', 'test-exclude': '^7.0.0' },
+      });
+      put('node_modules/glob', {
+        name: 'glob',
+        version: '10.5.0',
+        dependencies: { minimatch: '^9.0.0' },
+      });
+      put('node_modules/test-exclude', {
+        name: 'test-exclude',
+        version: '7.0.0',
+        dependencies: { minimatch: '^10.0.0' },
+      });
+      put('node_modules/minimatch', {
+        name: 'minimatch',
+        version: '10.2.5',
+        dependencies: { 'brace-expansion': '^4.0.0' },
+      });
+      put('node_modules/brace-expansion', {
+        name: 'brace-expansion',
+        version: '5.0.9',
+      });
+      put('node_modules/glob/node_modules/minimatch', {
+        name: 'minimatch',
+        version: '9.0.9',
+        dependencies: { 'brace-expansion': '^2.0.2' },
+      });
+      put(child, { name: 'brace-expansion', version: '2.1.4' });
+      expect(validateInstalledRemediationGraph(root)).toHaveLength(6);
+      put(child, { name: 'brace-expansion', version: '5.0.9' });
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Invalid installed dependency',
+      );
+      put(child, { name: 'brace-expansion', version: '2.0.2' });
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Unremediated',
+      );
+      put(child, { name: 'wrong-package', version: '2.1.4' });
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Invalid installed dependency',
+      );
+      rmSync(path.join(root, child), { recursive: true });
+      // A missing nested copy must not silently accept an incompatible hoist.
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Invalid installed dependency',
+      );
+      const decoy = 'node_modules/glob/node_modules/node_modules';
+      put(decoy, { name: 'decoy-container', version: '1.0.0' });
+      put(`${decoy}/brace-expansion`, {
+        name: 'brace-expansion',
+        version: '2.1.4',
+      });
+      const actualResolver = createRequire(
+        path.join(
+          root,
+          'node_modules/glob/node_modules/minimatch/package.json',
+        ),
+      );
+      expect(actualResolver.resolve('brace-expansion/package.json')).toBe(
+        realpathSync(
+          path.join(root, 'node_modules/brace-expansion/package.json'),
+        ),
+      );
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Invalid installed dependency',
+      );
+      rmSync(path.join(root, decoy), { recursive: true });
+      rmSync(path.join(root, 'node_modules/test-exclude'), { recursive: true });
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Missing installed dependency',
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('rejects an unaccepted high advisory and names it in the production report', () => {

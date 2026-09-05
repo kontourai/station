@@ -1,5 +1,4 @@
 import {
-  createHash,
   createHmac,
   randomBytes,
   randomUUID,
@@ -126,6 +125,10 @@ import {
   type PackageMcpAdmissionJournal,
 } from '../plugins/package-mcp-admission.js';
 import {
+  createIsolatedTranscriptReads,
+  type IsolatedTranscriptReads,
+} from '../search/isolated-transcript-search.js';
+import {
   awaitTurnResolution,
   type TurnIdempotencyPersistence,
   type TurnIdempotencyProcessIdentity,
@@ -221,6 +224,13 @@ import {
   MAX_TOOL_RESULT_DESCRIPTOR_LABEL_BYTES,
   MAX_TOOL_RESULT_DESCRIPTOR_OUTPUT_BYTES,
 } from './thread-tool-result-adapter.js';
+import {
+  cjkSearchTerms,
+  messageOwnerScopeKey,
+  messageTenantScopeKey,
+  querySessionOwner,
+  queryTranscriptMessages,
+} from './transcript-search-queries.js';
 import {
   createTurnDeduplicator,
   type TurnDeduplicator,
@@ -1336,7 +1346,7 @@ export const MESSAGE_SEARCH_BACKFILL_EVENT_BATCH_SIZE = 500;
  * equal textual match by recency, but too small to displace material BM25
  * relevance. Keep this explicit so ranking does not drift by accident.
  */
-export const MESSAGE_SEARCH_RECENCY_SCORE_PER_DAY = 0.000000001;
+export { MESSAGE_SEARCH_RECENCY_SCORE_PER_DAY } from './transcript-search-queries.js';
 
 type MessageSearchProjection = {
   table: string;
@@ -1485,6 +1495,9 @@ export class EventStore {
   private readonly revisionEvidenceModules = new Set<RevisionEvidenceModule>();
   private nativeInvocationRunsReady = false;
   private messageSearchBackfillClosed = false;
+  private isolatedTranscriptReads?: IsolatedTranscriptReads;
+  private transcriptReadClose?: Promise<unknown>;
+  private storeClosed = false;
   private packageMcpAdmissionJournal?: PackageMcpAdmissionJournal;
 
   constructor(
@@ -3355,101 +3368,36 @@ export class EventStore {
    * posting before it expands body matches. The ordinary history predicates
    * remain a defence-in-depth response boundary.
    */
-  searchConversationMessages(options: {
-    query: string;
-    ownerUserId: string;
-    tenantId?: string;
-    limit: number;
-  }): Array<{
-    threadId: string;
-    eventId: string;
-    turnId?: string;
-    role: 'user' | 'assistant';
-    content: string;
-    createdAt: string;
-    agentSlug?: string;
-    projectSlug?: string;
-    engine?: string;
-    turnAnchorId?: string;
-  }> {
-    const contentTerms = nonCjkSearchTerms(options.query);
-    const cjkTerms = cjkSearchTerms(options.query);
-    // A punctuation-only query must not degrade into an owner-wide match.
-    if (!contentTerms && !cjkTerms) return [];
-    const matchTerms = [
-      ftsColumnPhrase(
-        'owner_scope_key',
-        messageOwnerScopeKey(options.ownerUserId),
-      ),
-    ];
-    if (options.tenantId) {
-      matchTerms.splice(
-        1,
-        0,
-        ftsColumnPhrase(
-          'tenant_scope_key',
-          messageTenantScopeKey(options.tenantId),
-        ),
-      );
-    }
-    if (contentTerms) {
-      matchTerms.push(ftsColumnPhrase('content', contentTerms));
-    }
-    if (cjkTerms) {
-      matchTerms.push(ftsColumnPhrase('cjk_terms', cjkTerms));
-    }
-    const rows = this.db
-      .prepare(
-        `SELECT s.thread_id, s.event_id, s.turn_id, s.role, s.content,
-                s.created_at, h.agent_slug, h.project_slug, p.provider,
-                (SELECT e.id FROM orchestration_events e
-                  WHERE e.thread_id = s.thread_id AND e.turn_id = s.turn_id
-                    AND e.method = 'turn.started' LIMIT 1) AS turn_anchor_id
-           FROM orchestration_message_search_v3 s
-           INNER JOIN orchestration_conversation_history h
-             ON h.thread_id = s.thread_id
-           LEFT JOIN provider_session_state p
-             ON p.thread_id = s.thread_id
-          WHERE orchestration_message_search_v3 MATCH ?
-            AND h.owner_user_id = ?
-            AND (? IS NULL OR h.tenant_id = ?)
-          ORDER BY bm25(orchestration_message_search_v3) +
-                     ((julianday('now') - julianday(s.created_at)) * ?) ASC,
-                   s.created_at DESC,
-                   s.event_id ASC
-          LIMIT ?`,
-      )
-      .all(
-        matchTerms.join(' AND '),
-        options.ownerUserId,
-        options.tenantId ?? null,
-        options.tenantId ?? null,
-        MESSAGE_SEARCH_RECENCY_SCORE_PER_DAY,
-        options.limit,
-      ) as Array<{
-      thread_id: string;
-      event_id: string;
-      turn_id: string | null;
-      role: 'user' | 'assistant';
-      content: string;
-      created_at: string;
-      agent_slug: string | null;
-      project_slug: string | null;
-      provider: string | null;
-      turn_anchor_id: string | null;
-    }>;
-    return rows.map((row) => ({
-      threadId: row.thread_id,
-      eventId: row.event_id,
-      ...(row.turn_id ? { turnId: row.turn_id } : {}),
-      role: row.role,
-      content: row.content,
-      createdAt: row.created_at,
-      ...(row.agent_slug ? { agentSlug: row.agent_slug } : {}),
-      ...(row.project_slug ? { projectSlug: row.project_slug } : {}),
-      ...(row.provider ? { engine: row.provider } : {}),
-      ...(row.turn_anchor_id ? { turnAnchorId: row.turn_anchor_id } : {}),
-    }));
+  createIsolatedTranscriptReads(): IsolatedTranscriptReads {
+    if (this.messageSearchBackfillClosed || this.storeClosed)
+      throw new Error('EventStore is closing');
+    // One explicit read lifecycle for this data owner, not one worker per request.
+    this.isolatedTranscriptReads ??= createIsolatedTranscriptReads(
+      this.databasePath,
+    );
+    return this.isolatedTranscriptReads;
+  }
+
+  /** Failed-init ownership handoff only; pending cleanup never permits renewal. */
+  releaseClosedIsolatedTranscriptReads(
+    expected: IsolatedTranscriptReads,
+  ): boolean {
+    if (
+      this.messageSearchBackfillClosed ||
+      this.storeClosed ||
+      expected.inspect().phase !== 'closed'
+    )
+      return false;
+    if (this.isolatedTranscriptReads === undefined) return true;
+    if (this.isolatedTranscriptReads !== expected) return false;
+    this.isolatedTranscriptReads = undefined;
+    return true;
+  }
+
+  searchConversationMessages(
+    options: Parameters<typeof queryTranscriptMessages>[1],
+  ) {
+    return queryTranscriptMessages(this.db, options);
   }
 
   /**
@@ -5899,20 +5847,7 @@ export class EventStore {
   }
 
   findSessionOwnerUserId(threadId: string): string | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT json_extract(payload, '$.metadata.userId') AS user_id
-         FROM orchestration_events
-         WHERE thread_id = ?
-           AND json_valid(payload)
-           AND json_extract(payload, '$.metadata.userId') IS NOT NULL
-           AND json_type(payload, '$.metadata.userId') = 'text'
-           AND method IN ('session.started', 'session.configured')
-         ORDER BY created_at DESC, sequence DESC
-         LIMIT 1`,
-      )
-      .get(threadId) as { user_id?: unknown } | undefined;
-    return typeof row?.user_id === 'string' ? row.user_id : undefined;
+    return querySessionOwner(this.db, threadId);
   }
 
   sessionAgentPresentation(
@@ -10675,6 +10610,24 @@ export class EventStore {
   close(): OperationalEventSubscriptionCloseOutcome {
     this.packageMcpAdmissionJournal?.closeAdmission();
     this.messageSearchBackfillClosed = true;
+    if (this.storeClosed) return { kind: 'closed' };
+    if (
+      this.isolatedTranscriptReads &&
+      this.isolatedTranscriptReads.inspect().phase !== 'closed'
+    ) {
+      // close() synchronously fences admission. The retained handle and promise
+      // own uncertain termination across this synchronous owner's pending result.
+      if (!this.transcriptReadClose) {
+        this.transcriptReadClose = this.isolatedTranscriptReads
+          .close()
+          .finally(() => {
+            this.transcriptReadClose = undefined;
+          });
+      }
+      const phase = this.isolatedTranscriptReads.inspect().phase;
+      if (phase !== 'closed')
+        return { kind: phase === 'incomplete' ? 'unavailable' : 'pending' };
+    }
     let registryOutcome: OperationalEventSubscriptionCloseOutcome = {
       kind: 'closed',
     };
@@ -10697,6 +10650,7 @@ export class EventStore {
     releaseSessionTurnBoundaryOwner(this.recoveryLedgerOwner.id);
     releaseRecoveryLedgerOwner(this.recoveryLedgerOwner.id);
     this.db.close();
+    this.storeClosed = true;
     return { kind: 'closed' };
   }
 
@@ -10738,66 +10692,6 @@ function parsePersistedTenantExecutionContext(value: unknown) {
   } catch {
     return undefined;
   }
-}
-
-/** Opaque FTS scope terms keep user/tenant postings disjoint from body terms. */
-function messageSearchScopeKey(
-  kind: 'owner' | 'tenant',
-  value: string,
-): string {
-  return createHash('sha256').update(`${kind}\0${value}`).digest('hex');
-}
-
-function messageOwnerScopeKey(ownerUserId: string): string {
-  return messageSearchScopeKey('owner', ownerUserId);
-}
-
-function messageTenantScopeKey(tenantId: string): string {
-  return messageSearchScopeKey('tenant', tenantId);
-}
-
-/** Quote exactly one FTS5 column phrase; user text never becomes syntax. */
-function ftsColumnPhrase(column: string, value: string): string {
-  return `${column} : "${value.replaceAll('"', '""')}"`;
-}
-
-const CJK_CODE_POINT =
-  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
-const CJK_RUN =
-  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+/gu;
-
-/**
- * unicode61 treats a CJK run as one token, so a substring query cannot match
- * it. Index each CJK code point and adjacent pair as a quoted FTS phrase;
- * this preserves phrase order while making one- and two-character queries
- * searchable without changing tokenization of scope hashes or Latin text.
- */
-function cjkSearchTerms(value: string): string {
-  const terms: string[] = [];
-  let run: string[] = [];
-  const flush = () => {
-    for (let index = 0; index < run.length; index += 1) {
-      terms.push(run[index]!);
-      if (index + 1 < run.length) {
-        terms.push(`${run[index]}${run[index + 1]}`);
-      }
-    }
-    run = [];
-  };
-  for (const character of value) {
-    if (CJK_CODE_POINT.test(character)) {
-      run.push(character);
-    } else if (run.length > 0) {
-      flush();
-    }
-  }
-  if (run.length > 0) flush();
-  return terms.join(' ');
-}
-
-/** Keep unicode61's established behavior for non-CJK text in a mixed query. */
-function nonCjkSearchTerms(value: string): string {
-  return value.replace(CJK_RUN, ' ').trim();
 }
 
 function parseMessageSearchEvent(

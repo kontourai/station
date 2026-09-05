@@ -386,6 +386,40 @@ const result = await serverFetch('https://api.example.com/data');
 
 ## Query Hooks
 
+### Unified search (backend and SDK slice)
+
+`searchStation(apiBase, request, { requestScope, signal? })` queries `POST /api/search` with the
+closed `station.unified-search/v1` request from
+`@kontourai/station-contracts/unified-search`. The response retains each source's
+owner, availability, restriction and partial-result state; unavailable does not
+mean empty. `resolveSearchOpen(apiBase, locator, { requestScope, signal? })` performs a fresh
+read-only `POST /api/search/resolve-open`, returning `resolved`, `not-found`
+(also authorization denial), or `unavailable`. It does not navigate or execute
+work. Message locators require the exact `matchedEventId`; never substitute a
+legacy navigation anchor or follow a Session's current child. Both helpers are
+available from the React-free `/client` export and declare POST transport as
+read-only. Both require a host-captured scope matching `apiBase`, rejecting absent
+or mismatched scopes before transport. Older servers return `UnifiedSearchRequestError.kind: 'unsupported'`
+on 404/405, never fabricated empty results.
+
+Import `searchStation`, `resolveSearchOpen`, and `UnifiedSearchRequestError`
+from `@kontourai/station-sdk/client`. The root `@kontourai/station-sdk` entry
+exports `useUnifiedSearchQuery` and `unifiedSearchQueries`; its hook loads the
+existing client entry on demand, preserving captured request scope and abort
+signal across that asynchronous boundary.
+
+`useUnifiedSearchQuery(request, { requestScope, enabled? })` is the protected
+React wrapper. A host-captured `ApiRequestScope` is required: no scope means no
+request and no data. Query keys include exact API base and authority epoch;
+authority changes fence delayed responses through the existing credential
+resolver. Cached snippets are hidden until a fresh successful read, and while
+refetching or after failure; they never authorize opening. `unifiedSearchQueries`
+exposes the same scoped key for explicit invalidation. No CommandPalette/UI is
+wired in this slice. Only personal Tasks and authorized indexed messages are
+searched; hosted Task reads are restricted until a tenant-owned Task store is
+composed. Files, receipts, external projections and arbitrary plugin sources
+are not supported by this initial runtime composition.
+
 React Query wrappers. Use these instead of raw `useQuery` — they handle cache keys, stale times, and API base resolution automatically.
 
 ### `useAgentsQuery(config?)`
