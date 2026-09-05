@@ -1,5 +1,14 @@
 # @kontourai/station-board-pane
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [4aca094]
+- Updated dependencies [ce6ec59]
+  - @kontourai/station-contracts@0.8.0
+  - @kontourai/station-sdk@0.8.0
+
 ## 0.1.2
 
 ### Patch Changes

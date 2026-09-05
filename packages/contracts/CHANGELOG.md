@@ -1,5 +1,12 @@
 # @kontourai/station-contracts
 
+## 0.8.0
+
+### Minor Changes
+
+- 4aca094: Add read-only cloud setup preview and AWS EC2 template preparation. Report credential enrollment, workspace review, and unavailable execution handoff explicitly; do not provision resources or transfer authority.
+- ce6ec59: Add encrypted, bounded Git workspace packages with shared capture, inspection, and fresh-directory import APIs and cloud CLI commands. Preserve supported staged and uncommitted work without transferring credentials or execution authority. Document self-hosted use, resource limits, and recovery.
+
 ## 0.7.0
 
 ### Minor Changes
