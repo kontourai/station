@@ -84,8 +84,9 @@ the environment; template validation does not prove boot or runtime readiness.
 
 ## Remaining implementation sequence
 
-1. Validate the generated template and boot in an explicitly selected AWS test
-   account/region/budget. Prove private access, image identity, persistence, cost
+1. Validate the selected provider preparation and boot in an explicitly selected
+   cloud test account/region/budget. AWS template qualification and GCP host
+   qualification retain separate evidence. Prove private access, image identity, persistence, cost
    visibility, and recovery. Retain portable evidence without credentials.
 2. Add consistent setup packaging and target application. Reuse the existing
    home maintenance and backup primitives where their contracts apply, and the
@@ -108,7 +109,9 @@ the environment; template validation does not prove boot or runtime readiness.
    revocation, plugin lifecycle races, and move-back. Measure real continuation
    with a supported agent before advertising unattended running work.
 
-An account/region/budget decision and real AWS evidence remain outstanding.
+Real AWS qualification remains outstanding. The GCP development profile has a
+separate operator-run qualification path; neither provider can claim a complete
+setup transfer or execution handoff from a healthy empty target.
 The initial preview/template slice must not close #495 or claim live migration.
 
 ## External-team delivery

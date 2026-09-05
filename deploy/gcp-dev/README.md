@@ -17,7 +17,12 @@ service account or OAuth scopes.
 
 The initial profile is `e2-micro` in `us-central1-a` with a 30-GB `pd-standard`
 boot/data disk. It has about 1 GiB of RAM; the bootstrap adds a 2-GiB swap file.
-Swap is an emergency capacity buffer, not equivalent to RAM or proof that agent
+Swap is prepared in a private temporary file and published only after its
+signature validates. Active swap is not reformatted, and unknown existing final
+files are preserved for inspection. A power loss or uncatchable interruption can
+leave an unreferenced `swapfile.preparing.*` file; it is never automatically
+enrolled. Review and remove only identified inactive staging files if reclaiming
+that space. Swap is an emergency capacity buffer, not equivalent to RAM or proof that agent
 workloads fit. Measure readiness, memory pressure, and latency before selecting
 this profile for real work; resize to `e2-small` or larger if evidence requires it.
 
