@@ -231,7 +231,7 @@ async function mockChatShell(
               enabled: true,
               capabilities: ['agent-runtime', 'image-input', 'file-input'],
               config: {
-                executionClass: 'external',
+                engineId: 'claude',
                 defaultModel: 'model-selected',
               },
               status: 'ready',
@@ -395,6 +395,14 @@ async function openComposer(
   await runtimeRow.click();
   await expect(modal).toBeHidden();
   await expect(textarea).toBeVisible({ timeout: 15_000 });
+  if (agentSlug === 'claude') {
+    await expect(
+      page.getByRole('button', { name: /^Approval mode:/ }),
+    ).toBeVisible();
+    await expect(page.locator('.chat-input__model-btn')).toContainText(
+      'Selected Test Model',
+    );
+  }
   return textarea;
 }
 
@@ -3242,9 +3250,9 @@ for (const width of [320, 390, 600]) {
     const rail = page.locator('.chat-input__meta');
     await expect(rail).toBeVisible();
     const controls = rail.locator(
-      '.chat-input__agent-btn, .chat-input__model-btn',
+      '.chat-input__agent-btn, .chat-input__model-btn, .chat-input__approval-chip',
     );
-    await expect(controls).toHaveCount(2);
+    await expect(controls).toHaveCount(3);
     const railBox = await rail.boundingBox();
     expect(railBox).not.toBeNull();
     for (const control of await controls.all()) {
