@@ -41,6 +41,22 @@ export const awsEc2PreviewProvider: CloudMovePreviewProvider = {
   },
 };
 
+/** GCP preparation currently exposes inventory only; provisioning follows the
+ * separately documented, owner-selected development recipe. */
+export const gcpComputePreviewProvider: CloudMovePreviewProvider = {
+  id: 'gcp-compute',
+  validateTarget(target) {
+    if (!/^[a-z]+(?:-[a-z]+)+[1-9][0-9]*$/.test(target.region))
+      throw new Error('Specify a GCP region identifier, not a zone');
+    if (!['e2-micro', 'e2-small', 'e2-medium'].includes(target.instanceType))
+      throw new Error('Unsupported GCP preview machine type');
+    return [
+      'Preview does not inspect Google credentials, project billing, quotas, or target readiness.',
+      'Shared-core capacity and any free-tier allowance must be checked for the selected billing account and workload.',
+    ];
+  },
+};
+
 /** Read selected configuration metadata only; never read credential payloads,
  * provider homes, plugin journals, or session databases. Unknown state cannot
  * turn this observational preview into a transferable setup or resume claim. */
@@ -231,7 +247,10 @@ function selectProvider(
   target: CloudMoveTarget,
   registered?: readonly CloudMovePreviewProvider[],
 ) {
-  const providers = registered ?? [awsEc2PreviewProvider];
+  const providers = registered ?? [
+    awsEc2PreviewProvider,
+    gcpComputePreviewProvider,
+  ];
   if (
     new Set(providers.map((provider) => provider.id)).size !== providers.length
   )
