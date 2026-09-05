@@ -11,6 +11,12 @@ export interface ReadyPlugin {
   hasBundle: boolean;
   hasSettings?: boolean;
   layout?: { slug: string };
+  /**
+   * Panes the manifest declares. `GET /api/plugins` has always sent these;
+   * the client dropped them, so an installed plugin's detail page could not
+   * say what it had added (#1536 G2).
+   */
+  workspacePanes?: Array<{ id: string; name: string }>;
   agents?: Array<{ slug: string }>;
   providers?: Array<{ type: string }>;
   providerDetails?: Array<{

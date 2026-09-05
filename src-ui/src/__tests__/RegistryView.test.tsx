@@ -276,6 +276,12 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://127.0.0.1:3141' }),
 }));
 
+const showToastMock = vi.fn();
+
+vi.mock('../contexts/ToastContext', () => ({
+  useToast: () => ({ showToast: showToastMock }),
+}));
+
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => platformProfile,
 }));
@@ -317,6 +323,7 @@ afterEach(() => {
   requestInstallConsent.mockClear();
   requestInstallConsent.mockResolvedValue(true);
   navigateMock.mockReset();
+  showToastMock.mockReset();
   emptyTabs.clear();
   stalledInstalledTabs.clear();
   staleAfterMutationTabs.clear();
@@ -331,6 +338,30 @@ afterEach(() => {
   };
   pluginRegistryListeners.clear();
 });
+
+/**
+ * #1536 G7. A plugin install is confirmed by the shared toast, carrying the
+ * one thing left to do — place the layout the operator just reviewed. It used
+ * to be a grey inline `page__message` row directly above the catalog, which
+ * read as another search result rather than as the answer.
+ */
+function expectInstalledToast(message: string, pluginName: string) {
+  expect(screen.queryByText(message)).toBeNull();
+  const lastCall = showToastMock.mock.calls.at(-1);
+  expect(lastCall, 'no toast was shown').toBeDefined();
+  const [text, , , actions, tone] = lastCall as [
+    string,
+    unknown,
+    unknown,
+    Array<{ label: string; onClick: () => void }> | undefined,
+    string,
+  ];
+  expect(text).toBe(message);
+  expect(tone).toBe('success');
+  expect(actions?.map((action) => action.label)).toEqual(['Add to project']);
+  actions?.[0].onClick();
+  expect(navigateMock).toHaveBeenCalledWith(`/plugins/${pluginName}`);
+}
 
 describe('RegistryView', () => {
   test('updates the URL when switching Registry tabs', () => {
@@ -617,7 +648,12 @@ describe('RegistryView', () => {
           tab: tabKey,
         }),
       );
-      expect(screen.getByText(`Installed ${itemLabel}`)).toBeTruthy();
+      if (tabKey === 'plugins') {
+        expectInstalledToast(`Installed ${itemLabel}`, itemId);
+      } else {
+        expect(screen.getByText(`Installed ${itemLabel}`)).toBeTruthy();
+        expect(showToastMock).not.toHaveBeenCalled();
+      }
 
       rerender(<RegistryView />);
       const installedDetail = screen.getByTestId('registry-detail');
@@ -791,7 +827,7 @@ describe('RegistryView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     const installedDetail = screen.getByTestId('registry-detail');
-    expect(screen.getByText('Installed Demo Layout')).toBeTruthy();
+    expectInstalledToast('Installed Demo Layout', 'demo-layout');
     expect(
       within(installedDetail).getByRole('button', {
         name: 'Open a Project to Add Layout',
@@ -836,7 +872,7 @@ describe('RegistryView', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
-    expect(screen.getByText('Installed Demo Layout')).toBeTruthy();
+    expectInstalledToast('Installed Demo Layout', 'demo-layout');
     await waitFor(() =>
       expect(
         within(screen.getByTestId('registry-detail')).getByRole('button', {
@@ -865,6 +901,32 @@ describe('RegistryView', () => {
     expect(mutationCalls).toEqual([]);
   });
 
+  test('a plugin that contributes no layout is confirmed with nothing to place (#1536 G7)', () => {
+    previewResults.set('demo-layout', {
+      ...validDemoPreview(),
+      components: [{ type: 'provider', id: 'llm' }],
+    });
+    render(<RegistryView initialTab="plugins" />);
+
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
+
+    // The action is derived from what the preview actually reviewed, so an
+    // "Add to project" that could not lead anywhere is not offered.
+    const [text, , , actions] = showToastMock.mock.calls.at(-1) as [
+      string,
+      unknown,
+      unknown,
+      unknown,
+    ];
+    expect(text).toBe('Installed Demo Layout');
+    expect(actions).toBeUndefined();
+  });
+
   test('keeps installed plugin removal reachable through the full lifecycle', () => {
     previewResults.set('demo-layout', validDemoPreview());
     render(<RegistryView initialTab="plugins" />);
@@ -872,7 +934,7 @@ describe('RegistryView', () => {
     const detail = screen.getByTestId('registry-detail');
     fireEvent.click(within(detail).getByRole('button', { name: 'Install' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
-    expect(screen.getByText('Installed Demo Layout')).toBeTruthy();
+    expectInstalledToast('Installed Demo Layout', 'demo-layout');
 
     fireEvent.click(
       within(detail).getByRole('button', { name: 'Remove Plugin' }),
@@ -884,7 +946,7 @@ describe('RegistryView', () => {
 
     fireEvent.click(within(detail).getByRole('button', { name: 'Install' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
-    expect(screen.getByText('Installed Demo Layout')).toBeTruthy();
+    expectInstalledToast('Installed Demo Layout', 'demo-layout');
     expect(mutationCalls).toEqual([
       expect.objectContaining({
         id: 'demo-layout',
@@ -948,7 +1010,7 @@ describe('RegistryView', () => {
         skip: [],
       },
     ]);
-    expect(screen.getByText('Installed Agent Two')).toBeTruthy();
+    expectInstalledToast('Installed Agent Two', 'agent-two');
     expect(pluginRegistryReload).toHaveBeenCalled();
   });
 

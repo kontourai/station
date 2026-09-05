@@ -24,6 +24,13 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
 }));
 
+// Unrelated to the wiring under test and it reaches for a live connection
+// context; its own behaviour is pinned in
+// `plugin-management/__tests__/WorkspaceHomeRoleSection.test.tsx`.
+vi.mock('../views/plugin-management/WorkspaceHomeRoleSection', () => ({
+  WorkspaceHomeRoleSection: () => null,
+}));
+
 vi.mock('../hooks/useIsMobile', () => ({
   useIsMobile: () => false,
   MOBILE_MEDIA_QUERY: '(max-width: 768px)',
@@ -41,6 +48,7 @@ Object.defineProperty(window, 'matchMedia', {
 function baseViewModel(overrides: Record<string, unknown> = {}) {
   return {
     addLayoutToProjects: vi.fn(),
+    addPluginLayout: vi.fn(),
     apiBase: 'http://station.test',
     assigningLayout: null,
     changelogData: null,
@@ -319,5 +327,120 @@ describe('rejected installed plugins', () => {
         'Plugins were not reloaded: registry is still unavailable',
       ),
     ).toBeTruthy();
+  });
+});
+
+/**
+ * #1536 G2. The detail page's capability chips said `ui` and
+ * `layout:getting-started` and offered a permissions table and Remove — after
+ * installing a starter there was no way to see what had arrived or to place
+ * it. This is the JOIN: the view has to hand the panel the sole-project
+ * decision and the action, and a view that computed the label from nothing
+ * would still render a plausible button.
+ */
+describe('what an installed plugin adds (#1536 G2)', () => {
+  const starter = {
+    name: 'getting-started-starter',
+    displayName: 'Getting Started Starter',
+    version: '1.0.0',
+    hasBundle: true,
+    layout: { slug: 'getting-started' },
+    workspacePanes: [{ id: 'notes', name: 'Notes' }],
+    agents: [{ slug: 'guide' }],
+  };
+
+  function renderWithProjects(
+    projects: Array<{ slug: string; name: string }>,
+    overrides: Record<string, unknown> = {},
+  ) {
+    const addPluginLayout = vi.fn();
+    viewModel = baseViewModel({
+      plugins: [starter],
+      filtered: [starter],
+      items: [{ id: starter.name, name: starter.displayName, subtitle: '' }],
+      selectedPlugin: starter.name,
+      selected: starter,
+      projects,
+      addPluginLayout,
+      ...overrides,
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+    return addPluginLayout;
+  }
+
+  test('names each contribution, and only the layout can be placed', () => {
+    renderWithProjects([{ slug: 'demo', name: 'Demo' }]);
+
+    const section = screen
+      .getByText('What it adds')
+      .closest<HTMLElement>('.detail-panel__section');
+    expect(section).toBeTruthy();
+    const rows = within(section!).getAllByRole('listitem');
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'Layoutgetting-startedAdd to Demo',
+      'PaneNotes',
+      'Agentguide',
+    ]);
+  });
+
+  test('with exactly one project the destination is named, not asked for', () => {
+    const addPluginLayout = renderWithProjects([
+      { slug: 'demo', name: 'Demo' },
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to Demo' }));
+    expect(addPluginLayout).toHaveBeenCalledWith(starter);
+  });
+
+  test('with several projects the action asks which one', () => {
+    const addPluginLayout = renderWithProjects([
+      { slug: 'demo', name: 'Demo' },
+      { slug: 'other', name: 'Other' },
+    ]);
+
+    expect(screen.queryByRole('button', { name: 'Add to Demo' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add to project…' }));
+    expect(addPluginLayout).toHaveBeenCalledWith(starter);
+  });
+
+  test('with no projects the action still asks, so a project can be created', () => {
+    renderWithProjects([]);
+    expect(
+      screen.getByRole('button', { name: 'Add to project…' }),
+    ).toBeTruthy();
+  });
+
+  test('an in-flight add disables the action instead of queueing another', () => {
+    const addPluginLayout = renderWithProjects(
+      [{ slug: 'demo', name: 'Demo' }],
+      {
+        assigningLayout: true,
+      },
+    );
+
+    const button = screen.getByRole('button', { name: 'Adding…' });
+    fireEvent.click(button);
+    expect(addPluginLayout).not.toHaveBeenCalled();
+  });
+
+  test('a plugin that adds nothing renders no section', () => {
+    const bare = {
+      name: 'smart-routing',
+      displayName: 'Smart Routing',
+      version: '1.0.0',
+      hasBundle: false,
+    };
+    viewModel = baseViewModel({
+      plugins: [bare],
+      filtered: [bare],
+      items: [{ id: bare.name, name: bare.displayName, subtitle: '' }],
+      selectedPlugin: bare.name,
+      selected: bare,
+      projects: [{ slug: 'demo', name: 'Demo' }],
+    });
+
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    expect(screen.queryByText('What it adds')).toBeNull();
   });
 });
