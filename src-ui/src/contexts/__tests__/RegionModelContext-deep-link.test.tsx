@@ -394,6 +394,98 @@ describe('RegionModelProvider surface deep-link adoption', () => {
 });
 
 /**
+ * #928 C2a. Home is a region surface whose only placement is `main`, and
+ * `main` is the route outlet at `/`. Placing a surface there from any other
+ * route would change state nothing renders, so the provider — the one place
+ * that knows the placement landed in `main` — navigates to `/` after the
+ * state write, through the store call `useShowSurface` makes.
+ */
+describe('a placement into main navigates to the route outlet', () => {
+  test('showSurface(home) from another route places Home in main and navigates to /', async () => {
+    setUrl('/settings');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    const navigate = vi.spyOn(navigationStore, 'navigate');
+
+    act(() => model?.showSurface('home'));
+
+    expect(navigate).toHaveBeenCalledWith('/');
+    expect(window.location.pathname).toBe('/');
+    await waitFor(() => expect(model?.regions.main.occupant).toBe('home'));
+    expect(model?.lastShownRegion).toBe('main');
+  });
+
+  test('placeSurface(activity, main) from another route navigates to /; a dock placement does not', async () => {
+    setUrl('/plugins');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    const navigate = vi.spyOn(navigationStore, 'navigate');
+
+    act(() => model?.placeSurface('activity', 'right'));
+    await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
+    expect(navigate).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe('/plugins');
+
+    act(() => model?.placeSurface('activity', 'main'));
+
+    expect(navigate).toHaveBeenCalledWith('/');
+    expect(window.location.pathname).toBe('/');
+    await waitFor(() => expect(model?.regions.main.occupant).toBe('activity'));
+    // Displacement from `main` unplaces: Home is in no region now.
+    expect(
+      (['main', 'left', 'right', 'bottom'] as const).some(
+        (id) => model?.regions[id].occupant === 'home',
+      ),
+    ).toBe(false);
+  });
+
+  test('showSurface(activity) from another route reveals it in a dock region and stays put', async () => {
+    setUrl('/plugins');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    const navigate = vi.spyOn(navigationStore, 'navigate');
+
+    act(() => model?.showSurface('activity'));
+
+    await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
+    expect(navigate).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe('/plugins');
+  });
+
+  test('the ?surface=home deep link places Home back in main', async () => {
+    setUrl('/');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => model?.placeSurface('activity', 'main'));
+    await waitFor(() => expect(model?.regions.main.occupant).toBe('activity'));
+
+    setUrl('/?surface=home');
+
+    await waitFor(() => expect(model?.regions.main.occupant).toBe('home'));
+    await waitFor(() => expect(window.location.search).toBe(''));
+    expect(window.location.pathname).toBe('/');
+    // Unplaced, not relocated: Activity is in no dock region.
+    expect(model?.regions.right.occupant).toBeNull();
+    expect(model?.regions.left.occupant).toBeNull();
+  });
+
+  test('a refused placement (a region the surface does not declare) neither places nor navigates', async () => {
+    setUrl('/plugins');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    const navigate = vi.spyOn(navigationStore, 'navigate');
+
+    act(() => model?.placeSurface('chat', 'main'));
+    act(() => model?.placeSurface('home', 'right'));
+    await act(async () => undefined);
+
+    expect(navigate).not.toHaveBeenCalled();
+    expect(model?.regions.main.occupant).toBe('home');
+    expect(model?.regions.right.occupant).toBeNull();
+  });
+});
+
+/**
  * #928. `showSurface` only mutates region-model state, and `App.tsx` mounts
  * `RegionShells` — the one host that renders a region surface — solely while
  * `showAmbientChatDock` holds. While a Chat workspace layout is the current

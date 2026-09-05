@@ -12,7 +12,6 @@ import {
   type RegisteredSurface,
   regionLabel,
 } from '../../regions/region-model';
-import type { DockMode } from '../../types';
 import './HeaderMenu.css';
 import { useRegionSurfaceMenu } from './useRegionSurfaceMenu';
 
@@ -26,8 +25,12 @@ function RegionGlyph({ id }: { id: RegionId }) {
         <path d="M6 1v14" />
       ) : id === 'right' ? (
         <path d="M14 1v14" />
-      ) : (
+      ) : id === 'bottom' ? (
         <path d="M1 10h18" />
+      ) : (
+        // `main`: the filled centre of the same frame, since the primary area
+        // is the space the three dock edges surround.
+        <rect x="5" y="4" width="10" height="8" rx="1" fill="currentColor" />
       )}
     </svg>
   );
@@ -35,15 +38,17 @@ function RegionGlyph({ id }: { id: RegionId }) {
 
 function RegionShortcut({
   surface,
+  shortcut,
   onToggle,
 }: {
   surface: RegisteredSurface;
+  shortcut: NonNullable<RegisteredSurface['shortcut']>;
   onToggle: () => void;
 }) {
   useKeyboardShortcut(
-    surface.shortcut.id,
-    surface.shortcut.key,
-    [...surface.shortcut.modifiers],
+    shortcut.id,
+    shortcut.key,
+    [...shortcut.modifiers],
     `Toggle ${surface.title} region`,
     onToggle,
     true,
@@ -152,7 +157,12 @@ function ConnectedRegionToolbarControls() {
   const availableRegions = DOCK_REGION_IDS.filter((id) =>
     available.includes(id),
   );
-  const [menuRegion, setMenuRegion] = useState<DockMode | null>(null);
+  // Every registered surface, not the hook's dock-only `surfaceList`: the
+  // `main` control offers Home, which occupies no dock region.
+  const allSurfaces = [...surfaces.values()];
+  const surfacesFor = (id: RegionId) =>
+    allSurfaces.filter((surface) => surface.regions.includes(id));
+  const [menuRegion, setMenuRegion] = useState<RegionId | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the layout owners are this effect's trigger, not values it reads — it exists to fire when they change.
   useEffect(() => {
     // Close whenever the branch that OWNS the menu changes, not only when the
@@ -169,10 +179,14 @@ function ConnectedRegionToolbarControls() {
     setMenuRegion(null);
   }, [bottomOnly, commandsInOverflowMenu]);
   const [menuAnchorRight, setMenuAnchorRight] = useState(8);
-  const menuOccupant = menuRegion && regions[menuRegion].occupant;
+  // A null `main` occupant IS Home on screen (`MainRegionSurface`), so Home
+  // is never offered while it is already showing.
+  const occupantOf = (id: RegionId) =>
+    id === 'main' ? (regions.main.occupant ?? 'home') : regions[id].occupant;
+  const menuOccupant = menuRegion && occupantOf(menuRegion);
   const menuLabel = menuRegion && regionLabel(menuRegion);
 
-  const openMenu = useCallback((id: DockMode, trigger: HTMLButtonElement) => {
+  const openMenu = useCallback((id: RegionId, trigger: HTMLButtonElement) => {
     setMenuAnchorRight(
       window.innerWidth - trigger.getBoundingClientRect().right,
     );
@@ -180,21 +194,36 @@ function ConnectedRegionToolbarControls() {
   }, []);
 
   const placeSurface = useCallback(
-    (surfaceId: string, id: DockMode) => {
-      if (!availableRegions.includes(id)) return;
+    (surfaceId: string, id: RegionId) => {
+      if (id !== 'main' && !availableRegions.includes(id)) return;
       if (!surfaces.has(surfaceId)) return;
       placeSurfaceInModel(surfaceId, id);
     },
     [availableRegions, placeSurfaceInModel, surfaces],
   );
 
-  const shortcuts = surfaceList.map((surface) => (
-    <RegionShortcut
-      key={surface.id}
-      surface={surface}
-      onToggle={() => toggleSurface(surface)}
-    />
-  ));
+  const shortcuts = surfaceList.flatMap((surface) =>
+    surface.shortcut ? (
+      <RegionShortcut
+        key={surface.id}
+        surface={surface}
+        shortcut={surface.shortcut}
+        onToggle={() => toggleSurface(surface)}
+      />
+    ) : (
+      []
+    ),
+  );
+
+  // `main` is always visible, so its control has no show/hide toggle: the
+  // primary click opens the placement menu. Fine pointer only — a coarse
+  // device folds its region commands (#1400's toolbar occlusion floor), and
+  // this slice defers `main` there rather than widen that fold.
+  const mainOccupant = occupantOf('main');
+  const mainChoices = surfacesFor('main').filter(
+    (surface) => surface.id !== mainOccupant,
+  );
+  const mainLabel = `Change ${regionLabel('main')} region surface`;
 
   // #917: where the `⋯` overflow menu exists, it takes the region commands and
   // this row renders NO control at all. The 44px button plus its gap is
@@ -223,50 +252,72 @@ function ConnectedRegionToolbarControls() {
           <RegionGlyph id="bottom" />
         </button>
       ) : (
-        availableRegions.map((id) => {
-          const occupant = regions[id].occupant;
-          const surface = occupant ? surfaces.get(occupant) : undefined;
-          const label = regionLabel(id);
-          const pressed = Boolean(surface && regions[id].visible);
-          const actionLabel = surface
-            ? `${pressed ? 'Hide' : 'Show'} ${surface.title} ${label} region`
-            : `Choose a surface for ${label} region`;
-          return (
-            <span key={id} className="app-toolbar__region-control">
-              <button
-                type="button"
-                className="app-toolbar__region-btn"
-                aria-label={actionLabel}
-                {...(surface
-                  ? { 'aria-pressed': pressed }
-                  : {
-                      'aria-haspopup': 'menu' as const,
-                      'aria-expanded': menuRegion === id,
-                    })}
-                title={actionLabel}
-                onClick={(event) => {
-                  if (surface) toggleSurface(surface);
-                  else openMenu(id, event.currentTarget);
-                }}
-              >
-                <RegionGlyph id={id} />
-                {!surface && <span className="app-toolbar__region-add">+</span>}
-              </button>
-              {surface && surfaceList.length > 1 ? (
+        <>
+          {mainChoices.length > 0 ? (
+            <button
+              type="button"
+              className="app-toolbar__region-btn"
+              aria-label={mainLabel}
+              title={mainLabel}
+              aria-haspopup="menu"
+              aria-expanded={menuRegion === 'main'}
+              onClick={(event) => openMenu('main', event.currentTarget)}
+            >
+              <RegionGlyph id="main" />
+            </button>
+          ) : null}
+          {availableRegions.map((id) => {
+            const occupant = regions[id].occupant;
+            const surface = occupant ? surfaces.get(occupant) : undefined;
+            const label = regionLabel(id);
+            const pressed = Boolean(surface && regions[id].visible);
+            const actionLabel = surface
+              ? `${pressed ? 'Hide' : 'Show'} ${surface.title} ${label} region`
+              : `Choose a surface for ${label} region`;
+            // What the swap menu would offer: the surfaces that declare this
+            // region, other than the one already in it.
+            const swapChoices = surfacesFor(id).filter(
+              (candidate) => candidate.id !== occupant,
+            );
+            return (
+              <span key={id} className="app-toolbar__region-control">
                 <button
                   type="button"
-                  className="app-toolbar__region-swap"
-                  aria-label={`Change ${label} region surface`}
-                  aria-haspopup="menu"
-                  aria-expanded={menuRegion === id}
-                  onClick={(event) => openMenu(id, event.currentTarget)}
+                  className="app-toolbar__region-btn"
+                  aria-label={actionLabel}
+                  {...(surface
+                    ? { 'aria-pressed': pressed }
+                    : {
+                        'aria-haspopup': 'menu' as const,
+                        'aria-expanded': menuRegion === id,
+                      })}
+                  title={actionLabel}
+                  onClick={(event) => {
+                    if (surface) toggleSurface(surface);
+                    else openMenu(id, event.currentTarget);
+                  }}
                 >
-                  ⋯
+                  <RegionGlyph id={id} />
+                  {!surface && (
+                    <span className="app-toolbar__region-add">+</span>
+                  )}
                 </button>
-              ) : null}
-            </span>
-          );
-        })
+                {surface && swapChoices.length > 0 ? (
+                  <button
+                    type="button"
+                    className="app-toolbar__region-swap"
+                    aria-label={`Change ${label} region surface`}
+                    aria-haspopup="menu"
+                    aria-expanded={menuRegion === id}
+                    onClick={(event) => openMenu(id, event.currentTarget)}
+                  >
+                    ⋯
+                  </button>
+                ) : null}
+              </span>
+            );
+          })}
+        </>
       )}
       {menuRegion && bottomOnly ? (
         <ToolbarMenu
@@ -282,16 +333,18 @@ function ConnectedRegionToolbarControls() {
           dismissLabel={`Close ${menuLabel} region menu`}
           anchorRight={menuAnchorRight}
           onClose={() => setMenuRegion(null)}
-          items={(menuOccupant
-            ? surfaceList.filter((surface) => surface.id !== menuOccupant)
-            : surfaceList
-          ).map((surface) => ({
-            key: surface.id,
-            label: menuOccupant
-              ? `Swap in ${surface.title}`
-              : `Place ${surface.title} here`,
-            onSelect: () => placeSurface(surface.id, menuRegion),
-          }))}
+          items={surfacesFor(menuRegion)
+            .filter((surface) => surface.id !== menuOccupant)
+            .map((surface) => ({
+              key: surface.id,
+              // `main` always has an occupant (a null one is Home), so its
+              // menu is always a placement, never a swap.
+              label:
+                menuOccupant && menuRegion !== 'main'
+                  ? `Swap in ${surface.title}`
+                  : `Place ${surface.title} here`,
+              onSelect: () => placeSurface(surface.id, menuRegion),
+            }))}
         />
       ) : null}
     </fieldset>

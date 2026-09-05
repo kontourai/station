@@ -27,14 +27,6 @@
  * separate, and much larger) session/agent/orchestration data graph.
  */
 
-import {
-  createWorkspaceChatPaneInstance,
-  WORKSPACE_CHAT_PANE_DESCRIPTOR,
-} from '@kontourai/station-contracts/workspace-chat-pane';
-import {
-  WORKSPACE_HOME_PANE_DESCRIPTOR,
-  WORKSPACE_HOME_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-home-pane';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
@@ -168,101 +160,55 @@ function renderHost(
 }
 
 async function dockedAction(): Promise<WorkspacePaneDockAction> {
+  return (await dockedHost()).action;
+}
+
+async function dockedHost(): Promise<{
+  action: WorkspacePaneDockAction;
+  rerenderHost: () => void;
+}> {
   const published: (WorkspacePaneDockAction | null)[] = [];
-  renderHost((action) => published.push(action));
+  const record = (action: WorkspacePaneDockAction | null) => {
+    published.push(action);
+  };
+  const rendered = renderHost(record);
   await waitFor(() => {
     expect(published.some((action) => action !== null)).toBe(true);
   });
   const latest = [...published].reverse().find((action) => action !== null);
   if (!latest) throw new Error('no dock action published');
-  return latest;
+  return {
+    action: latest,
+    // A fresh render of the SAME tree (new element, same component
+    // instances): the persistent `DockShell` re-evaluates its `useProjects`
+    // read without unmounting, which is exactly what a projects refetch
+    // does to it in production.
+    rerenderHost: () =>
+      rendered.rerender(
+        <KeyboardShortcutsProvider>
+          <NavigationProvider>
+            <AmbientChatDockPaneHost
+              renderChatPane={(_instance, _onRequestAuth, shellChrome) => (
+                <ChatOccupantStub shellChrome={shellChrome} />
+              )}
+              onDockActionChange={record}
+            />
+          </NavigationProvider>
+        </KeyboardShortcutsProvider>,
+      ),
+  };
 }
 
 function boundSlug(): string {
   return screen.getByTestId('chat-project-slug').textContent ?? '';
 }
 
-describe('the dock project binding survives an occupant switch (station#4525 Phase 1 trigger #1)', () => {
-  test('bind alpha, switch to Home, switch back to Chat via the occupant picker path — binding intact', async () => {
-    const action = await dockedAction();
-    expect(boundSlug()).toBe('null');
-
-    await act(async () => screen.getByText('Bind alpha').click());
-    expect(boundSlug()).toBe('alpha');
-
-    // Switch away: the Chat occupant (and this stub) fully unmounts — this
-    // IS the archive#4484 remount boundary the investigation named.
-    act(() => {
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
-    });
-    expect(screen.queryByTestId('ambient-chat-occupant')).toBeNull();
-
-    // Switch back to Chat through the SAME `dockPane` replace path the
-    // occupant-picker's "Chat" menu entry (and `undockOccupant`) use — a
-    // FRESH `createWorkspaceChatPaneInstance`, exactly like production
-    // (`ambientDockOccupants.ts`'s `AMBIENT_DOCK_RENDERABLE_PANES` Chat
-    // entry).
-    act(() => {
-      action.dockPane(
-        WORKSPACE_CHAT_PANE_DESCRIPTOR,
-        createWorkspaceChatPaneInstance()!,
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
-    });
-
-    expect(
-      boundSlug(),
-      'the binding must survive the real Chat occupant remount, not reset to "No project"',
-    ).toBe('alpha');
-  });
-
-  test('bind alpha, repeat Home to Chat switches through both restore paths — binding remains intact', async () => {
-    const action = await dockedAction();
-    await act(async () => screen.getByText('Bind alpha').click());
-
-    act(() =>
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
-    );
-    act(() => action.undockOccupant());
-    await waitFor(() =>
-      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
-    );
-    act(() =>
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
-    );
-    act(() =>
-      action.dockPane(
-        WORKSPACE_CHAT_PANE_DESCRIPTOR,
-        createWorkspaceChatPaneInstance()!,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
-    );
-
-    expect(boundSlug()).toBe('alpha');
-  });
-});
+// #928 C2a: the occupant-switch trigger (station#4525 Phase 1 trigger #1)
+// has no driver left. Chat is the only pane the ambient host admits — Home is
+// a region surface whose only placement is `main` — so the Chat occupant is
+// never unmounted by a switch and remounted by a switch back. The remount
+// path those cases proved the binding across is now unreachable; the full
+// host remount below is the remaining real remount.
 
 describe('the dock project binding survives a full host remount (station#4525 Phase 1 trigger #3: reconnect/session churn)', () => {
   test('bind alpha, unmount the entire ambient host, remount fresh — binding intact (persisted, not session-derived)', async () => {
@@ -306,7 +252,7 @@ describe('only an explicit picker change or project deletion moves the binding (
   });
 
   test('the bound project being deleted (a CONFIRMED, successful load without it) clears the binding', async () => {
-    const action = await dockedAction();
+    const { rerenderHost } = await dockedHost();
     await act(async () => screen.getByText('Bind alpha').click());
     expect(boundSlug()).toBe('alpha');
 
@@ -319,27 +265,15 @@ describe('only an explicit picker change or project deletion moves the binding (
     projectsConfirmedLoadedForBinding = true;
     // Force a fresh render of the persistent `DockShell` instance (its
     // `useProjects` read is a plain function call, not a subscription, so
-    // it only re-evaluates on render) — an occupant round-trip is a real,
-    // already-proven-safe way to do that without inventing a fake trigger.
-    act(() => {
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      );
-    });
+    // it only re-evaluates on render). This used to be a Home occupant
+    // round-trip; #928 C2a left Chat as the only ambient occupant.
+    act(() => rerenderHost());
     await waitFor(() => {
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
+      expect(
+        boundSlug(),
+        'the cleanup effect must clear a binding whose project is confirmed gone',
+      ).toBe('null');
     });
-    act(() => {
-      action.undockOccupant();
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
-    });
-    expect(
-      boundSlug(),
-      'the cleanup effect must clear a binding whose project is confirmed gone',
-    ).toBe('null');
   });
 
   // archive#4525: the pre-fix guard (`!isLoading`) could not
@@ -350,28 +284,16 @@ describe('only an explicit picker change or project deletion moves the binding (
   // production, and this file is what proves the fix against the real
   // remount/render mechanics.
   test('an errored projects query never clears the binding, even though `projects` reads empty', async () => {
-    const action = await dockedAction();
+    const { rerenderHost } = await dockedHost();
     await act(async () => screen.getByText('Bind alpha').click());
     expect(boundSlug()).toBe('alpha');
 
     // The error shape: `projects` folded to `[]`, but never confirmed.
     projectsForBinding = [];
     projectsConfirmedLoadedForBinding = false;
-    act(() => {
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
-    });
-    act(() => {
-      action.undockOccupant();
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
-    });
+    act(() => rerenderHost());
+    await act(async () => undefined);
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
     expect(
       boundSlug(),
       'an unconfirmed (errored/pending) load must never be read as a deletion',

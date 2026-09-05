@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { assertIosStoreSdk } from './check-ios-store-sdk.mjs';
 
 const CHECKED_IOS_ALLOWLIST = JSON.parse(
   readFileSync(
@@ -106,6 +107,16 @@ export function auditIosInventory(
   },
   checkedInAllowlist = CHECKED_IOS_ALLOWLIST,
 ) {
+  const sdkNames = [
+    ...info.matchAll(
+      /<key>DTSDKName<\/key>\s*<string>iphoneos([^<]+)<\/string>/g,
+    ),
+  ];
+  if (sdkNames.length !== 1)
+    throw new Error(
+      'Packaged iOS app must identify exactly one device DTSDKName',
+    );
+  assertIosStoreSdk(sdkNames[0][1]);
   const allowlist = resolveAllowlist(checkedInAllowlist, executable);
   if (staticArchives.length)
     throw new Error(
