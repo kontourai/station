@@ -1,5 +1,16 @@
 # @kontourai/station-sdk
 
+## 0.8.0
+
+### Patch Changes
+
+- Updated dependencies [4aca094]
+- Updated dependencies [f6f9497]
+- Updated dependencies [d209461]
+- Updated dependencies [ce6ec59]
+  - @kontourai/station-contracts@0.8.0
+  - @kontourai/station-shared@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes

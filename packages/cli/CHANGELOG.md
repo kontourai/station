@@ -1,5 +1,20 @@
 # @kontourai/station-cli
 
+## 0.7.0
+
+### Minor Changes
+
+- 4aca094: Add read-only cloud setup preview and AWS EC2 template preparation. Report credential enrollment, workspace review, and unavailable execution handoff explicitly; do not provision resources or transfer authority.
+- 4206b09: Compose encrypted workspace import with existing authenticated Project creation and identity read-back. Retain imported bytes and a durable request when registration is uncertain, and document explicit target mapping and reconciliation.
+- ce6ec59: Add encrypted, bounded Git workspace packages with shared capture, inspection, and fresh-directory import APIs and cloud CLI commands. Preserve supported staged and uncommitted work without transferring credentials or execution authority. Document self-hosted use, resource limits, and recovery.
+
+### Patch Changes
+
+- f6f9497: Add a GCP development target to the shared read-only cloud preview, retaining explicit gaps for provisioning, credentials, and execution transfer. Document the isolated operator-run Compute Engine bootstrap.
+- d209461: Keep plugin builds from reinstalling a containing Station workspace. Root-managed
+  plugins use the managed dependency bootstrap; standalone nested plugins install
+  only into their own directory, preserving the host's lock and dependencies.
+
 ## 0.6.0
 
 ### Minor Changes

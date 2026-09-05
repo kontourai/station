@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-contracts",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "sideEffects": false,
   "description": "Runtime, provider, and orchestration contracts for Station",
   "type": "module",
