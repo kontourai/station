@@ -759,8 +759,8 @@ test.describe('Project Navigation', () => {
     );
     // `seedRoutes`' POST /api/projects answers `slug: 'new-project'` whatever
     // the body says, and the submission applies the starter to the slug the
-    // SERVER returned (`useNewProjectSubmit` uses `created.slug`, because a
-    // server may suffix a colliding slug). Routing this at the typed name would
+    // SERVER returned (`useNewProjectSubmit` uses `created.slug`: the create
+    // route is the authority on the slug). Routing this at the typed name would
     // never match, and `createdLayoutBody` would stay null for a submission
     // that applied the layout correctly.
     await page.route('**/api/projects/new-project/layouts/apply', (route) => {

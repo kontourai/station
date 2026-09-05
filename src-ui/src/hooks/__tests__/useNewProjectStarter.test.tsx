@@ -231,7 +231,7 @@ describe('useNewProjectStarter repo discovery gate (#1536 E4)', () => {
     }
   });
 
-  test('an explicit choice outlives a directory change', async () => {
+  test('the deselect arm never reaches an explicit choice (the modal itself resets on directory change)', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const { result, rerender } = renderStarter('/tmp/repo');
