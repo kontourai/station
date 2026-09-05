@@ -6,13 +6,14 @@ import {
   serializeConformanceReport,
 } from '@kontourai/conduit';
 import { createStationFrameworkConduitAdapter } from '../src-server/runtime/frameworks/conduit-framework-adapter';
+import { readPnpmLock } from './lib/pnpm-lockfile.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const lock = JSON.parse(
-  await readFile(resolve(root, 'package-lock.json'), 'utf8'),
-);
+const lock = readPnpmLock(root);
+const importer = lock.importers['.'];
+const dependencies = { ...importer.dependencies, ...importer.devDependencies };
 const installedVersion = (name) => {
-  const version = lock.packages?.[`node_modules/${name}`]?.version;
+  const version = dependencies[name]?.version?.split('(')[0];
   if (!version) throw new Error(`Missing installed version for ${name}`);
   return version;
 };

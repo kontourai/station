@@ -149,7 +149,8 @@ function isBroadCopySource(src: string): boolean {
 const ALLOWED_RUNTIME_COPY_SOURCES = new Set([
   '/app/node_modules',
   '/app/package.json',
-  '/app/package-lock.json',
+  '/app/pnpm-lock.yaml',
+  '/app/pnpm-workspace.yaml',
   '/app/station',
   '/app/.station-release.json',
   '/app/packages',
@@ -330,12 +331,9 @@ describe('container source contract', () => {
       expect(dockerfile).toContain(
         `COPY ${workspace}/package.json ${workspace}/`,
       );
-    for (const lock of [
-      'packages/sdk/package-lock.json',
-      'packages/shared/package-lock.json',
-      'schemas/dependency-lifecycle-allowlist.schema.json',
-    ])
-      expect(dockerfile).toContain(`COPY ${lock}`);
+    expect(dockerfile).toContain(
+      'COPY schemas/dependency-lifecycle-allowlist.schema.json',
+    );
     // Ordering contract only: the two script COPYs must be the last thing
     // before `RUN npm run dependencies:ci`, so the install stage is not
     // invalidated by unrelated source changes. Deliberately NOT pinning the
@@ -593,7 +591,7 @@ describe('container source contract', () => {
       seen.add(current);
       const source = readFileSync(resolve(root, current), 'utf8');
       // Relative specifiers only. Bare specifiers resolve from node_modules,
-      // which `npm ci` installs inside the image.
+      // which the managed pnpm bootstrap installs inside the image.
       for (const match of source.matchAll(
         /from\s+'(\.[^']+\.mjs)'|import\s+'(\.[^']+\.mjs)'/g,
       )) {

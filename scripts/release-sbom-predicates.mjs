@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { SBOM_ASSETS } from './lib/release-sboms.mjs';
+import { SBOM_ASSETS, spdxComment } from './lib/release-sboms.mjs';
 
 function fail(message) {
   throw new Error(`Invalid release SBOM predicates: ${message}`);
@@ -20,8 +20,8 @@ export function validateReleaseSbomPredicates(root) {
     const value = JSON.parse(readFileSync(join(root, asset), 'utf8'));
     const actual =
       scope === 'container'
-        ? value.documentComment
-            ?.split(';', 1)[0]
+        ? spdxComment(value)
+            .split(';', 1)[0]
             .replace('station:fragment-predicates=', '')
         : value.metadata?.properties?.find(
             (item) => item?.name === 'station:fragment-predicates',

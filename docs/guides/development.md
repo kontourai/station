@@ -44,6 +44,32 @@ the canonical completion receipt.
 
 ## Local Runtime
 
+For a fresh checkout, select Node.js 24.x (also recorded in `.nvmrc`), then
+install the locked dependencies and repository hooks from the repository root:
+
+```bash
+npm run dependencies:ci
+```
+
+Use the managed dependency command when refreshing an existing checkout too;
+it applies Station's dependency lifecycle policy.
+
+### Package-manager migration
+
+The org-wide pnpm direction and Station's migration work are tracked in
+[issue #516](https://github.com/kontourai/station/issues/516). A sibling
+repository's migration does not change this checkout's install contract.
+Check the root lockfile, package metadata, and `scripts/dependency-lifecycle.mjs`
+before choosing an installer. This revision uses `pnpm-lock.yaml` and the
+managed pnpm lifecycle above. `npm run` remains the script interface; it does
+not select npm dependency storage. The migration must update those inputs, native
+hooks and patches, verification identity, packaging, CI, and this guide together.
+
+The npm download cache does not share installed dependency trees between
+worktrees. If installation fails with `ENOSPC`, check free space and treat the
+partial install as unverified before diagnosing downstream build/test errors.
+Do not reclaim another active worktree's dependencies to repair your own.
+
 Prefer the `./station` CLI for starting and stopping the app. It coordinates server, UI, build artifacts, instance state, and data directories.
 
 ```bash
@@ -125,12 +151,12 @@ workspace packages that cannot be resolved from the registry, and keeps the
 published ones pinned to the in-repo source rather than the last release. Add a
 new example there when its tests are part of the root verification corpus and
 it owns dependencies that the root install must provide. Root-managed examples
-use the repository's `package-lock.json`; do not add a second lock inside the
+use the repository's `pnpm-lock.yaml`; do not add a second lock inside the
 example.
 
 ### Dependency install deadline
 
-The dependency bootstrap gives the inert `npm ci`/`npm install` step a finite
+The dependency bootstrap gives the inert pnpm install step a finite
 deadline — twenty minutes on Windows, ten minutes elsewhere — so a wedged
 install fails instead of hanging forever. That default is not a claim about the
 slowest supported machine. A cold 1552-package install takes about eleven
@@ -149,6 +175,9 @@ separate two-minute bound — the `node-pty` compile, the only one that builds
 native code, takes about 27 seconds on that same handset.
 
 ## Project Structure
+
+See [Repository layout](repository-layout.md) for directory ownership, naming,
+generated files, and where to put a new module or document.
 
 ```text
 src-server/       Node backend, Hono routes, services, runtime adapters
@@ -224,9 +253,8 @@ npm run build:sdk
 
 ## Commit Messages
 
-Commit subjects follow the Conventional Commits grammar because the
-forthcoming deploy ledger (station#4572) will generate its changelog from
-them — a free-form subject is a broken release artifact, not a style nit:
+Commit subjects follow the Conventional Commits grammar enforced by the
+repository hooks:
 
 ```text
 type(scope)?: subject
@@ -271,7 +299,7 @@ proof:
 
 ```bash
 npm run test:changed -- --base=origin/main --explain
-npx vitest run <selected-test-file>
+npm run test:focused -- <selected-test-file>
 npx tsc -p <affected-tsconfig> --noEmit
 npx biome check <affected-paths>
 ```
@@ -319,7 +347,7 @@ PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test tests/<spec>.spec.ts
 
 Every Playwright spec must be assigned to exactly one bucket in `tests/e2e-manifest.mjs`.
 
-Dependency updates must also pass the multi-lock advisory floor. See
+Dependency updates must also pass the workspace advisory floor. See
 [Dependency security](dependency-security.md) for the root, SDK, and shared lock
 workflow, production-reachability interpretation, and exception contract.
 

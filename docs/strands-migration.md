@@ -1,6 +1,10 @@
 # Strands Agents SDK Migration
 
-Status: **Functional** — adapter at parity with VoltAgent. Known gaps documented below (require upstream SDK changes).
+> **Historical migration assessment.** The parity table and SDK limitations
+> below record the migration assessment; they are not a current compatibility
+> guarantee. For runtime selection, use the [configuration reference](reference/config.md).
+> Verify behavior against the [Strands adapter](../src-server/runtime/frameworks/strands-adapter.ts)
+> and its tests before relying on a capability or gap described here.
 
 ## How to Test
 
