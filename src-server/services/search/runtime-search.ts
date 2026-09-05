@@ -4,6 +4,8 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import {
   UNIFIED_SEARCH_V1,
+  type UnifiedSearchMessagePageOutcome,
+  type UnifiedSearchMessagePageRequest,
   type UnifiedSearchOpenLocator,
   type UnifiedSearchOpenResolution,
   type UnifiedSearchOutcome,
@@ -82,6 +84,16 @@ export function createRuntimeSearch(input: {
       for (const controller of active) controller.abort();
     },
     inspect: tasks.inspect,
+    readMessagePage(
+      request: UnifiedSearchMessagePageRequest,
+      context: SearchReadContext,
+    ): Promise<UnifiedSearchMessagePageOutcome> {
+      return run<UnifiedSearchMessagePageOutcome>(
+        context,
+        { state: 'unavailable' },
+        (bound) => transcripts.readMessagePage({ ...bound, ...request }),
+      );
+    },
     /** Retain the same Task owner on pending cleanup. Transcript custody belongs to Orchestration. */
     close() {
       this.stop();

@@ -1,5 +1,7 @@
 import {
   UNIFIED_SEARCH_V1,
+  type UnifiedSearchMessagePageOutcome,
+  type UnifiedSearchMessagePageRequest,
   type UnifiedSearchOpenLocator,
   type UnifiedSearchOpenResolution,
   type UnifiedSearchRequest,
@@ -299,4 +301,66 @@ export function resolveSearchOpen(
   options: UnifiedSearchRequestOptions,
 ) {
   return query(apiBase, '/resolve-open', locator, resolution, options);
+}
+
+function messagePage(value: unknown): value is UnifiedSearchMessagePageOutcome {
+  if (!record(value)) return false;
+  if (value.state === 'not-found' || value.state === 'unavailable')
+    return Object.keys(value).length === 1;
+  if (
+    value.state !== 'available' ||
+    Object.keys(value).length !== 2 ||
+    !record(value.page)
+  )
+    return false;
+  const page = value.page;
+  return (
+    keys(page, [
+      'sessionId',
+      'matchedEventId',
+      'role',
+      'text',
+      'contentRevision',
+      'offset',
+      'nextContinuation',
+      'projectId',
+      'assignedAgentId',
+    ]) &&
+    text(page.sessionId) &&
+    text(page.matchedEventId) &&
+    ['user', 'assistant'].includes(String(page.role)) &&
+    typeof page.text === 'string' &&
+    Array.from(page.text).length <= 4096 &&
+    typeof page.contentRevision === 'string' &&
+    /^[a-f0-9]{64}$/.test(page.contentRevision) &&
+    Number.isSafeInteger(page.offset) &&
+    Number(page.offset) >= 0 &&
+    Number(page.offset) <= 131072 &&
+    ['nextContinuation', 'projectId', 'assignedAgentId'].every(
+      (key) => page[key] === undefined || text(page[key]),
+    )
+  );
+}
+
+/** Each page is freshly authorized canonical event text, never cached search-index text. */
+export async function readSearchMessage(
+  apiBase: string,
+  request: UnifiedSearchMessagePageRequest,
+  options: UnifiedSearchRequestOptions,
+) {
+  const captured = { ...request };
+  const result = await query(
+    apiBase,
+    '/read-message',
+    captured,
+    messagePage,
+    options,
+  );
+  if (
+    result.state === 'available' &&
+    (result.page.sessionId !== captured.sessionId ||
+      result.page.matchedEventId !== captured.matchedEventId)
+  )
+    throw new UnifiedSearchRequestError(200);
+  return result;
 }
