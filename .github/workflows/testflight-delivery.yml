@@ -62,7 +62,7 @@ jobs:
   deliver:
     name: Build, sign and audit IPA
     if: ${{ inputs.delivery != 'upload' }}
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 90
     # Stable retains the existing protected environment. Beta and Nightly are
     # intentionally distinct environments: their profile, app ID and group ID
@@ -95,6 +95,11 @@ jobs:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 1
           persist-credentials: false
+      - name: Select reviewed Xcode and enforce App Store SDK minimum
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          node scripts/check-ios-store-sdk.mjs "$(xcrun --sdk iphoneos --show-sdk-version)"
       - name: Reconfirm exact frozen source
         run: |
           [[ "$STATION_RELEASE_LABEL" =~ ^[A-Za-z0-9._-]+$ ]]
@@ -357,7 +362,7 @@ jobs:
     # rebuilds or re-signs: the bytes uploaded are the bytes that were audited.
     needs: deliver
     if: ${{ always() && !cancelled() && inputs.delivery != 'build' && (needs.deliver.result == 'success' || (inputs.delivery == 'upload' && needs.deliver.result == 'skipped')) }}
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
     environment: ${{ inputs.channel == 'stable' && 'native-release' || format('ios-{0}', inputs.channel) }}
     env:
