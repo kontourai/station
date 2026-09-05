@@ -1225,7 +1225,7 @@ repaint — a documented, accepted risk, not a blocker.
 ```
 station projects list [--api-base=<url>]
 station projects get <slug> [--api-base=<url>]
-station projects create --data=<json> [--api-base=<url>]
+station projects create (--data=<json>|--file=<path>) [--station=<name>|--api-base=<url>]
 station projects update <slug> --data=<json> [--api-base=<url>]
 station projects delete <slug> [--api-base=<url>]
 station projects layouts available [--api-base=<url>]
@@ -1244,6 +1244,8 @@ station projects create --data='{"name":"Launchpad","slug":"launchpad"}'
 station projects layouts available
 station projects layouts create launchpad --data='{"name":"Code","slug":"code","type":"coding"}'
 ```
+
+For an imported checkout, follow [target Project registration](../guides/workspace-packages.md#register-the-restored-checkout-as-a-target-project). Use a target-visible path and an explicit enrolled Station; creation allocates a fresh Project identity.
 
 ### `skills`
 

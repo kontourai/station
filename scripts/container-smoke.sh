@@ -118,10 +118,25 @@ docker run --rm --entrypoint sh "$STATION_IMAGE" -c '
   test "$(id -u)" = 1000
   git --version >/dev/null
   ssh -V 2>/dev/null
-  printf "station container sentinel\n" > /workspace/container-sentinel.txt
-  git -C /workspace init --quiet --initial-branch=main
-  git -C /workspace add container-sentinel.txt
-  git -C /workspace -c user.name="Station smoke" -c user.email="smoke@example.invalid" commit --quiet -m "Seed container workspace"
+  source_root=$(mktemp -d /tmp/station-copy-source.XXXXXX)
+  trap "rm -rf \"$source_root\"" EXIT
+  mkdir "$source_root/repo"
+  printf "station container sentinel\n" > "$source_root/repo/container-sentinel.txt"
+  printf "committed\n" > "$source_root/repo/changes.txt"
+  git -C "$source_root/repo" init --quiet --template= --initial-branch=main
+  git -C "$source_root/repo" config core.autocrlf false
+  git -C "$source_root/repo" add .
+  git -C "$source_root/repo" -c user.name="Station smoke" -c user.email="smoke@example.invalid" commit --quiet -m "Seed container workspace"
+  printf "staged\n" > "$source_root/repo/changes.txt"
+  git -C "$source_root/repo" add changes.txt
+  printf "working\n" > "$source_root/repo/changes.txt"
+  ./station cloud keygen --output="$source_root/key"
+  ./station cloud pack-workspace --workspace="$source_root/repo" --key-file="$source_root/key" --output="$source_root/package" --source-paused --json
+  ./station cloud inspect-workspace --archive="$source_root/package" --key-file="$source_root/key" --json
+  ./station cloud unpack-workspace --archive="$source_root/package" --key-file="$source_root/key" --destination=/workspace/imported --json
+  test "$(git -C "$source_root/repo" rev-parse HEAD)" = "$(git -C /workspace/imported/workspace rev-parse HEAD)"
+  test "$(git -C /workspace/imported/workspace show :changes.txt)" = staged
+  test "$(cat /workspace/imported/workspace/changes.txt)" = working
 '
 "${compose[@]}" run --rm --no-deps -T station node --input-type=module -e \
   'import { verifyNodePtyHandshake } from "/app/scripts/lib/dependency-lifecycle-policy.mjs"; verifyNodePtyHandshake("/app/node_modules/node-pty");'
@@ -152,7 +167,7 @@ until curl --fail --silent \
   sleep 1
 done
 STATION_CONTAINER_HOST_CREDENTIAL="$credential" \
-STATION_CONTAINER_WORKSPACE=/workspace \
+STATION_CONTAINER_WORKSPACE=/workspace/imported/workspace \
 PW_BASE_URL="http://127.0.0.1:${STATION_UI_PORT}" \
 npx playwright test tests/container-self-host.spec.ts tests/device-pairing-mobile.spec.ts --workers=1
 old_container=$("${compose[@]}" ps -q station)
@@ -177,7 +192,7 @@ until curl --fail --silent \
   sleep 1
 done
 STATION_CONTAINER_HOST_CREDENTIAL="$credential" \
-STATION_CONTAINER_WORKSPACE=/workspace \
+STATION_CONTAINER_WORKSPACE=/workspace/imported/workspace \
 STATION_CONTAINER_EXPECT_PERSISTED=1 \
 PW_BASE_URL="http://127.0.0.1:${STATION_UI_PORT}" \
 npx playwright test tests/container-self-host.spec.ts --workers=1

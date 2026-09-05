@@ -70,9 +70,59 @@ successful inspection alone does not prove that Git will accept the package.
 Compare the target HEAD, staged diff, unstaged diff, and expected untracked files
 with the source before using it. Configure target remotes and credentials
 explicitly. Review project scripts before installing dependencies or running
-code. Add the checkout to Station through the existing Project workflow and
-pair/sign in using the target's normal enrollment flow. The commands themselves
-never execute repository scripts or transfer Station execution authority.
+code. Use the target's normal pairing/sign-in flow before registration. The package
+commands themselves never execute repository scripts or transfer Station
+execution authority.
+
+## Register the restored checkout as a target Project
+
+Use the existing Project API through `station projects create`. There is no
+second cloud-specific Project registry. Select an already enrolled target
+Station explicitly with `--station`; do not rely on whichever local server
+happens to be the current default. The JSON file below is a reviewed request to
+create a **new** target Project, not a portable identity or authority manifest.
+
+Save this as `target-project.json`, adjusting its name, unused slug, and path:
+
+```json
+{
+  "name": "Acme imported workspace",
+  "slug": "acme-imported",
+  "workingDirectory": "/work/acme-import/workspace",
+  "defaultWorkspaceIsolation": "shared"
+}
+```
+
+```bash
+station projects create --station=cloud-dev --file=target-project.json
+station projects get acme-imported --station=cloud-dev
+```
+
+`workingDirectory` is the path visible to the **target Station process**. With
+Docker, map the host directory through a persistent bind mount or named volume,
+then use its container path in the request. For example, a host import mounted
+at `/workspace/imported` uses `/workspace/imported/workspace`. A path on the
+operator's laptop is not automatically available to a remote server. Make sure
+the target process UID can read and write it; package import creates private
+files owned by the importing user.
+
+The returned Project ID is newly allocated by the target. Do not copy source
+Project IDs, room references, authority leases, agents, environment selections,
+or credential references into this request. A workspace copy cannot establish
+continuity of those identities. Before any agent starts, review the target
+Project path, available provider, credentials, and intended workspace mode.
+`shared` uses this restored checkout, including its uncommitted bytes. A new
+`worktree` starts from Git history and should not be assumed to include those
+uncommitted bytes. Stop source work before deliberately continuing it elsewhere;
+this flow does not enforce exclusive execution ownership.
+
+An explicit slug makes retries observable: a duplicate create returns a conflict
+instead of overwriting the existing Project. If the create response is lost,
+run `projects get` and compare its ID, name and path before deciding whether the
+request succeeded. Do not automatically switch to a new slug or update an
+unrelated Project. A successful create alone does not verify filesystem access,
+provider enrollment, membership, or agent readiness. Read the restored files
+through the target's normal workspace UI/API and verify Git state as well.
 
 For rollback, continue using the unchanged source. A failed import cleans up its
 new destination when still owned by that operation. A process or machine crash
@@ -133,3 +183,13 @@ delta history, tamper refusal, unsafe paths, unsupported source policy, and
 malformed Git expansion budgets. They do not prove cloud transfer, browser
 enrollment, or live agent continuation. Those require separate deployment
 qualification using the [integration guide](integrating-station.md).
+
+
+The container smoke journey (`scripts/container-smoke.sh` and
+`tests/container-self-host.spec.ts`) creates a synthetic package, imports it into
+persistent storage as the runtime user, registers it through the existing
+Project route, checks unauthorized and duplicate creation refusals, reads the
+restored files and Git state, and repeats reads after container recreation.
+The source checkout and temporary key are removed before the server starts.
+This qualifies the single-host operator path; it does not qualify multi-tenant
+membership or a real agent continuation.
