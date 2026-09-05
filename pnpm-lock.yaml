@@ -649,8 +649,8 @@ importers:
         specifier: 0.8.0
         version: 0.8.0(playwright@1.62.1)
       '@kontourai/flow':
-        specifier: 5.1.0
-        version: 5.1.0(supports-color@7.2.0)
+        specifier: 5.1.1
+        version: 5.1.1(supports-color@7.2.0)
       '@kontourai/flow-agents':
         specifier: 6.2.0
         version: 6.2.0(@ai-sdk/provider@3.0.15)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.4.3)
@@ -1994,11 +1994,6 @@ packages:
 
   '@kontourai/flow@5.0.0':
     resolution: {integrity: sha512-LPsXkDn5xHJPh5HIwfXbQ47UBmluzPUPMfqwhvcZU6Y2B8huf1HGK/AJSHowCJRCFC78mOFz6/WpnkQ89KJjkg==}
-    engines: {node: '>=22'}
-    hasBin: true
-
-  '@kontourai/flow@5.1.0':
-    resolution: {integrity: sha512-WS8afbYXZ2p6oDVPtDbWpeKtcFitzAKtjs50KMTeM9p15JzRBonBUD7BVm8V1E1KqfH+h0dpO4o43+Ek1XEVKQ==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -8653,16 +8648,6 @@ snapshots:
       - supports-color
 
   '@kontourai/flow@5.0.0(supports-color@7.2.0)':
-    dependencies:
-      '@kontourai/surface': 2.14.0(supports-color@7.2.0)
-      ajv: 8.20.0
-      ajv-formats: 3.0.1(ajv@8.20.0)
-      hachure: 0.15.0
-    transitivePeerDependencies:
-      - kerberos
-      - supports-color
-
-  '@kontourai/flow@5.1.0(supports-color@7.2.0)':
     dependencies:
       '@kontourai/surface': 2.14.0(supports-color@7.2.0)
       ajv: 8.20.0
