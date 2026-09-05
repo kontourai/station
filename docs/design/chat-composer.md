@@ -105,13 +105,21 @@ screenshots.
 
 ## Mobile conversation focus (2026-09-05)
 
-Owner-directed revision: the phone header prioritizes navigation, the readable
-conversation title, and one Chat actions menu. New chat, Activity, project
-switching, connection management, and dock sizing remain explicit actions in
-that menu. The collapsed dock also keeps a direct Expand chat control. No
+Owner-directed revision (clarified 2026-09-05): project switching and
+conversation switching are primary phone-header actions. Both stay directly
+reachable with readable current context and 44px touch targets at 320px,
+390px, and 412px widths. Neither requires opening Chat actions first.
+New chat, Activity, connection management, and dock sizing remain explicit
+actions in Chat actions. The collapsed dock also keeps a direct Expand chat control. No
 resize or navigation action requires a gesture.
 
 Mobile message rows prioritize the authored text and essential live approval or
 error state. A separate 44px actions button opens attribution, model facts,
 provenance, copy, ratings, and Task references on demand. These details retain
 their original event-backed identities. Desktop attribution stays inline.
+
+The executable contracts are `ChatDockMobileHeader.test.tsx` and the mobile
+project-switcher journey in `tests/cross-runtime-chat-switching.spec.ts`.
+Changing or removing these primary actions requires an explicit product-contract
+change; a fixed button count is not the acceptance criterion. The required
+pre-merge browser smoke must exercise the journey rather than wait for Nightly.

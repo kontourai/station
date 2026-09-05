@@ -12,6 +12,7 @@ import { useId, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { ArrowDownGlyph, MenuGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 
 const loadChatDockMobileOverflowSheet = () =>
   import('./ChatDockMobileOverflowSheet').then((module) => ({
@@ -84,7 +85,7 @@ interface ChatDockMobileHeaderProps {
   occupantPicker?: ReactElement<{ mobileDragPassthrough?: boolean }> | null;
 }
 
-/** Three visible controls; secondary actions live in the shared sheet. */
+/** Project and conversation context stay directly operable; secondary actions use the sheet. */
 export function ChatDockMobileHeader({
   showDrawerToggle,
   showConnection,
@@ -107,6 +108,8 @@ export function ChatDockMobileHeader({
   overflow,
 }: ChatDockMobileHeaderProps) {
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
+  const [isProjectOpen, setIsProjectOpen] = useState(false);
+  const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const titleDescriptionId = useId();
   return (
@@ -145,6 +148,40 @@ export function ChatDockMobileHeader({
           <ArrowDownGlyph />
         </button>
       ) : null}
+      {projectSwitcher && (
+        <button
+          ref={projectTriggerRef}
+          type="button"
+          className="chat-dock__mobile-project"
+          aria-label={`Switch project — ${projectSwitcher.projectName}`}
+          aria-haspopup="dialog"
+          aria-expanded={isProjectOpen}
+          data-dock-drag-passthrough=""
+          onClick={() => setIsProjectOpen(true)}
+        >
+          <span className="chat-dock__mobile-project-lines">
+            <span
+              className="chat-dock__mobile-project-caption"
+              aria-hidden="true"
+            >
+              Project
+            </span>
+            <span className="chat-dock__mobile-project-name">
+              {projectSwitcher.projectName}
+            </span>
+          </span>
+        </button>
+      )}
+      {isProjectOpen && projectSwitcher && (
+        <ProjectSwitcherOverlay
+          anchorRef={projectTriggerRef}
+          boundProjectSlug={projectSwitcher.projectSlug}
+          projects={projectSwitcher.projects}
+          onOpenProject={projectSwitcher.onOpenProject}
+          onSwitchProject={projectSwitcher.onSwitchProject}
+          onClose={() => setIsProjectOpen(false)}
+        />
+      )}
       <button
         ref={taskSwitcherTriggerRef}
         type="button"
@@ -195,7 +232,6 @@ export function ChatDockMobileHeader({
           componentProps={{
             overflow,
             projectScope,
-            projectSwitcher,
             showConnection,
             onNewChat,
             onOpenActivity,

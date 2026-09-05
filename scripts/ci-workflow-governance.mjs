@@ -4,6 +4,7 @@
  * cannot silently claim that this workflow evaluates a candidate pull request.
  */
 import { existsSync, readFileSync } from 'node:fs';
+import { JSON_SCHEMA, load } from 'js-yaml';
 
 /**
  * This is intentionally a canonical YAML subset, not a general YAML parser.
@@ -454,6 +455,46 @@ export function findVerdictBearingContinueOnError(workflowText) {
   return offenders;
 }
 
+export const REQUIRED_FAST_CHECKS_CONDITION =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal reviewed GitHub Actions predicate.
+  "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
+
+/** Validates the actual required job, not a similarly named optional lane. */
+export function collectRequiredBrowserSmokeFindings(workflowText) {
+  let document;
+  try {
+    document = load(workflowText, { schema: JSON_SCHEMA });
+  } catch {
+    return ['Required browser smoke needs an unambiguous workflow document.'];
+  }
+  const job = document?.jobs?.['fast-checks'];
+  if (!job) return ['Required browser smoke must run inside fast-checks.'];
+  const findings = [];
+  if (job.if !== REQUIRED_FAST_CHECKS_CONDITION || job['continue-on-error'])
+    findings.push(
+      'Required fast-checks must admit PR and merge candidates without swallowing failures.',
+    );
+  const needs = typeof job.needs === 'string' ? [job.needs] : job.needs;
+  if (!Array.isArray(needs) || needs.length !== 1 || needs[0] !== 'classify')
+    findings.push(
+      'Required fast-checks must not depend on optional or manual completion jobs.',
+    );
+  const steps = Array.isArray(job.steps) ? job.steps : [];
+  const smoke = steps.filter(
+    (step) => step.name === 'Verify critical browser journeys before merge',
+  );
+  if (
+    smoke.length !== 1 ||
+    smoke[0].run !== 'npm run test:e2e:pr-smoke' ||
+    smoke[0].if !== undefined ||
+    smoke[0]['continue-on-error']
+  )
+    findings.push(
+      'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks.',
+    );
+  return findings;
+}
+
 /**
  * @param {{
  *   ciWorkflowPath: string;
@@ -470,7 +511,10 @@ export function collectCiWorkflowGovernanceFindings({
 
   const workflow = readFile(ciWorkflowPath, 'utf8');
   const steps = workflowSteps(workflow);
-  const findings = collectPrimaryCiWorkflowTriggerFindings(workflow);
+  const findings = [
+    ...collectPrimaryCiWorkflowTriggerFindings(workflow),
+    ...collectRequiredBrowserSmokeFindings(workflow),
+  ];
   const verdictBearing = findVerdictBearingContinueOnError(workflow);
   if (verdictBearing.length > 0) {
     findings.push(

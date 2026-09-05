@@ -1,7 +1,6 @@
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { ChatDockMobileConnection } from './ChatDockMobileConnection';
-import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 import './ChatDockMobileOverflowSheet.css';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -14,10 +13,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
-import type {
-  ChatDockMobileOverflowActions,
-  ChatDockMobileProjectSwitcher,
-} from './ChatDockMobileHeader';
+import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
 
 /**
  * station#524 (review round 2, H2): every OTHER pane the ambient dock
@@ -51,7 +47,6 @@ const loadSessionInventoryFullFallback = () =>
 export function ChatDockMobileOverflowSheet({
   overflow,
   projectScope,
-  projectSwitcher,
   showConnection,
   onNewChat,
   onOpenActivity,
@@ -61,7 +56,6 @@ export function ChatDockMobileOverflowSheet({
   onClose,
 }: {
   overflow: ChatDockMobileOverflowActions;
-  projectSwitcher?: ChatDockMobileProjectSwitcher | null;
   showConnection?: boolean;
   onNewChat?: () => void;
   onOpenActivity?: () => void;
@@ -73,8 +67,6 @@ export function ChatDockMobileOverflowSheet({
   onClose: () => void;
 }) {
   const [inventoryOpen, setInventoryOpen] = useState(false);
-  const [projectOpen, setProjectOpen] = useState(false);
-  const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const run = (action: () => void) => {
     onClose();
     action();
@@ -85,18 +77,6 @@ export function ChatDockMobileOverflowSheet({
   // than having `ChatDock.tsx` compute and thread them down.
   const isMobile = useIsMobile();
   const { pathname } = useNavigation();
-
-  if (projectOpen && projectSwitcher)
-    return (
-      <ProjectSwitcherOverlay
-        anchorRef={projectTriggerRef}
-        boundProjectSlug={projectSwitcher.projectSlug}
-        projects={projectSwitcher.projects}
-        onOpenProject={projectSwitcher.onOpenProject}
-        onSwitchProject={projectSwitcher.onSwitchProject}
-        onClose={() => setProjectOpen(false)}
-      />
-    );
 
   if (inventoryOpen && overflow.sessionInventory)
     return (
@@ -161,20 +141,6 @@ export function ChatDockMobileOverflowSheet({
                 {activeCount} working
               </span>
             ) : null}
-          </button>
-        )}
-        {projectSwitcher && (
-          <button
-            ref={projectTriggerRef}
-            type="button"
-            role="menuitem"
-            className="composer-actions-menu__item"
-            onClick={() => setProjectOpen(true)}
-          >
-            Switch project
-            <span className="composer-actions-menu__item-hint">
-              {projectSwitcher.projectName}
-            </span>
           </button>
         )}
         {branchLabel && <p>{branchLabel}</p>}
