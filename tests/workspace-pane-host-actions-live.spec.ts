@@ -169,6 +169,14 @@ test('portable installed host default Agent action completes one real echo turn 
     )
     .toMatch(/echo:[\s\S]*HOST_ACTION_BROWSER_1372/);
   await expect(
+    page
+      .locator(
+        '#chat-dock .message.assistant, #chat-workspace-pane .message.assistant',
+      )
+      .filter({ hasText: 'HOST_ACTION_BROWSER_1372' })
+      .last(),
+  ).toBeVisible();
+  await expect(
     page.getByRole('alert').filter({ hasText: 'Session record missing.' }),
   ).toHaveCount(0);
   await expect(
@@ -193,6 +201,7 @@ test('portable installed host default Agent action completes one real echo turn 
   const imagePath = join(evidenceRoot, 'connected-host-action.png');
   await page.screenshot({
     path: testInfo.outputPath('connected-host-action.png'),
+    animations: 'disabled',
   });
   copyFileSync(testInfo.outputPath('connected-host-action.png'), imagePath);
   await testInfo.attach('connected-host-action-receipt', {
