@@ -79,6 +79,8 @@ export function needsConsent(permission: string): boolean {
 export interface PluginDependencyOwnershipEntry {
   id: string;
   contentDigest: string;
+  /** Managed cleanup custody belongs to this admission, not identical future bytes. */
+  generation?: string;
 }
 
 /**
@@ -308,7 +310,14 @@ function pluginGrantsShapeProblems(value: unknown): string[] {
       for (const dependency of authority.ownedDependencies) {
         if (
           !isPlainObject(dependency) ||
-          Object.keys(dependency).sort().join(',') !== 'contentDigest,id' ||
+          !['contentDigest,id', 'contentDigest,generation,id'].includes(
+            Object.keys(dependency).sort().join(','),
+          ) ||
+          (dependency.generation !== undefined &&
+            (typeof dependency.generation !== 'string' ||
+              !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(
+                dependency.generation,
+              ))) ||
           !isCanonicalPluginId(dependency.id) ||
           typeof dependency.contentDigest !== 'string' ||
           !/^sha256:[0-9a-f]{64}$/.test(dependency.contentDigest)
@@ -406,6 +415,7 @@ export function readPluginGrantRecord(
 /** Server-owned artifact capture. Callers obtain it from installation authority,
  * never from request JSON; currentness includes a fresh physical digest check. */
 export interface CapturedPluginPermissionArtifact {
+  readonly generation?: string;
   readonly pluginId: string;
   readonly digest: string;
   isCurrent(): boolean;
@@ -978,7 +988,11 @@ export async function recordPluginDependencyOwnership(
   for (const dependency of ownedDependencies) {
     if (
       !isCanonicalPluginId(dependency.id) ||
-      !/^sha256:[0-9a-f]{64}$/.test(dependency.contentDigest)
+      !/^sha256:[0-9a-f]{64}$/.test(dependency.contentDigest) ||
+      (dependency.generation !== undefined &&
+        !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(
+          dependency.generation,
+        ))
     ) {
       throw new Error('Plugin dependency ownership entry is malformed');
     }
@@ -1054,6 +1068,10 @@ export async function copyPluginDependencyOwnership(
   recipientPlugin: string,
   dependency: PluginDependencyOwnershipEntry,
   expectedRecipientDigest: string,
+  artifacts?: {
+    dependency?: CapturedPluginPermissionArtifact;
+    recipient?: CapturedPluginPermissionArtifact;
+  },
 ): Promise<
   | { kind: 'copied'; handoff: PluginDependencyOwnershipHandoff }
   | { kind: 'already-owned' }
@@ -1073,12 +1091,27 @@ export async function copyPluginDependencyOwnership(
       let handoff: PluginDependencyOwnershipHandoffData | undefined;
       try {
         await grantsStore(projectHomeDir).mutate(recipientPlugin, (grants) => {
+          if (
+            (artifacts?.dependency &&
+              (artifacts.dependency.pluginId !== dependency.id ||
+                !artifacts.dependency.isCurrent())) ||
+            (artifacts?.recipient &&
+              (artifacts.recipient.pluginId !== recipientPlugin ||
+                !artifacts.recipient.isCurrent()))
+          )
+            throw new PluginContentUnavailableError(dependency.id);
+          if (
+            dependency.generation &&
+            artifacts?.dependency?.generation !== dependency.generation
+          )
+            throw new PluginContentUnavailableError(dependency.id);
           const source = toGrantRecord(grants[sourcePlugin]);
           if (
             !source.installAuthority?.ownedDependencies.some(
               (entry) =>
                 entry.id === dependency.id &&
-                entry.contentDigest === dependency.contentDigest,
+                entry.contentDigest === dependency.contentDigest &&
+                entry.generation === dependency.generation,
             )
           ) {
             throw new Error(
@@ -1086,15 +1119,15 @@ export async function copyPluginDependencyOwnership(
             );
           }
           if (
-            refreshPluginContentDigest(pluginsDir, dependency.id) !==
+            (artifacts?.dependency?.digest ??
+              refreshPluginContentDigest(pluginsDir, dependency.id)) !==
             dependency.contentDigest
           ) {
             throw new Error('Dependency changed before ownership handoff');
           }
-          const installedDigest = refreshPluginContentDigest(
-            pluginsDir,
-            recipientPlugin,
-          );
+          const installedDigest =
+            artifacts?.recipient?.digest ??
+            refreshPluginContentDigest(pluginsDir, recipientPlugin);
           if (!installedDigest || installedDigest !== expectedRecipientDigest)
             throw new IneligibleOwnershipRecipient();
           // A managed child may itself be removed by its owner. Transfer only
@@ -1104,7 +1137,9 @@ export async function copyPluginDependencyOwnership(
               toGrantRecord(value).installAuthority?.ownedDependencies.some(
                 (entry) =>
                   entry.id === recipientPlugin &&
-                  entry.contentDigest === installedDigest,
+                  entry.contentDigest === installedDigest &&
+                  (!entry.generation ||
+                    entry.generation === artifacts?.recipient?.generation),
               ),
             )
           ) {
@@ -1122,7 +1157,10 @@ export async function copyPluginDependencyOwnership(
           const owned = recipient.installAuthority?.ownedDependencies ?? [];
           const existing = owned.find((entry) => entry.id === dependency.id);
           if (existing) {
-            if (existing.contentDigest !== dependency.contentDigest)
+            if (
+              existing.contentDigest !== dependency.contentDigest ||
+              existing.generation !== dependency.generation
+            )
               throw new IneligibleOwnershipRecipient();
             return grants;
           }
@@ -1193,7 +1231,8 @@ async function rollbackPluginDependencyOwnershipHandoff(
             !source.installAuthority?.ownedDependencies.some(
               (entry) =>
                 entry.id === handoff.dependency.id &&
-                entry.contentDigest === handoff.dependency.contentDigest,
+                entry.contentDigest === handoff.dependency.contentDigest &&
+                entry.generation === handoff.dependency.generation,
             )
           ) {
             throw new Error(

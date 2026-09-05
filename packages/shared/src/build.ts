@@ -116,8 +116,18 @@ export interface BuildResult {
 export async function buildPlugin(
   pluginDir: string,
   mode: 'production' | 'dev' = 'production',
+  validatedManifest?: PluginManifest,
 ): Promise<BuildResult> {
-  const manifest = readPluginManifest(pluginDir);
+  const manifest = validatedManifest ?? readPluginManifest(pluginDir);
+  if (
+    !validatedManifest &&
+    String(
+      (manifest as unknown as { $schema?: unknown }).$schema ?? '',
+    ).startsWith('https://agent-plugins.org/schemas/')
+  )
+    throw new Error(
+      'Agent Plugin builds require a validated Station namespace manifest from the installation owner',
+    );
   if (manifest.build) {
     throw new Error(
       `Plugin '${manifest.name}' declares manifest.build, but host shell builds are not supported. Prebuild the plugin bundle or use Station-supported entrypoints.`,

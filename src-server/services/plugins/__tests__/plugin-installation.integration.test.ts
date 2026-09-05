@@ -20,6 +20,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { buildPlugin as buildInstalledPlugin } from '../../../routes/plugins/plugin-bundles.js';
 import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
 import {
   installPluginFromSource,
@@ -492,7 +493,7 @@ test('legacy dependency creation refuses a portable copy, then adopts an indepen
   );
   expect(refused).toMatchObject({
     success: false,
-    error: expect.stringContaining('through Plugins'),
+    error: expect.stringContaining('canonical installation owner'),
   });
   expect(existsSync(join(f.plugins, 'fixture'))).toBe(false);
   expect(build).not.toHaveBeenCalled();
@@ -982,14 +983,96 @@ test('the generic service refuses missing acquisition provenance on fresh and hi
   );
   await materializer.select('fixture', materialization, null);
   await expect(
-    f
-      .service()
-      .install({
-        installation: 'fixture',
-        expected: unknown,
-        artifact: { digest: f.digest() },
-        origin: 'a'.repeat(64),
-      }),
+    f.service().install({
+      installation: 'fixture',
+      expected: unknown,
+      artifact: { digest: f.digest() },
+      origin: 'a'.repeat(64),
+    }),
   ).rejects.toThrow(/origin is unknown/);
   expect(await f.service().inspect('fixture')).toEqual(unknown);
+});
+
+test('managed consent refuses a physically changed selected artifact before granting its declared permissions', async () => {
+  const f = fixture();
+  writeFileSync(
+    join(f.source, 'plugin.json'),
+    JSON.stringify({
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'fixture',
+      version: '1',
+      extensions: {
+        'io.kontourai.station': {
+          schemaVersion: '1.0',
+          permissions: ['providers.register'],
+        },
+      },
+    }),
+  );
+  let changed = false;
+  const journal = {
+    ...f.journal,
+    admissionOpen(installation: Parameters<typeof f.journal.admissionOpen>[0]) {
+      const current = f.journal.admissionOpen(installation);
+      if (!changed && current) {
+        changed = true;
+        const root = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
+        writeFileSync(
+          join(root.packageRoot, 'unreviewed.txt'),
+          'unreviewed package mutation',
+        );
+      }
+      return current;
+    },
+  };
+  await expect(
+    installPluginFromSource(
+      f.source,
+      [],
+      { ...f.deps, packageMcpJournal: journal },
+      { consent: await namespaceConsent(f.source) },
+    ),
+  ).rejects.toThrow();
+  expect(changed).toBe(true);
+  expect(await f.service().inspect('fixture')).toBeNull();
+});
+
+test('managed namespace build uses the existing builder with validated fields and ignores portable root lookalikes', async () => {
+  const f = fixture();
+  writeFileSync(
+    join(f.source, 'plugin.json'),
+    JSON.stringify({
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'fixture',
+      version: '1',
+      entrypoint: './must-not-build.ts',
+      build: 'must-not-run',
+      extensions: {
+        'io.kontourai.station': {
+          schemaVersion: '1.0',
+          entrypoint: './io.kontourai.station/index.js',
+        },
+      },
+    }),
+  );
+  mkdirSync(join(f.source, 'io.kontourai.station'), { recursive: true });
+  writeFileSync(
+    join(f.source, 'io.kontourai.station', 'index.js'),
+    'export const reviewedMarker = "namespace-build-witness";',
+  );
+  const result = await installPluginFromSource(
+    f.source,
+    [],
+    {
+      ...f.deps,
+      buildPlugin: (dir, name, manifest) =>
+        buildInstalledPlugin(dir, name, f.deps.logger, manifest),
+    },
+    { consent: await namespaceConsent(f.source) },
+  );
+  expect(result.plugin.hasBundle).toBe(true);
+  const root = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
+  expect(
+    readFileSync(join(root.packageRoot, 'dist', 'bundle.js'), 'utf8'),
+  ).toContain('namespace-build-witness');
 });

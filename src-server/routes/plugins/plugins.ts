@@ -171,7 +171,8 @@ export function createPluginRoutes(
     packageMcpJournal: runtime?.packageMcpJournal,
     installationHost: runtime?.installationHost,
     agentsDir,
-    buildPlugin: (pluginDir, name) => buildPlugin(pluginDir, name, logger),
+    buildPlugin: (pluginDir, name, manifest) =>
+      buildPlugin(pluginDir, name, logger, manifest),
     eventBus,
     logger,
     pluginsDir,
