@@ -60,6 +60,7 @@ type BrowserCapability = 'discover' | 'history-read' | 'message-write';
 type RoomCapability =
   | BrowserCapability
   | 'lifecycle-append'
+  | 'home-transfer'
   | 'revision-link'
   | 'agent-publish';
 // Room policy is deliberately independent from mutable Task projection fields
