@@ -40,6 +40,7 @@ import { computePluginContentDigest } from '../plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from '../plugin-incarnation.js';
 import { derivePluginConsentBasis } from '../plugin-install-consent.js';
 import {
+  captureLocalPluginInstallation,
   createLocalPluginInstallationService,
   localPluginDataScopes,
   localPluginInstallationState,
@@ -49,6 +50,7 @@ import {
 import type { PluginInstallationHost } from '../plugin-installation-service.js';
 import { PluginInstallationService } from '../plugin-installation-service.js';
 import { readPluginManifestFile } from '../plugin-manifest-loader.js';
+import { grantPermissions } from '../plugin-permissions.js';
 
 const homes: string[] = [],
   stores: EventStore[] = [],
@@ -1086,7 +1088,7 @@ test('managed namespace build uses the existing builder with validated fields an
   ).toContain('namespace-build-witness');
 });
 
-test('managed provider reconciliation uses an expiring private view while public providers wait for ready', async () => {
+test('managed provider compensation uses an expiring private view while public providers wait for ready', async () => {
   const f = fixture();
   writeFileSync(
     join(f.source, 'plugin.json'),
@@ -1107,6 +1109,34 @@ test('managed provider reconciliation uses an expiring private view while public
     join(f.source, 'provider.mjs'),
     "export default Object.freeze({getConnections(){return [{id:'fixture-engine'}]}});",
   );
+  expect(
+    (await readPluginManifestFile(join(f.source, 'plugin.json'))).providers,
+  ).toEqual([{ type: 'acpConnections', module: './provider.mjs' }]);
+  // Initial install deliberately cannot grant trusted providers.register. This
+  // fixture supplies that trusted decision through the existing grant owner,
+  // then exercises compensation of a failed update under a new pending generation.
+  const initial = await installPluginFromSource(f.source, [], f.deps, {
+    consent: await namespaceConsent(f.source),
+  });
+  expect(initial.permissions.pendingConsent).toContainEqual({
+    permission: 'providers.register',
+    tier: 'trusted',
+  });
+  const grantedArtifact = captureLocalPluginInstallation(
+    f.plugins,
+    f.journal,
+    'fixture',
+  )!;
+  await grantPermissions(f.home, 'fixture', ['providers.register'], {
+    pluginId: 'fixture',
+    digest: grantedArtifact.installation!.contentDigest,
+    isCurrent: () =>
+      grantedArtifact.isCurrent() &&
+      computePluginContentDigest(
+        dirname(grantedArtifact.root.packageRoot),
+        basename(grantedArtifact.root.packageRoot),
+      ) === grantedArtifact.installation!.contentDigest,
+  });
   let privateProvider: any;
   const observations: Array<{
     publicCount: number;
@@ -1114,7 +1144,8 @@ test('managed provider reconciliation uses an expiring private view while public
     ready: boolean;
   }> = [];
   try {
-    const result = await installPluginFromSource(
+    let reconcileCalls = 0;
+    const installing = installPluginFromSource(
       f.source,
       [],
       {
@@ -1123,6 +1154,9 @@ test('managed provider reconciliation uses an expiring private view while public
           _name: string,
           view?: PluginProviderReadView,
         ) => {
+          if (++reconcileCalls === 1)
+            throw new Error('Injected provider reconciliation failure');
+          expect(view).toBeDefined();
           const selected = f.journal.currentInstallation('fixture');
           if (selected.state !== 'observed')
             throw new Error('Installation disappeared');
@@ -1142,7 +1176,9 @@ test('managed provider reconciliation uses an expiring private view while public
       },
       { consent: await namespaceConsent(f.source) },
     );
-    expect(result.success).toBe(true);
+    await expect(installing).rejects.toThrow(
+      'Injected provider reconciliation failure',
+    );
     expect(observations).toEqual([
       { publicCount: 0, privateIds: ['fixture-engine'], ready: false },
     ]);
