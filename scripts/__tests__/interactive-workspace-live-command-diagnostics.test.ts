@@ -5,15 +5,22 @@ import {
   readLiveCommandFailureState,
 } from '../interactive-workspace-playwright-adapter.mjs';
 
+// Keep the scripts compiler's Node-only library boundary. Vitest supplies the
+// real jsdom objects at runtime; this fixture needs only these narrow members.
+const browser = globalThis as unknown as {
+  document: { body: { innerHTML: string } };
+  Element: { prototype: { getClientRects(): { readonly length: number } } };
+};
+
 afterEach(() => {
-  document.body.innerHTML = '';
+  browser.document.body.innerHTML = '';
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
 test('observes closed failure state without copying page text or actor identities', async () => {
-  document.body.innerHTML = `<section data-station-performance-surface="task-room-presence" data-viewer-actor-id="private-actor"><header><p role="status">Live room connected.</p></header><button>Join room</button><button disabled>Announce work</button></section><div role="dialog" aria-labelledby="title"><h2 id="title">What Station sends</h2><p>private page content</p></div>`;
-  vi.spyOn(Element.prototype, 'getClientRects').mockReturnValue([
+  browser.document.body.innerHTML = `<section data-station-performance-surface="task-room-presence" data-viewer-actor-id="private-actor"><header><p role="status">Live room connected.</p></header><button>Join room</button><button disabled>Announce work</button></section><div role="dialog" aria-labelledby="title"><h2 id="title">What Station sends</h2><p>private page content</p></div>`;
+  vi.spyOn(browser.Element.prototype, 'getClientRects').mockReturnValue([
     {},
   ] as unknown as DOMRectList);
   const result = await readLiveCommandFailureState({
