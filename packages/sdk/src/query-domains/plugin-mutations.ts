@@ -177,6 +177,7 @@ export function usePluginRemoveMutation() {
 export function usePluginProviderToggleMutation() {
   const queryClient = useQueryClient();
   return useMutation({
+    retry: false,
     mutationFn: async ({
       pluginName,
       disabled,
@@ -193,7 +194,24 @@ export function usePluginProviderToggleMutation() {
           body: JSON.stringify({ disabled }),
         },
       );
-      return response.json();
+      const result = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+      };
+      if (!response.ok || !result.success)
+        throw new Error(
+          apiErrorMessage(
+            result,
+            'Plugin provider settings may have changed. Refresh before retrying.',
+          ),
+        );
+      return result;
+    },
+    onError: (_error, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['plugin-providers', variables.pluginName],
+      });
+      queryClient.invalidateQueries({ queryKey: ['plugins'] });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] });
@@ -297,6 +315,7 @@ export function usePluginSettingsMutation(
     Error,
     { name: string; settings: Record<string, unknown> }
   >({
+    retry: false,
     mutationFn: async ({ name, settings }) => {
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
@@ -311,7 +330,7 @@ export function usePluginSettingsMutation(
         success: boolean;
         error?: string;
       };
-      if (!result.success) {
+      if (!response.ok || !result.success) {
         throw new Error(
           apiErrorMessage(result, 'Failed to save plugin settings'),
         );
@@ -325,6 +344,9 @@ export function usePluginSettingsMutation(
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['plugin-settings', variables.name],
+      });
       options?.onError?.(error, variables);
     },
   });
