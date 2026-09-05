@@ -16,25 +16,13 @@ import {
   isDockRegion,
   type RegionId,
 } from '../regions/region-model';
-import type { NavigationView } from '../types';
-import type { HomeViewNavigation } from '../views/home/useHomeViewModel';
-import type { WorkspacePaneDockAction } from '../workspace-panes/WorkspacePaneDockContext';
-
-interface ChatShellProps {
-  homeContinuation: HomeViewNavigation | null;
-  onNavigate: (view: NavigationView) => void;
-  onDockActionChange: (action: WorkspacePaneDockAction | null) => void;
-}
-
-const ChatShellContext = createContext<ChatShellProps | null>(null);
 
 function ChatSurfaceShell({ regionId }: { regionId: RegionId }) {
-  const props = useContext(ChatShellContext);
   // Chat declares no `main` placement (`REGION_SURFACE_REGISTRY`), so
   // `placeSurface` never puts it there; the guard narrows the type for the
   // dock, it is not a branch anything reaches.
-  if (!props || !isDockRegion(regionId)) return null;
-  return <ChatDock regionId={regionId} {...props} />;
+  if (!isDockRegion(regionId)) return null;
+  return <ChatDock regionId={regionId} />;
 }
 
 const loadActivityRegionShell = () =>
@@ -58,8 +46,8 @@ function ActivitySurfaceShell({ regionId }: { regionId: RegionId }) {
  * host-unavailable and error states and the resolved `HomeView` all read
  * App-owned state (the resolved home surface, the retry, the connection
  * names), so App supplies the render and this shell is where the outlet
- * calls it from — the same shape as `ChatShellContext` above. It is
- * `null` outside `MainRegionSurface`: nothing else may mount Home.
+ * calls it from. It is `null` outside `MainRegionSurface`: nothing else may
+ * mount Home.
  */
 const HomeShellContext = createContext<(() => ReactNode) | null>(null);
 
@@ -113,15 +101,7 @@ export function MainRegionSurface({
  * `main-provider-order.test.ts` pins the provider's tag order, and the
  * no-provider branch keeps App-level tests on the legacy mount.
  */
-export function RegionShells({
-  homeContinuation,
-  onNavigate,
-  onDockActionChange,
-}: {
-  homeContinuation: HomeViewNavigation | null;
-  onNavigate: (view: NavigationView) => void;
-  onDockActionChange: (action: WorkspacePaneDockAction | null) => void;
-}) {
+export function RegionShells() {
   const model = useRegionModelOptional();
   const bottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
   // This component IS "a region surface can render right now": App mounts it
@@ -133,18 +113,9 @@ export function RegionShells({
   // registered, so a commanded reveal is never dropped on the floor.
   const registerRegionSurfaceHost = model?.registerRegionSurfaceHost;
   useEffect(() => registerRegionSurfaceHost?.(), [registerRegionSurfaceHost]);
-  if (!model)
-    return (
-      <ChatDock
-        homeContinuation={homeContinuation}
-        onNavigate={onNavigate}
-        onDockActionChange={onDockActionChange}
-      />
-    );
+  if (!model) return <ChatDock />;
   return (
-    <ChatShellContext.Provider
-      value={{ homeContinuation, onNavigate, onDockActionChange }}
-    >
+    <>
       {DOCK_REGION_IDS.filter((id) => {
         if (!bottomOnly) return true;
         return id === foldedDockRegion(model.regions, model.lastShownRegion);
@@ -157,6 +128,6 @@ export function RegionShells({
           <SurfaceShell key={occupant} regionId={id} />
         ) : null;
       })}
-    </ChatShellContext.Provider>
+    </>
   );
 }
