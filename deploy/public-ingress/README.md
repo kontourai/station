@@ -21,7 +21,8 @@ pinned to an official Caddy image index supporting multiple architectures; revie
 its release and digest when updating. Keep the Compose project name stable to
 retain the existing volumes.
 
-From the repository root, prepare a private `public.env` file:
+From the repository root, prepare a private `deploy/public-ingress/.env` file
+(the repository ignores `.env` files):
 
 ```dotenv
 COMPOSE_PROJECT_NAME=acme-station
@@ -38,7 +39,7 @@ overlay to an existing deployment.
 Render and inspect the complete result before publishing:
 
 ```bash
-docker compose --env-file=public.env -f docker-compose.yml \
+docker compose --env-file=deploy/public-ingress/.env -f docker-compose.yml \
   -f deploy/public-ingress/compose.yaml config
 ```
 
@@ -62,9 +63,9 @@ rate limits. This profile uses the normal production CA defaults.
 After reviewing the public exposure and DNS destination:
 
 ```bash
-docker compose --env-file=public.env -f docker-compose.yml \
+docker compose --env-file=deploy/public-ingress/.env -f docker-compose.yml \
   -f deploy/public-ingress/compose.yaml up -d
-docker compose --env-file=public.env -f docker-compose.yml \
+docker compose --env-file=deploy/public-ingress/.env -f docker-compose.yml \
   -f deploy/public-ingress/compose.yaml ps
 ```
 
@@ -96,7 +97,7 @@ Do not use `down -v` during an upgrade or rollback. To stop public ingress while
 keeping data and the backend intact:
 
 ```bash
-docker compose --env-file=public.env -f docker-compose.yml \
+docker compose --env-file=deploy/public-ingress/.env -f docker-compose.yml \
   -f deploy/public-ingress/compose.yaml stop ingress
 ```
 
