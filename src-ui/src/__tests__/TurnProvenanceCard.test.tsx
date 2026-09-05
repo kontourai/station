@@ -626,10 +626,10 @@ describe('TurnProvenanceCard', () => {
     // in the checkable facts list.
     const toolsValue = screen.getByText('Tools').nextElementSibling;
     expect(toolsValue?.className).toContain('turn-provenance__value--absence');
-    expect(toolsValue?.className).not.toContain(
-      'turn-provenance__value--not-captured',
-    );
-    expect(toolsValue?.closest('.turn-provenance__facts--backlog')).toBeNull();
+    // Review L1: `--value--not-captured` no longer exists, so asserting its
+    // absence proved nothing. What discriminates is that this row is IN the
+    // checkable facts and the backlog sentence is not a row at all.
+    expect(toolsValue?.closest('.turn-provenance__facts')).toBeTruthy();
 
     // "Routing receipt" is Station's own gap and is demoted out of the
     // checkable facts entirely, into the collapsed backlog sentence (#1536 B3).
@@ -657,9 +657,6 @@ describe('TurnProvenanceCard', () => {
     expect(usageValue?.className).toContain('turn-provenance__value--earned');
     expect(usageValue?.className).not.toContain(
       'turn-provenance__value--absence',
-    );
-    expect(usageValue?.className).not.toContain(
-      'turn-provenance__value--not-captured',
     );
   });
 

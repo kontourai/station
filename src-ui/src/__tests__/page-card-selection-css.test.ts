@@ -34,6 +34,28 @@ function ruleBodies(css: string, selector: string): string[] {
   return bodies;
 }
 
+/**
+ * Position of the rule whose selector list contains `selector`, in source
+ * order — `-1` when no rule declares it. Two rules of equal specificity are
+ * decided by which comes later, so ORDER is what a cascade assertion has to
+ * read.
+ */
+function ruleIndex(css: string, selector: string): number {
+  let index = 0;
+  for (const block of css.split('}')) {
+    const brace = block.indexOf('{');
+    if (brace < 0) continue;
+    const selectors = block
+      .slice(0, brace)
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split(',')
+      .map((entry) => entry.trim());
+    if (selectors.includes(selector)) return index;
+    index += 1;
+  }
+  return -1;
+}
+
 const css = readFileSync(
   join(__dirname, '..', 'views', 'page-layout.css'),
   'utf-8',
@@ -56,11 +78,23 @@ describe('the shared browse card (#1536 G8)', () => {
   });
 
   it('keeps the selected ring while the selected card is hovered', () => {
-    // Hover's border-color would otherwise win on the selected card by
-    // specificity, so the ring the user aimed at would vanish under the
-    // pointer.
-    expect(css).toMatch(
-      /\.page__card-loose--selected,\s*\n\s*\.page__card-loose--selected:hover\s*\{/,
+    // Hover and selected-hover have equal specificity, so the LATER rule wins
+    // — which makes source order the actual mechanism, not adjacency. Review
+    // L2: matching the two selectors as adjacent text passed for any
+    // formatting that happened to put them together and failed for any that
+    // did not, while saying nothing about which rule wins.
+    const hoverIndex = ruleIndex(css, '.page__card-loose:hover');
+    const selectedHoverIndex = ruleIndex(
+      css,
+      '.page__card-loose--selected:hover',
     );
+    expect(hoverIndex, 'missing .page__card-loose:hover rule').toBeGreaterThan(
+      -1,
+    );
+    expect(
+      selectedHoverIndex,
+      'missing .page__card-loose--selected:hover rule',
+    ).toBeGreaterThan(-1);
+    expect(selectedHoverIndex).toBeGreaterThan(hoverIndex);
   });
 });

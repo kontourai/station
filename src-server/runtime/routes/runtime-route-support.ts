@@ -246,18 +246,30 @@ export async function readStationSetupRequirement(
 ): Promise<{ agentSlug: string; agentName: string; reason: string } | null> {
   try {
     const agents = await context.agentService.listAgents();
-    const metadata =
-      agents.find((agent) => agent.slug === 'station') ?? agents[0];
-    if (!metadata) return null;
-    const spec = await context.agentService.getAgent(metadata.slug);
-    if (isExternalEngineBoundAgent(spec)) return null;
-    const reason = createStationEngineAvailabilityReader(context)(spec);
-    if (!reason) return null;
-    return {
-      agentSlug: metadata.slug,
-      agentName: metadata.name ?? spec.name ?? metadata.slug,
-      reason,
-    };
+    // Review L4: the subject has to be DETERMINISTIC — the item's id embeds
+    // this slug, and its first-observed timestamp is keyed by it, so a subject
+    // that varied with store order would re-mint the row. And taking
+    // `agents[0]` unconditionally silenced the notice whenever the agent that
+    // happened to sort first was external-engine bound, even with a blocked
+    // Station-engine agent right behind it. Station's own Agent first; then the
+    // first Station-engine candidate by slug.
+    const candidates = [...agents].sort((left, right) =>
+      left.slug.localeCompare(right.slug),
+    );
+    const station = candidates.find((agent) => agent.slug === 'station');
+    const readAvailability = createStationEngineAvailabilityReader(context);
+    for (const metadata of station ? [station, ...candidates] : candidates) {
+      const spec = await context.agentService.getAgent(metadata.slug);
+      if (isExternalEngineBoundAgent(spec)) continue;
+      const reason = readAvailability(spec);
+      if (!reason) return null;
+      return {
+        agentSlug: metadata.slug,
+        agentName: metadata.name ?? spec.name ?? metadata.slug,
+        reason,
+      };
+    }
+    return null;
   } catch (error) {
     // A read that could not answer is not a claim that setup is incomplete.
     context.logger.warn('Station setup requirement probe failed', {

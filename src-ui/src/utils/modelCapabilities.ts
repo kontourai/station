@@ -117,7 +117,8 @@ export const ENGINE_DEFAULT_MODEL_LABEL = 'Default';
  * rather than offers it for selection — the ONE derivation (#1536 B5).
  *
  * One session was labelled four ways at once: "Opus 5" on Home and the
- * sidebar (`modelDisplayLabel`), "claude-opus-5" in the transcript's
+ * sidebar (through `modelDisplayLabel`, which this now wraps), "claude-opus-5"
+ * in the transcript's
  * provenance strip (the raw observed id), "Default (recommended)" on the dock
  * header and composer chip (the engine catalog's own option copy for the
  * alias), and "Requested default · Reported claude-opus-5" on the turn row.

@@ -128,6 +128,96 @@ describe('readStationSetupRequirement (#1536 D8)', () => {
     expect(warnings).toHaveLength(1);
   });
 
+  /**
+   * Review L4: the subject was `agents.find(slug === 'station') ?? agents[0]`,
+   * so it varied with store order — and the item's id and its first-observed
+   * timestamp are both keyed by that slug — and an external-engine agent
+   * sorting first silenced the notice for a blocked Station-engine agent
+   * behind it.
+   */
+  describe('choosing whose requirement to report', () => {
+    const managed = { name: 'Managed', model: 'anthropic/opus' };
+    const external = { execution: { agentConnectionId: 'claude-code' } };
+
+    test('prefers Station, whatever order the store listed', async () => {
+      for (const agents of [
+        [
+          { slug: 'zeta', name: 'Zeta' },
+          { slug: 'station', name: 'Station' },
+        ],
+        [
+          { slug: 'station', name: 'Station' },
+          { slug: 'alpha', name: 'Alpha' },
+        ],
+      ]) {
+        expect(
+          await readStationSetupRequirement(
+            contextWith({
+              agents,
+              specs: {
+                station: managed,
+                zeta: managed,
+                alpha: managed,
+              },
+              connections: [],
+            }),
+          ),
+        ).toMatchObject({ agentSlug: 'station' });
+      }
+    });
+
+    test('without Station, the same candidate every time', async () => {
+      const shuffles = [
+        [
+          { slug: 'zeta', name: 'Zeta' },
+          { slug: 'alpha', name: 'Alpha' },
+        ],
+        [
+          { slug: 'alpha', name: 'Alpha' },
+          { slug: 'zeta', name: 'Zeta' },
+        ],
+      ];
+      for (const agents of shuffles) {
+        expect(
+          await readStationSetupRequirement(
+            contextWith({
+              agents,
+              specs: { alpha: managed, zeta: managed },
+              connections: [],
+            }),
+          ),
+        ).toMatchObject({ agentSlug: 'alpha' });
+      }
+    });
+
+    test('an external-engine Agent sorting first does not silence a blocked one behind it', async () => {
+      expect(
+        await readStationSetupRequirement(
+          contextWith({
+            agents: [
+              { slug: 'aaa-external', name: 'Claude Code' },
+              { slug: 'zeta', name: 'Zeta' },
+            ],
+            specs: { 'aaa-external': external, zeta: managed },
+            connections: [],
+          }),
+        ),
+      ).toMatchObject({ agentSlug: 'zeta' });
+    });
+
+    test('every Agent external-engine bound is no managed-model claim at all', async () => {
+      expect(
+        await readStationSetupRequirement(
+          contextWith({
+            agents: [{ slug: 'aaa-external', name: 'Claude Code' }],
+            specs: { 'aaa-external': external },
+            connections: [],
+          }),
+        ),
+      ).toBeNull();
+    });
+  });
+
   test('no Agents at all is not a setup claim about one', async () => {
     const requirement = await readStationSetupRequirement(
       contextWith({ agents: [], specs: {} }),

@@ -7,7 +7,10 @@ import { existsSync, realpathSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { Hono } from 'hono';
-import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
+import {
+  type CheckoutRemoteReader,
+  readCheckoutRemotes,
+} from '../../services/projects/checkout-remote-reader.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import { codingOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
@@ -96,7 +99,22 @@ async function discoverRepos(
   return roots;
 }
 
-export function createCodingRoutes(fileTreeService: FileTreeService) {
+export function createCodingRoutes(
+  fileTreeService: FileTreeService,
+  deps: {
+    /**
+     * How this route observes a checkout's remotes (#1536 G5, review L10).
+     * Injectable for the same reason `PullRequestRepositoryContextResolver`
+     * takes it: the reader's REFUSAL path decides whether Push is disabled on
+     * evidence or on a guess, and no filesystem state reaches it through this
+     * route — every way of breaking `.git/config` also fails the
+     * `isInsideWorkTree` gate above it, so the branch is only executable with
+     * the reader supplied.
+     */
+    readRemotes?: CheckoutRemoteReader;
+  } = {},
+) {
+  const readRemotes = deps.readRemotes ?? readCheckoutRemotes;
   const app = new Hono();
 
   app.get('/files', (c) => {
@@ -219,7 +237,7 @@ export function createCodingRoutes(fileTreeService: FileTreeService) {
           // reader, which is the one place that keeps "this checkout has no
           // remotes" and "git could not be run" apart — collapsing them would
           // disable Push over an unreadable config, which is a different fact.
-          readCheckoutRemotes(dir),
+          readRemotes(dir),
         ]);
 
       const changes = statusOut.stdout

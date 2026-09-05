@@ -198,9 +198,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       expect(description.textContent).toContain(
         'Engine connections are under the Engines tab.',
       );
-      expect(description.textContent).not.toContain(
-        'appear in\n          Connections',
-      );
+      // Review L8: the JSX-newline form could never appear in rendered text,
+      // so asserting its absence proved nothing. The rendered sentence is what
+      // the reader sees, and it must not point at the page it is on.
       expect(description.textContent).not.toMatch(/appear in Connections/);
     });
 

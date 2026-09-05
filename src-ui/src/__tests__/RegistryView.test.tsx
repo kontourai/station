@@ -341,9 +341,13 @@ afterEach(() => {
 
 /**
  * #1536 G7. A plugin install is confirmed by the shared toast, carrying the
- * one thing left to do — place the layout the operator just reviewed. It used
- * to be a grey inline `page__message` row directly above the catalog, which
- * read as another search result rather than as the answer.
+ * route to the one thing left to do — placing the layout the operator just
+ * reviewed. It used to be a grey inline `page__message` row directly above the
+ * catalog, which read as another search result rather than as the answer.
+ *
+ * Review L7: the action is named for what it does. It opens the plugin's
+ * detail page, where the add actually happens; "Add to project" promised an
+ * add this button never performed.
  */
 function expectInstalledToast(message: string, pluginName: string) {
   expect(screen.queryByText(message)).toBeNull();
@@ -358,7 +362,7 @@ function expectInstalledToast(message: string, pluginName: string) {
   ];
   expect(text).toBe(message);
   expect(tone).toBe('success');
-  expect(actions?.map((action) => action.label)).toEqual(['Add to project']);
+  expect(actions?.map((action) => action.label)).toEqual(['Open plugin']);
   actions?.[0].onClick();
   expect(navigateMock).toHaveBeenCalledWith(`/plugins/${pluginName}`);
 }
@@ -963,28 +967,23 @@ describe('RegistryView', () => {
   });
 
   /**
-   * #765 D1. The agents tab is where a JSON-manifest registry lists its
-   * plugins today, and installing one there used to land a tree whose bundle
-   * was never built — every declared layout component then rendered
-   * "Unsupported layout tab" while the install reported success. A plugin id
-   * now installs from its preview with the operator's decision attached, and
-   * the client plugin registry reloads so the new components register without
-   * a page reload.
+   * #765 D1. An id the preview endpoint resolves as a PLUGIN installs from its
+   * preview with the operator's decision attached, and the client plugin
+   * registry reloads so the new components register without a page reload.
+   * Installing one through the provider's raw tree copy used to land a tree
+   * whose bundle was never built — every declared layout component then
+   * rendered "Unsupported layout tab" while the install reported success.
+   *
+   * Review L6: this ran on the AGENTS tab, because a JSON-manifest registry
+   * used to list its plugins there. #1536 D2 ended that — each surface now
+   * browses its own kind — so the plugin install path is exercised where
+   * plugins actually appear. The agents-tab fallback for an id the preview
+   * does NOT resolve is pinned separately, above.
    */
-  test('installs an agents-tab registry plugin from its preview with the operator decision attached', () => {
-    previewResults.set('agent-two', {
-      ...validDemoPreview(),
-      manifest: {
-        name: 'agent-two',
-        displayName: 'Agent Two',
-        version: '1.0.0',
-      },
-    });
-    render(<RegistryView />);
+  test('installs a registry plugin from its preview with the operator decision attached', () => {
+    previewResults.set('demo-layout', validDemoPreview());
+    render(<RegistryView initialTab="plugins" />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'View Agent Two details' }),
-    );
     fireEvent.click(
       within(screen.getByTestId('registry-detail')).getByRole('button', {
         name: 'Install',
@@ -999,9 +998,9 @@ describe('RegistryView', () => {
 
     expect(mutationCalls).toEqual([
       {
-        id: 'agent-two',
+        id: 'demo-layout',
         action: 'install',
-        tab: 'agents',
+        tab: 'plugins',
         consent: {
           permissions: ['navigation.dock'],
           contentDigest: 'sha256:demo',
@@ -1010,7 +1009,7 @@ describe('RegistryView', () => {
         skip: [],
       },
     ]);
-    expectInstalledToast('Installed Agent Two', 'agent-two');
+    expectInstalledToast('Installed Demo Layout', 'demo-layout');
     expect(pluginRegistryReload).toHaveBeenCalled();
   });
 

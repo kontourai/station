@@ -89,24 +89,15 @@
   font-style: italic;
 }
 
-/* Kind 3: Station's own backlog ("not captured by Station yet"). Deliberately
-   smaller than an absence row (not lower-contrast — review fix, station#1802
-   L-2: stacking `opacity` on top of the already-muted `--k-text-muted`
-   measured below WCAG AA 4.5:1 in three of the four shipped themes), and
-   lives under its own "Not yet captured by Station" heading rather than
-   mixed into the checkable facts — the reader should not have to sort our
-   roadmap out of what this answer actually established. The heading plus
-   the smaller type plus the un-italicized, differently-worded value is
-   enough separation from an absence row without compounding opacity. */
-.turn-provenance__value--not-captured {
-  color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
-}
-
-/* #1536 B3: the same styling for the collapsed one-sentence form, which
-   replaced the row-per-slot list (and its heading — the sentence names the
-   slots itself, so a heading repeating "not yet captured" was the third place
-   one fact was stated). Not lower-contrast, for the reason above. */
+/* Kind 3: Station's own backlog. One sentence naming every slot it covers,
+   rather than a row per slot under a heading repeating the same words (#1536
+   B3 replaced the row form, and review L1 removed the now-unreachable
+   `--value--not-captured` rule with it). Deliberately smaller than an absence
+   row and NOT lower-contrast — review fix, station#1802 L-2: stacking
+   `opacity` on top of the already-muted `--k-text-muted` measured below WCAG
+   AA 4.5:1 in three of the four shipped themes. Out of the checkable facts
+   entirely: the reader should not have to sort our roadmap out of what this
+   answer actually established. */
 .turn-provenance__not-captured {
   margin: var(--k-space-3) 0 0;
   color: var(--k-text-muted);

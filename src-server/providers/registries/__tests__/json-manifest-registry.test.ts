@@ -1402,21 +1402,33 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
     ).toEqual(['reviewer-agent']);
   });
 
-  test('browses no agents for a catalog that declares only plugins', async () => {
-    const manifest = JSON.parse(readFileSync(fixtureManifestPath, 'utf-8'));
-    const provider = new JsonManifestRegistryProvider(
-      fixtureManifestPath,
-      await makeProjectHome(),
-    );
+  // Review L5: BOTH shipped catalogs. `default.json` is what a fresh install
+  // reads (`runtime-initialize.ts` picks the bundled default source), so a
+  // tripwire aimed only at `manifest.json` would miss an agent kind added to
+  // the one that actually ships.
+  test.each([
+    ['examples/registry/manifest.json'],
+    ['examples/registry/default.json'],
+  ])(
+    'browses no agents for %s, which declares only plugins',
+    async (relativePath) => {
+      const manifestPath = resolve(repoRoot, relativePath);
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+      const provider = new JsonManifestRegistryProvider(
+        manifestPath,
+        await makeProjectHome(),
+      );
 
-    // The shipped catalog's real bytes: every entry is a plugin, none declares
-    // an agent kind. An empty Agents tab is the honest reading of that.
-    expect(
-      manifest.plugins.some((entry: { type?: string }) => entry.type),
-    ).toBe(false);
-    expect(await provider.agentRegistry().listAvailable()).toEqual([]);
-    expect((await provider.listAvailable()).length).toBe(
-      manifest.plugins.length,
-    );
-  });
+      // The shipped catalog's real bytes: every entry is a plugin, none declares
+      // an agent kind. An empty Agents tab is the honest reading of that.
+      expect(manifest.plugins.length).toBeGreaterThan(0);
+      expect(
+        manifest.plugins.some((entry: { type?: string }) => entry.type),
+      ).toBe(false);
+      expect(await provider.agentRegistry().listAvailable()).toEqual([]);
+      expect((await provider.listAvailable()).length).toBe(
+        manifest.plugins.length,
+      );
+    },
+  );
 });

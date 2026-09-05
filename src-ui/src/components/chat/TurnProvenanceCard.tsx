@@ -131,7 +131,7 @@ interface ProvenanceRow {
  * `not-captured-by-station` by construction (the filter that builds it), so
  * one shared predicate is accurate for all of them.
  */
-export function notYetCapturedSentence(labels: readonly string[]): string {
+function notYetCapturedSentence(labels: readonly string[]): string {
   const names = labels.map((label, index) =>
     index === 0 ? label : label.toLowerCase(),
   );
