@@ -7,6 +7,7 @@ import {
   closePluginActivationSession,
   completePluginActivationComposition,
   createPluginActivationSession,
+  deliverPluginActivationNotifications,
   type PluginActivationSession,
   preparePluginActivationComposition,
 } from '../../services/plugins/plugin-activation-composition.js';
@@ -35,6 +36,7 @@ export async function capturePluginConfigurationMutation<T>(
     if (!runner) {
       const composition = await preparePluginActivationComposition(session);
       await completePluginActivationComposition(composition);
+      deliverPluginActivationNotifications(session, () => {});
     }
     return result;
   } finally {

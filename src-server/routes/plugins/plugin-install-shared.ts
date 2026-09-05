@@ -58,6 +58,8 @@ import {
   closePluginActivationSession,
   completePluginActivationComposition,
   createPluginActivationSession,
+  deferPluginActivationNotification,
+  deliverPluginActivationNotifications,
   type PluginActivationSession,
   pluginActivationSessionPermit,
   preparePluginActivationComposition,
@@ -2767,6 +2769,10 @@ async function runOwnedPluginMutation<T>(
         await completePluginActivationComposition(
           await preparePluginActivationComposition(session),
         );
+      if (!providedSession)
+        deliverPluginActivationNotifications(session, (error) =>
+          deps.logger.warn('Plugin readiness notification failed', { error }),
+        );
       return result;
     } catch (error) {
       if (!providedSession) {
@@ -3837,9 +3843,22 @@ async function installPluginFromSourceUnderContext(
         };
         inspectDependencyPermissions(manifest);
 
-        eventBus?.emit('plugins:installed', {
-          name: pluginName,
-          agents: manifest.agents?.map((agent) => agent.slug) || [],
+        deferPluginActivationNotification(deps.activationSession!, () => {
+          if (managedLifecycle) {
+            const selected =
+              deps.packageMcpJournal?.currentInstallation(pluginName);
+            if (
+              selected?.state !== 'observed' ||
+              selected.installation.incarnation !==
+                managedLifecycle.selected.generation ||
+              !deps.packageMcpJournal!.admissionOpen(selected.installation)
+            )
+              return;
+          }
+          eventBus?.emit('plugins:installed', {
+            name: pluginName,
+            agents: manifest.agents?.map((agent) => agent.slug) || [],
+          });
         });
         pluginInstalls.add(1, { plugin: pluginName });
 

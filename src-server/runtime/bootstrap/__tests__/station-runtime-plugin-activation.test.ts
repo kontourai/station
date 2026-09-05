@@ -5,6 +5,8 @@ import { expect, test, vi } from 'vitest';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import {
   createPluginActivationSession,
+  deferPluginActivationNotification,
+  deliverPluginActivationNotifications,
   type PluginActivationComposition,
   pluginActivationCompositionPermit,
   registerPluginActivation,
@@ -61,6 +63,15 @@ test.each(['applied', 'failed', 'deadline'] as const)(
       record.installation,
       async () => {},
     );
+    const observations: Array<{ ready: boolean; revision: number }> = [];
+    const notify = vi.fn(() => {
+      observations.push({
+        ready: journal.admissionOpen(record.installation),
+        revision: runtime.agentConfigurationRevision % 2,
+      });
+      throw new Error('Injected observer failure');
+    });
+    deferPluginActivationNotification(session, notify);
     let release!: () => void;
     const blocked = new Promise<void>((resolve) => {
       release = resolve;
@@ -93,6 +104,7 @@ test.each(['applied', 'failed', 'deadline'] as const)(
       if (outcome === 'applied') {
         expect(journal.admissionOpen(record.installation)).toBe(false);
         expect(runtime.agentConfigurationRevision % 2).toBe(1);
+        expect(notify).not.toHaveBeenCalled();
         release();
       }
       expect(await pending).toEqual({ persisted: true });
@@ -105,6 +117,17 @@ test.each(['applied', 'failed', 'deadline'] as const)(
       expect(
         pluginActivationCompositionPermit(composition, journal, 'fixture'),
       ).toBeUndefined();
+      expect(notify).toHaveBeenCalledTimes(outcome === 'applied' ? 1 : 0);
+      expect(observations).toEqual(
+        outcome === 'applied' ? [{ ready: true, revision: 0 }] : [],
+      );
+      deliverPluginActivationNotifications(session, runtime.logger.warn);
+      expect(notify).toHaveBeenCalledTimes(outcome === 'applied' ? 1 : 0);
+      if (outcome === 'applied')
+        expect(runtime.logger.warn).toHaveBeenCalledWith(
+          'Plugin readiness notification failed',
+          { error: expect.any(Error) },
+        );
       // A timed-out pass resuming later cannot publish readiness.
       release();
       await Promise.resolve();

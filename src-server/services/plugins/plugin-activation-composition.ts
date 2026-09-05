@@ -25,13 +25,14 @@ interface Entry {
 interface Session {
   phase: 'collecting' | 'composing' | 'completed' | 'closed';
   entries: Entry[];
+  notifications: Array<() => void>;
 }
 const sessions = new WeakMap<PluginActivationSession, Session>();
 const compositions = new WeakMap<PluginActivationComposition, Session>();
 
 export function createPluginActivationSession(): PluginActivationSession {
   const key = Object.freeze({}) as PluginActivationSession;
-  sessions.set(key, { phase: 'collecting', entries: [] });
+  sessions.set(key, { phase: 'collecting', entries: [], notifications: [] });
   return key;
 }
 
@@ -166,6 +167,7 @@ export async function preparePluginActivationComposition(
     state.entries.some((entry) => entry.intent !== 'compensation')
   )
     throw new Error('An incomplete failed installation remains pending');
+  if (intent === 'compensation') state.notifications = [];
   for (const entry of state.entries) {
     entry.journal.activationInstallation(entry.permit);
     const plan = entry.journal.activationPlan(entry.installation);
@@ -255,5 +257,42 @@ export function closePluginActivationComposition(
     state.phase = 'closed';
     for (const entry of state.entries)
       entry.journal.closeActivationPermit(entry.permit);
+  }
+}
+
+/** Notifications are hints, not readiness authority. The configuration owner
+ * delivers them only after releasing its runtime access barrier. */
+export function deferPluginActivationNotification(
+  session: PluginActivationSession,
+  notify: () => void,
+): void {
+  const state = sessions.get(session);
+  if (state?.phase !== 'collecting')
+    throw new Error('Plugin activation notification owner is unavailable');
+  if (state.notifications.length >= 256)
+    throw new Error(
+      'Plugin activation notification graph exceeds supported size',
+    );
+  state.notifications.push(notify);
+}
+
+export function deliverPluginActivationNotifications(
+  session: PluginActivationSession,
+  onError: (error: unknown) => void,
+): void {
+  const state = sessions.get(session);
+  if (state?.phase !== 'completed') return;
+  const notifications = state.notifications.splice(0);
+  for (const notify of notifications) {
+    try {
+      notify();
+    } catch (error) {
+      // Observer failure cannot undo a committed installation.
+      try {
+        onError(error);
+      } catch {
+        /* Diagnostic delivery is best effort. */
+      }
+    }
   }
 }

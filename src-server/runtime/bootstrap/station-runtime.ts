@@ -1,6 +1,7 @@
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
+  deliverPluginActivationNotifications,
   type PluginActivationComposition,
   pluginActivationCompositionPermit,
   preparePluginActivationComposition,
@@ -1556,7 +1557,17 @@ export class StationRuntime {
         }
         return result as T;
       }),
-    );
+    ).then((result) => {
+      if (options?.pluginActivation)
+        deliverPluginActivationNotifications(
+          options.pluginActivation,
+          (error) =>
+            this.logger?.warn?.('Plugin readiness notification failed', {
+              error,
+            }),
+        );
+      return result;
+    });
   }
 
   /**
