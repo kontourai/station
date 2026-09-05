@@ -275,6 +275,7 @@ const AGENT_CONFIGURATION_SHUTDOWN_DRAIN_GRACE_MS = 5_000;
 interface AgentConfigurationGeneration {
   provider: number;
   appConfig: number;
+  selectedPackageFingerprint?: string;
   persistence?: number;
   activationEpoch?: number;
 }
@@ -467,6 +468,7 @@ export class StationRuntime {
   private agentConfigurationMutationsClosed = false;
   private loadedProviderLaunchabilityRevision: number | null = null;
   private loadedAppConfigLaunchabilityRevision: number | null = null;
+  private loadedSelectedPackageFingerprint: string | null = null;
   private shutdownPromise: Promise<void> | null = null;
   private initializeInFlight: Promise<void> | null = null;
   private configurationReconciliationScheduled = false;
@@ -1898,10 +1900,13 @@ export class StationRuntime {
     return (
       this.loadedProviderLaunchabilityRevision !== null &&
       this.loadedAppConfigLaunchabilityRevision !== null &&
+      typeof this.loadedSelectedPackageFingerprint === 'string' &&
       this.providerService.getLaunchabilityRevision() ===
         this.loadedProviderLaunchabilityRevision &&
       this.configLoader.getLaunchabilityRevision() ===
-        this.loadedAppConfigLaunchabilityRevision
+        this.loadedAppConfigLaunchabilityRevision &&
+      this.captureSelectedPackageFingerprint() ===
+        this.loadedSelectedPackageFingerprint
     );
   }
 
@@ -2557,9 +2562,61 @@ export class StationRuntime {
     }
   }
 
+  /** Canonical selected-generation identity, including activation-pending generations.
+   * Claims, PIDs and history are not configuration authority. Optional selection
+   * metadata participates as opaque identity, never filesystem/path admission. */
+  private captureSelectedPackageFingerprint(): string | null {
+    try {
+      const selected = this.orchestrationEventStore
+        ?.createPackageMcpAdmissionJournal()
+        .selectedInstallations();
+      if (
+        selected?.state !== 'observed' ||
+        !Array.isArray(selected.installations)
+      )
+        return null;
+      const ids = new Set<string>();
+      const identities: string[] = [];
+      for (const item of selected.installations) {
+        if (
+          !item ||
+          [
+            item.journalId,
+            item.pluginId,
+            item.incarnation,
+            item.contentDigest,
+          ].some((value) => typeof value !== 'string' || value.length === 0) ||
+          ids.has(item.pluginId) ||
+          [item.materialization, item.dataScope, item.origin].some(
+            (value) => value !== undefined && typeof value !== 'string',
+          )
+        )
+          return null;
+        ids.add(item.pluginId);
+        identities.push(
+          JSON.stringify([
+            item.journalId,
+            item.pluginId,
+            item.incarnation,
+            item.contentDigest,
+            item.materialization ?? null,
+            item.dataScope ?? null,
+            item.origin ?? null,
+          ]),
+        );
+      }
+      return createHash('sha256')
+        .update(JSON.stringify(identities.sort()))
+        .digest('hex');
+    } catch {
+      return null;
+    }
+  }
+
   private assertAgentConfigurationRevisions(expected: {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
     persistence?: number;
     activationEpoch?: number;
   }): void {
@@ -2567,6 +2624,8 @@ export class StationRuntime {
     if (
       expected.provider !== current.provider ||
       expected.appConfig !== current.appConfig ||
+      expected.selectedPackageFingerprint !==
+        current.selectedPackageFingerprint ||
       (expected.persistence !== undefined &&
         expected.persistence !== current.persistence) ||
       (expected.activationEpoch !== undefined &&
@@ -2581,10 +2640,16 @@ export class StationRuntime {
   private captureAgentConfigurationRevisions(): {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint: string;
     persistence: number;
     activationEpoch: number;
   } {
+    const selectedPackageFingerprint = this.captureSelectedPackageFingerprint();
+    if (selectedPackageFingerprint === null) {
+      throw new Error('Selected package generations could not be verified.');
+    }
     return {
+      selectedPackageFingerprint,
       provider: this.providerService.getLaunchabilityRevision(),
       appConfig: this.configLoader.getLaunchabilityRevision(),
       persistence: this.agentConfigurationPersistenceRevision ?? 0,
@@ -2595,25 +2660,27 @@ export class StationRuntime {
   private recordLoadedConfigurationRevisions(revisions: {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
     persistence?: number;
   }): void {
     this.loadedProviderLaunchabilityRevision = revisions.provider;
     this.loadedAppConfigLaunchabilityRevision = revisions.appConfig;
+    // Record the selection used by construction, never a new read that could
+    // relabel already-built agents after another runtime selected a generation.
+    this.loadedSelectedPackageFingerprint =
+      typeof revisions.selectedPackageFingerprint === 'string' &&
+      revisions.selectedPackageFingerprint.length > 0
+        ? revisions.selectedPackageFingerprint
+        : null;
   }
 
   private getStableAgentConfigurationRevision(): number | null {
     if (
       this.agentConfigurationMutationsClosed ||
       this.agentConfigurationRevision % 2 !== 0 ||
-      this.loadedProviderLaunchabilityRevision === null ||
-      this.loadedAppConfigLaunchabilityRevision === null ||
-      this.providerService.getLaunchabilityRevision() !==
-        this.loadedProviderLaunchabilityRevision ||
-      this.configLoader.getLaunchabilityRevision() !==
-        this.loadedAppConfigLaunchabilityRevision
-    ) {
+      !this.runtimeConfigurationSourcesAreLoaded()
+    )
       return null;
-    }
     return this.agentConfigurationRevision;
   }
 

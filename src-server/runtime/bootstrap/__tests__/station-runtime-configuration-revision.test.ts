@@ -5,6 +5,18 @@ import {
   StationRuntime,
 } from '../station-runtime.js';
 
+// These tests isolate non-journal revision behavior against an explicit stable
+// empty selection. Real shared-journal drift is covered in package-selection tests.
+function installStablePackageSelection(runtime: any): void {
+  runtime.orchestrationEventStore = {
+    createPackageMcpAdmissionJournal: () => ({
+      selectedInstallations: () => ({ state: 'observed', installations: [] }),
+    }),
+  };
+  runtime.loadedSelectedPackageFingerprint =
+    runtime.captureSelectedPackageFingerprint();
+}
+
 describe('StationRuntime agent configuration revision', () => {
   test.each([
     ['null before loading', [null], 'not stable'],
@@ -26,6 +38,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('serializes failed lifecycle recovery with an overlapping reload', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
@@ -95,6 +108,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('serializes mutations and exposes only stable revisions with current app config', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
@@ -134,6 +148,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('keeps persistence and reload inside one unstable revision', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
@@ -174,6 +189,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('plugin configuration activation rediscovers Skills before publishing the rebuilt runtime', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
@@ -214,6 +230,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('retains failed plugin Skill rediscovery for configuration reconciliation', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
@@ -262,6 +279,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('forwards mutation options through the production runtime context', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
@@ -289,6 +307,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('activates an ordinary agent mutation without reloading the provider or connection graph', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
@@ -315,6 +334,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('returns a deferred agent mutation after persistence and schedules serialized reconciliation', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
@@ -360,6 +380,7 @@ describe('StationRuntime agent configuration revision', () => {
     vi.useFakeTimers();
     try {
       const runtime = Object.create(StationRuntime.prototype) as any;
+      installStablePackageSelection(runtime);
       runtime.agentConfigurationRevision = 0;
       runtime.agentConfigurationMutationQueue = Promise.resolve();
       runtime.agentConfigurationPersistenceQueue = Promise.resolve();
@@ -410,6 +431,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('publishes the staged generation for the saved ordinary agent without reloading providers or the default agent', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     const listProviderConnections = vi.fn(() => []);
     const reloadDefaultAgentFromConfig = vi.fn();
     const nextMetadata = { slug: 'writer', name: 'Writer' };
@@ -516,6 +538,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('rolls back a failed narrow activation and keeps the runtime generation unavailable', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
@@ -610,6 +633,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('rolls back registry publication failure before exposing staged agent state', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
@@ -688,6 +712,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('keeps MCP-backed agent changes on the broad reload path', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.providerService = { getLaunchabilityRevision: () => 0 };
     runtime.configLoader = {
       getLaunchabilityRevision: () => 0,
@@ -708,6 +733,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('keeps deletion of an MCP-backed agent on the broad cleanup path', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.providerService = { getLaunchabilityRevision: () => 0 };
     runtime.configLoader = {
       getLaunchabilityRevision: () => 0,
@@ -737,6 +763,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('keeps the internal default runtime isolated from the public station identity', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     const defaultAgent = { id: 'default' };
     const defaultSpec = { name: 'Default', prompt: 'Built-in.' };
     const defaultMetadata = { slug: 'default', name: 'Default' };
@@ -787,6 +814,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('does not reload or rotate the revision when an operation rejects before mutation', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
@@ -804,6 +832,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('reports a durable commit as activation-pending and schedules reconciliation', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
@@ -838,6 +867,7 @@ describe('StationRuntime agent configuration revision', () => {
     vi.useFakeTimers();
     try {
       const runtime = Object.create(StationRuntime.prototype) as any;
+      installStablePackageSelection(runtime);
       runtime.agentConfigurationRevision = 0;
       runtime.agentConfigurationMutationQueue = Promise.resolve();
       runtime.agentConfigurationMutationsClosed = false;
@@ -875,6 +905,7 @@ describe('StationRuntime agent configuration revision', () => {
     vi.useFakeTimers();
     try {
       const runtime = Object.create(StationRuntime.prototype) as any;
+      installStablePackageSelection(runtime);
       runtime.agentConfigurationRevision = 0;
       runtime.agentConfigurationMutationQueue = Promise.resolve();
       runtime.agentConfigurationMutationsClosed = false;
@@ -910,6 +941,7 @@ describe('StationRuntime agent configuration revision', () => {
     vi.useFakeTimers();
     try {
       const runtime = Object.create(StationRuntime.prototype) as any;
+      installStablePackageSelection(runtime);
       let providerRevision = 0;
       const appRevision = 0;
       let providerListener: (() => void) | undefined;
@@ -957,6 +989,8 @@ describe('StationRuntime agent configuration revision', () => {
         runtime.recordLoadedConfigurationRevisions({
           provider: providerRevision,
           appConfig: appRevision,
+          selectedPackageFingerprint:
+            runtime.captureSelectedPackageFingerprint(),
         });
       });
       runtime.reloadAgents = vi.fn(async () => undefined);
@@ -1009,6 +1043,7 @@ describe('StationRuntime agent configuration revision', () => {
    */
   function makeWatchedConfigFileHarness() {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     const watchedConfigFileListeners: Record<
       string,
       Set<(path: unknown) => void>
@@ -1155,6 +1190,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('serializes terminal configuration reads ahead of deferred persistence', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationPersistenceQueue = Promise.resolve();
@@ -1202,6 +1238,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('invalidates loaded agents when either source generation changes', () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     let providerRevision = 4;
     let appRevision = 6;
     runtime.agentConfigurationRevision = 8;
@@ -1223,6 +1260,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('marks agent hooks stale during mutation and after generation replacement', () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     const hooks = {};
     runtime.agentConfigurationRevision = 8;
     runtime.agentConfigurationMutationsClosed = false;
@@ -1246,6 +1284,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('rebuilds the global tool registry from only the current agent generation', () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     const oldTool = { name: 'removed', execute: vi.fn() };
     const defaultTool = { name: 'shared', execute: vi.fn() };
     const replacement = { name: 'shared', execute: vi.fn() };
@@ -1271,6 +1310,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('blocks default-agent tools when their published generation is replaced', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     let stable = true;
     runtime.getStableAgentConfigurationRevision = () => (stable ? 2 : null);
     runtime.agentConfigurationMutationQueue = Promise.resolve();
@@ -1297,6 +1337,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('holds the generation read lease until a managed tool settles', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
@@ -1341,6 +1382,7 @@ describe('StationRuntime agent configuration revision', () => {
     vi.useFakeTimers();
     try {
       const runtime = Object.create(StationRuntime.prototype) as any;
+      installStablePackageSelection(runtime);
       runtime.agentConfigurationRevision = 0;
       runtime.agentConfigurationMutationQueue = Promise.resolve();
       runtime.agentConfigurationMutationsClosed = false;
@@ -1384,6 +1426,7 @@ describe('StationRuntime agent configuration revision', () => {
 
   test('closes new mutations and drains accepted work before shutdown', async () => {
     const runtime = Object.create(StationRuntime.prototype) as any;
+    installStablePackageSelection(runtime);
     runtime.agentConfigurationRevision = 0;
     runtime.agentConfigurationMutationQueue = Promise.resolve();
     runtime.agentConfigurationMutationsClosed = false;
