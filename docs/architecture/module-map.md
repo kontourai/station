@@ -72,6 +72,11 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 **Intent and Interface.** `AgentPluginLoader` selects only locally vendored
 Agent Plugins 1.0 schemas, reports bounded component failures, and projects
 read-only Skill sources and live ToolDefs from installed package bytes.
+Manifest-only parsing is shared with public author builds through
+`packages/shared/src/agent-plugin-manifest.ts`; it has no home/data provisioning
+side effects. Its generated standalone validators retain vendored schema hashes
+and are checked by `scripts/agent-plugin-validators-gate.mjs`. Runtime component
+discovery remains with this loader.
 `ConfigLoader` accepts that projection through its read-only integration-source
 Interface; Station-owned files retain collision precedence.
 Package ToolDefs remain definition-read-only: probes may return ephemeral
