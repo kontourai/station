@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { DetailHeader } from '../../components/DetailHeader';
+import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { usePermissions } from '../../core/PermissionManager';
 import type { ReadyPlugin } from './types';
 
@@ -137,7 +138,7 @@ export function PluginRecoveryPanel({
             </Button>
           </section>
         )}
-        <div className="plugins__recovery-actions">
+        <ResponsiveSurfaceActions className="plugins__recovery-actions">
           {pending && !basis && (
             <Button
               onClick={() => void review()}
@@ -160,7 +161,7 @@ export function PluginRecoveryPanel({
           >
             Remove plugin
           </Button>
-        </div>
+        </ResponsiveSurfaceActions>
       </div>
     </div>
   );

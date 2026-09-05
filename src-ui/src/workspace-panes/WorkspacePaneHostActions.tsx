@@ -10,6 +10,8 @@ import {
 } from '@kontourai/station-sdk/workspace-pane';
 import { type ReactNode, useRef, useState } from 'react';
 import { Button } from '../components/Button';
+import { ResponsiveSurfaceActions } from '../components/ResponsiveDialogSurface';
+import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useShowSurface } from '../contexts/useShowSurface';
@@ -124,7 +126,7 @@ function PackageHostActions({
   return (
     <fieldset className="workspace-host-actions__package" tabIndex={-1}>
       <legend>{displayName ?? projection.owner.pluginId}</legend>
-      <div className="workspace-host-actions__controls">
+      <ResponsiveSurfaceActions className="workspace-host-actions__controls">
         <label>
           Agent
           <select
@@ -177,13 +179,9 @@ function PackageHostActions({
             {action.agent ? ` (${action.agent.agentId})` : ''}
           </Button>
         ))}
-      </div>
+      </ResponsiveSurfaceActions>
       {reason ? <p>{reasons[reason]}</p> : null}
-      <div
-        className="workspace-host-actions__results"
-        role="status"
-        aria-live="polite"
-      >
+      <div role="status" aria-live="polite">
         {result?.state === 'unavailable' ? (
           <p>{reasons[result.reason]}</p>
         ) : null}
@@ -194,10 +192,9 @@ function PackageHostActions({
           </p>
         ) : null}
         {result?.state === 'accepted' ? (
-          <>
+          <ResponsiveSurfaceActions className="workspace-host-actions__results">
             <Button
               pending={opening}
-              pendingLabel="Opening…"
               onClick={() => void openCreatedConversation(result)}
             >
               Open conversation
@@ -213,7 +210,7 @@ function PackageHostActions({
             >
               View result
             </Button>
-          </>
+          </ResponsiveSurfaceActions>
         ) : null}
       </div>
     </fieldset>
@@ -231,7 +228,8 @@ export function WorkspacePaneHostActions({
     requestScope: authority,
     enabled: Boolean(authority),
   });
-  if (query.isLoading) return <p role="status">Loading workspace actions…</p>;
+  if (query.isLoading)
+    return <SkeletonBlock count={1} label="Loading workspace actions" />;
   if (query.isError)
     return (
       <div className="workspace-host-actions" role="status">
