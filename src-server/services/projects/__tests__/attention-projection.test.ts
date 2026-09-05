@@ -2607,8 +2607,15 @@ describe('Station cannot run its own Agent (#1536 D8)', () => {
     const service = makeService({
       stationSetupRequirement: requirement,
       acknowledgementStore: {
-        get: (userId, conversationId) =>
-          acked.get(`${userId}:${conversationId}`),
+        getMany: (userId, conversationIds) =>
+          new Map(
+            conversationIds.flatMap((conversationId) => {
+              const version = acked.get(`${userId}:${conversationId}`);
+              return version === undefined
+                ? []
+                : [[conversationId, version] as const];
+            }),
+          ),
         acknowledge: ({ userId, conversationId, updatedAt }) => {
           acked.set(`${userId}:${conversationId}`, updatedAt);
         },
