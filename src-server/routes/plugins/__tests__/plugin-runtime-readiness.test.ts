@@ -1,8 +1,16 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { createPluginOperationalEventSubscriptionService } from '../../../runtime/plugins/plugin-operational-event-subscriptions.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { verifyPluginActivation } from '../../../services/plugins/plugin-activation-plan.js';
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
@@ -31,11 +39,19 @@ async function fixture() {
     name: 'public-fixture',
     version: '1.0.0',
     serverModule: 'server.mjs',
+    operationalEventSubscriptions: [
+      {
+        id: 'ready',
+        version: '1.0.0',
+        eventTypes: ['station.runtime.lifecycle/v1'],
+        projection: 'metadata' as const,
+      },
+    ],
   };
   writeFileSync(join(source, 'plugin.json'), JSON.stringify(manifest));
   writeFileSync(
     join(source, 'server.mjs'),
-    "globalThis.__stationPublicReadinessImports = (globalThis.__stationPublicReadinessImports ?? 0) + 1; export function register(app) { app.get('/ping', c => c.text('ready')); }",
+    "globalThis.__stationPublicReadinessImports = (globalThis.__stationPublicReadinessImports ?? 0) + 1; export function register(app) { app.get('/ping', c => c.text('ready')); } export const operationalEvents = { async observe() { globalThis.__stationPublicReadinessEvents = (globalThis.__stationPublicReadinessEvents ?? 0) + 1; return { kind: 'accepted' }; } };",
   );
   writeFileSync(
     join(source, 'dist', 'bundle.js'),
@@ -82,7 +98,7 @@ async function fixture() {
     await verifyPluginActivation(permit, journal, async () => {});
     expect(journal.completeActivation(permit)).toEqual({ state: 'applied' });
   };
-  return { home, plugins, manifest, journal, ready };
+  return { home, plugins, manifest, journal, ready, store };
 }
 const logger = {
   warn: vi.fn(),
@@ -200,4 +216,65 @@ test('real public HTTP routes refuse pending activation and serve only a ready g
   expect(
     await (await app.request('/public-fixture/bundle.js')).text(),
   ).toContain('ready = true');
+});
+
+test('background subscriptions discover a ready journal selection without its alias and stop after the captured content changes', async () => {
+  const f = await fixture();
+  const globals = globalThis as typeof globalThis & {
+    __stationPublicReadinessEvents?: number;
+  };
+  const before = globals.__stationPublicReadinessEvents ?? 0;
+  const eventBus = new EventBus();
+  const service = createPluginOperationalEventSubscriptionService({
+    eventBus,
+    eventStore: f.store,
+    logger,
+    projectHomeDir: f.home,
+    packageMcpJournal: f.journal,
+  });
+  try {
+    expect(await service.start()).toEqual({ kind: 'applied', active: 0 });
+    await f.ready();
+    const artifact = capturePluginRuntimeArtifact(
+      f.plugins,
+      f.manifest.name,
+      f.journal,
+    )!;
+    await grantPermissions(
+      f.home,
+      f.manifest.name,
+      ['plugin.server', 'events.subscribe'],
+      artifact,
+    );
+    unlinkSync(join(f.plugins, f.manifest.name));
+    expect(await service.reconcile()).toEqual({ kind: 'applied', active: 1 });
+    const publisher = f.store.createOperationalEventPublisher();
+    expect(
+      publisher.append({
+        schemaVersion: 'station.operational-event/v1',
+        id: 'ready-event',
+        type: 'station.runtime.lifecycle/v1',
+        producer: { id: 'station-server', version: '1' },
+        scopes: [{ kind: 'project', projectId: 'project-1' }],
+        payload: {
+          schema: 'station.runtime.lifecycle/v1',
+          data: { phase: 'ready' },
+        },
+        occurredAt: new Date().toISOString(),
+        privacy: 'private',
+        delivery: 'durable',
+      }),
+    ).toMatchObject({ kind: 'appended' });
+    await vi.waitFor(() =>
+      expect(globals.__stationPublicReadinessEvents).toBe(before + 1),
+    );
+    writeFileSync(
+      join(artifact.packageRoot, 'server.mjs'),
+      'export function register() {}',
+    );
+    expect(await service.reconcile()).toEqual({ kind: 'applied', active: 0 });
+    expect(globals.__stationPublicReadinessEvents).toBe(before + 1);
+  } finally {
+    await service.close();
+  }
 });

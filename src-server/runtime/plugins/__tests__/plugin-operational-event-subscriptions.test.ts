@@ -100,6 +100,7 @@ function setup(input?: {
         operationalEvents: { observe },
       },
       release,
+      isCurrent: () => true,
     };
   });
   const logger = {

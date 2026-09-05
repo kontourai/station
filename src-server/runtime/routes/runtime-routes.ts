@@ -1336,6 +1336,8 @@ export function configureRuntimeRoutes(
       }),
   );
   const reviewedSourceBasisResolver = new ReviewedSourceBasisResolver({
+    packageMcpJournal:
+      context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
     projectHomeDir: context.configLoader.getProjectHomeDir(),
     logger: context.logger,
   });
