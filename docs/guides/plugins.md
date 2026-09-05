@@ -1398,7 +1398,7 @@ portable root fields never supply fallback actions or Agents.
 
 The five examples above retain their legacy manifest format because their
 structural Layout declarations have not yet been mapped. The remaining
-archive#265 / archive#346 conversion work is specific:
+[example migration](https://github.com/kontourai/station/issues/265) work is specific; the related [authoring-default decision](https://github.com/kontourai/station/issues/346) supplies its authoring context:
 
 | Example | Required structural mapping before switching its manifest schema |
 | --- | --- |
