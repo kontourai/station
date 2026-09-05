@@ -13,6 +13,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DEGRADED_QUERY_TIMEOUT_MS } from '../hooks/useDegradedQueryState';
+import { OPEN_PROJECT_CHATS_EVENT } from '../lib/projectChatEvents';
 
 const sdkMocks = vi.hoisted(() => ({
   project: undefined as ProjectConfig | undefined,
@@ -30,6 +31,8 @@ const sdkMocks = vi.hoisted(() => ({
   paneCatalogError: false,
   refetchPanes: vi.fn(),
   sessions: [] as Array<Record<string, unknown>>,
+  agents: [] as Array<Record<string, unknown>>,
+  engineConnections: [] as Array<Record<string, unknown>>,
 }));
 
 const navigationMocks = vi.hoisted(() => ({
@@ -104,6 +107,14 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   // Keep the new pane deployment query out of this Project Page unit fixture.
   useServerCapabilitiesQuery: vi.fn(() => ({ data: undefined })),
   useOrchestrationSessionsQuery: vi.fn(() => ({ data: sdkMocks.sessions })),
+  useAgentsQuery: vi.fn(() => ({
+    data: sdkMocks.agents,
+    isSuccess: true,
+    catalogState: 'live',
+  })),
+  useEngineConnectionsQuery: vi.fn(() => ({
+    data: sdkMocks.engineConnections,
+  })),
 }));
 
 vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
@@ -191,7 +202,10 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     sdkMocks.paneCatalogError = false;
     sdkMocks.refetchPanes.mockClear();
     sdkMocks.sessions = [];
+    sdkMocks.agents = [];
+    sdkMocks.engineConnections = [];
     navigationMocks.navigate.mockClear();
+    navigationMocks.setDockState.mockClear();
     navigationMocks.setLayout.mockClear();
   });
 
@@ -491,5 +505,95 @@ describe('ProjectPage (#762 query-failure regression)', () => {
 
     expect(screen.getByRole('button', { name: /Coding/ })).toBeTruthy();
     expect(screen.getByText('Could not load workspace panes')).toBeTruthy();
+  });
+
+  /**
+   * The banner used to read "Chat with Station … no setup required"
+   * unconditionally, and "Start a chat" called `setDockState(true)`, which
+   * revealed whatever conversation was last active — on a fresh install, a
+   * chat in no project at all, on the one Agent that still needed setup.
+   */
+  describe('"New here?" chat CTA', () => {
+    const readyCodex = () => {
+      sdkMocks.agents = [
+        {
+          slug: 'station',
+          name: 'Station',
+          available: false,
+          unavailableReason: 'No model resolves yet.',
+        },
+        {
+          slug: 'codex',
+          name: 'Codex',
+          execution: { agentConnectionId: 'codex-connection' },
+        },
+      ];
+      sdkMocks.engineConnections = [
+        {
+          id: 'codex-connection',
+          kind: 'agent',
+          enabled: true,
+          status: 'ready',
+          capabilities: ['agent-runtime'],
+        },
+      ];
+    };
+
+    test('names the Agent that can actually start the chat', async () => {
+      readyCodex();
+
+      await renderProjectPage();
+
+      expect(
+        screen.getByText('New here? Chat with Codex to get started.'),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Chat with Station/)).toBeNull();
+    });
+
+    test('withholds the banner, and its no-setup promise, when nothing can start a chat', async () => {
+      readyCodex();
+      sdkMocks.engineConnections = [
+        {
+          id: 'codex-connection',
+          kind: 'agent',
+          enabled: true,
+          status: 'connecting',
+          capabilities: ['agent-runtime'],
+        },
+      ];
+
+      await renderProjectPage();
+
+      expect(screen.queryByText(/no setup required/)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Start a chat' })).toBeNull();
+    });
+
+    test('asks the dock for a chat bound to this project, not just an open dock', async () => {
+      readyCodex();
+      const requests: Array<{ projectSlug?: string; projectName?: string }> =
+        [];
+      const listener = (event: Event) => {
+        requests.push(
+          (event as CustomEvent<{ projectSlug?: string }>).detail as {
+            projectSlug?: string;
+            projectName?: string;
+          },
+        );
+      };
+      window.addEventListener(OPEN_PROJECT_CHATS_EVENT, listener);
+      try {
+        await renderProjectPage();
+        fireEvent.click(screen.getByRole('button', { name: 'Start a chat' }));
+      } finally {
+        window.removeEventListener(OPEN_PROJECT_CHATS_EVENT, listener);
+      }
+
+      expect(requests).toEqual([
+        { projectSlug: 'demo', projectName: 'Demo Project' },
+      ]);
+      // The dock has to be revealed too: its New Chat dialog renders inside
+      // the dock shell, which is collapsed while closed.
+      expect(navigationMocks.setDockState).toHaveBeenCalledWith(true);
+    });
   });
 });

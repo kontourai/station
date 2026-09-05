@@ -64,6 +64,10 @@ import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import { useDockShellChrome } from '../../hooks/useDockShellChrome';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import {
+  OPEN_PROJECT_CHATS_EVENT,
+  type OpenProjectChatsDetail,
+} from '../../lib/projectChatEvents';
 import type {
   ChatSession,
   DockMode,
@@ -345,11 +349,6 @@ type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
     | { placement: 'dock'; shellChrome: AmbientDockShellApi }
     | { placement: 'fullscreen'; shellChrome?: never }
   );
-
-type ProjectChatsEventDetail = {
-  projectSlug?: string;
-  projectName?: string;
-};
 
 export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { placement, projectSlug, layoutSlug, onRequestAuth } = props;
@@ -1768,7 +1767,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   useEffect(() => {
     const openProjectChats = (event: Event) => {
-      const detail = (event as CustomEvent<ProjectChatsEventDetail>).detail;
+      const detail = (event as CustomEvent<OpenProjectChatsDetail>).detail;
       if (!detail?.projectSlug) return;
       if (routeToScopedChatProject(detail.projectSlug)) return;
 
@@ -1819,12 +1818,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         projectScoped: 1,
       });
     };
-    window.addEventListener('station:open-project-chats', openProjectChats);
+    window.addEventListener(OPEN_PROJECT_CHATS_EVENT, openProjectChats);
     return () => {
-      window.removeEventListener(
-        'station:open-project-chats',
-        openProjectChats,
-      );
+      window.removeEventListener(OPEN_PROJECT_CHATS_EVENT, openProjectChats);
     };
   }, [
     applyDockSnap,

@@ -516,8 +516,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     // archive#1629 removed the sidebar's "Project chats" pill (and its
     // `station:open-project-chats` dispatch) — ChatDock's listener for that
-    // event stays wired for other future callers, but nothing in the UI
-    // dispatches it anymore. Reroute through the still-existing "Start
+    // event stays wired, and the project page's "New here?" CTA is now its
+    // caller (`requestProjectChat`), but nothing on THIS route dispatches
+    // it. Reroute through the still-existing "Start
     // direct chat" home action, which reaches the same New Chat dialog in its
     // intentionally task-free "No workspace" state, then drive
     // the dock's own Maximize control explicitly — proving the maximize
