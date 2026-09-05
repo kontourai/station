@@ -331,6 +331,7 @@ export {
 export {
   type ACPConnectionInfo,
   type ACPConnectionRegistryEntry,
+  type ACPRegistryInstallAgentReceipt,
   type AcceptFlowExceptionInput,
   type AcpSlashCommandDescriptor,
   type AdoptOrchestrationSessionIntent,
@@ -396,6 +397,7 @@ export {
   clearFeedbackAnalysis,
   clearNotificationActivity,
   clearNotifications,
+  connectAndMaterializeACPRegistryEngine,
   createACPConnection,
   createAdoptOrchestrationSessionIntent,
   createAgent,
@@ -735,6 +737,7 @@ export {
   useCodingFilesQuery,
   useConfigProvenanceQuery,
   useConfigQuery,
+  useConnectAndMaterializeEngineMutation,
   useConnectionQuery,
   useConnectionsQuery,
   useConnectSshEnvironmentMutation,

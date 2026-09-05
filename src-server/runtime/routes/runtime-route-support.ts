@@ -1,6 +1,7 @@
 import { ACPStatus } from '@kontourai/station-contracts/acp';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
 import { runtimeAgentKey } from '../../routes/agents/runtime-agent-identity.js';
+import { listDetectedUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { readBootHistory } from '../../routes/system/boot-history.js';
 import {
@@ -172,6 +173,8 @@ export function createRuntimeSystemRouteDeps(
     // disagree (station#1194).
     listEngineConnectionStates: () =>
       context.connectionService.listEngineConnectionStates(),
+    listDetectedACPRegistryEntries: () =>
+      listDetectedUnconnectedACPRegistryEntries(context.configLoader),
     eventBus: context.eventBus,
     appConfig: context.appConfig,
     port: context.port,
