@@ -92,9 +92,7 @@ test('fresh source status stays source-only and offers no learning decisions', a
   );
   mount();
   expect(await screen.findByText('Exact source fixture')).toBeTruthy();
-  expect(
-    screen.getByText(/record status does not mean a learning is active/),
-  ).toBeTruthy();
+  expect(screen.getByText('Learning status is unverified.')).toBeTruthy();
   expect(screen.getByText(/UNTRUSTED_SOURCE_BODY/)).toBeTruthy();
   expect(
     screen.queryByRole('button', { name: /approve|promote|activate|retire/i }),

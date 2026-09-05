@@ -12,6 +12,7 @@ import {
   SkeletonList,
 } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useLocale } from '../../i18n/LocaleContext';
 import './LearningSourceDialog.css';
 
 type Authority = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
@@ -33,6 +34,7 @@ export function LearningSourceDialog({
   authority: Authority;
   onClose: () => void;
 }) {
+  const { formatDate } = useLocale();
   const current = authority.isCurrent();
   const query = useLearningSourceObservationQuery(
     reference,
@@ -76,25 +78,9 @@ export function LearningSourceDialog({
           <>
             <p className="learning-source-label">Source only</p>
             <h3>{observed.source.title}</h3>
-            <p>
-              This record does not supply a learning candidate, decision,
-              activation, or effect receipt. Its record status does not mean a
-              learning is active.
+            <p className="learning-source-disclosure">
+              Learning status is unverified.
             </p>
-            <dl className="learning-source-facts">
-              <dt>Record type</dt>
-              <dd>{observed.source.type}</dd>
-              <dt>Record status</dt>
-              <dd>{observed.source.status ?? 'Not supplied'}</dd>
-              <dt>Category</dt>
-              <dd>{observed.source.category}</dd>
-              <dt>Source freshness</dt>
-              <dd>Unknown</dd>
-              <dt>Owner revision</dt>
-              <dd>Unknown</dd>
-              <dt>Observed</dt>
-              <dd>{observed.observation.observedAt}</dd>
-            </dl>
             <details open>
               <summary>Source content</summary>
               <pre className="learning-source-content">
@@ -104,6 +90,29 @@ export function LearningSourceDialog({
             <details>
               <summary>Exact source and provenance</summary>
               <dl className="learning-source-facts">
+                <dt>Record type</dt>
+                <dd>{observed.source.type}</dd>
+                <dt>Record status</dt>
+                <dd>{observed.source.status ?? 'Not supplied'}</dd>
+                <dt>Category</dt>
+                <dd>{observed.source.category}</dd>
+                <dt>Source freshness</dt>
+                <dd>Unknown</dd>
+                <dt>Owner revision</dt>
+                <dd>Unknown</dd>
+                <dt>Observed</dt>
+                <dd>
+                  <time
+                    dateTime={observed.observation.observedAt}
+                    title={observed.observation.observedAt}
+                  >
+                    {formatDate(observed.observation.observedAt, {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })}
+                  </time>
+                </dd>
+
                 <dt>Store</dt>
                 <dd>{observed.source.rootId}</dd>
                 <dt>Record</dt>
@@ -137,12 +146,13 @@ export function LearningSourceDialog({
                   <code>{observed.observation.contentDigest}</code>
                 </dd>
               </dl>
+              <p className="learning-source-disclosure">
+                Record status does not establish learning activation. This is a
+                non-atomic observation. Transaction state and owner revision are
+                unknown; the digest identifies the bytes observed, not a
+                learning revision.
+              </p>
             </details>
-            <p className="learning-source-disclosure">
-              This is a non-atomic observation. Transaction state and owner
-              revision are unknown; the digest identifies the bytes observed,
-              not a learning revision.
-            </p>
           </>
         ) : query.data?.state === 'restricted' ? (
           <ErrorState

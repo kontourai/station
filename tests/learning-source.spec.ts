@@ -154,7 +154,7 @@ for (const viewport of [
         dialog.getByRole('heading', { name: TITLE, exact: true }),
       ).toBeVisible();
       await expect(
-        dialog.getByText(/record status does not mean a learning is active/),
+        dialog.getByText('Learning status is unverified.', { exact: true }),
       ).toBeVisible();
       await expect(
         dialog.getByRole('button', {
