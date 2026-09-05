@@ -192,12 +192,20 @@ This token does not authenticate a publisher. Registry signatures and trusted
 publisher changes must remain governed by the registry claim/pin owner, whose
 complete production integration is a separate qualification requirement.
 
-Qualification remains incomplete: durable pending-to-ready host activation,
-revocation-safe compensation, all contribution diagnostics, full captured-root
-propagation, and final routed gates are still required. Focused tests cover real Station Agent activation,
-withdrawal, injected activation-failure rollback, retained data, fresh rollback
-admission, and acquisition-origin refusal. They do not establish hosted execution
-or full enterprise support.
+The selected generation records pending activation before host effects. The
+existing runtime configuration owner verifies the declared resources and commits
+ready only after its applied rebuild; ordinary admission includes that readiness
+in its selected-generation fingerprint. Installed notifications are delivered
+after the runtime access barrier opens. Notification failure does not undo a
+committed installation, and events are hints rather than durable readiness proof.
+
+Qualification remains incomplete: provider visibility during pending composition,
+all contribution diagnostics and user-facing recovery, full captured-root
+propagation, and final routed gates are still required. Focused tests cover real
+Station Agent activation, withdrawal, permission-revocation races, injected
+activation-failure compensation, retained data, fresh compensation admission, and
+acquisition-origin refusal. They do not establish hosted execution or full
+enterprise support.
 
 A local journal scope or shared filesystem home is not tenant isolation. Hosted
 identity and policy must bind authenticated tenant scopes to their installation,
@@ -232,3 +240,30 @@ observation and cannot authorize restoration.
 These receipt objects are server-local transaction context, not public plugin
 SDK authority or durable approval. After a crash, recovery obtains fresh approval
 against current grant revisions instead of treating old receipts as permission.
+
+
+## Recovering an interrupted local installation
+
+`GET /api/plugins/:name/recovery-preview` inspects a pending journal selection and
+its retained artifact. `POST /api/plugins/:name/recover` requires that preview's
+`recoveryRevision` and a fresh permission decision, including current grant
+revisions for the package and its dependencies. These routes use the existing
+plugin administration authentication boundary; the revision is a comparison
+value, not a credential or a reusable authorization token. The [SDK reference](../reference/sdk.md)
+provides a client example and response handling.
+
+The local recovery adapter works after the original source and routing alias are
+removed. It verifies the retained bytes and origin, reuses the existing installer
+and contribution owners, and mints a new admission generation while preserving
+the data scope. It does not fetch dependencies or rebuild retained code. Missing
+managed dependencies must be installed first; pending dependencies must be
+recovered first, from leaves to parent. Changed bytes, grants, dependency
+selections, or activation evidence require a new preview or a reviewed original
+source. A previously ready installation is not a pending recovery candidate.
+
+Real process tests terminate the installer before host effects, after host effects,
+and before ready publication. Fresh processes exercise original-source recovery,
+alias-free retained recovery, and dependency-first graph recovery with data
+preservation. These tests use the local execution journal. They do not qualify a
+hosted recovery adapter, automatic graph replay, user-facing code rollback, data
+migration, or eventual delivery of an event lost during process termination.
