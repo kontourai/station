@@ -242,8 +242,14 @@ export async function previewPluginRecovery(
     `${apiBase}/api/plugins/${encodeURIComponent(name)}/recovery-preview`,
     opts,
   );
-  const result = await response.json();
-  if (!response.ok || result?.success === false)
+  const result: unknown = await response.json();
+  if (!response.ok)
+    throw new Error(
+      envelopeErrorMessage(result, 'Could not preview plugin recovery'),
+    );
+  if (!result || typeof result !== 'object' || Array.isArray(result))
+    throw new Error('Plugin recovery preview response is malformed');
+  if ('success' in result && result.success === false)
     throw new Error(
       envelopeErrorMessage(result, 'Could not preview plugin recovery'),
     );
