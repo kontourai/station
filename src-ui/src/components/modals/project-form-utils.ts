@@ -17,6 +17,26 @@ export function normalizeWorkingDirectory(value: string): string {
 }
 
 /**
+ * Whether a typed working directory has enough shape to ask the server about
+ * it: an absolute POSIX path, a `~/`-rooted path, or a Windows drive path,
+ * with at least one segment past the root.
+ *
+ * This is a question about the STRING and nothing more. It never claims the
+ * folder exists, is readable, or is a repository — only the server answers
+ * those, and the New Project form treats a refusal from it as the verdict.
+ * Its whole job is to keep a half-typed path (`/Us`, `~`, `code/`) from
+ * becoming a request.
+ */
+export function looksLikeWorkspacePath(value: string): boolean {
+  const normalized = normalizeWorkingDirectory(value);
+  const root = /^(\/|~\/|[A-Za-z]:[\\/])/.exec(normalized);
+  if (!root) return false;
+  return (
+    normalized.slice(root[0].length).split(/[\\/]/).filter(Boolean).length > 0
+  );
+}
+
+/**
  * The slug a New Project submission will actually POST. Exported so the
  * modal's pre-POST duplicate check (4-HOME-007) tests the same string the
  * request carries — a check against a differently-derived slug would clear a
