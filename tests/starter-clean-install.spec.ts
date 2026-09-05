@@ -105,7 +105,7 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
     await resumedEngines.getByRole('button', { name: 'Continue' }).click();
     await page
       .getByTestId('first-run-about-you')
-      .getByRole('button', { name: 'Skip' })
+      .getByRole('button', { name: 'Take the tour' })
       .click();
     await expect
       .poll(async () => {

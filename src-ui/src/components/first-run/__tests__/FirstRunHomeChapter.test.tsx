@@ -577,7 +577,9 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
       expect(screen.getByTestId('first-run-about-you')).toBeTruthy(),
     );
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Start your first chat' }),
+      );
     });
 
     expect(recordFirstRunDecision.mock.calls.map((call) => call[0])).toEqual([
@@ -608,7 +610,9 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
       expect(screen.getByTestId('first-run-about-you')).toBeTruthy(),
     );
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Start your first chat' }),
+      );
     });
     // The card is still on screen until the config refetch lands, so the
     // chapter is re-openable inside that window — and closing it must not
@@ -673,7 +677,9 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
       expect(screen.getByTestId('first-run-about-you')).toBeTruthy(),
     );
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Start your first chat' }),
+      );
     });
 
     expect(
@@ -859,4 +865,134 @@ describe('the disclosure is the first step of the run, not a modal over it', () 
     expect(recordFirstRunDecision).toHaveBeenCalledWith({ status: 'skipped' });
     expect(dismissUsageTelemetryDisclosure).not.toHaveBeenCalled();
   });
+});
+
+describe('first useful chat handoff', () => {
+  async function openQuestions() {
+    engineState.engines = [];
+    render(<FirstRunHomeChapter />);
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByTestId('first-run-about-you');
+  }
+
+  test.each([
+    ['Start your first chat', 'station:open-new-chat', 'done'],
+    ['Take the tour', 'station-start-first-run-tour', 'tour'],
+  ] as const)(
+    '%s saves intentional answers before its canonical intent',
+    async (label, eventName, chapter) => {
+      await openQuestions();
+      fireEvent.click(screen.getByRole('radio', { name: 'Engineer' }));
+      let finishSave!: () => void;
+      updateConfig.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishSave = resolve;
+          }),
+      );
+      const intent = vi.fn();
+      const otherIntent = vi.fn();
+      const otherEvent =
+        eventName === 'station:open-new-chat'
+          ? 'station-start-first-run-tour'
+          : 'station:open-new-chat';
+      window.addEventListener(eventName, intent);
+      window.addEventListener(otherEvent, otherIntent);
+      try {
+        fireEvent.click(screen.getByRole('button', { name: label }));
+        expect(updateConfig).toHaveBeenCalledWith({
+          userProfile: { role: 'engineer' },
+        });
+        expect(intent).not.toHaveBeenCalled();
+        expect(recordFirstRunDecision).not.toHaveBeenCalled();
+        expect(
+          (
+            screen.getByRole('button', {
+              name: 'Start your first chat',
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(true);
+        expect(
+          (
+            screen.getByRole('button', {
+              name: 'Take the tour',
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(true);
+        await act(async () => finishSave());
+        expect(intent).toHaveBeenCalledTimes(1);
+        expect(otherIntent).not.toHaveBeenCalled();
+        expect(firstRunStore.getSnapshot().chapter).toBe(chapter);
+        expect(screen.queryByTestId('first-run-about-you')).toBeNull();
+      } finally {
+        window.removeEventListener(eventName, intent);
+        window.removeEventListener(otherEvent, otherIntent);
+      }
+    },
+  );
+
+  test.each(['Start your first chat', 'Take the tour'])(
+    '%s stays recoverable when selected answers cannot be saved',
+    async (label) => {
+      await openQuestions();
+      fireEvent.click(screen.getByRole('radio', { name: 'Engineer' }));
+      updateConfig.mockRejectedValueOnce(new Error('offline'));
+      const intent = vi.fn();
+      window.addEventListener('station:open-new-chat', intent);
+      window.addEventListener('station-start-first-run-tour', intent);
+      try {
+        await act(async () =>
+          fireEvent.click(screen.getByRole('button', { name: label })),
+        );
+        expect(screen.getByRole('alert').textContent).toContain('offline');
+        expect(screen.getByTestId('first-run-about-you')).toBeTruthy();
+        expect(recordFirstRunDecision).not.toHaveBeenCalled();
+        expect(intent).not.toHaveBeenCalled();
+        await act(async () =>
+          fireEvent.click(screen.getByRole('button', { name: label })),
+        );
+        expect(intent).toHaveBeenCalledTimes(1);
+      } finally {
+        window.removeEventListener('station:open-new-chat', intent);
+        window.removeEventListener('station-start-first-run-tour', intent);
+      }
+    },
+  );
+});
+
+describe('leaving during personalization save', () => {
+  test.each(['Start your first chat', 'Take the tour'])(
+    '%s does not navigate after setup is closed',
+    async (label) => {
+      engineState.engines = [];
+      render(<FirstRunHomeChapter />);
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await screen.findByTestId('first-run-about-you');
+      fireEvent.click(screen.getByRole('radio', { name: 'Engineer' }));
+      let finishSave!: () => void;
+      updateConfig.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishSave = resolve;
+          }),
+      );
+      const intent = vi.fn();
+      window.addEventListener('station:open-new-chat', intent);
+      window.addEventListener('station-start-first-run-tour', intent);
+      try {
+        fireEvent.click(screen.getByRole('button', { name: label }));
+        fireEvent.click(screen.getByRole('button', { name: 'Close setup' }));
+        await act(async () => finishSave());
+        expect(intent).not.toHaveBeenCalled();
+        expect(
+          recordFirstRunDecision.mock.calls.map((call) => call[0].status),
+        ).toEqual(['skipped']);
+        expect(screen.queryByTestId('first-run-about-you')).toBeNull();
+        expect(firstRunStore.getSnapshot().deferred).toBe(true);
+      } finally {
+        window.removeEventListener('station:open-new-chat', intent);
+        window.removeEventListener('station-start-first-run-tour', intent);
+      }
+    },
+  );
 });

@@ -6,6 +6,7 @@ import {
   messageSearchExcerpt,
   querySessionOwner,
   queryTranscriptMessage,
+  queryTranscriptMessagePage,
   queryTranscriptMessages,
   queryTranscriptSession,
 } from '../orchestration/transcript-search-queries.js';
@@ -42,36 +43,41 @@ port.on('message', (wire: unknown) => {
             state: 'available',
             owner: querySessionOwner(database, request.threadId, true) ?? null,
           }
-        : request.type === 'message-open'
+        : request.type === 'message-page'
           ? {
               state: 'available',
-              target: queryTranscriptMessage(database, request),
+              page: queryTranscriptMessagePage(database, request),
             }
-          : request.type === 'session-open'
+          : request.type === 'message-open'
             ? {
                 state: 'available',
-                session: queryTranscriptSession(database, request),
+                target: queryTranscriptMessage(database, request),
               }
-            : {
-                state: 'available',
-                rows: queryTranscriptMessages(database, request, true).map(
-                  (row) => ({
-                    conversationId: row.threadId,
-                    matchedEventId: row.eventId,
-                    messageId:
-                      row.role === 'assistant' && row.turnAnchorId
-                        ? `${row.turnAnchorId}:assistant`
-                        : `${row.eventId}:user`,
-                    role: row.role,
-                    excerpt: messageSearchExcerpt(row.content, request.query),
-                    ...(row.projectSlug
-                      ? { projectSlug: row.projectSlug }
-                      : {}),
-                    ...(row.agentSlug ? { agentSlug: row.agentSlug } : {}),
-                    ...(row.engine ? { engine: row.engine } : {}),
-                  }),
-                ),
-              };
+            : request.type === 'session-open'
+              ? {
+                  state: 'available',
+                  session: queryTranscriptSession(database, request),
+                }
+              : {
+                  state: 'available',
+                  rows: queryTranscriptMessages(database, request, true).map(
+                    (row) => ({
+                      conversationId: row.threadId,
+                      matchedEventId: row.eventId,
+                      messageId:
+                        row.role === 'assistant' && row.turnAnchorId
+                          ? `${row.turnAnchorId}:assistant`
+                          : `${row.eventId}:user`,
+                      role: row.role,
+                      excerpt: messageSearchExcerpt(row.content, request.query),
+                      ...(row.projectSlug
+                        ? { projectSlug: row.projectSlug }
+                        : {}),
+                      ...(row.agentSlug ? { agentSlug: row.agentSlug } : {}),
+                      ...(row.engine ? { engine: row.engine } : {}),
+                    }),
+                  ),
+                };
   } catch {
     /* Failure never becomes an authoritative empty/ownerless result. */
   }

@@ -182,6 +182,9 @@ function fixture(
     hosted?: boolean;
     revoked?: boolean;
     receipt?: 'duplicate' | 'missing';
+    revisionEvidence?: ConstructorParameters<
+      typeof ProjectTaskRoomRuntime
+    >[0]['revisionEvidence'];
     corruptRecovery?: boolean;
     revokeAfterRecoveryCheckpoint?: boolean;
     revokeOnRecoveryWrite?: number;
@@ -256,6 +259,9 @@ function fixture(
     projectForId: (id) =>
       id === task.projectId ? { id, slug: 'project' } : undefined,
     history: () => room,
+    ...(options.revisionEvidence
+      ? { revisionEvidence: options.revisionEvidence }
+      : {}),
     working: {
       read: async () => {
         if (options.revokeAfterWorkingRead) revoked = true;
@@ -341,6 +347,106 @@ function fixture(
 }
 
 describe('ProjectTaskRoomRuntime', () => {
+  test.each([
+    'committed',
+    'duplicate',
+    'throwing-observer',
+    'revoked-subscriber',
+  ] as const)(
+    'gives %s document delivery an event-loop turn before synchronous evidence validation',
+    async (mode) => {
+      const order: string[] = [];
+      let armed = false;
+      let revoked = false;
+      const { runtime } = fixture({
+        ...(mode === 'duplicate' ? { receipt: 'duplicate' } : {}),
+        requestAuthority: {
+          resolve: async (request) => {
+            const deviceId = request.headers.get('x-room-device') ?? 'writer';
+            return revoked && deviceId === 'subscriber'
+              ? { kind: 'revoked' }
+              : {
+                  kind: 'granted',
+                  operatorId: 'operator-1',
+                  deviceId,
+                  policyRevision: 'pairing-v1',
+                };
+          },
+        },
+        revisionEvidence: {
+          available: () => {
+            if (armed) {
+              order.push('evidence-validation');
+              // Model the actual synchronous ledger restore, without making
+              // elapsed time itself the assertion or weakening validation.
+              const until = performance.now() + 30;
+              while (performance.now() < until) {}
+            }
+            return false;
+          },
+          recordPublication: () => ({ kind: 'unavailable' }),
+          links: { resolve: async () => ({ kind: 'unavailable' }) },
+          close: () => {},
+        },
+      });
+      const writer = new Request('http://station', {
+        headers: { 'x-room-device': 'writer' },
+      });
+      const subscription = await runtime.subscribe({
+        taskId: task.id,
+        request: new Request('http://station', {
+          headers: { 'x-room-device': 'subscriber' },
+        }),
+        emit: (event) => {
+          if (!armed) return;
+          const type = (event as { type?: unknown }).type;
+          if (type !== 'document' && type !== 'terminal') return;
+          order.push(String(type));
+          setImmediate(() => order.push('delivery-turn'));
+          if (mode === 'throwing-observer') throw new Error('observer failed');
+        },
+      });
+      if (subscription.kind !== 'subscribed')
+        throw new Error('expected subscription');
+      subscription.activate();
+      try {
+        const plan =
+          mode === 'duplicate'
+            ? {
+                kind: 'planned' as const,
+                intentId: 'persisted-plan',
+                digest: 'a'.repeat(64),
+              }
+            : await runtime.editPlan({
+                taskId: task.id,
+                request: writer,
+                intentId: 'publication-priority',
+                desiredText: 'next',
+                selection: { anchor: 4, focus: 4 },
+              });
+        if (plan.kind !== 'planned') throw new Error('expected plan');
+        armed = true;
+        revoked = mode === 'revoked-subscriber';
+        const result = await runtime.submitBatch({
+          taskId: task.id,
+          request: writer,
+          intentId: plan.intentId,
+          intentDigest: plan.digest,
+        });
+        expect(result.kind).toBe(
+          mode === 'duplicate' ? 'duplicate' : 'committed',
+        );
+        expect(order).toEqual([
+          mode === 'revoked-subscriber' ? 'terminal' : 'document',
+          'delivery-turn',
+          'evidence-validation',
+        ]);
+      } finally {
+        subscription.unsubscribe();
+        await runtime.close();
+      }
+    },
+  );
   test('liveActivity: deterministically scans a bounded room prefix and caps authorized rooms', () => {
     const entries = Array.from(
       { length: LIVE_ACTIVITY_MAX_ROOM_SCAN + 12 },

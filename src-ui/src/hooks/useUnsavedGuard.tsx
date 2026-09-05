@@ -20,12 +20,15 @@ import { navigationStore } from '../contexts/navigation-store';
 export function useUnsavedGuard(dirty: boolean) {
   const [showDiscard, setShowDiscard] = useState(false);
   const pendingRef = useRef<(() => void) | null>(null);
+  const pendingCancel = useRef<(() => void) | undefined>(undefined);
   const navigationGuardId = useRef(Symbol('unsaved-navigation-guard'));
 
   useEffect(() => {
     if (dirty || !showDiscard) return;
     setShowDiscard(false);
     pendingRef.current = null;
+    pendingCancel.current?.();
+    pendingCancel.current = undefined;
   }, [dirty, showDiscard]);
 
   // Browser close / reload
@@ -42,8 +45,10 @@ export function useUnsavedGuard(dirty: boolean) {
   }, [dirty]);
 
   const guard = useCallback(
-    (cb: () => void) => {
+    (cb: () => void, cancelled?: () => void) => {
       if (dirty) {
+        pendingCancel.current?.();
+        pendingCancel.current = cancelled;
         pendingRef.current = cb;
         setShowDiscard(true);
       } else {
@@ -66,6 +71,7 @@ export function useUnsavedGuard(dirty: boolean) {
 
   const onConfirm = useCallback(() => {
     setShowDiscard(false);
+    pendingCancel.current = undefined;
     pendingRef.current?.();
     pendingRef.current = null;
   }, []);
@@ -73,6 +79,8 @@ export function useUnsavedGuard(dirty: boolean) {
   const onCancel = useCallback(() => {
     setShowDiscard(false);
     pendingRef.current = null;
+    pendingCancel.current?.();
+    pendingCancel.current = undefined;
   }, []);
 
   // `useCallback`, not a plain function declaration. Declared inline, this is a

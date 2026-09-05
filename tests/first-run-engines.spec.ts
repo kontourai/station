@@ -327,21 +327,21 @@ function firstRunWrites(writes: Record<string, unknown>[]): FirstRunRecord[] {
     .filter((record): record is FirstRunRecord => Boolean(record));
 }
 
-/**
- * The "About you" step's own Skip, and only it.
- *
- * `{ name: 'Skip' }` is a substring match, and since archive#3656 the shell renders
- * a `Skip to content` control as the document's first focusable element (the
- * tour's `Skip the tour` is a third). A bare name is therefore a strict-mode
- * violation that fires on every load, not a flake. Scoped to the step AND
- * exact, so it names one control for the same reason the step does
- * (archive#3877).
- */
-function skipAboutYou(page: Page) {
-  return page
+/** Finish the questions through the primary action and reach the real picker. */
+async function startFirstChat(page: Page) {
+  await page
     .getByTestId('first-run-about-you')
-    .getByRole('button', { name: 'Skip', exact: true })
+    .getByRole('button', { name: 'Start your first chat', exact: true })
     .click();
+  await expect(
+    page.getByRole('dialog', { name: 'New Chat', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('dialog', { name: 'New Chat', exact: true }),
+  ).toHaveCSS('opacity', '1');
+  await expect(
+    page.getByRole('button', { name: 'Skip the tour', exact: true }),
+  ).toHaveCount(0);
 }
 
 function engineRow(page: Page, engineId: string) {
@@ -656,7 +656,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
     await page.getByTestId('first-run-engines-retry').click();
 
     await expect(page.getByTestId('first-run-about-you')).toBeVisible();
-    await skipAboutYou(page);
+    await startFirstChat(page);
     await expect
       .poll(() => firstRunWrites(configWrites).map((record) => record.status))
       .toEqual(['completed']);
@@ -695,7 +695,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     // Finishing the questions is what completes the run, and it is the ONLY
     // thing that writes `completed`.
-    await skipAboutYou(page);
+    await startFirstChat(page);
     await expect(page.getByTestId('first-run-about-you')).toHaveCount(0);
     await expect
       .poll(() => firstRunWrites(configWrites).map((r) => r.status))
@@ -1069,4 +1069,257 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     // and says two, rather than promising a step that is not coming.
     await expect(page.getByText('Step 1 of 2')).toBeVisible();
   });
+});
+
+for (const viewport of [
+  { label: 'desktop', width: 1280, height: 900 },
+  { label: 'mobile', width: 390, height: 844 },
+]) {
+  test(`first useful chat completion on ${viewport.label}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await patchExternalEngines(page, []);
+    await pinAgentCatalog(page);
+    const writes = await pinFirstRun(page, { status: 'pending' });
+    await pinTelemetryDisclosure(page, { acknowledged: true });
+    await page.goto('/');
+    // This fixture has no ready engine: explicitly leave the prerequisite
+    // launcher before the independent first-run chapter can open.
+    await page
+      .getByRole('button', { name: 'Continue Without Setup', exact: true })
+      .click();
+    const engines = page.getByTestId('first-run-engines');
+    await expect(engines).toBeVisible({ timeout: 20_000 });
+    await engines
+      .getByRole('button', { name: 'Continue', exact: true })
+      .click();
+    await expect(
+      page.locator(
+        '[data-testid="first-run-about-you"], [data-testid="engine-picker"]',
+      ),
+    ).toBeVisible();
+    if (await page.getByTestId('engine-picker').isVisible()) {
+      await page.getByRole('button', { name: 'Dismiss engine picker' }).click();
+    }
+    const questions = page.getByTestId('first-run-about-you');
+    await expect(questions).toBeVisible();
+    await questions
+      .getByRole('button', { name: 'Start your first chat' })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: testInfo.outputPath(`first-chat-choice-${viewport.label}.png`),
+      animations: 'disabled',
+    });
+    await startFirstChat(page);
+    await expect
+      .poll(() => firstRunWrites(writes).map((record) => record.status))
+      .toEqual(['completed']);
+    await page.screenshot({
+      path: testInfo.outputPath(`first-chat-picker-${viewport.label}.png`),
+      animations: 'disabled',
+    });
+  });
+}
+
+async function setupReturnFixture(page: Page) {
+  let ready = false;
+  let deletedProject = false;
+  const projects = [
+    {
+      slug: 'setup-alpha',
+      name: 'Setup Alpha',
+      workingDirectory: '/fixture/alpha',
+      layoutCount: 0,
+    },
+    {
+      slug: 'setup-beta',
+      name: 'Setup Beta',
+      workingDirectory: '/fixture/beta',
+      layoutCount: 0,
+    },
+  ];
+  await patchExternalEngines(page, ENGINE_MIX);
+  await pinFirstRun(page, {
+    status: 'completed',
+    completedAt: '2026-09-04T00:00:00Z',
+  });
+  await pinTelemetryDisclosure(page, { acknowledged: true });
+  await page.route(
+    (url) => url.pathname === AGENTS_PATH,
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: [
+            {
+              slug: 'setup-assistant',
+              name: 'Setup Assistant',
+              available: ready,
+              model: 'fixture-model',
+              modelOptions: [{ id: 'fixture-model', name: 'Fixture Model' }],
+              ...(!ready
+                ? {
+                    unavailableReason: 'Connect a Model to continue',
+                    unavailableFix: { kind: 'model-connection' },
+                  }
+                : {}),
+            },
+          ],
+        }),
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/projects',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: projects.filter(
+            (project) => !deletedProject || project.slug !== 'setup-beta',
+          ),
+        }),
+      }),
+  );
+  await page.route(
+    (url) => /^\/api\/projects\/setup-(alpha|beta)$/.test(url.pathname),
+    (route) => {
+      const slug = new URL(route.request().url()).pathname.split('/').pop();
+      const missing = deletedProject && slug === 'setup-beta';
+      return route.fulfill({
+        status: missing ? 404 : 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          missing
+            ? { success: false, error: 'Project no longer available' }
+            : {
+                success: true,
+                data: {
+                  ...projects.find((project) => project.slug === slug),
+                  agents: ['setup-assistant'],
+                },
+              },
+        ),
+      });
+    },
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: /^(New chat|Start a chat)$/ }).click();
+  const modal = page.getByRole('dialog', { name: 'New Chat', exact: true });
+  await expect(modal).toBeVisible();
+  await modal.locator('.new-chat-modal__context-button').click();
+  await page.locator('[data-context-value="setup-beta"]').click();
+  await expect(
+    modal.getByRole('button', { name: 'Workspace: Setup Beta' }),
+  ).toBeVisible();
+  return {
+    modal,
+    repair: () => {
+      ready = true;
+    },
+    deleteProject: () => {
+      deletedProject = true;
+    },
+  };
+}
+
+for (const viewport of [
+  { label: 'desktop', width: 1280, height: 900 },
+  { label: 'mobile', width: 390, height: 844 },
+]) {
+  test(`New Chat setup return preserves choices on ${viewport.label}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    const fixture = await setupReturnFixture(page);
+    await fixture.modal
+      .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
+      .click();
+    await expect(fixture.modal).toHaveCount(0);
+    await expect(page).toHaveURL(/\/connections/);
+    const returnButton = page.getByRole('button', {
+      name: 'Return to New Chat',
+      exact: true,
+    });
+    await expect(returnButton).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath(`setup-return-banner-${viewport.label}.png`),
+      animations: 'disabled',
+    });
+    // The fixture models an externally completed provider setup. Returning
+    // must refetch the canonical catalog rather than trust its earlier row.
+    fixture.repair();
+    await returnButton.click();
+    await expect(fixture.modal).toHaveCSS('opacity', '1');
+    await expect(
+      fixture.modal.getByRole('button', { name: 'Workspace: Setup Beta' }),
+    ).toBeVisible();
+    await expect(
+      fixture.modal.locator('[data-agent-slug="setup-assistant"]'),
+    ).toBeEnabled();
+    await expect(
+      page.getByRole('button', { name: 'Return to New Chat', exact: true }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath(`setup-return-picker-${viewport.label}.png`),
+      animations: 'disabled',
+    });
+  });
+}
+
+test('New Chat setup return supports Back, cancellation and deleted Project disclosure', async ({
+  page,
+}) => {
+  const fixture = await setupReturnFixture(page);
+  await fixture.modal
+    .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Return to New Chat', exact: true }),
+  ).toBeVisible();
+  await page.goBack();
+  await expect(fixture.modal).toBeVisible();
+  await expect(
+    fixture.modal.getByRole('button', { name: 'Workspace: Setup Beta' }),
+  ).toBeVisible();
+  await fixture.modal
+    .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
+    .click();
+  fixture.deleteProject();
+  await page
+    .getByRole('button', { name: 'Return to New Chat', exact: true })
+    .click();
+  // The SDK's failed-query retry budget can outlast Playwright's 5s assertion default.
+  await expect(fixture.modal).toBeVisible({ timeout: 15_000 });
+  await expect(
+    fixture.modal
+      .getByRole('alert')
+      .filter({ hasText: 'workspace you selected' }),
+  ).toContainText('workspace you selected is no longer available');
+  await expect(
+    fixture.modal.getByRole('button', { name: 'Workspace: Select workspace' }),
+  ).toBeVisible();
+  await fixture.modal.locator('.new-chat-modal__context-button').click();
+  await page.locator('[data-context-value="setup-alpha"]').click();
+  await fixture.modal
+    .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Cancel return', exact: true })
+    .click();
+  await expect(fixture.modal).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Return to New Chat', exact: true }),
+  ).toHaveCount(0);
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event('station:open-new-chat')),
+  );
+  await expect(fixture.modal).toBeVisible();
+  await expect(
+    fixture.modal.getByRole('button', { name: 'Workspace: No workspace' }),
+  ).toBeVisible();
 });
