@@ -53,7 +53,7 @@ test('coding example preserves both Panes and its authored native Agent in a rea
   let previous:
     | { defaultLLMProvider?: string; defaultModel?: string }
     | undefined;
-  let primaryFailure: unknown;
+  const failures: unknown[] = [];
   let installed = false;
   let created = false;
   let connected = false;
@@ -254,17 +254,22 @@ test('coding example preserves both Panes and its authored native Agent in a rea
     const cwd = receipt.session.cwd;
     expect(cwd).not.toBe(repo);
     expect(
-      execFileSync('git', ['-C', cwd, 'rev-parse', '--show-toplevel'], {
-        encoding: 'utf8',
-        windowsHide: true,
-      }).trim(),
+      realpathSync(
+        execFileSync('git', ['-C', cwd, 'rev-parse', '--show-toplevel'], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }).trim(),
+      ),
     ).toBe(realpathSync(cwd));
     expect(
       execFileSync('git', ['-C', repo, 'worktree', 'list', '--porcelain'], {
         encoding: 'utf8',
         windowsHide: true,
-      }),
-    ).toContain(`worktree ${realpathSync(cwd)}`);
+      })
+        .split('\n')
+        .filter((line) => line.startsWith('worktree '))
+        .map((line) => realpathSync(line.slice('worktree '.length).trim())),
+    ).toContain(realpathSync(cwd));
     const actionRequests = requests.filter((request) =>
       JSON.stringify(request).includes(
         'Review the current diff for correctness',
@@ -308,10 +313,8 @@ test('coding example preserves both Panes and its authored native Agent in a rea
     ).toHaveCount(0);
     await expect(page.locator('.coding-shell')).toHaveCount(0);
   } catch (error) {
-    primaryFailure = error;
-    throw error;
+    failures.push(error);
   } finally {
-    const failures: unknown[] = [];
     const clean = async (operation: () => unknown | Promise<unknown>) => {
       try {
         await operation();
@@ -333,10 +336,10 @@ test('coding example preserves both Panes and its authored native Agent in a rea
       await clean(() => json(`/api/connections/${connection}`, 'DELETE'));
     await clean(() => closeFixtureServer(fixture?.server ?? null));
     await clean(() => rmSync(root, { recursive: true, force: true }));
-    if (failures.length)
-      throw new AggregateError(
-        primaryFailure ? [primaryFailure, ...failures] : failures,
-        'Coding example cleanup failed',
-      );
   }
+  if (failures.length)
+    throw new AggregateError(
+      failures,
+      'Coding example execution or cleanup failed',
+    );
 });
