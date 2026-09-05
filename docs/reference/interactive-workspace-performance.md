@@ -14,6 +14,14 @@ driver only after the mounted surface can perform real query and interaction
 work. A missing mounted Pane or physical reference environment is deliberately
 reported as `NOT_VERIFIED`.
 
+Accepted document publication completes its ordered, currently authorized
+subscriber projection and yields an event-loop turn before synchronous revision
+ledger validation begins. The HTTP settlement still awaits evidence linking;
+seeing the working document does not prove that its evidence link is complete.
+This scheduling rule preserves validation and improves delivery priority. It
+does not bound the CPU cost of a growing ledger or establish the physical
+latency budget without a reference run.
+
 Every fixture report carries a versioned `foregroundWork` journal beside its
 percentiles and verdict. It retains at most 64 incidents and accepts only closed
 phase (`input`, `authoritative-apply`, `layout`, `render`, `pane-restoration`)
