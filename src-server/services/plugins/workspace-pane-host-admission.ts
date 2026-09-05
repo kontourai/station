@@ -20,7 +20,7 @@ import {
 } from './plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
 import { captureLocalPluginInstallation } from './plugin-installation-local.js';
-import { parsePluginManifestDocument } from './plugin-manifest-loader.js';
+import { parsePluginManifestDocumentWithFormat } from './plugin-manifest-loader.js';
 import type { CapturedPluginPermissionArtifact } from './plugin-permissions.js';
 
 /** Read the selected immutable artifact through its installation owner. */
@@ -51,12 +51,15 @@ export function captureWorkspacePaneHostPackage(
   const stat = lstatSync(manifestPath);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 256 * 1024)
     throw new ForegroundInvocationUnavailableError();
-  const manifest = parsePluginManifestDocument(
+  const parsed = parsePluginManifestDocumentWithFormat(
     readRegularFileNoFollow(projectHomeDir, manifestPath, {
       maxBytes: 256 * 1024,
     }),
     manifestPath,
   );
+  if (parsed.stationExtension?.status === 'disabled')
+    throw new ForegroundInvocationUnavailableError();
+  const manifest = parsed.manifest;
   const digest = computePluginContentDigest(
     dirname(pluginDir),
     basename(pluginDir),

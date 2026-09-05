@@ -185,6 +185,27 @@ async function ticket(input = request()) {
   return prepared.ticket;
 }
 
+test('invalid Station namespace does not claim known absence of host actions', async () => {
+  writeFileSync(
+    join(home, 'plugins', pluginId, 'plugin.json'),
+    JSON.stringify({
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: pluginId,
+      version: '1.0.0',
+      extensions: {
+        'io.kontourai.station': {
+          schemaVersion: 'unsupported',
+          workspacePaneHost: {},
+        },
+      },
+    }),
+  );
+  const catalog = await service.catalog('one');
+  expect(catalog.contributions).toEqual([]);
+  expect(catalog.complete).toBe(false);
+  expect(provider).not.toHaveBeenCalled();
+});
+
 test('HTTP host catalog -> prepare -> execute routes exact explicit Agent and literal intent once', async () => {
   const app = createWorkspacePaneHostActionRoutes({
     service,
