@@ -72,9 +72,28 @@ export function RequestInspectionDialog({
           ],
         }))
           cache.remove(mutation);
+      } else {
+        for (const mutation of cache.findAll({
+          mutationKey: [
+            'attention-request-response',
+            authority.apiBase,
+            authority.authorityKey,
+            reference.threadId,
+            reference.requestId,
+            reference.requestEventId,
+          ],
+          exact: true,
+        })) {
+          if (mutation.state.status === 'error')
+            mutation.setOptions({
+              mutationKey: mutation.options.mutationKey,
+              gcTime: Infinity,
+              meta: { isAuthorityCurrent: authority.isCurrent },
+            });
+        }
       }
     };
-  }, [queryClient, authority]);
+  }, [queryClient, authority, reference]);
   useEffect(() => {
     if (query.data?.state !== 'resolved' && query.data?.state !== 'changed')
       return;
@@ -96,6 +115,7 @@ export function RequestInspectionDialog({
   const attempted = attempts.some((status) => status !== 'idle');
   const response = useMutation({
     mutationKey,
+    meta: { isAuthorityCurrent: authority.isCurrent },
     mutationFn: async (decision: 'accept' | 'decline') => {
       if (!authority.isCurrent())
         throw new Error(
