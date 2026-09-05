@@ -7,6 +7,7 @@ import {
   parseTranscriptReadRequest,
   parseTranscriptReadResult,
   type TranscriptMessageOpenFact,
+  type TranscriptMessagePageFact,
   type TranscriptReadRequest,
   type TranscriptSearchMatch,
   type TranscriptSessionOpenFact,
@@ -18,6 +19,17 @@ import {
 /** Database owner only. Callers must still apply the live SessionAuthorization policy. */
 export interface IsolatedTranscriptReads
   extends Pick<OwnedSearchReadWorker, 'close' | 'inspect'> {
+  readMessagePage(
+    input: {
+      threadId: string;
+      matchedEventId: string;
+      ownerUserId: string;
+      legacyOwnerUserId?: string;
+      tenantId?: string;
+      continuation?: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<TranscriptMessagePageFact | null>;
   search(
     input: {
       query: string;
@@ -81,6 +93,15 @@ export function createIsolatedTranscriptReads(
   return {
     inspect: worker.inspect,
     close: worker.close,
+    async readMessagePage(input, signal) {
+      const result = await execute(
+        (id) =>
+          parseTranscriptReadRequest({ ...input, type: 'message-page', id }),
+        signal,
+      );
+      if (!('page' in result)) throw new Error('Transcript read unavailable');
+      return result.page;
+    },
     async search(input, signal) {
       const result = await execute(
         (id) => transcriptMessageRequest(input, id),

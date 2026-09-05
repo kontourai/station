@@ -5,7 +5,11 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { setClientCredentialResolver } from '../client/http';
-import { resolveSearchOpen, searchStation } from '../client/index';
+import {
+  readSearchMessage,
+  resolveSearchOpen,
+  searchStation,
+} from '../client/index';
 import { unifiedSearchQueries, useUnifiedSearchQuery } from '../unified-search';
 
 vi.mock('../api', () => ({
@@ -26,6 +30,56 @@ beforeEach(() => {
   }));
 });
 const request = { version: UNIFIED_SEARCH_V1, query: 'cobalt' };
+test('exact message page uses mandatory captured scope and rejects substituted identities or malformed pages', async () => {
+  const input = { sessionId: 'historical', matchedEventId: 'exact' };
+  const validPage = {
+    sessionId: 'historical',
+    matchedEventId: 'exact',
+    role: 'user',
+    text: 'canonical text',
+    contentRevision: 'a'.repeat(64),
+    offset: 0,
+  };
+  const fetch = vi.fn().mockImplementation(
+    async () =>
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: { state: 'available', page: validPage },
+        }),
+      ),
+  );
+  vi.stubGlobal('fetch', fetch);
+  await expect(
+    readSearchMessage(scopeA.apiBase, input, options),
+  ).resolves.toMatchObject({ page: validPage });
+  expect(String(fetch.mock.calls[0][0])).toBe(
+    'https://station.test/api/search/read-message',
+  );
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual(input);
+  for (const override of [
+    { sessionId: 'child' },
+    { matchedEventId: 'another-event' },
+    { text: 'x'.repeat(4097) },
+    { unexpected: 'field' },
+    { contentRevision: 'bad' },
+  ]) {
+    fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: { state: 'available', page: { ...validPage, ...override } },
+        }),
+      ),
+    );
+    await expect(
+      readSearchMessage(scopeA.apiBase, input, options),
+    ).rejects.toThrow('Unified search unavailable');
+  }
+  await expect(
+    readSearchMessage(scopeA.apiBase, input, {} as never),
+  ).rejects.toThrow('Unified search unavailable');
+});
 function response(title = 'cobalt') {
   return new Response(
     JSON.stringify({

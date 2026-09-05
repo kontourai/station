@@ -209,6 +209,7 @@ describe('e2e manifest', () => {
       'tests/connection-lost-access-request.spec.ts',
       'tests/plugin-preview.spec.ts',
       'tests/plugin-rejection-visibility.spec.ts',
+      'tests/workspace-search-exact-message.spec.ts',
       'tests/plugin-system.spec.ts',
       'tests/plugin-dependency-lifecycle.spec.ts',
       'tests/survey-review-workbench.spec.ts',
