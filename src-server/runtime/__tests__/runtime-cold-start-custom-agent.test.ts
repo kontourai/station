@@ -887,6 +887,54 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     captureSpy.mockRestore();
   });
 
+  it('rejects a foreign selected-package change across startup capture and recovers on retry', async () => {
+    home = await createSchemaHome('station-coldstart-selected-generation-');
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    replaceTerminalListener(runtime);
+    const peer = new EventStore(getOrchestrationDatabasePath(home));
+    const internal = runtime as any;
+    const capture = internal.captureAgentConfigurationRevisions.bind(runtime);
+    let count = 0;
+    const captureSpy = vi
+      .spyOn(internal, 'captureAgentConfigurationRevisions')
+      .mockImplementation(() => {
+        const before = capture();
+        if (++count === 1) {
+          const selected = peer
+            .createPackageMcpAdmissionJournal()
+            .recordInstallation({
+              pluginId: 'startup-fingerprint-fixture',
+              contentDigest: `sha256:${'a'.repeat(64)}`,
+              previous: null,
+            });
+          expect(selected.state).toBe('recorded');
+        }
+        return before;
+      });
+    const ready = vi.spyOn(internal, 'recordLoadedConfigurationRevisions');
+    try {
+      await expect(runtime.initialize()).rejects.toThrow(
+        'Runtime configuration changed while startup agents were being constructed',
+      );
+      expect(captureSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(ready).not.toHaveBeenCalled();
+      expect(internal.getStableAgentConfigurationRevision()).toBeNull();
+      await expect(runtime.initialize()).resolves.toBeUndefined();
+      // Startup may already have queued a normal configuration notification.
+      // Observe its owning queue rather than treating in-flight work as ready.
+      await internal.agentConfigurationMutationQueue;
+      expect(internal.getStableAgentConfigurationRevision()).not.toBeNull();
+    } finally {
+      captureSpy.mockRestore();
+      ready.mockRestore();
+      peer.close();
+    }
+  });
+
   it('does not report runtime readiness before Kit lifecycle discovery settles', async () => {
     home = await createSchemaHome('station-coldstart-kit-ready-');
     let releaseDiscovery!: () => void;

@@ -112,6 +112,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/run-connected-agent-tests.test.ts',
   // Real peer EventStores share one disposable SQLite home and survive owner death.
   'src-server/services/plugins/__tests__/package-mcp-admission.test.ts',
+  // Two real SQLite EventStores share durable selected-generation fixtures.
+  'src-server/runtime/bootstrap/__tests__/station-runtime-package-selection.test.ts',
   // fsync-backed AgentRegistry fixtures compose the runtime bootstrap path;
   // they own durable state but can share the bounded two-worker pool.
   'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts',
