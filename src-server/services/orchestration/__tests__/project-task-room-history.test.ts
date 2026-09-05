@@ -1382,3 +1382,105 @@ describe('ProjectTaskRoomHistory v2', () => {
     restartedStore.close();
   });
 });
+
+it('finds an exact retained proposal through the validated history reader', async () => {
+  const room = history();
+  try {
+    await room.open({ grant: grant('discover') });
+    await room.append(message('lookup-first'));
+    await room.append(message('lookup-second'));
+    await room.append(message('lookup-last'));
+    const page = await room.read({ grant: grant('history-read') });
+    if (page.kind !== 'available') throw new Error('Expected readable history');
+    expect(
+      await room.findByProposal({
+        grant: grant('history-read'),
+        proposalId: 'lookup-second',
+      }),
+    ).toEqual(page.records[1]);
+    expect(
+      await room.findByProposal({
+        grant: grant('history-read', 'denied'),
+        proposalId: 'lookup-second',
+      }),
+    ).toBeUndefined();
+    expect(
+      await room.findByProposal({
+        grant: grant('history-read'),
+        proposalId: 'missing',
+      }),
+    ).toBeUndefined();
+  } finally {
+    await room.close();
+  }
+});
+
+it('proposal lookup refuses a grant revoked between location and delivery', async () => {
+  let armed = false;
+  let reads = 0;
+  const room = history(undefined, {
+    capabilities: {
+      resolve: async (input) => {
+        if (armed && ++reads >= 2) return { kind: 'revoked' };
+        return capabilities.resolve(input);
+      },
+    },
+  });
+  try {
+    await room.open({ grant: grant('discover') });
+    await room.append(message('lookup-revoked'));
+    armed = true;
+    expect(
+      await room.findByProposal({
+        grant: grant('history-read'),
+        proposalId: 'lookup-revoked',
+      }),
+    ).toBeUndefined();
+    expect(reads).toBeGreaterThanOrEqual(2);
+  } finally {
+    await room.close();
+  }
+});
+
+it('proposal lookup does not fabricate pruned records from retained identity receipts', async () => {
+  const room = history();
+  try {
+    await room.open({ grant: grant('discover') });
+    for (let i = 0; i < TEST_RETENTION + 2; i++)
+      await room.append(message(`retained-${i}`));
+    expect(
+      await room.findByProposal({
+        grant: grant('history-read'),
+        proposalId: 'retained-0',
+      }),
+    ).toBeUndefined();
+    expect(
+      await room.findByProposal({
+        grant: grant('history-read'),
+        proposalId: `retained-${TEST_RETENTION + 1}`,
+      }),
+    ).toMatchObject({ body: { text: `retained-${TEST_RETENTION + 1}` } });
+  } finally {
+    await room.close();
+  }
+});
+
+it('proposal lookup reuses corruption refusal instead of returning unchecked indexed data', async () => {
+  const path = databasePath();
+  const room = history(path);
+  try {
+    await room.open({ grant: grant('discover') });
+    await room.append(message('lookup-corrupt'));
+    rewriteCommittedRecord(path, 'lookup-corrupt', (record) => {
+      record.body.text = 'tampered';
+    });
+    expect(
+      await room.findByProposal({
+        grant: grant('history-read'),
+        proposalId: 'lookup-corrupt',
+      }),
+    ).toBeUndefined();
+  } finally {
+    await room.close();
+  }
+});
