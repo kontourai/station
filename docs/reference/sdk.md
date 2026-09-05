@@ -1690,6 +1690,14 @@ are an explicit host contract, not a global replacement for authentication.
 
 Query factory for imperative fetching (e.g. in slash commands). Returns React Query config objects.
 
+Successful Agent detail reads infer `EnrichedAgentProjection`; tool reads retain
+an `unknown[]` payload for callers to narrow. Conversation list factories accept
+the existing array or `{ items }` response forms, and provider factories infer
+`OrchestrationProviderSummary[]`. These envelope types work in Node and browser
+consumers without relying on ambient `Response.json()` returning `any`. They do
+not add payload validation; conversation statistics keep their existing runtime
+parser, and HTTP status/error handling is unchanged.
+
 ```ts
 agentQueries.agent(agentSlug)                        // GET /api/agents/:slug
 agentQueries.tools(agentSlug)                        // GET /agents/:slug/tools
