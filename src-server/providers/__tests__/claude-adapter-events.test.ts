@@ -1,4 +1,7 @@
-import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
+import type {
+  PermissionUpdate,
+  SDKMessage,
+} from '@anthropic-ai/claude-agent-sdk';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { describe, expect, test, vi } from 'vitest';
 import { getConversationStats } from '../../runtime/conversation/conversation-manager.js';
@@ -15,6 +18,14 @@ import {
   mapClaudeTaskStatus,
   summarizeClaudeToolResult,
 } from '../adapters/claude-adapter-events.js';
+import {
+  CLAUDE_BASH_DEFERRED_RESULT,
+  CLAUDE_BASH_END_TURN_RESULT,
+  CLAUDE_BASH_FINAL_TEXT_ASSISTANT,
+  CLAUDE_BASH_TEXT_ASSISTANT,
+  CLAUDE_BASH_TOOL_RESULT_USER,
+  CLAUDE_BASH_TOOL_USE_ASSISTANT,
+} from './claude-adapter-tool-cycle-fixtures.js';
 
 const ANSWERABILITY: SessionAnswerabilityObservation = {
   threadAttachment: 'detached',
@@ -1551,4 +1562,122 @@ describe('claude token-usage.updated — provider-reported cost and cache (stati
       ).resolves.toMatchObject({ outputTokens: 5, totalTokens: 5 });
     },
   );
+});
+
+describe('a real Claude Bash tool cycle, replayed (#1536 finding B1)', () => {
+  // These replay CAPTURED SDK messages (claude-adapter-tool-cycle-fixtures.ts),
+  // not hand-written ones, because the defect this covers was invisible to
+  // hand-written coverage: the mapper mapped `tool.completed` correctly all
+  // along, and the engine simply never sent the `tool_result` it maps from.
+  function replay(messages: SDKMessage[]) {
+    const publish = vi.fn();
+    const record = makeRecord() as ClaudeMessageState;
+    for (const message of messages) {
+      mapClaudeSdkMessage({ provider: 'claude', record, publish, message });
+    }
+    return {
+      record,
+      events: publish.mock.calls.map(([event]) => event),
+    };
+  }
+
+  const TOOL_CALL_ID = 'toolu_01QuzhUwwwRumEUn3peJnLpw';
+
+  test('the resolved cycle maps to tool.started then tool.completed with the output', () => {
+    const { events } = replay([
+      CLAUDE_BASH_TEXT_ASSISTANT,
+      CLAUDE_BASH_TOOL_USE_ASSISTANT,
+      CLAUDE_BASH_TOOL_RESULT_USER,
+      CLAUDE_BASH_FINAL_TEXT_ASSISTANT,
+      CLAUDE_BASH_END_TURN_RESULT,
+    ]);
+
+    const toolEvents = events.filter((event) =>
+      String(event.method).startsWith('tool.'),
+    );
+    expect(toolEvents).toMatchObject([
+      {
+        method: 'tool.started',
+        toolCallId: TOOL_CALL_ID,
+        toolName: 'Bash',
+        arguments: { command: 'pwd' },
+      },
+      {
+        method: 'tool.completed',
+        toolCallId: TOOL_CALL_ID,
+        toolName: 'Bash',
+        status: 'success',
+        // The tool's real stdout, which is the thing the audited transcript
+        // never showed the user.
+        output: '/workspace/example',
+      },
+    ]);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'turn.completed',
+          finishReason: 'stop',
+          outputText: 'The directory is `/workspace/example`.',
+        }),
+      ]),
+    );
+  });
+
+  test('a deferred turn settles the call as an error and does NOT report a clean stop', () => {
+    // The engine ends this turn with the call unexecuted on
+    // `deferred_tool_use` and no `tool_result` — the exact shape #1536 B1
+    // rendered as "No result recorded · 1 tool call unresolved" beside a
+    // completed turn.
+    const { events, record } = replay([
+      CLAUDE_BASH_TEXT_ASSISTANT,
+      CLAUDE_BASH_TOOL_USE_ASSISTANT,
+      CLAUDE_BASH_DEFERRED_RESULT,
+    ]);
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'tool.completed',
+          toolCallId: TOOL_CALL_ID,
+          toolName: 'Bash',
+          status: 'error',
+          error: expect.stringContaining('The tool did not run.'),
+        }),
+      ]),
+    );
+    const completed = events.find(
+      (event) => event.method === 'turn.completed',
+    ) as { finishReason?: string } | undefined;
+    // `'other'` deliberately, not `'stop'` (the bug) and not `'tool-calls'`:
+    // `PROVIDER_PROVEN_FINISH_REASONS` grants neither clear authority to
+    // `'other'` nor the claim that the turn reached its own outcome.
+    expect(completed?.finishReason).toBe('other');
+    // Settled, so a later replayed `tool_result` cannot double-report it.
+    expect(record.activeToolCalls?.has(TOOL_CALL_ID)).toBe(false);
+  });
+
+  test('a deferral the engine describes without a name still refuses a clean stop', () => {
+    // Version skew: `deferred_tool_use` present but nameless AND untracked.
+    // `tool.completed` requires a `toolName`, and inventing one would be a
+    // worse record than the completion's absence — so the honest signal has
+    // to survive on `finishReason` alone.
+    const { events } = replay([
+      {
+        ...(CLAUDE_BASH_DEFERRED_RESULT as unknown as Record<string, unknown>),
+        deferred_tool_use: { id: 'toolu_unknown' },
+      } as unknown as SDKMessage,
+    ]);
+
+    expect(
+      events.filter((event) => event.method === 'tool.completed'),
+    ).toHaveLength(0);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'turn.completed',
+          finishReason: 'other',
+        }),
+      ]),
+    );
+  });
 });

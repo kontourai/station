@@ -351,14 +351,26 @@ function preToolPolicyHookOutput(decision: PreToolPolicyDecision) {
   }
   // `ask` is Station's managed-engine outcome; Claude's existing canUseTool
   // owns interactive approval, so both it and an explicit `defer` pass through
-  // without opening a second Station approval request.
-  return {
-    continue: true,
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse' as const,
-      permissionDecision: 'defer' as const,
-    },
-  };
+  // without opening a second Station approval request. Carrying NO
+  // `permissionDecision` is what expresses that: the hook states no opinion
+  // and the engine's own permission flow — which is what `approvalMode`
+  // selects, via `permissionMode` (claude-approval-mode.ts) — decides, asking
+  // through `canUseTool` whenever it needs consent.
+  //
+  // NOT `permissionDecision: 'defer'`, which this used to return.
+  // `'defer'` is not a pass-through in the Claude hook contract: it hands the
+  // tool call BACK to the SDK host to execute. The CLI ends the turn on the
+  // spot with `stop_reason: 'tool_deferred'` and the call on
+  // `result.deferred_tool_use`, and never consults `canUseTool`. Station has
+  // no executor for a deferred call, so every tool call that reached this
+  // branch (i.e. everything not already granted or auto-approved) died
+  // silently: a `tool.started` with no `tool.completed`, and a turn that read
+  // as an ordinary stop (#1536 finding B1, #765 A4). Verified live against
+  // `claude` 2.1.261 in all three modes — `default`, `acceptEdits` and
+  // `bypassPermissions` all returned `stop_reason: 'tool_deferred'`,
+  // `result: ''`, `num_turns: 1` — while the same run with no
+  // `permissionDecision` routed the request to `canUseTool` and completed.
+  return { continue: true };
 }
 
 async function evaluateClaudePreToolPolicy(
