@@ -32,6 +32,7 @@ import {
   ComposerActionsMenu,
   type ComposerActionsMenuProps,
 } from '../chat-dock/ComposerActionsMenu';
+import { ArrowDownGlyph } from '../icons/Glyph';
 import { ModelSelectorAutocomplete } from '../ModelSelector';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
@@ -318,6 +319,7 @@ export function ChatInputArea({
   ]
     .filter(Boolean)
     .join(' ');
+  const agentAccessibleLabel = `Agent: ${agentLabel ?? 'current Agent'}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
   const safeMaxHeight = Math.max(dockHeight - 200, 120);
   const isMobile = useIsMobile();
   // A turn is in flight, so this send queues behind it rather than starting
@@ -430,26 +432,17 @@ export function ChatInputArea({
           <button
             ref={agentHandoffTriggerRef}
             type="button"
-            className="chat-input__agent-btn"
+            className="choice-trigger chat-input__agent-btn"
             onClick={agentHandoffDisabled ? undefined : onOpenAgentHandoff}
             aria-disabled={agentHandoffDisabled}
             aria-haspopup="dialog"
-            aria-label={`Agent: ${agentLabel ?? 'current Agent'}. ${
-              agentHandoffDisabled
-                ? (agentHandoffDisabledReason ?? 'Unavailable')
-                : 'Change Agent'
-            }`}
-            title={
-              agentHandoffDisabled
-                ? agentHandoffDisabledReason
-                : 'Continue this conversation with another Agent'
-            }
+            aria-label={agentAccessibleLabel}
+            title={agentAccessibleLabel}
           >
-            <span className="chat-input__choice-label">Agent</span>
             <span className="chat-input__agent-name">
               {agentLabel ?? 'Current Agent'}
             </span>
-            {'⌄'}
+            <ArrowDownGlyph className="choice-caret" />
           </button>
         )}
         <button
@@ -457,36 +450,16 @@ export function ChatInputArea({
           type="button"
           onClick={canModelSelect ? onModelOpen : undefined}
           aria-disabled={!canModelSelect}
-          className={`chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
+          className={`choice-trigger chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
           aria-haspopup="dialog"
           aria-expanded={modelQuery !== null && !input.startsWith('/model ')}
           aria-label={modelAccessibleLabel}
-          // archive#3969: "this binding" was our word for the agent and
-          // engine behind this chat. The fallback states the fact without
-          // inventing a cause — `modelSelectionReason` is where a specific
-          // one belongs.
-          title={
-            !canModelSelect
-              ? (modelSelectionReason ??
-                'You can’t change the model for this chat')
-              : isOverride
-                ? 'Model override active - click to change'
-                : 'Click to change model'
-          }
+          title={modelAccessibleLabel}
         >
-          <span className="chat-input__choice-label">Model</span>
-          <span className="chat-input__model-identity" aria-hidden="true">
-            {modelProviderLabel && (
-              <>
-                <span className="chat-input__model-provider">
-                  {modelProviderLabel}
-                </span>
-                <span>·</span>
-              </>
-            )}
-            <span className="chat-input__model-name">{modelLabel}</span>
+          <span className="chat-input__model-name" aria-hidden="true">
+            {modelLabel}
           </span>
-          {'⌄'}
+          <ArrowDownGlyph className="choice-caret" />
         </button>
         {isOverride && (
           <button
@@ -636,17 +609,6 @@ export function ChatInputArea({
               minHeight: 0,
             }}
           />
-          {input && (
-            <button
-              type="button"
-              onClick={onClearInput}
-              className="chat-input__clear"
-              aria-label="Clear input"
-              title="Clear input"
-            >
-              ×
-            </button>
-          )}
           {isOverLimit && (
             <div className="chat-input__attachment-error" role="alert">
               {overLimitBy.toLocaleString('en-US')} characters over the limit
@@ -709,6 +671,17 @@ export function ChatInputArea({
               }}
             />
           </React.Suspense>
+          {input && (
+            <button
+              type="button"
+              onClick={onClearInput}
+              className="chat-input__clear"
+              aria-label="Clear input"
+              title="Clear input"
+            >
+              Clear
+            </button>
+          )}
           <span className="chat-controls-row__spacer" />
           {turnInFlight ? (
             <button

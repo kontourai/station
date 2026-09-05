@@ -1,5 +1,34 @@
 import type { NotificationAction } from './notification.js';
+import type { RequestAnswerability } from './orchestration.js';
 import type { RequestOpenedEvent } from './runtime-events.js';
+
+/** The exact canonical open event behind one actionable approval/permission. */
+export interface AttentionRequestReference {
+  threadId: string;
+  requestId: string;
+  requestEventId: string;
+}
+
+export const ATTENTION_REQUEST_MAX_BYTES = 65_536;
+export const ATTENTION_REQUEST_ID_MAX_CHARS = 1_024;
+
+export type AttentionRequestInspection =
+  | {
+      state: 'open';
+      reference: AttentionRequestReference;
+      requestType: 'approval' | 'permission';
+      provider: string;
+      title: string;
+      body?: string;
+      openedAt: string;
+      answerability: RequestAnswerability;
+      canRespond: boolean;
+    }
+  | {
+      state: 'changed' | 'resolved' | 'unavailable';
+      reference: AttentionRequestReference;
+      message: string;
+    };
 
 export interface AttentionItemBase {
   id: string;
@@ -41,6 +70,7 @@ export type AttentionRequestType = RequestOpenedEvent['requestType'];
  */
 export interface ApprovalAttentionItem extends AttentionItemBase {
   kind: 'approval';
+  requestReference?: AttentionRequestReference;
   source: { notificationId: string; notificationSource: string };
   actions: NotificationAction[];
   openHref?: string;
@@ -78,6 +108,7 @@ export interface NeedsInputAttentionItem extends AttentionItemBase {
 /** See `NeedsInputAttentionItem` — same request-evidence projection, review_pending kind. */
 export interface ReviewPendingAttentionItem extends AttentionItemBase {
   kind: 'review_pending';
+  requestReference?: AttentionRequestReference;
   source: { threadId: string };
   openHref: string;
   requestType?: AttentionRequestType;

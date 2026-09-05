@@ -190,9 +190,6 @@ describe('e2e manifest', () => {
       // M3: read-only against the shared instance; its only write is the
       // browser context's own ambient dock document in localStorage.
       'tests/activity-pane.spec.ts': expect.any(String),
-      // The picker also writes only its browser-local dock/config fixture;
-      // retain exact enumeration of the already-reviewed manifest exception.
-      'tests/dock-occupant-picker.spec.ts': expect.any(String),
     });
     expect(new Set(classified).size).toBe(classified.length);
     expect(new Set(classified)).toEqual(new Set(productSpecs));
@@ -218,6 +215,7 @@ describe('e2e manifest', () => {
       'tests/external-session-follow.spec.ts',
       'tests/builder-delivery-viewer.spec.ts',
       'tests/meeting-notes.spec.ts',
+      'tests/learning-source.spec.ts',
       'tests/knowledge-library.spec.ts',
       // Both mutate shared instance state through the real API rather than
       // isolating with `page.route` (station#3736/#3743 both hid behind a

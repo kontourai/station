@@ -1,18 +1,22 @@
-import { expect, type Locator, type Page, test } from '@playwright/test';
-import {
-  buildLongSessionTurns,
-  createLongSessionEventWindowHandler,
-} from './fixtures/long-session';
+import { expect, type Locator, type Page } from '@playwright/test';
+import { buildLongSessionTurns } from './fixtures/long-session';
 import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import {
+  installJourneyProfile,
+  profileJourney,
+} from './helpers/journey-profile';
 import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
   seedActiveChats,
 } from './helpers/orchestration';
+import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import {
   installVisualViewportFixture,
@@ -71,7 +75,7 @@ async function mockChatShell(
       }),
     ),
   );
-  await page.route('**/api/**', (route) => {
+  await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     // `GET /api/plugins` answers `{ plugins: [...] }`, not the `{success,data}`
     // envelope the catch-all below returns. `PluginRegistry.ts:207-212`
@@ -231,7 +235,7 @@ async function mockChatShell(
               enabled: true,
               capabilities: ['agent-runtime', 'image-input', 'file-input'],
               config: {
-                executionClass: 'external',
+                engineId: 'claude',
                 defaultModel: 'model-selected',
               },
               status: 'ready',
@@ -335,7 +339,25 @@ async function mockChatShell(
           ],
         }),
       );
-    return route.fulfill(json({ success: true, data: [] }));
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/projects/default/layouts'
+    )
+      return route.fulfill(json({ success: true, data: [] }));
+    if (route.request().method() === 'GET' && path === '/api/projects/default')
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            id: 'default',
+            slug: 'default',
+            name: 'Default',
+            hasWorkingDirectory: false,
+          },
+        }),
+      );
+    if (await fulfillStationShellRead(route)) return;
+    return rejectUnexpectedFixtureRequest(route);
   });
   await page.route('**/config/app', (route) =>
     route.fulfill(
@@ -364,6 +386,28 @@ async function mockChatShell(
     ),
   );
   await page.route('**/events', (route) => route.abort());
+  for (const [id, reply] of [
+    ['conv-running', 'Working through the current task.'],
+    ['conv-review', 'Review needed before continuing.'],
+  ]) {
+    const turns = buildLongSessionTurns({
+      threadId: id,
+      provider: 'codex',
+      turnCount: 1,
+      replyText: () => reply,
+    });
+    await mockRuntimeConversation(page, {
+      id,
+      agentSlug: 'station',
+      title: 'Station Chat',
+      provider: 'codex',
+      model: 'model-selected',
+      projectSlug: 'default',
+      canContinue: true,
+      turns: () => turns,
+    });
+  }
+
   return () => providerCalls;
 }
 
@@ -395,14 +439,23 @@ async function openComposer(
   await runtimeRow.click();
   await expect(modal).toBeHidden();
   await expect(textarea).toBeVisible({ timeout: 15_000 });
+  if (agentSlug === 'claude') {
+    await expect(
+      page.getByRole('button', { name: /^Approval mode:/ }),
+    ).toBeVisible();
+    await expect(page.locator('.chat-input__model-btn')).toContainText(
+      'Selected Test Model',
+    );
+  }
   return textarea;
 }
 
 test('virtualizes a long real transcript while preserving reader controls on mobile', async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 390, height: 844 });
+  await installJourneyProfile(page);
   await mockChatShell(page);
   await installMockOrchestrationSse(page);
   const threadId = 'thread-long-transcript';
@@ -500,15 +553,17 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   let liveTurnPersisted = false;
   const requestedWindows: string[] = [];
   let messagesRequested = false;
-  await page.route(
-    `**/api/orchestration/sessions/${threadId}/event-window**`,
-    createLongSessionEventWindowHandler({
-      threadId,
-      availableTurns: () =>
-        liveTurnPersisted ? [...turns, persistedLiveTurn] : turns,
-      onRequest: (url) => requestedWindows.push(url),
-    }),
-  );
+  await mockRuntimeConversation(page, {
+    id: threadId,
+    agentSlug: 'station',
+    title: 'Long transcript',
+    provider: 'bedrock',
+    model: 'model-selected',
+    projectSlug: 'default',
+    canContinue: true,
+    turns: () => (liveTurnPersisted ? [...turns, persistedLiveTurn] : turns),
+    onWindow: (url) => requestedWindows.push(url),
+  });
   await page.route('**/api/orchestration/chat', (route) =>
     route.fulfill(
       json(
@@ -635,6 +690,7 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   expect(
     await transcript.locator('[data-transcript-row]').count(),
   ).toBeLessThan(80);
+  await page.evaluate(() => document.fonts.ready);
   const anchoredRow = await transcript.evaluate((element) => {
     element.scrollTop = Math.max(
       1,
@@ -708,91 +764,101 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   await jumpToTail.focus();
   await page.keyboard.press('Enter');
 
-  await emitMockOrchestrationEvent(page, 'orchestration:event', {
-    event: {
-      eventId: 'turn-live-started',
-      method: 'turn.started',
-      provider: 'bedrock',
-      threadId,
-      turnId: 'turn-live',
-      createdAt: '2026-07-19T10:09:59.000Z',
-      prompt: 'Live question',
-    },
-  });
-  await expect(
-    transcript.getByText('Live question', { exact: true }),
-  ).toHaveCount(1);
-  liveTurnPersisted = true;
-  await emitMockOrchestrationEvent(page, 'orchestration:event', {
-    event: {
-      eventId: 'turn-live-delta',
-      method: 'content.text-delta',
-      provider: 'bedrock',
-      threadId,
-      turnId: 'turn-live',
-      itemId: 'turn-live',
-      createdAt: '2026-07-19T10:10:00.000Z',
-      delta: 'Live bounded streaming growth.',
-    },
-  });
-  await expect(transcript).toContainText('Live bounded streaming growth.');
-  await expect(
-    transcript.getByText('Live bounded streaming growth.', { exact: true }),
-  ).toHaveCount(1);
-  const liveRowCount = Number(
-    await transcript
-      .getByTestId('virtualized-transcript-spacer')
-      .getAttribute('data-transcript-row-count'),
-  );
-  expect(liveRowCount).toBeGreaterThan(0);
-  expect(requestedWindows).toHaveLength(11);
-  await expect
-    .poll(() =>
-      transcript.evaluate(
-        (element) =>
-          element.scrollHeight - element.scrollTop - element.clientHeight,
-      ),
-    )
-    .toBeLessThanOrEqual(32);
-
-  await emitMockOrchestrationEvent(page, 'orchestration:event', {
-    event: {
-      eventId: 'turn-live-completed',
-      method: 'turn.completed',
-      provider: 'bedrock',
-      threadId,
-      turnId: 'turn-live',
-      createdAt: '2026-07-19T10:10:01.000Z',
-      outputText: 'Live bounded streaming growth.',
-    },
-  });
-  await expect.poll(() => requestedWindows.length).toBe(12);
-  await expect(
-    transcript.getByText('Live question', { exact: true }),
-  ).toHaveCount(1);
-  await expect
-    .poll(async () =>
-      Number(
+  await profileJourney(
+    page,
+    testInfo,
+    'long-transcript-stream',
+    { corpusTurns: turns.length, loadedWindows: requestedWindows.length },
+    async () => {
+      await emitMockOrchestrationEvent(page, 'orchestration:event', {
+        event: {
+          eventId: 'turn-live-started',
+          method: 'turn.started',
+          provider: 'bedrock',
+          threadId,
+          turnId: 'turn-live',
+          createdAt: '2026-07-19T10:09:59.000Z',
+          prompt: 'Live question',
+        },
+      });
+      await expect(
+        transcript.getByText('Live question', { exact: true }),
+      ).toHaveCount(1);
+      liveTurnPersisted = true;
+      await emitMockOrchestrationEvent(page, 'orchestration:event', {
+        event: {
+          eventId: 'turn-live-delta',
+          method: 'content.text-delta',
+          provider: 'bedrock',
+          threadId,
+          turnId: 'turn-live',
+          itemId: 'turn-live',
+          createdAt: '2026-07-19T10:10:00.000Z',
+          delta: 'Live bounded streaming growth.',
+        },
+      });
+      await expect(transcript).toContainText('Live bounded streaming growth.');
+      await expect(
+        transcript.getByText('Live bounded streaming growth.', { exact: true }),
+      ).toHaveCount(1);
+      const liveRowCount = Number(
         await transcript
           .getByTestId('virtualized-transcript-spacer')
           .getAttribute('data-transcript-row-count'),
-      ),
-    )
-    // The local prompt becomes one canonical user row and gains exactly one
-    // terminal assistant row. A sliding-window refresh that drops the
-    // displaced prior-newest turn would decrease this count instead.
-    .toBe(liveRowCount + 1);
-  const terminalOrder = await transcript.evaluate((element) => {
-    const text = element.textContent ?? '';
-    return [
-      text.indexOf('Transcript fixture 9999: prompt.'),
-      text.indexOf('Transcript fixture 9999: retained content for selection.'),
-      text.indexOf('Live question'),
-      text.indexOf('Live bounded streaming growth.'),
-    ];
-  });
-  expect(terminalOrder.every((position) => position >= 0)).toBe(true);
-  expect(terminalOrder).toEqual([...terminalOrder].sort((a, b) => a - b));
+      );
+      expect(liveRowCount).toBeGreaterThan(0);
+      expect(requestedWindows).toHaveLength(11);
+      await expect
+        .poll(() =>
+          transcript.evaluate(
+            (element) =>
+              element.scrollHeight - element.scrollTop - element.clientHeight,
+          ),
+        )
+        .toBeLessThanOrEqual(32);
+
+      await emitMockOrchestrationEvent(page, 'orchestration:event', {
+        event: {
+          eventId: 'turn-live-completed',
+          method: 'turn.completed',
+          provider: 'bedrock',
+          threadId,
+          turnId: 'turn-live',
+          createdAt: '2026-07-19T10:10:01.000Z',
+          outputText: 'Live bounded streaming growth.',
+        },
+      });
+      await expect.poll(() => requestedWindows.length).toBe(12);
+      await expect(
+        transcript.getByText('Live question', { exact: true }),
+      ).toHaveCount(1);
+      await expect
+        .poll(async () =>
+          Number(
+            await transcript
+              .getByTestId('virtualized-transcript-spacer')
+              .getAttribute('data-transcript-row-count'),
+          ),
+        )
+        // The local prompt becomes one canonical user row and gains exactly one
+        // terminal assistant row. A sliding-window refresh that drops the
+        // displaced prior-newest turn would decrease this count instead.
+        .toBe(liveRowCount + 1);
+      const terminalOrder = await transcript.evaluate((element) => {
+        const text = element.textContent ?? '';
+        return [
+          text.indexOf('Transcript fixture 9999: prompt.'),
+          text.indexOf(
+            'Transcript fixture 9999: retained content for selection.',
+          ),
+          text.indexOf('Live question'),
+          text.indexOf('Live bounded streaming growth.'),
+        ];
+      });
+      expect(terminalOrder.every((position) => position >= 0)).toBe(true);
+      expect(terminalOrder).toEqual([...terminalOrder].sort((a, b) => a - b));
+    },
+  );
   await loadEarlier.click();
   await expect.poll(() => requestedWindows.length).toBe(13);
   expect(new URL(requestedWindows[12]).searchParams.get('cursor')).toBe(
@@ -956,7 +1022,7 @@ test('keeps mobile attachment selection reviewable without moving the draft', as
   }
 
   await setVisualViewport(page, 844);
-  await textarea.click();
+  await textarea.click({ position: { x: 8, y: 8 } });
   await expect(menu).toBeHidden();
   await expect(textarea).toHaveValue('Review the attached notes');
   await reviewAttachments.click();
@@ -972,6 +1038,18 @@ test('stages a current-host attachment before dispatching only its opaque refere
   await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
 
+  await page.route(
+    '**/api/orchestration/conversations/staged-attachment-thread/event-window**',
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'This dispatch fixture does not emit provider events',
+        }),
+      }),
+  );
   const stageId = 'stage_11111111-1111-4111-8111-111111111111';
   let prepared: Record<string, unknown> | undefined;
   const dispatched: unknown[] = [];
@@ -1058,6 +1136,18 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
   test.setTimeout(30_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
+  await page.route(
+    '**/api/orchestration/conversations/paste-thread/event-window**',
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'This upload fixture does not emit provider events',
+        }),
+      }),
+  );
 
   const dispatched: unknown[] = [];
   await page.route('**/api/orchestration/chat', async (route) => {
@@ -1150,6 +1240,11 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
  */
 async function seedMobileTaskSwitcher(page: Page) {
   await mockChatShell(page);
+  for (const id of ['chat-running', 'chat-review'])
+    await page.route(
+      new RegExp(`/api/orchestration/sessions/${id}/checkpoints(?:\\?.*)?$`),
+      (route) => route.fulfill(json({ success: true, data: [] })),
+    );
   await seedActiveChats(page, [
     {
       sessionId: 'chat-running',
@@ -1246,9 +1341,10 @@ async function seedMobileTaskSwitcher(page: Page) {
 
 test('switches between mobile tasks and restores the exact active chat context', async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(20_000);
   await page.setViewportSize({ width: 390, height: 844 });
+  await installJourneyProfile(page);
   await seedMobileTaskSwitcher(page);
 
   await page.goto('/?dock=open&maximize=true&chat=conv-running');
@@ -1282,18 +1378,26 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect(menuBox?.x ?? -1).toBeGreaterThanOrEqual(0);
   expect((menuBox?.x ?? 0) + (menuBox?.width ?? 0)).toBeLessThanOrEqual(390);
 
-  await reviewRow.click();
-  await expect(menu).toBeHidden();
-  await expect(switcher).toBeFocused();
-  expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-review');
-
   const textarea = page.locator('textarea[placeholder*="Type a message"]');
-  await textarea.evaluate((element) => element.removeAttribute('disabled'));
-  await textarea.fill('return to this draft');
+  await profileJourney(
+    page,
+    testInfo,
+    'conversation-switch',
+    { conversations: 2 },
+    async () => {
+      await reviewRow.click();
+      await expect(menu).toBeHidden();
+      await expect(switcher).toBeFocused();
+      expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-review');
 
-  // The sheet's own dismiss control. The Escape path is the same claim through
-  // a different affordance and has its own test below (archive#3771), so this
-  // journey keeps exercising the button.
+      await expect(textarea).toBeEnabled();
+      await textarea.fill('return to this draft');
+
+      // The sheet's own dismiss control. The Escape path is the same claim through
+      // a different affordance and has its own test below (archive#3771), so this
+      // journey keeps exercising the button.
+    },
+  );
   await switcher.click();
   await menu.getByRole('button', { name: 'Close task switcher' }).click();
   await expect(menu).toBeHidden();
@@ -1348,11 +1452,11 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect(new URL(page.url()).searchParams.get('dock')).toBe('open');
   expect(new URL(page.url()).searchParams.get('maximize')).toBeNull();
   await expect(textarea).toHaveValue('return to this draft');
-  // The standalone project-context row is desktop-only now; on a phone the
-  // project switcher carries the visible name instead of a folder-only glyph.
+  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: 'Switch project — Default' }),
+    page.getByRole('menuitem', { name: /^Switch project/ }),
   ).toContainText('Default');
+  await page.getByRole('button', { name: 'Close actions menu' }).click();
   await expect(page.locator('.chat-input__model-name')).toHaveText(
     'model-selected',
   );
@@ -1371,14 +1475,10 @@ test('switches between mobile tasks and restores the exact active chat context',
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-running');
   await switcher.click();
-  // Same task, different row title: opening it above created its local chat,
-  // and the switcher names a chat by its title — an unstarted one has none, so
-  // the row that read "Worker task · delegated review" now reads "New chat".
-  // (Worth its own look: a delegated task's row loses its task identity the
-  // moment you open it.)
+  // The task retains its canonical identity after opening.
   await page
     .getByRole('dialog', { name: 'Switch task' })
-    .getByRole('button', { name: 'New chat, default', exact: true })
+    .getByRole('button', { name: /^Worker task · delegated review,/i })
     .click();
   await expect
     .poll(() => new URL(page.url()).searchParams.get('chat'))
@@ -1427,6 +1527,23 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
+  const touchTurns = buildLongSessionTurns({
+    threadId: 'touch-target-conversation',
+    provider: 'station-agent',
+    turnCount: 1,
+    replyText: () => 'A completed answer with actions.',
+  });
+  await mockRuntimeConversation(page, {
+    id: 'touch-target-conversation',
+    agentSlug: 'station',
+    title: 'Merge queue review',
+    provider: 'station-agent',
+    model: 'model-selected',
+    projectSlug: 'default',
+    canContinue: true,
+    turns: () => touchTurns,
+  });
+
   await page.route('**/api/orchestration/sessions/read-model', (route) =>
     route.fulfill(
       json({
@@ -1534,29 +1651,6 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     },
   ]);
 
-  await page.route(
-    '**/api/conversations/touch-target-conversation/open',
-    (route) =>
-      route.fulfill(
-        json({
-          success: true,
-          data: {
-            status: 'resolved',
-            conversation: {
-              id: 'touch-target-conversation',
-              title: 'Merge queue review',
-              agentSlug: 'station',
-              source: 'runtime',
-            },
-            currentSessionId: 'touch-target-conversation',
-            transcript: { available: true, owner: 'runtime', messageCount: 2 },
-            canContinue: true,
-            answerability: { answerable: true },
-            recoveryActions: [],
-          },
-        }),
-      ),
-  );
   await page.goto('/?dock=open&maximize=true&chat=touch-target-conversation');
   await dismissSetupLauncher(page);
   await expect(page.locator('#station-main')).toBeHidden();
@@ -1826,7 +1920,9 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
    * it was told to show.
    */
   await expect(
-    page.locator('#chat-dock').getByRole('button', { name: 'Hide Activity' }),
+    page
+      .getByRole('region', { name: 'Activity', exact: true })
+      .getByRole('button', { name: 'Hide Activity' }),
   ).toBeVisible({ timeout: 10_000 });
   const revealed = page.getByTestId('session-detail');
   await expect(revealed).toBeVisible({ timeout: 10_000 });
@@ -2068,12 +2164,12 @@ for (const viewport of [
     await expandMobileDock(page);
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     const selectedModel = page.locator('.chat-input__model-name');
-    await expect(selectedModel).toHaveText('test-model');
+    await expect(selectedModel).toHaveText('Selected Test Model');
     await expect(page.locator('.chat-input__model-btn')).toHaveAttribute(
       'aria-label',
       /agent default/,
     );
-    const selectedModelLabel = 'test-model';
+    const selectedModelLabel = 'Selected Test Model';
     const activeChatParam = new URL(page.url()).searchParams.get('chat');
     const switcher = page.getByRole('button', { name: /^Switch task/ });
     await expect(switcher).toContainText('New chat');
@@ -2089,7 +2185,7 @@ for (const viewport of [
             requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
           ),
       );
-      await textarea.evaluate((element) => element.removeAttribute('disabled'));
+      await expect(textarea).toBeEnabled();
       await textarea.fill('one\ntwo\nthree\nfour\nfive\nsix\nseven\neight');
       await textarea.focus();
       const openHeight = Math.round(
@@ -2256,13 +2352,11 @@ for (const viewport of [
     );
     const modelButton = page.locator('.chat-input__model-btn');
     await expect(modelButton).toBeVisible();
-    await expect(modelButton.locator('.chat-input__choice-label')).toHaveText(
-      'Model',
-    );
+    await expect(modelButton).toHaveText('Selected Test Model');
     await expect(modelButton.locator('.chat-input__model-name')).toHaveText(
-      'test-model',
+      'Selected Test Model',
     );
-    await expect(modelButton).toContainText('⌄');
+    await expect(modelButton.locator('svg[aria-hidden="true"]')).toHaveCount(1);
     const modelBox = await modelButton.boundingBox();
     expect(modelBox!.x + modelBox!.width).toBeLessThanOrEqual(viewport.width);
     const agentButton = page.locator('.chat-input__agent-btn');
@@ -2271,13 +2365,11 @@ for (const viewport of [
       'Agent: Claude. Send a message before changing Agent.',
     );
     await expect(agentButton).toHaveAttribute('aria-disabled', 'true');
-    await expect(agentButton.locator('.chat-input__choice-label')).toHaveText(
-      'Agent',
-    );
+    await expect(agentButton).toHaveText('Claude');
     await expect(agentButton.locator('.chat-input__agent-name')).toHaveText(
       'Claude',
     );
-    await expect(agentButton).toContainText('⌄');
+    await expect(agentButton.locator('svg[aria-hidden="true"]')).toHaveCount(1);
     const attach = page.getByRole('button', { name: 'Attach files' });
     const attachBox = await attach.boundingBox();
     expect(attachBox!.x + attachBox!.width).toBeLessThanOrEqual(viewport.width);
@@ -3106,3 +3198,175 @@ test('every mobile dock header control is part of the drag surface (#1052)', asy
     ).toHaveAttribute('data-dock-drag-passthrough', '');
   }
 });
+
+for (const width of [320, 390, 600]) {
+  test(`composer control rail contains its controls at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await mockChatShell(page);
+    await openComposer(page);
+    const rail = page.locator('.chat-input__meta');
+    await expect(rail).toBeVisible();
+    const controls = rail.locator(
+      '.chat-input__agent-btn, .chat-input__model-btn, .chat-input__approval-chip',
+    );
+    await expect(controls).toHaveCount(3);
+    const railBox = await rail.boundingBox();
+    expect(railBox).not.toBeNull();
+    for (const control of await controls.all()) {
+      await expect(control).toBeVisible();
+      const box = (await control.boundingBox())!;
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.x).toBeGreaterThanOrEqual(railBox!.x - 1);
+      expect(box.x + box.width).toBeLessThanOrEqual(
+        railBox!.x + railBox!.width + 1,
+      );
+    }
+    expect(
+      await rail.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth + 1,
+      ),
+    ).toBe(true);
+  });
+}
+
+test('profiles switching between authoritative conversations', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installJourneyProfile(page);
+  await seedMobileTaskSwitcher(page);
+  await page.goto('/?dock=open&chat=conv-running');
+  await dismissSetupLauncher(page);
+  const switcher = page.getByRole('button', { name: 'Switch task' });
+  const menu = page.getByRole('dialog', { name: 'Switch task' });
+  const textarea = page.locator('textarea[placeholder*="Type a message"]');
+  await expect(switcher).toBeVisible();
+  await profileJourney(
+    page,
+    testInfo,
+    'conversation-switch',
+    { conversations: 2 },
+    async () => {
+      for (const state of ['Attention needed', 'Active', 'Attention needed']) {
+        await switcher.click();
+        await menu
+          .getByRole('button', { name: 'Station Chat, Default' })
+          .filter({ hasText: state })
+          .click();
+        await expect(menu).toBeHidden();
+        if (state === 'Attention needed') {
+          await expect(textarea).toBeEnabled();
+          await textarea.fill('profile draft');
+        }
+      }
+      await expect(textarea).toHaveValue('profile draft');
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get('chat'))
+        .toBe('conv-review');
+    },
+  );
+});
+
+for (const width of [320, 390, 1280]) {
+  for (const theme of ['dark', 'light']) {
+    test(`value-only composer selectors at ${width}px in ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 844 });
+      await mockChatShell(page);
+      const textarea = await openComposer(page);
+      await page.evaluate(
+        (theme) => document.documentElement.setAttribute('data-theme', theme),
+        theme,
+      );
+      await textarea.fill('Ask a question or describe a task…');
+      await expect(
+        page.getByRole('button', { name: 'Send', exact: true }),
+      ).toBeEnabled();
+      const send = page.getByRole('button', { name: 'Send', exact: true });
+      await expect(send).toHaveCSS('opacity', '1');
+      expect((await backgroundPaint(send)).alpha).toBe(1);
+      await expect.poll(() => contrastRatio(send)).toBeGreaterThanOrEqual(4.5);
+      const drafts = page
+        .locator('.chat-controls-row')
+        .getByRole('button', { name: 'Drafts', exact: true });
+      const inputBox = (await textarea.boundingBox())!;
+      const draftsBox = (await drafts.boundingBox())!;
+      expect(draftsBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
+
+      const agent = page.getByRole('button', { name: /^Agent: Claude/ });
+      const model = page.getByRole('button', {
+        name: /^Model: Claude — Selected Test Model/,
+      });
+      await expect(agent).toHaveText('Claude');
+      await expect(agent).toHaveCSS('opacity', '1');
+      await expect(model).toHaveText('Selected Test Model');
+      await expect(model).toHaveAttribute(
+        'title',
+        /^Model: Claude — Selected Test Model/,
+      );
+      const rail = page.locator('.chat-input__meta');
+      const bounds = (await rail.boundingBox())!;
+      const approval = page.getByRole('button', { name: /^Approval mode:/ });
+      for (const control of [agent, model, approval]) {
+        const box = (await control.boundingBox())!;
+        expect(box.height).toBeGreaterThanOrEqual(width < 769 ? 44 : 32);
+        expect(box.x).toBeGreaterThanOrEqual(bounds.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(
+          bounds.x + bounds.width + 1,
+        );
+        expect(await contrastRatio(control)).toBeGreaterThanOrEqual(4.5);
+      }
+      const clear = page.getByRole('button', {
+        name: 'Clear input',
+        exact: true,
+      });
+      await expect(clear).toHaveText('Clear');
+      const clearBox = (await clear.boundingBox())!;
+      expect(clearBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
+      expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(
+        (await send.boundingBox())!.x,
+      );
+      await expect(textarea).toHaveCSS('outline-style', 'none');
+      const capsule = page.locator('.chat-input__capsule');
+      await expect(capsule).toHaveCSS('outline-style', 'solid');
+      await expect(capsule).toHaveCSS('outline-width', '2px');
+      await page.locator('.chat-input').screenshot({
+        path: testInfo.outputPath(`composer-${width}-${theme}.png`),
+      });
+      await model.click();
+      const picker = page.getByRole('dialog', { name: 'Choose model' });
+      await expect(picker).toBeVisible();
+      await picker.getByRole('button', { name: 'Close model picker' }).click();
+      await expect(picker).toBeHidden();
+      await expect(model).toBeFocused();
+      await model.press('Enter');
+      await expect(picker).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(picker).toBeHidden();
+      await expect(model).toBeFocused();
+      expect(
+        await model.evaluate((element) =>
+          Number.parseFloat(getComputedStyle(element).outlineWidth),
+        ),
+      ).toBeGreaterThanOrEqual(2);
+
+      await drafts.click();
+      const draftsDialog = page.getByRole('dialog', {
+        name: 'Portable drafts',
+      });
+      await expect(draftsDialog).toBeVisible();
+      await draftsDialog
+        .getByRole('button', { name: 'Close portable drafts' })
+        .click();
+      await expect(draftsDialog).toBeHidden();
+      await expect(textarea).toHaveValue('Ask a question or describe a task…');
+      await clear.click();
+      await expect(textarea).toHaveValue('');
+      await expect(clear).toBeHidden();
+    });
+  }
+}

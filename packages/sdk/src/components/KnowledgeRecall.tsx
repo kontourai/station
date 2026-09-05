@@ -70,6 +70,11 @@ export interface KnowledgeRecordDetailProps {
   graph: KnowledgeGraph;
   authorityKey: string;
   onSelect: (recordId: string) => void;
+  /** Optional host action over the exact selected canonical record. */
+  renderRecordActions?: (reference: {
+    rootId: string;
+    recordId: string;
+  }) => ReactNode;
   useRecordQuery?: KnowledgeRecordQueryHook;
   testIds?: KnowledgeRecallTestIds;
   renderLoading?: () => ReactNode;
@@ -92,6 +97,11 @@ export interface KnowledgeRecallBrowserProps {
     KnowledgeGraphRecordListProps,
     keyof KnowledgeRecallRendererProps
   >;
+  /** Optional host action over the exact selected canonical record. */
+  renderRecordActions?: (reference: {
+    rootId: string;
+    recordId: string;
+  }) => ReactNode;
   useRecordQuery?: KnowledgeRecordQueryHook;
   testIds?: KnowledgeRecallTestIds;
   renderRecordLoading?: () => ReactNode;
@@ -113,17 +123,7 @@ export function isRelevantKnowledgeRoot(
  * adapter and store answer that id so cached graph/detail UI cannot be relabeled
  * across root replacement.
  */
-export function knowledgeRootIncarnationKey(root: KnowledgeStoreRoot): string {
-  return JSON.stringify([
-    root.id,
-    root.scope.kind,
-    root.scope.kind === 'project' ? root.scope.projectSlug : null,
-    root.adapterId,
-    root.storeRoot,
-    root.displayName,
-    root.createdAt,
-  ]);
-}
+export { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 
 function declaredExpiry(record: KitRecord): string | null {
   if (record.expires_at) return record.expires_at;
@@ -432,6 +432,7 @@ export function KnowledgeRecordDetail({
   graph,
   authorityKey,
   onSelect,
+  renderRecordActions,
   useRecordQuery = useKnowledgeRecordQuery,
   testIds,
   renderLoading = () => (
@@ -486,12 +487,17 @@ export function KnowledgeRecordDetail({
   }
   if (!recordQuery.data) return renderMissing();
   return (
-    <CanonicalRecord
-      record={recordQuery.data}
-      graph={graph}
-      onSelect={onSelect}
-      testIds={testIds}
-    />
+    <>
+      <CanonicalRecord
+        record={recordQuery.data}
+        graph={graph}
+        onSelect={onSelect}
+        testIds={testIds}
+      />
+      {recordQuery.data.id === recordId
+        ? renderRecordActions?.({ rootId, recordId })
+        : null}
+    </>
   );
 }
 
@@ -512,6 +518,7 @@ export function KnowledgeRecallBrowser({
   renderGraph,
   graphListProps,
   useRecordQuery,
+  renderRecordActions,
   testIds,
   renderRecordLoading,
   renderRecordError,
@@ -573,6 +580,7 @@ export function KnowledgeRecallBrowser({
             authorityKey={authorityKey}
             onSelect={handleSelect}
             useRecordQuery={useRecordQuery}
+            renderRecordActions={renderRecordActions}
             testIds={testIds}
             renderLoading={renderRecordLoading}
             renderError={renderRecordError}

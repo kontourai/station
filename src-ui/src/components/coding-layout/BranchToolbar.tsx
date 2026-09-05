@@ -9,7 +9,7 @@ import {
 } from '../../hooks/useGitActions';
 import { useGitStatus } from '../../hooks/useGitStatus';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
-import { CheckGlyph, PinGlyph } from '../icons/Glyph';
+import { ArrowDownGlyph, CheckGlyph, PinGlyph } from '../icons/Glyph';
 import { resolveActiveRepo } from './activeRepo';
 import './BranchToolbar.css';
 import { SkeletonList } from '../state';
@@ -340,9 +340,7 @@ export function BranchToolbar({
                   <PinGlyph />
                 </span>
               )}
-              <span className="branch-toolbar__caret" aria-hidden="true">
-                ▾
-              </span>
+              <ArrowDownGlyph className="choice-caret" />
             </button>
 
             {repoMenuOpen && (
@@ -448,9 +446,7 @@ export function BranchToolbar({
           <span className="branch-toolbar__branch-name">
             {checkout.isPending ? 'Switching…' : (currentBranch ?? 'No branch')}
           </span>
-          <span className="branch-toolbar__caret" aria-hidden="true">
-            ▾
-          </span>
+          <ArrowDownGlyph className="choice-caret" />
         </button>
 
         {menuOpen && (

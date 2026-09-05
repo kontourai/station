@@ -13,11 +13,6 @@ import { ErrorState, SkeletonList } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
 import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
 import type { NavigationView } from '../types';
-import { WorkspacePaneAwayState } from '../workspace-panes/WorkspacePaneAwayState';
-import {
-  isAmbientDockOccupant,
-  useWorkspacePaneDockAction,
-} from '../workspace-panes/WorkspacePaneDockContext';
 import { selectClientWorkspacePaneRenderer } from '../workspace-panes/workspacePaneRendererSelection';
 import {
   HomeWorkspacePane,
@@ -106,23 +101,10 @@ export function HomeView({
     selection.candidate.source === 'primary' &&
     selection.candidate.renderer.kind === 'builtin-component';
 
-  // While Home's canonical occurrence occupies the ambient dock, this route
-  // renders the away state instead of a second live copy of the pane
-  // (archive#4090; disclosed the co-mount this replaces). The
-  // derivation is the host's own published occupant state through
-  // `isAmbientDockOccupant` — never a route-local flag — so choosing another
-  // dock occupant clears this state without any route-side bookkeeping.
-  const dock = useWorkspacePaneDockAction();
-  // Route-owned away state remains until surface placements stop reading the
-  // legacy workspace-pane dock adapter. // #928 step 5
-  const paneAway = isAmbientDockOccupant(dock, WORKSPACE_HOME_PANE_INSTANCE);
-
   // The un-removable floor (archive#3122): built once, used by both
   // branches below, so the granted path can only ever ADD a Pane above it —
   // there is no code path where a grant makes the built-in unreachable.
-  const builtinHome = paneAway ? (
-    <WorkspacePaneAwayState paneName={WORKSPACE_HOME_PANE_DESCRIPTOR.name} />
-  ) : builtinSelected ? (
+  const builtinHome = builtinSelected ? (
     <HomeWorkspacePaneBindingProvider
       binding={{ model, continuation, onNavigate }}
     >

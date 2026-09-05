@@ -1,0 +1,59 @@
+.request-inspection-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4, 16px);
+  background: rgb(0 0 0 / 55%);
+}
+.request-inspection-dialog {
+  width: min(560px, 100%);
+  max-height: 90dvh;
+  overflow-y: auto;
+  padding: var(--space-5, 20px);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg, 12px);
+}
+.request-inspection-detail {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.request-inspection-identity {
+  font-size: var(--font-size-sm, 13px);
+}
+.request-inspection-identity dd {
+  margin: 0 0 var(--space-2, 8px);
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+}
+.request-inspection-session {
+  color: var(--accent-primary);
+  text-decoration: underline;
+}
+
+.request-inspection-dialog code {
+  overflow-wrap: anywhere;
+}
+
+.request-inspection-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding-block: var(--space-4, 16px);
+}
+.request-inspection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2, 8px);
+}
+.request-inspection-session {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch-target-min, 44px);
+  margin-right: auto;
+}

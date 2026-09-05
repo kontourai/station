@@ -148,7 +148,55 @@ configuration rotates container output logs and grants a 30-second stop grace
 period. Its health check requires both image identity and live backend
 readiness. Application and workspace files need their own retention/backup policy.
 
+## Offline home recovery drill
+
+Use a disposable home first, with the same Station release on source and target.
+Record a Project, Task, room message, document edit, its durable edit receipt,
+and the published revision link. Make another edit so the first revision is no
+longer the current document. Stop every runtime using the source home before
+running the [home backup and restore commands](../reference/cli.md#home-backup):
+
+```bash
+station home backup --home=/srv/station/source-home --output=/srv/backups/station-drill --json
+station home restore --from=/srv/backups/station-drill --home=/srv/station/recovery-home --confirm --json
+```
+
+The archive contains sensitive home files and is not an encrypted transport.
+Restrict archive access and encrypt off-host storage using your organization's
+backup system. Preserve required evidence-signing keys securely; rotating the
+operator credential is separate from replacing those keys. OS-held credentials,
+external engine sessions, and workspace directories outside the home require
+their own recovery procedures. Use owner-approved pairing for target clients.
+
+Keep the source stopped and inaccessible to the recovery runtime. Open the
+target with an isolated instance and ports, then check the exact recorded
+Project/Task identities, room history, document, and original revision link.
+When replaying a durable edit receipt, verify that it references the original
+revision rather than the latest edit. Missing workspace files must remain
+unavailable until separately restored; a missing evidence key must produce
+unavailable evidence rather than silently re-signing old history. Do not resume
+agents until their workspace, credentials, and execution ownership are verified.
+
+The service integration drill in
+[`home-reference-recovery.test.ts`](../../src-server/services/orchestration/__tests__/home-reference-recovery.test.ts)
+executes real home backup/restore and persistence owners, removes its synthetic
+source home and external workspace, rotates the target operator credential, and
+checks exact references with intact and missing evidence keys. It uses a fixture
+request-authority adapter; it does not prove client pairing, provider credential
+migration, another operating system, or a cloud deployment. Run it with:
+
+```bash
+npm run test:focused -- src-server/services/orchestration/__tests__/home-reference-recovery.test.ts
+```
+
+Offline restore does not fence another host or grant it execution authority.
+Keep one active writer by operational control; automatic cross-host handoff,
+witness-less fork presentation, and per-tenant recovery require separate
+verification before offering those guarantees to customers.
+
 ## Reverse Proxy
+
+For a complete optional Compose proxy profile, see [Public HTTPS ingress](../../deploy/public-ingress/README.md). It keeps the root deployment private unless explicitly applied and removes direct Station host ports.
 
 Terminate TLS in a reverse proxy that forwards the one public origin. Do not
 split UI and API onto separate origins:

@@ -840,6 +840,7 @@ export {
   useKnowledgeStatusQuery,
   useKnowledgeTreeQuery,
   useKnowledgeUpdateMutation,
+  useLearningSourceObservationQuery,
   useLinkKnowledgeRecordMutation,
   useLoadedOrchestrationSessionsQuery,
   useMaterializeEngineAgentMutation,
@@ -1131,6 +1132,13 @@ export {
   orchestrationQueries,
   taskQueries,
 } from './queryFactories';
+export {
+  type AttentionRequestInspection,
+  type AttentionRequestReference,
+  attentionRequestQueryKey,
+  inspectAttentionRequest,
+  useAttentionRequestInspection,
+} from './request-inspection';
 export {
   claimSessionEventWindowCapabilityRecovery,
   fetchSessionEventWindowCapability,

@@ -8,6 +8,7 @@ import {
   inspectWorkspacePackage,
   packWorkspace,
   unpackWorkspace,
+  verifyWorkspacePackage,
 } from '@kontourai/station-shared/workspace-package';
 import { runCloudProjectImport } from './cloud-project-import.js';
 import { parseCoreArgs } from './core-api.js';
@@ -40,10 +41,17 @@ export function runCloudCommand(args: string[]): void | Promise<void> {
     ],
     'inspect-workspace': ['archive', 'key-file', 'json'],
     'unpack-workspace': ['archive', 'key-file', 'destination', 'json'],
+    'verify-workspace': [
+      'archive',
+      'key-file',
+      'workspace',
+      'workspace-paused',
+      'json',
+    ],
   };
   if (positionals.length !== 1 || !Object.hasOwn(actionOptions, action))
     throw new Error(
-      'Usage: station cloud <preview|template|keygen|pack-workspace|inspect-workspace|unpack-workspace|import-project> [options]',
+      'Usage: station cloud <preview|template|keygen|pack-workspace|inspect-workspace|unpack-workspace|verify-workspace|import-project> [options]',
     );
   const allowed = new Set(actionOptions[action]);
   for (const flag of Object.keys(flags))
@@ -73,13 +81,20 @@ export function runCloudCommand(args: string[]): void | Promise<void> {
             keyFile,
             sourcePaused: flags['source-paused'] === true,
           })
-        : action === 'inspect-workspace'
-          ? inspectWorkspacePackage({ archive: required('archive'), keyFile })
-          : unpackWorkspace({
+        : action === 'verify-workspace'
+          ? verifyWorkspacePackage({
               archive: required('archive'),
               keyFile,
-              destination: required('destination'),
-            });
+              workspace: required('workspace'),
+              workspacePaused: flags['workspace-paused'] === true,
+            })
+          : action === 'inspect-workspace'
+            ? inspectWorkspacePackage({ archive: required('archive'), keyFile })
+            : unpackWorkspace({
+                archive: required('archive'),
+                keyFile,
+                destination: required('destination'),
+              });
     console.log(JSON.stringify(result, null, 2));
     return;
   }

@@ -1823,3 +1823,110 @@ superseded host binding from being attributed to the current native connection.
 It is intentionally separate from `requestAuthority`: a valid authenticated
 recovery may advance credential generation while its host binding remains live.
 Ordinary unscoped SDK calls do not gain a host binding requirement.
+
+### Inspect a learning source
+
+`observeLearningSource(apiBase, reference, options?)` is available from
+`@kontourai/station-sdk/client`; `useLearningSourceObservationQuery(reference,
+requestScope, enabled?)` is available from the SDK root. The `apiBase` is the Station origin, as with other client operations. The reference carries
+`rootId`, exact `recordId`, and `rootIdentity: knowledgeRootIncarnationKey(root)`.
+The existing root identity helper remains exported by the SDK. The client sends
+its URI-encoded value in the bounded `x-station-knowledge-root-identity` header;
+it is a metadata mismatch precondition, never an authorization grant or immutable
+incarnation. Identically restored registrations can share the same key.
+
+The GET endpoint is `/api/knowledge/roots/:rootId/records/:id/source-observation`.
+It requires a currently authorized, middleware-bound home-possession credential,
+current route scope, single-operator deployment without tenant-scoped execution,
+and the exact registered personal `kit-default-store` root.
+Ordinary operator or paired remote credentials do not confer this capability.
+The constructor policy and route recheck authority before publishing the result.
+Other roots and credentials receive an identity-free restricted outcome.
+
+`LearningSourceObservation` (`station-contracts/learning-review`) distinguishes
+`observed` with `kind: 'source-only'` from identity-free failure states. Source
+status is generic record status, not learning activation. Content digest/time are
+Station observations; owner revision, freshness, and transaction state remain
+unknown, and the observation is non-atomic. The source read does not construct an
+adapter, repair records, or mutate the store. Ordinary recall reads retain their
+existing behavior.
+
+`KnowledgeRecallBrowser` and `KnowledgeRecordDetail` accept optional
+`renderRecordActions({ rootId, recordId })`. The slot is host-rendered and appears
+only for the exact selected loaded record. It introduces no Station UI dependency
+into the SDK. Station's Memory view uses it to open the source inspector.
+
+#### Public source-inspection integration behavior
+
+This surface is usable by any host built against the public Station packages; it
+does not require Station app internals or a particular company's filesystem
+layout. Obtain the selected root/record from the public Knowledge APIs. Use the
+[local Station launcher](cli.md#the-station-launcher) to redeem its one-time
+bootstrap link for the browser's home-possession session, or the documented
+[local grant flow](cli.md#scripted--non-interactive-use) for a local client. Do not
+substitute an operator API credential, a claimed locality field, or a loopback URL.
+A saved operator bearer takes precedence over a browser cookie; select the genuine
+local device-session connection when presenting the launch session.
+
+Hosts using Connect can capture credential evidence with its public
+`useConnections()` surface and derive the request scope with
+`requestAuthorityScopeFromCredentialEvidence`. Bind the SDK credential resolver
+to that same current evidence. The source hook accepts that public `ApiRequestScope`;
+there is no dependency on Station's private `ApiBaseContext`. The optional
+`renderRecordActions` slot lets the host supply its own source presentation.
+
+`apiBase` is the origin without `/api`. The reference must contain a selected root
+ID and exact record ID (at most 200 characters each); aliases are unsupported.
+Use the public root-key serializer, also available from
+`@kontourai/station-shared/knowledge-root-identity`. It serializes compact JSON in
+this order: root ID, scope kind, project slug or null, adapter ID, store root,
+display name, creation timestamp. Send its URI-encoded UTF-8 representation in
+`x-station-knowledge-root-identity` (at most 8,192 characters after encoding). This
+metadata comparison does not detect an identically restored registration or
+provide a revision/CAS contract.
+
+Unauthenticated ingress returns HTTP 401; missing route scope returns HTTP 403;
+invalid route references return HTTP 400. An admitted route returns the standard
+`{ success: true, data }` envelope: `observed` supplies only source fields, while
+`restricted`, `unsupported`, `missing`, `busy`, `corrupt`, `unavailable`,
+`invalid-input`, and `over-budget` contain no source identity. The reader bounds
+the complete source file to 256 KiB and refuses rather than truncating it.
+`busy` can be retried after the store operation settles. A stale registration must
+be reselected from fresh root data; retrying the old key cannot adopt its
+replacement. The SDK rejects malformed/mismatched observations and withholds
+cached source data during revalidation and failed reads.
+
+Hosted deployment and tenant-scoped execution are explicitly refused even for
+otherwise valid local credentials. Project/tenant record authorization and owner
+learning lifecycle intents are separate future contracts. Hosts should present
+these limits directly, without treating a source read as candidate approval,
+promotion, or effect evidence.
+
+### Exact attention request inspection
+
+`useAttentionRequestInspection(reference, requestScope)` reauthorizes the exact
+Session/request/opened-event tuple on every mount. Its query key includes the
+host-captured authority; cached data is withheld until the fresh read finishes.
+The imperative `inspectAttentionRequest` is also exported from the React-free
+client entry. Neither API chooses a replacement request automatically.
+
+```ts
+import { inspectAttentionRequest, respondToRequest } from '@kontourai/station-sdk/client';
+
+const inspection = await inspectAttentionRequest(requestScope.apiBase, reference, {
+  requestScope, signal,
+});
+// Only after an explicit user decision on an open, answerable inspection:
+await respondToRequest(requestScope.apiBase, {
+  threadId: reference.threadId,
+  requestId: reference.requestId,
+  expectedRequestEventId: reference.requestEventId,
+  decision,
+}, { requestScope });
+```
+
+The host captures `requestScope`; do not reconstruct it from a URL or title.
+Response commands preserve their existing receipts. An event mismatch or lost
+request authority is a refusal to act, requiring fresh inspection rather than a
+blind mutation retry. Requests without canonical approval/permission evidence
+keep their ordinary Session or notification fallback.

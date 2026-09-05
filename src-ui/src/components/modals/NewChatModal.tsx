@@ -25,6 +25,7 @@ import {
 import { HomeFolderLabel } from '../HomeFolderLabel';
 import { AgentIcon } from '../icons/AgentIcon';
 import {
+  ArrowDownGlyph,
   EngineGlyph,
   FolderGlyph,
   GlobeGlyph,
@@ -754,7 +755,7 @@ export function NewChatModal({
                 }
               />
             )}
-            <span className="new-chat-modal__chevron">▾</span>
+            <ArrowDownGlyph className="choice-caret" />
           </button>
 
           {contextOpen && !isMobile && (
