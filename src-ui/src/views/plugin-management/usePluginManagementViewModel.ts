@@ -136,7 +136,12 @@ export function usePluginManagementViewModel() {
     (plugin) => pluginSelectionId(plugin) === selectedPlugin,
   );
   const selectedReady =
-    selected && !isRejectedPlugin(selected) ? selected : undefined;
+    selected &&
+    !isRejectedPlugin(selected) &&
+    (!selected.installationReadiness ||
+      selected.installationReadiness.state === 'ready')
+      ? selected
+      : undefined;
 
   const { data: settingsData } = usePluginSettingsQuery(selectedReady?.name, {
     enabled: !!selectedReady?.hasSettings,
@@ -146,7 +151,9 @@ export function usePluginManagementViewModel() {
     enabled: !!selectedReady?.git,
   });
 
-  const saveSettingsMutation = usePluginSettingsMutation();
+  const saveSettingsMutation = usePluginSettingsMutation({
+    onError: (error) => setMessage({ type: 'error', text: error.message }),
+  });
   const previewMutation = usePluginPreviewMutation();
   const installMutation = usePluginInstallMutation();
   const createProjectMutation = useCreateProjectMutation();
@@ -287,6 +294,7 @@ export function usePluginManagementViewModel() {
     toggleProviderMutation.mutate(
       { pluginName, disabled },
       {
+        onError: (error) => setMessage({ type: 'error', text: error.message }),
         onSuccess: () =>
           queryClient.invalidateQueries({
             queryKey: ['plugin-providers', pluginName],
@@ -295,7 +303,10 @@ export function usePluginManagementViewModel() {
     );
   }
 
-  async function install(skipList?: string[]) {
+  async function install(
+    skipList?: string[],
+    dataPolicy: 'preserve' | 'retain-and-reset' = 'preserve',
+  ) {
     const source = installSource.trim();
     if (!source) return;
 
@@ -375,7 +386,12 @@ export function usePluginManagementViewModel() {
       {
         source,
         skip: skipList || Array.from(previewSkips),
+        dataPolicy,
+        expectedInstallation: basis.installationRevision,
         consent: {
+          ...(basis.grantRevision !== undefined
+            ? { grantRevision: basis.grantRevision }
+            : {}),
           permissions: basis.permissions.required,
           contentDigest: basis.contentDigest,
           dependencies: (basis.dependencies ?? []).map(
@@ -391,6 +407,12 @@ export function usePluginManagementViewModel() {
                       ? [
                           {
                             id: dependency.id,
+                            ...(dependency.consent.grantRevision !== undefined
+                              ? {
+                                  grantRevision:
+                                    dependency.consent.grantRevision,
+                                }
+                              : {}),
                             permissions: dependency.consent.permissions,
                             contentDigest: dependency.consent.contentDigest,
                             dependencies: dependency.consent.dependencies,
@@ -530,8 +552,14 @@ export function usePluginManagementViewModel() {
   function remove(name: string) {
     setRemoveConfirm(null);
     removeMutation.mutate(name, {
-      onSuccess: async () => {
-        setMessage({ type: 'success', text: `Removed ${name}.` });
+      onSuccess: async (result) => {
+        setMessage({
+          type: 'success',
+          text:
+            result.lifecycle?.reclamation === 'not-proven'
+              ? `Removed ${name} from Station. Its stored data and code are retained.`
+              : `Removed ${name}.`,
+        });
         deselectPlugin();
         await reloadClientPluginRegistry();
       },

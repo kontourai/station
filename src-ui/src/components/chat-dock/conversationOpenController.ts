@@ -20,6 +20,7 @@ interface ConversationOpenDockEffects {
   findTab: Parameters<typeof commitConversationOpen>[0]['findTab'];
   updateChat: (tabId: string, patch: Partial<ChatUIState>) => void;
   setRecovery: (recovery: ConversationOpenRecovery | null) => void;
+  isCurrent?: () => boolean;
 }
 
 export async function resolveConversationOpenAuthoritatively(
@@ -54,12 +55,12 @@ export function conversationOpenPatch(
 
 /** Resolve, open, and bind one picker/recovery row as a single UI command. */
 export async function openConversationForDock(
-  conversation: ConversationListItem,
+  conversation: ConversationListItem | string,
   effects: ConversationOpenDockEffects,
 ): Promise<boolean> {
   try {
     const resolution = await resolveConversationOpenAuthoritatively(
-      conversation.id,
+      typeof conversation === 'string' ? conversation : conversation.id,
       effects.apiBase,
     );
     const outcome = await commitConversationOpen({
@@ -67,15 +68,19 @@ export async function openConversationForDock(
       open: effects.open,
       projectName: effects.projectName,
       findTab: effects.findTab,
+      isCurrent: effects.isCurrent,
     });
     if (outcome.kind === 'recovery') {
+      if (typeof conversation === 'string') return false;
       effects.setRecovery(outcome.recovery);
       return true;
     }
+    if (effects.isCurrent?.() === false) return false;
     effects.updateChat(outcome.tabId, outcome.patch);
     effects.setRecovery(null);
     return true;
   } catch {
+    if (typeof conversation === 'string') return false;
     effects.setRecovery({ conversation, status: 'error' });
     return true;
   }
@@ -104,6 +109,7 @@ export async function commitConversationOpen({
   open,
   projectName,
   findTab,
+  isCurrent,
 }: {
   resolution: ConversationOpenResolution;
   open: (
@@ -114,19 +120,27 @@ export async function commitConversationOpen({
     model?: string,
     updatedAt?: string,
     acceptedModel?: string,
-    execution?: { hydrateMessages: true },
+    execution?: { hydrateMessages: true; beforeFocus?: () => boolean },
   ) => boolean | Promise<boolean>;
   projectName: (projectSlug: string | undefined) => string | undefined;
   findTab: (conversationId: string) => string | undefined;
+  isCurrent?: () => boolean;
 }): Promise<ConversationOpenCommit> {
   const conversation = resolution.conversation;
   if (
+    isCurrent?.() === false ||
     resolution.status === 'missing-session' ||
     resolution.status === 'unavailable'
   ) {
     return {
       kind: 'recovery',
-      recovery: { conversation, status: resolution.status },
+      recovery: {
+        conversation,
+        status:
+          resolution.status === 'missing-session'
+            ? 'missing-session'
+            : 'unavailable',
+      },
     };
   }
 
@@ -138,7 +152,7 @@ export async function commitConversationOpen({
     conversation.model,
     conversation.updatedAt,
     conversation.acceptedModel,
-    { hydrateMessages: true },
+    { hydrateMessages: true, ...(isCurrent ? { beforeFocus: isCurrent } : {}) },
   );
   if (!opened) {
     return {

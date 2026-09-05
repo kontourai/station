@@ -391,6 +391,9 @@ export function RegistryView({
       id: itemId,
       action: 'install' as const,
       consent: {
+        ...(data.grantRevision !== undefined
+          ? { grantRevision: data.grantRevision }
+          : {}),
         permissions: data.permissions.required,
         contentDigest: data.contentDigest,
         dependencies: (data.dependencies ?? []).map(
@@ -404,6 +407,11 @@ export function RegistryView({
                     ? [
                         {
                           id: dependency.id,
+                          ...(dependency.consent.grantRevision !== undefined
+                            ? {
+                                grantRevision: dependency.consent.grantRevision,
+                              }
+                            : {}),
                           permissions: dependency.consent.permissions,
                           contentDigest: dependency.consent.contentDigest,
                           dependencies: dependency.consent.dependencies,

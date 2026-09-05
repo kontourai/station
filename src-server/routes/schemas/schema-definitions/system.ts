@@ -125,6 +125,7 @@ export const pluginPreviewSchema = z.object({
  * refuses a decision that does not match the staged source.
  */
 export const pluginInstallConsentSchema = z.object({
+  grantRevision: z.string().min(1).max(256).optional(),
   permissions: z.array(z.string()).max(256),
   contentDigest: z.string().min(1).max(256),
   dependencies: z.array(z.string()).max(256).optional(),
@@ -132,6 +133,7 @@ export const pluginInstallConsentSchema = z.object({
     .array(
       z.object({
         id: z.string().min(1).max(128),
+        grantRevision: z.string().min(1).max(256).optional(),
         permissions: z.array(z.string()).max(256),
         contentDigest: z.string().min(1).max(256),
         dependencies: z.array(z.string()).max(256),
@@ -141,7 +143,35 @@ export const pluginInstallConsentSchema = z.object({
     .optional(),
 });
 
+const pluginInstallationRevisionSchema = z
+  .object({
+    scope: z.string().uuid(),
+    installation: z.string().min(1).max(64),
+    generation: z.string().uuid(),
+    materialization: z.string().uuid(),
+    dataScope: z.string().uuid(),
+    origin: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+    artifact: z
+      .object({ digest: z.string().regex(/^sha256:[0-9a-f]{64}$/) })
+      .strict(),
+  })
+  .strict();
+
+export const pluginRecoverySchema = z
+  .object({
+    recoveryRevision: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+    consent: pluginInstallConsentSchema.extend({
+      grantRevision: z.string().min(1).max(256),
+    }),
+  })
+  .strict();
+
 export const pluginInstallSchema = z.object({
+  dataPolicy: z.enum(['preserve', 'retain-and-reset']).optional(),
+  expectedInstallation: pluginInstallationRevisionSchema.nullable().optional(),
   source: z.string().min(1),
   skip: z.array(z.string()).optional(),
   consent: pluginInstallConsentSchema.optional(),
@@ -157,6 +187,8 @@ export const pluginInstallSchema = z.object({
  * alone, exactly as before.
  */
 export const registryPluginInstallSchema = registryInstallSchema.extend({
+  dataPolicy: z.enum(['preserve', 'retain-and-reset']).optional(),
+  expectedInstallation: pluginInstallationRevisionSchema.nullable().optional(),
   skip: z.array(z.string()).max(256).optional(),
   consent: pluginInstallConsentSchema.optional(),
 });

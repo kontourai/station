@@ -3,6 +3,7 @@
  * Used by both hooks and imperative fetching (e.g., slash commands)
  */
 
+import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import { parseConversationStatsResponse } from '@kontourai/station-contracts/runtime';
 import {
   _getApiBase,
@@ -13,8 +14,14 @@ import {
   searchKnowledge,
 } from './api';
 import { apiErrorMessage } from './api-core';
+import type { AgentEnvelope } from './client/agents';
+import type { ConversationInventoryPage } from './client/conversations';
 import type { ApiRequestScope } from './client/http';
 import { authenticatedFetch } from './client/http';
+import type {
+  ConversationSummary,
+  OrchestrationProviderSummary,
+} from './query-domains/chatRuntimeTypes';
 /**
  * A tools read that failed, with the HTTP status kept. `activating` is the
  * one case a caller must treat as "not yet" rather than "no".
@@ -49,9 +56,10 @@ export const agentQueries = {
       );
       if (response.status === 404) throw new Error('Agent not found');
       if (!response.ok) throw new Error('Failed to fetch agent');
-      const result = await response.json();
+      const result =
+        (await response.json()) as AgentEnvelope<EnrichedAgentProjection>;
       if (!result.success) throw new Error(result.error);
-      return result.data;
+      return result.data!;
     },
     staleTime: 5 * 60 * 1000,
   }),
@@ -80,8 +88,13 @@ export const agentQueries = {
         // shrug.
         const detail = await response
           .json()
-          .then((body: { error?: unknown }) =>
-            typeof body?.error === 'string' ? body.error : undefined,
+          .then((body: unknown) =>
+            body !== null &&
+            typeof body === 'object' &&
+            'error' in body &&
+            typeof body.error === 'string'
+              ? body.error
+              : undefined,
           )
           .catch(() => undefined);
         throw new AgentToolsRequestError(
@@ -92,9 +105,9 @@ export const agentQueries = {
           response.status,
         );
       }
-      const result = await response.json();
+      const result = (await response.json()) as AgentEnvelope<unknown[]>;
       if (!result.success) throw new Error(result.error);
-      return result.data;
+      return result.data!;
     },
     staleTime: 5 * 60 * 1000,
   }),
@@ -110,7 +123,7 @@ export const agentQueries = {
         `${apiBase}/agents/${agentSlug}/conversations/${conversationId}/stats`,
       );
       if (!response.ok) throw new Error('Failed to fetch stats');
-      const result = await response.json();
+      const result = (await response.json()) as AgentEnvelope<unknown>;
       if (!result.success) throw new Error(result.error);
       const stats = parseConversationStatsResponse(result.data);
       if (!stats) throw new Error('Invalid conversation stats response');
@@ -129,7 +142,10 @@ export const conversationQueries = {
         `${apiBase}/agents/${encodeURIComponent(agentSlug)}/conversations`,
       );
       if (!response.ok) throw new Error('Failed to fetch conversations');
-      const result = await response.json();
+      const result = (await response.json()) as AgentEnvelope<
+        | ConversationSummary[]
+        | Partial<ConversationInventoryPage<ConversationSummary>>
+      >;
       if (!result.success) throw new Error(result.error);
       return Array.isArray(result.data)
         ? result.data
@@ -157,11 +173,13 @@ export const orchestrationQueries = {
       const response = await authenticatedFetch(
         `${apiBase}/api/orchestration/providers`,
       );
-      const result = await response.json();
+      const result = (await response.json()) as AgentEnvelope<
+        OrchestrationProviderSummary[]
+      >;
       if (!response.ok || !result.success) {
         throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
       }
-      return result.data;
+      return result.data!;
     },
     staleTime: 30 * 1000,
   }),

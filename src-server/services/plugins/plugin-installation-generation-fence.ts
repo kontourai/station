@@ -9,7 +9,10 @@ import {
   computePluginContentDigest,
   withPluginContentLock,
 } from './plugin-content-integrity.js';
-import { withPluginProviderGrantPublication } from './plugin-permissions.js';
+import {
+  type CapturedPluginPermissionArtifact,
+  withPluginProviderGrantPublication,
+} from './plugin-permissions.js';
 
 export interface PluginInstallationGenerationFence {
   readonly installed: boolean;
@@ -23,6 +26,7 @@ export async function publishGrantedPluginProviderGeneration(input: {
   expectedProviderGeneration: number;
   prepared: PreparedPluginProviderRegistration[];
   isCurrent: () => boolean;
+  artifact?: CapturedPluginPermissionArtifact;
 }): Promise<'activated' | 'superseded'> {
   let registryOwnsPrepared = false;
   let publication:
@@ -41,6 +45,7 @@ export async function publishGrantedPluginProviderGeneration(input: {
           input.isCurrent,
         );
       },
+      input.artifact,
     );
   } catch (error) {
     if (!registryOwnsPrepared)
@@ -64,18 +69,22 @@ export async function withPluginInstallationGeneration<T>(input: {
   readonly pluginName: string;
   readonly expected: PluginInstallationGenerationFence;
   readonly effect: () => Promise<T>;
+  readonly capture?: () => PluginInstallationGenerationFence;
 }): Promise<
   | { readonly kind: 'applied'; readonly value: T }
   | { readonly kind: 'superseded' }
 > {
   return withPluginContentLock(input.pluginsDir, input.pluginName, async () => {
-    const installed = existsSync(
-      join(input.pluginsDir, input.pluginName, 'plugin.json'),
-    );
-    const installationGeneration = computePluginContentDigest(
-      input.pluginsDir,
-      input.pluginName,
-    );
+    const current = input.capture?.() ?? {
+      installed: existsSync(
+        join(input.pluginsDir, input.pluginName, 'plugin.json'),
+      ),
+      installationGeneration: computePluginContentDigest(
+        input.pluginsDir,
+        input.pluginName,
+      ),
+    };
+    const { installed, installationGeneration } = current;
     if (
       installed !== input.expected.installed ||
       installationGeneration !== input.expected.installationGeneration

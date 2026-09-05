@@ -25,11 +25,13 @@ export interface PluginPreviewPayload {
     id: string;
     consent?: {
       contentDigest: string;
+      grantRevision?: string;
       permissions: string[];
       dependencies: string[];
     };
   }>;
   contentDigest?: string;
+  grantRevision?: string;
   permissions?: {
     required: string[];
     autoGranted: string[];
@@ -80,6 +82,7 @@ export async function installPluginWithConsent(
         consent: {
           permissions: preview.permissions?.required ?? [],
           contentDigest: preview.contentDigest,
+          grantRevision: preview.grantRevision,
           dependencies: (preview.dependencies ?? []).map((entry) => entry.id),
           ...((preview.dependencies ?? []).some((entry) => entry.consent)
             ? {
@@ -91,6 +94,7 @@ export async function installPluginWithConsent(
                             id: entry.id,
                             permissions: entry.consent.permissions,
                             contentDigest: entry.consent.contentDigest,
+                            grantRevision: entry.consent.grantRevision,
                             dependencies: entry.consent.dependencies,
                           },
                         ]

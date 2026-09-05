@@ -1268,3 +1268,23 @@
     overflow-y: auto;
   }
 }
+
+.plugins__recovery {
+  overflow-wrap: anywhere;
+}
+.plugins__recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.plugins__recovery button {
+  min-height: 44px;
+}
+
+.plugins__list .split-pane__item--selected .split-pane__item-name {
+  color: var(--text-primary);
+}
+.plugins__list .split-pane__item--selected .split-pane__item-subtitle {
+  color: var(--text-secondary);
+}

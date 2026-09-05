@@ -109,6 +109,11 @@ const WorkspacePaneRouteView = lazy(() =>
     default: module.WorkspacePaneRouteView,
   })),
 );
+const WorkspacePaneHostActionsFrame = lazy(() =>
+  import('../workspace-panes/WorkspacePaneHostActions').then((module) => ({
+    default: module.WorkspacePaneHostActionsFrame,
+  })),
+);
 const ProjectFlowConsoleView = lazy(() =>
   import('../views/ProjectFlowConsoleView').then((module) => ({
     default: module.ProjectFlowConsoleView,
@@ -375,10 +380,12 @@ function AppViewContentBody({
   }
   if (currentView.type === 'layout') {
     return (
-      <ProjectLayoutRenderer
-        projectSlug={currentView.projectSlug}
-        layoutSlug={currentView.layoutSlug}
-      />
+      <WorkspacePaneHostActionsFrame projectSlug={currentView.projectSlug}>
+        <ProjectLayoutRenderer
+          projectSlug={currentView.projectSlug}
+          layoutSlug={currentView.layoutSlug}
+        />
+      </WorkspacePaneHostActionsFrame>
     );
   }
   if (currentView.type === 'project') {
@@ -386,12 +393,14 @@ function AppViewContentBody({
   }
   if (currentView.type === 'workspace-pane') {
     return (
-      <WorkspacePaneRouteView
-        projectSlug={currentView.projectSlug}
-        layoutSlug={currentView.layoutSlug}
-        descriptorId={currentView.descriptorId}
-        instanceId={currentView.instanceId}
-      />
+      <WorkspacePaneHostActionsFrame projectSlug={currentView.projectSlug}>
+        <WorkspacePaneRouteView
+          projectSlug={currentView.projectSlug}
+          layoutSlug={currentView.layoutSlug}
+          descriptorId={currentView.descriptorId}
+          instanceId={currentView.instanceId}
+        />
+      </WorkspacePaneHostActionsFrame>
     );
   }
   if (currentView.type === 'task') {

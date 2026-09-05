@@ -83,7 +83,7 @@ All fields:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | yes | Unique plugin identifier (used as install directory name) |
+| `name` | string | yes | Unique logical plugin identifier; the host owns its storage location |
 | `version` | string | yes | Semver version |
 | `sdkVersion` | string | no | Semver range of `@kontourai/station-sdk` required |
 | `displayName` | string | no | Human-readable name shown in UI |
@@ -92,6 +92,7 @@ All fields:
 | `serverModule` | string | no | Path to a server-side module that registers request-scoped plugin routes and lifecycle hooks |
 | `build` | string | no | Reserved; currently rejected so builds cannot execute manifest-supplied commands |
 | `capabilities` | string[] | no | Declared capabilities, e.g. `["chat", "navigation"]` |
+| `commands` | PluginCommandContribution[] | no | Inert palette-command declarations; registration alone grants no execution authority |
 | `permissions` | string[] | no | Permissions the plugin needs (see Permissions) |
 | `links` | unknown | no | Opaque link metadata returned by plugin preview; it grants no capability |
 | `agents` | array | no | Agent configs to install |
@@ -241,8 +242,8 @@ installed-plugin management surface. On a fresh Station installation, open
 and choose **Install**. No local path is needed for a bundled item.
 
 After installation, refresh Registry or open **Plugins** to confirm the item is
-installed. Installing makes a layout contribution available; it does not add
-that layout to every project. Open the target project, choose **Add**, then
+installed and runtime activation is ready. A ready installation makes a layout
+contribution available; it does not add that layout to every project. Open the target project, choose **Add**, then
 select the installed layout and open it from the project's layout cards.
 
 Removing a plugin from Registry or Plugins removes its installed contribution
@@ -257,6 +258,21 @@ keeps the folder visible with a **Rejected** badge, the validation reason, and
 specific repair guidance. Fix or restore the manifest, then choose **Reload
 plugins**. Station does not invent a version or expose normal settings, update,
 permission, or removal controls until the manifest validates again.
+
+### Recover interrupted activation
+
+An **Activation pending** plugin retains its code and data while its runtime
+contributions remain unavailable. Open **Plugins**, select it, and choose
+**Review recovery**. Review the permissions and retained dependencies, then
+choose **Recover plugin** and confirm the permission review. Recovery does not
+fetch replacement code or reset stored data. Trusted permissions still require
+the separate host approval flow.
+
+A recovery request may be accepted while runtime activation remains pending.
+Use **Refresh status** to read its current state; do not automatically replay the
+request. If a dependency must recover first, follow the server's dependency
+message, then obtain a fresh review for the parent. A changed approval or
+installation requires a new review, never reuse of an earlier decision.
 
 ## layout.json
 
@@ -1362,3 +1378,64 @@ module.exports = () => ({
   "providers": [{ "type": "branding", "module": "./providers/branding.js" }]
 }
 ```
+
+### Actions that belong to the workspace host
+
+Declare package-wide actions once in `plugin.json.workspacePaneHost`, using
+`version: "station.workspace-pane-host-contribution/v1"`. A Project's direct and
+placed Pane views display the same host action bar, outside the individual Pane.
+Use `agentSelection.availableAgents` and an optional explicit `defaultAgent` to
+choose the package's Agents. An `own-plugin-agent` reference contains a clean
+`agentId`; Station supplies installation ownership. `requiredAgents` only checks
+availability and never selects an Agent.
+
+An action's `intent` is either literal `prompt` data or an exact own-package
+`plugin-prompt` id. Label text is never treated as a prompt or routing address.
+An action may fix its own Agent; that binding takes precedence over the host
+selector. Grant `agents.invoke` in Library, configure the native model or external
+engine connection, and make the Agent available in the Project before running it.
+
+The host confirms that a conversation was accepted and offers **Open
+conversation**. If delivery is uncertain, inspect Activity; the host does not
+retry a possibly started action. Revoked permissions, changed packages, missing
+Agents, and unavailable execution modes remain visible failures.
+
+The demo, enterprise, coding, getting-started, and knowledge-docs examples each
+include an explicit old-to-new behavior table. Their package-global declarations
+are migrated. Enterprise tab-local **Review** buttons focus their matching host control; invocation and Agent authority remain with that control. Existing persisted Layout records
+are not rewritten, and this does not claim the entire structural Layout
+migration is complete.
+
+For an Agent Plugins 1.0 manifest, place the declaration at
+`extensions["io.kontourai.station"].workspacePaneHost` alongside
+`schemaVersion: "1.0"` and the namespace's `agents`. Station validates the host
+shape with the same contribution parser used by legacy manifests. Registered
+prompt actions read the normalized namespace's `prompts.source`; unknown
+portable root fields never supply fallback actions or Agents.
+
+Legacy plugin Layout actions never launch through an unqualified Agent fallback.
+Station can project unambiguous `inline-prompt` and `globalSkills` declarations
+from the installed artifact into the same captured host admission path, with an
+explicit available/default Agent and the current invocation permission. Ambiguous
+`prompt` declarations and unsupported action kinds remain review-only until the
+plugin is updated. Saved plugin Layout controls cannot revive execution after
+uninstall or a stale catalog response. User-authored Layouts without a plugin
+owner retain their explicit Agent actions.
+
+The five examples above retain their legacy manifest format because their
+structural Layout declarations have not yet been mapped. The remaining
+[example migration](https://github.com/kontourai/station/issues/265) work is specific; the related [authoring-default decision](https://github.com/kontourai/station/issues/346) supplies its authoring context:
+
+| Example | Required structural mapping before switching its manifest schema |
+| --- | --- |
+| `demo-layout` | Map `layout` (`demo`, `./layout.json`) and its tab component references to declared Workspace Panes and placement. Preserve its original native `assistant`. |
+| `coding-starter` | Map `layout` (`coding`, `./layout.json`) and each authored tab component to Workspace Panes and placement. Preserve the explicit `coding-starter-assistant` host default. |
+| `getting-started-starter` | Map `layout` (`getting-started`, `./layout.json`) and its tabs to Workspace Panes and placement. Preserve the explicit `getting-started-starter-assistant` host default. |
+| `knowledge-docs-starter` | Map `layout` (`knowledge-docs`, `./layout.json`) and its tabs to Workspace Panes and placement; retain its declared knowledge namespaces through their existing owner. |
+| `enterprise-layout` | Map `layout` (`enterprise`, `./layout.json`) and Calendar/CRM Review links to Workspace Panes/placement; map the required `NOTES_VAULT_PATH` install input, the two file-based CRM/calendar integration declarations, and the local `../shared-providers` dependency source without discarding any of them. Preserve its original native `enterprise-assistant`, knowledge declaration, and four authored host prompts. |
+
+For each conversion, move `displayName` to namespace `title`, make the
+`entrypoint` explicitly package-relative (`./src/index.tsx`), and move the
+supported Agent, capability, permission, and host-action declarations into the
+Station namespace. A schema-only rewrite is insufficient: installation,
+activation, each component, and real action execution must be verified together.

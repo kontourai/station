@@ -66,6 +66,7 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
   'station-vocabulary-gate',
   'random-uuid-guard',
   'dialog-surface-class-guard',
+  'agent-plugin-validators-gate',
   'a11y-ratchet',
 ]);
 
@@ -83,6 +84,7 @@ export const STATIC_GATE_INPUT_PREFIXES = Object.freeze([
   'tests/',
   'examples/',
   'scripts/',
+  'schemas/agent-plugins/',
 ]);
 
 /** Does one repo-relative path feed any of these gates? */

@@ -1,3 +1,5 @@
+import type { WorkspacePaneHostContributionV1 } from './workspace-pane-host-contribution.js';
+
 /** Published Agent Plugins portable manifest schema supported by Station v1. */
 export const AGENT_PLUGIN_MANIFEST_SCHEMA_1_0 =
   'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json' as const;
@@ -157,6 +159,7 @@ export interface StationAgentPluginExtensionV1
   links?: unknown;
   agents?: unknown[];
   workspacePanes?: unknown[];
+  workspacePaneHost?: WorkspacePaneHostContributionV1;
   operationalEventSubscriptions?: unknown[];
   providers?: unknown[];
   integrations?: unknown;

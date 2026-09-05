@@ -11,6 +11,7 @@ import {
   type PluginPermissionEntry,
   PluginPermissionsSection,
 } from './PluginPermissionsSection';
+import { PluginRecoveryPanel } from './PluginRecoveryPanel';
 import { PluginSettingFieldRow } from './PluginSettingFieldRow';
 import {
   isRejectedPlugin,
@@ -145,6 +146,17 @@ export function PluginDetailPanel({
       </div>
     );
   }
+  if (
+    selected.installationReadiness &&
+    selected.installationReadiness.state !== 'ready'
+  )
+    return (
+      <PluginRecoveryPanel
+        key={selected.name}
+        plugin={selected}
+        onRemove={onRemove}
+      />
+    );
   const update = updates.find((entry) => entry.name === selected.name);
   const providersExpanded = expandedProviders.has(selected.name);
 
@@ -169,7 +181,7 @@ export function PluginDetailPanel({
           variant: 'muted' as const,
         }}
       >
-        {update ? (
+        {update || (selected.retainedOnRemoval && selected.git?.remote) ? (
           <button
             type="button"
             className="editor-btn editor-btn--primary"
@@ -178,9 +190,11 @@ export function PluginDetailPanel({
           >
             {updatePending && updateTarget === selected.name
               ? 'Updating…'
-              : update.source === 'git'
-                ? `Update (${update.latestVersion})`
-                : `Update to v${update.latestVersion}`}
+              : !update
+                ? 'Update from source'
+                : update.source === 'git'
+                  ? `Update (${update.latestVersion})`
+                  : `Update to v${update.latestVersion}`}
           </button>
         ) : (
           <button type="button" className="editor-btn" onClick={onCheckUpdates}>
@@ -195,6 +209,12 @@ export function PluginDetailPanel({
           Remove
         </button>
       </DetailHeader>
+      {selected.retainedOnRemoval && (
+        <p>
+          Updates preserve stored data. Removing this plugin retains its data
+          and prior code versions.
+        </p>
+      )}
 
       <div className="detail-panel__body">
         <div className="detail-panel__caps">

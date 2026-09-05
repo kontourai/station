@@ -4,6 +4,7 @@ import type {
   LayoutContributionSourceIdentity,
   LayoutDefinition,
 } from './layout.js';
+import type { PluginInstallationReadiness } from './plugin.js';
 import type { RegistryLifecycleRecord } from './registry-lifecycle.js';
 
 /** Current catalog identity grammar, including Agent Plugins 1.0 names. */
@@ -62,6 +63,7 @@ export type LayoutCatalogSourceIdentity = LayoutContributionSourceIdentity;
  * distribution default that produced that state.
  */
 export interface LayoutCatalogItem extends AvailableProjectLayout {
+  installationReadiness?: PluginInstallationReadiness;
   id: string;
   sourceIdentity: LayoutCatalogSourceIdentity;
   /** Exact contributor snapshot, retained when a Project applies this item. */

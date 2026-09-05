@@ -152,3 +152,37 @@ describe('client plugin collection', () => {
     });
   });
 });
+
+test('preserves typed pending readiness and rejects malformed readiness without changing rejected-row semantics', async () => {
+  const row = {
+    name: 'pending',
+    version: '1',
+    hasBundle: false,
+    installationReadiness: { state: 'pending', recovery: 'review' },
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(Response.json({ plugins: [row] })),
+  );
+  await expect(listPlugins('https://station.example')).resolves.toEqual([row]);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        plugins: [
+          {
+            ...row,
+            installationReadiness: {
+              state: 'pending',
+              recovery: 'run-command',
+            },
+          },
+        ],
+      }),
+    ),
+  );
+  await expect(listPlugins('https://station.example')).rejects.toThrow(
+    'malformed',
+  );
+  vi.unstubAllGlobals();
+});

@@ -29,6 +29,8 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, readlinkSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
+import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
 
 /**
  * SHA-256 over every file in the plugin's installed tree, in sorted path
@@ -51,7 +53,15 @@ export function computePluginContentDigest(
   pluginsDir: string,
   pluginName: string,
 ): string | null {
-  const root = join(pluginsDir, pluginName);
+  let root = join(pluginsDir, pluginName);
+  if (isCanonicalPluginId(pluginName)) {
+    try {
+      root =
+        resolveInstalledPluginRoot(pluginsDir, pluginName)?.packageRoot ?? root;
+    } catch {
+      return null;
+    }
+  }
   const hash = createHash('sha256');
   const walk = (dir: string, relative: string): void => {
     const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>

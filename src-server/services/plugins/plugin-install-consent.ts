@@ -163,6 +163,8 @@ function declaredUndisclosableContributions(
 export type PluginInstallConsent =
   | {
       kind: 'operator-decision';
+      /** Permission decision observed before preview acquisition. */
+      grantRevision?: string;
       /** The derived set the operator answered for. */
       permissions: string[];
       /** The digest of the tree the operator answered about. */
@@ -172,6 +174,7 @@ export type PluginInstallConsent =
       /** Per-dependency bytes and permissions shown by preview. */
       dependencyApprovals?: Array<{
         id: string;
+        grantRevision?: string;
         permissions: string[];
         contentDigest: string;
         dependencies: string[];
@@ -382,6 +385,20 @@ export function assertPluginInstallConsent(input: {
     });
   }
 
+  assertPluginOperatorDecision({ pluginName, consent, basis });
+}
+
+/** The same byte/permission/dependency decision check for a fully disclosed
+ * inert dependency preview. No missing manifest fields are invented here. */
+export function assertPluginOperatorDecision(input: {
+  pluginName: string;
+  consent: Extract<PluginInstallConsent, { kind: 'operator-decision' }>;
+  basis: Pick<
+    PluginConsentBasis,
+    'contentDigest' | 'required' | 'dependencies'
+  >;
+}): void {
+  const { pluginName, consent, basis } = input;
   const consented = [...new Set(consent.permissions)].sort();
   const required = [...basis.required].sort();
 

@@ -38,6 +38,23 @@ function resolved(canContinue = true): ConversationOpenResolution {
 }
 
 describe('#749 conversation open controller', () => {
+  test('superseded request authority refuses hydration before any navigation or tab creation', async () => {
+    const open = vi.fn();
+    const findTab = vi.fn();
+    const outcome = await commitConversationOpen({
+      resolution: resolved(),
+      open,
+      projectName: () => 'Station',
+      findTab,
+      isCurrent: () => false,
+    });
+    expect(outcome).toMatchObject({
+      kind: 'recovery',
+      recovery: { status: 'unavailable' },
+    });
+    expect(open).not.toHaveBeenCalled();
+    expect(findTab).not.toHaveBeenCalled();
+  });
   test('one policy gates composer, inventory, Basis, and actions', () => {
     expect(conversationCanMutate({})).toBe(true);
     expect(conversationCanMutate({ conversationOpenPending: true })).toBe(
