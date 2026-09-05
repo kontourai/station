@@ -115,17 +115,17 @@ export interface PrepareOptions {
 
 /** Authoring only: no Station home, network request, install or trust-policy write. */
 export function prepareSignedPackage(options: PrepareOptions) {
-  const root = realpathSync(options.package);
+  const root = realpathSync.native(options.package);
   if (!lstatSync(root).isDirectory())
     throw new Error('Package snapshot must be a directory.');
   const requestedOutput = resolve(options.out);
   // Resolve existing parents so a symlink cannot make an apparently external
   // output or key path refer into the package being signed.
   const output = join(
-    realpathSync(dirname(requestedOutput)),
+    realpathSync.native(dirname(requestedOutput)),
     basename(requestedOutput),
   );
-  const keyPath = realpathSync(options.privateKey);
+  const keyPath = realpathSync.native(options.privateKey);
   if (inside(root, output) || inside(root, keyPath)) {
     throw new Error(
       'The private key and output directory must be outside the signed package.',
