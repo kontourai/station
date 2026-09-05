@@ -338,7 +338,7 @@
     "google-auth-library": "^10.9.1",
     "hono": "^4.12.34",
     "idb-keyval": "^6.3.0",
-    "js-yaml": "^5.2.2",
+    "js-yaml": "^5.4.1",
     "jsonc-parser": "3.3.1",
     "neo4j-driver": "^6.2.0",
     "node-pty": "^1.1.0",
