@@ -3,6 +3,7 @@ import type {
   PermissionResult,
   PermissionUpdate,
   SDKMessage,
+  TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
 import { ENGINE_SESSION_BINDING_DEAD_CODE } from '@kontourai/station-contracts/provider';
 import type {
@@ -87,6 +88,75 @@ function claudeContextOccupancyField(usage: unknown): {
   if (parts.every((part) => part === undefined)) return {};
   return {
     contextTokens: parts.reduce((sum: number, part) => sum + (part ?? 0), 0),
+  };
+}
+
+/**
+ * Claude's `stop_reason` for a turn the engine handed back to its SDK host
+ * with a tool call it declined to run itself — the outcome of a `PreToolUse`
+ * hook answering `permissionDecision: 'defer'`. The call itself arrives on
+ * `result.deferred_tool_use`, and the engine will never emit a `tool_result`
+ * for it: whatever executes it is the host's problem.
+ */
+const CLAUDE_DEFERRED_TOOL_STOP_REASON = 'tool_deferred';
+
+/**
+ * The `terminal_reason` values that name a deferral BY NAME rather than
+ * leaving it to the `stop_reason` string. Typed against the SDK's own
+ * `TerminalReason` union, so dropping or renaming either member breaks the
+ * build here instead of quietly falling through to `'stop'` —
+ * `'tool_deferred_unavailable'` in particular is a deferral Station would
+ * otherwise only recognise if it happened to also set `stop_reason`.
+ */
+const CLAUDE_DEFERRED_TERMINAL_REASONS: readonly TerminalReason[] = [
+  'tool_deferred',
+  'tool_deferred_unavailable',
+];
+
+function claudeResultDeferredTurn(message: SDKMessage & { type: 'result' }) {
+  const terminalReason =
+    'terminal_reason' in message ? message.terminal_reason : undefined;
+  return (
+    (terminalReason !== undefined &&
+      CLAUDE_DEFERRED_TERMINAL_REASONS.includes(terminalReason)) ||
+    ('stop_reason' in message &&
+      message.stop_reason === CLAUDE_DEFERRED_TOOL_STOP_REASON)
+  );
+}
+
+/**
+ * What a reader is told about a deferred tool call. Station has no executor
+ * for one — it does not ask the engine to defer (`preToolPolicyHookOutput`,
+ * claude-adapter.ts) — so the honest record is that the call did not run and
+ * why, not the absence a client renders as "No result recorded".
+ */
+const CLAUDE_DEFERRED_TOOL_ERROR =
+  'The engine handed this tool call back to Station to execute, which Station cannot do. The tool did not run.';
+
+/**
+ * The deferred call off a `result` message, when the engine reported one.
+ *
+ * `deferred_tool_use` is the SDK's own structured field (`SDKDeferredToolUse`)
+ * and is the ONLY signal used here — deliberately not "every id still in
+ * `activeToolCalls` when a result arrives", which would settle a backgrounded
+ * `Task` (whose `tool_result` legitimately arrives after the turn ends, and
+ * whose lifecycle `activeTasks`/`settleClaudeTask` owns) as a failure it is
+ * not.
+ */
+function claudeDeferredToolUse(
+  message: SDKMessage & { type: 'result' },
+): { id: string; name?: string } | undefined {
+  // Narrowed off the SDK type, not off a `Record<string, unknown>` cast: an
+  // upstream rename of `deferred_tool_use` must break this compile rather than
+  // silently return `undefined` forever and restore the original defect.
+  const deferred =
+    'deferred_tool_use' in message ? message.deferred_tool_use : undefined;
+  if (!deferred || typeof deferred !== 'object') return undefined;
+  const { id, name } = deferred as { id?: unknown; name?: unknown };
+  if (typeof id !== 'string' || !id) return undefined;
+  return {
+    id,
+    ...(typeof name === 'string' && name ? { name } : {}),
   };
 }
 
@@ -627,6 +697,38 @@ export function mapClaudeSdkMessage({
       record.dispatchedTurnId === record.activeTurnId
     ) {
       const turnId = record.activeTurnId;
+      // A turn the engine ended by handing a tool call back to its host: the
+      // call is unresolved and will stay that way. Settle it as the error it
+      // is, before the completion, so the transcript carries a reason instead
+      // of a started call with no outcome (#1536 finding B1) — and so this
+      // class can never again read as an ordinary stop, whatever produced it.
+      const deferred = claudeDeferredToolUse(message);
+      const deferredTurn =
+        Boolean(deferred) || claudeResultDeferredTurn(message);
+      // The name comes from the tracked `tool_use` this call was started from,
+      // or from the engine's own report of it — never invented: with neither,
+      // the completion is skipped and `finishReason` below carries the signal
+      // on its own, because a `tool.completed` naming a placeholder tool is a
+      // worse record than one fewer event.
+      const deferredToolName = deferred
+        ? (record.activeToolCalls?.get(deferred.id) ?? deferred.name)
+        : undefined;
+      if (deferred && deferredToolName) {
+        record.activeToolCalls?.delete(deferred.id);
+        publish({
+          eventId: crypto.randomUUID(),
+          provider,
+          threadId: record.session.threadId,
+          createdAt,
+          turnId,
+          itemId: deferred.id,
+          method: 'tool.completed',
+          toolCallId: deferred.id,
+          toolName: deferredToolName,
+          status: 'error',
+          error: CLAUDE_DEFERRED_TOOL_ERROR,
+        });
+      }
       clearClaudeDispatchedTurn(record);
       publish({
         eventId: crypto.randomUUID(),
@@ -635,8 +737,16 @@ export function mapClaudeSdkMessage({
         createdAt,
         turnId,
         method: 'turn.completed',
-        finishReason:
-          message.stop_reason === 'tool_use' ? 'tool-calls' : 'stop',
+        // `'other'` — not `'stop'` and not `'tool-calls'` — for a deferral:
+        // the turn did not reach a self-reported outcome, and `'other'`
+        // deliberately carries no clear authority
+        // (`PROVIDER_PROVEN_FINISH_REASONS`, finish-reason-authority.ts), so
+        // it cannot supersede a recorded runtime error or clear auth health.
+        finishReason: deferredTurn
+          ? 'other'
+          : message.stop_reason === 'tool_use'
+            ? 'tool-calls'
+            : 'stop',
         outputText:
           message.type === 'result' && 'result' in message
             ? message.result

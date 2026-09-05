@@ -64,7 +64,8 @@ The persisted form is the Workspace Pane host document.
 _Avoid_: layout, tab bar
 
 **Arrangement**:
-The user's placement choices across regions, surfaces, and pane hosts, persisted per device.
+The user's placement choices across regions, surfaces, and pane hosts, persisted per device
+(the `regionArrangement` device setting).
 _Avoid_: layout, preference
 
 **Layout action**:

@@ -285,11 +285,27 @@ export function useDockShellChrome({
     setActiveProjectSlug,
   ]);
 
+  // A region's persisted size renders (#928 D, closes #1380): with a region
+  // model, the shell's own region seeds the dimension measured along its
+  // edge — height for `bottom`, width for a side — and the legacy keys seed
+  // only the other dimension and the model-less mount. Drag release still
+  // writes the region's size (`setIsDragging` below), and the provider's
+  // mirror keeps Chat's legacy keys in step.
+  const seededRegion =
+    regionModel && readerRegion ? regionModel.regions[readerRegion] : null;
   const [dockHeight, setDockHeightState] = useState(() =>
-    clampDockHeight(settings.chatDockHeight),
+    clampDockHeight(
+      seededRegion && readerRegion === 'bottom'
+        ? seededRegion.size
+        : settings.chatDockHeight,
+    ),
   );
   const [dockWidth, setDockWidthState] = useState(() =>
-    clampDockWidth(settings.chatDockWidth),
+    clampDockWidth(
+      seededRegion && readerRegion !== 'bottom'
+        ? seededRegion.size
+        : settings.chatDockWidth,
+    ),
   );
   const dockHeightRef = useRef(dockHeight);
   const dockWidthRef = useRef(dockWidth);

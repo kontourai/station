@@ -201,7 +201,10 @@ test('arms the exact live response before input and validates the response after
     status: () => 200,
     json: async () => {
       order.push('body');
-      return { success: true, data: { kind: 'available' } };
+      return {
+        success: true,
+        data: { kind: 'available', result: { outcome: 'joined' } },
+      };
     },
   };
   const page = {
@@ -223,7 +226,7 @@ test('arms the exact live response before input and validates the response after
       return Promise.resolve(response);
     },
   };
-  await expect(clickLiveCommand(page, 'Join room')).resolves.toBeUndefined();
+  await expect(clickLiveCommand(page, 'Join room')).resolves.toBe('JOINED');
   expect(order).toEqual(['armed', 'click', 'body']);
 });
 

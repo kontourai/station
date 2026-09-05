@@ -119,7 +119,7 @@ export class AttentionProjectionService {
      */
     private readonly acknowledgementStore?: Pick<
       ConversationAcknowledgementStore,
-      'get' | 'acknowledge'
+      'getMany' | 'acknowledge'
     >,
     /**
      * Identity the acknowledgement store scopes by. Defaults to a single
@@ -270,11 +270,16 @@ export class AttentionProjectionService {
       ...gateItems,
       ...pairingItems,
     ];
-    const decorated = this.acknowledgementStore
-      ? undecorated.map((item) =>
-          this.decorateAcknowledgement(item, readAuthority.userId),
-        )
-      : undecorated;
+    const acknowledgements = this.acknowledgementStore?.getMany(
+      readAuthority.userId,
+      undecorated.map((item) => item.id),
+    );
+    const decorated = undecorated.map((item) => {
+      const version = acknowledgements?.get(item.id);
+      return version && version >= item.updatedAt
+        ? { ...item, acknowledgedAt: version }
+        : item;
+    });
     const items = decorated.sort(compareAttentionItems);
     // Acked items stay IN `items` (history, never deleted) but drop out of
     // the actionable count — the whole point of archive#1914's
@@ -282,27 +287,6 @@ export class AttentionProjectionService {
     const pendingCount = items.filter((item) => !item.acknowledgedAt).length;
     attentionProjectionResults.record(items.length);
     return { items, pendingCount };
-  }
-
-  /**
-   * An acknowledgement is an inbox-local dismissal: it removes one current
-   * attention fact from the pending queue without deleting ordinary activity
-   * or pretending to resolve the underlying approval, session, or gate.
-   *
-   * The stored ack is a VERSION (the `updatedAt` that was acknowledged), the
-   * same durable-read-state design `conversation-acknowledgement-store.ts`
-   * already uses: a later re-derivation of the same id with a NEWER
-   * `updatedAt` — a fresh failure on the same thread — no longer matches the
-   * stored version and reads as unacknowledged again, exactly as intended
-   * ("a fresh failure is a real fact worth surfacing").
-   */
-  private decorateAcknowledgement(
-    item: AttentionItem,
-    userId: string,
-  ): AttentionItem {
-    const ackedVersion = this.acknowledgementStore?.get(userId, item.id);
-    if (!ackedVersion || ackedVersion < item.updatedAt) return item;
-    return { ...item, acknowledgedAt: ackedVersion };
   }
 
   /**
@@ -546,7 +530,7 @@ export class AttentionProjectionService {
     // simply `idle`/`closed` short of dead) but that the user has already
     // SEEN and cannot usefully act on further is the other half of the
     // archive#1914 fix, and it is deliberately NOT a suppression: see
-    // `decorateAcknowledgement` below, which drops an ACKNOWLEDGED item out
+    // acknowledgement decoration above, which drops an ACKNOWLEDGED item out
     // of `pendingCount` without ever un-projecting it here.
     //
     // NOT EXACTLY THE OLD PASS'S POPULATION, and the difference is stated
