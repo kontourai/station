@@ -1,21 +1,15 @@
 import type {
-  WorkspacePaneDescriptor,
-  WorkspacePaneInstance,
-} from '@kontourai/station-contracts/workspace-pane';
-import type {
-  ReactElement,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   RefObject,
 } from 'react';
-import { cloneElement, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, MenuGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { ChatDockMobileConnection } from './ChatDockMobileConnection';
 import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
-import { useMobileDockOccupantPicker } from './mobile-chrome';
 
 /** Overlay behind a tap — kept out of the entry chunk (see the sheet's note). */
 const loadChatDockMobileOverflowSheet = () =>
@@ -65,31 +59,6 @@ export interface ChatDockMobileOverflowActions {
   isDockMaximized: boolean;
   /** Full-screen layout placement has no ambient dock geometry to control. */
   dockControls?: boolean;
-  /**
-   * station#524 (review round 2, H2) + station#520 (review round 3, B1):
-   * the ⋯ overflow sheet's occupant-switch fallback list. NOT
-   * maximized-bar-only — the sheet is reachable from every dock state
-   * (collapsed, half, maximized) at every mobile width, the same as every
-   * other item in it, so its occupant-switch entries carry the same mobile
-   * dock-and-empty contract `DockOccupantPicker` does: `onChoose` for the
-   * ordinary case, `onChooseAsOnlyContent` (mobile-maximizing) when
-   * choosing this occupant would strand the main area behind it. The sheet
-   * derives which one to call itself, through `chooseAmbientOccupant` — the
-   * ONE shared derivation both this and `DockOccupantPicker` call, so a fix
-   * to one is a fix to both. `null` for the full-screen Chat placement,
-   * which has no ambient occupant to switch away from (mirrors
-   * `occupantPicker` itself being absent there).
-   */
-  onSwitchOccupant: {
-    onChoose: (
-      descriptor: WorkspacePaneDescriptor,
-      instance: WorkspacePaneInstance,
-    ) => void;
-    onChooseAsOnlyContent: (
-      descriptor: WorkspacePaneDescriptor,
-      instance: WorkspacePaneInstance,
-    ) => void;
-  } | null;
 }
 
 /**
@@ -186,19 +155,6 @@ interface ChatDockMobileHeaderProps {
    */
   onNewChat: () => void;
   overflow: ChatDockMobileOverflowActions;
-  /**
-   * A pre-rendered `DockOccupantPicker` (station#524) — the same node
-   * `ChatDockHeader` renders for every non-Chat occupant (Home, Activity),
-   * which already renders it AT EVERY WIDTH, not just desktop. Before this,
-   * a phone could switch INTO Chat from the ambient dock but had no
-   * dock-borne way back out: the owner's "header works the same regardless
-   * of occupant" contract held for every occupant except the one whose
-   * header is this component. `undefined` for the full-screen Chat layout
-   * placement, which has no ambient occupant to switch away from (mirrors
-   * `ChatDockHeader`'s own `occupantPicker` prop, hidden there too when
-   * `fullscreen`).
-   */
-  occupantPicker?: ReactElement<{ mobileDragPassthrough?: boolean }> | null;
 }
 
 function ActivityGlyph() {
@@ -300,10 +256,8 @@ export function ChatDockMobileHeader({
   dockToggle,
   onNewChat,
   overflow,
-  occupantPicker,
 }: ChatDockMobileHeaderProps) {
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
-  const showOccupantPicker = useMobileDockOccupantPicker();
   const closeOverflow = () => setIsOverflowOpen(false);
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   // The chat title reaches assistive tech as this control's DESCRIPTION, not
@@ -476,25 +430,6 @@ export function ChatDockMobileHeader({
           <span aria-hidden="true">⋯</span>
         </button>
       </div>
-
-      {/* station#524: parity with `ChatDockHeader` (Home/Activity). At and
-          above the 481px identity-extras boundary, a fixed 44px
-          slot beside the identity cluster, same pattern as the project
-          switcher trigger below — `.chat-dock__mobile-identity-cluster` is
-          the row's only `flex: 1 1 auto` member, so this and every other
-          sibling slot take fixed width and the identity block is what gives
-          ground first. Below that boundary the overflow sheet is the switch
-          path and this control is DOM-absent. The injected prop marks only
-          this mobile trigger as drag passthrough; desktop uses of the same
-          pre-rendered element are unchanged. */}
-      {occupantPicker && showOccupantPicker && (
-        <div
-          className="chat-dock__mobile-occupant-picker"
-          data-dock-drag-passthrough=""
-        >
-          {cloneElement(occupantPicker, { mobileDragPassthrough: true })}
-        </div>
-      )}
 
       {projectSwitcher && (
         <button

@@ -44,10 +44,6 @@ import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
 import { chatRegion } from './regions/region-model';
-import {
-  type WorkspacePaneDockAction,
-  WorkspacePaneDockContext,
-} from './workspace-panes/WorkspacePaneDockContext';
 
 /**
  * The cheatsheet is an overlay behind a keystroke — nothing about first paint
@@ -203,8 +199,6 @@ function App() {
   const appConfig = useConfig();
   const { settings: featureSettings } = useFeatureSettings();
   const [showShortcutsCheatsheet, setShowShortcutsCheatsheet] = useState(false);
-  const [ambientDockAction, setAmbientDockAction] =
-    useState<WorkspacePaneDockAction | null>(null);
   const [currentView, setCurrentView] = useState<NavigationView>(() => {
     return resolveCurrentLocation({ lastProject, lastProjectLayout });
   });
@@ -564,32 +558,31 @@ function App() {
 
   return (
     <ProjectsProvider>
-      <WorkspacePaneDockContext.Provider value={ambientDockAction}>
-        <ChatAuthRecoveryProvider onRequestAuth={handleAuthError}>
-          {/* Mobile store builds can wait days for review, so check their selected
+      <ChatAuthRecoveryProvider onRequestAuth={handleAuthError}>
+        {/* Mobile store builds can wait days for review, so check their selected
           Station's release channel at launch. The Settings surface consumes
           this same React Query key and renders the cached result/action
           without a duplicate request. */}
-          {/* archive#2773: a rejected chunk is cached by React forever, and these mount
+        {/* archive#2773: a rejected chunk is cached by React forever, and these mount
           above the whole shell — an unguarded 404 after a deploy rebuilt
           dist-ui would blank the app rather than lose one piece of chrome. */}
-          <LazyBoundary
-            load={loadCoreUpdateLaunchCheck}
-            pending={null}
-            componentProps={{ apiBase: API_BASE }}
-          />
-          <LazyBoundary
-            load={loadDesktopUpdateLaunchCheck}
-            pending={null}
-            componentProps={{}}
-          />
-          <LazyBoundary
-            load={loadOutboundQueueFlushMount}
-            pending={null}
-            componentProps={{ apiBase: API_BASE }}
-          />
-          <div className="app app--with-sidebar">
-            {/* SHELL-14: the shell chrome is already first in DOM order
+        <LazyBoundary
+          load={loadCoreUpdateLaunchCheck}
+          pending={null}
+          componentProps={{ apiBase: API_BASE }}
+        />
+        <LazyBoundary
+          load={loadDesktopUpdateLaunchCheck}
+          pending={null}
+          componentProps={{}}
+        />
+        <LazyBoundary
+          load={loadOutboundQueueFlushMount}
+          pending={null}
+          componentProps={{ apiBase: API_BASE }}
+        />
+        <div className="app app--with-sidebar">
+          {/* SHELL-14: the shell chrome is already first in DOM order
               (measured: sidebar → toolbar → route → dock), so the keyboard
               defect was not the order — it was that there is no way PAST the
               chrome. This is the first focusable element in the document and
@@ -597,105 +590,92 @@ function App() {
               an `href="#…"` link, because `navigation-store` preserves
               `location.hash` across every navigation: a fragment link would
               stick `#station-main` onto every subsequent URL. */}
-            <button
-              type="button"
-              className="skip-to-content"
-              onClick={() => {
-                const main = document.getElementById('station-main');
-                main?.focus();
-                main?.scrollTo({ top: 0 });
+          <button
+            type="button"
+            className="skip-to-content"
+            onClick={() => {
+              const main = document.getElementById('station-main');
+              main?.focus();
+              main?.scrollTo({ top: 0 });
+            }}
+          >
+            Skip to content
+          </button>
+          <ProjectSidebar />
+          <div
+            className={`app__main${
+              isMobileDockFullscreen ? ' app__main--mobile-dock-fullscreen' : ''
+            }`}
+          >
+            <Header
+              currentView={displayCurrentView}
+              onNavigate={navigateToView}
+              onToggleSettings={() => {
+                if (displayCurrentView.type === 'settings') {
+                  navigateHome();
+                } else {
+                  navigateToView({ type: 'settings' });
+                }
               }}
-            >
-              Skip to content
-            </button>
-            <ProjectSidebar />
-            <div
-              className={`app__main${
-                isMobileDockFullscreen
-                  ? ' app__main--mobile-dock-fullscreen'
-                  : ''
-              }`}
-            >
-              <Header
-                currentView={displayCurrentView}
-                onNavigate={navigateToView}
-                onToggleSettings={() => {
-                  if (displayCurrentView.type === 'settings') {
-                    navigateHome();
-                  } else {
-                    navigateToView({ type: 'settings' });
-                  }
+            />
+            <ConnectionBannerSource />
+            <BannerHost connectionSlot />
+
+            {showShortcutsCheatsheet && (
+              <LazyBoundary
+                load={loadShortcutsCheatsheet}
+                componentProps={{
+                  isOpen: true,
+                  onClose: () => setShowShortcutsCheatsheet(false),
                 }}
+                pending={null}
               />
-              <ConnectionBannerSource />
-              <BannerHost connectionSlot />
+            )}
 
-              {showShortcutsCheatsheet && (
-                <LazyBoundary
-                  load={loadShortcutsCheatsheet}
-                  componentProps={{
-                    isOpen: true,
-                    onClose: () => setShowShortcutsCheatsheet(false),
-                  }}
-                  pending={null}
-                />
-              )}
-
-              {/* SHELL-14: the route outlet had no `main` landmark at all — a
+            {/* SHELL-14: the route outlet had no `main` landmark at all — a
                 screen reader's landmark list held only the sidebar's `nav`
                 and the toolbar's `header`. `tabIndex={-1}` makes it a
                 programmatic focus target for the skip control without adding
                 a tab stop of its own. */}
-              <main className="main-content" id="station-main" tabIndex={-1}>
-                <div className="content-view" ref={contentViewRef}>
-                  {window.location.pathname === '/' ? (
-                    // #928 C2a: `/` renders the `main` region's occupant.
-                    // Home (the default, and what a null occupant means) is
-                    // `renderHomeRoute` above; any other surface renders its
-                    // own shell in `main`. Other routes ignore the occupant
-                    // and render the routed view; the occupant is kept.
-                    <MainRegionSurface
-                      occupant={regionModel?.regions.main.occupant ?? null}
-                      renderHome={renderHomeRoute}
-                    />
-                  ) : (
-                    routedView
-                  )}
-                </div>
-              </main>
+            <main className="main-content" id="station-main" tabIndex={-1}>
+              <div className="content-view" ref={contentViewRef}>
+                {window.location.pathname === '/' ? (
+                  // #928 C2a: `/` renders the `main` region's occupant.
+                  // Home (the default, and what a null occupant means) is
+                  // `renderHomeRoute` above; any other surface renders its
+                  // own shell in `main`. Other routes ignore the occupant
+                  // and render the routed view; the occupant is kept.
+                  <MainRegionSurface
+                    occupant={regionModel?.regions.main.occupant ?? null}
+                    renderHome={renderHomeRoute}
+                  />
+                ) : (
+                  routedView
+                )}
+              </div>
+            </main>
 
-              {showAmbientChatDock && (
-                <RegionShells
-                  homeContinuation={
-                    homeSurface.status === 'resolved'
-                      ? homeSurface.target
-                      : null
-                  }
-                  onNavigate={navigateToView}
-                  onDockActionChange={setAmbientDockAction}
-                />
-              )}
-              <LazyBoundary
-                load={loadDeferredAppOverlays}
-                componentProps={{}}
-                pending={null}
-              />
-              {/* Single floating voice affordance: the S2S pill. The separate STT
+            {showAmbientChatDock && <RegionShells />}
+            <LazyBoundary
+              load={loadDeferredAppOverlays}
+              componentProps={{}}
+              pending={null}
+            />
+            {/* Single floating voice affordance: the S2S pill. The separate STT
               FAB (GlobalVoiceButton) was removed — having both rendered two
               floating mics (opposite corners) whenever voice was enabled. STT
               while typing remains available via the inline VoiceOrb in the chat
               input. */}
-              {featureSettings.voiceS2SEnabled && (
-                <LazyBoundary
-                  load={loadVoicePill}
-                  componentProps={{}}
-                  pending={null}
-                />
-              )}
-            </div>
+            {featureSettings.voiceS2SEnabled && (
+              <LazyBoundary
+                load={loadVoicePill}
+                componentProps={{}}
+                pending={null}
+              />
+            )}
           </div>
-        </ChatAuthRecoveryProvider>
-      </WorkspacePaneDockContext.Provider>
+        </div>
+      </ChatAuthRecoveryProvider>
     </ProjectsProvider>
   );
 }

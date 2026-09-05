@@ -5,7 +5,6 @@ import {
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { useMutation } from '@tanstack/react-query';
 import { PageHeaderScope } from '../../components/page-frame';
-import { WorkspacePaneDockContext } from '../../workspace-panes/WorkspacePaneDockContext';
 import { ActivityWorkspacePane } from '../activity/ActivityWorkspacePane';
 import { ActivityWorkspacePaneBindingProvider } from '../activity/ActivityWorkspacePaneBinding';
 import { downloadDiagnosticsBundle } from '../settings/diagnostics-download';
@@ -54,18 +53,13 @@ export default function ArchiveTab({ apiBase }: { apiBase: string }) {
           the page. Without this scope its split pane would publish "Activity"
           over the Developer route's own title. The surface is reached
           through its pane renderer with the canonical occurrence (M3: one
-          mounter of SessionsView, ever), with the dock context nulled: on a
-          page that is not the pane's placement, a header "Dock this pane"
-          would have an ambiguous referent — the same suppression the dock's
-          own occupant applies. */}
+          mounter of SessionsView, ever). */}
       <PageHeaderScope>
         <ActivityWorkspacePaneBindingProvider binding={{ apiBase }}>
-          <WorkspacePaneDockContext.Provider value={null}>
-            <ActivityWorkspacePane
-              descriptor={WORKSPACE_ACTIVITY_PANE_DESCRIPTOR}
-              instance={WORKSPACE_ACTIVITY_PANE_INSTANCE}
-            />
-          </WorkspacePaneDockContext.Provider>
+          <ActivityWorkspacePane
+            descriptor={WORKSPACE_ACTIVITY_PANE_DESCRIPTOR}
+            instance={WORKSPACE_ACTIVITY_PANE_INSTANCE}
+          />
         </ActivityWorkspacePaneBindingProvider>
       </PageHeaderScope>
     </section>
