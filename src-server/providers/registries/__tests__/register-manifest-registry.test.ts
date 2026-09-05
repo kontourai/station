@@ -26,7 +26,12 @@ describe('registerManifestRegistryProvider', () => {
 
       registerManifestRegistryProvider(provider, origin);
 
-      expect(getAgentRegistryProvider()).toBe(provider);
+      // The agent surface gets the manifest's AGENT view, not the provider:
+      // the bundled catalog declares no agent kind, so browsing Agents is
+      // honestly empty rather than a list of layout plugins (#1536 D2).
+      expect(getAgentRegistryProvider()).not.toBe(provider);
+      expect(await getAgentRegistryProvider().listAvailable()).toEqual([]);
+      expect(await getAgentRegistryProvider().listInstalled()).toEqual([]);
       expect(
         await getIntegrationRegistryProvider().listAvailable(),
       ).not.toBeNull();

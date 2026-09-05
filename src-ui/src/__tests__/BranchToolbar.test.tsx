@@ -90,7 +90,10 @@ vi.mock('../hooks/useGitActions', () => ({
 
 import { BranchToolbar } from '../components/coding-layout/BranchToolbar';
 
-function makeStatus(branch: string, dirty = true): GitStatusResult {
+/** The repo-present branch of the union, so callers can extend it. */
+type RepoGitStatus = Extract<GitStatusResult, { isRepo: true }>;
+
+function makeStatus(branch: string, dirty = true): RepoGitStatus {
   return {
     isRepo: true,
     branch,
@@ -264,6 +267,48 @@ describe('BranchToolbar', () => {
     render(<BranchToolbar workingDir="/repo" />);
     fireEvent.click(screen.getByRole('button', { name: /Push/ }));
     expect(pushMutate).toHaveBeenCalledWith({ setUpstream: true });
+  });
+
+  /**
+   * #1536 G5: Push was live in a checkout with nowhere to push, so the only
+   * way to learn there was no remote was to press it and read git's error.
+   * `absent` is a positive observation; `unknown` is not, and taking the
+   * action away on no evidence is the mirror defect.
+   */
+  describe('Push and the remote it needs', () => {
+    test('is disabled, and says why, when the checkout has no remote', () => {
+      state.statusByRoot = {
+        '/repo': { ...makeStatus('main'), remote: 'absent' },
+      };
+      render(<BranchToolbar workingDir="/repo" />);
+
+      const push = screen.getByRole('button', {
+        name: 'Push unavailable — no remote configured',
+      }) as HTMLButtonElement;
+      expect(push.disabled).toBe(true);
+      expect(push.title).toBe(
+        'This checkout has no remote configured, so there is nowhere to push.',
+      );
+      fireEvent.click(push);
+      expect(pushMutate).not.toHaveBeenCalled();
+    });
+
+    test.each(['present', 'unknown', undefined] as const)(
+      'stays live for remote=%s',
+      (remote) => {
+        state.statusByRoot = {
+          '/repo': { ...makeStatus('main'), ...(remote ? { remote } : {}) },
+        };
+        render(<BranchToolbar workingDir="/repo" />);
+
+        const push = screen.getByRole('button', {
+          name: /^Push/,
+        }) as HTMLButtonElement;
+        expect(push.disabled).toBe(false);
+        fireEvent.click(push);
+        expect(pushMutate).toHaveBeenCalledWith({ setUpstream: true });
+      },
+    );
   });
 
   // ── Multi-repo awareness ────────────────────────────────────────────────
