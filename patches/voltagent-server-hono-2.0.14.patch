@@ -1,7 +1,7 @@
-diff --git a/node_modules/@voltagent/server-hono/dist/index.js b/node_modules/@voltagent/server-hono/dist/index.js
+diff --git a/dist/index.js b/dist/index.js
 index 7bcab21..cb8df60 100644
---- a/node_modules/@voltagent/server-hono/dist/index.js
-+++ b/node_modules/@voltagent/server-hono/dist/index.js
+--- a/dist/index.js
++++ b/dist/index.js
 @@ -1784,7 +1784,9 @@ var createRoute = /* @__PURE__ */ __name((routeConfig) => {
    };
    return Object.defineProperty(route, "getRoutingPath", { enumerable: false });
@@ -13,10 +13,10 @@ index 7bcab21..cb8df60 100644
  function addBasePathToDocument(document, basePath) {
    const updatedPaths = {};
    Object.keys(document.paths).forEach((path) => {
-diff --git a/node_modules/@voltagent/server-hono/dist/index.mjs b/node_modules/@voltagent/server-hono/dist/index.mjs
+diff --git a/dist/index.mjs b/dist/index.mjs
 index d6098ed..c0cf1d2 100644
---- a/node_modules/@voltagent/server-hono/dist/index.mjs
-+++ b/node_modules/@voltagent/server-hono/dist/index.mjs
+--- a/dist/index.mjs
++++ b/dist/index.mjs
 @@ -1809,7 +1809,9 @@ var createRoute = /* @__PURE__ */ __name((routeConfig) => {
    };
    return Object.defineProperty(route, "getRoutingPath", { enumerable: false });

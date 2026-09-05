@@ -100,8 +100,10 @@ function normalizedHashes(value, source) {
     if (
       !hash ||
       Object.keys(hash).sort().join(',') !== 'alg,content' ||
-      hash.alg !== 'SHA-256' ||
-      !HASH.test(hash.content ?? '')
+      !(
+        (hash.alg === 'SHA-256' && HASH.test(hash.content ?? '')) ||
+        (hash.alg === 'SHA-512' && /^[a-f0-9]{128}$/.test(hash.content ?? ''))
+      )
     )
       fail(`${source} component hashes are invalid`);
     return { alg: hash.alg, content: hash.content };
@@ -127,12 +129,35 @@ function normalizedLicenses(value, source) {
   return licenses.sort((left, right) => left.localeCompare(right));
 }
 
+function normalizedPatchProperties(value, source) {
+  if (value === undefined) return [];
+  if (
+    !Array.isArray(value) ||
+    value.length !== 1 ||
+    Object.keys(value[0] ?? {})
+      .sort()
+      .join(',') !== 'name,value' ||
+    value[0].name !== 'station:pnpm-patch-hash' ||
+    !HASH.test(value[0].value ?? '')
+  )
+    fail(`${source} component patch provenance is invalid`);
+  return [{ name: value[0].name, value: value[0].value }];
+}
+
 function normalizedComponent(component, source) {
   if (
     !component ||
     typeof component !== 'object' ||
     Object.keys(component).some(
-      (key) => !['name', 'version', 'purl', 'hashes', 'licenses'].includes(key),
+      (key) =>
+        ![
+          'name',
+          'version',
+          'purl',
+          'hashes',
+          'licenses',
+          'properties',
+        ].includes(key),
     ) ||
     !safeText(component.name) ||
     !safeText(component.version, 160) ||
@@ -146,6 +171,7 @@ function normalizedComponent(component, source) {
     purl: component.purl,
     hashes: normalizedHashes(component.hashes, source),
     licenses: normalizedLicenses(component.licenses, source),
+    properties: normalizedPatchProperties(component.properties, source),
   };
   try {
     validateComponentPurlIdentity(
@@ -231,6 +257,9 @@ function cyclonedxDependencies(components) {
   return components.map((component) => ({
     'bom-ref': `dep:${createHash('sha256').update(canonicalJson(component)).digest('hex')}`,
     hashes: component.hashes,
+    ...(component.properties.length
+      ? { properties: component.properties }
+      : {}),
     licenses: component.licenses.map((id) => ({ license: { id } })),
     name: component.name,
     purl: component.purl,
@@ -306,7 +335,7 @@ function containerSpdx({ context, components, lifecycle }) {
     ...components.map((component) => ({
       SPDXID: `SPDXRef-Dependency-${createHash('sha256').update(component.purl).digest('hex').slice(0, 32)}`,
       checksums: component.hashes.map((hash) => ({
-        algorithm: 'SHA256',
+        algorithm: hash.alg === 'SHA-512' ? 'SHA512' : 'SHA256',
         checksumValue: hash.content,
       })),
       copyrightText: 'NOASSERTION',
@@ -322,6 +351,11 @@ function containerSpdx({ context, components, lifecycle }) {
       licenseConcluded: component.licenses.join(' AND ') || 'NOASSERTION',
       licenseDeclared: component.licenses.join(' AND ') || 'NOASSERTION',
       name: component.name,
+      ...(component.properties.length
+        ? {
+            sourceInfo: `pnpm patch hash: ${component.properties[0].value}; checksums identify the registry tarball before patching`,
+          }
+        : {}),
       versionInfo: component.version,
     })),
   ];
@@ -334,7 +368,7 @@ function containerSpdx({ context, components, lifecycle }) {
     dataLicense: 'CC0-1.0',
     documentDescribes: ['SPDXRef-Container'],
     documentNamespace: `https://station.kontour.ai/sbom/${context.sourceSha}/container`,
-    documentComment:
+    comment:
       'station:fragment-predicates=container/image' +
       `;station:dependency-lifecycle-digest=${lifecycle.digest};station:dependency-lifecycle-purls=${canonicalJson(lifecycle.purls)}`,
     name: 'Station container SBOM',

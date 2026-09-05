@@ -379,37 +379,38 @@ Fresh linked worktrees get the pinned dependency set through
 `npm run dependencies:ci`, so drift
 should not occur there. The shared main checkout is the drift-prone surface:
 pulling a package pin does not update its existing `node_modules`. Run
-`npm run dependencies:install` there after a pull when the dependency-drift gate or
+`npm run dependencies:ci` there after a pull when the dependency-drift gate or
 `station doctor` reports a pinned-versus-installed mismatch.
 
 #### Interrupted dependency installation
 
 The dependency lifecycle runner holds an exclusive `.station-dependency-install/`
-directory across npm, approved hooks, and final verification. A second
+directory across pnpm, approved hooks, and final verification. A second
 participating installer refuses that existing guard; a PID or elapsed time is
 not permission to reclaim it. Stop other builds and dependency writers before
-installation: this guard does not coordinate raw npm, older runners, or other
+installation: this guard does not coordinate raw package-manager commands, older runners, or other
 processes using the dependency tree.
 
-For `dependencies:ci`, an existing real root `node_modules` directory is renamed
-into the guard and only that owned generated tree is cleared **before** npm
-starts. This gives npm an absent root target and avoids holding two complete
-dependency trees during installation. It preserves `npm ci` replacement
-semantics: the old generated dependencies are not a backup. Cleanup targets
-the retired identity with bounded filesystem retries, without recursively
-changing permission modes. If cleanup fails, npm does not start; the guard and
-any remaining cleanup data stay for inspection. `dependencies:install` remains
-incremental and does not retire its existing dependency tree.
-Node and npm CLI driver paths are selected before retirement. A clean install
-refuses a driver whose canonical target is within the tree it would move,
-before creating the guard; use an external Node/npm toolchain. A link to an
-external driver is bound to that external canonical path and remains usable
-after the link moves. Selected paths are passed to npm rather than
-rediscovered after the move.
+Both modes reuse an established pnpm installation. Under the acquired guard,
+a legacy npm tree, a hybrid tree with npm's hidden lock, or an unidentified
+tree is retired and cleared before pnpm installs. This one-time conversion
+prevents obsolete npm contents remaining beside the new graph without holding
+two complete trees. Redirected or non-directory roots refuse before inspection.
+`dependencies:ci` requires the frozen lock; `dependencies:install` permits
+intentional resolution changes. pnpm clones or copies package contents from its
+shared store, while the worktree keeps its own writable installation. The
+cooperative guard spans installation, exact-hook checks, approved hooks, and
+artifact verification; incremental reuse does not skip those checks.
+
+Node and the exact pinned pnpm executable or JavaScript bootstrap driver are
+selected and canonicalized before the guard. Drivers must remain outside the
+worktree's `node_modules`; redirected root dependency directories still refuse.
+The selected command is passed through the guarded operation, not rediscovered
+mid-install.
 
 An install/hook/verification failure leaves the guard and any partial new
 dependencies in place. They are not automatically
-restored, verified, or retried. Inspect the original npm error and the exact
+restored, verified, or retried. Inspect the original install error and the exact
 reported guard path; first establish that the owning installer and other
 dependency consumers have stopped. Preserve the guard and partial tree in a
 separate recovery location before an intentional fresh install. Do not blindly

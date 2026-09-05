@@ -102,6 +102,7 @@ export function isVocabularyTextFile(path) {
   return (
     !SELF.has(path) &&
     path !== 'package-lock.json' &&
+    path !== 'pnpm-lock.yaml' &&
     (EXACT_TEXT_FILES.has(path) || TEXT_EXTENSIONS.has(extension(path)))
   );
 }
