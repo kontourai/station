@@ -2458,6 +2458,8 @@ export function configureRuntimeRoutes(
   const attachmentStaging = new AttachmentStagingService();
   const paneHostActions = createRuntimeWorkspacePaneHostActions({
     projectHomeDir: context.configLoader.getProjectHomeDir(),
+    journal:
+      context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
     projects: context.storageAdapter,
     orchestration: context.orchestrationService,
     getConnection: (id) => context.connectionService.getConnection(id),

@@ -1,5 +1,5 @@
 import { lstatSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import { agentAvailableInProject } from '@kontourai/station-contracts/project-reference-integrity';
@@ -12,13 +12,82 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from '../orchestration/foreground-invocation-admission.js';
+import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import { scanPluginPromptGeneration } from './plugin-command-skill-source.js';
 import {
   computePluginContentDigest,
   withPluginContentLock,
 } from './plugin-content-integrity.js';
-import { withPluginInstallationGeneration } from './plugin-installation-generation-fence.js';
-import { parsePluginManifest } from './plugin-manifest-loader.js';
+import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
+import { captureLocalPluginInstallation } from './plugin-installation-local.js';
+import { parsePluginManifestDocument } from './plugin-manifest-loader.js';
+import type { CapturedPluginPermissionArtifact } from './plugin-permissions.js';
+
+/** Read the selected immutable artifact through its installation owner. */
+export function captureWorkspacePaneHostPackage(
+  projectHomeDir: string,
+  pluginId: string,
+  journal?: PackageMcpAdmissionJournal,
+) {
+  const pluginsDir = join(projectHomeDir, 'plugins');
+  const captured = journal
+    ? captureLocalPluginInstallation(pluginsDir, journal, pluginId)
+    : (() => {
+        const root = resolveInstalledPluginRoot(pluginsDir, pluginId);
+        // Legacy compatibility only: retained installations require journal authority.
+        if (!root || root.kind !== 'legacy') return null;
+        return {
+          root,
+          installation: null,
+          isCurrent: () =>
+            resolveInstalledPluginRoot(pluginsDir, pluginId)?.packageRoot ===
+            root.packageRoot,
+        };
+      })();
+  if (!captured || !captured.isCurrent())
+    throw new ForegroundInvocationUnavailableError();
+  const pluginDir = captured.root.packageRoot;
+  const manifestPath = join(pluginDir, 'plugin.json');
+  const stat = lstatSync(manifestPath);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 256 * 1024)
+    throw new ForegroundInvocationUnavailableError();
+  const manifest = parsePluginManifestDocument(
+    readRegularFileNoFollow(projectHomeDir, manifestPath, {
+      maxBytes: 256 * 1024,
+    }),
+    manifestPath,
+  );
+  const digest = computePluginContentDigest(
+    dirname(pluginDir),
+    basename(pluginDir),
+  );
+  if (
+    !digest ||
+    manifest.name !== pluginId ||
+    (captured.installation && captured.installation.contentDigest !== digest)
+  )
+    throw new ForegroundInvocationUnavailableError();
+  return Object.freeze({
+    pluginId,
+    pluginDir,
+    manifest,
+    digest,
+    generation: captured.installation?.incarnation ?? digest,
+    isCurrent() {
+      try {
+        return (
+          captured.isCurrent() &&
+          computePluginContentDigest(
+            dirname(pluginDir),
+            basename(pluginDir),
+          ) === digest
+        );
+      } catch {
+        return false;
+      }
+    },
+  });
+}
 
 /**
  * Local server-owned prerequisite, not an API or a UI registration. The caller
@@ -27,12 +96,14 @@ import { parsePluginManifest } from './plugin-manifest-loader.js';
  */
 export function createWorkspacePaneHostAdmission(input: {
   projectHomeDir: string;
+  journal?: PackageMcpAdmissionJournal;
   projects: Pick<IStorageAdapter, 'projectRevision'>;
   nativeAgentAvailable?(agentId: string, spec: AgentSpec): boolean;
   /** Production grant gate wraps the short final Project/Agent admission. */
   withInvocationPermission?<T>(
     pluginId: string,
     invoke: () => Promise<T>,
+    artifact: CapturedPluginPermissionArtifact,
   ): Promise<T>;
 }) {
   const projectHomeDir = input.projectHomeDir;
@@ -52,28 +123,12 @@ export function createWorkspacePaneHostAdmission(input: {
       if (!isCanonicalPluginId(pluginId))
         throw new ForegroundInvocationUnavailableError();
       return withPluginContentLock(pluginsDir, pluginId, async () => {
-        const pluginDir = join(pluginsDir, pluginId);
-        const manifestPath = join(pluginDir, 'plugin.json');
-        for (const directory of [pluginsDir, pluginDir]) {
-          const stat = lstatSync(directory);
-          if (!stat.isDirectory() || stat.isSymbolicLink())
-            throw new ForegroundInvocationUnavailableError();
-        }
-        const manifestStat = lstatSync(manifestPath);
-        if (
-          !manifestStat.isFile() ||
-          manifestStat.isSymbolicLink() ||
-          manifestStat.size > 256 * 1024
-        ) {
-          throw new ForegroundInvocationUnavailableError();
-        }
-        const manifest = parsePluginManifest(
-          readRegularFileNoFollow(projectHomeDir, manifestPath, {
-            maxBytes: 256 * 1024,
-          }),
-          manifestPath,
+        const source = captureWorkspacePaneHostPackage(
+          projectHomeDir,
+          pluginId,
+          input.journal,
         );
-        const digest = computePluginContentDigest(pluginsDir, pluginId);
+        const { pluginDir, manifest, generation } = source;
         const contribution = manifest.workspacePaneHost;
         const action = contribution?.actions.find(
           (candidate) => candidate.id === actionId,
@@ -97,9 +152,8 @@ export function createWorkspacePaneHostAdmission(input: {
           contribution?.agentSelection.defaultAgent;
         if (
           manifest.name !== pluginId ||
-          !digest ||
           (request.installationGeneration !== undefined &&
-            request.installationGeneration !== digest) ||
+            request.installationGeneration !== generation) ||
           !action ||
           !agent ||
           agent.kind !== 'own-plugin-agent' ||
@@ -164,7 +218,7 @@ export function createWorkspacePaneHostAdmission(input: {
           agentId: agent.agentId,
           source: Object.freeze({
             pluginId,
-            installationGeneration: digest,
+            installationGeneration: generation,
             actionId: action.id,
           }),
           get agentSpec() {
@@ -188,8 +242,7 @@ export function createWorkspacePaneHostAdmission(input: {
                 agentSnapshot.invokeIfCurrent(() => {
                   if (
                     !active ||
-                    computePluginContentDigest(pluginsDir, pluginId) !==
-                      digest ||
+                    !source.isCurrent() ||
                     current.id !== project.id ||
                     current.slug !== projectSlug ||
                     !agentAvailableInProject(current.slug, current.agents, {
@@ -236,6 +289,7 @@ export function createWorkspacePaneHostAdmission(input: {
               ? await input.withInvocationPermission(
                   pluginId,
                   invokeWithProject,
+                  source,
                 )
               : await invokeWithProject();
             const result = await invoked.pending;
@@ -265,11 +319,12 @@ export function createWorkspacePaneHostAdmission(input: {
             used = true;
             // Plugin content is acquired OUTSIDE Session coordination, keeping
             // the existing lifecycle content -> Session lock order intact.
-            const outcome = await withPluginInstallationGeneration({
+            return await withPluginContentLock(
               pluginsDir,
-              pluginName: pluginId,
-              expected: { installed: true, installationGeneration: digest },
-              effect: async () => {
+              pluginId,
+              async () => {
+                if (!source.isCurrent())
+                  throw new ForegroundInvocationUnavailableError();
                 active = true;
                 try {
                   return await operation(admission);
@@ -277,10 +332,7 @@ export function createWorkspacePaneHostAdmission(input: {
                   active = false;
                 }
               },
-            });
-            if (outcome.kind !== 'applied')
-              throw new ForegroundInvocationUnavailableError();
-            return outcome.value;
+            );
           },
         });
       }).catch((error) => {

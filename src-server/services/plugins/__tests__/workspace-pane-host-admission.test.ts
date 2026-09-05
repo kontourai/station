@@ -4,11 +4,12 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   agentId,
@@ -48,9 +49,19 @@ import { EventStore } from '../../orchestration/event-store.js';
 import type { ForegroundInvocationAdmission } from '../../orchestration/foreground-invocation-admission.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../orchestration/session-agent-resolution.js';
-import { withPluginContentLock } from '../plugin-content-integrity.js';
+import {
+  computePluginContentDigest,
+  withPluginContentLock,
+} from '../plugin-content-integrity.js';
+import {
+  prepareLocalPluginDataScope,
+  preparePluginIncarnation,
+} from '../plugin-incarnation.js';
 import { grantPermissions, revokeAllGrants } from '../plugin-permissions.js';
-import { createWorkspacePaneHostAdmission } from '../workspace-pane-host-admission.js';
+import {
+  captureWorkspacePaneHostPackage,
+  createWorkspacePaneHostAdmission,
+} from '../workspace-pane-host-admission.js';
 
 const pluginId = 'admission-proof';
 const slug = agentId('admission-assistant');
@@ -163,11 +174,12 @@ describe('Workspace Pane host invocation admission', () => {
       createdAt: '2026-09-04T00:00:00Z',
       updatedAt: '2026-09-04T00:00:00Z',
     });
+    store = new EventStore(join(home, 'orchestration.sqlite'));
     authority = createWorkspacePaneHostAdmission({
       projectHomeDir: home,
       projects: storage,
+      journal: store.createPackageMcpAdmissionJournal(),
     });
-    store = new EventStore(join(home, 'orchestration.sqlite'));
     const sessions = new Map<string, ProviderSession>();
     const events = new AsyncEventQueue<CanonicalRuntimeEvent>();
     start = vi.fn(async (input) => {
@@ -328,6 +340,7 @@ describe('Workspace Pane host invocation admission', () => {
       projectHomeDir: home,
       projects: storage,
       orchestration: service,
+      journal: store.createPackageMcpAdmissionJournal(),
       getConnection: async (id) => ({
         id,
         name: 'Controlled connection',
@@ -399,6 +412,7 @@ describe('Workspace Pane host invocation admission', () => {
     options: {
       beforeModel?: () => Promise<void>;
       inModel?: () => Promise<void>;
+      retainArtifact?: boolean;
       dropCompanionMarker?: boolean;
       waitForModel?: Promise<void>;
     } = {},
@@ -416,7 +430,55 @@ describe('Workspace Pane host invocation admission', () => {
       join(pluginDir, 'agents', slug, 'agent.json'),
       JSON.stringify(nativeSpec),
     );
-    await grantPermissions(home, pluginId, ['agents.invoke']);
+    let retained:
+      | ReturnType<
+          ReturnType<
+            EventStore['createPackageMcpAdmissionJournal']
+          >['currentInstallation']
+        >
+      | undefined;
+    if (options.retainArtifact) {
+      const source = join(home, 'staged-source');
+      renameSync(pluginDir, source);
+      const plugins = join(home, 'plugins');
+      const dataScope = prepareLocalPluginDataScope(
+        plugins,
+        pluginId,
+        null,
+        'preserve',
+      );
+      const root = preparePluginIncarnation(
+        plugins,
+        pluginId,
+        source,
+        dataScope,
+      ).captured;
+      const journal = store.createPackageMcpAdmissionJournal();
+      expect(
+        journal.recordInstallation({
+          pluginId,
+          previous: null,
+          materialization: root.generation!,
+          dataScope,
+          contentDigest: computePluginContentDigest(
+            dirname(root.packageRoot),
+            basename(root.packageRoot),
+          )!,
+        }).state,
+      ).toBe('recorded');
+      retained = journal.currentInstallation(pluginId);
+      // Deliberately do not publish the compatibility alias: it is not authority.
+    }
+    await grantPermissions(
+      home,
+      pluginId,
+      ['agents.invoke'],
+      captureWorkspacePaneHostPackage(
+        home,
+        pluginId,
+        store.createPackageMcpAdmissionJournal(),
+      ),
+    );
     vi.stubEnv('STATION_API_BASE', 'http://pane-native.test');
     vi.stubGlobal(
       'fetch',
@@ -530,6 +592,7 @@ describe('Workspace Pane host invocation admission', () => {
       projectHomeDir: home,
       projects: storage,
       orchestration: service,
+      journal: store.createPackageMcpAdmissionJournal(),
       getConnection: async () => null,
       nativeAgentAvailable: () => true,
     });
@@ -555,6 +618,7 @@ describe('Workspace Pane host invocation admission', () => {
     );
     expect(prepared.data.state).toBe('prepared');
     return {
+      retained,
       streamText,
       ctx,
       provenance: { ...projection.owner, actionId: 'registered' },
@@ -570,6 +634,51 @@ describe('Workspace Pane host invocation admission', () => {
         ).data,
     };
   }
+
+  test('native action resolves journal-selected artifact without an alias and stamps its admission generation', async () => {
+    const proof = await nativeHostProof({ retainArtifact: true });
+    expect(proof.retained?.state).toBe('observed');
+    if (proof.retained?.state !== 'observed')
+      throw new Error('fixture installation absent');
+    expect(proof.provenance.installationGeneration).toBe(
+      proof.retained.installation.incarnation,
+    );
+    expect(proof.provenance.installationGeneration).not.toBe(
+      proof.retained.installation.contentDigest,
+    );
+    const result = await proof.execute();
+    expect(result.state).toBe('accepted');
+    expect(proof.streamText).toHaveBeenCalledOnce();
+  });
+
+  test('journal retirement fences a prepared native action even while artifact bytes remain', async () => {
+    const proof = await nativeHostProof({ retainArtifact: true });
+    if (proof.retained?.state !== 'observed')
+      throw new Error('fixture installation absent');
+    const permissionArtifact = captureWorkspacePaneHostPackage(
+      home,
+      pluginId,
+      store.createPackageMcpAdmissionJournal(),
+    );
+    await expect(
+      grantPermissions(
+        home,
+        'other-plugin',
+        ['agents.invoke'],
+        permissionArtifact,
+      ),
+    ).rejects.toThrow();
+    expect(
+      store
+        .createPackageMcpAdmissionJournal()
+        .requestRetirement(proof.retained.installation).state,
+    ).toBe('fenced');
+    expect((await proof.execute()).state).toBe('unavailable');
+    expect(proof.streamText).not.toHaveBeenCalled();
+    await expect(
+      grantPermissions(home, pluginId, ['agents.invoke'], permissionArtifact),
+    ).rejects.toThrow();
+  });
 
   test('captured native action reaches existing native model once and releases grants before settlement', async () => {
     const settled = deferred();

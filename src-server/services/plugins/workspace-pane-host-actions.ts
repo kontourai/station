@@ -20,12 +20,15 @@ import { assertConnectionReady } from '../execution-target/execution-target-reso
 import type { ForegroundInvocationAdmission } from '../orchestration/foreground-invocation-admission.js';
 import { ForegroundInvocationUnavailableError } from '../orchestration/foreground-invocation-admission.js';
 import { scanInstalledPluginInventory } from './installed-plugin-inventory.js';
-import { computePluginContentDigest } from './plugin-content-integrity.js';
+import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import {
   hasGrant,
   withPluginPermissionInvocation,
 } from './plugin-permissions.js';
-import { createWorkspacePaneHostAdmission } from './workspace-pane-host-admission.js';
+import {
+  captureWorkspacePaneHostPackage,
+  createWorkspacePaneHostAdmission,
+} from './workspace-pane-host-admission.js';
 import { createWorkspacePaneHostContribution } from './workspace-pane-host-contributions.js';
 
 export interface WorkspacePaneHostActionActor {
@@ -47,6 +50,7 @@ class HostActionActorUnavailableError extends Error {}
  */
 export function createWorkspacePaneHostActions(input: {
   projectHomeDir: string;
+  journal?: PackageMcpAdmissionJournal;
   projects: Pick<IStorageAdapter, 'projectRevision'>;
   getConnection(id: string): Promise<ConnectionConfig | null>;
   nativeAgentAvailable?(agentId: string, spec: AgentSpec): boolean;
@@ -64,14 +68,16 @@ export function createWorkspacePaneHostActions(input: {
   const pluginsDir = join(input.projectHomeDir, 'plugins');
   const admission = createWorkspacePaneHostAdmission({
     projectHomeDir: input.projectHomeDir,
+    journal: input.journal,
     projects: input.projects,
     nativeAgentAvailable: input.nativeAgentAvailable,
-    withInvocationPermission: (pluginId, invoke) =>
+    withInvocationPermission: (pluginId, invoke, artifact) =>
       withPluginPermissionInvocation(
         input.projectHomeDir,
         pluginId,
         'agents.invoke',
         invoke,
+        artifact,
       ),
   });
   type Prepared = Awaited<ReturnType<typeof admission.prepare>>;
@@ -91,8 +97,10 @@ export function createWorkspacePaneHostActions(input: {
       actor.readAuthority.mode,
       actor.readAuthority.tenantExecutionContext?.tenantId,
     ]);
-  const permission = (id: string) =>
-    hasGrant(input.projectHomeDir, id, 'agents.invoke');
+  const permission = (
+    id: string,
+    artifact: ReturnType<typeof captureWorkspacePaneHostPackage>,
+  ) => hasGrant(input.projectHomeDir, id, 'agents.invoke', undefined, artifact);
 
   async function catalog(
     projectSlug: string,
@@ -101,32 +109,42 @@ export function createWorkspacePaneHostActions(input: {
     const contributions: WorkspacePaneHostActionCatalog['contributions'][number][] =
       [];
     const inventory = scanInstalledPluginInventory(pluginsDir);
-    for (const installed of inventory.slice(0, 128)) {
-      if (
-        installed.state !== 'valid' ||
-        !installed.manifest.workspacePaneHost ||
-        installed.manifest.name !== installed.directoryName
-      )
+    const selected = input.journal?.selectedInstallations();
+    const ids = [
+      ...new Set([
+        ...inventory.map((entry) => entry.directoryName),
+        ...(selected?.state === 'observed'
+          ? selected.installations.map((entry) => entry.pluginId)
+          : []),
+      ]),
+    ];
+    let complete =
+      ids.length <= 128 &&
+      selected?.state !== 'unavailable' &&
+      inventory.every((entry) => entry.state === 'valid');
+    for (const pluginId of ids.slice(0, 128)) {
+      let captured: ReturnType<typeof captureWorkspacePaneHostPackage>;
+      try {
+        captured = captureWorkspacePaneHostPackage(
+          input.projectHomeDir,
+          pluginId,
+          input.journal,
+        );
+      } catch {
+        complete = false;
         continue;
-      const pluginId = installed.directoryName;
-      const installationGeneration = computePluginContentDigest(
-        pluginsDir,
-        pluginId,
-      );
-      if (!installationGeneration) continue;
-      const granted = permission(pluginId);
+      }
+      const { manifest, generation: installationGeneration } = captured;
+      if (!manifest.workspacePaneHost) continue;
+      const granted = permission(pluginId, captured);
       const owner = { pluginId, installationGeneration };
       const source = createWorkspacePaneHostContribution({
-        declaration: installed.manifest.workspacePaneHost,
+        declaration: manifest.workspacePaneHost,
         owner,
         projectId: project.id,
         authority: {
           current: () => ({
-            state:
-              computePluginContentDigest(pluginsDir, pluginId) ===
-              installationGeneration
-                ? 'current'
-                : 'retired',
+            state: captured.isCurrent() ? 'current' : 'retired',
           }),
         },
         agents: {
@@ -174,9 +192,9 @@ export function createWorkspacePaneHostActions(input: {
       if (projected.state !== 'available') continue;
       contributions.push({
         displayName:
-          typeof installed.manifest.displayName === 'string' &&
-          installed.manifest.displayName.trim()
-            ? installed.manifest.displayName.trim().slice(0, 160)
+          typeof manifest.displayName === 'string' &&
+          manifest.displayName.trim()
+            ? manifest.displayName.trim().slice(0, 160)
             : pluginId,
         projection: projected.projection,
         ...(!granted
@@ -192,9 +210,7 @@ export function createWorkspacePaneHostActions(input: {
       projectSlug,
       support: 'supported',
       contributions,
-      complete:
-        inventory.length <= 128 &&
-        inventory.every((entry) => entry.state === 'valid'),
+      complete,
     };
   }
 
