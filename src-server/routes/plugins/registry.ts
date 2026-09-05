@@ -6,6 +6,7 @@ import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import { observePluginGrantRevisions } from '../../services/plugins/plugin-permissions.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 /**
  * Registry Routes — browse, install, and uninstall agents and tools
@@ -63,6 +64,7 @@ import {
 
 interface RegistryRouteDeps {
   installationHost?: PluginInstallationHost;
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   applyConfigurationMutation?: AgentConfigurationMutationRunner;
   approveKitOperatorAction?: (
@@ -114,6 +116,7 @@ export function createRegistryRoutes(
     deps?.layoutCatalog ?? new DistributionProfileService(projectHomeDir);
   const pluginInstallDeps = deps
     ? {
+        registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
         packageMcpJournal: deps.packageMcpJournal,
         installationHost: deps.installationHost,
         agentsDir: join(projectHomeDir, 'agents'),

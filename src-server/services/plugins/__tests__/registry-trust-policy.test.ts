@@ -115,10 +115,18 @@ test('applied A→B→A across two configuration owners uses fresh CAS epochs an
   await firstLoader.mutateAppConfig(() => ({ registryTrust: a }));
   await expect(first.current()).rejects.toThrow(/awaiting/);
   const a1 = await first.publishApplied(await first.captureApplication(), a);
+  const admittedA = await first.captureAdmission();
+  expect(admittedA.isApplied()).toBe(true);
   const staleA = await first.captureApplication();
   await secondLoader.mutateAppConfig(() => ({ registryTrust: b }));
+  // A file edit is a candidate, not a completed policy withdrawal. New
+  // asynchronous admissions refuse the mismatch; accepted epochs fence
+  // already captured local handles synchronously.
+  expect(admittedA.isApplied()).toBe(true);
+  await expect(admittedA.assertCurrent()).rejects.toThrow(/awaiting/);
   await expect(first.current()).rejects.toThrow(/awaiting/);
   const b1 = await second.publishApplied(await second.captureApplication(), b);
+  expect(admittedA.isApplied()).toBe(false);
   await firstLoader.mutateAppConfig(() => ({ registryTrust: a }));
   await expect(first.publishApplied(staleA, a)).rejects.toThrow(/changed/);
   expect(secondStore.createRegistryTrustPolicyDecisions().read()).toEqual(b1);
@@ -126,6 +134,7 @@ test('applied A→B→A across two configuration owners uses fresh CAS epochs an
   expect(a2?.identity).toEqual(a1?.identity);
   expect(a2?.epoch).not.toBe(a1?.epoch);
   expect(a2?.scope).toBe(a1?.scope);
+  expect(admittedA.isApplied()).toBe(false);
   for (const previous of [firstStore, secondStore]) {
     previous.close();
     stores.splice(stores.indexOf(previous), 1);

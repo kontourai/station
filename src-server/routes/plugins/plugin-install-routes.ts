@@ -34,6 +34,7 @@ import {
   readPluginGrantState,
   requiredPermissionsForManifest,
 } from '../../services/plugins/plugin-permissions.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   errorMessage,
@@ -68,6 +69,7 @@ import {
 
 interface PluginInstallRouteDeps {
   installationHost?: PluginInstallationHost;
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: {
@@ -275,6 +277,7 @@ export function registerPluginInstallRoutes(
     logger,
     eventBus,
     installationHost: deps.installationHost,
+    registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
     packageMcpJournal: deps.packageMcpJournal,
     buildPlugin: (directory, name, manifest) =>
       buildPlugin(directory, name, logger, manifest),
@@ -653,6 +656,7 @@ export function registerPluginInstallRoutes(
             skip,
             {
               agentsDir,
+              registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
               packageMcpJournal: deps.packageMcpJournal,
               installationHost: deps.installationHost,
               beginConfigurationMutation: beginMutation,

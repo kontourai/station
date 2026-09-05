@@ -1,3 +1,4 @@
+import { generateKeyPairSync, sign } from 'node:crypto';
 import {
   cpSync,
   existsSync,
@@ -17,6 +18,7 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import {
   corruptFile,
@@ -49,6 +51,11 @@ import {
   readPluginDependencyOwnership,
   readPluginGrantState,
 } from '../../../services/plugins/plugin-permissions.js';
+import {
+  type RegistryPackageClaim,
+  registryPackageSignaturePayload,
+} from '../../../services/plugins/registry-supply-chain.js';
+import { createLocalRegistryTrustPolicyAuthority } from '../../../services/plugins/registry-trust-policy.js';
 import { readCurrentWorkspacePaneCatalog } from '../../../services/projects/workspace-pane-catalog.js';
 import type { Logger } from '../../../utils/logger.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
@@ -1083,6 +1090,106 @@ describe('installPluginFromSource', () => {
       'preserved',
     );
     expect(existsSync(join(root, 'integrations'))).toBe(false);
+  });
+
+  test('central signed installation records journal trust and refuses alias deletion as an anonymous update bypass', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-signed-install-'));
+    cleanupDirs.push(root);
+    await ensureStationHomeSchema(root);
+    const source = join(root, 'source');
+    const registryPath = join(root, 'registry.json');
+    writePlugin(source, {
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'signed-tools',
+      version: '1.0.0',
+    });
+    const pair = generateKeyPairSync('ed25519');
+    const config = {
+      profiles: [
+        {
+          registryKey: registryPath,
+          signatures: 'required' as const,
+          trustedEd25519Keys: {
+            primary: pair.publicKey
+              .export({ type: 'spki', format: 'pem' })
+              .toString(),
+          },
+        },
+      ],
+    };
+    const loader = new ConfigLoader({ projectHomeDir: root });
+    await loader.mutateAppConfig(() => ({ registryTrust: config }));
+    const store = new EventStore(join(root, 'events.sqlite'));
+    packageStores.push(store);
+    const policy = createLocalRegistryTrustPolicyAuthority(
+      root,
+      store.createRegistryTrustPolicyDecisions(),
+    );
+    await policy.publishApplied(await policy.captureApplication(), config);
+    const consent = await approvedConsent(source, root);
+    const claim: RegistryPackageClaim = {
+      packageSchema:
+        'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      registryId: 'signed-tools',
+      registryKey: registryPath,
+      pluginName: 'signed-tools',
+      packageVersion: '1.0.0',
+      source,
+      packageDigest: consent.contentDigest,
+    };
+    const signedClaim = {
+      ...claim,
+      signature: {
+        algorithm: 'ed25519',
+        keyId: 'primary',
+        value: sign(
+          null,
+          registryPackageSignaturePayload(claim),
+          pair.privateKey,
+        ).toString('base64'),
+      },
+    };
+    writeFileSync(
+      registryPath,
+      JSON.stringify({
+        version: 1,
+        plugins: [{ id: 'signed-tools', source, claim: signedClaim }],
+      }),
+    );
+    getPluginRegistryProviders.mockReturnValue([
+      {
+        source: 'signed-registry',
+        provider: new JsonManifestRegistryProvider(registryPath, root),
+      },
+    ]);
+    const journal = store.createPackageMcpAdmissionJournal();
+    const installDeps = {
+      ...deps(root),
+      packageMcpJournal: journal,
+      registryTrustPolicyAuthority: policy,
+    };
+    await installPluginFromSource(source, [], installDeps, {
+      registryId: 'signed-tools',
+      registryKey: registryPath,
+      consent,
+    });
+    const selected = journal.currentInstallation('signed-tools');
+    expect(selected.state).toBe('observed');
+    if (selected.state !== 'observed')
+      throw new Error('Expected selected installation');
+    const receipt = journal.activationPlan(
+      selected.installation,
+    )?.registryAcquisition;
+    expect(receipt?.signer?.keyId).toBe('primary');
+    expect(JSON.stringify(receipt)).not.toContain(registryPath);
+    expect(JSON.stringify(receipt)).not.toContain('BEGIN PUBLIC KEY');
+    expect(installDeps.buildPlugin).toHaveBeenCalledTimes(1);
+    rmSync(join(root, 'config', 'registry-installs.json'), { force: true });
+    await expect(
+      installPluginFromSource(source, [], installDeps, { consent }),
+    ).rejects.toThrow('trust continuity');
+    expect(journal.currentInstallation('signed-tools')).toEqual(selected);
+    expect(installDeps.buildPlugin).toHaveBeenCalledTimes(1);
   });
 
   test('refuses a manifest and installed-directory identity mismatch before uninstall mutation', async () => {

@@ -46,6 +46,7 @@ import {
   observePluginGrantRevisions,
   rebindGrantsAfterContentChange,
 } from '../../services/plugins/plugin-permissions.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { pluginUpdates } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
@@ -76,6 +77,7 @@ import {
 
 interface PluginLifecycleRouteDeps {
   installationHost?: PluginInstallationHost;
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: {
@@ -628,6 +630,7 @@ export function registerPluginLifecycleRoutes(
                 projectHomeDir,
                 logger,
                 buildPlugin,
+                registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
                 packageMcpJournal: deps.packageMcpJournal,
                 installationHost: deps.installationHost,
                 beginConfigurationMutation: beginMutation,
@@ -1060,6 +1063,7 @@ export function registerPluginLifecycleRoutes(
         async (beginMutation) => {
           const result = await uninstallInstalledPlugin(installedPluginName, {
             agentsDir,
+            registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
             packageMcpJournal: deps.packageMcpJournal,
             installationHost: deps.installationHost,
             beginConfigurationMutation: beginMutation,

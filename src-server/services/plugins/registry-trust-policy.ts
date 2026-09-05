@@ -265,7 +265,44 @@ export function createLocalRegistryTrustPolicyAuthority(
     registryTrustPolicyIdentity(
       (await observeAppConfigFile(home))?.registryTrust,
     );
+  const admission = async () => {
+    const before = decisions.read();
+    const configuration = (await observeAppConfigFile(home))?.registryTrust;
+    const identity = registryTrustPolicyIdentity(configuration);
+    const current = decisions.read();
+    if (
+      (before?.epoch ?? null) !== (current?.epoch ?? null) ||
+      (current
+        ? !isDeepStrictEqual(current.identity, identity)
+        : identity.configured)
+    )
+      throw new RegistryTrustPolicyConflict();
+    return {
+      decision: current,
+      configuration: configuration as RegistryTrustConfiguration | undefined,
+    };
+  };
   return {
+    /** Internal verification material, never a response or durable receipt. */
+    async captureAdmission() {
+      const captured = await admission();
+      const epoch = captured.decision?.epoch ?? null;
+      return {
+        ...captured,
+        async assertCurrent() {
+          if (((await admission()).decision?.epoch ?? null) !== epoch)
+            throw new RegistryTrustPolicyConflict();
+        },
+        /** Local synchronous dispatch fence. Remote adapters cannot emulate this with a cache. */
+        isApplied() {
+          try {
+            return (decisions.read()?.epoch ?? null) === epoch;
+          } catch {
+            return false;
+          }
+        },
+      };
+    },
     async captureApplication() {
       const before = decisions.read();
       const identity = await observe();
@@ -297,18 +334,7 @@ export function createLocalRegistryTrustPolicyAuthority(
       });
     },
     async current() {
-      const before = decisions.read();
-      const identity = await observe();
-      const current = decisions.read();
-      if ((before?.epoch ?? null) !== (current?.epoch ?? null))
-        throw new RegistryTrustPolicyConflict();
-      if (
-        current
-          ? !isDeepStrictEqual(current.identity, identity)
-          : identity.configured
-      )
-        throw new RegistryTrustPolicyConflict();
-      return current;
+      return (await admission()).decision;
     },
   };
 }

@@ -32,6 +32,7 @@ import {
   registryOwnsAgentAtHomeSync,
 } from '../../domain/agent-registry.js';
 import { owningProjectExists } from '../../domain/config-loader-agents.js';
+import { observeAppConfigFile } from '../../domain/config-loader-app.js';
 import { saveIntegrationConfig } from '../../domain/config-loader-storage.js';
 import {
   PLUGIN_AGENT_OWNER_FILE,
@@ -143,6 +144,11 @@ import {
   revokeAllGrants,
   snapshotPluginGrantEntry,
 } from '../../services/plugins/plugin-permissions.js';
+import {
+  RegistryAcquisitionRefused,
+  verifyRegistryAcquisition,
+} from '../../services/plugins/registry-acquisition.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { pluginInstalls, pluginUninstalls } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
@@ -219,6 +225,8 @@ function assertNoSymlinkTree(
 async function resolveSinglePluginRegistryProvider(id: string): Promise<{
   provider: IPluginRegistryProvider;
   source: string | null;
+  claim?: unknown;
+  fresh?: boolean;
 }> {
   const entries = getPluginRegistryProviders() as Array<{
     source?: string;
@@ -229,9 +237,24 @@ async function resolveSinglePluginRegistryProvider(id: string): Promise<{
     providerSource?: string;
     provider: IPluginRegistryProvider;
     source: string | null;
+    claim?: unknown;
+    fresh?: boolean;
   }> = [];
 
   for (const [providerIndex, entry] of entries.entries()) {
+    if (entry.provider.resolvePackage) {
+      const resolved = await entry.provider.resolvePackage(id);
+      if (resolved)
+        matches.push({
+          providerIndex,
+          providerSource: entry.source,
+          provider: entry.provider,
+          source: resolved.source,
+          claim: resolved.claim,
+          fresh: true,
+        });
+      continue;
+    }
     if (entry.provider.resolveSource) {
       const resolved = await entry.provider.resolveSource(id);
       if (resolved) {
@@ -268,7 +291,12 @@ async function resolveSinglePluginRegistryProvider(id: string): Promise<{
 
   const uniqueProviderMatches = new Map<
     number,
-    { provider: IPluginRegistryProvider; source: string | null }
+    {
+      provider: IPluginRegistryProvider;
+      source: string | null;
+      claim?: unknown;
+      fresh?: boolean;
+    }
   >();
   for (const match of matches) {
     const existing = uniqueProviderMatches.get(match.providerIndex);
@@ -280,6 +308,8 @@ async function resolveSinglePluginRegistryProvider(id: string): Promise<{
     uniqueProviderMatches.set(match.providerIndex, {
       provider: match.provider,
       source: match.source,
+      claim: match.claim,
+      fresh: match.fresh,
     });
   }
 
@@ -374,6 +404,7 @@ export interface PluginInstallSharedDeps {
   /** Explicit private installer owner, never request data or ambient state. */
   activationSession?: PluginActivationSession;
   installationHost?: PluginInstallationHost;
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: PluginLifecycleEventBus;
@@ -980,6 +1011,7 @@ async function rollbackOwnershipHandoffs(
 
 function createDependencyLifecycle(options: {
   grantRevisions: PluginGrantRevisionSnapshot;
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   consent: PluginInstallConsent;
   stagedParent: PluginManifest;
@@ -3160,6 +3192,7 @@ async function installPluginFromSourceUnderContext(
       visit(pluginName);
     }
     const dependencyLifecycle = createDependencyLifecycle({
+      registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
       packageMcpJournal: deps.packageMcpJournal,
       grantRevisions: requestGrants,
       consent,
@@ -3385,6 +3418,41 @@ async function installPluginFromSourceUnderContext(
             priorJournalInstallation.installation,
           )
         : null;
+    const policyAdmission =
+      await deps.registryTrustPolicyAuthority?.captureAdmission();
+    if (
+      !policyAdmission &&
+      (priorActivationPlan?.registryAcquisition ||
+        (await observeAppConfigFile(projectHomeDir))?.registryTrust !==
+          undefined)
+    )
+      throw new RegistryAcquisitionRefused();
+    const registryObservation =
+      policyAdmission?.configuration && options?.registryId
+        ? await resolveSinglePluginRegistryProvider(options.registryId)
+        : undefined;
+    if (
+      registryObservation &&
+      (registryObservation.source !== source ||
+        registryObservation.provider.registryKey !== options?.registryKey)
+    )
+      throw new RegistryAcquisitionRefused();
+    const registryAcquisition = policyAdmission
+      ? await verifyRegistryAcquisition({
+          admission: policyAdmission,
+          registryId: options?.registryId,
+          registryKey: options?.registryKey,
+          fresh: registryObservation?.fresh === true,
+          claim: registryObservation?.claim,
+          source,
+          pluginName,
+          packageVersion: manifest.version,
+          observedSourceDigest: consentBasis.contentDigest,
+          previous: priorActivationPlan?.registryAcquisition,
+        })
+      : undefined;
+    if (registryAcquisition && !isAgentPlugin)
+      throw new RegistryAcquisitionRefused();
     let permissionArtifact: CapturedPluginPermissionArtifact | undefined;
     let managedLifecycle:
       | Awaited<ReturnType<NonNullable<typeof installationService>['install']>>
@@ -3469,6 +3537,7 @@ async function installPluginFromSourceUnderContext(
         // dependency activation, and rollback retains the same outer fence.
 
         if (isAgentPlugin) {
+          await policyAdmission?.assertCurrent();
           if (!recovery) await buildPlugin(tempDir, pluginName, manifest);
           assertPluginBundleAssetsContained(tempDir);
           const artifact = captureLocalPluginArtifact(tempDir);
@@ -3502,6 +3571,7 @@ async function installPluginFromSourceUnderContext(
           const activationPlan: PluginActivationPlan | undefined = isAgentPlugin
             ? {
                 version: 1,
+                ...(registryAcquisition ? { registryAcquisition } : {}),
                 artifactDigest: artifact.digest,
                 sourceDigest: consentBasis.contentDigest,
                 descriptorDigest: pluginActivationDescriptorDigest(manifest),

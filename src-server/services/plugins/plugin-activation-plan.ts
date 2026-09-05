@@ -6,6 +6,10 @@ import {
 } from '@kontourai/station-contracts/plugin';
 import type { PluginInstallConsent } from './plugin-install-consent.js';
 import type { PluginDependencyOwnershipEntry } from './plugin-permissions.js';
+import {
+  type RegistryAcquisitionReceipt,
+  validRegistryAcquisitionReceipt,
+} from './registry-acquisition.js';
 
 /** Recovery evidence contains declarations and ownership, never secret values,
  * package paths, process output, or a permission to replay old consent. */
@@ -21,6 +25,7 @@ export interface PluginActivationPlan {
   agents: Array<{ slug: string; previousProject: string | null }>;
   ownedDependencies: PluginDependencyOwnershipEntry[];
   skipped?: string[];
+  registryAcquisition?: RegistryAcquisitionReceipt;
 }
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 function strings(
@@ -122,8 +127,11 @@ export function validPluginActivationPlan(
       'ownedDependencies',
       'parent',
       'skipped',
+      'registryAcquisition',
     ]) ||
     value.version !== 1 ||
+    (value.registryAcquisition !== undefined &&
+      !validRegistryAcquisitionReceipt(value.registryAcquisition)) ||
     (value.skipped !== undefined && !strings(value.skipped, 256, 256)) ||
     !['artifactDigest', 'descriptorDigest', 'sourceDigest'].every(
       (key) =>
