@@ -702,6 +702,33 @@ describe('App home route resolution', () => {
     expect(screen.queryByRole('status', { name: /loading/i })).toBeNull();
   });
 
+  test('a main occupant with no registered shell (a retired id) renders Home, not a blank outlet', async () => {
+    // Orchestrator fault injection on the C2a branch: replacing the
+    // `MainRegionSurface` fallback with `() => null` stayed green, so the
+    // stale-id branch had no test. A persisted arrangement (slice D) can
+    // name a surface a later build no longer registers; the outlet must
+    // fall back to Home rather than render nothing.
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.regionModel = {
+      ...regionModelStub(),
+      regions: {
+        ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        main: { visible: true, size: 0, occupant: 'retired-surface' },
+      },
+    };
+
+    render(<App />);
+    await act(async () => undefined);
+
+    const body = await screen.findByTestId('app-view-content');
+    expect(body.closest('main#station-main')).not.toBeNull();
+    expect(screen.queryByTestId('activity-region-shell')).toBeNull();
+  });
+
   test('a routed view renders on another route while main keeps its occupant', async () => {
     window.history.replaceState({}, '', '/plugins');
     hooks.projects = {
