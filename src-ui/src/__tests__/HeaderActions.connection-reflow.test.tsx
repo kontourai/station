@@ -291,6 +291,88 @@ describe.skipIf(!chromiumAvailable)(
       ).toEqual(states.map(() => xs[0]));
     });
 
+    /**
+     * #1536 C3: the chip read "Connected · Default" with the middle dot
+     * detached from "Connected" and leading "Default" — because the
+     * separator was the IDENTITY's `::before` while the state label sat
+     * centred inside its 116px reservation, leaving ~23px of empty box
+     * between the two.
+     */
+    async function measureChip(
+      state: ChipState,
+      viewport: { width: number; height: number },
+    ) {
+      const page = await browser.newPage({ viewport });
+      try {
+        await page.setContent(
+          buildFixtureHtml(await renderMarkupForState(state)),
+        );
+        return await page.evaluate(() => {
+          const stateSpan = document.querySelector('.app-toolbar__conn-state');
+          const nameSpan = document.querySelector('.app-toolbar__conn-name');
+          if (!stateSpan) throw new Error('no state span');
+          const textRight = (element: Element): number | null => {
+            const node = element.firstChild;
+            if (!node) return null;
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            const rect = range.getBoundingClientRect();
+            return rect.width === 0 ? null : rect.right;
+          };
+          const textLeft = (element: Element): number | null => {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            const rect = range.getBoundingClientRect();
+            return rect.width === 0 ? null : rect.left;
+          };
+          return {
+            stateAfter: window.getComputedStyle(stateSpan, '::after').content,
+            nameBefore: nameSpan
+              ? window.getComputedStyle(nameSpan, '::before').content
+              : null,
+            nameVisible: nameSpan
+              ? nameSpan.getBoundingClientRect().width > 0
+              : false,
+            gapBetweenPhrases:
+              nameSpan && textRight(stateSpan) !== null
+                ? (textLeft(nameSpan) ?? 0) - (textRight(stateSpan) ?? 0)
+                : null,
+          };
+        });
+      } finally {
+        await page.close();
+      }
+    }
+
+    test('the separator belongs to the part before it, next to the state it follows', async () => {
+      const chip = await measureChip('connected', { width: 1280, height: 400 });
+
+      // Structural: the dot is the STATE's trailing separator, not the
+      // identity's leading one, so inline layout puts it against "Connected".
+      expect(chip.stateAfter).toBe('" · "');
+      expect(chip.nameBefore).toBe('none');
+      expect(chip.nameVisible).toBe(true);
+      // Geometric: and the reservation's slack no longer splits the phrase.
+      // Measured in this fixture — 40px with the centred label and the
+      // identity-side separator, 18px with both fixed.
+      expect(chip.gapBetweenPhrases).not.toBeNull();
+      expect(chip.gapBetweenPhrases as number).toBeLessThanOrEqual(24);
+    });
+
+    test('prints no separator on a phone, where the part it leads into is hidden', async () => {
+      // `:has()` cannot see `display: none`, so the breakpoint that hides the
+      // identity has to suppress the dot as well — otherwise the fix trades a
+      // leading dot for a trailing one. `needs-credential` keeps its label
+      // there ("dot only while healthy" only covers connected/idle).
+      const chip = await measureChip('needs-credential', {
+        width: 390,
+        height: 200,
+      });
+
+      expect(chip.nameVisible).toBe(false);
+      expect(chip.stateAfter).toBe('none');
+    });
+
     test('the connection chip fits the width a phone row can spare', async () => {
       // #1401. NOT a position assertion: this fixture mounts `HeaderActions`
       // alone, so the cluster starts at x=0 and the Settings control is
