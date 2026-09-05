@@ -655,45 +655,36 @@ export async function rebindGrantsAfterContentChange(
     | 'serverModule'
     | 'operationalEventSubscriptions'
   >,
+  artifact?: CapturedPluginPermissionArtifact,
 ): Promise<{ retained: string[]; withdrawn: string[] }> {
-  const before = readPluginGrantRecord(projectHomeDir, pluginName);
-  if (before.permissions.length === 0) return { retained: [], withdrawn: [] };
-  // Read AFTER the store read succeeded, for the same reason
-  // `grantPermissions` takes it inside the updater: an unreadable grants
-  // store must report itself rather than be masked by the tree read.
-  const contentDigest = refreshPluginContentDigest(
-    pluginsDirFor(projectHomeDir),
-    pluginName,
-  );
-  if (contentDigest === null) {
-    throw new PluginContentUnavailableError(pluginName);
-  }
-  const declared = new Set(requiredPermissionsForManifest(manifest));
-  const retained = before.permissions.filter(
-    (permission) => declared.has(permission) && !needsConsent(permission),
-  );
-  const keep = new Set(retained);
-  const withdrawn = before.permissions.filter(
-    (permission) => !keep.has(permission),
-  );
-  if (withdrawn.length === 0) {
-    // Nothing to withdraw, but the binding still has to move to the new
-    // bytes or the next read would report `changed` forever.
-    await grantsStore(projectHomeDir).mutate(pluginName, (grants) => {
-      grants[pluginName] = toStoredEntry({
-        permissions: retained,
-        contentDigest,
-        ...(before.installAuthority
-          ? { installAuthority: before.installAuthority }
-          : {}),
-      });
-      return grants;
-    });
-    return { retained, withdrawn };
-  }
+  let outcome: { retained: string[]; withdrawn: string[] } = {
+    retained: [],
+    withdrawn: [],
+  };
+  if (
+    readPluginGrantRecord(projectHomeDir, pluginName).permissions.length === 0
+  )
+    return outcome;
   await grantsStore(projectHomeDir).mutate(pluginName, (grants) => {
-    // Dependency deletion authority is host-owned lifecycle state, not a
-    // permission. Withdrawing the last permission must not erase it.
+    const before = toGrantRecord(grants[pluginName]);
+    if (artifact && (artifact.pluginId !== pluginName || !artifact.isCurrent()))
+      throw new PluginContentUnavailableError(pluginName);
+    if (before.permissions.length === 0) return grants;
+    const contentDigest =
+      artifact?.digest ??
+      refreshPluginContentDigest(pluginsDirFor(projectHomeDir), pluginName);
+    if (contentDigest === null)
+      throw new PluginContentUnavailableError(pluginName);
+    const declared = new Set(requiredPermissionsForManifest(manifest));
+    const retained = before.permissions.filter(
+      (permission) => declared.has(permission) && !needsConsent(permission),
+    );
+    const keep = new Set(retained);
+    const withdrawn = before.permissions.filter(
+      (permission) => !keep.has(permission),
+    );
+    // Re-read and derive under the existing mutation owner so a concurrent
+    // revocation cannot be resurrected from an earlier snapshot.
     if (retained.length === 0 && !before.installAuthority)
       delete grants[pluginName];
     else
@@ -704,9 +695,10 @@ export async function rebindGrantsAfterContentChange(
           ? { installAuthority: before.installAuthority }
           : {}),
       });
+    outcome = { retained, withdrawn };
     return grants;
   });
-  return { retained, withdrawn };
+  return outcome;
 }
 
 export function requiredPermissionsForManifest(
@@ -855,6 +847,7 @@ export async function withPluginProviderGrantPublication<T>(
   projectHomeDir: string,
   pluginName: string,
   publish: () => Promise<T>,
+  artifact?: CapturedPluginPermissionArtifact,
 ): Promise<{ kind: 'applied'; value: T } | { kind: 'superseded' }> {
   return withPluginProviderGrantsPublication(
     projectHomeDir,
@@ -863,6 +856,8 @@ export async function withPluginProviderGrantPublication<T>(
       if (!granted.has(pluginName)) return { kind: 'superseded' };
       return { kind: 'applied', value: await publish() };
     },
+    undefined,
+    artifact ? new Map([[pluginName, artifact]]) : undefined,
   );
 }
 
@@ -900,6 +895,7 @@ export async function withPluginProviderGrantsPublication<T>(
   pluginNames: readonly string[],
   publish: (granted: ReadonlySet<string>) => Promise<T>,
   expectedSnapshot?: PluginProviderGrantSnapshot,
+  artifacts?: ReadonlyMap<string, CapturedPluginPermissionArtifact>,
 ): Promise<T> {
   return grantsStore(projectHomeDir).withReadLease(async (grants) => {
     if (
@@ -911,10 +907,12 @@ export async function withPluginProviderGrantsPublication<T>(
       );
     const granted = new Set<string>();
     for (const name of new Set(pluginNames)) {
-      const digest = refreshPluginContentDigest(
-        pluginsDirFor(projectHomeDir),
-        name,
-      );
+      const artifact = artifacts?.get(name);
+      const digest = artifacts
+        ? artifact?.pluginId === name && artifact.isCurrent()
+          ? artifact.digest
+          : null
+        : refreshPluginContentDigest(pluginsDirFor(projectHomeDir), name);
       if (
         digest !== null &&
         derivePluginGrantBinding(
@@ -971,6 +969,7 @@ export async function recordPluginDependencyOwnership(
   projectHomeDir: string,
   pluginName: string,
   ownedDependencies: readonly PluginDependencyOwnershipEntry[],
+  artifact?: CapturedPluginPermissionArtifact,
 ): Promise<void> {
   if (ownedDependencies.length > 256) {
     throw new Error('Plugin dependency ownership exceeds the bounded limit');
@@ -989,6 +988,8 @@ export async function recordPluginDependencyOwnership(
     dependencyIds.add(dependency.id);
   }
   await grantsStore(projectHomeDir).mutate(pluginName, (grants) => {
+    if (artifact && (artifact.pluginId !== pluginName || !artifact.isCurrent()))
+      throw new PluginContentUnavailableError(pluginName);
     const record = toGrantRecord(grants[pluginName]);
     if (ownedDependencies.length === 0) {
       if (record.permissions.length === 0) {
@@ -1001,10 +1002,9 @@ export async function recordPluginDependencyOwnership(
       }
       return grants;
     }
-    const installedDigest = refreshPluginContentDigest(
-      pluginsDirFor(projectHomeDir),
-      pluginName,
-    );
+    const installedDigest =
+      artifact?.digest ??
+      refreshPluginContentDigest(pluginsDirFor(projectHomeDir), pluginName);
     if (installedDigest === null) {
       throw new PluginContentUnavailableError(pluginName);
     }
