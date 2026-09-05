@@ -53,8 +53,14 @@ const { hostMock, hostEffectMock, mobileMock } = vi.hoisted(() => ({
 const codingChatPaneMock = vi.hoisted(() => vi.fn());
 const chatWorkspaceLayoutMock = vi.hoisted(() => vi.fn());
 const telemetryTrackMock = vi.hoisted(() => vi.fn());
+const trustedPluginLayoutMock = vi.hoisted(() => vi.fn());
+const pluginBoundaryMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk', () => ({
+  FullScreenError: ({ description }: { description: string }) => (
+    <div>{description}</div>
+  ),
+  LayoutHeader: () => null,
   telemetry: { track: telemetryTrackMock },
   useProjectLayoutQuery: (...args: unknown[]) => {
     const result = layoutQueryMock(...args);
@@ -104,6 +110,21 @@ vi.mock('../../components/coding-layout/CodingInspectorPanel', () => ({
 }));
 vi.mock('../../workspace-panes/resolvedWorkspacePaneCatalog', () => ({
   useResolvedWorkspacePaneCatalog: (...args: unknown[]) => catalogMock(...args),
+}));
+vi.mock(
+  '../../workspace-panes/workspacePaneRendererSelection',
+  async (original) => ({
+    ...(await original<
+      typeof import('../../workspace-panes/workspacePaneRendererSelection')
+    >()),
+    resolveClientTrustedPluginLayout: trustedPluginLayoutMock,
+  }),
+);
+vi.mock('../../workspace-panes/PluginWorkspacePaneSDKBoundary', () => ({
+  PluginWorkspacePaneSDKBoundary: ({ children, ...identity }: any) => {
+    pluginBoundaryMock(identity);
+    return children;
+  },
 }));
 vi.mock('../../workspace-panes/useWorkspacePaneBoundIdentity', () => ({
   useWorkspacePaneBoundIdentity: (instance: {
@@ -596,8 +617,42 @@ describe('ProjectLayoutRenderer', () => {
     const plan = createWorkspacePlanPaneInstance('project-uuid')!;
     const readiness = createWorkspaceReadinessPaneInstance('project-uuid')!;
     const trust = createWorkspaceTrustPaneInstance('project-uuid')!;
+    const pluginDescriptor = {
+      version: '1.0',
+      id: 'pane:plugin%3Aplaced-plugin:main',
+      name: 'Placed plugin',
+      rendererId: 'renderer:plugin%3Aplaced-plugin:main',
+      renderer: { kind: 'plugin-component', name: 'placed-main' },
+      placement: { supportedRegions: ['primary'] },
+      modes: [{ id: 'default', contextRequirement: { project: true } }],
+      provenance: { origin: 'plugin', pluginId: 'placed-plugin' },
+      lifecycle: { stage: 'stable' },
+    } as any;
+    const pluginInstance = {
+      version: '1.0',
+      descriptorId: pluginDescriptor.id,
+      instanceId: 'instance:plugin:project-uuid:placed-plugin',
+      stateKey: 'state:plugin:project-uuid:placed-plugin',
+      boundContext: {
+        projectId: 'project-uuid',
+        contribution: {
+          id: 'plugin:placed-plugin:pane',
+          version: '1.0.0',
+          sourceIdentity: {
+            id: 'placed-plugin',
+            kind: 'local',
+            source: 'plugins/placed-plugin',
+          },
+          provenance: { origin: 'plugin', pluginId: 'placed-plugin' },
+        },
+      },
+    } as any;
+    const PlacedPlugin = () => <div>Placed plugin renderer</div>;
+    trustedPluginLayoutMock.mockReturnValue(PlacedPlugin);
+    pluginBoundaryMock.mockClear();
     catalogMock.mockReturnValue({
       projectId: 'project-uuid',
+      projectSlug: 'project-route',
       entries: [
         {
           instance: coding.instance,
@@ -680,6 +735,21 @@ describe('ProjectLayoutRenderer', () => {
           },
           descriptor: WORKSPACE_TRUST_PANE_DESCRIPTOR,
         },
+        {
+          instance: pluginInstance,
+          availability: {
+            state: 'available',
+            reason: { code: 'ready', source: 'resolver' },
+          },
+          descriptor: pluginDescriptor,
+          selectedRenderer: {
+            source: 'primary',
+            rendererId: pluginDescriptor.rendererId,
+            renderer: pluginDescriptor.renderer,
+            contributorProvenance: pluginDescriptor.provenance,
+            requiredCapabilities: ['trusted-plugin-react'],
+          },
+        },
       ],
     });
     navigationMock.setLayout.mockReset();
@@ -703,6 +773,20 @@ describe('ProjectLayoutRenderer', () => {
     expect(screen.getByText(/Hosted project-uuid/)).toBeTruthy();
     expect(screen.getByText(/instances 7/)).toBeTruthy();
     expect(screen.getByText('Coding chat pane')).toBeTruthy();
+    const label = hostMock.mock.lastCall?.[0].presentationLabel;
+    expect(label(coding.instance)).toBe('Coding');
+    expect(
+      label({ ...coding.instance, descriptorId: 'not-the-catalog-descriptor' }),
+    ).toBeNull();
+    expect(
+      label({
+        ...coding.instance,
+        boundContext: {
+          ...coding.instance.boundContext,
+          projectId: 'other-project',
+        },
+      }),
+    ).toBeNull();
     expect(screen.getByRole('button', { name: /Files pane/ })).toBeTruthy();
     expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
     expect(screen.getByText('Terminal pane /repo/workspace')).toBeTruthy();
@@ -919,6 +1003,28 @@ describe('ProjectLayoutRenderer', () => {
     ).toBe(true);
     expect(hostProps.admitRestoredInstance(browserPreview)).toEqual(
       browserPreview,
+    );
+    expect(hostProps.admitRestoredInstance(pluginInstance)).toEqual(
+      pluginInstance,
+    );
+    render(hostProps.renderPane(pluginInstance));
+    expect(screen.getByText('Placed plugin renderer')).toBeTruthy();
+    expect(pluginBoundaryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginName: 'placed-plugin',
+        projectSlug: 'project-route',
+      }),
+    );
+    expect(pluginBoundaryMock).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Open Placed plugin',
+      }),
+    );
+    expect(open).toHaveBeenCalledWith(
+      pluginInstance,
+      undefined,
+      expect.objectContaining({ type: 'split' }),
     );
     const liveCatalog = catalogMock.mock.results.at(-1)?.value;
     catalogMock.mockReturnValue({

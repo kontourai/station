@@ -8,10 +8,11 @@ import {
   WORKSPACE_HOME_PANE_DESCRIPTOR,
   WORKSPACE_HOME_PANE_INSTANCE,
 } from '@kontourai/station-contracts/workspace-home-pane';
-import type {
-  WorkspacePaneDescriptor,
-  WorkspacePaneInstance,
-  WorkspacePaneSuppliableContexts,
+import {
+  parseWorkspacePaneInstance,
+  type WorkspacePaneDescriptor,
+  type WorkspacePaneInstance,
+  type WorkspacePaneSuppliableContexts,
 } from '@kontourai/station-contracts/workspace-pane';
 import {
   createWorkspacePaneHostBaselineDocument,
@@ -121,12 +122,17 @@ export function ambientWorkspacePaneDockAction(
   };
 }
 
+/**
+ * What this admits becomes a known catalog record for restoration, so it must
+ * return a parsed instance rather than the untrusted persisted object itself —
+ * a cast would let an unparsed candidate alias straight into the host document.
+ * `ProjectLayoutRenderer`'s admission does the same for the same reason.
+ */
 function admitsAmbientDockInstance(
   candidate: unknown,
 ): WorkspacePaneInstance | null {
-  if (!candidate || typeof candidate !== 'object') return null;
-  const instance = candidate as WorkspacePaneInstance;
-  return ambientDockDescriptorFor(instance) ? instance : null;
+  const instance = parseWorkspacePaneInstance(candidate);
+  return instance && ambientDockDescriptorFor(instance) ? instance : null;
 }
 
 /**

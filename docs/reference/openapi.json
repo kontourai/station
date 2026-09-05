@@ -10,7 +10,9 @@
       "get": {
         "operationId": "getAppConfig",
         "summary": "Get application configuration",
-        "tags": ["config"],
+        "tags": [
+          "config"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -26,7 +28,9 @@
       "put": {
         "operationId": "updateAppConfig",
         "summary": "Update application configuration",
-        "tags": ["config"],
+        "tags": [
+          "config"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -54,7 +58,9 @@
       "get": {
         "operationId": "listAgents",
         "summary": "List enriched agents",
-        "tags": ["agents"],
+        "tags": [
+          "agents"
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -77,7 +83,9 @@
       "post": {
         "operationId": "createAgent",
         "summary": "Create an agent",
-        "tags": ["agents"],
+        "tags": [
+          "agents"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -105,7 +113,9 @@
       "put": {
         "operationId": "updateAgent",
         "summary": "Update an agent",
-        "tags": ["agents"],
+        "tags": [
+          "agents"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -131,7 +141,9 @@
       "delete": {
         "operationId": "deleteAgent",
         "summary": "Delete an agent",
-        "tags": ["agents"],
+        "tags": [
+          "agents"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -159,7 +171,9 @@
       "get": {
         "operationId": "listIntegrations",
         "summary": "List integrations",
-        "tags": ["integrations"],
+        "tags": [
+          "integrations"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -175,7 +189,9 @@
       "post": {
         "operationId": "createIntegration",
         "summary": "Create or update an integration",
-        "tags": ["integrations"],
+        "tags": [
+          "integrations"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -203,7 +219,9 @@
       "get": {
         "operationId": "getIntegration",
         "summary": "Get an integration",
-        "tags": ["integrations"],
+        "tags": [
+          "integrations"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -219,7 +237,9 @@
       "put": {
         "operationId": "updateIntegration",
         "summary": "Update an integration",
-        "tags": ["integrations"],
+        "tags": [
+          "integrations"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -245,7 +265,9 @@
       "delete": {
         "operationId": "deleteIntegration",
         "summary": "Delete an integration",
-        "tags": ["integrations"],
+        "tags": [
+          "integrations"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -273,7 +295,9 @@
       "post": {
         "operationId": "reconnectIntegration",
         "summary": "Reconnect an integration",
-        "tags": ["integrations"],
+        "tags": [
+          "integrations"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -301,7 +325,9 @@
       "get": {
         "operationId": "listSkills",
         "summary": "List installed skills",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -319,7 +345,9 @@
       "get": {
         "operationId": "getSkill",
         "summary": "Get a skill (resolves a legacy identifier)",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -335,7 +363,9 @@
       "put": {
         "operationId": "updateSkill",
         "summary": "Update a local skill, including its command and variables",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -364,7 +394,9 @@
       "delete": {
         "operationId": "deleteSkill",
         "summary": "Remove an installed skill",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -392,7 +424,9 @@
       "post": {
         "operationId": "createLocalSkill",
         "summary": "Create a local skill package",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -426,7 +460,9 @@
       "post": {
         "operationId": "importSkills",
         "summary": "Import markdown files as local skills",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -460,7 +496,9 @@
       "post": {
         "operationId": "trackSkillRun",
         "summary": "Track a skill run",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -494,7 +532,9 @@
       "post": {
         "operationId": "recordSkillOutcome",
         "summary": "Record skill outcome quality",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -538,7 +578,9 @@
       "get": {
         "operationId": "listRegistryPlugins",
         "summary": "List available registry plugins",
-        "tags": ["registry"],
+        "tags": [
+          "registry"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -556,7 +598,9 @@
       "get": {
         "operationId": "listInstalledRegistryPlugins",
         "summary": "List installed registry plugins",
-        "tags": ["registry"],
+        "tags": [
+          "registry"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -574,7 +618,9 @@
       "post": {
         "operationId": "installRegistryPlugin",
         "summary": "Install a plugin from the registry",
-        "tags": ["registry"],
+        "tags": [
+          "registry"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -602,7 +648,9 @@
       "delete": {
         "operationId": "uninstallRegistryPlugin",
         "summary": "Uninstall a registry plugin",
-        "tags": ["registry"],
+        "tags": [
+          "registry"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -630,7 +678,9 @@
       "get": {
         "operationId": "listPlugins",
         "summary": "List installed plugins",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -648,7 +698,9 @@
       "post": {
         "operationId": "previewPluginInstall",
         "summary": "Preview a plugin before install",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -676,7 +728,9 @@
       "post": {
         "operationId": "installPlugin",
         "summary": "Install a plugin from a source",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -704,7 +758,9 @@
       "get": {
         "operationId": "checkPluginUpdates",
         "summary": "Check installed plugins for updates",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -722,7 +778,9 @@
       "post": {
         "operationId": "updatePlugin",
         "summary": "Update an installed plugin",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -750,7 +808,9 @@
       "delete": {
         "operationId": "deletePlugin",
         "summary": "Delete an installed plugin",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -778,7 +838,9 @@
       "post": {
         "operationId": "reloadPlugins",
         "summary": "Reload installed plugin providers",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -796,7 +858,9 @@
       "get": {
         "operationId": "getPluginProviders",
         "summary": "Get provider state for a plugin",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -824,7 +888,9 @@
       "get": {
         "operationId": "getPluginOverrides",
         "summary": "Get plugin override state",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -840,7 +906,9 @@
       "put": {
         "operationId": "updatePluginOverrides",
         "summary": "Update plugin override state",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -928,7 +996,9 @@
                 "maxLength": 10
               }
             },
-            "required": ["name"],
+            "required": [
+              "name"
+            ],
             "additionalProperties": true
           }
         },
@@ -1010,7 +1080,11 @@
               },
               "transport": {
                 "type": "string",
-                "enum": ["stdio", "sse", "streamable-http"]
+                "enum": [
+                  "stdio",
+                  "sse",
+                  "streamable-http"
+                ]
               },
               "command": {
                 "type": "string"
@@ -1079,7 +1153,11 @@
                 "properties": {
                   "kind": {
                     "type": "string",
-                    "enum": ["jsonrpc", "http", "command"]
+                    "enum": [
+                      "jsonrpc",
+                      "http",
+                      "command"
+                    ]
                   },
                   "path": {
                     "type": "string"
@@ -1091,7 +1169,9 @@
                 "additionalProperties": false
               }
             },
-            "required": ["id"],
+            "required": [
+              "id"
+            ],
             "additionalProperties": false
           }
         },
@@ -1120,7 +1200,11 @@
               },
               "transport": {
                 "type": "string",
-                "enum": ["stdio", "sse", "streamable-http"]
+                "enum": [
+                  "stdio",
+                  "sse",
+                  "streamable-http"
+                ]
               },
               "command": {
                 "type": "string"
@@ -1189,7 +1273,11 @@
                 "properties": {
                   "kind": {
                     "type": "string",
-                    "enum": ["jsonrpc", "http", "command"]
+                    "enum": [
+                      "jsonrpc",
+                      "http",
+                      "command"
+                    ]
                   },
                   "path": {
                     "type": "string"
@@ -1243,13 +1331,58 @@
                       "type": "string"
                     },
                     "maxItems": 256
+                  },
+                  "dependencyApprovals": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "permissions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 256
+                        },
+                        "contentDigest": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "dependencies": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 256
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "permissions",
+                        "contentDigest",
+                        "dependencies"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 256
                   }
                 },
-                "required": ["permissions", "contentDigest"],
+                "required": [
+                  "permissions",
+                  "contentDigest"
+                ],
                 "additionalProperties": false
               }
             },
-            "required": ["source"],
+            "required": [
+              "source"
+            ],
             "additionalProperties": false
           }
         },
@@ -1296,7 +1429,9 @@
                 "minLength": 1
               }
             },
-            "required": ["id"],
+            "required": [
+              "id"
+            ],
             "additionalProperties": false
           }
         },
@@ -1352,7 +1487,9 @@
                     "type": "boolean"
                   }
                 },
-                "required": ["enabled"],
+                "required": [
+                  "enabled"
+                ],
                 "additionalProperties": false
               },
               "variables": {
@@ -1374,7 +1511,9 @@
                       "maxLength": 2000
                     }
                   },
-                  "required": ["name"],
+                  "required": [
+                    "name"
+                  ],
                   "additionalProperties": false
                 },
                 "maxItems": 50
@@ -1387,7 +1526,12 @@
                     "properties": {
                       "kind": {
                         "type": "string",
-                        "enum": ["agent", "plugin", "user", "asset"]
+                        "enum": [
+                          "agent",
+                          "plugin",
+                          "user",
+                          "asset"
+                        ]
                       },
                       "agentSlug": {
                         "type": "string"
@@ -1397,7 +1541,9 @@
                       },
                       "action": {
                         "type": "string",
-                        "enum": ["provider-capability-to-skill"]
+                        "enum": [
+                          "provider-capability-to-skill"
+                        ]
                       },
                       "convertedAt": {
                         "type": "string"
@@ -1407,7 +1553,10 @@
                         "properties": {
                           "kind": {
                             "type": "string",
-                            "enum": ["skill", "provider-capability"]
+                            "enum": [
+                              "skill",
+                              "provider-capability"
+                            ]
                           },
                           "id": {
                             "type": "string"
@@ -1417,7 +1566,12 @@
                           },
                           "owner": {
                             "type": "string",
-                            "enum": ["user", "registry", "plugin", "provider"]
+                            "enum": [
+                              "user",
+                              "registry",
+                              "plugin",
+                              "provider"
+                            ]
                           },
                           "providerId": {
                             "type": "string"
@@ -1426,11 +1580,18 @@
                             "type": "string"
                           }
                         },
-                        "required": ["kind", "id", "name", "owner"],
+                        "required": [
+                          "kind",
+                          "id",
+                          "name",
+                          "owner"
+                        ],
                         "additionalProperties": false
                       }
                     },
-                    "required": ["kind"],
+                    "required": [
+                      "kind"
+                    ],
                     "additionalProperties": false
                   },
                   "updatedFrom": {
@@ -1443,7 +1604,10 @@
                 "$ref": "#/definitions/SkillCreate/properties/provenance/properties/createdFrom"
               }
             },
-            "required": ["name", "body"],
+            "required": [
+              "name",
+              "body"
+            ],
             "additionalProperties": false
           }
         },
@@ -1471,14 +1635,19 @@
                       "maxLength": 100000
                     }
                   },
-                  "required": ["filename", "content"],
+                  "required": [
+                    "filename",
+                    "content"
+                  ],
                   "additionalProperties": false
                 },
                 "minItems": 1,
                 "maxItems": 50
               }
             },
-            "required": ["files"],
+            "required": [
+              "files"
+            ],
             "additionalProperties": false
           }
         },
@@ -1492,10 +1661,15 @@
             "properties": {
               "outcome": {
                 "type": "string",
-                "enum": ["success", "failure"]
+                "enum": [
+                  "success",
+                  "failure"
+                ]
               }
             },
-            "required": ["outcome"],
+            "required": [
+              "outcome"
+            ],
             "additionalProperties": false
           }
         },
@@ -1551,7 +1725,9 @@
                     "type": "boolean"
                   }
                 },
-                "required": ["enabled"],
+                "required": [
+                  "enabled"
+                ],
                 "additionalProperties": false
               },
               "variables": {
@@ -1573,7 +1749,9 @@
                       "maxLength": 2000
                     }
                   },
-                  "required": ["name"],
+                  "required": [
+                    "name"
+                  ],
                   "additionalProperties": false
                 },
                 "maxItems": 50
@@ -1586,7 +1764,12 @@
                     "properties": {
                       "kind": {
                         "type": "string",
-                        "enum": ["agent", "plugin", "user", "asset"]
+                        "enum": [
+                          "agent",
+                          "plugin",
+                          "user",
+                          "asset"
+                        ]
                       },
                       "agentSlug": {
                         "type": "string"
@@ -1596,7 +1779,9 @@
                       },
                       "action": {
                         "type": "string",
-                        "enum": ["provider-capability-to-skill"]
+                        "enum": [
+                          "provider-capability-to-skill"
+                        ]
                       },
                       "convertedAt": {
                         "type": "string"
@@ -1606,7 +1791,10 @@
                         "properties": {
                           "kind": {
                             "type": "string",
-                            "enum": ["skill", "provider-capability"]
+                            "enum": [
+                              "skill",
+                              "provider-capability"
+                            ]
                           },
                           "id": {
                             "type": "string"
@@ -1616,7 +1804,12 @@
                           },
                           "owner": {
                             "type": "string",
-                            "enum": ["user", "registry", "plugin", "provider"]
+                            "enum": [
+                              "user",
+                              "registry",
+                              "plugin",
+                              "provider"
+                            ]
                           },
                           "providerId": {
                             "type": "string"
@@ -1625,11 +1818,18 @@
                             "type": "string"
                           }
                         },
-                        "required": ["kind", "id", "name", "owner"],
+                        "required": [
+                          "kind",
+                          "id",
+                          "name",
+                          "owner"
+                        ],
                         "additionalProperties": false
                       }
                     },
-                    "required": ["kind"],
+                    "required": [
+                      "kind"
+                    ],
                     "additionalProperties": false
                   },
                   "updatedFrom": {

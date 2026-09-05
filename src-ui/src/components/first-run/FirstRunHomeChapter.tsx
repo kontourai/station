@@ -39,6 +39,7 @@ import {
   useOnboardingSetupState,
 } from '../../contexts/onboarding-setup-store';
 import { useSystemStatus } from '../../hooks/useSystemStatus';
+import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -64,6 +65,11 @@ import {
   requestFirstRunTour,
   useFirstRunProgress,
 } from './first-run-store';
+
+const loadFirstRunEnginePicker = () =>
+  import('../EnginePicker').then((module) => ({
+    default: module.EnginePicker,
+  }));
 
 /**
  * The run's steps, in order.
@@ -168,6 +174,7 @@ export function FirstRunHomeChapter() {
   } = useUsageTelemetryDisclosureState();
 
   const [open, setOpen] = useState(false);
+  const [enginePickerOpen, setEnginePickerOpen] = useState(false);
   const [steps, setSteps] = useState<ChapterStep[]>(CHAPTER_STEPS);
   const [step, setStep] = useState<ChapterStep>('engines');
   const [saving, setSaving] = useState(false);
@@ -263,8 +270,8 @@ export function FirstRunHomeChapter() {
   //  The cleanup matters as much as the set: leaving Home, or the
   // route unmounting mid-chapter, must hand the screen back.
   useEffect(() => {
-    firstRunChapterPresence.set(open);
-  }, [open]);
+    firstRunChapterPresence.set(open || enginePickerOpen);
+  }, [enginePickerOpen, open]);
   useEffect(() => () => firstRunChapterPresence.set(false), []);
 
   const writeStatus = useCallback(
@@ -365,6 +372,28 @@ export function FirstRunHomeChapter() {
     requestFirstRunTour();
   }, [writeStatus]);
 
+  const continueToAboutYou = useCallback(() => {
+    firstRunStore.enterChapter('about-you');
+    setStep('about-you');
+    setEnginePickerOpen(false);
+    setOpen(true);
+  }, []);
+
+  const continueAfterEngineSetup = useCallback(() => {
+    // Engine materialization answers "which harnesses should be available?";
+    // it does not answer the separate role question "which one powers
+    // Station?". Ask that question while first run already owns the screen,
+    // and only when no explicit choice (including explicit Station/null) has
+    // been recorded. EnginePicker is shared with Settings so capability
+    // filtering and persistence stay single-sourced.
+    if (config?.builtinAgentEngineConnectionId === undefined) {
+      setOpen(false);
+      setEnginePickerOpen(true);
+      return;
+    }
+    continueToAboutYou();
+  }, [config?.builtinAgentEngineConnectionId, continueToAboutYou]);
+
   if (!offer.offered) return null;
 
   return (
@@ -401,8 +430,7 @@ export function FirstRunHomeChapter() {
               // the list's contents, never the chapter's presence).
               loading={!settled}
               onDone={() => {
-                firstRunStore.enterChapter('about-you');
-                setStep('about-you');
+                continueAfterEngineSetup();
               }}
               onDefer={defer}
               onGiveUp={giveUp}
@@ -438,6 +466,20 @@ export function FirstRunHomeChapter() {
             />
           )}
         </ResponsiveDialogSurface>
+      ) : null}
+      {enginePickerOpen ? (
+        <LazyBoundary
+          load={loadFirstRunEnginePicker}
+          componentProps={{
+            eyebrow: 'Set up Station',
+            title: 'Choose what powers Station',
+            description:
+              'Choose the engine that runs the Station agent. Station Control and Station Docs stay attached to the role.',
+            onChosen: continueToAboutYou,
+            onDismiss: continueToAboutYou,
+          }}
+          pending={null}
+        />
       ) : null}
     </>
   );

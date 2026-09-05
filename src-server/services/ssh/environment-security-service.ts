@@ -779,13 +779,30 @@ export class EnvironmentSecurityService {
     } catch (error) {
       operationError = error;
     }
-    const current = this.#readLockRecord();
+    let current: { record: EnvironmentSecurityLockRecord; status: Stats };
+    try {
+      current = this.#readLockRecord();
+    } catch (error) {
+      // Missing here means something removed the lock out from under its own
+      // owner, so this caller can no longer prove it held it. Acquisition
+      // reads ENOENT as "free"; the ownership check must not.
+      if (isNodeError(error, 'ENOENT')) {
+        throw new EnvironmentSecurityRecordError(
+          'Environment security lock disappeared while held',
+          { cause: error },
+        );
+      }
+      throw error;
+    }
     if (current.record.nonce !== nonce) {
       throw new EnvironmentSecurityRecordError(
         'Environment security lock ownership changed unexpectedly',
       );
     }
-    await rm(this.#lockPath);
+    // Ownership was proven just above; a lock that vanished in between is
+    // the same external removal, and a raw ENOENT here would mask the
+    // operation's own error below.
+    await rm(this.#lockPath, { force: true });
     if (operationError) throw operationError;
     return result as T;
   }
@@ -807,6 +824,11 @@ export class EnvironmentSecurityService {
     try {
       parsed = JSON.parse(readFileSync(this.#lockPath, 'utf8'));
     } catch (error) {
+      // A lock that disappears between the type check above and this read is
+      // free, not invalid: its owner finished and unlinked it. Let the raw
+      // ENOENT through so #recoverStaleLockIfSafe recognizes it and lets
+      // acquisition retry. Every other read or parse failure stays closed.
+      if (isNodeError(error, 'ENOENT')) throw error;
       throw new EnvironmentSecurityRecordError(
         'Invalid environment security lock record',
         { cause: error },
@@ -831,6 +853,22 @@ export class EnvironmentSecurityService {
           candidate.ino === status.ino
         );
       });
+    if (candidates.length === 0) {
+      // An owner publishes with link-then-unlink: sampling nlink === 2 and
+      // then finding no candidate means its unlink landed in between. Prove
+      // that reading, rather than assuming it: the same inode must now have
+      // one link. Anything else stays fail-closed.
+      const settled = lstatSync(this.#lockPath);
+      if (
+        settled.dev === status.dev &&
+        settled.ino === status.ino &&
+        settled.nlink === 1
+      )
+        return;
+      throw new EnvironmentSecurityRecordError(
+        'Unsafe environment security lock type',
+      );
+    }
     if (candidates.length !== 1) {
       throw new EnvironmentSecurityRecordError(
         'Unsafe environment security lock type',

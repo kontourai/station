@@ -41,7 +41,7 @@ export function useAttentionInbox() {
      * archive#3214: the number the header bell badge renders, read straight
      * off the projection rather than recomputed from `items`. `HeaderActions`
      * passes this same field to the notifications surface badge
-     * (`HeaderActions.tsx` → `surface-registry.ts`'s `attentionCount`) from
+     * (`HeaderActions.tsx` → `destination-registry.ts`'s `attentionCount`) from
      * the same `['attention', apiBase]` cache entry, so any consumer of this
      * hook shows the badge's number by construction — not because a local
      * `!acknowledgedAt` filter happens to agree with the server's.

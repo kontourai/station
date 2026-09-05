@@ -37,13 +37,35 @@ The set of agents available in a project. Missing scope means all agents remain 
 _Avoid_: global agent list when project scope exists
 
 **Layout**:
-A project view or standalone workspace surface.
-_Avoid_: page when plugin composition matters
+A project's named view the sidebar navigates between: a server record whose type selects the renderer.
+_Avoid_: page when plugin composition matters; region or arrangement when placement is meant
 
 **Layout tab**:
-A named area inside a layout that hosts a Workspace Pane: a plugin component,
-built-in component, or MCP-UI panel.
+The legacy plugin `layout.json` shape: a named area that hosts a Workspace Pane (a plugin
+component, built-in component, or MCP-UI panel). A layout with N tabs maps onto a pane host
+whose root is one tab group with N panes; it is migration input, not a target-model term.
 _Avoid_: route
+
+**Region**:
+A fixed shell slot: main, left, right, or bottom. The shell owns it; nothing placed in a
+region reads which region it is in.
+_Avoid_: pane, panel, or a placement capability word from the Workspace Pane contract
+(`supportedRegions`) when a shell slot is meant
+
+**Surface**:
+A registered occupant of a region, with an id, title, icon, keyboard chord, and default
+region. Chat and Activity are surfaces.
+_Avoid_: a navigable destination (the app-shell destination registry); the Kontour Surface
+product
+
+**Pane host**:
+A tree of Workspace Panes arranged as `split` and `tabs` nodes inside a region or a layout.
+The persisted form is the Workspace Pane host document.
+_Avoid_: layout, tab bar
+
+**Arrangement**:
+The user's placement choices across regions, surfaces, and pane hosts, persisted per device.
+_Avoid_: layout, preference
 
 **Layout action**:
 A user-visible action attached to a layout or tab.
@@ -127,7 +149,7 @@ _Avoid_: raw route push for project layout navigation
 - A Task experience keeps Task identity in Station while its owning authority remains Station (Direct), Builder Kit (Deliver), Knowledge Kit (Learn), or Console (Operate).
 - An optional Task experience remains `unavailable` until a typed, trusted owner contract proves it is available; a generic opaque external reference is never promoted into owner state.
 - Only an `available` revalidated Task workspace binding permits local file or diff inspection. An `ambiguous` or `unavailable` snapshot remains visible for identity and recovery.
-- A layout hosts tabs; tabs host Workspace Panes. A surface or experience may compose several layouts and panes.
+- The shell has regions; a region holds a surface; a surface or a layout holds a pane host; a pane host holds Workspace Panes in tab groups and splits. Legacy layout tabs are the migration input for that pane host.
 - A Workspace Pane descriptor owns identity, renderer reference, supported placement capability set, context requirement, actions, provenance, lifecycle, and optional alternative renderer. A descriptor's requirements say which exact Project, Task, Session, run, workspace, and source identities a host must provide; the distinct Pane instance records the exact identities actually bound for that occurrence. Neither form owns or replaces `LayoutDefinition`/`LayoutTab` persistence or render dispatch.
 - Existing Layout tabs remain the baseline data — the additive Layout-to-Workspace-Pane adapter reads `LayoutTab.component`'s string and structured `LayoutComponentRef` shapes into a lossless retained-Layout record and writes the original tab shape back, never migrating or executing it. The current catalog read seam uses that adapter for built-ins, trusted plugin Layouts, and MCP Apps; it does not install, authorize, probe, or claim renderer availability.
 - A Workspace Pane host document is an additive, bounded persistence layer for exact existing instances. Its parser rejects unsafe/version-mismatched/duplicate/orphan data; restoration quarantines a malformed child where valid siblings remain and reconstructs a bounded recovery document rather than trusting raw storage.

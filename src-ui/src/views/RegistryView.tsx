@@ -9,6 +9,7 @@ import {
   useRegistryItemsQuery,
   useRegistryLayoutActionMutation,
   useRegistrySkillActionMutation,
+  useReloadPluginsMutation,
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
@@ -34,7 +35,10 @@ import {
 } from '../core/remotePluginBundleConsent';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { InstallPreviewModal } from './plugin-management/InstallPreviewModal';
-import type { PreviewData } from './plugin-management/types';
+import {
+  installedDependencyPermissions,
+  type PreviewData,
+} from './plugin-management/types';
 import './PluginManagementView.css';
 import './RegistryView.css';
 import './page-layout.css';
@@ -92,7 +96,8 @@ export function RegistryView({
     () => new Set(),
   );
   const previewMutation = usePluginRegistryPreviewMutation();
-  const { requestInstallConsent } = usePermissions();
+  const reloadPluginsMutation = useReloadPluginsMutation();
+  const { requestConsent, requestInstallConsent } = usePermissions();
   const pluginRegistryStatus = useSyncExternalStore(
     pluginRegistry.subscribe,
     pluginRegistry.getLoadStatus,
@@ -314,7 +319,15 @@ export function RegistryView({
       data.manifest?.name ||
       item.displayName ||
       itemId;
-    const pendingConsent = data.permissions.pendingConsent;
+    const pendingConsent = [
+      ...data.permissions.pendingConsent,
+      ...(data.dependencies ?? []).flatMap((dependency) =>
+        (dependency.consent?.pendingConsent ?? []).map((entry) => ({
+          ...entry,
+          permission: `${dependency.id}: ${entry.permission}`,
+        })),
+      ),
+    ];
     if (pendingConsent.length > 0) {
       const approved = await requestInstallConsent(
         data.manifest?.name || itemId,
@@ -333,12 +346,42 @@ export function RegistryView({
     const baseCallbacks = actionCallbacks(tab, item, itemId, false);
     const callbacks = {
       onError: baseCallbacks.onError,
-      onSuccess: () => {
+      onSuccess: async (result: unknown) => {
         baseCallbacks.onSuccess();
+        void pluginRegistry.reload();
+        const dependencyStatus = installedDependencyPermissions(result);
+        if (
+          dependencyStatus === undefined &&
+          (data.dependencies?.length ?? 0) > 0
+        ) {
+          setMessage(
+            `${displayName} is installed, but Station did not report current dependency approval status. Check Plugins on the Station host.`,
+          );
+        }
+        for (const dependency of dependencyStatus ?? []) {
+          const dependencyPending = dependency.pendingConsent;
+          if (dependencyPending.length === 0) continue;
+          const approved = await requestConsent(
+            dependency.id,
+            dependency.id,
+            dependencyPending,
+          );
+          if (!approved) {
+            setMessage(
+              `${displayName} is installed, but dependency ${dependency.id} still requires host approval.`,
+            );
+            break;
+          }
+        }
+        await reloadPluginsMutation.mutateAsync().catch((error) => {
+          setMessage(
+            `Installed ${displayName}, but plugin activation could not be refreshed: ${error instanceof Error ? error.message : 'unknown error'}`,
+          );
+        });
         // The server announces the install over SSE too; reloading here makes
         // the new layout components register without depending on that
         // connection being up.
-        void pluginRegistry.reload();
+        await pluginRegistry.reload();
       },
     };
     const variables = {
@@ -350,6 +393,23 @@ export function RegistryView({
         dependencies: (data.dependencies ?? []).map(
           (dependency) => dependency.id,
         ),
+        ...((data.dependencies ?? []).some((dependency) => dependency.consent)
+          ? {
+              dependencyApprovals: (data.dependencies ?? []).flatMap(
+                (dependency) =>
+                  dependency.consent
+                    ? [
+                        {
+                          id: dependency.id,
+                          permissions: dependency.consent.permissions,
+                          contentDigest: dependency.consent.contentDigest,
+                          dependencies: dependency.consent.dependencies,
+                        },
+                      ]
+                    : [],
+              ),
+            }
+          : {}),
       },
       skip: Array.from(previewSkips),
     };

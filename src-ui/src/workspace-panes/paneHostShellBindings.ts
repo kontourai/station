@@ -2,7 +2,7 @@ import type {
   PaneNavigationTarget,
   PaneUnavailableReason,
 } from '@kontourai/station-contracts/workspace-pane-host-contract';
-import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
+import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
 import { BANNER_PRIORITY, bannerStore } from '../contexts/banner-store';
 
 /**
@@ -94,9 +94,9 @@ export function resolvePaneNavigationRoute(
       // unknown id is refused rather than turned into a path. `view` is what
       // marks a surface's route as an exact, navigable root; a surface
       // without one has no destination to offer.
-      const surface = APP_SURFACE_REGISTRY.get(target.surfaceId);
-      if (!surface?.view) return null;
-      return { pathname: surface.route, params: {} };
+      const destination = APP_DESTINATION_REGISTRY.get(target.surfaceId);
+      if (!destination?.view) return null;
+      return { pathname: destination.route, params: {} };
     }
     default: {
       const unreachable: never = target;
@@ -115,10 +115,10 @@ export function resolvePaneNavigationRoute(
  * directions from disagreeing about which routes exist.
  */
 export function paneAppSurfaceIdForRoute(pathname: string): string | null {
-  const surface = APP_SURFACE_REGISTRY.getRegistered().find(
+  const destination = APP_DESTINATION_REGISTRY.getRegistered().find(
     (definition) => definition.view && definition.route === pathname,
   );
-  return surface?.id ?? null;
+  return destination?.id ?? null;
 }
 
 /**

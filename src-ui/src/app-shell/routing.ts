@@ -6,9 +6,9 @@ import {
   canonicalConnectionPath,
 } from '../views/connections-hub/connection-sections';
 import {
-  APP_SURFACE_REGISTRY,
-  type ManagementSurfaceId,
-} from './surface-registry';
+  APP_DESTINATION_REGISTRY,
+  type ManagementDestinationId,
+} from './destination-registry';
 
 export const DEVELOPER_TABS = [
   'logs',
@@ -265,8 +265,8 @@ export function resolveViewFromPath(
   const queryIndex = path.indexOf('?');
   const search = queryIndex >= 0 ? path.slice(queryIndex + 1) : '';
   path = queryIndex >= 0 ? path.slice(0, queryIndex) : path;
-  const exactSurface = APP_SURFACE_REGISTRY.resolveExactRoute(path);
-  if (exactSurface) return exactSurface;
+  const exactDestination = APP_DESTINATION_REGISTRY.resolveExactRoute(path);
+  if (exactDestination) return exactDestination;
 
   if (path.startsWith('/agents/')) {
     // Preserve the historically accepted trailing-slash spelling while the
@@ -639,17 +639,17 @@ export function getParentView(view: NavigationView): NavigationView | null {
   }
 }
 
-export type ManagementNavigationGroup = ManagementSurfaceId;
+export type ManagementNavigationGroup = ManagementDestinationId;
 
 export function getManagementNavigationGroup(
   view: NavigationView,
 ): ManagementNavigationGroup | null {
-  const surface = APP_SURFACE_REGISTRY.getSurfaceForView(view);
-  return surface?.managementGroup ?? null;
+  const destination = APP_DESTINATION_REGISTRY.getDestinationForView(view);
+  return destination?.managementGroup ?? null;
 }
 
 export function getPathForManagementNavigationGroup(
   group: ManagementNavigationGroup,
 ): string {
-  return APP_SURFACE_REGISTRY.get(group)?.route ?? '/';
+  return APP_DESTINATION_REGISTRY.get(group)?.route ?? '/';
 }

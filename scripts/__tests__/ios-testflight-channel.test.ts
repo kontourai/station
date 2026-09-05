@@ -19,8 +19,10 @@ describe('iOS TestFlight channel config', () => {
     expect(workflow).toContain(
       'STATION_BUILD_BRANCH="$AUTHORITY_REF" STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build',
     );
+    // The upload job reads the manifest from the staged artifact it
+    // downloaded, the same bytes the build job compared against the IPA.
     expect(workflow).toContain(
-      '--artifact-manifest src-desktop/station-client-build.json',
+      '--artifact-manifest staged/src-desktop/station-client-build.json',
     );
     expect(workflow).toContain('cmp "src-desktop/station-client-build.json"');
     expect(workflow).toContain('artifact_built_at=$(node -p');

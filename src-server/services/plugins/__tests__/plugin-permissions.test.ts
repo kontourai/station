@@ -24,8 +24,12 @@ import {
   GrantsStoreReservedKeyError,
   GrantsStoreUnavailableError,
 } from '../grants-file-store.js';
-import { withPluginContentLock } from '../plugin-content-integrity.js';
 import {
+  computePluginContentDigest,
+  withPluginContentLock,
+} from '../plugin-content-integrity.js';
+import {
+  copyPluginDependencyOwnership,
   getPermissionTier,
   getPluginGrants,
   grantPermissions,
@@ -35,9 +39,12 @@ import {
   PluginContentUnavailableError,
   PluginGrantsUnavailableError,
   processInstallPermissions,
+  readPluginDependencyOwnership,
   readPluginGrantRecord,
   readPluginGrantState,
   rebindGrantsAfterContentChange,
+  recordPluginDependencyOwnership,
+  removePluginHostRecord,
   requiredPermissionsForManifest,
   revokeAllGrants,
   revokeGrants,
@@ -75,6 +82,215 @@ async function mutatePluginTree(
     writeFileSync(join(pluginsDir, name, 'server.mjs'), contents);
   });
 }
+
+describe('durable dependency ownership handoff', () => {
+  const homes: string[] = [];
+  afterEach(() => {
+    for (const home of homes.splice(0))
+      rmSync(home, { recursive: true, force: true });
+  });
+  async function setupHandoff() {
+    const home = mkdtempSync(join(tmpdir(), 'station-ownership-handoff-'));
+    homes.push(home);
+    seedPluginTrees(
+      home,
+      'creator',
+      'consumer',
+      'dependency',
+      'other-creator',
+      'other-dependency',
+    );
+    const plugins = join(home, 'plugins');
+    const entry = {
+      id: 'dependency',
+      contentDigest: computePluginContentDigest(plugins, 'dependency')!,
+    };
+    await recordPluginDependencyOwnership(home, 'creator', [entry]);
+    return {
+      home,
+      plugins,
+      entry,
+      recipientDigest: computePluginContentDigest(plugins, 'consumer')!,
+    };
+  }
+
+  test('a matching digest without a source host claim cannot mint cleanup authority', async () => {
+    const { home, entry, recipientDigest } = await setupHandoff();
+    await expect(
+      copyPluginDependencyOwnership(
+        home,
+        'other-creator',
+        'consumer',
+        entry,
+        recipientDigest,
+      ),
+    ).rejects.toThrow('no matching host-owned source claim');
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([]);
+  });
+
+  test('rollback restores authority only and preserves grants committed after handoff', async () => {
+    const { home, entry, recipientDigest } = await setupHandoff();
+    await grantPermissions(home, 'consumer', ['network.fetch']);
+    const copied = await copyPluginDependencyOwnership(
+      home,
+      'creator',
+      'consumer',
+      entry,
+      recipientDigest,
+    );
+    expect(copied.kind).toBe('copied');
+    if (copied.kind !== 'copied') throw new Error('missing handoff');
+    expect(getPluginGrants(home, 'consumer')).toEqual(['network.fetch']);
+    await grantPermissions(home, 'consumer', ['ui.confirm']);
+    await copied.handoff.rollback();
+    await copied.handoff.rollback();
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([]);
+    expect(getPluginGrants(home, 'consumer')).toEqual(
+      expect.arrayContaining(['network.fetch', 'ui.confirm']),
+    );
+    expect(readPluginDependencyOwnership(home, 'creator')).toEqual([entry]);
+  });
+
+  test('a later legitimate handoff blocks stale rollback, while reverse rollback remains possible', async () => {
+    const { home, plugins, entry, recipientDigest } = await setupHandoff();
+    const other = {
+      id: 'other-dependency',
+      contentDigest: computePluginContentDigest(plugins, 'other-dependency')!,
+    };
+    await recordPluginDependencyOwnership(home, 'other-creator', [other]);
+    const first = await copyPluginDependencyOwnership(
+      home,
+      'creator',
+      'consumer',
+      entry,
+      recipientDigest,
+    );
+    const second = await copyPluginDependencyOwnership(
+      home,
+      'other-creator',
+      'consumer',
+      other,
+      recipientDigest,
+    );
+    if (first.kind !== 'copied' || second.kind !== 'copied')
+      throw new Error('missing handoff');
+    await expect(first.handoff.rollback()).rejects.toThrow(
+      'changed after handoff',
+    );
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([
+      entry,
+      other,
+    ]);
+    await second.handoff.rollback();
+    await first.handoff.rollback();
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([]);
+  });
+
+  test('rollback cannot discard the last claim before the creator is restored', async () => {
+    const { home, entry, recipientDigest } = await setupHandoff();
+    const copied = await copyPluginDependencyOwnership(
+      home,
+      'creator',
+      'consumer',
+      entry,
+      recipientDigest,
+    );
+    if (copied.kind !== 'copied') throw new Error('missing handoff');
+    await removePluginHostRecord(home, 'creator');
+    await expect(copied.handoff.rollback()).rejects.toThrow(
+      'Original dependency custody must be restored',
+    );
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([entry]);
+  });
+
+  test('legacy unbound recipient grants are never rebound by a custody transfer', async () => {
+    const { home, entry, recipientDigest } = await setupHandoff();
+    const path = join(home, 'plugin-grants.json');
+    const stored = JSON.parse(readFileSync(path, 'utf8'));
+    stored.consumer = ['network.fetch'];
+    writeFileSync(path, JSON.stringify(stored));
+    await expect(
+      copyPluginDependencyOwnership(
+        home,
+        'creator',
+        'consumer',
+        entry,
+        recipientDigest,
+      ),
+    ).resolves.toEqual({ kind: 'ineligible' });
+    expect(JSON.parse(readFileSync(path, 'utf8')).consumer).toEqual([
+      'network.fetch',
+    ]);
+    expect(readPluginDependencyOwnership(home, 'creator')).toEqual([entry]);
+  });
+
+  test('managed recipients and exhausted ownership capacity cannot silently absorb claims', async () => {
+    const { home, plugins, entry, recipientDigest } = await setupHandoff();
+    await recordPluginDependencyOwnership(home, 'other-creator', [
+      { id: 'consumer', contentDigest: recipientDigest },
+    ]);
+    await expect(
+      copyPluginDependencyOwnership(
+        home,
+        'creator',
+        'consumer',
+        entry,
+        recipientDigest,
+      ),
+    ).resolves.toEqual({ kind: 'ineligible' });
+    await removePluginHostRecord(home, 'other-creator');
+    const full = Array.from({ length: 256 }, (_, index) => ({
+      id: `held-${index}`,
+      contentDigest: computePluginContentDigest(plugins, 'other-dependency')!,
+    }));
+    await recordPluginDependencyOwnership(home, 'consumer', full);
+    await expect(
+      copyPluginDependencyOwnership(
+        home,
+        'creator',
+        'consumer',
+        entry,
+        recipientDigest,
+      ),
+    ).resolves.toEqual({ kind: 'ineligible' });
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual(full);
+    expect(readPluginDependencyOwnership(home, 'creator')).toEqual([entry]);
+  });
+
+  test('recipient mutation before its lock is acquired invalidates the proposed handoff', async () => {
+    const { home, plugins, entry, recipientDigest } = await setupHandoff();
+    let release!: () => void;
+    let held = false;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const mutating = withPluginContentLock(plugins, 'consumer', async () => {
+      held = true;
+      await gate;
+      writeFileSync(
+        join(plugins, 'consumer', 'plugin.json'),
+        JSON.stringify({ name: 'consumer', version: '2.0.0' }),
+      );
+    });
+    await vi.waitFor(() => expect(held).toBe(true));
+    const copying = copyPluginDependencyOwnership(
+      home,
+      'creator',
+      'consumer',
+      entry,
+      recipientDigest,
+    );
+    try {
+      await Promise.resolve();
+      expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([]);
+    } finally {
+      release();
+      await mutating;
+    }
+    await expect(copying).resolves.toEqual({ kind: 'ineligible' });
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([]);
+  });
+});
 
 /** Every plugin name any fixture below records a grant for. */
 const FIXTURE_PLUGINS = [
@@ -650,6 +866,33 @@ describe('grants are bound to plugin content (station#4288)', () => {
     expect(state.granted).toEqual(
       expect.arrayContaining(['network.fetch', 'navigation.dock']),
     );
+  });
+
+  test('permission revocation preserves host-owned dependency authority until uninstall completes', async () => {
+    seedPluginTrees(dir, 'owned-dependency');
+    const dependencyDigest = computePluginContentDigest(
+      join(dir, 'plugins'),
+      'owned-dependency',
+    );
+    expect(dependencyDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    if (!dependencyDigest) throw new Error('fixture dependency was unreadable');
+    await grantPermissions(dir, 'bound-plugin', ['navigation.dock']);
+    await recordPluginDependencyOwnership(dir, 'bound-plugin', [
+      {
+        id: 'owned-dependency',
+        contentDigest: dependencyDigest,
+      },
+    ]);
+
+    await revokeAllGrants(dir, 'bound-plugin');
+
+    expect(getPluginGrants(dir, 'bound-plugin')).toEqual([]);
+    expect(readPluginDependencyOwnership(dir, 'bound-plugin')).toEqual([
+      { id: 'owned-dependency', contentDigest: dependencyDigest },
+    ]);
+
+    await removePluginHostRecord(dir, 'bound-plugin');
+    expect(readPluginDependencyOwnership(dir, 'bound-plugin')).toEqual([]);
   });
 
   test('acceptance 2: a tree that changed under a grant is detected, and EVERY permission stops applying', async () => {

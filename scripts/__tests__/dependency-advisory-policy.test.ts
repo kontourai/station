@@ -1,9 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ALL_DEPENDENCY_SCOPES } from '../classify-ci-change.mjs';
+import {
+  ALL_DEPENDENCY_SCOPES,
+  classifyChangedPaths,
+} from '../classify-ci-change.mjs';
 import {
   AUDIT_SCOPES,
   collectAudits,
@@ -812,6 +815,206 @@ describe('dependency advisory policy', { timeout: 20_000 }, () => {
   });
 });
 
+describe('scoped audit policy composition', () => {
+  function committedConfig() {
+    return JSON.parse(
+      readFileSync(
+        new URL('../dependency-advisory-exceptions.json', import.meta.url),
+        'utf8',
+      ),
+    );
+  }
+
+  function cleanAudit() {
+    return {
+      auditReportVersion: 2,
+      vulnerabilities: {},
+      metadata: {
+        vulnerabilities: {
+          info: 0,
+          low: 0,
+          moderate: 0,
+          high: 0,
+          critical: 0,
+          total: 0,
+        },
+      },
+    };
+  }
+
+  async function partialDocuments(scopes: string[]) {
+    const decision = dependencyAuditDecision({
+      env: {
+        GITHUB_ACTIONS: 'true',
+        GITHUB_EVENT_NAME: 'pull_request',
+        GITHUB_EVENT_PATH: '/event.json',
+      },
+      loadEvent: () => ({
+        pull_request: { base: { sha: 'a' }, head: { sha: 'b' } },
+      }),
+      // The event uses synthetic identities; compose the real path classifier
+      // below, but substitute the merge-base Git I/O just like the event I/O.
+      resolveMergeBase: ({ before, after }) => {
+        expect({ before, after }).toEqual({ before: 'a', after: 'b' });
+        return 'fixture-merge-base';
+      },
+      classifyRange: ({ before, after }) => {
+        expect({ before, after }).toEqual({
+          before: 'fixture-merge-base',
+          after: 'b',
+        });
+        return classifyChangedPaths(
+          scopes.map((scope) => `packages/${scope}/package-lock.json`),
+        );
+      },
+    });
+    const selected = selectAuditScopes(decision);
+    expect(selected.map((entry) => entry.scope)).toEqual(scopes);
+    return collectAudits(
+      selected,
+      async () => cleanAudit(),
+      () => ({}),
+    );
+  }
+
+  it.each([
+    { scopes: ['sdk'] },
+    { scopes: ['shared'] },
+    { scopes: ['sdk', 'shared'] },
+  ])(
+    'evaluates a clean narrowed $scopes scan with the committed root residuals',
+    async ({ scopes }) => {
+      const documents = await partialDocuments(scopes);
+      const result = evaluateAuditPolicy(documents, committedConfig(), {
+        now: NOW,
+      });
+      expect(result.exceptionErrors).toEqual([]);
+      expect(result.ok).toBe(true);
+      expect(Object.keys(result.scopes)).toEqual(
+        scopes.flatMap((scope) => [`${scope}/full`, `${scope}/production`]),
+      );
+    },
+  );
+
+  it.each([
+    ['exceptions', { scope: 'rooot' }, 'unknown scope'],
+    ['residuals', { scope: 'rooot' }, 'unknown scope'],
+    ['exceptions', { owner: '' }, 'owner must be a non-empty string'],
+    ['residuals', { controls: '' }, 'controls must be a non-empty string'],
+    ['exceptions', { expires: '2026-07-09' }, 'is expired'],
+    ['residuals', { expires: '2026-07-09' }, 'is expired'],
+    ['exceptions', { surprise: true }, 'unknown field'],
+    ['residuals', { surprise: true }, 'unknown field'],
+  ])(
+    'validates unscanned global %s rules: %j',
+    async (kind, override, message) => {
+      const config = committedConfig();
+      config.exceptions.push(validException());
+      Object.assign(config[kind as string][0], override);
+      const result = evaluateAuditPolicy(
+        await partialDocuments(['sdk']),
+        config,
+        { now: NOW },
+      );
+      expect(result.ok).toBe(false);
+      expect(result.exceptionErrors.join('\n')).toContain(message);
+      expect(result.exceptionErrors.join('\n')).not.toContain('unused');
+    },
+  );
+
+  it('still rejects unused exceptions and residuals in the audited scope', async () => {
+    const config = committedConfig();
+    config.exceptions.push(validException({ scope: 'sdk' }));
+    config.residuals.push(validResidual({ scope: 'sdk' }));
+    const result = evaluateAuditPolicy(
+      await partialDocuments(['sdk']),
+      config,
+      { now: NOW },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.exceptionErrors).toEqual([
+      expect.stringContaining('unused exception for sdk:'),
+      expect.stringContaining('unused residual for sdk:'),
+    ]);
+  });
+
+  it.each(['high', 'critical'])(
+    'blocks an unaccepted %s in a narrowed scan',
+    async (severity) => {
+      const documents = await partialDocuments(['sdk']);
+      const audit = auditWithHighAdvisory();
+      audit.vulnerabilities.axios.severity = severity;
+      audit.vulnerabilities.axios.via[0].severity = severity;
+      audit.metadata.vulnerabilities.high = severity === 'high' ? 1 : 0;
+      audit.metadata.vulnerabilities.critical = severity === 'critical' ? 1 : 0;
+      documents[0].audit = audit;
+      const result = evaluateAuditPolicy(documents, committedConfig(), {
+        now: NOW,
+      });
+      expect(result.exceptionErrors).toEqual([]);
+      expect(result.ok).toBe(false);
+      expect(result.blockingFindings).toEqual([
+        expect.objectContaining({ scope: 'sdk', severity, package: 'axios' }),
+      ]);
+    },
+  );
+
+  it('blocks an untracked production residual in a narrowed scan', async () => {
+    const documents = await partialDocuments(['shared']);
+    Object.assign(documents[1], productionLowDocument(), { scope: 'shared' });
+    const result = evaluateAuditPolicy(documents, committedConfig(), {
+      now: NOW,
+    });
+    expect(result.exceptionErrors).toEqual([]);
+    expect(result.ok).toBe(false);
+    expect(result.untrackedResiduals).toEqual([
+      expect.objectContaining({ scope: 'shared', severity: 'low' }),
+    ]);
+  });
+
+  it('does not report production residuals unused after only a full-graph audit', () => {
+    const result = evaluateAuditPolicy(
+      [{ scope: 'root', reachability: 'full', audit: cleanAudit() }],
+      committedConfig(),
+      { now: NOW },
+    );
+    expect(result.exceptionErrors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
+  it('still enforces every committed residual on full scheduled audits', async () => {
+    const decision = dependencyAuditDecision({
+      env: { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'schedule' },
+    });
+    const documents = await collectAudits(
+      selectAuditScopes(decision),
+      async () => cleanAudit(),
+      () => ({}),
+    );
+    expect(documents).toHaveLength(6);
+    const config = committedConfig();
+    config.exceptions.push(validException());
+    const result = evaluateAuditPolicy(documents, config, { now: NOW });
+    expect(result.ok).toBe(false);
+    expect(result.exceptionErrors).toEqual([
+      expect.stringContaining('unused exception for root:'),
+      ...config.residuals.map(() =>
+        expect.stringContaining('unused residual for root:'),
+      ),
+    ]);
+  });
+
+  it('refuses an unknown audit document scope, even with no configured rules', () => {
+    expect(() =>
+      evaluateAuditPolicy(
+        [{ scope: 'rooot', audit: cleanAudit() }],
+        { version: 2, exceptions: [], residuals: [] },
+        { now: NOW },
+      ),
+    ).toThrow('unknown audit document scope: rooot');
+  });
+});
+
 /**
  * The selection is the ENFORCEMENT point of #1417's narrowing: the classifier
  * only declares which scopes changed, and every test of that declaration
@@ -958,6 +1161,44 @@ describe('runPolicyCli reports the range it decided from (#1442)', () => {
     const scanLine = lines.find((line) => line.includes('scanning'));
     expect(scanLine).toBeDefined();
     expect(scanLine).toContain('cccccccc..dddddddd');
+  });
+
+  it('does not claim dependency inputs changed on a scan that never saw a range', async () => {
+    // #1465. The fourth cell of the matrix, and the one the first version of
+    // this feature got wrong: scanning WITHOUT a range. A scheduled or
+    // dispatched run audits everything because it is periodic, not because
+    // anything changed, and it never resolves a range -- so the shipped
+    // message read "dependency inputs changed in no range (event carries
+    // none)", asserting a fact nothing computed. The three tests written
+    // alongside it covered the other three cells.
+    const lines = captureLog();
+    await runPolicyCli({
+      decide: () => ({
+        required: true,
+        reason: 'schedule event',
+        scopes: ['root'],
+        range: null,
+      }),
+      runAudits: async () => {
+        const clean = auditWithHighAdvisory();
+        clean.vulnerabilities = {};
+        clean.metadata.vulnerabilities = {
+          info: 0,
+          low: 0,
+          moderate: 0,
+          high: 0,
+          critical: 0,
+          total: 0,
+        };
+        return [{ scope: 'root', audit: clean }];
+      },
+    });
+
+    const scanLine = lines.find((line) => line.includes('scanning'));
+    expect(scanLine).toBeDefined();
+    expect(scanLine).not.toContain('dependency inputs changed');
+    expect(scanLine).toContain('full scan');
+    expect(scanLine).toContain('schedule event');
   });
 
   it('says a decision has no range rather than inventing one', async () => {

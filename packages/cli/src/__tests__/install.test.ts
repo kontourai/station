@@ -63,7 +63,20 @@ describe('plugin CLI API authority', () => {
       manifest: { name: 'demo', version: '1.0.0', entrypoint: 'src/index.tsx' },
       components: [],
       conflicts: [],
-      dependencies: [{ id: 'shared-lib', status: 'will-install' }],
+      dependencies: [
+        {
+          id: 'shared-lib',
+          status: 'will-install',
+          consent: {
+            permissions: ['providers.register'],
+            contentDigest: 'sha256:dependency',
+            dependencies: [],
+            pendingConsent: [
+              { permission: 'providers.register', tier: 'trusted' },
+            ],
+          },
+        },
+      ],
       contentDigest: 'sha256:reviewed',
       permissions: {
         required: ['navigation.dock', 'network.fetch'],
@@ -77,6 +90,17 @@ describe('plugin CLI API authority', () => {
         Response.json({
           success: true,
           plugin: { name: 'demo', version: '1.0.0' },
+          permissions: {
+            pendingConsent: [],
+            dependencies: [
+              {
+                id: 'shared-lib',
+                pendingConsent: [
+                  { permission: 'providers.register', tier: 'trusted' },
+                ],
+              },
+            ],
+          },
         }),
       );
     const { install } = await import('../commands/install.js');
@@ -100,6 +124,14 @@ describe('plugin CLI API authority', () => {
             permissions: ['navigation.dock', 'network.fetch'],
             contentDigest: 'sha256:reviewed',
             dependencies: ['shared-lib'],
+            dependencyApprovals: [
+              {
+                id: 'shared-lib',
+                permissions: ['providers.register'],
+                contentDigest: 'sha256:dependency',
+                dependencies: [],
+              },
+            ],
           },
         }),
       }),
@@ -116,8 +148,86 @@ describe('plugin CLI API authority', () => {
     expect(printed).toContain('sha256:reviewed');
     expect(printed).toContain('network.fetch (active)');
     expect(printed).toContain('shared-lib');
+    expect(printed).toContain('shared-lib requires providers.register');
     expect(printed).toContain('an in-page bundle');
+    expect(printed).toContain(
+      'Installed demo@1.0.0, but activation is incomplete',
+    );
+    expect(printed).toContain(
+      'shared-lib requires host approval for providers.register',
+    );
+    expect(printed).toContain('Station host in the Plugins page');
+    expect(printed).not.toContain('✅ Installed demo@1.0.0 through Station');
   });
+
+  test.each([true, false])(
+    'uses post-install dependency status instead of preview requirements (status available: %s)',
+    async (statusAvailable) => {
+      authenticatedFetch
+        .mockResolvedValueOnce(
+          Response.json({
+            valid: true,
+            manifest: { name: 'demo', version: '1.0.0' },
+            components: [],
+            conflicts: [],
+            dependencies: [
+              {
+                id: 'shared-lib',
+                status: 'will-install',
+                consent: {
+                  permissions: ['providers.register'],
+                  contentDigest: 'sha256:dependency',
+                  dependencies: [],
+                  pendingConsent: [
+                    { permission: 'providers.register', tier: 'trusted' },
+                  ],
+                },
+              },
+            ],
+            contentDigest: 'sha256:reviewed',
+            permissions: {
+              required: [],
+              autoGranted: [],
+              pendingConsent: [],
+            },
+          }),
+        )
+        .mockResolvedValueOnce(
+          Response.json({
+            success: true,
+            plugin: { name: 'demo', version: '1.0.0' },
+            permissions: {
+              pendingConsent: [],
+              ...(statusAvailable
+                ? { dependencies: [{ id: 'shared-lib', pendingConsent: [] }] }
+                : {}),
+            },
+          }),
+        );
+      const { install } = await import('../commands/install.js');
+      vi.mocked(console.log).mockClear();
+
+      await install('/tmp/demo', [], parsed, approve);
+
+      const printed = (
+        console.log as unknown as { mock: { calls: unknown[][] } }
+      ).mock.calls
+        .map((args) => String(args[0]))
+        .join('\n');
+      if (statusAvailable)
+        expect(printed).toContain('✅ Installed demo@1.0.0 through Station');
+      else {
+        expect(printed).toContain(
+          'did not report current dependency approval status',
+        );
+        expect(printed).not.toContain('✅ Installed');
+      }
+      expect(printed).not.toContain('activation is incomplete');
+      expect(printed).not.toContain(
+        'requires host approval for providers.register',
+      );
+    },
+  );
 
   /**
    * The refusal path, executable. A gate whose rejection branch never runs is

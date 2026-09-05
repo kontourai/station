@@ -28,10 +28,13 @@ describe('Activity Workspace Pane descriptor', () => {
 
   test('is placed docked only, never standalone and never inside a Layout', () => {
     // station#928 retired the `/activity` route, and with it Activity's
-    // standalone placement — the shell's dock region is the only host that
-    // places this pane, so `standalone` would name a placement no host in
-    // this build supplies and `preferredRegion: 'standalone'` would prefer an
-    // unreachable one. `primary`/`secondary` stay excluded for their own
+    // standalone placement — Activity is a registered shell surface
+    // (`REGION_SURFACE_REGISTRY`), and that registration is the only host
+    // that places this pane, so `standalone` would name a placement no host
+    // in this build supplies and `preferredRegion: 'standalone'` would prefer
+    // an unreachable one. `docked` is the capability claim matching that
+    // registration; docked-capability-derivation.test.ts pins the two to each
+    // other. `primary`/`secondary` stay excluded for their own
     // reason: a Project host must not place a Project-less aggregate of every
     // host session beside the work it is scoped to.
     expect(WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.placement).toEqual({

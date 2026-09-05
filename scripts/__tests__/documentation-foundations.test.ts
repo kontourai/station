@@ -41,7 +41,7 @@ describe('documentation foundations', () => {
     const starterRegistry = read(
       'src-server/services/starter-work/starter-registry.ts',
     );
-    const surfaces = read('src-ui/src/app-shell/surface-registry.ts');
+    const surfaces = read('src-ui/src/app-shell/destination-registry.ts');
 
     expect(channels.channels.stable).toMatchObject({
       instanceDirectory: 'stable',

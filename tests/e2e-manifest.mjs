@@ -381,6 +381,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // temporary home, then removes it and reloads before yielding the server.
     'tests/plugin-rejection-visibility.spec.ts',
     'tests/plugin-system.spec.ts',
+    'tests/plugin-dependency-lifecycle.spec.ts',
     'tests/survey-review-workbench.spec.ts',
     'tests/fieldwork-review.spec.ts',
     'tests/plugin-dev-hot-reload.spec.ts',
@@ -545,7 +546,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'UX audit E8: one parametrised 390x844 sweep over EVERY route src-ui/src/app-shell/surface-registry.ts declares — no horizontal document scroll on each, and the shared SplitPaneLayout detail-sheet contract ("← Back to list", list hidden, Back restores it) on the split-pane surfaces, whose lists are seeded so an empty rail cannot pass as coverage. The route list is checked against the registry source, so a surface added without a decision about its phone behaviour reds this spec instead of shipping unswept.',
+      'UX audit E8: one parametrised 390x844 sweep over EVERY route src-ui/src/app-shell/destination-registry.ts declares — no horizontal document scroll on each, and the shared SplitPaneLayout detail-sheet contract ("← Back to list", list hidden, Back restores it) on the split-pane surfaces, whose lists are seeded so an empty rail cannot pass as coverage. The route list is checked against the registry source, so a surface added without a decision about its phone behaviour reds this spec instead of shipping unswept.',
     exceptions: [],
   },
   {
@@ -704,6 +705,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       "Proves remote plugin bundles execute only through the isolated plugin host: hostile storage, DOM, parent-global, network, bridge, and spoofed-message attacks remain contained; mismatched declared exports visibly fail; and a benign bundle raising the pane-host contract's confirm intent is answered by Station's own modal, with the decision reaching the frame back across the boundary on desktop and at 390x844.",
+    exceptions: [],
+  },
+  {
+    path: 'tests/plugin-pane-sdk-context.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves a test-only plugin installed through real preview and consent receives a server-issued Project Pane occurrence and executes public Agent, navigation, and toast SDK hooks in direct and placed hosts, without migrating first-party examples.',
     exceptions: [],
   },
   {
@@ -1011,6 +1022,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted plugin system lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/plugin-dependency-lifecycle.spec.ts',
+    bucket: 'product',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Test-only managed API fixture proves preview-bound dependency consent, pending provider-permission/settings projection, and individual owned-plugin cleanup. It is not provider non-execution, Enterprise rendering, registry-alias retirement, or external-effect drain proof.',
     exceptions: [],
   },
   {

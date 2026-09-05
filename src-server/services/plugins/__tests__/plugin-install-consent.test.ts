@@ -2,16 +2,63 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   assertPluginInstallConsent,
   derivePluginConsentBasis,
+  findPluginConsentRefusedError,
   isPluginConsentRefusedError,
   type PluginConsentBasis,
   PluginConsentRefusedError,
 } from '../plugin-install-consent.js';
 
 const cleanupDirs: string[] = [];
+
+test('finds only bounded ordinary consent cause chains, never failed rollback aggregates or accessors', () => {
+  const refusal = new PluginConsentRefusedError({
+    pluginName: 'dependency',
+    reason: 'content',
+    message: 'changed',
+  });
+  expect(
+    findPluginConsentRefusedError(
+      new Error('outer', { cause: new Error('middle', { cause: refusal }) }),
+    ),
+  ).toBe(refusal);
+  expect(
+    findPluginConsentRefusedError(
+      new Error('outer', {
+        cause: new AggregateError([refusal, new Error('rollback')], 'failed', {
+          cause: refusal,
+        }),
+      }),
+    ),
+  ).toBeNull();
+  const getter = vi.fn(() => refusal);
+  expect(
+    findPluginConsentRefusedError(
+      Object.defineProperty(new Error('accessor'), 'cause', { get: getter }),
+    ),
+  ).toBeNull();
+  expect(getter).not.toHaveBeenCalled();
+  const cycle = new Error('cycle');
+  Object.defineProperty(cycle, 'cause', { value: cycle });
+  expect(findPluginConsentRefusedError(cycle)).toBeNull();
+  let deep: Error = refusal;
+  for (let index = 0; index < 33; index++)
+    deep = new Error('wrapper', { cause: deep });
+  expect(findPluginConsentRefusedError(deep)).toBeNull();
+  expect(findPluginConsentRefusedError({ cause: refusal })).toBeNull();
+  expect(
+    findPluginConsentRefusedError(
+      new Proxy(new Error('trap'), {
+        getOwnPropertyDescriptor() {
+          throw new Error('trap');
+        },
+      }),
+    ),
+  ).toBeNull();
+});
 
 afterEach(async () => {
   await Promise.all(

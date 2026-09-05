@@ -9,10 +9,14 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, isAbsolute, join } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
-import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import {
+  type PermissionTier,
+  type PluginInstallResult,
+  type PluginManifest,
+} from '@kontourai/station-contracts/plugin';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
@@ -24,7 +28,10 @@ import {
 } from '../../domain/agent-registry.js';
 import { owningProjectExists } from '../../domain/config-loader-agents.js';
 import { saveIntegrationConfig } from '../../domain/config-loader-storage.js';
-import type { IPluginRegistryProvider } from '../../providers/provider-interfaces.js';
+import {
+  type IPluginRegistryProvider,
+  PROVIDER_TYPE_META,
+} from '../../providers/provider-interfaces.js';
 import {
   getIntegrationRegistryProvider,
   getPluginRegistryProviders,
@@ -38,6 +45,7 @@ import {
 import { ContextSafetyError } from '../../services/orchestration/context-safety.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
 import {
+  computePluginContentDigest,
   findPluginContentLockCycleError,
   forgetPluginContentDigest,
   PLUGIN_TREE_COPY,
@@ -46,12 +54,26 @@ import {
 import {
   assertPluginInstallConsent,
   derivePluginConsentBasis,
+  findPluginConsentRefusedError,
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
-import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
 import {
+  readPluginManifestFile,
+  readPluginManifestFileSync,
+} from '../../services/plugins/plugin-manifest-loader.js';
+import {
+  copyPluginDependencyOwnership,
+  getPermissionTier,
   hasGrant,
+  isPluginInstallAuthorityRecord,
+  type PluginDependencyOwnershipEntry,
+  type PluginDependencyOwnershipHandoff,
+  type PluginInstallAuthorityRecord,
+  processInstallPermissions,
+  readPluginDependencyOwnership,
   rebindGrantsAfterContentChange,
+  recordPluginDependencyOwnership,
+  removePluginHostRecord,
   requiredPermissionsForManifest,
   restorePluginGrantEntry,
   revokeAllGrants,
@@ -75,6 +97,8 @@ import {
   detectWorkspacePaneCatalogConflicts,
   fetchPluginSource,
   installPluginDependency,
+  type PluginDependencyLifecycle,
+  resolvePluginDependencySource,
 } from './plugin-source.js';
 
 const execFile = promisify(execFileCb);
@@ -297,7 +321,7 @@ export interface PluginInstallSharedDeps {
   ) => Promise<{ release(): void }>;
 }
 
-export interface InstalledPluginResult {
+export interface InstalledPluginResult extends PluginInstallResult {
   success: true;
   plugin: {
     name: string;
@@ -325,7 +349,12 @@ export interface InstalledPluginResult {
      * `autoGranted` so neither word has to cover the other's meaning.
      */
     consentGranted: string[];
-    pendingConsent: Array<{ permission: string; tier: string }>;
+    pendingConsent: Array<{ permission: string; tier: PermissionTier }>;
+    /** Current permission truth for the actual installed transitive graph. */
+    dependencies: Array<{
+      id: string;
+      pendingConsent: Array<{ permission: string; tier: PermissionTier }>;
+    }>;
     /**
      * Permissions this install WITHDREW because it replaced the code they
      * were granted against (archive#4288). Named rather than implied: an
@@ -349,6 +378,668 @@ const PLUGIN_GRANTS_ENTRY_SNAPSHOT = [
   'project-files',
   'plugin-grants-entry.json',
 ] as const;
+interface RemovedDependencyBackup {
+  entry: PluginDependencyOwnershipEntry;
+  backupDir: string;
+  manifest: PluginManifest;
+  grantSnapshot: ReturnType<typeof snapshotPluginGrantEntry>;
+}
+
+function pluginHasDependencyLifecycle(manifest: PluginManifest): boolean {
+  return Boolean(manifest.providers?.length || manifest.settings?.length);
+}
+
+function assertDependencyProviderSlotsAvailable(
+  pluginsDir: string,
+  dependencyId: string,
+  manifest: PluginManifest,
+  stagedParent: PluginManifest,
+): void {
+  for (const provider of manifest.providers ?? []) {
+    if (PROVIDER_TYPE_META[provider.type] === 'additive') continue;
+    if (
+      (stagedParent.providers ?? []).some(
+        (candidate) =>
+          candidate.type === provider.type &&
+          (candidate.layout ?? null) === (provider.layout ?? null),
+      )
+    ) {
+      throw new Error(
+        `Plugin dependency '${dependencyId}' provider '${provider.type}' collides with staged plugin '${stagedParent.name}'`,
+      );
+    }
+    for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+      if (
+        !entry.isDirectory() ||
+        entry.name === dependencyId ||
+        entry.name === stagedParent.name ||
+        entry.name.startsWith('.preview-')
+      ) {
+        continue;
+      }
+      const manifestPath = join(pluginsDir, entry.name, 'plugin.json');
+      if (!existsSync(manifestPath)) continue;
+      try {
+        const installed = readPluginManifestFileSync(manifestPath);
+        const collision = (installed.providers ?? []).find(
+          (candidate) =>
+            candidate.type === provider.type &&
+            (candidate.layout ?? null) === (provider.layout ?? null),
+        );
+        if (collision) {
+          throw new Error(
+            `Plugin dependency '${dependencyId}' provider '${provider.type}' collides with plugin '${installed.name}'`,
+          );
+        }
+      } catch (error) {
+        if (
+          errorMessage(error).includes(`Plugin dependency '${dependencyId}'`)
+        ) {
+          throw error;
+        }
+        throw new Error(
+          `Plugin dependency '${dependencyId}' provider collision check could not read installed plugin '${entry.name}'`,
+          { cause: error },
+        );
+      }
+    }
+  }
+}
+
+function deriveDependencyOwnership(
+  pluginsDir: string,
+  createdPluginTrees: ReadonlySet<string>,
+  retained: readonly PluginDependencyOwnershipEntry[] = [],
+  declaredDependencyIds?: ReadonlySet<string>,
+): PluginDependencyOwnershipEntry[] {
+  const entries = new Map(
+    retained
+      .filter(
+        (entry) =>
+          !declaredDependencyIds || declaredDependencyIds.has(entry.id),
+      )
+      .map((entry) => [entry.id, entry]),
+  );
+  for (const id of createdPluginTrees) {
+    const contentDigest = computePluginContentDigest(pluginsDir, id);
+    if (!contentDigest) {
+      throw new Error(
+        `Plugin dependency '${id}' could not be recorded after installation`,
+      );
+    }
+    entries.set(id, { id, contentDigest });
+  }
+  return [...entries.values()];
+}
+
+function installedDependencyConsumers(
+  pluginsDir: string,
+  removedPluginName: string,
+  dependencyId: string,
+): { verified: string[]; uncertain: boolean } {
+  const transitivelyDependsOn = (
+    manifest: PluginManifest,
+    visiting: Set<string>,
+  ): boolean | 'unknown' => {
+    let unknown = false;
+    for (const dependency of manifest.dependencies ?? []) {
+      if (dependency.id === dependencyId) return true;
+      if (visiting.has(dependency.id)) continue;
+      visiting.add(dependency.id);
+      try {
+        assertPluginNameSegment(dependency.id);
+        const manifestPath = join(pluginsDir, dependency.id, 'plugin.json');
+        if (!existsSync(manifestPath)) {
+          unknown = true;
+          continue;
+        }
+        const result = transitivelyDependsOn(
+          readPluginManifestFileSync(manifestPath),
+          visiting,
+        );
+        if (result === true) return true;
+        if (result === 'unknown') unknown = true;
+      } catch {
+        unknown = true;
+      }
+    }
+    return unknown ? 'unknown' : false;
+  };
+  const verified: string[] = [];
+  let uncertain = false;
+  for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+    if (
+      !entry.isDirectory() ||
+      entry.name === removedPluginName ||
+      entry.name === dependencyId ||
+      entry.name.startsWith('.preview-')
+    ) {
+      continue;
+    }
+    try {
+      const manifestPath = join(pluginsDir, entry.name, 'plugin.json');
+      if (!existsSync(manifestPath)) continue;
+      assertPluginNameSegment(entry.name);
+      const manifest = readPluginManifestFileSync(manifestPath);
+      if (manifest.name !== entry.name) {
+        uncertain = true;
+        continue;
+      }
+      const result = transitivelyDependsOn(manifest, new Set([manifest.name]));
+      if (result === true) verified.push(entry.name);
+      else if (result === 'unknown') uncertain = true;
+    } catch {
+      // If another installed plugin cannot be inspected, deleting a dependency
+      // it may reference would turn corruption into destructive guesswork.
+      uncertain = true;
+    }
+  }
+  return { verified: verified.sort(), uncertain };
+}
+
+/** Ordering comes from edges; authority still comes only from the host entries. */
+function ownedDependencyRetirementOrder(
+  pluginsDir: string,
+  dependencies: readonly PluginDependencyOwnershipEntry[],
+): PluginDependencyOwnershipEntry[] {
+  const byId = new Map(dependencies.map((entry) => [entry.id, entry]));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const ordered: PluginDependencyOwnershipEntry[] = [];
+  const visit = (entry: PluginDependencyOwnershipEntry) => {
+    if (visited.has(entry.id)) return;
+    if (visiting.has(entry.id))
+      throw new Error('Owned dependency graph has a cycle; removal refused');
+    visiting.add(entry.id);
+    if (
+      computePluginContentDigest(pluginsDir, entry.id) === entry.contentDigest
+    ) {
+      const manifest = readPluginManifestFileSync(
+        join(pluginsDir, entry.id, 'plugin.json'),
+      );
+      for (const dependency of manifest.dependencies ?? []) {
+        const owned = byId.get(dependency.id);
+        if (owned) visit(owned);
+      }
+    }
+    visiting.delete(entry.id);
+    visited.add(entry.id);
+    ordered.push(entry);
+  };
+  for (const entry of dependencies) visit(entry);
+  return ordered.reverse();
+}
+
+async function rollbackOwnershipHandoffs(
+  handoffs: readonly PluginDependencyOwnershipHandoff[],
+): Promise<void> {
+  const failures: unknown[] = [];
+  for (const handoff of [...handoffs].reverse()) {
+    try {
+      await handoff.rollback();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0)
+    throw new AggregateError(failures, 'Dependency custody rollback failed');
+}
+
+function createDependencyLifecycle(options: {
+  consent: PluginInstallConsent;
+  stagedParent: PluginManifest;
+  pluginsDir: string;
+  projectHomeDir: string;
+  logger: Logger;
+  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  settleProviderAdapterRetirements?: () => Promise<void>;
+}): PluginDependencyLifecycle {
+  const approvals = new Map<
+    string,
+    NonNullable<
+      Extract<
+        PluginInstallConsent,
+        { kind: 'operator-decision' }
+      >['dependencyApprovals']
+    >[number]
+  >();
+  if (options.consent.kind === 'operator-decision') {
+    for (const approval of options.consent.dependencyApprovals ?? []) {
+      if (approvals.has(approval.id)) {
+        throw new Error(
+          `Plugin dependency '${approval.id}' has duplicate approvals`,
+        );
+      }
+      approvals.set(approval.id, approval);
+    }
+  }
+  const grantSnapshots = new Map<
+    string,
+    ReturnType<typeof snapshotPluginGrantEntry>
+  >();
+  const activated = new Set<string>();
+
+  const rollbackDependency = async (dependencyId: string): Promise<void> => {
+    if (!activated.has(dependencyId)) return;
+    const failures: unknown[] = [];
+    const attempt = async (cleanup: () => Promise<void>): Promise<void> => {
+      try {
+        await cleanup();
+      } catch (error) {
+        failures.push(error);
+      }
+    };
+    await attempt(async () => {
+      const { replacePluginProvidersForSource } = await import(
+        '../../providers/registries/registry.js'
+      );
+      await replacePluginProvidersForSource(dependencyId, []);
+    });
+    await attempt(() =>
+      restorePluginGrantEntry(
+        options.projectHomeDir,
+        dependencyId,
+        grantSnapshots.get(dependencyId) ?? null,
+      ),
+    );
+    await attempt(async () => {
+      await options.reconcileEngineConnections?.(dependencyId);
+    });
+    await attempt(async () => {
+      await options.settleProviderAdapterRetirements?.();
+    });
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        `Plugin dependency '${dependencyId}' lifecycle rollback failed`,
+      );
+    }
+    // Keep the claim until every cleanup step settles so a caller can retry a
+    // partial rollback without the second attempt becoming a no-op.
+    activated.delete(dependencyId);
+  };
+
+  return {
+    validateInstalled({ dependencyId, manifest }) {
+      assertDependencyProviderSlotsAvailable(
+        options.pluginsDir,
+        dependencyId,
+        manifest,
+        options.stagedParent,
+      );
+    },
+    validate({ dependencyId, dependencyDir, manifest }) {
+      const approval = approvals.get(dependencyId);
+      if (!approval) {
+        // Provider activation is not the boundary for executing browser code.
+        // Prebuilt bundles are served even without a declared entrypoint, and
+        // permission declarations also need an explicit preview decision.
+        if (
+          pluginHasDependencyLifecycle(manifest) ||
+          manifest.entrypoint ||
+          existsSync(join(dependencyDir, 'dist', 'bundle.js')) ||
+          requiredPermissionsForManifest(manifest).length > 0
+        ) {
+          throw new Error(
+            `Plugin dependency '${dependencyId}' has executable or lifecycle contributions but no preview-bound permission approval`,
+          );
+        }
+        // Preserve named declarative dependency installs for older clients.
+        // If a client supplied an approval, even a declarative source must
+        // match it: dropping its former executable fields cannot drop binding.
+        return;
+      }
+      const basis = derivePluginConsentBasis(dependencyDir, manifest);
+      if (!basis) {
+        throw new Error(
+          `Plugin dependency '${dependencyId}' source could not be read, so it was not installed`,
+        );
+      }
+      assertPluginInstallConsent({
+        pluginName: dependencyId,
+        consent: {
+          kind: 'operator-decision',
+          permissions: approval.permissions,
+          contentDigest: approval.contentDigest,
+          dependencies: approval.dependencies,
+        },
+        basis,
+      });
+      if (!pluginHasDependencyLifecycle(manifest)) return;
+      assertDependencyProviderSlotsAvailable(
+        options.pluginsDir,
+        dependencyId,
+        manifest,
+        options.stagedParent,
+      );
+      if (!grantSnapshots.has(dependencyId)) {
+        grantSnapshots.set(
+          dependencyId,
+          snapshotPluginGrantEntry(options.projectHomeDir, dependencyId),
+        );
+      }
+    },
+    async activate({ dependencyId, manifest }) {
+      if (
+        !pluginHasDependencyLifecycle(manifest) ||
+        activated.has(dependencyId)
+      ) {
+        return;
+      }
+      const approval = approvals.get(dependencyId);
+      if (!approval || !grantSnapshots.has(dependencyId)) {
+        throw new Error(
+          `Plugin dependency '${dependencyId}' was not validated for lifecycle activation`,
+        );
+      }
+      // Activation ownership begins before the first effect. If any later
+      // step fails, compensation retains this claim until all derived state
+      // (providers, grants, engine connections, and retirements) is settled.
+      activated.add(dependencyId);
+      try {
+        await processInstallPermissions(
+          options.projectHomeDir,
+          dependencyId,
+          requiredPermissionsForManifest(manifest),
+          { consented: approval.permissions },
+        );
+        const activeProviders = hasGrant(
+          options.projectHomeDir,
+          dependencyId,
+          'providers.register',
+        )
+          ? (manifest.providers ?? [])
+          : [];
+        await loadPluginProviders(
+          options.pluginsDir,
+          dependencyId,
+          { ...manifest, providers: activeProviders },
+          options.logger,
+          { strict: true },
+        );
+        await options.reconcileEngineConnections?.(dependencyId);
+        await options.settleProviderAdapterRetirements?.();
+      } catch (error) {
+        try {
+          await rollbackDependency(dependencyId);
+        } catch (rollbackError) {
+          throw new AggregateError(
+            [error, rollbackError],
+            `Plugin dependency '${dependencyId}' activation and rollback both failed`,
+          );
+        }
+        throw error;
+      }
+    },
+    rollback: rollbackDependency,
+  };
+}
+
+async function removeOwnedDependencyLifecycles(options: {
+  dependencies: readonly PluginDependencyOwnershipEntry[];
+  removedPluginName: string;
+  pluginsDir: string;
+  projectHomeDir: string;
+  backupRoot: string;
+  logger: Logger;
+  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  settleProviderAdapterRetirements?: () => Promise<void>;
+  ownershipHandoffs: PluginDependencyOwnershipHandoff[];
+}): Promise<RemovedDependencyBackup[]> {
+  const removed: RemovedDependencyBackup[] = [];
+  try {
+    for (const dependency of ownedDependencyRetirementOrder(
+      options.pluginsDir,
+      options.dependencies,
+    )) {
+      const dependencyDir = join(options.pluginsDir, dependency.id);
+      assertPathInside(
+        options.pluginsDir,
+        dependencyDir,
+        'Owned plugin dependency target',
+      );
+      await withPluginContentLock(
+        options.pluginsDir,
+        dependency.id,
+        async () => {
+          if (!existsSync(dependencyDir)) return;
+          if (
+            computePluginContentDigest(options.pluginsDir, dependency.id) !==
+            dependency.contentDigest
+          ) {
+            options.logger.warn(
+              'Preserved plugin dependency because its installed content no longer matches the creating install',
+              { plugin: dependency.id },
+            );
+            return;
+          }
+          const consumers = installedDependencyConsumers(
+            options.pluginsDir,
+            options.removedPluginName,
+            dependency.id,
+          );
+          if (consumers.verified.length > 0 || consumers.uncertain) {
+            for (const recipient of consumers.verified) {
+              const handedOff = await withPluginContentLock(
+                options.pluginsDir,
+                recipient,
+                async () => {
+                  const recipientDirectory = join(
+                    options.pluginsDir,
+                    recipient,
+                  );
+                  const recipientStatus = lstatSync(recipientDirectory);
+                  if (
+                    !recipientStatus.isDirectory() ||
+                    recipientStatus.isSymbolicLink()
+                  )
+                    throw new Error(
+                      'Dependency cleanup recipient must be an installed directory',
+                    );
+                  assertExistingPathInside(
+                    options.pluginsDir,
+                    recipientDirectory,
+                    'Dependency cleanup recipient',
+                  );
+                  // Revalidate while the recipient's update/removal guard is
+                  // held, not against the earlier inventory snapshot.
+                  if (
+                    !installedDependencyConsumers(
+                      options.pluginsDir,
+                      options.removedPluginName,
+                      dependency.id,
+                    ).verified.includes(recipient)
+                  )
+                    return false;
+                  const recipientDigest = computePluginContentDigest(
+                    options.pluginsDir,
+                    recipient,
+                  );
+                  if (!recipientDigest) return false;
+                  const outcome = await copyPluginDependencyOwnership(
+                    options.projectHomeDir,
+                    options.removedPluginName,
+                    recipient,
+                    dependency,
+                    recipientDigest,
+                  );
+                  if (outcome.kind === 'ineligible') return false;
+                  if (outcome.kind === 'copied')
+                    options.ownershipHandoffs.push(outcome.handoff);
+                  return true;
+                },
+              );
+              if (handedOff) {
+                options.logger.info(
+                  'Handed shared dependency cleanup custody to a surviving plugin',
+                  { plugin: dependency.id, recipient },
+                );
+                return;
+              }
+            }
+            throw new Error(
+              `Plugin dependency '${dependency.id}' has no verifiable surviving cleanup owner; removal refused`,
+            );
+          }
+          if (
+            readPluginDependencyOwnership(options.projectHomeDir, dependency.id)
+              .length > 0
+          ) {
+            throw new Error(
+              `Plugin dependency '${dependency.id}' owns further cleanup authority; remove it directly before its parent`,
+            );
+          }
+          const manifest = await readPluginManifestFile(
+            join(dependencyDir, 'plugin.json'),
+          );
+          const grantSnapshot = snapshotPluginGrantEntry(
+            options.projectHomeDir,
+            dependency.id,
+          );
+          const backupDir = join(
+            options.backupRoot,
+            'dependencies',
+            dependency.id,
+          );
+          assertPathInside(
+            options.backupRoot,
+            backupDir,
+            'Dependency uninstall backup',
+          );
+          mkdirSync(dirname(backupDir), { recursive: true });
+          cpSync(dependencyDir, backupDir, PLUGIN_TREE_COPY);
+          const backup: RemovedDependencyBackup = {
+            entry: dependency,
+            backupDir,
+            manifest,
+            grantSnapshot,
+          };
+          const { replacePluginProvidersForSource } = await import(
+            '../../providers/registries/registry.js'
+          );
+          try {
+            await replacePluginProvidersForSource(dependency.id, []);
+            await revokeAllGrants(options.projectHomeDir, dependency.id);
+            rmSync(dependencyDir, { recursive: true, force: true });
+            forgetPluginContentDigest(options.pluginsDir, dependency.id);
+            await removePluginHostRecord(options.projectHomeDir, dependency.id);
+            forgetRegistryInstallsForPlugin(
+              options.projectHomeDir,
+              dependency.id,
+            );
+            await options.reconcileEngineConnections?.(dependency.id);
+            await options.settleProviderAdapterRetirements?.();
+            removed.push(backup);
+          } catch (error) {
+            try {
+              if (!existsSync(dependencyDir)) {
+                cpSync(backupDir, dependencyDir, PLUGIN_TREE_COPY);
+              }
+              await restorePluginGrantEntry(
+                options.projectHomeDir,
+                dependency.id,
+                grantSnapshot,
+              );
+              await loadPluginProviders(
+                options.pluginsDir,
+                dependency.id,
+                hasGrant(
+                  options.projectHomeDir,
+                  dependency.id,
+                  'providers.register',
+                )
+                  ? manifest
+                  : { ...manifest, providers: [] },
+                options.logger,
+                { strict: true },
+              );
+              await options.reconcileEngineConnections?.(dependency.id);
+              await options.settleProviderAdapterRetirements?.();
+            } catch (rollbackError) {
+              throw new AggregateError(
+                [error, rollbackError],
+                `Plugin dependency '${dependency.id}' removal and rollback both failed`,
+              );
+            }
+            throw error;
+          }
+        },
+      );
+    }
+  } catch (error) {
+    try {
+      await restoreRemovedDependencyLifecycles({
+        backups: removed,
+        pluginsDir: options.pluginsDir,
+        projectHomeDir: options.projectHomeDir,
+        logger: options.logger,
+        reconcileEngineConnections: options.reconcileEngineConnections,
+        settleProviderAdapterRetirements:
+          options.settleProviderAdapterRetirements,
+      });
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        'Plugin dependency removal and rollback both failed',
+      );
+    }
+    throw error;
+  }
+  return removed;
+}
+
+async function restoreRemovedDependencyLifecycles(options: {
+  backups: readonly RemovedDependencyBackup[];
+  pluginsDir: string;
+  projectHomeDir: string;
+  logger: Logger;
+  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  settleProviderAdapterRetirements?: () => Promise<void>;
+}): Promise<void> {
+  for (const backup of [...options.backups].reverse()) {
+    await withPluginContentLock(
+      options.pluginsDir,
+      backup.entry.id,
+      async () => {
+        const dependencyDir = join(options.pluginsDir, backup.entry.id);
+        if (existsSync(dependencyDir)) {
+          const digest = computePluginContentDigest(
+            options.pluginsDir,
+            backup.entry.id,
+          );
+          if (digest !== backup.entry.contentDigest) {
+            throw new Error(
+              `Plugin dependency '${backup.entry.id}' changed before uninstall rollback`,
+            );
+          }
+        } else {
+          cpSync(backup.backupDir, dependencyDir, PLUGIN_TREE_COPY);
+        }
+        forgetPluginContentDigest(options.pluginsDir, backup.entry.id);
+        await restorePluginGrantEntry(
+          options.projectHomeDir,
+          backup.entry.id,
+          backup.grantSnapshot,
+        );
+        await loadPluginProviders(
+          options.pluginsDir,
+          backup.entry.id,
+          hasGrant(
+            options.projectHomeDir,
+            backup.entry.id,
+            'providers.register',
+          )
+            ? backup.manifest
+            : { ...backup.manifest, providers: [] },
+          options.logger,
+          { strict: true },
+        );
+        await options.reconcileEngineConnections?.(backup.entry.id);
+        await options.settleProviderAdapterRetirements?.();
+      },
+    );
+  }
+}
 
 function backupProjectFile(
   projectHomeDir: string,
@@ -418,9 +1109,26 @@ export async function restorePluginDurableState(
   // digest would leave the entry reading `unverified` for a tree that was
   // never actually re-consented.
   const entry = snapshot.entry as
-    | { permissions?: unknown; contentDigest?: unknown }
+    | {
+        permissions?: unknown;
+        contentDigest?: unknown;
+        installAuthority?: unknown;
+      }
     | null
     | undefined;
+  const installAuthority =
+    entry && typeof entry === 'object'
+      ? (entry.installAuthority as
+          | {
+              version?: unknown;
+              installedDigest?: unknown;
+              ownedDependencies?: unknown;
+            }
+          | undefined)
+      : undefined;
+  const installAuthorityValid =
+    installAuthority === undefined ||
+    isPluginInstallAuthorityRecord(installAuthority);
   if (
     typeof snapshot.pluginName !== 'string' ||
     snapshot.pluginName.length === 0 ||
@@ -430,6 +1138,9 @@ export async function restorePluginDurableState(
         entry !== null &&
         Array.isArray(entry.permissions) &&
         entry.permissions.every((value) => typeof value === 'string') &&
+        installAuthorityValid &&
+        (installAuthority === undefined ||
+          typeof entry.contentDigest === 'string') &&
         (entry.contentDigest === null ||
           (typeof entry.contentDigest === 'string' &&
             entry.contentDigest.length > 0)))
@@ -446,6 +1157,12 @@ export async function restorePluginDurableState(
       : {
           permissions: entry.permissions as string[],
           contentDigest: entry.contentDigest as string | null,
+          ...(installAuthority
+            ? {
+                installAuthority:
+                  installAuthority as PluginInstallAuthorityRecord,
+              }
+            : {}),
         },
   );
 }
@@ -810,10 +1527,13 @@ function forgetRegistryInstallsForPlugin(
   let changed = false;
 
   for (const [registryId, alias] of Object.entries(aliases)) {
+    // A registry id is not a plugin identity. Delete only an alias whose
+    // target is the plugin being removed, and when the caller knows the
+    // registry id require that owner too. This preserves `{ dep -> other }`
+    // while retiring an owned plugin named `dep`.
     if (
-      registryId === explicitRegistryId ||
-      registryId === pluginName ||
-      alias.pluginName === pluginName
+      alias.pluginName === pluginName &&
+      (!explicitRegistryId || registryId === explicitRegistryId)
     ) {
       delete aliases[registryId];
       changed = true;
@@ -897,8 +1617,13 @@ export async function removeDependencyTreesCreatedByThisInstall(
   // Injectable so the timeout path is EXECUTABLE in a test. A rejection path
   // that never runs is not a guarantee, and a 10s wait is not a test.
   lockTimeoutMs: number = ROLLBACK_LOCK_TIMEOUT_MS,
-): Promise<void> {
-  for (const name of createdPluginTrees) {
+  rollbackLifecycle?: (dependencyId: string) => Promise<void>,
+  createdPluginDigests?: ReadonlyMap<string, string>,
+): Promise<unknown[]> {
+  const failures: unknown[] = [];
+  // Recursive creation records postorder (leaf before its dependent). Undo in
+  // the reverse so a dependent lifecycle retires before the service it uses.
+  for (const name of [...createdPluginTrees].reverse()) {
     if (name === parentPluginName) continue;
     const target = join(pluginsDir, name);
     try {
@@ -916,23 +1641,51 @@ export async function removeDependencyTreesCreatedByThisInstall(
       // so every other install on the machine fails meanwhile. A bounded wait
       // converts that stall into the disposition the code already treats as
       // correct.
-      await Promise.race([
-        withPluginContentLock(pluginsDir, name, async () => {
-          rmSync(target, { recursive: true, force: true });
-        }),
-        new Promise((_resolve, reject) => {
-          setTimeout(
-            () =>
+      let expired = false;
+      let admitted = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const locked = withPluginContentLock(pluginsDir, name, async () => {
+        if (expired) return;
+        admitted = true;
+        const expectedDigest = createdPluginDigests?.get(name);
+        if (!expectedDigest) {
+          logger.warn(
+            'Preserved a dependency because this install could not bind rollback ownership to its exact content',
+            { dep: name },
+          );
+          return;
+        }
+        if (computePluginContentDigest(pluginsDir, name) !== expectedDigest) {
+          logger.warn(
+            'Preserved a dependency because its installed content changed after this install created it',
+            { dep: name },
+          );
+          return;
+        }
+        await rollbackLifecycle?.(name);
+        rmSync(target, { recursive: true, force: true });
+      });
+      try {
+        await Promise.race([
+          locked,
+          new Promise((_resolve, reject) => {
+            timeout = setTimeout(() => {
+              if (admitted) return;
+              expired = true;
               reject(
                 new Error(
                   `Timed out waiting for the content lock of '${name}'`,
                 ),
-              ),
-            lockTimeoutMs,
-          ).unref?.();
-        }),
-      ]);
+              );
+            }, lockTimeoutMs);
+            timeout.unref?.();
+          }),
+        ]);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
     } catch (error) {
+      failures.push(error);
       // The reason is DERIVED, not assumed: this try covers three failure
       // sources -- a path escape, a lock refusal or timeout, and `rmSync`
       // itself throwing. Reporting all three as 'the lock could not be taken'
@@ -951,6 +1704,7 @@ export async function removeDependencyTreesCreatedByThisInstall(
       );
     }
   }
+  return failures;
 }
 
 function readPluginOwnedIntegrationIds(
@@ -1203,6 +1957,9 @@ export async function installPluginFromSource(
   // by this function's rollback. Identity of what WE created, never a listing
   // diff — see `removeDependencyTreesCreatedByThisInstall`.
   const createdPluginTrees = new Set<string>();
+  const createdPluginDigests = new Map<string, string>();
+  let retiredDependencyBackups: RemovedDependencyBackup[] = [];
+  const ownershipHandoffs: PluginDependencyOwnershipHandoff[] = [];
 
   const result = await fetchPluginSource(source, pluginsDir, logger);
   if ('error' in result) {
@@ -1270,7 +2027,26 @@ export async function installPluginFromSource(
     const approvedDependencyIds = new Set(
       consent.kind === 'operator-decision' ? consent.dependencies : [],
     );
+    const dependencySourceRoot = dirname(resolve(source));
+    const resolvedDependencies = (manifest.dependencies ?? []).map(
+      (dependency) =>
+        resolvePluginDependencySource(dependency, source, dependencySourceRoot),
+    );
+    const dependencyLifecycle = createDependencyLifecycle({
+      consent,
+      stagedParent: manifest,
+      pluginsDir,
+      projectHomeDir,
+      logger,
+      reconcileEngineConnections: deps.reconcileEngineConnections,
+      settleProviderAdapterRetirements: deps.settleProviderAdapterRetirements,
+    });
 
+    // One lock order for every publication: global publication, then plugin
+    // content. Waiting for publication must never retain a dependency lock.
+    releaseInstallPublication = await acquireFileMutationLockAsync(
+      join(projectHomeDir, 'plugin-install-publication.mutation'),
+    );
     await ensureCanonicalRegistryInstallAliases(projectHomeDir);
     if (manifest.workspacePanes?.length) {
       for (const pane of manifest.workspacePanes) {
@@ -1301,6 +2077,9 @@ export async function installPluginFromSource(
       ? capturePersistedAgentOwnership(agentsDir, pluginName, existingManifest)
       : new Map<string, string | undefined>();
     const hadExistingPlugin = existingManifest !== null;
+    const retainedDependencyOwnership = hadExistingPlugin
+      ? readPluginDependencyOwnership(projectHomeDir, pluginName)
+      : [];
     if (hadExistingPlugin) {
       eventSubscriptionQuiescence =
         (await deps.quiesceEventSubscriptions?.(pluginName)) ?? null;
@@ -1318,6 +2097,11 @@ export async function installPluginFromSource(
     deps.beginConfigurationMutation?.();
 
     const dependencyResults: InstalledPluginResult['dependencies'] = [];
+    // The parent is the root of this dependency walk even though its staged
+    // tree is not copied until later. Seeding it closes edges back to an
+    // already-installed parent during install-over instead of letting the
+    // filesystem fast path disguise that self-cycle as satisfaction.
+    const installingDependencyIds = new Set([pluginName]);
     let installedLayoutSlug: string | null = null;
     // archive#4288, review HIGH 3: this is a tree-mutating path like update
     // and uninstall — it deletes `<plugins>/<name>` and copies a new tree in
@@ -1349,11 +2133,40 @@ export async function installPluginFromSource(
         backupPluginDurableState(projectHomeDir, installBackupRoot, pluginName);
         backupComplete = true;
 
-        for (const dependency of manifest.dependencies || []) {
+        // The parent and every dependency publish under one cross-process
+        // transaction. A provider collision cannot race between preflight and
+        // dependency activation, and rollback retains the same outer fence.
+        const registryDependencyOwners = new Map<string, string>();
+
+        for (const [index, dependency] of (
+          manifest.dependencies ?? []
+        ).entries()) {
+          const resolvedDependency = resolvedDependencies[index]!;
           const dependencyResult = await installPluginDependency(
-            dependency,
+            resolvedDependency,
             pluginsDir,
             () => ({
+              async resolveSource(id: string) {
+                const entry = await resolveSinglePluginRegistryProvider(id);
+                if (entry.source) {
+                  if (!entry.provider.registryKey) {
+                    throw new Error(
+                      `Plugin registry provider for '${id}' has no source identity`,
+                    );
+                  }
+                  // Source staging must preserve the same ownership refusal
+                  // as provider.install, before it creates any target bytes.
+                  assertRegistryInstallTargetAvailable(
+                    projectHomeDir,
+                    pluginsDir,
+                    id,
+                    entry.provider.registryKey,
+                    id,
+                  );
+                  registryDependencyOwners.set(id, entry.provider.registryKey);
+                }
+                return entry.source;
+              },
               async install(
                 id: string,
                 installOptions?: { expectedInstalledPluginName?: string },
@@ -1364,9 +2177,12 @@ export async function installPluginFromSource(
             }),
             buildPlugin,
             logger,
-            undefined,
+            installingDependencyIds,
             createdPluginTrees,
             approvedDependencyIds,
+            dependencyLifecycle,
+            dependencySourceRoot,
+            createdPluginDigests,
           );
           dependencyResults.push({
             id: dependency.id,
@@ -1374,6 +2190,10 @@ export async function installPluginFromSource(
             error: dependencyResult.error,
           });
           if (!dependencyResult.success) {
+            const refusal = findPluginConsentRefusedError(
+              dependencyResult.cause,
+            );
+            if (refusal) throw refusal;
             // `cause`, not just the message: a refused lock acquisition is a
             // typed error carrying WHICH plugins are waiting on each other,
             // and flattening it here is what left the routes with a sentence
@@ -1384,14 +2204,20 @@ export async function installPluginFromSource(
               { cause: dependencyResult.cause },
             );
           }
+          // Source-backed registry dependencies were staged and validated by
+          // Station, not provider.install. Publish their exact registry owner
+          // under the same outer transaction; the durable backup restores
+          // aliases if any later dependency or parent step fails.
+          for (const [id, registryKey] of registryDependencyOwners) {
+            if (createdPluginTrees.has(id)) {
+              rememberRegistryInstall(projectHomeDir, id, registryKey, id);
+            }
+          }
         }
 
         // One cross-process publication transaction owns the fresh catalog
         // preflight through durable plugin copy. Without it two installs can
         // both observe an unused descriptor id and publish a collision.
-        releaseInstallPublication = await acquireFileMutationLockAsync(
-          join(projectHomeDir, 'plugin-install-publication.mutation'),
-        );
         if (manifest.workspacePanes?.length) {
           const [conflict] = detectWorkspacePaneCatalogConflicts(
             manifest,
@@ -1502,9 +2328,7 @@ export async function installPluginFromSource(
           consentGranted,
           pendingConsent,
           withdrawn: autoGrantWithdrew,
-        } = await (
-          await import('../../services/plugins/plugin-permissions.js')
-        ).processInstallPermissions(
+        } = await processInstallPermissions(
           projectHomeDir,
           pluginName,
           requiredPermissionsForManifest(manifest),
@@ -1531,6 +2355,38 @@ export async function installPluginFromSource(
           );
           eventBus?.emit('plugins:grants-changed', { name: pluginName });
         }
+        const droppedDependencyOwnership = retainedDependencyOwnership.filter(
+          (entry) => !approvedDependencyIds.has(entry.id),
+        );
+        if (droppedDependencyOwnership.length > 0) {
+          // Retire old graph members before replacing the ownership record.
+          // If retirement fails, the helper restores every completed removal
+          // and the old record remains authoritative for a retry. If a later
+          // publication step fails, the outer catch restores these backups
+          // alongside the old parent tree and grant/ownership snapshot.
+          retiredDependencyBackups = await removeOwnedDependencyLifecycles({
+            ownershipHandoffs,
+            dependencies: droppedDependencyOwnership,
+            removedPluginName: pluginName,
+            pluginsDir,
+            projectHomeDir,
+            backupRoot: installBackupRoot,
+            logger,
+            reconcileEngineConnections: deps.reconcileEngineConnections,
+            settleProviderAdapterRetirements:
+              deps.settleProviderAdapterRetirements,
+          });
+        }
+        await recordPluginDependencyOwnership(
+          projectHomeDir,
+          pluginName,
+          deriveDependencyOwnership(
+            pluginsDir,
+            createdPluginTrees,
+            retainedDependencyOwnership,
+            approvedDependencyIds,
+          ),
+        );
         const activeProviders = hasGrant(
           projectHomeDir,
           pluginName,
@@ -1563,6 +2419,36 @@ export async function installPluginFromSource(
         );
         await deps.settleProviderAdapterRetirements?.();
 
+        const dependencyPermissions: InstalledPluginResult['permissions']['dependencies'] =
+          [];
+        const inspectedDependencies = new Set<string>([pluginName]);
+        const inspectDependencyPermissions = (
+          installed: PluginManifest,
+        ): void => {
+          for (const dependency of installed.dependencies ?? []) {
+            if (inspectedDependencies.has(dependency.id)) continue;
+            inspectedDependencies.add(dependency.id);
+            assertPluginNameSegment(dependency.id);
+            const dependencyManifest = readPluginManifestFileSync(
+              join(pluginsDir, dependency.id, 'plugin.json'),
+            );
+            dependencyPermissions.push({
+              id: dependency.id,
+              pendingConsent: requiredPermissionsForManifest(dependencyManifest)
+                .filter(
+                  (permission) =>
+                    !hasGrant(projectHomeDir, dependency.id, permission),
+                )
+                .map((permission) => ({
+                  permission,
+                  tier: getPermissionTier(permission),
+                })),
+            });
+            inspectDependencyPermissions(dependencyManifest);
+          }
+        };
+        inspectDependencyPermissions(manifest);
+
         eventBus?.emit('plugins:installed', {
           name: pluginName,
           agents: manifest.agents?.map((agent) => agent.slug) || [],
@@ -1589,16 +2475,28 @@ export async function installPluginFromSource(
             autoGranted,
             consentGranted,
             pendingConsent,
+            dependencies: dependencyPermissions,
             withdrawn: withdrewOnInstall,
           },
         };
-      } catch (error) {
-        await removeDependencyTreesCreatedByThisInstall(
-          pluginsDir,
-          createdPluginTrees,
-          pluginName,
-          logger,
-        );
+      } catch (installError) {
+        const dependencyCleanupFailures =
+          await removeDependencyTreesCreatedByThisInstall(
+            pluginsDir,
+            createdPluginTrees,
+            pluginName,
+            logger,
+            ROLLBACK_LOCK_TIMEOUT_MS,
+            (dependencyId) => dependencyLifecycle.rollback(dependencyId),
+            createdPluginDigests,
+          );
+        const error =
+          dependencyCleanupFailures.length > 0
+            ? new AggregateError(
+                [installError, ...dependencyCleanupFailures],
+                'Plugin install and dependency rollback both failed.',
+              )
+            : installError;
         if (hadExistingPlugin && !backupComplete) {
           // The failure happened while (or before) taking the backup: nothing
           // has touched the existing installation yet, and there is no complete
@@ -1629,6 +2527,15 @@ export async function installPluginFromSource(
               backupRoot,
             );
             await restorePluginDurableState(projectHomeDir, backupRoot);
+            await restoreRemovedDependencyLifecycles({
+              backups: retiredDependencyBackups,
+              pluginsDir,
+              projectHomeDir,
+              logger,
+              reconcileEngineConnections: deps.reconcileEngineConnections,
+              settleProviderAdapterRetirements:
+                deps.settleProviderAdapterRetirements,
+            });
             await synchronizePluginAgentDefinitions({
               agentsDir,
               pluginDir,
@@ -1650,6 +2557,7 @@ export async function installPluginFromSource(
             );
             await deps.reconcileEngineConnections?.(pluginName);
             await deps.settleProviderAdapterRetirements?.();
+            await rollbackOwnershipHandoffs(ownershipHandoffs);
           } catch (rollbackError) {
             throw new AggregateError(
               [error, rollbackError],
@@ -1684,6 +2592,7 @@ export async function installPluginFromSource(
               previousManifest: manifest,
               logger,
             });
+            await rollbackOwnershipHandoffs(ownershipHandoffs);
           } catch (rollbackError) {
             throw new AggregateError(
               [error, rollbackError],
@@ -1714,38 +2623,67 @@ export async function uninstallInstalledPlugin(
   name: string,
   deps: PluginInstallSharedDeps,
 ): Promise<{ success: true }> {
+  const release = await acquireFileMutationLockAsync(
+    join(deps.projectHomeDir, 'plugin-install-publication.mutation'),
+  );
+  try {
+    await ensureCanonicalRegistryInstallAliases(deps.projectHomeDir);
+    const installedName =
+      resolveInstalledPluginName(deps.projectHomeDir, deps.pluginsDir, name) ||
+      name;
+    return await withPluginContentLock(deps.pluginsDir, installedName, () =>
+      uninstallPluginUnderPublication(name, deps, installedName),
+    );
+  } finally {
+    await release();
+  }
+}
+
+async function uninstallPluginUnderPublication(
+  name: string,
+  deps: PluginInstallSharedDeps,
+  installedPluginName: string,
+): Promise<{ success: true }> {
   const { agentsDir, eventBus, logger, pluginsDir, projectHomeDir } = deps;
-  await ensureCanonicalRegistryInstallAliases(projectHomeDir);
-  const installedPluginName =
-    resolveInstalledPluginName(projectHomeDir, pluginsDir, name) || name;
   const pluginDir = join(pluginsDir, installedPluginName);
+  // The selected installed directory is the uninstall identity. A mutable
+  // manifest may describe what needs cleanup, but it cannot rename the
+  // principal whose grants, providers, integrations, or host record are
+  // removed.
+  const pluginName = installedPluginName;
 
   if (!existsSync(pluginDir)) {
     throw new Error('Plugin not found');
   }
 
   let backupRoot: string | null = null;
+  let removedDependencyBackups: RemovedDependencyBackup[] = [];
+  const ownershipHandoffs: PluginDependencyOwnershipHandoff[] = [];
   const manifest = await readManifestForRemoval(
     join(pluginDir, 'plugin.json'),
     installedPluginName,
     logger,
   );
+  // Destructive dependency cleanup reads only Station's host-owned install
+  // authority. The parent manifest and every file in its mutable tree are
+  // untrusted uninstall inputs and cannot mint ownership over another plugin.
+  const ownedDependencies = readPluginDependencyOwnership(
+    projectHomeDir,
+    installedPluginName,
+  );
   const eventSubscriptionQuiescence =
-    (await deps.quiesceEventSubscriptions?.(
-      manifest.name || installedPluginName,
-    )) ?? null;
+    (await deps.quiesceEventSubscriptions?.(pluginName)) ?? null;
   let serverQuiescence: PluginPublicServerQuiescence;
   try {
     serverQuiescence = await quiescePluginPublicServerModule(
       pluginsDir,
-      manifest.name || installedPluginName,
+      pluginName,
     );
   } catch (error) {
     eventSubscriptionQuiescence?.release();
     throw error;
   }
   deps.beginConfigurationMutation?.();
-  const pluginName = manifest.name || name;
   // Captured BEFORE any agent directory deletion (archive#1004 review
   // HIGH-1 residual b) — if a later step in this try block throws, the
   // catch block's rollback `synchronizePluginAgentDefinitions` call can no
@@ -1797,11 +2735,23 @@ export async function uninstallInstalledPlugin(
     await replacePluginProvidersForSource(pluginName, []);
     await deps.settleProviderAdapterRetirements?.();
     await deps.removeEngineConnections?.(pluginName);
+    removedDependencyBackups = await removeOwnedDependencyLifecycles({
+      ownershipHandoffs,
+      dependencies: ownedDependencies,
+      removedPluginName: pluginName,
+      pluginsDir,
+      projectHomeDir,
+      backupRoot,
+      logger,
+      reconcileEngineConnections: deps.reconcileEngineConnections,
+      settleProviderAdapterRetirements: deps.settleProviderAdapterRetirements,
+    });
     forgetRegistryInstallsForPlugin(
       projectHomeDir,
-      manifest.name || installedPluginName,
-      name,
+      installedPluginName,
+      name === installedPluginName ? undefined : name,
     );
+    await removePluginHostRecord(projectHomeDir, pluginName);
     eventBus?.emit('plugins:removed', { name: pluginName });
     pluginUninstalls.add(1, { plugin: pluginName });
     logger.info('Plugin removed', { plugin: pluginName });
@@ -1813,6 +2763,15 @@ export async function uninstallInstalledPlugin(
     // untouched (archive#1835 delta-2 review).
     if (backupRoot && backupComplete) {
       try {
+        await restoreRemovedDependencyLifecycles({
+          backups: removedDependencyBackups,
+          pluginsDir,
+          projectHomeDir,
+          logger,
+          reconcileEngineConnections: deps.reconcileEngineConnections,
+          settleProviderAdapterRetirements:
+            deps.settleProviderAdapterRetirements,
+        });
         rmSync(pluginDir, { recursive: true, force: true });
         cpSync(join(backupRoot, 'plugin'), pluginDir, PLUGIN_TREE_COPY);
         // Defensive, for the same reason as the install rollback above
@@ -1850,6 +2809,7 @@ export async function uninstallInstalledPlugin(
         );
         await deps.reconcileEngineConnections?.(pluginName);
         await deps.settleProviderAdapterRetirements?.();
+        await rollbackOwnershipHandoffs(ownershipHandoffs);
       } catch (rollbackError) {
         throw new AggregateError(
           [error, rollbackError],
