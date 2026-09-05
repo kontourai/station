@@ -109,8 +109,6 @@ const EXPECTED_ELEMENTS = [
   'message',
   'message-pre',
   'message-row',
-  'occupant-menu',
-  'occupant-picker',
   'project-filter',
   'resize-handle',
   'session-info',
