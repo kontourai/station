@@ -179,7 +179,11 @@ function ConnectedRegionToolbarControls() {
     setMenuRegion(null);
   }, [bottomOnly, commandsInOverflowMenu]);
   const [menuAnchorRight, setMenuAnchorRight] = useState(8);
-  const menuOccupant = menuRegion && regions[menuRegion].occupant;
+  // A null `main` occupant IS Home on screen (`MainRegionSurface`), so Home
+  // is never offered while it is already showing.
+  const occupantOf = (id: RegionId) =>
+    id === 'main' ? (regions.main.occupant ?? 'home') : regions[id].occupant;
+  const menuOccupant = menuRegion && occupantOf(menuRegion);
   const menuLabel = menuRegion && regionLabel(menuRegion);
 
   const openMenu = useCallback((id: RegionId, trigger: HTMLButtonElement) => {
@@ -215,7 +219,7 @@ function ConnectedRegionToolbarControls() {
   // primary click opens the placement menu. Fine pointer only — a coarse
   // device folds its region commands (#1400's toolbar occlusion floor), and
   // this slice defers `main` there rather than widen that fold.
-  const mainOccupant = regions.main.occupant;
+  const mainOccupant = occupantOf('main');
   const mainChoices = surfacesFor('main').filter(
     (surface) => surface.id !== mainOccupant,
   );

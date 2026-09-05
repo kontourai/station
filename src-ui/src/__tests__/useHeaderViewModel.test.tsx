@@ -24,6 +24,12 @@ vi.mock('../contexts/AuthContext', () => ({
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate }),
 }));
+// #928 C2a: `goHome` reveals the Home surface through the region command
+// hook, which needs a `RegionModelProvider` this hook-level harness does not
+// mount. `HeaderHomeSurface.test.tsx` asserts the reveal itself.
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => vi.fn(),
+}));
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useLaunchChat: () => launchChat,
 }));

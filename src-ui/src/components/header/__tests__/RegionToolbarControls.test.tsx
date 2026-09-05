@@ -14,7 +14,7 @@ const chatCss = readFileSync('src-ui/src/components/chat/chat.css', 'utf8');
 
 const harness = vi.hoisted(() => ({
   regions: {
-    main: { visible: true, size: 0, occupant: 'home' },
+    main: { visible: true, size: 0, occupant: 'home' as string | null },
     left: { visible: false, size: 400, occupant: null },
     right: { visible: false, size: 400, occupant: null },
     bottom: { visible: true, size: 320, occupant: 'chat' },
@@ -340,6 +340,20 @@ describe('RegionToolbarControls', () => {
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
     ).toEqual(['Swap in Activity']);
+  });
+
+  test('an empty main (Activity left it) is Home on screen, so the menu does not offer Home', () => {
+    harness.regions.main.occupant = null;
+    render(<RegionToolbarControls />);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Change Main region surface' }),
+    );
+    expect(
+      within(screen.getByRole('menu', { name: 'Main region surfaces' }))
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Place Activity here']);
   });
 
   test('the dock control labels are what they were before main became choosable', () => {

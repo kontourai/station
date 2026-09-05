@@ -75,7 +75,9 @@ every other route. Four rules make it a region rather than a special case
   exists on a fine pointer only. A bottom-only device folds its region
   commands into one control (#1400's toolbar occlusion floor) and this slice
   does not widen that fold; Home still reaches `main` there through the
-  palette and the deep link.
+  sidebar's two Home affordances (the header's app-name button and the Work
+  list's Home row, `ProjectSidebar.tsx`) and the `?surface=home` deep link.
+  Home is `hiddenFromNav` and has no palette entry.
 
 **Layer 2: pane hosts.** Inside a surface, or inside a project layout, a
 `WorkspacePaneHost` renders a persisted tree of **panes**. The tree has two

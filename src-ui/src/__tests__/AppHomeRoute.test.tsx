@@ -577,12 +577,23 @@ describe('App home route resolution', () => {
   });
 
   /**
-   * #928 C2a: `/` renders the `main` region's occupant. With the default
-   * arrangement (Home in `main`) — and with no region model at all, the
-   * legacy mount every other test here uses — the outlet is exactly the Home
-   * route it always was.
+   * #928 C2a: `/` renders the `main` region's occupant, and with the default
+   * arrangement (Home in `main`) that is the Home route. What these prove is
+   * the outlet's STRUCTURE under the region model — the route body is the
+   * direct child of `main#station-main > .content-view`, with no shell
+   * wrapper around it, and each of the Home route's four states still
+   * reaches `/`. They do not compare against the pre-C2a tree: that tree is
+   * gone from this branch, so "identical to base" is a claim only a
+   * cross-tree capture could make. The no-model mount is asserted against
+   * the same structure, which is what "the shell adds nothing" reduces to.
+   *
+   * `HomeView`'s own root (`section.home-view`) is inside the mocked
+   * `AppViewContent` here and is pinned by `HomeView.test.tsx`.
    */
-  test('the default arrangement renders the Home route at / unchanged', async () => {
+  const outlet = () =>
+    document.querySelector('main#station-main > .content-view');
+
+  test('the default arrangement renders the Home route body as the direct child of the outlet', async () => {
     hooks.projects = {
       data: [{ slug: 'dev' }],
       isLoading: false,
@@ -594,25 +605,77 @@ describe('App home route resolution', () => {
       isError: false,
     };
     expect(DEFAULT_DEVICE_REGION_ARRANGEMENT.main.occupant).toBe('home');
-    const outletHtml = () =>
-      document.querySelector('main#station-main .content-view')?.innerHTML;
 
-    // The legacy mount (no region model) is the oracle: what `/` rendered
-    // before `main` became choosable.
-    hooks.regionModel = null;
-    const legacy = render(<App />);
-    await act(async () => undefined);
-    const legacyHtml = outletHtml();
-    expect(legacyHtml).toContain('{"type":"home"}');
-    legacy.unmount();
+    for (const regionModel of [null, regionModelStub()]) {
+      hooks.regionModel = regionModel;
+      const rendered = render(<App />);
+      await act(async () => undefined);
 
+      const content = outlet();
+      expect(content).not.toBeNull();
+      // The mocked `AppViewContent` renders two siblings (the route body and
+      // its navigation fixture button); the route body comes first, with no
+      // element between the outlet and it.
+      const body = screen.getByTestId('app-view-content');
+      expect(body.parentElement).toBe(content);
+      expect(content?.firstElementChild).toBe(body);
+      expect(body.textContent).toBe('{"type":"home"}');
+      expect(screen.queryByTestId('activity-region-shell')).toBeNull();
+      expect(navigate).not.toHaveBeenCalled();
+      rendered.unmount();
+    }
+  });
+
+  test('the pending skeleton renders at / under the default arrangement', async () => {
+    hooks.projects = { data: [], isLoading: true, isError: false };
     hooks.regionModel = regionModelStub();
+
     render(<App />);
     await act(async () => undefined);
 
-    expect(outletHtml()).toBe(legacyHtml);
-    expect(screen.queryByTestId('activity-region-shell')).toBeNull();
-    expect(navigate).not.toHaveBeenCalled();
+    const status = screen.getByRole('status', {
+      name: /loading your workspace/i,
+    });
+    expect(status.closest('main#station-main > .content-view')).toBe(outlet());
+    expect(screen.queryByTestId('app-view-content')).toBeNull();
+  });
+
+  test('the host-unavailable state renders at / under the default arrangement', async () => {
+    connectionState.status = 'error';
+    hooks.projects = { data: [], isLoading: false, isError: true };
+    hooks.regionModel = regionModelStub();
+
+    render(<App />);
+    await act(async () => undefined);
+
+    const unavailable = screen.getByText(
+      'This Station is unavailable right now',
+    );
+    expect(unavailable.closest('main#station-main > .content-view')).toBe(
+      outlet(),
+    );
+    expect(screen.queryByTestId('app-view-content')).toBeNull();
+  });
+
+  test('the error state renders at / under the default arrangement', async () => {
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.layouts = { data: [], isLoading: false, isError: true };
+    hooks.regionModel = regionModelStub();
+
+    render(<App />);
+    await act(async () => undefined);
+
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain(
+      "Station could not load the first project's layouts.",
+    );
+    expect(alert.closest('main#station-main > .content-view')).toBe(outlet());
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects'] });
   });
 
   test('with Activity in main, / renders the Activity shell for main and not Home', async () => {
