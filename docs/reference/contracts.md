@@ -24,6 +24,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
+| `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes |
@@ -42,10 +43,18 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 
 ```ts
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import type { LearningReviewProjectionOutcome } from '@kontourai/station-contracts/learning-review';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import type { SessionMetadata } from '@kontourai/station-contracts/runtime';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 ```
+
+`learning-review` is a read-only projection contract. Its available form links
+owner-issued source, candidate, evaluation, decision, activation, effect, and
+retirement records; its unavailable forms contain no protected owner identity.
+Station does not turn feedback, an accepted request, or transport success into
+a promotion verdict. An empty effect-observation set means not observed, never
+successful.
 
 ## Scheduler deferral events
 

@@ -1,16 +1,16 @@
 import { useState } from 'react';
-import { resolveViewFromPath } from '../../app-shell/routing';
 import {
-  APP_SURFACE_REGISTRY,
-  type SurfaceDefinition,
-  type SurfaceSection,
-} from '../../app-shell/surface-registry';
+  APP_DESTINATION_REGISTRY,
+  type DestinationDefinition,
+  type DestinationSection,
+} from '../../app-shell/destination-registry';
+import { resolveViewFromPath } from '../../app-shell/routing';
 import { usePendingRouteSurfaceId } from '../../app-shell/useRoutePending';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { occupiedDockRegion } from '../../regions/region-model';
-import { PROJECT_SIDEBAR_NAV_GROUPS, surfaceIcon } from './nav-items';
+import { destinationIcon, PROJECT_SIDEBAR_NAV_GROUPS } from './nav-items';
 
 interface ProjectSidebarNavProps {
   collapsed: boolean;
@@ -31,13 +31,13 @@ export function ProjectSidebarNav({
 }: ProjectSidebarNavProps) {
   const regionModel = useRegionModelOptional();
   const showSurface = useShowSurface();
-  const activeSurface = APP_SURFACE_REGISTRY.getSurfaceForView(
+  const activeDestination = APP_DESTINATION_REGISTRY.getDestinationForView(
     resolveViewFromPath(activePath ?? window.location.pathname),
   );
   // archive#3313: pass the live flags through — calling getSidebar with no
-  // flags meant a previewFlag-gated surface could never appear here, even
+  // flags meant a previewFlag-gated destination could never appear here, even
   // after its preview (or the developer-tools setting) was enabled.
-  const sidebarSurfaces = APP_SURFACE_REGISTRY.getSidebar(
+  const sidebarDestinations = APP_DESTINATION_REGISTRY.getSidebar(
     useSurfaceVisibilityFlags(),
   );
   const pendingSurfaceId = usePendingRouteSurfaceId();
@@ -51,9 +51,9 @@ export function ProjectSidebarNav({
   // user's own collapse survives navigation instead of being overwritten by
   // whichever group the next route belongs to.
   const [collapsedSections, setCollapsedSections] = useState<
-    ReadonlySet<SurfaceSection>
+    ReadonlySet<DestinationSection>
   >(() => new Set());
-  const toggleSection = (section: SurfaceSection) => {
+  const toggleSection = (section: DestinationSection) => {
     setCollapsedSections((previous) => {
       const next = new Set(previous);
       if (!next.delete(section)) next.add(section);
@@ -61,33 +61,33 @@ export function ProjectSidebarNav({
     });
   };
 
-  const renderRow = (surface: SurfaceDefinition) => {
-    const label = surface.label();
+  const renderRow = (destination: DestinationDefinition) => {
+    const label = destination.label();
     const occupiedRegion =
-      surface.regionSurface && regionModel
-        ? occupiedDockRegion(regionModel.regions, surface.regionSurface)
+      destination.regionSurface && regionModel
+        ? occupiedDockRegion(regionModel.regions, destination.regionSurface)
         : undefined;
-    const isActive = surface.regionSurface
+    const isActive = destination.regionSurface
       ? Boolean(occupiedRegion && regionModel?.regions[occupiedRegion].visible)
-      : activeSurface?.id === surface.id;
-    // SHELL-05: the route chunk takes ~1.4 s to arrive on a cold surface, and
+      : activeDestination?.id === destination.id;
+    // SHELL-05: the route chunk takes ~1.4 s to arrive on a cold destination, and
     // the row the user clicked said nothing for all of it. `pendingSurfaceId`
     // is the suspended route outlet itself, not a timer started at click, and
-    // it is resolved through the same `getSurfaceForView` that decides which
+    // it is resolved through the same `getDestinationForView` that decides which
     // row is active — so a deep route marks its owning row rather than
     // nothing at all.
-    const isPending = pendingSurfaceId === surface.id;
+    const isPending = pendingSurfaceId === destination.id;
     return (
       <button
-        key={surface.id}
+        key={destination.id}
         type="button"
         className={`sidebar__nav-btn${isActive ? ' sidebar__nav-btn--active' : ''}${
           isPending ? ' sidebar__nav-btn--pending' : ''
         }`}
         aria-busy={isPending || undefined}
         onClick={() => {
-          if (surface.regionSurface) showSurface(surface.regionSurface);
-          else navigate(surface.route);
+          if (destination.regionSurface) showSurface(destination.regionSurface);
+          else navigate(destination.route);
           if (isMobile) onAfterNavigate?.();
         }}
         title={collapsed ? label : undefined}
@@ -97,10 +97,12 @@ export function ProjectSidebarNav({
         // from the registry's semantic owner, so a group added or
         // renamed later carries its anchor without a parallel list.
         data-first-run-anchor={
-          surface.managementGroup ? `nav-${surface.managementGroup}` : undefined
+          destination.managementGroup
+            ? `nav-${destination.managementGroup}`
+            : undefined
         }
       >
-        {surface.icon ? surfaceIcon(surface.icon) : null}
+        {destination.icon ? destinationIcon(destination.icon) : null}
         <span className="sidebar__nav-label">{label}</span>
         {isPending ? (
           <span className="sidebar__nav-spinner" aria-hidden="true" />
@@ -109,18 +111,19 @@ export function ProjectSidebarNav({
     );
   };
 
-  const primarySurfaces = sidebarSurfaces.filter(
-    (surface) => surface.sidebar?.section === 'primary',
+  const primaryDestinations = sidebarDestinations.filter(
+    (destination) => destination.sidebar?.section === 'primary',
   );
 
   return (
     <div className="sidebar__nav">
-      {primarySurfaces.map(renderRow)}
+      {primaryDestinations.map(renderRow)}
       {PROJECT_SIDEBAR_NAV_GROUPS.map((section) => {
         const sectionOpen = !collapsedSections.has(section.id);
-        const sectionActive = activeSurface?.sidebar?.section === section.id;
-        const items = sidebarSurfaces.filter(
-          (surface) => surface.sidebar?.section === section.id,
+        const sectionActive =
+          activeDestination?.sidebar?.section === section.id;
+        const items = sidebarDestinations.filter(
+          (destination) => destination.sidebar?.section === section.id,
         );
         return (
           <div className="sidebar__nav-group" key={section.id}>

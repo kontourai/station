@@ -28,7 +28,10 @@
  * fail-closed authored-spec gate at session start for every
  * delivery-capable provider.
  */
-import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import {
+  type AgentSpec,
+  BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
+} from '@kontourai/station-contracts/agent';
 import {
   ENGINE_CAPABILITY_MATRICES,
   sessionDeliveryChannels,
@@ -50,6 +53,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { isBuiltinStationControl } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { SC_READ_ONLY_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 
 export interface SessionAgentResolverOptions {
@@ -137,7 +141,38 @@ export function builtinStationAgentSpec(slug: string): AgentSpec | null {
     // spec is what is resolved. `bootstrapRuntimeDefaultAgent` persists the
     // docs integration BEFORE its external-engine early return precisely so
     // `resolveToolServer('station-docs')` can find it here.
-    tools: { mcpServers: ['station-control', 'station-docs'] },
+    tools: {
+      mcpServers: [...BUILTIN_STATION_AGENT_MCP_SERVER_IDS],
+      autoApprove: SC_READ_ONLY_TOOLS,
+    },
+  };
+}
+
+/**
+ * The reserved Station role keeps its control-plane capabilities even after
+ * an older or partially initialized home materializes an authored record.
+ * User-authored additions are preserved; the role-defining built-ins are
+ * prepended once. Ordinary agents are returned byte-identically.
+ */
+export function withBuiltinStationAgentCapabilities(
+  slug: string,
+  authored: AgentSpec | null,
+): AgentSpec | null {
+  const builtin = builtinStationAgentSpec(slug);
+  if (!builtin) return authored;
+  if (!authored) return builtin;
+  const authoredServers = authored.tools?.mcpServers ?? [];
+  const builtins = new Set<string>(BUILTIN_STATION_AGENT_MCP_SERVER_IDS);
+  return {
+    ...authored,
+    tools: {
+      ...builtin.tools,
+      ...authored.tools,
+      mcpServers: [
+        ...BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
+        ...authoredServers.filter((id) => !builtins.has(id)),
+      ],
+    },
   };
 }
 
@@ -245,7 +280,10 @@ export function createSessionAgentResolver(
     }
 
     try {
-      const spec = (await loadAgentSpec(slug)) ?? builtinStationAgentSpec(slug);
+      const spec = withBuiltinStationAgentCapabilities(
+        slug,
+        await loadAgentSpec(slug),
+      );
       if (!spec) {
         return input;
       }

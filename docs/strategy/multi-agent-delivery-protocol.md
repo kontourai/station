@@ -283,9 +283,13 @@ and the `failingStep` field are scoped to the step whose npm-run boundary is
 last — but npm writes those boundaries to **stdout only**, while biome and tsc
 write diagnostics to **stderr**. So the two streams are handled separately:
 stdout is genuinely attributable to the failing step, and a candidate found
-there always wins. Stderr carries no step markers at all, so it is ranked
+there always wins. Stderr usually carries no step markers, so it is ranked
 rather than attributed — searched from the end, because the chain
-short-circuits and the failing step's stderr is the tail.
+short-circuits and the failing step's stderr is the tail. The exception is a
+completion lane's parent capture, which folds every phase's output behind a
+`[completion:<phase-id>]` marker: that shape IS attributable, and because the
+phase sequence stops at the first non-passing phase, the failing phase is
+always the last region.
 
 When the excerpt came from stderr the receipt says so, in `causeStream`. Its
 **absence is the stronger claim**: the excerpt was scoped to the step that

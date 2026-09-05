@@ -38,6 +38,9 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // The complete 1,200-thread seed/read/equivalence case owns its original
+  // 10-second product-law bound in a fresh file/process lifecycle.
+  'src-server/services/orchestration/__tests__/event-store-batched-projection.large.test.ts',
   // EventStore owns a high-cardinality SQLite fixture whose large replay and
   // backfill assertions are scheduler-sensitive under the two-worker pool.
   'src-server/services/orchestration/__tests__/event-store.test.ts',
@@ -104,6 +107,9 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Type-only child_process import; the macro's spawn boundary is simulated
+  // with streams, so this adds no real child launches or timing assertion.
+  'scripts/__tests__/run-connected-agent-tests.test.ts',
   // Real peer EventStores share one disposable SQLite home and survive owner death.
   'src-server/services/plugins/__tests__/package-mcp-admission.test.ts',
   // fsync-backed AgentRegistry fixtures compose the runtime bootstrap path;
@@ -264,6 +270,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through `execFileSync` on purpose — its oracle has to be what git actually
   // returns for a pathspec, not a fixture that would pin the bug instead.
   'scripts/__tests__/gate-scope.test.ts',
+  // station#928: the placement-vocabulary ratchet enumerates its scan scope
+  // through one single-shot `git ls-files` for the same reason as
+  // gate-scope.test.ts above — the scope must be what git tracks, not a
+  // fixture. Fix-forward: landed via #1478 without this classification; the
+  // verification-policy gate caught it on the pull request.
+  'src-ui/src/__tests__/placement-vocabulary.test.ts',
   // station#3549: drives a single `git grep -l` through `execFileSync` to
   // discover every file that calls `adapter.startSession(` — the same "real
   // git, not a fixture" shape as gate-scope.test.ts above. Fix-forward: this
@@ -489,6 +501,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // knowledge-root journal/lock, proving prepared multi-file recovery and
   // cross-process serialization without sharing an in-memory test double.
   'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
+  // The observer's FIFO proof swaps a real pipe exactly at native open and
+  // kills only its own child after proving the old flags remain blocked.
+  'src-server/knowledge-store/__tests__/knowledge-record-observation.process.test.ts',
   // SchedulerLedger starts a real Node owner, proves an independent SQLite
   // connection cannot claim its occurrence, then SIGKILLs it for exact
   // liveness reconciliation. Keep that process lifecycle out of ordinary.

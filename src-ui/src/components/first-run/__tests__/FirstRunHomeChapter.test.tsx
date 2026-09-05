@@ -26,7 +26,11 @@ import { renderWithIsolatedConnections as render } from '../../../__tests__/rend
 const updateConfig = vi.fn();
 const recordFirstRunDecision = vi.fn();
 const materializeEngineAgent = vi.fn();
-const configValue: { firstRun?: FirstRunState; userProfile?: unknown } = {};
+const configValue: {
+  firstRun?: FirstRunState;
+  userProfile?: unknown;
+  builtinAgentEngineConnectionId?: string | null;
+} = {};
 const setupState = { launcherWouldShow: false };
 const configState = { settled: true };
 /** Every value the chapter published about owning the screen  */
@@ -132,6 +136,24 @@ vi.mock('../../../hooks/useSystemStatus', () => ({
     isFetching: engineState.statusLoading || engineState.statusRestored,
   }),
 }));
+vi.mock('../../EnginePicker', () => ({
+  EnginePicker: ({
+    onChosen,
+    onDismiss,
+  }: {
+    onChosen: () => void;
+    onDismiss: () => void;
+  }) => (
+    <div data-testid="engine-picker">
+      <button type="button" onClick={onChosen}>
+        Use selected engine
+      </button>
+      <button type="button" onClick={onDismiss}>
+        Decide later
+      </button>
+    </div>
+  ),
+}));
 
 import { FirstRunHomeChapter } from '../FirstRunHomeChapter';
 import { firstRunStore } from '../first-run-store';
@@ -181,6 +203,9 @@ beforeEach(() => {
   setupState.launcherWouldShow = false;
   configState.settled = true;
   configValue.userProfile = undefined;
+  // Existing tests exercise the chapter transitions after an engine choice.
+  // A dedicated case below covers the genuinely unchosen first-run state.
+  configValue.builtinAgentEngineConnectionId = 'codex';
   engineState.engines = [READY_CODEX];
   engineState.statusLoading = false;
   engineState.statusRestored = false;
@@ -195,6 +220,21 @@ afterEach(() => {
 });
 
 describe('AC1 — the gate is a durable fact about the home', () => {
+  test('asks which engine powers Station before advancing past engine setup', async () => {
+    configValue.builtinAgentEngineConnectionId = undefined;
+    engineState.engines = [];
+    render(<FirstRunHomeChapter />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByTestId('engine-picker')).toBeTruthy();
+    expect(screen.queryByTestId('first-run-about-you')).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Use selected engine' }),
+    );
+    expect(screen.getByTestId('first-run-about-you')).toBeTruthy();
+  });
+
   test('a home that has never answered opens the chapter on the first render', () => {
     render(<FirstRunHomeChapter />);
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();

@@ -28,7 +28,7 @@ vi.mock('../../contexts/DeviceSettingsContext', () => ({
   }),
 }));
 
-import { DEVELOPER_TOOLS_FLAG } from '../../app-shell/surface-registry';
+import { DEVELOPER_TOOLS_FLAG } from '../../app-shell/destination-registry';
 import { useSurfaceVisibilityFlags } from '../useSurfaceVisibilityFlags';
 
 // archive#3313: the one enabled-flags set the sidebar and palette filter

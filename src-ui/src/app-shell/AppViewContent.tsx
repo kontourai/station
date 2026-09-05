@@ -13,8 +13,8 @@ import { resolvePageFrame } from './page-frame-registry';
 import { RoutePendingSkeleton } from './RoutePendingSkeleton';
 import { routeIdentity, routeSurfaceIdentity } from './route-identity';
 import './route-transition.css';
+import { APP_DESTINATION_REGISTRY } from './destination-registry';
 import { RouteViewBoundary } from './RouteViewBoundary';
-import { APP_SURFACE_REGISTRY } from './surface-registry';
 
 // Project creation is a route-only overlay. Keeping it lazy avoids charging
 // every initial desktop load for its form, icon picker, and path autocomplete.
@@ -183,10 +183,11 @@ export function AppViewContent(props: AppViewContentProps) {
   const routeKey = routeIdentity(props.currentView);
   const surfaceKey = routeSurfaceIdentity(props.currentView);
   // The surface the sidebar would highlight for this view — the same
-  // `getSurfaceForView` resolution `ProjectSidebarNav` uses, so the row marked
+  // `getDestinationForView` resolution `ProjectSidebarNav` uses, so the row marked
   // pending is by construction the row that will be marked active.
   const pendingSurfaceId =
-    APP_SURFACE_REGISTRY.getSurfaceForView(props.currentView)?.id ?? null;
+    APP_DESTINATION_REGISTRY.getDestinationForView(props.currentView)?.id ??
+    null;
   // Resolved ONCE and handed to both consumers: the frame that renders the
   // header, and the boundary that renders the body while the route's chunk is
   // in flight. Two calls would be two chances to disagree about what the
