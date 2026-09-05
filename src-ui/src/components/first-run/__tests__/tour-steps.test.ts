@@ -33,11 +33,16 @@ describe('first-run tour anchors resolve to canonical routes', () => {
       if ('surface' in step && step.surface)
         expect(REGION_SURFACE_REGISTRY.has(step.surface)).toBe(true);
     }
-    for (const destination of APP_DESTINATION_REGISTRY.getPalette()) {
+    // Every registered destination, not only the advertised ones: Home is
+    // `hiddenFromNav` with no palette entry and still names a region surface
+    // (#928 C2a), and a hidden entry naming an unregistered surface would
+    // otherwise pass here.
+    for (const destination of APP_DESTINATION_REGISTRY.getRegistered()) {
       if (destination.regionSurface)
-        expect(REGION_SURFACE_REGISTRY.has(destination.regionSurface)).toBe(
-          true,
-        );
+        expect(
+          REGION_SURFACE_REGISTRY.has(destination.regionSurface),
+          destination.id,
+        ).toBe(true);
     }
   });
   test.each(FIRST_RUN_TOUR_STEPS)(

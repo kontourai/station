@@ -7,6 +7,7 @@ import {
 } from '../../hooks/useIsMobile';
 import {
   foldedDockRegion,
+  isDockRegion,
   occupiedDockRegion,
   type RegisteredSurface,
 } from '../../regions/region-model';
@@ -39,6 +40,11 @@ export interface RegionSurfaceMenu {
    * the toolbar keeps its folded control everywhere else.
    */
   commandsInOverflowMenu: boolean;
+  /**
+   * The surfaces that may occupy a DOCK region, in registry order. A surface
+   * whose only placement is `main` (Home) is not a dock toggle, so it has no
+   * chord row here and no Show/Hide row in the folded menu.
+   */
   surfaceList: RegisteredSurface[];
   toggleSurface: (surface: RegisteredSurface) => void;
   /** The folded device's rows; empty on a fine pointer, which has buttons. */
@@ -100,7 +106,9 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
     [bottomOnly, lastShownRegion, model, regions],
   );
 
-  const surfaceList = [...surfaces.values()];
+  const surfaceList = [...surfaces.values()].filter((surface) =>
+    surface.regions.some(isDockRegion),
+  );
   const foldedRegion = foldedDockRegion(regions, lastShownRegion);
 
   return {

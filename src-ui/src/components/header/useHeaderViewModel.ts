@@ -6,6 +6,7 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { useLaunchChat } from '../../hooks/useActiveChatSessions';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
@@ -28,6 +29,10 @@ export function useHeaderViewModel({
 }: UseHeaderViewModelOptions) {
   const settingsShortcut = useShortcutDisplay('app.settings');
   const { navigate } = useNavigation();
+  // #928 C2a: the brand link means Home BY NAME, so it reveals the Home
+  // surface (placed in `main`; the model navigates to `/`) rather than
+  // navigating to `/` and showing whatever surface occupies `main`.
+  const showSurface = useShowSurface();
   const { apiBase } = useApiBase();
   const { user: authUser } = useAuth();
   const launchChat = useLaunchChat(apiBase);
@@ -105,7 +110,7 @@ export function useHeaderViewModel({
     toggleHelp: () => setShowHelp((current) => !current),
     toggleNotifications: () => setShowNotifications((current) => !current),
     toggleOverflow: () => setShowOverflow((current) => !current),
-    goHome: () => navigate('/'),
+    goHome: () => showSurface('home'),
     openProfile: () => {
       if (currentView?.type === 'profile') {
         navigate('/');

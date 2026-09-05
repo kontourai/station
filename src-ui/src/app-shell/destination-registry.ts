@@ -236,8 +236,15 @@ const system = (order: number) => ({ section: 'system', order }) as const;
 
 export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
   {
+    // #928 C2a: Home is a region surface whose only placement is `main`.
+    // The palette's Home entry REVEALS it — `showSurface('home')` places it
+    // in `main`, and the model navigates to `/` — rather than navigating to
+    // `/` and showing whatever surface currently occupies `main`. `route`
+    // and `view` stay: `/` still resolves to the home view, which is what
+    // the outlet renders when `main` holds Home (or nothing).
     id: 'home',
     route: '/',
+    regionSurface: 'home',
     label: () => 'Home',
     hiddenFromNav: true,
     managementViewTypes: ['home'],
