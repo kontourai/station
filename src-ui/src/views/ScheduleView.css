@@ -1105,17 +1105,6 @@
 /* ── Agent Picker ── */
 .agent-picker__trigger {
   width: 100%;
-  padding: 0.5rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 0.375rem;
-  background: var(--bg-input);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-primary);
-  min-height: 2.25rem;
-  font: inherit;
   text-align: left;
 }
 
@@ -1126,11 +1115,6 @@
 .agent-picker__trigger-model {
   font-size: 0.7rem;
   color: var(--text-muted);
-}
-
-.agent-picker__trigger-caret {
-  font-size: 0.7rem;
-  opacity: 0.5;
 }
 
 .agent-picker__dropdown {

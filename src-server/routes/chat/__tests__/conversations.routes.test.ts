@@ -3342,7 +3342,9 @@ describe('Global Conversation Routes', () => {
 
   test('GET / returns the current user acknowledgement and POST records the rendered version', async () => {
     const acknowledgements = {
-      get: vi.fn().mockReturnValue('2026-07-20T00:01:00.000Z'),
+      getMany: vi
+        .fn()
+        .mockReturnValue(new Map([['c1', '2026-07-20T00:01:00.000Z']])),
       acknowledge: vi.fn(),
     };
     const app = createGlobalConversationRoutes(
@@ -3366,7 +3368,10 @@ describe('Global Conversation Routes', () => {
       id: 'c1',
       acknowledgedAt: '2026-07-20T00:01:00.000Z',
     });
-    expect(acknowledgements.get).toHaveBeenCalledWith('bound-user', 'c1');
+    expect(acknowledgements.getMany).toHaveBeenCalledExactlyOnceWith(
+      'bound-user',
+      ['c1'],
+    );
 
     const response = await app.request('/thread-1/acknowledgement', {
       method: 'POST',
@@ -3389,7 +3394,7 @@ describe('Global Conversation Routes', () => {
       undefined,
       emptyHistoryReader(),
       undefined,
-      { get: vi.fn(), acknowledge: vi.fn() },
+      { getMany: vi.fn().mockReturnValue(new Map()), acknowledge: vi.fn() },
     );
 
     const response = await app.request('/thread-1/acknowledgement', {
@@ -3424,7 +3429,10 @@ describe('Global Conversation Routes', () => {
           ? Promise.resolve({ id: 'alpha-thread' })
           : Promise.resolve(null),
     );
-    const acknowledgements = { get: vi.fn(), acknowledge: vi.fn() };
+    const acknowledgements = {
+      getMany: vi.fn().mockReturnValue(new Map()),
+      acknowledge: vi.fn(),
+    };
     const app = createGlobalConversationRoutes(
       new Map() as any,
       { getConversation: vi.fn() } as any,

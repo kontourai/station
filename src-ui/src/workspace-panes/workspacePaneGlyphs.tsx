@@ -34,8 +34,12 @@ type PaneGlyphComponent = ComponentType<{ className?: string }>;
  * renderer-name union means registering a new built-in renderer without
  * choosing its tile glyph fails to typecheck.
  *
- * Plugin/MCP panes are untouched: their descriptors carry their own `icon`
- * or `previewImage`, which the card prefers over anything here.
+ * Plugin/MCP panes are not keyed here: their descriptors carry their own
+ * `icon` or `previewImage`, which the card prefers over anything in this map.
+ * One that carries NEITHER is not left to spell a letter either — #1536 E8
+ * gave the card a contributed-pane glyph for that case, so `null` from
+ * `builtinWorkspacePaneGlyph` now means "not a built-in tile", never "render
+ * the name's first character".
  */
 const BUILTIN_PANE_GLYPHS = {
   'flow-run-console': PlayGlyph,
@@ -60,7 +64,7 @@ const BUILTIN_PANE_GLYPHS = {
 /**
  * The tile glyph for a built-in pane renderer, or `null` for anything this
  * build does not positively recognise (plugin/MCP renderers, unknown names) —
- * callers keep their existing fallback for those.
+ * callers own the fallback for those.
  */
 export function builtinWorkspacePaneGlyph(
   renderer: WorkspacePaneDescriptor['renderer'] | undefined,
