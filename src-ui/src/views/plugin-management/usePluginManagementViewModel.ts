@@ -381,6 +381,9 @@ export function usePluginManagementViewModel() {
         dataPolicy,
         expectedInstallation: basis.installationRevision,
         consent: {
+          ...(basis.grantRevision !== undefined
+            ? { grantRevision: basis.grantRevision }
+            : {}),
           permissions: basis.permissions.required,
           contentDigest: basis.contentDigest,
           dependencies: (basis.dependencies ?? []).map(
@@ -396,6 +399,12 @@ export function usePluginManagementViewModel() {
                       ? [
                           {
                             id: dependency.id,
+                            ...(dependency.consent.grantRevision !== undefined
+                              ? {
+                                  grantRevision:
+                                    dependency.consent.grantRevision,
+                                }
+                              : {}),
                             permissions: dependency.consent.permissions,
                             contentDigest: dependency.consent.contentDigest,
                             dependencies: dependency.consent.dependencies,

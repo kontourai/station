@@ -27,6 +27,7 @@ import { PluginInstallationPending } from '../../services/plugins/plugin-install
 import { readPluginManifestFileWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   getPermissionTier,
+  observePluginGrantRevisions,
   PluginGrantsUnavailableError,
   readPluginGrantState,
   requiredPermissionsForManifest,
@@ -194,6 +195,7 @@ export function registerPluginInstallRoutes(
 
   app.post('/preview', validate(pluginPreviewSchema), async (c) => {
     try {
+      const grantRevisions = observePluginGrantRevisions(projectHomeDir);
       const { source: bodySource, registryId } = getBody(c);
       let source = bodySource;
       // The Registry view previews by catalog id: its listings carry provider
@@ -396,10 +398,21 @@ export function registerPluginInstallRoutes(
           valid: true,
           manifest,
           installationRevision,
+          grantRevision: grantRevisions.revisionFor(manifest.name),
           existingDataScope: installationRevision != null,
           components,
           conflicts,
-          dependencies,
+          dependencies: dependencies.map((entry) => ({
+            ...entry,
+            ...(entry.consent
+              ? {
+                  consent: {
+                    ...entry.consent,
+                    grantRevision: grantRevisions.revisionFor(entry.id),
+                  },
+                }
+              : {}),
+          })),
           git,
           contentDigest: consentBasis.contentDigest,
           permissions: {
@@ -472,6 +485,7 @@ export function registerPluginInstallRoutes(
       }
       const operatorDecision: PluginInstallConsent = {
         kind: 'operator-decision',
+        grantRevision: consent.grantRevision,
         permissions: consent.permissions,
         contentDigest: consent.contentDigest,
         dependencies: consent.dependencies ?? [],

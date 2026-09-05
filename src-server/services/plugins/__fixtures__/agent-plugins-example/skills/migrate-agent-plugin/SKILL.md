@@ -14,11 +14,7 @@ Convert an existing plugin to the Agent Plugins v1 portable core without prematu
 
 Use the current [Agent Plugins specification](https://agent-plugins.org/specification) as the normative source.
 
-Read these references before editing:
-
-- [Migration guide](references/migration-guide.md)
-- [Client extensions](references/client-extensions.md)
-- [Validation checklist](references/validation-checklist.md)
+This test fixture contains the migration workflow below. Supplementary reference files from the upstream example are not included in this fixture.
 
 ## Workflow
 

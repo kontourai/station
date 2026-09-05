@@ -125,6 +125,7 @@ export const pluginPreviewSchema = z.object({
  * refuses a decision that does not match the staged source.
  */
 export const pluginInstallConsentSchema = z.object({
+  grantRevision: z.string().min(1).max(256).optional(),
   permissions: z.array(z.string()).max(256),
   contentDigest: z.string().min(1).max(256),
   dependencies: z.array(z.string()).max(256).optional(),
@@ -132,6 +133,7 @@ export const pluginInstallConsentSchema = z.object({
     .array(
       z.object({
         id: z.string().min(1).max(128),
+        grantRevision: z.string().min(1).max(256).optional(),
         permissions: z.array(z.string()).max(256),
         contentDigest: z.string().min(1).max(256),
         dependencies: z.array(z.string()).max(256),

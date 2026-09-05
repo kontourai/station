@@ -5,6 +5,7 @@ import type {
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
+import { observePluginGrantRevisions } from '../../services/plugins/plugin-permissions.js';
 /**
  * Registry Routes — browse, install, and uninstall agents and tools
  * from pluggable registry providers.
@@ -681,11 +682,13 @@ export function createRegistryRoutes(
       expectedInstallation?: PluginInstallationRevision | null;
       skip?: string[];
       consent?: {
+        grantRevision?: string;
         permissions: string[];
         contentDigest: string;
         dependencies?: string[];
         dependencyApprovals?: Array<{
           id: string;
+          grantRevision?: string;
           permissions: string[];
           contentDigest: string;
           dependencies: string[];
@@ -693,6 +696,7 @@ export function createRegistryRoutes(
       };
     },
   ) => {
+    const requestGrantRevisions = observePluginGrantRevisions(projectHomeDir);
     const {
       id,
       skip,
@@ -716,6 +720,7 @@ export function createRegistryRoutes(
     const consent: PluginInstallConsent = consentBody
       ? {
           kind: 'operator-decision',
+          grantRevision: consentBody.grantRevision,
           permissions: consentBody.permissions,
           contentDigest: consentBody.contentDigest,
           dependencies: consentBody.dependencies ?? [],
@@ -743,6 +748,7 @@ export function createRegistryRoutes(
             skip ?? [],
             { ...pluginInstallDeps, beginConfigurationMutation: beginMutation },
             {
+              grantSnapshot: requestGrantRevisions,
               registryId: id,
               registryKey: registryInstall.registryKey,
               consent,

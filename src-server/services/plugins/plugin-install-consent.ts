@@ -163,6 +163,8 @@ function declaredUndisclosableContributions(
 export type PluginInstallConsent =
   | {
       kind: 'operator-decision';
+      /** Permission decision observed before preview acquisition. */
+      grantRevision?: string;
       /** The derived set the operator answered for. */
       permissions: string[];
       /** The digest of the tree the operator answered about. */
@@ -172,6 +174,7 @@ export type PluginInstallConsent =
       /** Per-dependency bytes and permissions shown by preview. */
       dependencyApprovals?: Array<{
         id: string;
+        grantRevision?: string;
         permissions: string[];
         contentDigest: string;
         dependencies: string[];

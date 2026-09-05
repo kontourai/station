@@ -47,11 +47,13 @@ export async function reloadPlugins(): Promise<{
  * staged copy and refuses — before writing anything — if the two differ.
  */
 export interface PluginInstallConsent {
+  grantRevision?: string;
   permissions: string[];
   contentDigest: string;
   dependencies: string[];
   dependencyApprovals?: Array<{
     id: string;
+    grantRevision?: string;
     permissions: string[];
     contentDigest: string;
     dependencies: string[];

@@ -75,6 +75,7 @@ import {
   assertPluginDependencyAcyclic,
   enterPluginInstallationGraph,
   pluginRetiringInPublication,
+  publicationGrantRevisions,
   withPluginPublicationContext,
   withPluginRetirementScope,
 } from '../../services/plugins/plugin-install-publication.js';
@@ -95,11 +96,15 @@ import {
 import {
   type CapturedPluginPermissionArtifact,
   copyPluginDependencyOwnership,
+  createPluginGrantMutationScope,
   getPermissionTier,
   hasGrant,
   isPluginInstallAuthorityRecord,
+  observePluginGrantRevisions,
   type PluginDependencyOwnershipEntry,
   type PluginDependencyOwnershipHandoff,
+  type PluginGrantMutationScope,
+  type PluginGrantRevisionSnapshot,
   type PluginInstallAuthorityRecord,
   processInstallPermissions,
   readPluginDependencyOwnership,
@@ -107,7 +112,6 @@ import {
   recordPluginDependencyOwnership,
   removePluginHostRecord,
   requiredPermissionsForManifest,
-  restorePluginGrantEntry,
   revokeAllGrants,
   snapshotPluginGrantEntry,
 } from '../../services/plugins/plugin-permissions.js';
@@ -420,7 +424,6 @@ export interface InstalledPluginResult extends PluginInstallResult {
 }
 
 const REGISTRY_INSTALLS_PATH = ['config', 'registry-installs.json'] as const;
-const AGENT_REGISTRY_PATH = ['config', 'agent-registry.json'] as const;
 // Plugin grants are deliberately NOT in the raw-copy backup set (archive#1835
 // finding 2): a whole-file cpSync restore bypasses the grants store's lock and
 // atomic writer (it can tear), and a stale snapshot reverts consent recorded
@@ -436,8 +439,28 @@ interface RemovedDependencyBackup {
   backupDir: string;
   restoreManaged?: () => Promise<PluginInstallationRevision | null>;
   restoredInstallation?: PluginInstallationRevision;
+  grantScope?: PluginGrantMutationScope;
+  commit?: () => void;
   manifest: PluginManifest;
   grantSnapshot: ReturnType<typeof snapshotPluginGrantEntry>;
+}
+
+const completedGrantRollbacks = new WeakSet<PluginGrantMutationScope>();
+async function rollbackOwnedGrants(
+  scope: PluginGrantMutationScope | undefined,
+): Promise<void> {
+  if (!scope || completedGrantRollbacks.has(scope)) return;
+  const outcome = await scope.rollback();
+  if (outcome.state === 'unavailable')
+    throw new Error(
+      'Plugin permission rollback is unavailable; recovery is required',
+    );
+  completedGrantRollbacks.add(scope);
+}
+function commitRemovedDependencies(
+  backups: readonly RemovedDependencyBackup[],
+): void {
+  for (const backup of backups) backup.commit?.();
 }
 
 function captureManagedPluginPermission(
@@ -763,6 +786,7 @@ async function rollbackOwnershipHandoffs(
 }
 
 function createDependencyLifecycle(options: {
+  grantRevisions: PluginGrantRevisionSnapshot;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   consent: PluginInstallConsent;
   stagedParent: PluginManifest;
@@ -795,6 +819,7 @@ function createDependencyLifecycle(options: {
     string,
     ReturnType<typeof snapshotPluginGrantEntry>
   >();
+  const grantScopes = new Map<string, PluginGrantMutationScope>();
   const activated = new Set<string>();
 
   const rollbackDependency = async (dependencyId: string): Promise<void> => {
@@ -813,13 +838,11 @@ function createDependencyLifecycle(options: {
       );
       await replacePluginProvidersForSource(dependencyId, []);
     });
-    await attempt(() =>
-      restorePluginGrantEntry(
-        options.projectHomeDir,
-        dependencyId,
-        grantSnapshots.get(dependencyId) ?? null,
-      ),
-    );
+    await attempt(async () => {
+      const outcome = await grantScopes.get(dependencyId)?.rollback();
+      if (outcome?.state === 'unavailable')
+        throw new Error('Dependency permission rollback is unavailable');
+    });
     await attempt(async () => {
       await options.reconcileEngineConnections?.(dependencyId);
     });
@@ -915,13 +938,25 @@ function createDependencyLifecycle(options: {
       // Activation ownership begins before the first effect. If any later
       // step fails, compensation retains this claim until all derived state
       // (providers, grants, engine connections, and retirements) is settled.
+      const scope = createPluginGrantMutationScope(
+        options.projectHomeDir,
+        dependencyId,
+        {
+          expectedRevision:
+            approval.grantRevision ??
+            options.grantRevisions.revisionFor(dependencyId),
+        },
+      );
+      grantScopes.set(dependencyId, scope);
       activated.add(dependencyId);
       try {
-        await processInstallPermissions(
-          options.projectHomeDir,
-          dependencyId,
-          requiredPermissionsForManifest(manifest),
-          { consented: approval.permissions },
+        await scope.run(() =>
+          processInstallPermissions(
+            options.projectHomeDir,
+            dependencyId,
+            requiredPermissionsForManifest(manifest),
+            { consented: approval.permissions },
+          ),
         );
         const activeProviders = hasGrant(
           options.projectHomeDir,
@@ -952,6 +987,10 @@ function createDependencyLifecycle(options: {
       }
     },
     rollback: rollbackDependency,
+    commit: () => {
+      for (const [id, scope] of grantScopes)
+        if (activated.has(id)) scope.commit();
+    },
   };
 }
 
@@ -1122,6 +1161,7 @@ async function removeOwnedDependencyLifecycles(options: {
               'managed-dependencies',
               dependency.id,
             );
+            let commit: (() => void) | undefined;
             let restoreManaged:
               | (() => Promise<PluginInstallationRevision | null>)
               | undefined;
@@ -1134,8 +1174,9 @@ async function removeOwnedDependencyLifecycles(options: {
               options.managedDeps!,
               {
                 root: backupDir,
-                capture: (compensate) => {
+                capture: (compensate, finish) => {
                   restoreManaged = compensate;
+                  commit = finish;
                 },
               },
             );
@@ -1149,6 +1190,7 @@ async function removeOwnedDependencyLifecycles(options: {
               manifest,
               grantSnapshot,
               restoreManaged,
+              commit,
             });
             return;
           }
@@ -1179,18 +1221,31 @@ async function removeOwnedDependencyLifecycles(options: {
           );
           mkdirSync(dirname(backupDir), { recursive: true });
           cpSync(dependencyDir, backupDir, PLUGIN_TREE_COPY);
+          const grantScope = createPluginGrantMutationScope(
+            options.projectHomeDir,
+            dependency.id,
+            {
+              expectedRevision: publicationGrantRevisions(() =>
+                observePluginGrantRevisions(options.projectHomeDir),
+              ).revisionFor(dependency.id),
+            },
+          );
           const backup: RemovedDependencyBackup = {
             entry: dependency,
             backupDir,
             manifest,
             grantSnapshot,
+            grantScope,
+            commit: () => grantScope.commit(),
           };
           const { replacePluginProvidersForSource } = await import(
             '../../providers/registries/registry.js'
           );
           try {
             await replacePluginProvidersForSource(dependency.id, []);
-            await revokeAllGrants(options.projectHomeDir, dependency.id);
+            await grantScope.run(() =>
+              revokeAllGrants(options.projectHomeDir, dependency.id),
+            );
             rmSync(dependencyDir, { recursive: true, force: true });
             forgetPluginContentDigest(options.pluginsDir, dependency.id);
             await removePluginHostRecord(options.projectHomeDir, dependency.id);
@@ -1206,10 +1261,11 @@ async function removeOwnedDependencyLifecycles(options: {
               if (!existsSync(dependencyDir)) {
                 cpSync(backupDir, dependencyDir, PLUGIN_TREE_COPY);
               }
-              await restorePluginGrantEntry(
+              await rollbackOwnedGrants(grantScope);
+              await recordPluginDependencyOwnership(
                 options.projectHomeDir,
                 dependency.id,
-                grantSnapshot,
+                grantSnapshot?.installAuthority?.ownedDependencies ?? [],
               );
               await loadPluginProviders(
                 options.pluginsDir,
@@ -1292,10 +1348,11 @@ async function restoreRemovedDependencyLifecycles(options: {
           cpSync(backup.backupDir, dependencyDir, PLUGIN_TREE_COPY);
         }
         forgetPluginContentDigest(options.pluginsDir, backup.entry.id);
-        await restorePluginGrantEntry(
+        await rollbackOwnedGrants(backup.grantScope);
+        await recordPluginDependencyOwnership(
           options.projectHomeDir,
           backup.entry.id,
-          backup.grantSnapshot,
+          backup.grantSnapshot?.installAuthority?.ownedDependencies ?? [],
         );
         await loadPluginProviders(
           options.pluginsDir,
@@ -1395,7 +1452,6 @@ export function backupPluginDurableState(
   pluginName: string,
 ): void {
   backupProjectFile(projectHomeDir, REGISTRY_INSTALLS_PATH, backupRoot);
-  backupProjectFile(projectHomeDir, AGENT_REGISTRY_PATH, backupRoot);
   // Throws the typed grants-unavailable error when the store is corrupt: an
   // install/uninstall must not begin against a consent store it cannot read.
   const entry = snapshotPluginGrantEntry(projectHomeDir, pluginName);
@@ -1408,9 +1464,9 @@ export function backupPluginDurableState(
 export async function restorePluginDurableState(
   projectHomeDir: string,
   backupRoot: string,
+  artifact?: CapturedPluginPermissionArtifact,
 ): Promise<void> {
   restoreProjectFile(projectHomeDir, REGISTRY_INSTALLS_PATH, backupRoot);
-  restoreProjectFile(projectHomeDir, AGENT_REGISTRY_PATH, backupRoot);
   const snapshotPath = join(backupRoot, ...PLUGIN_GRANTS_ENTRY_SNAPSHOT);
   assertPathInside(backupRoot, snapshotPath, 'Plugin grants snapshot source');
   if (!existsSync(snapshotPath)) return;
@@ -1462,21 +1518,12 @@ export async function restorePluginDurableState(
     // Loud into the rollback error aggregation — never a raw-copy fallback.
     throw new Error('Plugin grants rollback snapshot is malformed');
   }
-  await restorePluginGrantEntry(
+  await recordPluginDependencyOwnership(
     projectHomeDir,
     snapshot.pluginName,
-    entry === null || entry === undefined
-      ? null
-      : {
-          permissions: entry.permissions as string[],
-          contentDigest: entry.contentDigest as string | null,
-          ...(installAuthority
-            ? {
-                installAuthority:
-                  installAuthority as PluginInstallAuthorityRecord,
-              }
-            : {}),
-        },
+    (installAuthority as PluginInstallAuthorityRecord | undefined)
+      ?.ownedDependencies ?? [],
+    artifact,
   );
 }
 
@@ -2274,6 +2321,8 @@ async function installPluginFromSourceUnderContext(
   options?: {
     registryId?: string;
     registryKey?: string;
+    /** Trusted request-entry observation, never deserialized request data. */
+    grantSnapshot?: PluginGrantRevisionSnapshot;
     dataPolicy?: 'preserve' | 'retain-and-reset';
     expectedPluginName?: string;
     expectedInstallation?: PluginInstallationRevision | null;
@@ -2294,6 +2343,9 @@ async function installPluginFromSourceUnderContext(
     pluginsDir,
     projectHomeDir,
   } = deps;
+  const requestGrants = publicationGrantRevisions(
+    () => options?.grantSnapshot ?? observePluginGrantRevisions(projectHomeDir),
+  );
   const consent: PluginInstallConsent = options?.consent ?? {
     kind: 'no-operator-decision',
     caller: 'this caller',
@@ -2315,6 +2367,7 @@ async function installPluginFromSourceUnderContext(
   }
 
   const { tempDir, tempName } = result;
+  let grantScope: PluginGrantMutationScope | undefined;
   let backupRoot: string | null = null;
   // Destructive rollback (delete the live plugin dir, restore from backup) is
   // gated on this flag, never on backupRoot existence: the root is created
@@ -2345,6 +2398,13 @@ async function installPluginFromSourceUnderContext(
     // uninstall routes too, and refusing there would strand a plugin already
     // installed under such a name instead of letting the operator remove it.
     assertPluginIdentityAvailable(pluginName);
+    grantScope = createPluginGrantMutationScope(projectHomeDir, pluginName, {
+      expectedRevision:
+        consent.kind === 'operator-decision' &&
+        consent.grantRevision !== undefined
+          ? consent.grantRevision
+          : requestGrants.revisionFor(pluginName),
+    });
     leaveInstallGraph = enterPluginInstallationGraph(
       projectHomeDir,
       pluginName,
@@ -2394,6 +2454,7 @@ async function installPluginFromSourceUnderContext(
     );
     const dependencyLifecycle = createDependencyLifecycle({
       packageMcpJournal: deps.packageMcpJournal,
+      grantRevisions: requestGrants,
       consent,
       stagedParent: manifest,
       pluginsDir,
@@ -2875,11 +2936,13 @@ async function installPluginFromSourceUnderContext(
         // `serverModule` where the old one did not starts without
         // `plugin.server`.
         const rebound = hadExistingPlugin
-          ? await rebindGrantsAfterContentChange(
-              projectHomeDir,
-              pluginName,
-              manifest,
-              permissionArtifact,
+          ? await grantScope!.run(() =>
+              rebindGrantsAfterContentChange(
+                projectHomeDir,
+                pluginName,
+                manifest,
+                permissionArtifact,
+              ),
             )
           : { retained: [], withdrawn: [] };
         if (rebound.withdrawn.length > 0) {
@@ -2898,14 +2961,16 @@ async function installPluginFromSourceUnderContext(
           consentGranted,
           pendingConsent,
           withdrawn: autoGrantWithdrew,
-        } = await processInstallPermissions(
-          projectHomeDir,
-          pluginName,
-          requiredPermissionsForManifest(manifest),
-          // The decision the gate above already refused to proceed without,
-          // recorded against the tree that just landed rather than through a
-          // second round trip after the mutation (archive#4288).
-          { consented: consentedPermissions, artifact: permissionArtifact },
+        } = await grantScope!.run(() =>
+          processInstallPermissions(
+            projectHomeDir,
+            pluginName,
+            requiredPermissionsForManifest(manifest),
+            // The decision the gate above already refused to proceed without,
+            // recorded against the tree that just landed rather than through a
+            // second round trip after the mutation (archive#4288).
+            { consented: consentedPermissions, artifact: permissionArtifact },
+          ),
         );
         // Derived, not the `[]` a first install used to assert (archive#4288,
         // delta review). A first install CAN withdraw: a leftover grants
@@ -3050,6 +3115,9 @@ async function installPluginFromSourceUnderContext(
         });
         pluginInstalls.add(1, { plugin: pluginName });
 
+        dependencyLifecycle.commit?.();
+        commitRemovedDependencies(retiredDependencyBackups);
+        grantScope!.commit();
         return {
           success: true,
           ...(managedLifecycle ? { lifecycle: managedLifecycle } : {}),
@@ -3113,6 +3181,7 @@ async function installPluginFromSourceUnderContext(
               deps.packageMcpJournal,
             ),
         );
+        await rollbackOwnedGrants(grantScope);
         const error =
           dependencyCleanupFailures.length > 0
             ? new AggregateError(
@@ -3163,7 +3232,11 @@ async function installPluginFromSourceUnderContext(
               pluginName,
               backupRoot,
             );
-            await restorePluginDurableState(projectHomeDir, backupRoot);
+            await restorePluginDurableState(
+              projectHomeDir,
+              backupRoot,
+              captureManagedPluginPermission(deps, pluginName)?.artifact,
+            );
             await restoreRemovedDependencyLifecycles({
               backups: retiredDependencyBackups,
               pluginsDir,
@@ -3231,7 +3304,11 @@ async function installPluginFromSourceUnderContext(
               pluginName,
             );
             if (backupRoot && backupComplete) {
-              await restorePluginDurableState(projectHomeDir, backupRoot);
+              await restorePluginDurableState(
+                projectHomeDir,
+                backupRoot,
+                captureManagedPluginPermission(deps, pluginName)?.artifact,
+              );
             }
             const { replacePluginProvidersForSource } = await import(
               '../../providers/registries/registry.js'
@@ -3278,7 +3355,10 @@ async function installPluginFromSourceUnderContext(
 
 interface PluginRemovalRecovery {
   root: string;
-  capture(compensate: () => Promise<PluginInstallationRevision | null>): void;
+  capture(
+    compensate: () => Promise<PluginInstallationRevision | null>,
+    commit: () => void,
+  ): void;
 }
 
 export const uninstallInstalledPlugin: typeof uninstallInstalledPluginUnderContext =
@@ -3292,6 +3372,9 @@ async function uninstallInstalledPluginUnderContext(
   deps: PluginInstallSharedDeps,
   recovery?: PluginRemovalRecovery,
 ): Promise<{ success: true; lifecycle?: unknown }> {
+  const requestGrants = publicationGrantRevisions(() =>
+    observePluginGrantRevisions(deps.projectHomeDir),
+  );
   const release = await acquirePluginPublicationLease(deps.projectHomeDir, () =>
     acquireFileMutationLockAsync(
       join(deps.projectHomeDir, 'plugin-install-publication.mutation'),
@@ -3303,7 +3386,13 @@ async function uninstallInstalledPluginUnderContext(
       resolveInstalledPluginName(deps.projectHomeDir, deps.pluginsDir, name) ||
       name;
     return await withPluginContentLock(deps.pluginsDir, installedName, () =>
-      uninstallPluginUnderPublication(name, deps, installedName, recovery),
+      uninstallPluginUnderPublication(
+        name,
+        deps,
+        installedName,
+        recovery,
+        requestGrants,
+      ),
     );
   } finally {
     await release();
@@ -3315,6 +3404,7 @@ async function uninstallPluginUnderPublication(
   deps: PluginInstallSharedDeps,
   installedPluginName: string,
   recovery?: PluginRemovalRecovery,
+  requestGrants?: PluginGrantRevisionSnapshot,
 ): Promise<{ success: true; lifecycle?: unknown }> {
   const { agentsDir, eventBus, logger, pluginsDir, projectHomeDir } = deps;
   const pluginDir =
@@ -3330,6 +3420,11 @@ async function uninstallPluginUnderPublication(
     throw new Error('Plugin not found');
   }
 
+  const grantScope = createPluginGrantMutationScope(
+    projectHomeDir,
+    pluginName,
+    { expectedRevision: requestGrants?.revisionFor(pluginName) },
+  );
   let backupRoot: string | null = null;
   let removedDependencyBackups: RemovedDependencyBackup[] = [];
   const ownershipHandoffs: PluginDependencyOwnershipHandoff[] = [];
@@ -3438,7 +3533,12 @@ async function uninstallPluginUnderPublication(
         pluginName,
         backupRoot,
       );
-      await restorePluginDurableState(projectHomeDir, backupRoot);
+      await rollbackOwnedGrants(grantScope);
+      await restorePluginDurableState(
+        projectHomeDir,
+        backupRoot,
+        captureManagedPluginPermission(deps, pluginName)?.artifact,
+      );
       await rebindCompensatedDependencyOwnership(
         deps,
         pluginName,
@@ -3510,7 +3610,7 @@ async function uninstallPluginUnderPublication(
       );
     }
 
-    await revokeAllGrants(projectHomeDir, pluginName);
+    await grantScope.run(() => revokeAllGrants(projectHomeDir, pluginName));
     removePluginOwnedIntegrations(
       join(projectHomeDir, 'integrations'),
       pluginName,
@@ -3549,7 +3649,12 @@ async function uninstallPluginUnderPublication(
     });
     pluginUninstalls.add(1, { plugin: pluginName });
     logger.info('Plugin removed', { plugin: pluginName });
-    recovery?.capture(compensateRemoval);
+    const finishRemoval = () => {
+      commitRemovedDependencies(removedDependencyBackups);
+      grantScope.commit();
+    };
+    if (recovery) recovery.capture(compensateRemoval, finishRemoval);
+    else finishRemoval();
     return { success: true, ...(lifecycle ? { lifecycle } : {}) };
   } catch (error) {
     try {

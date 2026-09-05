@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { resolve } from 'node:path';
+import type { PluginGrantRevisionSnapshot } from './plugin-permissions.js';
 
 /** Private, process-owned nesting capability. Request data can never create it. */
 type PublicationContext = {
@@ -7,6 +8,7 @@ type PublicationContext = {
   active: boolean;
   installing: Set<string>;
   retiring: Set<string>;
+  grantRevisions?: PluginGrantRevisionSnapshot;
 };
 const publication = new AsyncLocalStorage<PublicationContext>();
 
@@ -84,4 +86,16 @@ export async function withPluginRetirementScope<T>(
   } finally {
     context.retiring.delete(plugin);
   }
+}
+
+export function publicationGrantRevisions(
+  observe: () => PluginGrantRevisionSnapshot,
+): PluginGrantRevisionSnapshot {
+  const context = publication.getStore();
+  if (!context)
+    throw new Error(
+      'Plugin grant observation requires its publication context',
+    );
+  context.grantRevisions ??= observe();
+  return context.grantRevisions;
 }

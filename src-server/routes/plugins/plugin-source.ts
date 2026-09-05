@@ -88,6 +88,7 @@ export interface ResolvedPluginDependency {
 }
 
 export interface PluginDependencyLifecycle {
+  commit?(): void;
   validatePortableInstalled?(dependency: {
     id: string;
     version?: string;

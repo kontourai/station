@@ -33,10 +33,10 @@ import {
   readPluginManifestFileWithFormat,
 } from '../../services/plugins/plugin-manifest-loader.js';
 import {
+  createPluginGrantMutationScope,
   hasGrant,
+  observePluginGrantRevisions,
   rebindGrantsAfterContentChange,
-  restorePluginGrantEntry,
-  snapshotPluginGrantEntry,
 } from '../../services/plugins/plugin-permissions.js';
 import { pluginUpdates } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
@@ -418,6 +418,12 @@ export function registerPluginLifecycleRoutes(
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
+    let requestGrantRevisions: ReturnType<typeof observePluginGrantRevisions>;
+    try {
+      requestGrantRevisions = observePluginGrantRevisions(projectHomeDir);
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 503);
+    }
     let registryOwner: Awaited<
       ReturnType<typeof findOwningPluginRegistryProvider>
     > | null = null;
@@ -521,6 +527,7 @@ export function registerPluginLifecycleRoutes(
                 eventBus,
               },
               {
+                grantSnapshot: requestGrantRevisions,
                 ...(registryOwner?.success
                   ? {
                       registryId: registryOwner.registryId,
@@ -614,9 +621,13 @@ export function registerPluginLifecycleRoutes(
               // tree is rolled back, the grants have to come back with it —
               // otherwise a failed update silently strips a plugin of
               // capability nobody decided to take away.
-              const grantSnapshot = snapshotPluginGrantEntry(
+              const grantScope = createPluginGrantMutationScope(
                 projectHomeDir,
                 originalIdentity,
+                {
+                  expectedRevision:
+                    requestGrantRevisions.revisionFor(originalIdentity),
+                },
               );
               const eventSubscriptionQuiescence =
                 (await quiesceEventSubscriptions?.(originalIdentity)) ?? null;
@@ -657,6 +668,10 @@ export function registerPluginLifecycleRoutes(
                   const { manifest, format: manifestFormat } =
                     await readPluginManifestFileWithFormat(manifestPath);
                   updatedManifest = manifest;
+                  if (manifestFormat !== originalManifestFormat)
+                    throw new PluginUpdateRejectedError(
+                      'Plugin format migration requires a new validated installation',
+                    );
                   if ((manifest.name || name) !== originalIdentity) {
                     throw new PluginUpdateRejectedError(
                       `Plugin identity cannot change during update: ${originalIdentity}`,
@@ -697,10 +712,12 @@ export function registerPluginLifecycleRoutes(
                   // ones. Permissions the new manifest newly derives are not
                   // inherited either — `rebindGrantsAfterContentChange`
                   // re-derives from `requiredPermissionsForManifest`.
-                  const rebound = await rebindGrantsAfterContentChange(
-                    projectHomeDir,
-                    originalIdentity,
-                    manifest,
+                  const rebound = await grantScope.run(() =>
+                    rebindGrantsAfterContentChange(
+                      projectHomeDir,
+                      originalIdentity,
+                      manifest,
+                    ),
                   );
                   if (rebound.withdrawn.length > 0) {
                     logger.info(
@@ -736,6 +753,7 @@ export function registerPluginLifecycleRoutes(
                     version: manifest.version,
                   });
                   pluginUpdates.add(1, { plugin: name });
+                  grantScope.commit();
                   return {
                     success: true as const,
                     plugin: {
@@ -757,7 +775,7 @@ export function registerPluginLifecycleRoutes(
                     // install rollback carries). `rebindGrantsAfterContentChange`
                     // above refreshed the memo to the UPDATED tree's digest;
                     // this rollback has just restored the old tree and
-                    // `restorePluginGrantEntry` restores the old digest with
+                    // the owned permission receipt restores the old digest with
                     // it, so the `hasGrant(..., 'providers.register')` below
                     // would compare them, derive `changed`, and reload the
                     // restored plugin with no providers at all.
@@ -776,11 +794,11 @@ export function registerPluginLifecycleRoutes(
                     // recorded against them comes back with it — digest
                     // included, so the restored entry is `bound` again and
                     // not merely `unverified` (archive#4288).
-                    await restorePluginGrantEntry(
-                      projectHomeDir,
-                      originalIdentity,
-                      grantSnapshot,
-                    );
+                    const rollback = await grantScope.rollback();
+                    if (rollback.state === 'unavailable')
+                      throw new Error(
+                        'Plugin permission rollback is unavailable; recovery is required',
+                      );
                     await synchronizePluginAgentDefinitions({
                       agentsDir,
                       pluginDir,
