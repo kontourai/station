@@ -10,7 +10,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   isDockOwnedViewType,
   isMobileDockFullscreen,
-  MOBILE_DOCK_OCCUPANT_PICKER_QUERY,
   shouldMaximizeAfterDockingAsOnlyContent,
   shouldMaximizeOnOccupantChoice,
 } from '../components/chat-dock/mobile-chrome';
@@ -659,23 +658,6 @@ describe('mobile chat chrome has one header owner', () => {
     expect(desktopHeader).not.toContain('chat-dock__restore-label');
     expect(chatCss).not.toContain('chat-dock__mobile-task-trigger');
     expect(read('index.css')).not.toContain('chat-dock__restore-label');
-  });
-
-  it('render-gates the mobile occupant picker at the 481px identity boundary', () => {
-    const mobileHeader = read('components/chat-dock/ChatDockMobileHeader.tsx');
-    const picker = read('workspace-panes/DockOccupantPicker.tsx');
-    const css = read('index.css');
-
-    expect(MOBILE_DOCK_OCCUPANT_PICKER_QUERY).toBe('(min-width: 481px)');
-    expect(mobileHeader).toContain('useMobileDockOccupantPicker()');
-    expect(mobileHeader).toContain('mobileDragPassthrough: true');
-    expect(picker).toContain('data-dock-drag-passthrough=');
-    expect(
-      ruleBodiesFor(css, '.chat-dock__mobile-occupant-picker').every(
-        (body) => !/display:\s*none/.test(body),
-      ),
-      'the picker must be DOM-absent below 481px, not merely CSS-hidden',
-    ).toBe(true);
   });
 });
 

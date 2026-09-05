@@ -624,17 +624,6 @@ export function ChatInputArea({
               minHeight: 0,
             }}
           />
-          <React.Suspense fallback={null}>
-            <PortableDraftsMenu
-              input={input}
-              attachments={attachments}
-              open={portableDraftsOpen}
-              onOpenChange={setPortableDraftsOpen}
-              onRestore={(draft) => {
-                onRestorePortableDraft?.(draft.text, draft.attachments);
-              }}
-            />
-          </React.Suspense>
           {input && (
             <button
               type="button"
@@ -697,6 +686,17 @@ export function ChatInputArea({
               onStop={onVoiceStop}
             />
           )}
+          <React.Suspense fallback={null}>
+            <PortableDraftsMenu
+              input={input}
+              attachments={attachments}
+              open={portableDraftsOpen}
+              onOpenChange={setPortableDraftsOpen}
+              onRestore={(draft) => {
+                onRestorePortableDraft?.(draft.text, draft.attachments);
+              }}
+            />
+          </React.Suspense>
           <span className="chat-controls-row__spacer" />
           {turnInFlight ? (
             <button
