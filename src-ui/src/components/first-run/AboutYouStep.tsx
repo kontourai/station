@@ -7,7 +7,7 @@
  * - **Nothing is preselected.** No role and no comfort level is checked when
  *   the step opens, so "the user chose Engineer" and "the user did not answer"
  *   are never the same state.
- * - **Skipping writes nothing.** "Skip" persists no profile at all, rather than
+ * - **Unanswered questions write nothing.** Continuing persists no profile, rather than
  *   writing an empty or default one, so the server sees absent and injects
  *   nothing.
  * - **The preview is the payload.** The block shown under the questions is the
@@ -43,10 +43,11 @@ import './AboutYouStep.css';
 export interface AboutYouStepProps {
   /** Persisted answers, if this step is being revisited. */
   initial?: UserProfileSettings;
-  /** Called with the answers to persist. Never called for a skip. */
-  onSave: (profile: UserProfileSettings) => void | Promise<void>;
-  /** Move on without persisting anything. */
-  onSkip: () => void;
+  /** Both destinations preserve selected answers; undefined means unanswered. */
+  onComplete: (
+    profile: UserProfileSettings | undefined,
+    destination: 'chat' | 'tour',
+  ) => void | Promise<void>;
   /** The save is in flight. */
   saving?: boolean;
   /**
@@ -59,8 +60,7 @@ export interface AboutYouStepProps {
 
 export function AboutYouStep({
   initial,
-  onSave,
-  onSkip,
+  onComplete,
   saving,
   error,
 }: AboutYouStepProps) {
@@ -80,11 +80,11 @@ export function AboutYouStep({
           screen printed twice (`docs/design/shell-skeletons.md` §2.1's rule,
           applied to a dialog). */}
       <p className="first-run-chapter__lede">
-        Station adds what you pick here to the context of your chats. Skip it
-        and Station adds nothing — there is no assumed answer.
+        Station adds what you pick here to the context of your chats. Leave
+        these questions unanswered and Station adds nothing.
       </p>
 
-      <fieldset className="first-run-about__group">
+      <fieldset className="first-run-about__group" disabled={saving}>
         <legend className="first-run-about__legend" id={roleGroupId}>
           What do you do?
         </legend>
@@ -104,7 +104,7 @@ export function AboutYouStep({
         </div>
       </fieldset>
 
-      <fieldset className="first-run-about__group">
+      <fieldset className="first-run-about__group" disabled={saving}>
         <legend className="first-run-about__legend" id={comfortGroupId}>
           How much technical detail do you want back?
         </legend>
@@ -157,26 +157,39 @@ export function AboutYouStep({
 
       <p className="first-run-about__reach">{USER_PROFILE_ENGINE_REACH_NOTE}</p>
 
+      <p className="first-run-chapter__lede">
+        Next, choose an Agent, Model, and workspace in New Chat. If anything
+        still needs setup, its next step appears there. Nothing is sent until
+        you write and send a message.
+      </p>
+      {saving ? <p role="status">Saving your answers…</p> : null}
       <ResponsiveSurfaceActions className="first-run-chapter__actions">
-        <button type="button" className="editor-btn" onClick={onSkip}>
-          Skip
-        </button>
-        <button
-          type="button"
-          className="editor-btn editor-btn--primary"
-          disabled={!preview || saving}
-          onClick={() => {
-            // Guarded by `disabled`, and re-checked here so a programmatic
-            // click cannot persist an empty profile.
-            if (!preview) return;
-            void onSave({
-              ...(role ? { role } : {}),
-              ...(comfort ? { comfort } : {}),
-            });
-          }}
-        >
-          {saving ? 'Saving…' : 'Save and finish'}
-        </button>
+        {(['tour', 'chat'] as const).map((destination) => (
+          <button
+            key={destination}
+            type="button"
+            className={
+              destination === 'chat'
+                ? 'editor-btn editor-btn--primary'
+                : 'editor-btn'
+            }
+            disabled={saving}
+            onClick={() => {
+              if (saving) return;
+              void onComplete(
+                preview
+                  ? {
+                      ...(role ? { role } : {}),
+                      ...(comfort ? { comfort } : {}),
+                    }
+                  : undefined,
+                destination,
+              );
+            }}
+          >
+            {destination === 'chat' ? 'Start your first chat' : 'Take the tour'}
+          </button>
+        ))}
       </ResponsiveSurfaceActions>
     </div>
   );
