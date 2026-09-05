@@ -444,6 +444,9 @@ export async function measureInteractiveWorkspace(
             `PRODUCT_MARK_MEASUREMENT_FAILED_${fixture.id}`,
             productMarkFailureCode(error),
           ],
+          ...(error instanceof ClosedCollaborationFailure
+            ? { driverFailure: error.receipt }
+            : {}),
           counts: { failures: 1, degraded: 0 },
         });
       } finally {
@@ -634,6 +637,8 @@ async function measureCollaboration(
     try {
       return await work();
     } catch (error) {
+      const receipt = readClosedCollaborationFailure(error);
+      if (receipt) throw new ClosedCollaborationFailure(receipt);
       const message = error instanceof Error ? error.message : 'unknown';
       const diagnostic =
         /Live command (Leave room|Join room|Announce work) status (\d{3}|UNKNOWN) outcome (DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN)/.exec(
@@ -1966,7 +1971,55 @@ function unavailableFixture(fixtureId: string) {
   };
 }
 
+interface ClosedCollaborationFailureReceipt {
+  readonly version: 1;
+  readonly stage: string;
+  readonly iteration: number | 'UNKNOWN';
+  readonly command: string | null;
+  readonly joinOutcome: string;
+  readonly stream: string;
+  readonly join: string;
+  readonly announce: string;
+  readonly dialog: string;
+  readonly telemetry: string;
+}
+
+// Exposed bindings serialize Error.message, not custom Error properties. Accept
+// only the complete bounded wire form; never retain the original message/cause.
+function readClosedCollaborationFailure(
+  error: unknown,
+): ClosedCollaborationFailureReceipt | undefined {
+  if (!(error instanceof Error) || error.message.length > 768) return;
+  const match =
+    /^Collaboration presence (navigation-context|navigation|task-context|identity|leave-state|leave|owner-absence|join|ingress-clock|send-clock|announce) failed(?:: (Live command (?:(?:depart|join|announce|cursor) (?:input|response) (?:TIMEOUT|TARGET_CLOSED|FAILED)|(?:Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (?:DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN))))?; iteration=(UNKNOWN|0|[1-9][0-9]{0,2}); joinOutcome=(NOT_OBSERVED|DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN); stream=(LIVE|CONNECTING|TERMINAL|UNKNOWN); join=(ABSENT|HIDDEN|AMBIGUOUS|DISABLED|ENABLED|UNKNOWN); announce=(ABSENT|HIDDEN|AMBIGUOUS|DISABLED|ENABLED|UNKNOWN); dialog=(VISIBLE|NONE|UNKNOWN); telemetry=(VISIBLE|NONE|UNKNOWN)$/.exec(
+      error.message,
+    );
+  if (!match) return;
+  const iteration = match[3] === 'UNKNOWN' ? 'UNKNOWN' : Number(match[3]);
+  if (iteration !== 'UNKNOWN' && iteration > 209) return;
+  return {
+    version: 1,
+    stage: match[1]!,
+    command: match[2] ?? null,
+    iteration,
+    joinOutcome: match[4]!,
+    stream: match[5]!,
+    join: match[6]!,
+    announce: match[7]!,
+    dialog: match[8]!,
+    telemetry: match[9]!,
+  };
+}
+
+class ClosedCollaborationFailure extends Error {
+  constructor(readonly receipt: ClosedCollaborationFailureReceipt) {
+    super(`Collaboration presence ${receipt.stage} failed`);
+  }
+}
+
 export function productMarkFailureCode(error: unknown): string {
+  if (error instanceof ClosedCollaborationFailure)
+    return `PRODUCT_COLLABORATION_PRESENCE_${error.receipt.stage.replaceAll('-', '_').toUpperCase()}_FAILED`;
   const message = error instanceof Error ? error.message : '';
   const corpusReceipt =
     /100k corpus receipt (CONTROL_TIMEOUT|CONTROL_CONNECTION|CONTROL_FRAMING|CONTROL_RECEIPT_TOO_LARGE|CONTROL_INVALID_JSON|CONTROL_UNKNOWN|UNAVAILABLE|REFUSED|UNKNOWN|CORPUS_ID_MISMATCH|DIGEST_MISMATCH|LINE_COUNT_MISMATCH)/.exec(
