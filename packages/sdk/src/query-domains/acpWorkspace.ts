@@ -271,6 +271,22 @@ export interface ACPRegistryInstallAgentReceipt {
   warnings?: string[];
 }
 
+function acpRegistryInstallErrorMessage(error: unknown): string {
+  if (typeof error === 'string' && error.trim()) return error;
+  if (error && typeof error === 'object') {
+    const { code, correlationId } = error as {
+      code?: unknown;
+      correlationId?: unknown;
+    };
+    if (typeof code === 'string' && code.trim()) {
+      return typeof correlationId === 'string' && correlationId.trim()
+        ? `Failed to connect engine (${code}; correlation ID: ${correlationId}).`
+        : `Failed to connect engine (${code}).`;
+    }
+  }
+  return 'Failed to connect engine';
+}
+
 export async function connectAndMaterializeACPRegistryEngine(
   id: string,
 ): Promise<ACPRegistryInstallAgentReceipt> {
@@ -281,19 +297,26 @@ export async function connectAndMaterializeACPRegistryEngine(
   );
   const result = (await response.json()) as {
     success?: boolean;
-    error?: string;
-    agent?: { created?: boolean; [key: string]: unknown };
+    error?: unknown;
+    agent?: {
+      data?: unknown;
+      created?: boolean;
+      warnings?: string[];
+    };
   };
   if (!response.ok || !result.success) {
-    throw new Error(result.error ?? 'Failed to connect engine');
+    throw new Error(acpRegistryInstallErrorMessage(result.error));
   }
   if (!result.agent) {
     throw new Error(
       'Engine connection was saved, but no Agent receipt was returned.',
     );
   }
-  const { created, ...data } = result.agent;
-  return { data, created: created === true };
+  return {
+    data: result.agent.data,
+    created: result.agent.created === true,
+    ...(result.agent.warnings ? { warnings: result.agent.warnings } : {}),
+  };
 }
 
 export function useTemplatesQuery<T = any>(

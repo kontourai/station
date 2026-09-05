@@ -121,7 +121,7 @@ function notReadyNote(engine: ExternalEngineReadinessProjection): string {
     case 'missing_prerequisites':
       return `${engine.name} needs its setup finished first.`;
     case 'not_connected':
-      return `${engine.name} is available to connect on the host.`;
+      return `${engine.name} is available to connect on this Station.`;
     default:
       return `${engine.name} is not ready yet.`;
   }

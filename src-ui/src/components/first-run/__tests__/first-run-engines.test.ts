@@ -69,6 +69,9 @@ describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
       selectable: true,
     });
     expect(firstRunEngineRowLabel(option)).toBe('Connect and set up Kiro CLI');
+    expect(option.note).toBe(
+      'Kiro CLI is available to connect on this Station.',
+    );
     expect(buildFirstRunEnableBatch([option], [option.engineId])).toEqual([
       expect.objectContaining({ registryEntryId: 'kiro' }),
     ]);

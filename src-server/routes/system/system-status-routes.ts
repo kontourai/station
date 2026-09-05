@@ -468,15 +468,18 @@ export async function resolveExternalEngineReadiness(
   // ACP registry detection is deliberately an observation only: unlike a
   // configured adapter it has no connection identity or readiness evidence.
   // It becomes actionable through the explicit install route after consent.
-  const detectedNotConnected = detectedACPRegistryEntries.map((entry) => ({
-    engineId: entry.id as EngineId,
-    name: entry.name,
-    registryEntryId: entry.id,
-    detected: true,
-    ready: false,
-    source: null,
-    reason: 'not_connected' as const,
-  }));
+  const adapterEngineIds = new Set(readiness.map((entry) => entry.engineId));
+  const detectedNotConnected = detectedACPRegistryEntries
+    .filter((entry) => !adapterEngineIds.has(entry.id as EngineId))
+    .map((entry) => ({
+      engineId: entry.id as EngineId,
+      name: entry.name,
+      registryEntryId: entry.id,
+      detected: true,
+      ready: false,
+      source: null,
+      reason: 'not_connected' as const,
+    }));
   const engines = [...readiness, ...detectedNotConnected];
   const ready = engines.find((candidate) => candidate.ready);
   return { ready: !!ready, source: ready?.source ?? null, engines };

@@ -70,8 +70,12 @@ export async function listDetectedUnconnectedACPRegistryEntries(configLoader: {
   loadACPConfig: () => Promise<{ connections: ACPConnectionConfig[] }>;
 }): Promise<Array<{ id: string; name: string }>> {
   const config = await configLoader.loadACPConfig();
+  const registeredIds = await registeredRuntimeConnectionIds(configLoader);
   return getRegistryEntries(
-    mergeACPConnections(config.connections, getProviderConnections()),
+    mergeACPConnections(config.connections, getProviderConnections()).filter(
+      (connection) =>
+        isRegisteredRuntimeConnection(connection.id, registeredIds),
+    ),
   )
     .filter((entry) => entry.detected === true && !entry.installed)
     .map((entry) => ({ id: entry.id, name: entry.name }));
@@ -179,14 +183,22 @@ async function unregisterPersistedACPConnection(
   );
 }
 
-async function registeredRuntimeConnectionIds(
-  ctx: RuntimeContext,
-): Promise<Set<string> | null> {
-  if (typeof (ctx.configLoader as any).getProjectHomeDir !== 'function') {
+function isRegisteredRuntimeConnection(
+  id: string,
+  registeredIds: Set<string> | null,
+): boolean {
+  return registeredIds === null || registeredIds.has(id);
+}
+
+async function registeredRuntimeConnectionIds(configLoader: {
+  loadACPConfig?: unknown;
+  getProjectHomeDir?: unknown;
+}): Promise<Set<string> | null> {
+  if (typeof (configLoader as any).getProjectHomeDir !== 'function') {
     return null;
   }
   const registry = await loadOrCreateAgentRegistry(
-    ctx.configLoader as ConfigLoader,
+    configLoader as ConfigLoader,
   );
   return new Set(registry.engineConnections.map(({ id }) => String(id)));
 }
@@ -201,13 +213,14 @@ export function createACPRoutes(ctx: RuntimeContext) {
   app.get('/connections', async (c) => {
     const config = await ctx.configLoader.loadACPConfig();
     const providerConns = getProviderConnections();
-    const registeredIds = await registeredRuntimeConnectionIds(ctx);
+    const registeredIds = await registeredRuntimeConnectionIds(
+      ctx.configLoader,
+    );
     const allConnections = mergeACPConnections(
       config.connections,
       providerConns,
-    ).filter(
-      (connection) =>
-        registeredIds === null || registeredIds.has(connection.id),
+    ).filter((connection) =>
+      isRegisteredRuntimeConnection(connection.id, registeredIds),
     );
     const status = ctx.acpBridge.getStatus();
     const connections = allConnections.map((cfg) => ({
@@ -294,7 +307,12 @@ export function createACPRoutes(ctx: RuntimeContext) {
             ...(agent
               ? {
                   agent: {
-                    engineConnectionId: engineConnectionId(newConn.id),
+                    data: {
+                      slug: agent.slug,
+                      ...(await (ctx.configLoader as ConfigLoader).loadAgent(
+                        agent.slug,
+                      )),
+                    },
                     created: agent.created,
                   },
                 }
