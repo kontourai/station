@@ -122,6 +122,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Real peer EventStores share one disposable SQLite home and survive owner death.
   'src-server/services/plugins/__tests__/package-mcp-admission.test.ts',
   'src-server/services/plugins/__tests__/plugin-installation-restart.test.ts',
+  // Real child-process installation transport, MCP custody, and Git fixtures.
+  'src-server/services/plugins/__tests__/plugin-installation.integration.test.ts',
+  // Admission fixtures execute real Git worktree operations and native cleanup.
+  'src-server/services/plugins/__tests__/workspace-pane-host-admission.test.ts',
   // Two real SQLite EventStores share durable selected-generation fixtures.
   'src-server/runtime/bootstrap/__tests__/station-runtime-package-selection.test.ts',
   // fsync-backed AgentRegistry fixtures compose the runtime bootstrap path;
