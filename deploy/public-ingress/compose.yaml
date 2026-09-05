@@ -1,0 +1,36 @@
+# Apply after the root docker-compose.yml. Compose 2.24+ is required for !reset.
+services:
+  station:
+    image: ${STATION_IMAGE:?Set a reviewed digest-pinned Station image}
+    ports: !reset []
+    environment:
+      ALLOWED_ORIGINS: https://${STATION_PUBLIC_HOST:?Set the exact public DNS hostname}
+  ingress:
+    image: caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      STATION_PUBLIC_HOST: ${STATION_PUBLIC_HOST:?Set the exact public DNS hostname}
+    volumes:
+      # Compose resolves relative mounts from the FIRST file, the repo root.
+      - ./deploy/public-ingress/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ingress-data:/data
+      - ingress-config:/config
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    depends_on:
+      station:
+        condition: service_healthy
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  ingress-data:
+  ingress-config:
