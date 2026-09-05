@@ -9,6 +9,12 @@ import type {
   PackageMcpInstallation,
 } from '../../../services/plugins/package-mcp-admission';
 import {
+  completePluginActivationComposition,
+  createPluginActivationSession,
+  preparePluginActivationComposition,
+  registerPluginActivation,
+} from '../../../services/plugins/plugin-activation-composition';
+import {
   loadStablePreToolPolicySpec,
   StationRuntime,
 } from '../station-runtime';
@@ -45,7 +51,7 @@ function select(
   previous: PackageMcpInstallation | null = null,
 ) {
   const selected = journal.recordInstallation({
-    pluginId: 'fingerprint-fixture',
+    pluginId: previous?.pluginId ?? 'fingerprint-fixture',
     contentDigest: digest,
     previous,
   });
@@ -92,6 +98,29 @@ function runtime(store: EventStore, agentPath: string) {
     value.recordLoadedConfigurationRevisions(before);
   });
   return value;
+}
+
+function selectPending(journal: PackageMcpAdmissionJournal) {
+  const selected = journal.recordInstallation({
+    pluginId: 'pending-fixture',
+    contentDigest: digest,
+    previous: null,
+    origin: 'b'.repeat(64),
+    activationPlan: {
+      version: 1,
+      artifactDigest: digest,
+      descriptorDigest: digest,
+      sourceDigest: digest,
+      origin: 'b'.repeat(64),
+      previous: null,
+      consent: { kind: 'no-operator-decision', caller: 'fingerprint-fixture' },
+      agents: [],
+      ownedDependencies: [],
+    },
+  });
+  if (selected.state !== 'recorded')
+    throw new Error('Pending fixture could not be selected');
+  return selected.installation;
 }
 
 test('a second runtime selection change fences unchanged AgentSpec until the real reload/reconciliation path rebuilds it', async () => {
@@ -144,32 +173,14 @@ test('pending selections invalidate old loaded fingerprints without granting pen
   await a.reloadDefaultAgent();
   const before = a.captureAgentConfigurationRevisions();
   const journal = f.second.createPackageMcpAdmissionJournal();
-  const selected = journal.recordInstallation({
-    pluginId: 'pending-fixture',
-    contentDigest: digest,
-    previous: null,
-    origin: 'b'.repeat(64),
-    activationPlan: {
-      version: 1,
-      artifactDigest: digest,
-      descriptorDigest: digest,
-      sourceDigest: digest,
-      origin: 'b'.repeat(64),
-      previous: null,
-      consent: { kind: 'no-operator-decision', caller: 'fingerprint-fixture' },
-      agents: [],
-      ownedDependencies: [],
-    },
-  });
-  if (selected.state !== 'recorded')
-    throw new Error('Pending fixture could not be selected');
-  expect(journal.activationState(selected.installation)).toBe('pending');
-  expect(journal.admissionOpen(selected.installation)).toBe(false);
+  const installation = selectPending(journal);
+  expect(journal.activationState(installation)).toBe('pending');
+  expect(journal.admissionOpen(installation)).toBe(false);
   expect(
     a.captureAgentConfigurationRevisions().selectedPackageFingerprint,
   ).not.toBe(before.selectedPackageFingerprint);
   expect(a.getStableAgentConfigurationRevision()).toBeNull();
-  expect(journal.reserve(selected.installation, 'managed')).toEqual({
+  expect(journal.reserve(installation, 'managed')).toEqual({
     state: 'blocked',
   });
 });
@@ -245,4 +256,59 @@ test('claim activity is not a selected-generation revision', async () => {
   expect(a.getStableAgentConfigurationRevision()).toBe(2);
   expect(reserved.claim.releaseNotStarted().state).toBe('applied');
   expect(a.getStableAgentConfigurationRevision()).toBe(2);
+});
+
+test('foreign completion invalidates a runtime rebuilt while the same selected generation was pending', async () => {
+  const f = sharedHome(),
+    a = runtime(f.first, f.agentPath);
+  const journal = f.second.createPackageMcpAdmissionJournal();
+  const installation = selectPending(journal);
+  await a.reloadDefaultAgent();
+  const pending = a.captureAgentConfigurationRevisions();
+  expect(a.getStableAgentConfigurationRevision()).toBe(2);
+  const session = createPluginActivationSession();
+  registerPluginActivation(session, journal, installation, async () => {});
+  const composition = await preparePluginActivationComposition(session);
+  await completePluginActivationComposition(composition);
+  expect(journal.admissionOpen(installation)).toBe(true);
+  expect(a.getStableAgentConfigurationRevision()).toBeNull();
+  expect(() => a.assertAgentConfigurationRevisions(pending)).toThrow(
+    'configuration changed',
+  );
+  await expect(a.reconcileAgentConfigurationSources()).resolves.toBe(true);
+  expect(a.getStableAgentConfigurationRevision()).toBe(4);
+});
+
+test('only exact permit-bound owner composition projects pending readiness and matches completed readiness', async () => {
+  const f = sharedHome(),
+    a = runtime(f.first, f.agentPath),
+    b = runtime(f.second, f.agentPath);
+  const journal = f.second.createPackageMcpAdmissionJournal();
+  const installation = selectPending(journal);
+  const session = createPluginActivationSession();
+  registerPluginActivation(session, journal, installation, async () => {});
+  const composition = await preparePluginActivationComposition(session);
+  const ordinary = b.captureAgentConfigurationRevisions();
+  const projected = b.captureAgentConfigurationRevisions(composition);
+  expect(projected.selectedPackageFingerprint).not.toBe(
+    ordinary.selectedPackageFingerprint,
+  );
+  expect(
+    a.captureAgentConfigurationRevisions(composition)
+      .selectedPackageFingerprint,
+  ).toBe(ordinary.selectedPackageFingerprint);
+  expect(
+    b.captureAgentConfigurationRevisions({}).selectedPackageFingerprint,
+  ).toBe(ordinary.selectedPackageFingerprint);
+  expect(() =>
+    b.assertAgentConfigurationRevisions(projected, composition),
+  ).not.toThrow();
+  await completePluginActivationComposition(composition);
+  expect(
+    b.captureAgentConfigurationRevisions().selectedPackageFingerprint,
+  ).toBe(projected.selectedPackageFingerprint);
+  select(journal, installation);
+  expect(() =>
+    b.assertAgentConfigurationRevisions(projected, composition),
+  ).toThrow('configuration changed');
 });

@@ -2,6 +2,7 @@ import {
   closePluginActivationSession,
   completePluginActivationComposition,
   type PluginActivationComposition,
+  pluginActivationCompositionPermit,
   preparePluginActivationComposition,
 } from '../../services/plugins/plugin-activation-composition.js';
 import { createLocalPluginInstallationHost } from '../../services/plugins/plugin-installation-local.js';
@@ -2572,12 +2573,16 @@ export class StationRuntime {
 
   /** Canonical selected-generation identity, including activation-pending generations.
    * Claims, PIDs and history are not configuration authority. Optional selection
-   * metadata participates as opaque identity, never filesystem/path admission. */
-  private captureSelectedPackageFingerprint(): string | null {
+   * metadata participates as opaque identity, never filesystem/path admission.
+   * Ordinary reads include actual admission readiness. An explicit composition
+   * may project only its exact journal-verified pending permits as ready. */
+  private captureSelectedPackageFingerprint(
+    composition?: PluginActivationComposition,
+  ): string | null {
     try {
-      const selected = this.orchestrationEventStore
-        ?.createPackageMcpAdmissionJournal()
-        .selectedInstallations();
+      const journal =
+        this.orchestrationEventStore?.createPackageMcpAdmissionJournal();
+      const selected = journal?.selectedInstallations();
       if (
         selected?.state !== 'observed' ||
         !Array.isArray(selected.installations)
@@ -2601,6 +2606,34 @@ export class StationRuntime {
         )
           return null;
         ids.add(item.pluginId);
+        let admissionOpen = journal!.admissionOpen(item);
+        if (!admissionOpen && composition) {
+          const permit = pluginActivationCompositionPermit(
+            composition,
+            journal!,
+            item.pluginId,
+          );
+          if (permit) {
+            const permitted = journal!.activationInstallation(permit);
+            if (
+              [
+                'journalId',
+                'pluginId',
+                'incarnation',
+                'contentDigest',
+                'materialization',
+                'dataScope',
+                'origin',
+              ].some(
+                (key) =>
+                  permitted[key as keyof typeof permitted] !==
+                  item[key as keyof typeof item],
+              )
+            )
+              return null;
+            admissionOpen = true;
+          }
+        }
         identities.push(
           JSON.stringify([
             item.journalId,
@@ -2610,6 +2643,7 @@ export class StationRuntime {
             item.materialization ?? null,
             item.dataScope ?? null,
             item.origin ?? null,
+            admissionOpen,
           ]),
         );
       }
@@ -2621,14 +2655,17 @@ export class StationRuntime {
     }
   }
 
-  private assertAgentConfigurationRevisions(expected: {
-    provider: number;
-    appConfig: number;
-    selectedPackageFingerprint?: string;
-    persistence?: number;
-    activationEpoch?: number;
-  }): void {
-    const current = this.captureAgentConfigurationRevisions();
+  private assertAgentConfigurationRevisions(
+    expected: {
+      provider: number;
+      appConfig: number;
+      selectedPackageFingerprint?: string;
+      persistence?: number;
+      activationEpoch?: number;
+    },
+    composition?: PluginActivationComposition,
+  ): void {
+    const current = this.captureAgentConfigurationRevisions(composition);
     if (
       expected.provider !== current.provider ||
       expected.appConfig !== current.appConfig ||
@@ -2645,14 +2682,17 @@ export class StationRuntime {
     }
   }
 
-  private captureAgentConfigurationRevisions(): {
+  private captureAgentConfigurationRevisions(
+    composition?: PluginActivationComposition,
+  ): {
     provider: number;
     appConfig: number;
     selectedPackageFingerprint: string;
     persistence: number;
     activationEpoch: number;
   } {
-    const selectedPackageFingerprint = this.captureSelectedPackageFingerprint();
+    const selectedPackageFingerprint =
+      this.captureSelectedPackageFingerprint(composition);
     if (selectedPackageFingerprint === null) {
       throw new Error('Selected package generations could not be verified.');
     }
