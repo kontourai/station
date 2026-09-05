@@ -48,6 +48,7 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
+import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 import {
   assertPluginNameSegment,
   capturePersistedAgentOwnership,
@@ -509,9 +510,9 @@ export function registerPluginLifecycleRoutes(
             },
             409,
           );
-        const mutation = await captureConfigurationMutation(
+        const mutation = await capturePluginConfigurationMutation(
           applyConfigurationMutation,
-          async (beginMutation) =>
+          async (beginMutation, _activation, activationSession) =>
             installPluginFromSource(
               source,
               [],
@@ -528,6 +529,7 @@ export function registerPluginLifecycleRoutes(
               },
               {
                 grantSnapshot: requestGrantRevisions,
+                activationSession,
                 ...(registryOwner?.success
                   ? {
                       registryId: registryOwner.registryId,

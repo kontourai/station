@@ -41,11 +41,11 @@ import {
   validate,
 } from '../schemas/schemas.js';
 import {
-  captureConfigurationMutation,
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
 import { buildPlugin } from './plugin-bundles.js';
+import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 import {
   installPluginFromSource,
   resolvePluginRegistrySource,
@@ -493,9 +493,9 @@ export function registerPluginInstallRoutes(
           ? { dependencyApprovals: consent.dependencyApprovals }
           : {}),
       };
-      const mutation = await captureConfigurationMutation(
+      const mutation = await capturePluginConfigurationMutation(
         applyConfigurationMutation,
-        async (beginMutation) => {
+        async (beginMutation, _activation, activationSession) => {
           const installed = await installPluginFromSource(
             source,
             skip,
@@ -514,7 +514,12 @@ export function registerPluginInstallRoutes(
               reconcileEngineConnections,
               quiesceEventSubscriptions,
             },
-            { consent: operatorDecision, dataPolicy, expectedInstallation },
+            {
+              consent: operatorDecision,
+              dataPolicy,
+              expectedInstallation,
+              activationSession,
+            },
           );
           return installed;
         },

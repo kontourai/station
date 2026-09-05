@@ -6,6 +6,7 @@ import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import { observePluginGrantRevisions } from '../../services/plugins/plugin-permissions.js';
+import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 /**
  * Registry Routes — browse, install, and uninstall agents and tools
  * from pluggable registry providers.
@@ -740,15 +741,16 @@ export function createRegistryRoutes(
           404,
         );
       }
-      const mutation = await captureConfigurationMutation(
+      const mutation = await capturePluginConfigurationMutation(
         deps?.applyConfigurationMutation,
-        async (beginMutation) => {
+        async (beginMutation, _activation, activationSession) => {
           const installed = await installPluginFromSource(
             registryInstall.source,
             skip ?? [],
             { ...pluginInstallDeps, beginConfigurationMutation: beginMutation },
             {
               grantSnapshot: requestGrantRevisions,
+              activationSession,
               registryId: id,
               registryKey: registryInstall.registryKey,
               consent,

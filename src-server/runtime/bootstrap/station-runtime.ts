@@ -2201,7 +2201,7 @@ export class StationRuntime {
       await this.skillService.discoverSkills(
         this.configLoader.getProjectHomeDir(),
         getActiveRuntimeProjectSlug(this.storageAdapter),
-        composition,
+        ...(composition ? ([composition] as const) : []),
       );
     }
     await this.reloadAgentsFromDisk(composition);

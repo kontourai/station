@@ -5,9 +5,11 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -51,6 +53,19 @@ import {
 } from '../../providers/registries/registry-install-aliases.js';
 import { ContextSafetyError } from '../../services/orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import {
+  closePluginActivationSession,
+  completePluginActivationComposition,
+  createPluginActivationSession,
+  type PluginActivationSession,
+  pluginActivationSessionPermit,
+  preparePluginActivationComposition,
+  registerPluginActivation,
+} from '../../services/plugins/plugin-activation-composition.js';
+import {
+  type PluginActivationPlan,
+  pluginActivationDescriptorDigest,
+} from '../../services/plugins/plugin-activation-plan.js';
 import { captureLocalPluginArtifact } from '../../services/plugins/plugin-artifact-local.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
 import {
@@ -80,6 +95,7 @@ import {
   withPluginRetirementScope,
 } from '../../services/plugins/plugin-install-publication.js';
 import {
+  captureLocalPluginActivation,
   captureLocalPluginInstallation,
   createLocalPluginInstallationHost,
 } from '../../services/plugins/plugin-installation-local.js';
@@ -342,6 +358,8 @@ export interface PluginLifecycleEventBus {
 }
 
 export interface PluginInstallSharedDeps {
+  /** Explicit private installer owner, never request data or ambient state. */
+  activationSession?: PluginActivationSession;
   installationHost?: PluginInstallationHost;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
@@ -470,11 +488,26 @@ function captureManagedPluginPermission(
   | { packageRoot: string; artifact: CapturedPluginPermissionArtifact }
   | undefined {
   if (!deps.packageMcpJournal) return undefined;
-  const captured = captureLocalPluginInstallation(
-    deps.pluginsDir,
+  const selection = deps.packageMcpJournal.currentInstallation(id);
+  if (selection.state === 'not-observed') return undefined;
+  if (selection.state === 'unavailable')
+    throw new Error(`Plugin '${id}' installation authority is unavailable`);
+  const permit = pluginActivationSessionPermit(
+    deps.activationSession,
     deps.packageMcpJournal,
     id,
   );
+  const captured = permit
+    ? captureLocalPluginActivation(
+        deps.pluginsDir,
+        deps.packageMcpJournal,
+        permit,
+      )
+    : captureLocalPluginInstallation(
+        deps.pluginsDir,
+        deps.packageMcpJournal,
+        id,
+      );
   if (!captured?.installation) return undefined;
   const digest = captured.installation.contentDigest;
   const packageRoot = captured.root.packageRoot;
@@ -498,9 +531,17 @@ function ownershipPackageRoot(
   pluginsDir: string,
   id: string,
   journal?: PackageMcpAdmissionJournal,
+  activationSession?: PluginActivationSession,
 ): string | null {
   if (journal) {
-    const captured = captureLocalPluginInstallation(pluginsDir, journal, id);
+    const permit = pluginActivationSessionPermit(
+      activationSession,
+      journal,
+      id,
+    );
+    const captured = permit
+      ? captureLocalPluginActivation(pluginsDir, journal, permit)
+      : captureLocalPluginInstallation(pluginsDir, journal, id);
     if (!captured) return null;
     if (!captured.isCurrent())
       throw new Error(`Plugin '${id}' installation is unavailable`);
@@ -520,8 +561,9 @@ function ownershipContentDigest(
   pluginsDir: string,
   id: string,
   journal?: PackageMcpAdmissionJournal,
+  activationSession?: PluginActivationSession,
 ): string | null {
-  const root = ownershipPackageRoot(pluginsDir, id, journal);
+  const root = ownershipPackageRoot(pluginsDir, id, journal, activationSession);
   return root
     ? computePluginContentDigest(dirname(root), basename(root))
     : null;
@@ -621,6 +663,7 @@ function deriveDependencyOwnership(
   declaredDependencyIds?: ReadonlySet<string>,
   journal?: PackageMcpAdmissionJournal,
   createdGenerations?: ReadonlyMap<string, string>,
+  activationSession?: PluginActivationSession,
 ): PluginDependencyOwnershipEntry[] {
   const entries = new Map(
     retained
@@ -631,7 +674,12 @@ function deriveDependencyOwnership(
       .map((entry) => [entry.id, entry]),
   );
   for (const id of createdPluginTrees) {
-    const contentDigest = ownershipContentDigest(pluginsDir, id, journal);
+    const contentDigest = ownershipContentDigest(
+      pluginsDir,
+      id,
+      journal,
+      activationSession,
+    );
     if (!contentDigest) {
       throw new Error(
         `Plugin dependency '${id}' could not be recorded after installation`,
@@ -1721,6 +1769,7 @@ export async function synchronizePluginAgentDefinitions(options: {
    * has been deleted yet).
    */
   persistedOwnership?: ReadonlyMap<string, string | undefined>;
+  installationGeneration?: string;
 }): Promise<void> {
   const persistedOwnership =
     options.persistedOwnership ??
@@ -1796,22 +1845,46 @@ export async function synchronizePluginAgentDefinitions(options: {
             `Agent '${slug}' already exists; plugin '${options.pluginName}' must contribute a globally unique clean Agent ID.`,
           );
         }
-        cpSync(sourceDir, targetDir, { recursive: true });
-        if (basename(source.manifest) !== 'agent.json')
-          cpSync(source.manifest, join(targetDir, 'agent.json'));
-        writeFileSync(
-          join(targetDir, PLUGIN_AGENT_OWNER_FILE),
-          JSON.stringify({ plugin: options.pluginName }, null, 2),
-          { encoding: 'utf-8', mode: 0o600 },
+        mkdirSync(options.agentsDir, { recursive: true });
+        const stagedDir = mkdtempSync(
+          join(options.agentsDir, `.plugin-agent-${slug}-`),
         );
-        reconcilePluginAgentOwnership({
-          targetDir,
-          projectHomeDir: options.projectHomeDir,
-          pluginName: options.pluginName,
-          agentSlug: agent.slug,
-          persistedProject: persistedOwnership.get(agent.slug),
-          logger: options.logger,
-        });
+        try {
+          cpSync(sourceDir, stagedDir, { recursive: true });
+          if (basename(source.manifest) !== 'agent.json')
+            cpSync(source.manifest, join(stagedDir, 'agent.json'));
+          writeFileSync(
+            join(stagedDir, PLUGIN_AGENT_OWNER_FILE),
+            JSON.stringify(
+              {
+                plugin: options.pluginName,
+                ...(options.installationGeneration
+                  ? { generation: options.installationGeneration }
+                  : {}),
+              },
+              null,
+              2,
+            ),
+            { encoding: 'utf-8', mode: 0o600 },
+          );
+          reconcilePluginAgentOwnership({
+            targetDir: stagedDir,
+            projectHomeDir: options.projectHomeDir,
+            pluginName: options.pluginName,
+            agentSlug: agent.slug,
+            persistedProject: persistedOwnership.get(agent.slug),
+            logger: options.logger,
+          });
+          // Publish the definition and its ownership marker together. A crash
+          // before rename leaves an ignored staging directory, never an
+          // apparently foreign half-copied Agent at its canonical identity.
+          if (existsSync(targetDir))
+            throw new Error(`Agent '${slug}' changed during publication`);
+          renameSync(stagedDir, targetDir);
+        } finally {
+          if (existsSync(stagedDir))
+            rmSync(stagedDir, { recursive: true, force: true });
+        }
       } finally {
         await releaseIdentity();
       }
@@ -2001,6 +2074,7 @@ export async function removeDependencyTreesCreatedByThisInstall(
     | ((dependencyId: string) => Promise<boolean | undefined>),
   createdPluginDigests?: ReadonlyMap<string, string>,
   journal?: PackageMcpAdmissionJournal,
+  activationSession?: PluginActivationSession,
 ): Promise<unknown[]> {
   const failures: unknown[] = [];
   // Recursive creation records postorder (leaf before its dependent). Undo in
@@ -2038,7 +2112,12 @@ export async function removeDependencyTreesCreatedByThisInstall(
           return;
         }
         if (
-          ownershipContentDigest(pluginsDir, name, journal) !== expectedDigest
+          ownershipContentDigest(
+            pluginsDir,
+            name,
+            journal,
+            activationSession,
+          ) !== expectedDigest
         ) {
           logger.warn(
             'Preserved a dependency because its installed content changed after this install created it',
@@ -2309,10 +2388,27 @@ async function readManifestForRemoval(
 }
 
 export const installPluginFromSource: typeof installPluginFromSourceUnderContext =
-  (...args) =>
-    withPluginPublicationContext(args[2].projectHomeDir, () =>
-      installPluginFromSourceUnderContext(...args),
-    );
+  (...args) => {
+    const providedSession = args[3]?.activationSession;
+    const session = providedSession ?? createPluginActivationSession();
+    return withPluginPublicationContext(args[2].projectHomeDir, async () => {
+      try {
+        const installed = await installPluginFromSourceUnderContext(
+          args[0],
+          args[1],
+          { ...args[2], activationSession: session },
+          { ...args[3], activationSession: session },
+        );
+        if (!providedSession) {
+          const composition = await preparePluginActivationComposition(session);
+          await completePluginActivationComposition(composition);
+        }
+        return installed;
+      } finally {
+        if (!providedSession) closePluginActivationSession(session);
+      }
+    });
+  };
 
 async function installPluginFromSourceUnderContext(
   source: string,
@@ -2321,6 +2417,7 @@ async function installPluginFromSourceUnderContext(
   options?: {
     registryId?: string;
     registryKey?: string;
+    activationSession?: PluginActivationSession;
     /** Trusted request-entry observation, never deserialized request data. */
     grantSnapshot?: PluginGrantRevisionSnapshot;
     dataPolicy?: 'preserve' | 'retain-and-reset';
@@ -2378,8 +2475,12 @@ async function installPluginFromSourceUnderContext(
   let releaseInstallPublication: (() => Promise<void>) | undefined;
   let leaveInstallGraph: (() => void) | undefined;
   try {
-    const { manifest, format: manifestFormat } =
-      await readPluginManifestFileWithFormat(join(tempDir, 'plugin.json'));
+    const {
+      manifest,
+      format: manifestFormat,
+      stationExtension,
+    } = await readPluginManifestFileWithFormat(join(tempDir, 'plugin.json'));
+    const hasStationActivation = stationExtension?.status === 'validated';
     const isAgentPlugin = manifestFormat === 'agent-plugin-1.0';
     const pluginName = manifest.name || tempName;
     if (
@@ -2547,11 +2648,14 @@ async function installPluginFromSourceUnderContext(
                 registryKey: registryDependencyOwners.get(dependencyId)!,
               }
             : {}),
+          activationSession: options?.activationSession,
           expectedPluginName: dependencyId,
           expectedInstallation: null,
           consent: {
             kind: 'operator-decision',
             contentDigest: approval.contentDigest,
+            grantRevision:
+              approval.grantRevision ?? requestGrants.revisionFor(dependencyId),
             permissions: approval.permissions,
             dependencies: [...approvedDependencyIds],
             dependencyApprovals:
@@ -2703,6 +2807,166 @@ async function installPluginFromSourceUnderContext(
         // transaction. A provider collision cannot race between preflight and
         // dependency activation, and rollback retains the same outer fence.
 
+        if (!isAgentPlugin) {
+          scanPluginPromptGeneration(tempDir, pluginName);
+        }
+        await buildPlugin(tempDir, pluginName, manifest);
+        assertPluginBundleAssetsContained(tempDir);
+
+        if (isAgentPlugin) {
+          const artifact = captureLocalPluginArtifact(tempDir);
+          const service = await installationHostFor(deps).service(artifact);
+          if (
+            options?.dataPolicy === 'retain-and-reset' &&
+            options.expectedInstallation === undefined
+          )
+            throw new Error(
+              'Preview the current installation before starting with new data',
+            );
+          // Acquisition-owner scoped continuity, not a signature/publisher claim.
+          // Native canonicalization prevents alternate local spellings changing identity.
+          const acquisitionSource = existsSync(source)
+            ? realpathSync.native(source)
+            : source;
+          const origin = createHash('sha256')
+            .update(
+              JSON.stringify({
+                owner: realpathSync.native(projectHomeDir),
+                registryId: options?.registryId ?? null,
+                registryKey: options?.registryKey ?? null,
+                source: acquisitionSource,
+              }),
+            )
+            .digest('hex');
+          const activationPlan: PluginActivationPlan | undefined =
+            hasStationActivation
+              ? {
+                  version: 1,
+                  artifactDigest: artifact.digest,
+                  sourceDigest: consentBasis.contentDigest,
+                  descriptorDigest: pluginActivationDescriptorDigest(manifest),
+                  origin,
+                  consent:
+                    consent.kind === 'operator-decision'
+                      ? {
+                          ...consent,
+                          grantRevision:
+                            consent.grantRevision ??
+                            requestGrants.revisionFor(pluginName),
+                        }
+                      : consent,
+                  previous: priorInstallation,
+                  agents: (manifest.agents ?? [])
+                    .filter((agent) => !skipSet.has(`agent:${agent.slug}`))
+                    .map((agent) => ({
+                      slug: agent.slug,
+                      previousProject:
+                        persistedAgentOwnership.get(agent.slug) ?? null,
+                    })),
+                  ownedDependencies: retainedDependencyOwnership,
+                }
+              : undefined;
+          if (
+            activationPlan &&
+            (!deps.packageMcpJournal || !options?.activationSession)
+          )
+            throw new Error(
+              'Station namespace activation requires an owned runtime installation session',
+            );
+          managedLifecycle = await service.install({
+            installation: pluginName,
+            expected:
+              options?.expectedInstallation !== undefined
+                ? options.expectedInstallation
+                : priorInstallation,
+            artifact,
+            origin,
+            data: options?.dataPolicy,
+            ...(activationPlan ? { activationPlan } : {}),
+          });
+          const installed = resolveInstalledPluginRoot(pluginsDir, pluginName);
+          if (installed?.kind !== 'incarnation')
+            throw new Error(
+              'Selected plugin has no local execution materialization',
+            );
+          pluginDir = installed.packageRoot;
+          const selected =
+            deps.packageMcpJournal?.currentInstallation(pluginName);
+          const activationPermit =
+            activationPlan && selected?.state === 'observed'
+              ? registerPluginActivation(
+                  options!.activationSession!,
+                  deps.packageMcpJournal!,
+                  selected.installation,
+                  async () => {
+                    if (
+                      computePluginContentDigest(
+                        dirname(pluginDir),
+                        basename(pluginDir),
+                      ) !== artifact.digest
+                    )
+                      throw new Error('Plugin activation artifact changed');
+                    for (const agent of activationPlan.agents) {
+                      const directory = join(agentsDir, agent.slug);
+                      if (pluginAgentOwner(directory) !== pluginName)
+                        throw new Error(
+                          `Plugin activation Agent '${agent.slug}' ownership is unavailable`,
+                        );
+                      const marker = JSON.parse(
+                        readFileSync(
+                          join(directory, PLUGIN_AGENT_OWNER_FILE),
+                          'utf8',
+                        ),
+                      );
+                      if (
+                        marker.generation !==
+                        managedLifecycle!.selected.generation
+                      )
+                        throw new Error(
+                          `Plugin activation Agent '${agent.slug}' generation changed`,
+                        );
+                      const spec = JSON.parse(
+                        readFileSync(join(directory, 'agent.json'), 'utf8'),
+                      );
+                      if (
+                        typeof spec.name !== 'string' ||
+                        typeof spec.prompt !== 'string'
+                      )
+                        throw new Error(
+                          `Plugin activation Agent '${agent.slug}' definition is unavailable`,
+                        );
+                    }
+                  },
+                )
+              : undefined;
+          const captured = deps.packageMcpJournal
+            ? activationPermit
+              ? captureLocalPluginActivation(
+                  pluginsDir,
+                  deps.packageMcpJournal,
+                  activationPermit,
+                )
+              : captureLocalPluginInstallation(
+                  pluginsDir,
+                  deps.packageMcpJournal,
+                  pluginName,
+                )
+            : null;
+          permissionArtifact = {
+            pluginId: pluginName,
+            digest: artifact.digest,
+            isCurrent: () =>
+              (captured
+                ? captured.isCurrent()
+                : resolveInstalledPluginRoot(pluginsDir, pluginName)
+                    ?.generation === installed.generation) &&
+              computePluginContentDigest(
+                dirname(installed.packageRoot),
+                basename(installed.packageRoot),
+              ) === artifact.digest,
+          };
+        }
+
         for (const [index, dependency] of (
           manifest.dependencies ?? []
         ).entries()) {
@@ -2808,73 +3072,6 @@ async function installPluginFromSourceUnderContext(
         }
 
         if (!isAgentPlugin) {
-          scanPluginPromptGeneration(tempDir, pluginName);
-        }
-        await buildPlugin(tempDir, pluginName, manifest);
-        assertPluginBundleAssetsContained(tempDir);
-
-        if (isAgentPlugin) {
-          const artifact = captureLocalPluginArtifact(tempDir);
-          const service = await installationHostFor(deps).service(artifact);
-          if (
-            options?.dataPolicy === 'retain-and-reset' &&
-            options.expectedInstallation === undefined
-          )
-            throw new Error(
-              'Preview the current installation before starting with new data',
-            );
-          // Acquisition-owner scoped continuity, not a signature/publisher claim.
-          // Native canonicalization prevents alternate local spellings changing identity.
-          const acquisitionSource = existsSync(source)
-            ? realpathSync.native(source)
-            : source;
-          const origin = createHash('sha256')
-            .update(
-              JSON.stringify({
-                owner: realpathSync.native(projectHomeDir),
-                registryId: options?.registryId ?? null,
-                registryKey: options?.registryKey ?? null,
-                source: acquisitionSource,
-              }),
-            )
-            .digest('hex');
-          managedLifecycle = await service.install({
-            installation: pluginName,
-            expected:
-              options?.expectedInstallation !== undefined
-                ? options.expectedInstallation
-                : priorInstallation,
-            artifact,
-            origin,
-            data: options?.dataPolicy,
-          });
-          const installed = resolveInstalledPluginRoot(pluginsDir, pluginName);
-          if (installed?.kind !== 'incarnation')
-            throw new Error(
-              'Selected plugin has no local execution materialization',
-            );
-          pluginDir = installed.packageRoot;
-          const captured = deps.packageMcpJournal
-            ? captureLocalPluginInstallation(
-                pluginsDir,
-                deps.packageMcpJournal,
-                pluginName,
-              )
-            : null;
-          permissionArtifact = {
-            pluginId: pluginName,
-            digest: artifact.digest,
-            isCurrent: () =>
-              (captured
-                ? captured.isCurrent()
-                : resolveInstalledPluginRoot(pluginsDir, pluginName)
-                    ?.generation === installed.generation) &&
-              computePluginContentDigest(
-                dirname(installed.packageRoot),
-                basename(installed.packageRoot),
-              ) === artifact.digest,
-          };
-        } else {
           if (existsSync(pluginDir) && pluginDir !== tempDir)
             rmSync(pluginDir, { recursive: true, force: true });
           if (tempDir !== pluginDir)
@@ -2895,6 +3092,7 @@ async function installPluginFromSourceUnderContext(
           manifest,
           previousManifest: existingManifest,
           persistedOwnership: persistedAgentOwnership,
+          installationGeneration: managedLifecycle?.selected.generation,
           include: (slug) => !skipSet.has(`agent:${slug}`),
           logger,
         });
@@ -3023,6 +3221,7 @@ async function installPluginFromSourceUnderContext(
             approvedDependencyIds,
             deps.packageMcpJournal,
             managedCreated,
+            options?.activationSession,
           ),
           permissionArtifact,
         );
@@ -3081,6 +3280,7 @@ async function installPluginFromSourceUnderContext(
                   pluginsDir,
                   dependency.id,
                   deps.packageMcpJournal,
+                  options?.activationSession,
                 ) ?? join(pluginsDir, dependency.id),
                 'plugin.json',
               ),
@@ -3179,6 +3379,7 @@ async function installPluginFromSourceUnderContext(
               },
               createdPluginDigests,
               deps.packageMcpJournal,
+              options?.activationSession,
             ),
         );
         await rollbackOwnedGrants(grantScope);

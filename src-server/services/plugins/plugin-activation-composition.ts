@@ -65,6 +65,26 @@ export function registerPluginActivation(
   return permit;
 }
 
+/** Installer-only ownership reads while collecting the graph. This does not
+ * authorize runtime execution or grant public discovery of a pending package. */
+export function pluginActivationSessionPermit(
+  session: PluginActivationSession | undefined,
+  journal: PackageMcpAdmissionJournal,
+  pluginId: string,
+): PluginActivationPermit | undefined {
+  if (!session) return undefined;
+  const state = sessions.get(session);
+  if (state?.phase !== 'collecting') return undefined;
+  const entry = state.entries.find(
+    (candidate) =>
+      candidate.journal === journal &&
+      candidate.installation.pluginId === pluginId,
+  );
+  if (!entry) return undefined;
+  journal.activationInstallation(entry.permit);
+  return entry.permit;
+}
+
 export async function preparePluginActivationComposition(
   session: PluginActivationSession,
 ): Promise<PluginActivationComposition> {
