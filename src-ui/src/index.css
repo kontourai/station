@@ -4905,6 +4905,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .choice-caret {
+  display: block;
+  width: 14px;
+  height: 14px;
   flex: none;
   margin-left: auto;
   color: var(--text-secondary);
