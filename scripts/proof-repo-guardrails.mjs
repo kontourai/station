@@ -6630,8 +6630,26 @@ for (const retiredInlineMessageBubbleSnippet of [
 const messageBubbleUtils = readRequiredSource(
   '../src-ui/src/components/chat/message-bubble/utils.ts',
 );
-if (!messageBubbleUtils.includes('export function getModelDisplayName')) {
-  errors.push('message-bubble/utils.ts must export getModelDisplayName.');
+// #1536 B5: `getModelDisplayName` was a private table of five Claude 3 ids
+// that answered "Custom" for everything newer, so a row running claude-opus-5
+// named it "Custom" while Home named the same session "Opus 5". The assertion
+// that has to hold now is the DELEGATION that replaced it: this module names
+// no model itself, it asks the one shared identity rule. The negative
+// assertion above keeps the table from growing back inside MessageBubble.
+if (!messageBubbleUtils.includes('function getModelDisplayName(')) {
+  if (
+    !messageBubbleUtils.includes(
+      "import { modelIdentityLabel } from '../../../utils/modelCapabilities'",
+    )
+  ) {
+    errors.push(
+      'message-bubble/utils.ts must resolve model names through modelIdentityLabel.',
+    );
+  }
+} else {
+  errors.push(
+    'message-bubble/utils.ts must not re-declare getModelDisplayName; use modelIdentityLabel.',
+  );
 }
 const messageBubbleRating = readRequiredSource(
   '../src-ui/src/components/chat/message-bubble/MessageRating.tsx',
