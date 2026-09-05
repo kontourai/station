@@ -211,9 +211,9 @@ describe('UX audit A7 review B1: null is a real choice when the Station row is o
     connectionsData = [nativeConnection('codex', 'Codex')];
     configData = {};
     renderPicker();
-    expect((screen.getByLabelText(/^Station/) as HTMLInputElement).checked).toBe(
-      true,
-    );
+    expect(
+      (screen.getByLabelText(/^Station/) as HTMLInputElement).checked,
+    ).toBe(true);
     expect(
       (
         screen.getByRole('button', {
