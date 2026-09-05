@@ -156,7 +156,9 @@ export function FirstRunFlow() {
     const path = tourStepPath(step);
     // `null` means the step names a view the router cannot serialize — an
     // authoring mistake the tour tests fail on. Skip the navigation rather
-    // than sending the user to a guessed route.
+    // than sending the user to a guessed route. A `home` step lands on `/`
+    // and whatever occupies `main` — a return to the outlet, not Home by
+    // name (#1523): the tour's last step points at the palette, not at Home.
     if (path) navigate(path);
   }, [step, navigate, showSurface]);
 

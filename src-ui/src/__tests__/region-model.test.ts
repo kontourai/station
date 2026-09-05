@@ -279,6 +279,32 @@ describe('region model', () => {
       expect(toggled.shownRegion).toBe('right');
     });
 
+    test('on a coarse device a visible surface that is not the folded region is a show, not a hide', () => {
+      // Two visible occupied dock regions with Chat's `bottom` the folded one
+      // (`lastShownRegion`). Activity in `right` is visible too, so a guard
+      // reading only `visible` would HIDE it; the coarse rule is that only the
+      // folded region hides, and anything else is shown alone via showSurface.
+      // Review-round fixture (#1523): dropping `occupied === folded &&` from
+      // the guard stayed green without this case.
+      const twoVisible = placeSurface(
+        updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', {
+          visible: true,
+        }),
+        'activity',
+        'right',
+        true,
+      );
+      expect(twoVisible.right.visible).toBe(true);
+      expect(foldedDockRegion(twoVisible, 'bottom')).toBe('bottom');
+
+      expect(
+        toggleSurface(twoVisible, 'activity', activityDefault, {
+          lastShownRegion: 'bottom',
+          bottomOnly: true,
+        }),
+      ).toEqual({ kind: 'show' });
+    });
+
     test('Home in main toggles to nothing: its default region is main', () => {
       expect(
         toggleSurface(

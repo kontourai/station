@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
+import { navigationStore } from '../navigation-store';
 import { RegionModelProvider, useRegionModel } from '../RegionModelContext';
 
 let model: ReturnType<typeof useRegionModel> | null = null;
@@ -97,6 +98,33 @@ describe('RegionModelProvider.toggleSurface', () => {
     // The fold follows the region that just became visible.
     expect(model?.lastShownRegion).toBe('right');
     expect(window.location.pathname).toBe('/');
+  });
+
+  /**
+   * Owner decision, review round 1 (#1523): the chord relocates a `main`
+   * occupant from ANY route, visible, WITHOUT navigating. Showing Activity
+   * beside the current view beats hijacking navigation to `/`; `main` empties
+   * to Home behind the routed view, for whenever the user returns to `/`.
+   */
+  test('from another route, a main occupant returns to its dock without navigating', async () => {
+    await mount();
+    act(() => model?.placeSurface('activity', 'main'));
+    await waitFor(() => expect(model?.regions.main.occupant).toBe('activity'));
+    setUrl('/settings');
+    await act(async () => undefined);
+    const navigateSpy = vi.spyOn(navigationStore, 'navigate');
+
+    act(() => model?.toggleSurface('activity'));
+
+    await waitFor(() =>
+      expect(model?.regions.right).toMatchObject({
+        occupant: 'activity',
+        visible: true,
+      }),
+    );
+    expect(model?.regions.main.occupant).toBeNull();
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe('/settings');
   });
 
   test('a dock occupant is hidden and revealed in place', async () => {
