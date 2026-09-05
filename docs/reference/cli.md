@@ -2628,3 +2628,21 @@ encrypted retained EBS root/data volume, and requires a later application-health
 check. Retention does not imply automatic recovery on a replacement instance.
 The [cloud-move design](../design/cloud-move.md) records provider boundaries,
 credential handling, execution ownership, and the remaining implementation.
+
+
+### Encrypted workspace copies
+
+```bash
+station cloud keygen --output=/private/keys/workspace.key
+station cloud pack-workspace --workspace=/work/project --key-file=/private/keys/workspace.key --output=/private/exports/workspace.enc --source-paused --json
+station cloud inspect-workspace --archive=/private/exports/workspace.enc --key-file=/private/keys/workspace.key --json
+station cloud unpack-workspace --archive=/private/exports/workspace.enc --key-file=/private/keys/workspace.key --destination=/work/imported --json
+```
+
+These provider-independent commands require no `--home` or provider flags.
+Package operations emit JSON receipts; key generation emits a confirmation without
+printing the key. `--source-paused` is required and is the operator's assertion,
+not an automatic process stop. All output paths must be new. Import creates the
+checkout at `<destination>/workspace`. See [Workspace packages](../guides/workspace-packages.md)
+for prerequisites, encryption/key handling, exact preserved content, resource
+limits, and recovery. They copy workspace data, not credentials or running agents.
