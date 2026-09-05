@@ -55,6 +55,24 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'eager-highlighter',
+    test: 'src-ui/src/__tests__/SyntaxHighlighterContext.test.tsx',
+    failure:
+      'keeps Home idle and initializes only for a real consumer, then publishes readiness',
+    files: [
+      {
+        path: 'src-ui/src/contexts/SyntaxHighlighterContext.tsx',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  const value = useMemo(',
+            '  useEffect(() => { request(); }, [request]);\n  const value = useMemo(',
+          ),
+      },
+    ],
+  },
+
+  {
     id: 'empty-render',
     test: 'src-ui/src/__tests__/notification-empty-states.test.tsx',
     failure: 'renders both empty lanes with filtered=false',

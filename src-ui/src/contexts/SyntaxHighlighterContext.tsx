@@ -3,13 +3,14 @@
  *
  * Consumed by:
  *   - Workspace File Preview pane
- *   - Chat markdown code blocks (MessageBubble, StreamingMessage)
+ *   - UIBlockRenderer code blocks; chat markdown uses the highlight worker
  *   - Any future component needing syntax highlighting
  */
 
 import {
   createContext,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -39,31 +40,28 @@ type ShikiHighlighter = Awaited<
 >;
 
 let shikiInstance: ShikiHighlighter | null = null;
-let shikiLoading = false;
-const shikiWaiters: Array<(h: ShikiHighlighter) => void> = [];
+let shikiPromise: Promise<ShikiHighlighter> | null = null;
 
 /**
  * archive#3354 — exported for the async highlight client's main-thread
  * fallback (jsdom / failed worker bootstrap); interactive callers keep using
  * the provider.
  */
-export async function initShiki(): Promise<ShikiHighlighter> {
-  if (shikiInstance) return shikiInstance;
-  if (shikiLoading) {
-    return new Promise<ShikiHighlighter>((resolve) =>
-      shikiWaiters.push(resolve),
-    );
-  }
-  shikiLoading = true;
-  const { createHighlighter } = await import('shiki');
-  shikiInstance = await createHighlighter({
-    themes: [THEME],
-    langs: [...PRELOAD_LANGS],
-  });
-  shikiLoading = false;
-  for (const w of shikiWaiters) w(shikiInstance);
-  shikiWaiters.length = 0;
-  return shikiInstance;
+export function initShiki(): Promise<ShikiHighlighter> {
+  if (shikiInstance) return Promise.resolve(shikiInstance);
+  shikiPromise ??= import('shiki')
+    .then(({ createHighlighter }) =>
+      createHighlighter({ themes: [THEME], langs: [...PRELOAD_LANGS] }),
+    )
+    .then((highlighter) => {
+      shikiInstance = highlighter;
+      return highlighter;
+    })
+    .catch((error) => {
+      shikiPromise = null;
+      throw error;
+    });
+  return shikiPromise;
 }
 
 // ── File extension → language mapping ─────────────────────────────
@@ -154,36 +152,46 @@ class ShikiSyntaxHighlighter implements ISyntaxHighlighter {
 
 // ── React Context ─────────────────────────────────────────────────
 
-const SyntaxHighlighterContext = createContext<ISyntaxHighlighter | null>(null);
+const SyntaxHighlighterContext = createContext<{
+  highlighter: ISyntaxHighlighter;
+  request: () => void;
+  ready: boolean;
+} | null>(null);
 
 export function SyntaxHighlighterProvider({
   children,
 }: {
   children: ReactNode;
 }) {
-  const [_ready, setReady] = useState(!!shikiInstance);
-  const implRef = useRef(new ShikiSyntaxHighlighter());
-
+  const [highlighter] = useState(() => {
+    const value = new ShikiSyntaxHighlighter();
+    if (shikiInstance) value.setHighlighter(shikiInstance);
+    return value;
+  });
+  const [ready, setReady] = useState(highlighter.ready);
+  const mounted = useRef(false);
   useEffect(() => {
-    if (shikiInstance) {
-      implRef.current.setHighlighter(shikiInstance);
-      setReady(true);
-      return;
-    }
-    let cancelled = false;
-    initShiki().then((h) => {
-      if (cancelled) return;
-      implRef.current.setHighlighter(h);
-      setReady(true);
-    });
+    mounted.current = true;
     return () => {
-      cancelled = true;
+      mounted.current = false;
     };
   }, []);
-
-  // Force re-render when ready changes so consumers see updated `ready`
-  const value = useMemo(() => implRef.current, []); // eslint-disable-line react-hooks/exhaustive-deps
-
+  const request = useCallback(() => {
+    if (highlighter.ready) return;
+    void initShiki()
+      .then((instance) => {
+        if (!mounted.current) return;
+        highlighter.setHighlighter(instance);
+        setReady(true);
+      })
+      .catch(() => {
+        // Plain escaped code remains readable; another consumer can retry initialization.
+      });
+  }, [highlighter]);
+  const value = useMemo(
+    () => ({ highlighter, request, ready }),
+    [highlighter, request, ready],
+  );
   return (
     <SyntaxHighlighterContext.Provider value={value}>
       {children}
@@ -192,10 +200,13 @@ export function SyntaxHighlighterProvider({
 }
 
 export function useSyntaxHighlighter(): ISyntaxHighlighter {
-  const ctx = useContext(SyntaxHighlighterContext);
-  if (!ctx)
+  const context = useContext(SyntaxHighlighterContext);
+  useEffect(() => {
+    context?.request();
+  }, [context?.request]);
+  if (!context)
     throw new Error(
       'useSyntaxHighlighter must be used within SyntaxHighlighterProvider',
     );
-  return ctx;
+  return context.highlighter;
 }

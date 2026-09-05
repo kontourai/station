@@ -6,7 +6,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
-export const QUALIFIED_BROWSER_FILES = [
+export const STRICT_BROWSER_FILES = [
   'tests/mobile-chat-composer.spec.ts',
   'tests/settings.spec.ts',
   'tests/connections-crud.spec.ts',
@@ -174,8 +174,7 @@ export function evaluateFixturePolicy(findings, baseline, previousBaseline) {
   const errors = findings
     .filter(
       (entry) =>
-        QUALIFIED_BROWSER_FILES.includes(entry.file) ||
-        !admitted.has(key(entry)),
+        STRICT_BROWSER_FILES.includes(entry.file) || !admitted.has(key(entry)),
     )
     .map((entry) => `${entry.file}:${entry.line} ${entry.rule}`);
   for (const entry of baseline.entries) {
@@ -226,14 +225,24 @@ export function main(
     ['ls-tree', '--name-only', 'origin/main', '--', BASELINE],
     gitOptions,
   ).trim();
-  const previous = upstreamHasBaseline
+  const introduction = execFileSync(
+    'git',
+    ['log', '--diff-filter=A', '--format=%H', '--', BASELINE],
+    gitOptions,
+  )
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .at(-1);
+  const baselineRef = upstreamHasBaseline ? 'origin/main' : introduction;
+  const previous = baselineRef
     ? JSON.parse(
-        execFileSync('git', ['show', `origin/main:${BASELINE}`], gitOptions),
+        execFileSync('git', ['show', `${baselineRef}:${BASELINE}`], gitOptions),
       )
     : undefined;
   const result = evaluateFixturePolicy(findings, baseline, previous);
   console.log(
-    `[fixture-policy] ${result.errors.length ? 'FAIL' : 'PASS'}; legacy unqualified sites=${result.legacyUnqualifiedSites}; ${QUALIFIED_BROWSER_FILES.length} strict files`,
+    `[fixture-policy] ${result.errors.length ? 'FAIL' : 'PASS'}; legacy unqualified sites=${result.legacyUnqualifiedSites}; ${STRICT_BROWSER_FILES.length} strict files`,
   );
   for (const error of result.errors) console.error(error);
   if (result.errors.length) process.exitCode = 1;

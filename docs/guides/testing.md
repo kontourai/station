@@ -19,7 +19,7 @@ Use the shared typed factory and assert the rendered engine/model/approval state
 
 User journeys use normal `click`, `fill`, keyboard, and pointer actions. Do not use forced clicks, `dispatchEvent('click')`, DOM `.click()`, or remove a disabled/inert guard to get past an obstruction. Establish the right surface first, then assert its prerequisite. A test may deliberately inject provider protocol events or a clipboard payload when that is its named seam; this is not a substitute for a user's click.
 
-The syntax checker has deliberate limits: it recognizes the listed AST shapes, not arbitrary aliases, every dynamically constructed option, or assertion semantics. Existing out-of-scope findings are reported as **legacy unqualified sites**, with exact fingerprints in `scripts/test-fixture-policy-baseline.json`; PASS does not bless them. New baseline entries are refused once an upstream baseline exists, and removed sites must be removed from the baseline. Inspect the live inventory with `npm run test:fixtures:check -- --inventory`. Keep structural protocol/security tests when syntax or ownership is the actual contract; replace them when they claim a rendered or runtime result they never exercise.
+The syntax checker has deliberate limits: it recognizes the listed AST shapes, not arbitrary aliases, every dynamically constructed option, or assertion semantics. Existing out-of-scope findings are reported as **legacy unqualified sites**, with exact fingerprints in `scripts/test-fixture-policy-baseline.json`; PASS does not bless them. New baseline entries are refused once an introduction commit or upstream baseline exists, and removed sites must be removed from the baseline. Inspect the live inventory with `npm run test:fixtures:check -- --inventory`. Keep structural protocol/security tests when syntax or ownership is the actual contract; replace them when they claim a rendered or runtime result they never exercise.
 
 ### Profiling
 
@@ -31,7 +31,7 @@ Profiles retain `.cpuprofile`, `.heapprofile`, per-journey JSON, source maps whe
 
 ### Mutation safety and interpretation
 
-`test:mutation:smoke` runs four curated defects: missing empty-state rendering, repeated acknowledgement reads, property-order-dependent scope identity, and missing fixture engine identity. Select one with `--case=<id>`. New cases belong in the runner's registry and must name both the source mutation and the exact failing assertion.
+`test:mutation:smoke` runs five curated defects: eager unused highlighting, missing empty-state rendering, repeated acknowledgement reads, property-order-dependent scope identity, and missing fixture engine identity. Select one with `--case=<id>`. New cases belong in the runner's registry and must name both the source mutation and the exact failing assertion.
 
 The runner requires a clean linked worktree, takes an exclusive lock, owns the test process tree, and retains baseline/injected/restored logs and recovery bytes under `.kontourai/test-mutations/`. An import error, missing test, wrong root, timeout, truncated output, or unrelated failure is not catch evidence. Restoration only replaces the exact injected bytes; intervening edits are preserved. After an abnormal interruption, inspect the record and run `npm run test:mutation:smoke -- --recover=<path/to/recovery.json>` on the same revision. Recovery refuses a live owner and verifies original bytes against git. Run the case again after recovery.
 
