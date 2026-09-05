@@ -1360,11 +1360,12 @@ async function interactForLiveResponse(page, command, interaction) {
 }
 
 export async function clickLiveCommand(page, name) {
-  const command = {
+  const commands = {
     'Leave room': 'depart',
     'Join room': 'join',
     'Announce work': 'announce',
-  }[name];
+  };
+  const command = Object.hasOwn(commands, name) ? commands[name] : undefined;
   if (!command) throw new Error('live command label is invalid');
   const settled = await interactForLiveResponse(page, command, () =>
     clickWhenEnabled(page, name),

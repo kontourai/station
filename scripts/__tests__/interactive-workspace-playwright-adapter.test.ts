@@ -226,3 +226,17 @@ test('arms the exact live response before input and validates the response after
   await expect(clickLiveCommand(page, 'Join room')).resolves.toBeUndefined();
   expect(order).toEqual(['armed', 'click', 'body']);
 });
+
+test.each(['constructor', '__proto__', 'toString'])(
+  'rejects inherited live-command label %s before touching the browser',
+  async (name) => {
+    const page = {
+      waitForResponse: () => {
+        throw new Error('Browser must not be touched');
+      },
+    };
+    await expect(clickLiveCommand(page, name)).rejects.toThrow(
+      'live command label is invalid',
+    );
+  },
+);
