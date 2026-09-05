@@ -62,6 +62,17 @@ export const DEFAULT_GUARDRAILS = {
   temperature: 0.7,
 } as const;
 
+/**
+ * The capabilities that define the reserved Station role, independent of
+ * which engine executes it. Keep the ids here so bootstrap, persistence,
+ * catalog projection, and session delivery cannot drift into separate
+ * hand-maintained defaults.
+ */
+export const BUILTIN_STATION_AGENT_MCP_SERVER_IDS = [
+  'station-control',
+  'station-docs',
+] as const;
+
 /** Where an agent comes from: a local Station agent or an ACP-connected one. */
 export type AgentSource = 'local' | 'acp';
 

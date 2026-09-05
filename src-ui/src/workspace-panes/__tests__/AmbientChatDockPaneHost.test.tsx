@@ -425,6 +425,32 @@ test('a persisted canonical Home occupant survives a remount (the reload path)',
   expect(screen.queryByTestId('ambient-chat-occupant')).toBeNull();
 });
 
+test('a persisted occupant carrying an extra key is admitted as the parsed record without it', async () => {
+  // `isCanonicalWorkspaceHomePaneInstance` counts bound-context keys, and the
+  // parser rebuilds bound context from a fixed key list. Admitting the raw
+  // persisted object therefore answers the canonical question on data no other
+  // consumer sees: this occurrence IS the canonical Home once parsed, and is
+  // refused while the extra key is still attached.
+  window.localStorage.setItem(
+    AMBIENT_DOCK_STORAGE_KEY,
+    persistedAmbientDocument({
+      ...WORKSPACE_HOME_PANE_INSTANCE,
+      boundContext: {
+        ...WORKSPACE_HOME_PANE_INSTANCE.boundContext,
+        unexpected: 'not-a-contract-field',
+      },
+    }),
+  );
+  renderAmbientHost();
+  await waitFor(() => {
+    expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
+  });
+  expect(screen.queryByTestId('ambient-chat-occupant')).toBeNull();
+  expect(
+    window.localStorage.getItem(AMBIENT_DOCK_STORAGE_KEY) ?? '',
+  ).not.toContain('unexpected');
+});
+
 test('a persisted non-canonical Home occupant is refused on restore: Chat renders', async () => {
   window.localStorage.setItem(
     AMBIENT_DOCK_STORAGE_KEY,

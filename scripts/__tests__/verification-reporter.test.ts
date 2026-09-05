@@ -43,6 +43,9 @@ function privateKeyMarker(position: 'BEGIN' | 'END', kind: string): string {
   return ['-----', position, ' ', kind, ' PRIVATE', ' KEY', '-----'].join('');
 }
 
+/** The terminal escape byte, spelled rather than embedded in source. */
+const ESC = String.fromCharCode(27);
+
 const roots: string[] = [];
 const requestKey = 'a'.repeat(64);
 const otherRequestKey = 'b'.repeat(64);
@@ -688,6 +691,104 @@ describe('verification reporter', () => {
       maxBytes: 2048,
     });
     expect(summary.firstCausalExcerpt).toContain('error TS2322');
+  });
+
+  // station#1471. Once FAIL matching stopped being defeated by colour, the
+  // FAIL tiers became reachable on a GREEN run -- and a coloured FAIL line is
+  // the ORDINARY CI form, so a passing test that prints one would have become
+  // the run's reported cause and rendered a "Causal excerpts" block for it.
+  // Same withdrawal as #1459's, one tier over.
+  test('reports no cause for a PASSING run whose stderr holds a coloured FAIL line (#1471)', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 test:full:raw',
+        '> node scripts/run-vitest-corpus.mjs',
+        '',
+        'Tests 4213 passed | 12 skipped',
+      ].join('\n'),
+      // Byte-for-byte the shape vitest writes on a runner: SGR before FAIL.
+      stderr: `${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m src-ui/src/__tests__/PrintsABanner.test.tsx${ESC}[2m > ${ESC}[22mprints the banner`,
+      terminal: { status: 'completed', exitCode: 0, truncated: false },
+      counts: {
+        executed: 4225,
+        passed: 4213,
+        failed: 0,
+        infrastructureErrors: 0,
+      },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(summary.firstCausalExcerpt).toBeUndefined();
+    expect(summary.causalExcerpts).toBeUndefined();
+    expect(JSON.stringify(summary)).not.toContain('PrintsABanner');
+    // The same capture on a FAILED run still names it: the withdrawal is
+    // scoped to the pass, not to the shape.
+    const failed = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 test:full:raw',
+        '> node scripts/run-vitest-corpus.mjs',
+      ].join('\n'),
+      stderr: `${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m src-ui/src/__tests__/PrintsABanner.test.tsx${ESC}[2m > ${ESC}[22mprints the banner`,
+      terminal: { status: 'failed', exitCode: 1, truncated: false },
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(failed.firstCausalExcerpt).toContain('PrintsABanner.test.tsx');
+  });
+
+  // station#1471 review, item 4. Stripping escapes once, where the lines are
+  // built, is what lets EVERY `^`-anchored matcher see plain text -- not just
+  // the FAIL probe. Biome colours its severity markers, and
+  // `diagnosticSeverity` reads the `×`/`!` on the line AFTER the header: with
+  // the escapes still in place that check never matches, every diagnostic
+  // grades as `unknown`, and first-match hands the run the WARNING sitting
+  // above the real error.
+  // Deliberately on STDOUT, with the warning ABOVE the error. Stdout is
+  // scanned forward, so reaching the error requires grading the warning as a
+  // warning and walking past it -- which is only possible if the `!` marker on
+  // the line below its header is legible. On stderr this proves nothing:
+  // `preferLast` scans from the end and would reach the error either way.
+  test('ranks a coloured biome error above the coloured warning before it (#1471)', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 lint:check',
+        '> biome check .',
+        '',
+        `${ESC}[33msrc-ui/src/Warned.tsx:1:1 lint/suspicious/noExplicitAny ━━━━━━━━━━${ESC}[39m`,
+        `  ${ESC}[33m!${ESC}[39m The warning above the error.`,
+        `${ESC}[31msrc-ui/src/Errored.tsx:9:3 lint/style/noVar ━━━━━━━━━━${ESC}[39m`,
+        `  ${ESC}[31m×${ESC}[39m The error a reader actually needs.`,
+      ].join('\n'),
+      terminal: { status: 'failed', exitCode: 1, truncated: false },
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(summary.firstCausalExcerpt).toContain('Errored.tsx');
+    expect(summary.firstCausalExcerpt).not.toContain('Warned.tsx');
+  });
+
+  // station#1471 review. `withoutAnsi` runs BEFORE the redaction boundary, and
+  // the ordering is the whole point: a token split by an escape sequence is
+  // not a token the redactor can recognise, so stripping afterwards would
+  // reassemble a real secret into an excerpt that is published in the run
+  // summary and the annotations rail.
+  test('redacts a secret that an escape sequence had split in two (#1471)', () => {
+    const split = `ghp_${'A'.repeat(20)}${ESC}[0m${'B'.repeat(20)}`;
+    const summary = summarizeVerificationOutput({
+      stdout: '> @kontourai/station-core@0.0.0 test:full:raw',
+      stderr: `Error: request rejected for ${split}`,
+      terminal: { status: 'failed', exitCode: 1, truncated: false },
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    // The line is still reported -- this withholds the secret, not the cause.
+    expect(summary.firstCausalExcerpt).toContain('request rejected for');
+    expect(summary.firstCausalExcerpt).toContain('[REDACTED]');
+    expect(JSON.stringify(summary)).not.toContain('ghp_');
+    expect(JSON.stringify(summary)).not.toContain('A'.repeat(20));
   });
 
   // The failed-run fallback is exactly what #1459 must not have disturbed:

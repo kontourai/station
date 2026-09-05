@@ -234,7 +234,7 @@
     "publish-packages": "changeset publish",
     "test:coverage": "node scripts/run-verification.mjs request test-coverage",
     "test:coverage:raw": "vitest run --coverage --maxWorkers=1 --exclude='scripts/__tests__/station-dogfood-reconcile*.test.ts' && npm run test:dogfood-reconcile",
-    "test:connected-agents": "vitest run --testTimeout=10000 src-server/providers/llm/__tests__/bedrock-adapter.test.ts src-server/providers/__tests__/claude-adapter.test.ts src-server/providers/__tests__/codex-adapter.test.ts src-server/services/orchestration/__tests__/orchestration-service.test.ts src-server/services/orchestration/__tests__/event-store.test.ts src-server/routes/orchestration/__tests__/orchestration.routes.test.ts",
+    "test:connected-agents": "node scripts/run-connected-agent-tests.mjs",
     "proof:phase1-no-aws-startup": "node scripts/proof-phase1-no-aws-startup.mjs",
     "verify:cli-e2e": "node scripts/cli-agent-e2e.mjs",
     "lint:check": "biome check src-server/ src-ui/ packages/ scripts/ tests/ examples/ src-shared/",
