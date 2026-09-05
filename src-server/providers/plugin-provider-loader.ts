@@ -14,6 +14,7 @@ import { assertExistingPathInside } from '../utils/path-containment.js';
 import { isProviderAdapterShape } from './adapter-shape.js';
 import {
   disposePreparedPluginProviders,
+  type PluginProviderVisibility,
   type PreparedPluginProviderRegistration,
   pluginProviderRegistryGeneration,
   pluginProviderSourceGeneration,
@@ -36,6 +37,7 @@ export async function loadPluginProviders(
     strict?: boolean;
     packageRoot?: string;
     artifact?: CapturedPluginPermissionArtifact;
+    visibility?: PluginProviderVisibility;
   } = {},
 ): Promise<number> {
   const expectedProviderGeneration = pluginProviderSourceGeneration(pluginName);
@@ -52,7 +54,7 @@ export async function loadPluginProviders(
           pluginName,
           expectedProviderGeneration,
           prepared,
-          () => true,
+          () => options.artifact?.isCurrent() ?? true,
         )
       : await publishGrantedPluginProviderGeneration({
           projectHomeDir: dirname(pluginsDir),
@@ -145,6 +147,7 @@ export async function publishPluginProviderGeneration(
 }
 
 export interface PluginProviderPreparationRequest {
+  visibility?: PluginProviderVisibility;
   packageRoot?: string;
   artifact?: CapturedPluginPermissionArtifact;
   pluginName: string;
@@ -185,6 +188,7 @@ export async function preparePluginProviderGeneration(
               strict: true,
               packageRoot: request.packageRoot,
               artifact: request.artifact,
+              visibility: request.visibility,
             },
           )),
         );
@@ -215,6 +219,7 @@ export async function preparePluginProviders(
     strict?: boolean;
     packageRoot?: string;
     artifact?: CapturedPluginPermissionArtifact;
+    visibility?: PluginProviderVisibility;
   } = {},
 ): Promise<PreparedPluginProviderRegistration[]> {
   if (!manifest.providers) return [];
@@ -262,6 +267,11 @@ export async function preparePluginProviders(
         );
         prepared.push({
           type: provider.type,
+          visibility:
+            options.visibility ??
+            (options.artifact
+              ? { ready: () => false, permits: () => false }
+              : undefined),
           provider:
             provider.type === 'integrationRegistry'
               ? instance.integrationRegistry()
@@ -323,6 +333,11 @@ export async function preparePluginProviders(
         }
       }
       prepared.push({
+        visibility:
+          options.visibility ??
+          (options.artifact
+            ? { ready: () => false, permits: () => false }
+            : undefined),
         type: provider.type,
         provider: instance,
         source: pluginName,

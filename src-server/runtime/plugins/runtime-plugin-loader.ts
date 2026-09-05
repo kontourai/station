@@ -136,6 +136,22 @@ export async function loadRuntimePluginProviders(
       resolved.map((entry) => ({
         pluginName: entry.pluginName,
         packageRoot: artifacts.get(entry.pluginName)!.packageRoot,
+        visibility: {
+          ready: () => {
+            const artifact = artifacts.get(entry.pluginName)!;
+            return (
+              artifact.isCurrent() &&
+              hasGrant(
+                context.projectHomeDir,
+                entry.pluginName,
+                'providers.register',
+                context.logger,
+                artifact,
+              )
+            );
+          },
+          permits: () => false,
+        },
         artifact: {
           ...artifacts.get(entry.pluginName)!,
           isCurrent: () => {
