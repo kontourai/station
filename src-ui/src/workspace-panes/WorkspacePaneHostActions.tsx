@@ -20,7 +20,7 @@ const reasons: Record<WorkspacePaneHostActionUnavailableReason, string> = {
   'authorization-changed':
     'Your connection authorization changed. Reconnect before starting this action.',
   'permission-required':
-    'Review this plugin’s Agent invocation permission in Library.',
+    'Review this plugin’s Agent invocation permission in Plugins.',
   'agent-restricted': 'This Agent is not available in this Project.',
   'agent-unavailable':
     'This Agent is not ready. Review its model or engine connection.',
@@ -128,6 +128,7 @@ function PackageHostActions({
         <label>
           Agent
           <select
+            className="editor-select"
             value={selection}
             disabled={Boolean(pendingKey) || blocked}
             onChange={(event) => setSelection(event.target.value)}
@@ -154,6 +155,7 @@ function PackageHostActions({
         {projection.actions.map((action) => (
           <Button
             key={action.key}
+            variant="primary"
             id={workspacePaneHostActionControlId(
               projectSlug,
               projection.owner.pluginId,
@@ -177,7 +179,11 @@ function PackageHostActions({
         ))}
       </div>
       {reason ? <p>{reasons[reason]}</p> : null}
-      <div role="status" aria-live="polite">
+      <div
+        className="workspace-host-actions__results"
+        role="status"
+        aria-live="polite"
+      >
         {result?.state === 'unavailable' ? (
           <p>{reasons[result.reason]}</p>
         ) : null}
@@ -237,9 +243,15 @@ export function WorkspacePaneHostActions({
     return null;
   return (
     <section className="workspace-host-actions" aria-label="Workspace actions">
+      <div className="workspace-host-actions__header">
+        <h2>Workspace actions</h2>
+        <Button variant="ghost" size="sm" onClick={() => void query.refetch()}>
+          Refresh actions
+        </Button>
+      </div>
       {!query.data.complete ? (
         <p role="status">
-          Some package declarations could not be read. Review Library before
+          Some package declarations could not be read. Review Plugins before
           using legacy workspace actions.
         </p>
       ) : null}
@@ -252,7 +264,6 @@ export function WorkspacePaneHostActions({
           displayName={displayName}
         />
       ))}
-      <Button onClick={() => void query.refetch()}>Refresh actions</Button>
     </section>
   );
 }

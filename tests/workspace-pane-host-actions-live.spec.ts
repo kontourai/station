@@ -423,6 +423,31 @@ test('retained plugin recovers through responsive UI and its host default Agent 
   expect(source).toMatchObject({ pluginId: plugin, actionId: 'echo-proof' });
   expect(typeof source.installationGeneration).toBe('string');
   expect(source.installationGeneration.length).toBeGreaterThan(0);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(
+      page.getByText('HOST-ACTION-README.md', { exact: true }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByText('This host does not support this pane.', { exact: true }),
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth + 1,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`host-actions-files-${width}.png`),
+      animations: 'disabled',
+    });
+    copyFileSync(
+      testInfo.outputPath(`host-actions-files-${width}.png`),
+      join(recoveryEvidenceRoot, `host-actions-files-${width}.png`),
+    );
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
   await bar
     .getByRole('button', { name: 'Open conversation', exact: true })
     .click();
