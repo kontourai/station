@@ -9736,9 +9736,3 @@ button.tool-call__line:hover {
   padding: 6px 12px;
   font-size: var(--text-sm);
 }
-
-/* The ambient fullscreen chat owns interaction and paint. Keep route state
-   mounted without exposing Home cards through the safe-area clearance. */
-.main-content--covered {
-  visibility: hidden;
-}

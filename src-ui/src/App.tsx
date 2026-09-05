@@ -610,7 +610,12 @@ function App() {
                 programmatic focus target for the skip control without adding
                 a tab stop of its own. */}
               <main
-                className={`main-content${isAmbientMobileDockFullscreen ? ' main-content--covered' : ''}`}
+                className="main-content"
+                style={
+                  isAmbientMobileDockFullscreen
+                    ? { visibility: 'hidden' }
+                    : undefined
+                }
                 id="station-main"
                 tabIndex={-1}
                 inert={isAmbientMobileDockFullscreen || undefined}
