@@ -1340,7 +1340,9 @@ const knowledgeSearch = readRequiredSource(
 for (const requiredHelper of [
   'export async function searchKnowledgeDocuments',
   "candidate.behavior === 'rag'",
-  'allResults.sort((left, right) => right.score - left.score);',
+  // #1546 chained the sort onto the merged candidates; the helper still
+  // ranks by descending score, which is the property this proof pins.
+  '.sort((left, right) => right.score - left.score)',
 ]) {
   if (!knowledgeSearch.includes(requiredHelper)) {
     errors.push(`knowledge-search.ts must include ${requiredHelper}.`);
