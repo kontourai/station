@@ -123,10 +123,15 @@ claims move to indexed durable history, served in cursor pages. Their physical
 code and independent data scopes remain retained. Tests exceed 512 sequential
 service probes and 256 updates while keeping the concurrent-claim cap enforced.
 
-Automatic creation of portable dependencies through the legacy directory-copy
-path is refused. Install such a dependency through Plugins first; existing
-owned portable installations can be adopted read-only by legacy parents. This
-avoids creating a package whose runtime admission has no installation owner.
+Portable dependencies use the canonical installer with their own preview-bound
+approvals. A private execution context reuses the owned publication lease for
+nested installation; request data cannot create this capability. Cleanup custody
+for managed children binds their admission generation as well as their digest.
+Shared custody transfers through the existing grant/ownership store. Retirement
+withdraws nested selections and retains code/data; transaction compensation
+mints fresh admissions and rebinds only those exact restored child receipts.
+An independently replaced generation is preserved. The legacy copier still
+refuses portable creation when no canonical lifecycle owner is supplied.
 
 ## Composition and artifact transfer
 
@@ -187,9 +192,14 @@ This token does not authenticate a publisher. Registry signatures and trusted
 publisher changes must remain governed by the registry claim/pin owner, whose
 complete production integration is a separate qualification requirement.
 
-Qualification remains incomplete: automatic portable dependency creation,
-all contribution diagnostics, full captured-root propagation, and final routed
-gates are still required. Focused tests cover real Station Agent activation,
+Qualification remains incomplete: durable pending-to-ready host activation,
+revocation-safe compensation, all contribution diagnostics, full captured-root
+propagation, and final routed gates are still required. Focused tests cover real Station Agent activation,
 withdrawal, injected activation-failure rollback, retained data, fresh rollback
 admission, and acquisition-origin refusal. They do not establish hosted execution
 or full enterprise support.
+
+A local journal scope or shared filesystem home is not tenant isolation. Hosted
+identity and policy must bind authenticated tenant scopes to their installation,
+data and execution backends. These local adapters do not establish that hosted
+isolation contract.

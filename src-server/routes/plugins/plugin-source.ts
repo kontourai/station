@@ -88,6 +88,16 @@ export interface ResolvedPluginDependency {
 }
 
 export interface PluginDependencyLifecycle {
+  validatePortableInstalled?(dependency: {
+    id: string;
+    version?: string;
+  }): Promise<boolean>;
+  installPortable?(input: {
+    dependencyId: string;
+    source: string;
+    manifest: PluginManifest;
+  }): Promise<void>;
+
   validateInstalled?(input: {
     dependencyId: string;
     manifest: PluginManifest;
@@ -165,10 +175,10 @@ function assertSupportedPluginSource(source: string): void {
 }
 
 export function resolvePluginDependencySource(
-  dependency: { id: string; source?: string },
+  dependency: { id: string; source?: string; version?: string },
   parentSourceDir: string,
   allowedLocalRoot: string = dirname(resolve(parentSourceDir)),
-): { id: string; source?: string } {
+): { id: string; source?: string; version?: string } {
   if (!dependency.source || shouldPreserveDependencySource(dependency.source)) {
     return dependency;
   }
@@ -267,11 +277,18 @@ function readInstalledDependencyManifest(
   }
   const dependencyStat = lstatSync(dependencyDir);
   if (dependencyStat.isSymbolicLink()) {
-    if (
-      resolveInstalledPluginRoot(pluginsDir, dependencyId)?.kind !==
-      'incarnation'
-    )
-      throw new Error('Plugin dependency target escapes root');
+    try {
+      if (
+        resolveInstalledPluginRoot(pluginsDir, dependencyId)?.kind !==
+        'incarnation'
+      )
+        throw new Error('Plugin dependency target escapes root');
+    } catch (error) {
+      throw new Error(
+        'Plugin dependency target escapes root or does not identify an owned materialization',
+        { cause: error },
+      );
+    }
   } else if (!dependencyStat.isDirectory()) {
     throw new Error(
       `Plugin dependency '${dependencyId}' target is not a directory`,
@@ -348,6 +365,11 @@ function unsupportedDependencyFeatures(
   manifest: PluginManifest,
   lifecycle: boolean,
 ): string[] {
+  if (
+    readPluginManifestFileSyncWithFormat(join(dependencyDir, 'plugin.json'))
+      .format === 'agent-plugin-1.0'
+  )
+    return [];
   const unsupported: string[] = [];
   if (manifest.agents?.length) unsupported.push('agents');
   if (manifest.layout) unsupported.push('layout');
@@ -951,7 +973,7 @@ async function recordCreatedDependency(options: {
  * exercising other properties of this function.
  */
 export async function installPluginDependency(
-  dependency: { id: string; source?: string },
+  dependency: { id: string; source?: string; version?: string },
   pluginsDir: string,
   getPluginRegistryProvider: () => PluginRegistryInstaller,
   buildPlugin: (pluginDir: string, name: string) => Promise<void>,
@@ -1003,8 +1025,26 @@ export async function installPluginDependency(
       error: `Plugin dependency cycle detected: ${dependency.id}`,
     };
   }
+  try {
+    if (await lifecycle?.validatePortableInstalled?.(dependency))
+      return { success: true };
+  } catch (error) {
+    return dependencyFailure(error);
+  }
   if (existsSync(targetDir)) {
     try {
+      const installedManifest = readInstalledDependencyManifest(
+        pluginsDir,
+        dependency.id,
+      );
+      if (
+        dependency.version &&
+        dependency.version !== '*' &&
+        dependency.version !== installedManifest.version
+      )
+        throw new Error(
+          `Plugin dependency '${dependency.id}' requires exact version '${dependency.version}', found '${installedManifest.version}'`,
+        );
       await validateAndBuildInstalledDependency(
         pluginsDir,
         dependency.id,
@@ -1040,10 +1080,30 @@ export async function installPluginDependency(
       const { manifest: depManifest, format } =
         readPluginManifestFileSyncWithFormat(join(tempDir, 'plugin.json'));
       try {
-        if (format === 'agent-plugin-1.0')
+        if (
+          dependency.version &&
+          dependency.version !== '*' &&
+          dependency.version !== depManifest.version
+        )
           throw new Error(
-            `Install portable dependency '${dependency.id}' through Plugins before installing its parent; the legacy dependency copy path cannot own its lifecycle`,
+            `Plugin dependency '${dependency.id}' requires exact version '${dependency.version}', found '${depManifest.version}'`,
           );
+        if (format === 'agent-plugin-1.0') {
+          if (!lifecycle?.installPortable)
+            throw new Error(
+              `Portable dependency '${dependency.id}' requires its canonical installation owner`,
+            );
+          if (depManifest.name !== dependency.id)
+            throw new Error(
+              `Plugin dependency '${dependency.id}' source manifest name does not match`,
+            );
+          await lifecycle.installPortable({
+            dependencyId: dependency.id,
+            source: dependencySource,
+            manifest: depManifest,
+          });
+          return { success: true };
+        }
         if ((depManifest.name || dependency.id) !== dependency.id) {
           throw new Error(
             `Plugin dependency '${dependency.id}' source manifest name does not match`,
