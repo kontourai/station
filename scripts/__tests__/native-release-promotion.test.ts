@@ -490,7 +490,19 @@ describe('one-revision native promotion contract', () => {
     expect(failedPackage.with?.path).toBe(
       'src-desktop/gen/apple/build/arm64/*.ipa',
     );
-    expect(upload.with?.['wait-for-processing']).toBe('true');
+    // The action's own wait outlives the single token it mints (#1499); the
+    // workflow's wait-for-valid-build step, which mints per request, is the
+    // one processing wait, and it must directly follow the upload.
+    expect(upload.with?.['wait-for-processing']).toBe('false');
+    const processingWait = namedStep(
+      iosUpload,
+      'Reconcile exactly one VALID provider build',
+    );
+    expect(processingWait.run).toContain('wait-for-valid-build');
+    expect(processingWait.run).toContain('--deadline-seconds 1800');
+    expect(iosUpload.steps?.indexOf(processingWait)).toBe(
+      (iosUpload.steps?.indexOf(upload) ?? -1) + 1,
+    );
     expect((upload as any).if).toContain(
       "steps.reconcile.outputs.upload == 'true'",
     );
