@@ -22,17 +22,15 @@ afterEach(() => {
 test.each(['settings', 'providers'] as const)(
   '%s refusal is not retried under custom mutation defaults and refreshes current state',
   async (kind) => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValue(
-        Response.json(
-          {
-            success: false,
-            error: 'Settings may have been saved. Refresh before retrying.',
-          },
-          { status: 409 },
-        ),
-      );
+    const fetch = vi.fn().mockResolvedValue(
+      Response.json(
+        {
+          success: false,
+          error: 'Settings may have been saved. Refresh before retrying.',
+        },
+        { status: 409 },
+      ),
+    );
     vi.stubGlobal('fetch', fetch);
     const client = new QueryClient({
       defaultOptions: { mutations: { retry: 3, retryDelay: 0 } },

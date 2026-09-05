@@ -507,7 +507,10 @@ export function createWorkspacePaneHostContribution(input: {
     !isCanonicalPluginId(input.owner.pluginId) ||
     !input.owner.installationGeneration ||
     input.owner.installationGeneration.length > 256 ||
-    /[\u0000-\u001f\u007f]/.test(input.owner.installationGeneration) ||
+    [...input.owner.installationGeneration].some((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code <= 31 || code === 127;
+    }) ||
     !text(input.projectId, 256)
   ) {
     throw new Error('Invalid Workspace Pane host contribution composition');

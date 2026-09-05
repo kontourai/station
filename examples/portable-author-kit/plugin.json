@@ -9,7 +9,10 @@
       "title": "Portable Author Kit",
       "permissions": ["agents.invoke"],
       "agents": [
-        {"slug": "portable-author-note", "source": "./agents/portable-author-note/agent.json"}
+        {
+          "slug": "portable-author-note",
+          "source": "./agents/portable-author-note/agent.json"
+        }
       ]
     }
   }

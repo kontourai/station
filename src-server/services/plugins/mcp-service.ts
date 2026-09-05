@@ -800,14 +800,15 @@ export class MCPService {
         // Probe state is an internal projection write. It must retain an
         // operator-authored binding reference without reopening the public
         // integration authoring boundary.
-        if (!liveContributed) await this.configLoader.updateIntegration(id, (current) => {
-          if (
-            !claim.isCurrent() ||
-            !sameMCPConnectionDefinition(existing, current)
-          )
-            throw new MCPLocalCustodyError('stale');
-          return { ...current, probe };
-        });
+        if (!liveContributed)
+          await this.configLoader.updateIntegration(id, (current) => {
+            if (
+              !claim.isCurrent() ||
+              !sameMCPConnectionDefinition(existing, current)
+            )
+              throw new MCPLocalCustodyError('stale');
+            return { ...current, probe };
+          });
         toolServerProbes.add(1, { outcome: 'success' });
         if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
         return updated;
@@ -820,7 +821,10 @@ export class MCPService {
             classifyToolServerProbeFailure(error, existing.transport),
           );
           toolServerProbes.add(1, { outcome: 'failure' });
-          return { ...existing, probe: { ok: false, error: message, toolCount: 0, checkedAt } };
+          return {
+            ...existing,
+            probe: { ok: false, error: message, toolCount: 0, checkedAt },
+          };
         }
         const authorizationUrl = oauthProvider?.takeAuthorizationUrl();
         if (
@@ -870,14 +874,15 @@ export class MCPService {
         );
         const probe = { ok: false, error: message, toolCount: 0, checkedAt };
         const updated = { ...existing, probe };
-        if (!liveContributed) await this.configLoader.updateIntegration(id, (current) => {
-          if (
-            !claim.isCurrent() ||
-            !sameMCPConnectionDefinition(existing, current)
-          )
-            throw new MCPLocalCustodyError('stale');
-          return { ...current, probe };
-        });
+        if (!liveContributed)
+          await this.configLoader.updateIntegration(id, (current) => {
+            if (
+              !claim.isCurrent() ||
+              !sameMCPConnectionDefinition(existing, current)
+            )
+              throw new MCPLocalCustodyError('stale');
+            return { ...current, probe };
+          });
         toolServerProbes.add(1, { outcome: 'failure' });
         if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
         this.logger.warn('Tool server probe failed', {
