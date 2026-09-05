@@ -1,9 +1,9 @@
+import { isStandingAttentionKind } from '@kontourai/station-contracts/attention';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
-import {
-  type ApprovalAttentionItem,
-  type AttentionItem,
-  isStandingAttentionKind,
-  type SessionFailedAttentionItem,
+import type {
+  ApprovalAttentionItem,
+  AttentionItem,
+  SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
 import { notificationCategoryLabel } from './notificationLabels';
 import { NO_FAILURE_DETAIL_RECORDED } from './sessionFailure';
@@ -41,7 +41,10 @@ export function isApprovalLivePending(item: ApprovalAttentionItem): boolean {
  * server refuses the acknowledgement for that reason. Delta review DM3 moved
  * the membership into the contract (`isStandingAttentionKind`), so this
  * predicate and the server's refusal and ordering band are three readings of
- * ONE declaration rather than three lists that agree today. Both the per-row
+ * ONE declaration rather than three lists that agree today. Imported from the
+ * CONTRACT rather than through the SDK barrel: the barrel is mocked wholesale
+ * by a dozen suites, so routing a pure predicate through it makes every one of
+ * them declare an export it does not care about. Both the per-row
  * dismiss and "Dismiss all" read this — without it, dismiss-all posted an
  * acknowledgement the server now refuses, and before the refusal it cleared the
  * only row saying why chat could not start until the next poll happened to move
