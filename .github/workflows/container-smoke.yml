@@ -105,6 +105,8 @@ jobs:
           STATION_RELEASE_REF: v0.0.0-preview.1
           STATION_RELEASE_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
         run: scripts/container-smoke.sh
+      - name: Verify public-ingress protocol and port isolation
+        run: node deploy/public-ingress/smoke.mjs
       # A red smoke with no trace or screenshot is undiagnosable from logs
       # alone (#917's investigation had zero artifacts to read).
       - name: Upload Playwright results on failure
