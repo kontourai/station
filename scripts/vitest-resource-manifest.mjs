@@ -107,6 +107,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real runtime identity probes and SQLite workers for source-absent recovery.
+  'src-server/services/orchestration/__tests__/home-reference-recovery.test.ts',
+  // Owns a real loopback listener and fsync-backed source records; no child process.
+  'src-server/routes/knowledge/__tests__/knowledge-source.routes.test.ts',
   // Actual authenticated search routes include Task/transcript worker owners.
   'src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts',
   // Hono routes composed with the real Task and transcript worker owners.
@@ -247,6 +251,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Offline Git children validate encrypted workspace transport against real repositories.
   'packages/shared/src/__tests__/workspace-package.test.ts',
   'packages/cli/src/__tests__/cloud.test.ts',
+  'packages/cli/src/__tests__/cloud-project-import.test.ts',
   // Bounded disposable npm-shaped children; no registry/network calls.
   'scripts/__tests__/dependency-audit-diagnostics.test.ts',
   // station#1085: builds throwaway git checkouts and drives `git` through

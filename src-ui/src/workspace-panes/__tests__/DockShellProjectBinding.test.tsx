@@ -3,50 +3,37 @@
 /**
  * archive#4525: the dock's project binding is DockShell-owned state
  * (`useDockShellChrome`'s `activeProjectSlug`/`setActiveProjectSlug`), not a
- * derivation of whichever chat session happens to be active. The
- * Phase-1 investigation found the ACTUAL reset mechanism: the chromeless
- * `WorkspacePaneHostTree` only ever renders the ONE active occupant
- * (`WorkspacePaneHostTree.tsx`), so switching the ambient dock away from
- * Chat and back fully unmounts and remounts the Chat occupant — and Chat
- * placing itself again always does so via a FRESH
- * `createWorkspaceChatPaneInstance` (`ambientDockOccupants.ts`,
- * `AmbientChatDockPaneHost.tsx`'s `undockOccupant`), the exact same
- * mechanism the occupant-picker's "Chat" entry uses. A session-derived badge
- * (the pre-fix `dockProjectSlug`) had no way to survive that.
+ * derivation of whichever chat session happens to be active. A
+ * session-derived badge (the pre-fix `dockProjectSlug`) reset to "No
+ * project" on every remount of the docked Chat content — the Phase-1
+ * investigation found three triggers: an occupant switch (gone with #928
+ * C2b: Chat is the only pane the dock hosts), a directly-created new chat
+ * with no project, and reconnect/session churn. The fix moved the binding
+ * onto the persistent shell, where the content's remounts cannot reach it.
  *
- * These tests mount the REAL `AmbientChatDockPaneHost` (archive#4484's own
- * test pattern — see `DockShellControlParity.test.tsx`'s doc comment on why
- * Chat's own content is stubbed here rather than mounting the full,
- * heavy `ChatWorkspacePane`) and read the binding through the REAL
- * `shellChrome` the host hands to whichever occupant is docked — not a
- * hand-built chrome object. That is the one piece of `ChatWorkspacePane`'s
- * behavior this fix actually changed: it now reads
+ * These tests mount the REAL `DockShell` (the same component
+ * `AmbientChatDockPaneHost` wraps Chat in) and read the binding through the
+ * REAL `DockShellChrome` it hands its render prop — not a hand-built chrome
+ * object. Chat's own content is stubbed (see `DockShellControlParity.test.tsx`
+ * on why the full, heavy `ChatWorkspacePane` is not mounted here): the one
+ * piece of `ChatWorkspacePane`'s behavior the fix changed is that it reads
  * `shellChrome.activeProjectSlug` instead of deriving from the active
- * session, so proving the CHROME's own value survives the real remount
- * mechanics proves the fix, without needing `ChatWorkspacePane`'s (entirely
- * separate, and much larger) session/agent/orchestration data graph.
+ * session, so proving the CHROME's own value survives the remount mechanics
+ * proves the fix without `ChatWorkspacePane`'s data graph.
+ *
+ * Until #928 C2b this file was `AmbientChatDockProjectBinding.test.tsx` and
+ * drove the binding through the ambient host's occupant switch; the property
+ * it proves is unchanged, the driver is now the shell itself.
  */
 
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { DockShell } from '../../components/chat-dock/DockShell';
 import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../contexts/NavigationContext';
 import { navigationStore } from '../../contexts/navigation-store';
-import type { AmbientDockShellApi } from '../AmbientChatDockPaneHost';
-import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
-import type { WorkspacePaneDockAction } from '../WorkspacePaneDockContext';
+import type { DockShellChrome } from '../../hooks/useDockShellChrome';
 
-vi.mock('../../views/home/useHomeViewModel', () => ({
-  useHomeViewModel: () => ({}),
-}));
-vi.mock('../../views/home/HomeSurface', () => ({
-  HomeSurface: () => <p data-testid="ambient-home-occupant">Home surface</p>,
-}));
-vi.mock('../../views/SessionsView', () => ({
-  SessionsView: () => (
-    <p data-testid="ambient-activity-occupant">Sessions surface</p>
-  ),
-}));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
 }));
@@ -65,7 +52,7 @@ let projectsForBinding: { slug: string }[] = [
 let projectsConfirmedLoadedForBinding = true;
 
 // A real (non-mocked) `useProjects` needs a QueryClientProvider this
-// host-level chrome test has no reason to also stand up — mocked exactly
+// shell-level chrome test has no reason to also stand up — mocked exactly
 // like `useDockShellChrome.test.ts`'s own project-deletion-cleanup tests,
 // so this file can still exercise that cleanup path deliberately.
 vi.mock('../../contexts/ProjectsContext', () => ({
@@ -75,22 +62,9 @@ vi.mock('../../contexts/ProjectsContext', () => ({
   }),
 }));
 
-const AMBIENT_DOCK_STORAGE_KEY =
-  'station:workspace-pane-host:v2:ambient:chat-dock';
 const DEVICE_SETTINGS_KEY = 'station-device-settings-v1';
 
 beforeEach(() => {
-  Object.defineProperty(globalThis.navigator, 'locks', {
-    configurable: true,
-    value: {
-      request: async (
-        _name: string,
-        _options: unknown,
-        callback: (lock: object | null) => void | Promise<void>,
-      ) => callback({}),
-    },
-  });
-  window.localStorage.removeItem(AMBIENT_DOCK_STORAGE_KEY);
   window.localStorage.removeItem(DEVICE_SETTINGS_KEY);
   window.history.replaceState({}, '', '/?dock=open');
   navigationStore.navigate('/', { dock: 'open', maximize: null });
@@ -100,27 +74,21 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  window.localStorage.removeItem(AMBIENT_DOCK_STORAGE_KEY);
   window.localStorage.removeItem(DEVICE_SETTINGS_KEY);
   window.history.replaceState({}, '', '/');
   navigationStore.navigate('/', { dock: null, maximize: null });
-  delete (globalThis.navigator as { locks?: unknown }).locks;
 });
 
 /**
  * Stands in for `ChatWorkspacePane`'s one relevant read/write of the shell
  * chrome: it displays `shellChrome.activeProjectSlug` (what
- * `ChatDock.tsx`'s `dockProjectSlug` now resolves to) and exposes a button
+ * `ChatDock.tsx`'s `dockProjectSlug` resolves to) and exposes a button
  * that calls `shellChrome.setActiveProjectSlug` (what the project-switcher
- * picker's row now calls, archive#4524's `handleSwitchProject`) — the exact
- * two chrome members this fix added, read through the REAL object the host
+ * picker's row calls, archive#4524's `handleSwitchProject`) — the exact
+ * two chrome members this fix added, read through the REAL object the shell
  * hands down.
  */
-function ChatOccupantStub({
-  shellChrome,
-}: {
-  shellChrome: AmbientDockShellApi;
-}) {
+function ChatOccupantStub({ shellChrome }: { shellChrome: DockShellChrome }) {
   return (
     <div data-testid="ambient-chat-occupant">
       <span data-testid="chat-project-slug">
@@ -142,60 +110,27 @@ function ChatOccupantStub({
   );
 }
 
-function renderHost(
-  onDockActionChange?: (action: WorkspacePaneDockAction | null) => void,
-) {
-  return render(
+function shellTree() {
+  return (
     <KeyboardShortcutsProvider>
       <NavigationProvider>
-        <AmbientChatDockPaneHost
-          renderChatPane={(_instance, _onRequestAuth, shellChrome) => (
-            <ChatOccupantStub shellChrome={shellChrome} />
-          )}
-          onDockActionChange={onDockActionChange}
-        />
+        <DockShell>
+          {(shellChrome) => <ChatOccupantStub shellChrome={shellChrome} />}
+        </DockShell>
       </NavigationProvider>
-    </KeyboardShortcutsProvider>,
+    </KeyboardShortcutsProvider>
   );
 }
 
-async function dockedAction(): Promise<WorkspacePaneDockAction> {
-  return (await dockedHost()).action;
-}
-
-async function dockedHost(): Promise<{
-  action: WorkspacePaneDockAction;
-  rerenderHost: () => void;
-}> {
-  const published: (WorkspacePaneDockAction | null)[] = [];
-  const record = (action: WorkspacePaneDockAction | null) => {
-    published.push(action);
-  };
-  const rendered = renderHost(record);
-  await waitFor(() => {
-    expect(published.some((action) => action !== null)).toBe(true);
-  });
-  const latest = [...published].reverse().find((action) => action !== null);
-  if (!latest) throw new Error('no dock action published');
+function renderShell() {
+  const rendered = render(shellTree());
   return {
-    action: latest,
+    ...rendered,
     // A fresh render of the SAME tree (new element, same component
     // instances): the persistent `DockShell` re-evaluates its `useProjects`
     // read without unmounting, which is exactly what a projects refetch
     // does to it in production.
-    rerenderHost: () =>
-      rendered.rerender(
-        <KeyboardShortcutsProvider>
-          <NavigationProvider>
-            <AmbientChatDockPaneHost
-              renderChatPane={(_instance, _onRequestAuth, shellChrome) => (
-                <ChatOccupantStub shellChrome={shellChrome} />
-              )}
-              onDockActionChange={record}
-            />
-          </NavigationProvider>
-        </KeyboardShortcutsProvider>,
-      ),
+    rerenderShell: () => rendered.rerender(shellTree()),
   };
 }
 
@@ -203,24 +138,17 @@ function boundSlug(): string {
   return screen.getByTestId('chat-project-slug').textContent ?? '';
 }
 
-// #928 C2a: the occupant-switch trigger (station#4525 Phase 1 trigger #1)
-// has no driver left. Chat is the only pane the ambient host admits — Home is
-// a region surface whose only placement is `main` — so the Chat occupant is
-// never unmounted by a switch and remounted by a switch back. The remount
-// path those cases proved the binding across is now unreachable; the full
-// host remount below is the remaining real remount.
-
-describe('the dock project binding survives a full host remount (station#4525 Phase 1 trigger #3: reconnect/session churn)', () => {
-  test('bind alpha, unmount the entire ambient host, remount fresh — binding intact (persisted, not session-derived)', async () => {
-    const first = renderHost();
+describe('the dock project binding survives a full shell remount (station#4525 Phase 1 trigger #3: reconnect/session churn)', () => {
+  test('bind alpha, unmount the entire shell, remount fresh — binding intact (persisted, not session-derived)', async () => {
+    const first = renderShell();
     await waitFor(() => {
       expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
     });
     await act(async () => screen.getByText('Bind alpha').click());
     expect(boundSlug()).toBe('alpha');
 
-    // A full remount of the ambient host is the closest host-level proxy for
-    // a reconnect/session-churn event: every piece of component-local state
+    // A full remount of the shell is the closest shell-level proxy for a
+    // reconnect/session-churn event: every piece of component-local state
     // this fix moved OFF of (activeSessionId, the old session-derived
     // badge) is destroyed and rebuilt from scratch, exactly as it would be
     // by a real reconnect's query invalidation + refetch race
@@ -229,7 +157,7 @@ describe('the dock project binding survives a full host remount (station#4525 Ph
     // that state in the first place — it comes back from the persisted
     // device setting.
     first.unmount();
-    const second = renderHost();
+    const second = renderShell();
     await waitFor(() => {
       expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
     });
@@ -240,7 +168,7 @@ describe('the dock project binding survives a full host remount (station#4525 Ph
 
 describe('only an explicit picker change or project deletion moves the binding (station#4525 acceptance)', () => {
   test('an explicit rebind (the picker path) changes the binding to the newly chosen project', async () => {
-    await dockedAction();
+    renderShell();
     await act(async () => screen.getByText('Bind alpha').click());
     expect(boundSlug()).toBe('alpha');
 
@@ -252,7 +180,7 @@ describe('only an explicit picker change or project deletion moves the binding (
   });
 
   test('the bound project being deleted (a CONFIRMED, successful load without it) clears the binding', async () => {
-    const { rerenderHost } = await dockedHost();
+    const { rerenderShell } = renderShell();
     await act(async () => screen.getByText('Bind alpha').click());
     expect(boundSlug()).toBe('alpha');
 
@@ -265,9 +193,8 @@ describe('only an explicit picker change or project deletion moves the binding (
     projectsConfirmedLoadedForBinding = true;
     // Force a fresh render of the persistent `DockShell` instance (its
     // `useProjects` read is a plain function call, not a subscription, so
-    // it only re-evaluates on render). This used to be a Home occupant
-    // round-trip; #928 C2a left Chat as the only ambient occupant.
-    act(() => rerenderHost());
+    // it only re-evaluates on render).
+    act(() => rerenderShell());
     await waitFor(() => {
       expect(
         boundSlug(),
@@ -278,20 +205,20 @@ describe('only an explicit picker change or project deletion moves the binding (
 
   // archive#4525: the pre-fix guard (`!isLoading`) could not
   // distinguish an errored query from a confirmed-empty one — both settle
-  // with `projects` folded to `[]`. Reproduced at the real-host level, not
+  // with `projects` folded to `[]`. Reproduced at the real-shell level, not
   // just the hook-unit level (`useDockShellChrome.test.ts`), because this
   // is the exact shape a cold boot or a broken-network window produces in
   // production, and this file is what proves the fix against the real
   // remount/render mechanics.
   test('an errored projects query never clears the binding, even though `projects` reads empty', async () => {
-    const { rerenderHost } = await dockedHost();
+    const { rerenderShell } = renderShell();
     await act(async () => screen.getByText('Bind alpha').click());
     expect(boundSlug()).toBe('alpha');
 
     // The error shape: `projects` folded to `[]`, but never confirmed.
     projectsForBinding = [];
     projectsConfirmedLoadedForBinding = false;
-    act(() => rerenderHost());
+    act(() => rerenderShell());
     await act(async () => undefined);
     expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
     expect(

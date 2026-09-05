@@ -113,6 +113,12 @@ type Request =
       limit: number;
       pageBytes: number;
     }
+  | {
+      type: 'locate-proposal';
+      scope: ProjectTaskRoomScope;
+      channelId: string;
+      proposalId: string;
+    }
   | { type: 'close' };
 if (
   !exactObject(workerData, [
@@ -355,6 +361,15 @@ function validRequest(value: unknown): value is Request {
       typeof value.channelId === 'string' &&
       typeof value.policyRevision === 'string' &&
       typeof value.authorizationId === 'string'
+    );
+  if (value.type === 'locate-proposal')
+    return (
+      exactObject(value, ['type', 'scope', 'channelId', 'proposalId']) &&
+      validScope(value.scope) &&
+      typeof value.channelId === 'string' &&
+      typeof value.proposalId === 'string' &&
+      value.proposalId.length > 0 &&
+      value.proposalId.length <= 256
     );
   if (value.type === 'read')
     return (
@@ -1014,6 +1029,41 @@ function historicalReceipt(
     .get(room.channel_id, room.epoch, seq) as Identity | undefined;
   return identity ? exactReceipt(identity, room.channel_id) : undefined;
 }
+/** Locate only; the parent must feed this cursor through the existing full
+ * history read/validation path before any record becomes observable. */
+function locateProposal(
+  request: Extract<Request, { type: 'locate-proposal' }>,
+) {
+  db.exec('BEGIN');
+  try {
+    const room = head(request.scope);
+    if (!room || room.channel_id !== request.channelId)
+      return { kind: 'missing' };
+    const identity = readIdentity(room.channel_id, request.proposalId);
+    if (!identity || identity.seq <= room.retained_anchor_seq)
+      return { kind: 'missing' };
+    const receipt = exactReceipt(identity, room.channel_id);
+    const before =
+      identity.seq > 1 ? historicalReceipt(room, identity.seq - 1) : undefined;
+    if (!receipt || (identity.seq > 1 && !before))
+      return { kind: 'unavailable' };
+    return {
+      kind: 'located',
+      cursor: {
+        schemaVersion: 'station.project-task-room-cursor/v1',
+        ...checkpoint(room),
+        afterSeq: identity.seq - 1,
+        afterEnvelopeDigest: before?.envelopeDigest ?? null,
+        afterCheckpointDigest:
+          before?.checkpoint.checkpointDigest ??
+          sha(`room-genesis:${room.channel_id}`),
+      },
+    };
+  } finally {
+    db.exec('COMMIT');
+  }
+}
+
 function read(request: Extract<Request, { type: 'read' }>) {
   try {
     db.exec('BEGIN');
@@ -1208,9 +1258,11 @@ async function handleRequest(message: unknown) {
         ? await open(message.request, Number(message.id))
         : message.request.type === 'append'
           ? await append(message.request, Number(message.id))
-          : message.request.type === 'read'
-            ? read(message.request)
-            : { kind: 'closed' };
+          : message.request.type === 'locate-proposal'
+            ? locateProposal(message.request)
+            : message.request.type === 'read'
+              ? read(message.request)
+              : { kind: 'closed' };
   } catch {
     result = { kind: 'unavailable' };
   }

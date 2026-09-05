@@ -1,3 +1,4 @@
+import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import { knowledgeVectorNamespace } from './knowledge-storage.js';
 
 export async function searchKnowledgeDocuments({
@@ -37,49 +38,37 @@ export async function searchKnowledgeDocuments({
     return [];
   }
 
-  const [queryVector] = await embeddingProvider.embed([query]);
+  const candidates = namespace
+    ? [namespace]
+    : listNamespaces(projectSlug)
+        .filter((candidate) => candidate.behavior === 'rag')
+        .map((candidate) => candidate.id);
+  const present = await mapWithConcurrency(candidates, 4, async (id) =>
+    vectorDb.namespaceExists(knowledgeVectorNamespace(projectSlug, id)),
+  );
+  const namespaces = candidates.filter((_, index) => present[index]);
+  if (namespaces.length === 0) return [];
 
-  if (namespace) {
-    const vectorNamespace = knowledgeVectorNamespace(projectSlug, namespace);
-    if (!(await vectorDb.namespaceExists(vectorNamespace))) {
-      return [];
-    }
+  const [queryVector] = await embeddingProvider.embed([query]);
+  const pages = await mapWithConcurrency(namespaces, 4, async (id) => {
     const [results, authoritative] = await Promise.all([
-      vectorDb.search(vectorNamespace, queryVector, topK),
-      listAuthoritativeDocuments(projectSlug, namespace),
+      vectorDb.search(
+        knowledgeVectorNamespace(projectSlug, id),
+        queryVector,
+        topK,
+      ),
+      listAuthoritativeDocuments(projectSlug, id),
     ]);
     return results.filter((result) => {
       const hash = authoritative.get(String(result.metadata?.docId ?? ''));
       return typeof hash === 'string' && result.metadata?.contentHash === hash;
     });
-  }
+  });
 
-  const namespaces = listNamespaces(projectSlug).filter(
-    (candidate) => candidate.behavior === 'rag',
-  );
-  const allResults: any[] = [];
-  for (const namespaceConfig of namespaces) {
-    const vectorNamespace = knowledgeVectorNamespace(
-      projectSlug,
-      namespaceConfig.id,
-    );
-    if (!(await vectorDb.namespaceExists(vectorNamespace))) {
-      continue;
-    }
-    const [results, authoritative] = await Promise.all([
-      vectorDb.search(vectorNamespace, queryVector, topK),
-      listAuthoritativeDocuments(projectSlug, namespaceConfig.id),
-    ]);
-    allResults.push(
-      ...results.filter((result) => {
-        const hash = authoritative.get(String(result.metadata?.docId ?? ''));
-        return (
-          typeof hash === 'string' && result.metadata?.contentHash === hash
-        );
-      }),
-    );
-  }
-
-  allResults.sort((left, right) => right.score - left.score);
-  return allResults.slice(0, topK);
+  // Preserve explicit-namespace provider order and stable cross-namespace ties.
+  if (namespace) return pages[0];
+  return pages
+    .flat()
+    .sort((left, right) => right.score - left.score)
+    .slice(0, topK);
 }

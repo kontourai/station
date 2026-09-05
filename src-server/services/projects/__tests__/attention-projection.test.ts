@@ -10,7 +10,7 @@ import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { projectRequestAnswerability } from '../../orchestration/open-requests.js';
 import {
   AttentionProjectionService,
@@ -82,7 +82,10 @@ function makeService(opts: {
   unanswerable?: string[];
   /** archive#1914: the acknowledgement store, and the identity that scopes it. */
   acknowledgementStore?: {
-    get(userId: string, conversationId: string): string | undefined;
+    getMany(
+      userId: string,
+      conversationIds: readonly string[],
+    ): ReadonlyMap<string, string>;
     acknowledge(input: {
       userId: string;
       conversationId: string;
@@ -206,7 +209,7 @@ describe('AttentionProjectionService', () => {
       registry,
     );
     const acknowledgementStore = {
-      get: () => undefined,
+      getMany: () => new Map(),
       acknowledge: () => {},
     };
     const projection = new AttentionProjectionService(
@@ -1647,8 +1650,13 @@ describe('AttentionProjectionService', () => {
       function memoryAckStore() {
         const data = new Map<string, Map<string, string>>();
         return {
-          get(userId: string, conversationId: string) {
-            return data.get(userId)?.get(conversationId);
+          getMany(userId: string, conversationIds: readonly string[]) {
+            return new Map(
+              conversationIds.flatMap((id) => {
+                const version = data.get(userId)?.get(id);
+                return version ? [[id, version] as const] : [];
+              }),
+            );
           },
           acknowledge({
             userId,
@@ -1664,6 +1672,23 @@ describe('AttentionProjectionService', () => {
           },
         };
       }
+
+      test('reads acknowledgement versions once for the whole attention projection', async () => {
+        const store = memoryAckStore();
+        const getMany = vi.spyOn(store, 'getMany');
+        const service = makeService({
+          sessions: ['a', 'b', 'c'].map((threadId) =>
+            baseSession({ threadId, lifecycleState: 'failed' }),
+          ),
+          acknowledgementStore: store,
+        });
+        const result = await service.list();
+        expect(result.items).toHaveLength(3);
+        expect(getMany).toHaveBeenCalledTimes(1);
+        expect(new Set(getMany.mock.calls[0][1])).toEqual(
+          new Set(result.items.map((item) => item.id)),
+        );
+      });
 
       test('acknowledging drops the item from pendingCount but keeps it in items (history, never deleted)', async () => {
         const acknowledgementStore = memoryAckStore();
@@ -2482,8 +2507,13 @@ describe('device pairing requests need attention (#765 D5)', () => {
     const projection = makeService({
       pairingRequests: [pairingRequest()],
       acknowledgementStore: {
-        get: (userId, conversationId) =>
-          acked.get(`${userId}:${conversationId}`),
+        getMany: (userId, ids) =>
+          new Map(
+            ids.flatMap((id) => {
+              const version = acked.get(`${userId}:${id}`);
+              return version ? [[id, version] as const] : [];
+            }),
+          ),
         acknowledge: ({ userId, conversationId, updatedAt }) => {
           acked.set(`${userId}:${conversationId}`, updatedAt);
         },
@@ -2501,5 +2531,73 @@ describe('device pairing requests need attention (#765 D5)', () => {
         acknowledgedAt: expect.any(String),
       }),
     ]);
+  });
+});
+
+describe('exact attention request references', () => {
+  test('permission references capture their exact open event and Session', async () => {
+    const projection = makeService({
+      sessions: [
+        baseSession({
+          threadId: 'exact-session',
+          lifecycleState: 'review_pending',
+        }),
+      ],
+      sessionEvents: {
+        'exact-session': [
+          requestOpened({
+            threadId: 'exact-session',
+            requestId: 'exact-request',
+            eventId: 'exact-event',
+            requestType: 'permission',
+          }),
+        ],
+      },
+    });
+    const item = (await projection.list()).items[0];
+    expect(item).toMatchObject({
+      requestReference: {
+        threadId: 'exact-session',
+        requestId: 'exact-request',
+        requestEventId: 'exact-event',
+      },
+    });
+  });
+  test.each(['input', 'confirmation'])(
+    '%s requests retain the ordinary Session fallback',
+    async (requestType) => {
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'fallback-session',
+            lifecycleState: 'review_pending',
+          }),
+        ],
+        sessionEvents: {
+          'fallback-session': [
+            requestOpened({ threadId: 'fallback-session', requestType }),
+          ],
+        },
+      });
+      expect((await projection.list()).items[0]).not.toHaveProperty(
+        'requestReference',
+      );
+    },
+  );
+  test('a request payload cannot retarget the Session that owns its attention row', async () => {
+    const projection = makeService({
+      sessions: [
+        baseSession({
+          threadId: 'owner-session',
+          lifecycleState: 'review_pending',
+        }),
+      ],
+      sessionEvents: {
+        'owner-session': [requestOpened({ threadId: 'foreign-session' })],
+      },
+    });
+    expect((await projection.list()).items[0]).not.toHaveProperty(
+      'requestReference',
+    );
   });
 });

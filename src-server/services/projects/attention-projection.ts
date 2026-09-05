@@ -39,6 +39,12 @@ import type { NotificationService } from '../notifications/notification-service.
 import type { ConversationAcknowledgementStore } from '../orchestration/conversation-acknowledgement-store.js';
 import { collectOpenRequests } from '../orchestration/open-requests.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
+import { attentionRequestReference } from '../orchestration/request-inspection.js';
+import {
+  MAX_DESCRIPTION_LENGTH,
+  presentOpenRequest,
+  truncateRequestText as truncate,
+} from '../orchestration/request-presentation.js';
 import { DEVICE_PAIRING_NOTIFICATION_SOURCE } from '../ssh/device-pairing-notifications.js';
 
 const ACTIVE_NOTIFICATION_STATUSES = ['delivered', 'pending'];
@@ -113,7 +119,7 @@ export class AttentionProjectionService {
      */
     private readonly acknowledgementStore?: Pick<
       ConversationAcknowledgementStore,
-      'get' | 'acknowledge'
+      'getMany' | 'acknowledge'
     >,
     /**
      * Identity the acknowledgement store scopes by. Defaults to a single
@@ -264,11 +270,16 @@ export class AttentionProjectionService {
       ...gateItems,
       ...pairingItems,
     ];
-    const decorated = this.acknowledgementStore
-      ? undecorated.map((item) =>
-          this.decorateAcknowledgement(item, readAuthority.userId),
-        )
-      : undecorated;
+    const acknowledgements = this.acknowledgementStore?.getMany(
+      readAuthority.userId,
+      undecorated.map((item) => item.id),
+    );
+    const decorated = undecorated.map((item) => {
+      const version = acknowledgements?.get(item.id);
+      return version && version >= item.updatedAt
+        ? { ...item, acknowledgedAt: version }
+        : item;
+    });
     const items = decorated.sort(compareAttentionItems);
     // Acked items stay IN `items` (history, never deleted) but drop out of
     // the actionable count — the whole point of archive#1914's
@@ -276,27 +287,6 @@ export class AttentionProjectionService {
     const pendingCount = items.filter((item) => !item.acknowledgedAt).length;
     attentionProjectionResults.record(items.length);
     return { items, pendingCount };
-  }
-
-  /**
-   * An acknowledgement is an inbox-local dismissal: it removes one current
-   * attention fact from the pending queue without deleting ordinary activity
-   * or pretending to resolve the underlying approval, session, or gate.
-   *
-   * The stored ack is a VERSION (the `updatedAt` that was acknowledged), the
-   * same durable-read-state design `conversation-acknowledgement-store.ts`
-   * already uses: a later re-derivation of the same id with a NEWER
-   * `updatedAt` — a fresh failure on the same thread — no longer matches the
-   * stored version and reads as unacknowledged again, exactly as intended
-   * ("a fresh failure is a real fact worth surfacing").
-   */
-  private decorateAcknowledgement(
-    item: AttentionItem,
-    userId: string,
-  ): AttentionItem {
-    const ackedVersion = this.acknowledgementStore?.get(userId, item.id);
-    if (!ackedVersion || ackedVersion < item.updatedAt) return item;
-    return { ...item, acknowledgedAt: ackedVersion };
   }
 
   /**
@@ -540,7 +530,7 @@ export class AttentionProjectionService {
     // simply `idle`/`closed` short of dead) but that the user has already
     // SEEN and cannot usefully act on further is the other half of the
     // archive#1914 fix, and it is deliberately NOT a suppression: see
-    // `decorateAcknowledgement` below, which drops an ACKNOWLEDGED item out
+    // acknowledgement decoration above, which drops an ACKNOWLEDGED item out
     // of `pendingCount` without ever un-projecting it here.
     //
     // NOT EXACTLY THE OLD PASS'S POPULATION, and the difference is stated
@@ -629,6 +619,10 @@ export class AttentionProjectionService {
       ? presentOpenRequest(openRequest)
       : fallbackLifecyclePresentation(via, session.blockedReason);
 
+    const requestReference =
+      kind === 'review_pending' && openRequest
+        ? attentionRequestReference(openRequest, session.threadId)
+        : undefined;
     return {
       id: `${kind}:${session.threadId}`,
       kind,
@@ -640,6 +634,7 @@ export class AttentionProjectionService {
       sessionId: session.threadId,
       openHref: sessionOpenHref(session),
       source: { threadId: session.threadId },
+      ...(requestReference ? { requestReference } : {}),
     };
   }
 
@@ -706,6 +701,9 @@ export class AttentionProjectionService {
           ...(notification.body ? { body: notification.body } : {}),
         };
 
+    const requestReference = openRequest
+      ? attentionRequestReference(openRequest, stringValue(metadata.threadId))
+      : undefined;
     return {
       id: `approval:${notification.id}`,
       kind: 'approval',
@@ -720,6 +718,7 @@ export class AttentionProjectionService {
         notificationSource: notification.source,
       },
       actions: notification.actions ?? [],
+      ...(requestReference ? { requestReference } : {}),
     };
   }
 
@@ -912,190 +911,12 @@ function fallbackLifecyclePresentation(
 }
 
 /**
- * The evidenced title/body for a `needs_input`/`review_pending` item (and,
- * since the archive#1185 fix round, a live `approval` item — see
- * `AttentionProjectionService.resolveApprovalOpenRequest`), built from the
- * request's own `requestType` — the signal that actually distinguishes "a
- * tool call is waiting" from "the agent asked a question" — rather than the
- * coarser lifecycle flag or the notification's own (pre-scrubbed) copy.
- */
-function presentOpenRequest(request: RequestOpenedEvent): {
-  title: string;
-  body?: string;
-} {
-  const rawTitle = request.title?.trim() || undefined;
-
-  switch (request.requestType) {
-    case 'approval':
-    case 'permission':
-      return presentToolRequest(
-        rawTitle,
-        request.description,
-        summarizeToolPayload(request.payload),
-      );
-    case 'confirmation':
-      return presentAskRequest(
-        'Confirmation needed',
-        rawTitle,
-        request.description,
-      );
-    default:
-      // Contract vocabulary is exactly 'approval' | 'permission' |
-      // 'confirmation' | 'input'; treat anything else the same as 'input'
-      // rather than silently dropping detail for a future requestType.
-      return presentAskRequest(
-        'The agent asked a question',
-        rawTitle,
-        request.description,
-      );
-  }
-}
-
-/**
- * "Tool call awaiting approval: <tool>" — approval/permission requests.
- *
- * `rawTitle` is adapter-supplied display text, not a scrubbed value — for
- * producers whose payload doesn't match `TOOL_NAME_PAYLOAD_FIELDS`/
- * `TOOL_ARGS_PAYLOAD_FIELDS` (e.g. Codex's `item/commandExecution/
- * requestApproval`, whose `title` is the literal shell command),
- * `summarizeToolPayload` returns no toolName/argsSummary and `rawTitle`
- * becomes the only detail available — it can embed secrets (a `curl -H
- * 'Authorization: Bearer ...'` command) or simply be long, so it is bounded
- * the same way `description`/args are, never passed through verbatim.
- */
-function presentToolRequest(
-  rawTitle: string | undefined,
-  description: string | undefined,
-  toolSummary: { toolName?: string; argsSummary?: string } | null,
-): { title: string; body?: string } {
-  const boundedRawTitle = rawTitle
-    ? truncate(rawTitle, MAX_RAW_TITLE_LENGTH)
-    : undefined;
-  const toolName = toolSummary?.toolName ?? boundedRawTitle;
-  const title = toolName
-    ? `Tool call awaiting approval: ${toolName}`
-    : 'Tool call awaiting approval';
-
-  const bodyParts: string[] = [];
-  if (description)
-    bodyParts.push(truncate(description, MAX_DESCRIPTION_LENGTH));
-  if (boundedRawTitle && boundedRawTitle !== toolName)
-    bodyParts.push(boundedRawTitle);
-  if (toolSummary?.argsSummary) bodyParts.push(toolSummary.argsSummary);
-
-  return {
-    title,
-    ...(bodyParts.length ? { body: bodyParts.join(' — ') } : {}),
-  };
-}
-
-/** "<label>: <the request's own ask>" — confirmation/input requests, whose `title` IS the actual ask per the contract. */
-function presentAskRequest(
-  label: string,
-  rawTitle: string | undefined,
-  description: string | undefined,
-): { title: string; body?: string } {
-  const title = rawTitle ? `${label}: ${rawTitle}` : label;
-  return {
-    title,
-    ...(description
-      ? { body: truncate(description, MAX_DESCRIPTION_LENGTH) }
-      : {}),
-  };
-}
-
-const MAX_DESCRIPTION_LENGTH = 400;
-/**
  * Bound on a session's own `displayTitle` when it becomes an attention row's
  * headline (archive#3203). `displayTitle` is already server-normalized and
  * bounded upstream; this is a display bound for a one-line row, not a
  * sanitation claim about the field.
  */
 const MAX_SESSION_TITLE_LENGTH = 120;
-/**
- * Bound on `request.title` when it is reused as display text (a title or a
- * body fragment) — adapter-supplied, not necessarily scrubbed (see
- * `presentToolRequest`'s doc comment).
- */
-const MAX_RAW_TITLE_LENGTH = 200;
-const MAX_ARG_KEYS = 5;
-const MAX_ARGS_SUMMARY_LENGTH = 160;
-/** Bound on each individual arg key name before joining — a key name is attacker/caller-controlled and can itself carry a secret-length string (e.g. `{[secret]: value}`); the joined-and-truncated overall bound alone is not enough, since a single oversized key can still survive inside the first MAX_ARGS_SUMMARY_LENGTH characters. */
-const MAX_ARG_KEY_LENGTH = 24;
-const TOOL_NAME_PAYLOAD_FIELDS = ['toolName', 'tool'] as const;
-const TOOL_ARGS_PAYLOAD_FIELDS = [
-  'toolInput',
-  'toolArgs',
-  'rawInput',
-  'arguments',
-  'args',
-] as const;
-
-/**
- * A bounded, secret-safe summary of a `request.opened` payload's tool
- * name/args (archive#1185, deliver #3) — never the raw arg values, which
- * may be large or carry secrets. Argument values are reduced to a shape
- * summary (field names only, each individually bounded — see
- * `MAX_ARG_KEY_LENGTH` — then hard-truncated as a whole); string/number/
- * boolean args are reduced to just their type. Err small: when in doubt,
- * say less.
- */
-function summarizeToolPayload(
-  payload: Record<string, unknown> | undefined,
-): { toolName?: string; argsSummary?: string } | null {
-  if (!payload) return null;
-  const toolName = firstStringField(payload, TOOL_NAME_PAYLOAD_FIELDS);
-  let argsValue: unknown;
-  for (const key of TOOL_ARGS_PAYLOAD_FIELDS) {
-    if (payload[key] !== undefined) {
-      argsValue = payload[key];
-      break;
-    }
-  }
-  const argsSummary =
-    argsValue !== undefined ? summarizeArgsShape(argsValue) : undefined;
-  if (!toolName && !argsSummary) return null;
-  return {
-    ...(toolName ? { toolName } : {}),
-    ...(argsSummary ? { argsSummary } : {}),
-  };
-}
-
-function firstStringField(
-  record: Record<string, unknown>,
-  keys: readonly string[],
-): string | undefined {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return undefined;
-}
-
-/** Field names only — never values — each individually bounded, then hard-truncated as a whole. */
-function summarizeArgsShape(value: unknown): string {
-  if (Array.isArray(value)) return `args: array(${value.length})`;
-  if (value && typeof value === 'object') {
-    const keys = Object.keys(value as Record<string, unknown>);
-    const shown = keys
-      .slice(0, MAX_ARG_KEYS)
-      .map((key) => truncate(key, MAX_ARG_KEY_LENGTH));
-    const more = keys.length - shown.length;
-    const list = shown.join(', ') + (more > 0 ? `, +${more} more` : '');
-    return truncate(`args: {${list}}`, MAX_ARGS_SUMMARY_LENGTH);
-  }
-  if (typeof value === 'string') return 'args: string';
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return `args: ${typeof value}`;
-  }
-  return 'args: present';
-}
-
-function truncate(text: string, max: number): string {
-  const trimmed = text.trim();
-  if (trimmed.length <= max) return trimmed;
-  return `${trimmed.slice(0, Math.max(0, max - 1))}…`;
-}
 
 /**
  * A Flow gate's console-projected outcome, translated into the inbox's

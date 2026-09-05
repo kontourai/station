@@ -414,8 +414,15 @@ describe('release availability driver', () => {
       'persist-credentials': false,
       'fetch-depth': 257,
     });
+    // Exact and ordered on purpose: this is the seam where a step inserted
+    // between the hardened checkout and the projection could read or write
+    // with the job's own permissions. `Setup pinned pnpm` was added by the
+    // pnpm migration and belongs here -- it runs before `dependencies:ci`,
+    // which needs pnpm on PATH -- but it has to be acknowledged rather than
+    // absorbed, which is why this list is enumerated and not counted.
     expect(job.steps.map((step: any) => step.name ?? step.run)).toEqual([
       undefined,
+      'Setup pinned pnpm',
       undefined,
       'npm run dependencies:ci',
       'Validate public release inventory and GitHub attestations',

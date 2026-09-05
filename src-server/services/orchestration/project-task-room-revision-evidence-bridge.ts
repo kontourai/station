@@ -165,6 +165,29 @@ export class ProjectTaskRoomRevisionEvidenceBridge {
     },
   };
 
+  /** Revalidate a published receipt against both its immutable evidence and
+   * the working revision it actually settled; never infer it from the head. */
+  matchesCommittedRevision(input: {
+    scope: WorkingStateSnapshot['scope'];
+    workingRevision: string;
+    evidenceRevision: string;
+  }): boolean {
+    if (!this.available()) return false;
+    try {
+      const revision = this.#module.revision(
+        input.evidenceRevision as `revision-evidence-v1:${string}`,
+      );
+      return Boolean(
+        revision &&
+          !('state' in revision) &&
+          sameScope(revision.scope, input.scope) &&
+          revision.sharedRevision === input.workingRevision,
+      );
+    } catch {
+      return false;
+    }
+  }
+
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
@@ -198,4 +221,7 @@ export class ProjectTaskRoomRevisionEvidenceBridge {
 export type ProjectTaskRoomRevisionEvidencePort = Pick<
   ProjectTaskRoomRevisionEvidenceBridge,
   'available' | 'recordPublication' | 'links' | 'close'
->;
+> &
+  Partial<
+    Pick<ProjectTaskRoomRevisionEvidenceBridge, 'matchesCommittedRevision'>
+  >;

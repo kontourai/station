@@ -8,16 +8,30 @@ import {
   inspectWorkspacePackage,
   packWorkspace,
   unpackWorkspace,
+  verifyWorkspacePackage,
 } from '@kontourai/station-shared/workspace-package';
+import { runCloudProjectImport } from './cloud-project-import.js';
 import { parseCoreArgs } from './core-api.js';
 
-export function runCloudCommand(args: string[]): void {
-  const { flags, positionals } = parseCoreArgs(args);
+export function runCloudCommand(args: string[]): void | Promise<void> {
+  const parsed = parseCoreArgs(args);
+  const { flags, positionals } = parsed;
   const action = positionals[0];
   const actionOptions: Record<string, string[]> = {
     preview: ['provider', 'region', 'instance-type', 'home', 'json'],
     template: ['provider', 'region', 'instance-type', 'image', 'output'],
     keygen: ['output'],
+    'import-project': [
+      'archive',
+      'key-file',
+      'destination',
+      'target-workspace',
+      'name',
+      'slug',
+      'station',
+      'api-base',
+      'json',
+    ],
     'pack-workspace': [
       'workspace',
       'key-file',
@@ -27,15 +41,23 @@ export function runCloudCommand(args: string[]): void {
     ],
     'inspect-workspace': ['archive', 'key-file', 'json'],
     'unpack-workspace': ['archive', 'key-file', 'destination', 'json'],
+    'verify-workspace': [
+      'archive',
+      'key-file',
+      'workspace',
+      'workspace-paused',
+      'json',
+    ],
   };
   if (positionals.length !== 1 || !Object.hasOwn(actionOptions, action))
     throw new Error(
-      'Usage: station cloud <preview|template|keygen|pack-workspace|inspect-workspace|unpack-workspace> [options]',
+      'Usage: station cloud <preview|template|keygen|pack-workspace|inspect-workspace|unpack-workspace|verify-workspace|import-project> [options]',
     );
   const allowed = new Set(actionOptions[action]);
   for (const flag of Object.keys(flags))
     if (!allowed.has(flag))
       throw new Error(`Unsupported cloud ${action} option: --${flag}`);
+  if (action === 'import-project') return runCloudProjectImport(parsed);
   const required = (key: string) => {
     const value = flags[key];
     if (typeof value !== 'string' || !value.trim())
@@ -59,13 +81,20 @@ export function runCloudCommand(args: string[]): void {
             keyFile,
             sourcePaused: flags['source-paused'] === true,
           })
-        : action === 'inspect-workspace'
-          ? inspectWorkspacePackage({ archive: required('archive'), keyFile })
-          : unpackWorkspace({
+        : action === 'verify-workspace'
+          ? verifyWorkspacePackage({
               archive: required('archive'),
               keyFile,
-              destination: required('destination'),
-            });
+              workspace: required('workspace'),
+              workspacePaused: flags['workspace-paused'] === true,
+            })
+          : action === 'inspect-workspace'
+            ? inspectWorkspacePackage({ archive: required('archive'), keyFile })
+            : unpackWorkspace({
+                archive: required('archive'),
+                keyFile,
+                destination: required('destination'),
+              });
     console.log(JSON.stringify(result, null, 2));
     return;
   }

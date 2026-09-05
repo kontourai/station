@@ -3,6 +3,7 @@ import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin
 import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
 import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { KNOWLEDGE_ROOT_IDENTITY_HEADER } from '@kontourai/station-shared/knowledge-root-identity';
 import { sanitizeError } from '@kontourai/station-shared/redaction';
 import { type HonoServerConfig } from '@voltagent/server-hono';
 import { cors } from 'hono/cors';
@@ -336,7 +337,7 @@ function configureRuntimeSecurity(
         // Last-Event-ID: set by the SDK's fetchSSE reconnect loop and consumed
         // by the orchestration resume cursor — omitting it preflight-blocks
         // every cross-origin SSE reconnect (#169).
-        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}${
+        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}${
           process.env.STATION_PERFORMANCE_REFERENCE === '1'
             ? `, ${INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER}`
             : ''

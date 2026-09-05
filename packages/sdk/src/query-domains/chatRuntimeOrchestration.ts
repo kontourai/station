@@ -764,6 +764,7 @@ export async function transitionOrchestrationSessionState(input: {
 export async function resolveOrchestrationRequest(input: {
   threadId: string;
   requestId: string;
+  expectedRequestEventId?: string;
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
   apiBase?: string;
 }): Promise<void> {
@@ -772,6 +773,9 @@ export async function resolveOrchestrationRequest(input: {
       type: 'respondToRequest',
       threadId: input.threadId,
       requestId: input.requestId,
+      ...(input.expectedRequestEventId
+        ? { expectedRequestEventId: input.expectedRequestEventId }
+        : {}),
       decision: input.decision,
     },
     input.apiBase,
