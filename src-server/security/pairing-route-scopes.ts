@@ -2058,6 +2058,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
     {
       method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/requests/:requestId',
+    },
+    {
+      method: 'GET',
       path: '/api/orchestration/sessions/:threadId/builder-run',
     },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/event-page' },

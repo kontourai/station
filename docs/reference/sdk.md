@@ -1775,3 +1775,33 @@ superseded host binding from being attributed to the current native connection.
 It is intentionally separate from `requestAuthority`: a valid authenticated
 recovery may advance credential generation while its host binding remains live.
 Ordinary unscoped SDK calls do not gain a host binding requirement.
+
+
+### Exact attention request inspection
+
+`useAttentionRequestInspection(reference, requestScope)` reauthorizes the exact
+Session/request/opened-event tuple on every mount. Its query key includes the
+host-captured authority; cached data is withheld until the fresh read finishes.
+The imperative `inspectAttentionRequest` is also exported from the React-free
+client entry. Neither API chooses a replacement request automatically.
+
+```ts
+import { inspectAttentionRequest, respondToRequest } from '@kontourai/station-sdk/client';
+
+const inspection = await inspectAttentionRequest(requestScope.apiBase, reference, {
+  requestScope, signal,
+});
+// Only after an explicit user decision on an open, answerable inspection:
+await respondToRequest(requestScope.apiBase, {
+  threadId: reference.threadId,
+  requestId: reference.requestId,
+  expectedRequestEventId: reference.requestEventId,
+  decision,
+}, { requestScope });
+```
+
+The host captures `requestScope`; do not reconstruct it from a URL or title.
+Response commands preserve their existing receipts. An event mismatch or lost
+request authority is a refusal to act, requiring fresh inspection rather than a
+blind mutation retry. Requests without canonical approval/permission evidence
+keep their ordinary Session or notification fallback.

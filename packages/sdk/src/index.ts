@@ -1131,6 +1131,13 @@ export {
   taskQueries,
 } from './queryFactories';
 export {
+  type AttentionRequestInspection,
+  type AttentionRequestReference,
+  attentionRequestQueryKey,
+  inspectAttentionRequest,
+  useAttentionRequestInspection,
+} from './request-inspection';
+export {
   claimSessionEventWindowCapabilityRecovery,
   fetchSessionEventWindowCapability,
   invalidateSessionEventWindowCapabilityCache,

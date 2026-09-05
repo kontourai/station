@@ -321,3 +321,49 @@ curl -sS -X POST "${BASE}/api/orchestration/commands" \
     \"decision\": \"accept\"
   }"
 ```
+
+
+## Inspect an exact attention request
+
+Request-backed approval and permission items in `/api/attention` may carry
+`requestReference: { threadId, requestId, requestEventId }`. Preserve that exact
+reference when opening an inspector:
+
+```text
+GET /api/orchestration/sessions/:threadId/requests/:requestId?eventId=:requestEventId
+```
+
+This protected read returns `open`, `changed`, `resolved`, or `unavailable`.
+Only `open` includes bounded, redacted presentation, engine identity, current
+answerability, and `canRespond`. The route rechecks request-principal and Session
+read authority and uses private/no-store caching. It reads the indexed current
+request event and canonical lifecycle facts instead of replaying Session history.
+An oversized or inconsistent stored request is unavailable, not partially trusted.
+
+After an explicit decision, use the existing response command and include the
+inspected event identity:
+
+```json
+{
+  "type": "respondToRequest",
+  "threadId": "session-id",
+  "requestId": "request-id",
+  "expectedRequestEventId": "opened-event-id",
+  "decision": "accept"
+}
+```
+
+`expectedRequestEventId` is optional for existing clients. Exact inspectors always
+send it. The server rechecks it after adapter resolution, immediately before the
+response effect. A replaced or reopened request returns HTTP 409 with
+`request_event_changed`; an unverifiable request or lost authority returns 409
+with `request_verification_unavailable`. Both retain a rejected command receipt
+and cause no adapter response. The comparison identity is not an authorization
+grant. Freeform input and lifecycle-only attention retain their existing surfaces.
+
+An event comparison prevents answering a replaced request; it is not an
+idempotency key for provider effects. A transport failure after dispatch can leave
+the decision outcome uncertain. The inspector never retries a decision
+automatically and keeps its action latch until an explicit fresh inspection
+succeeds. If the same request remains open, a user can decide again; whether that
+repeated provider call is deduplicated remains the adapter's responsibility.

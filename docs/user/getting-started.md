@@ -195,3 +195,18 @@ directory for manual review.
 - Read [Station concepts](concepts.md).
 - Customize [keyboard shortcuts](../guides/keyboard-shortcuts.md).
 - Review the [Station privacy policy](https://kontourai.io/privacy/station/).
+
+
+## Return to a decision
+
+Open Notifications to find work that needs your attention. When an approval or
+permission has recorded request evidence, **Inspect request** opens its current
+details. Choose **Approve once** or **Deny** only after reviewing the request.
+You can expand **Request identity** for its exact record or open the Session for
+more context.
+
+A resolved or changed request must be inspected again from refreshed attention.
+A request that cannot currently be answered remains visible without decision
+buttons. If the decision cannot be confirmed, **Check request again** refreshes
+its state before another attempt. Other notifications retain their existing
+Session and action controls.
