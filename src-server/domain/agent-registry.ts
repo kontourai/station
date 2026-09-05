@@ -9,7 +9,10 @@ import {
 } from 'node:fs';
 import { chmod, open, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import {
+  type AgentSpec,
+  BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
+} from '@kontourai/station-contracts/agent';
 import {
   type AgentId,
   agentId,
@@ -828,6 +831,29 @@ export function withoutReservedStationBinding<
   return healed;
 }
 
+function withReservedStationCapabilities(spec: AgentSpec): AgentSpec {
+  const authored = spec.tools?.mcpServers ?? [];
+  const builtins = new Set<string>(BUILTIN_STATION_AGENT_MCP_SERVER_IDS);
+  const mcpServers = [
+    ...BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
+    ...authored.filter((id) => !builtins.has(id)),
+  ];
+  if (
+    spec.tools &&
+    mcpServers.length === authored.length &&
+    mcpServers.every((id, index) => id === authored[index])
+  ) {
+    return spec;
+  }
+  return {
+    ...spec,
+    tools: {
+      ...spec.tools,
+      mcpServers,
+    },
+  };
+}
+
 export async function materializeStationAgent(
   configLoader: Pick<
     ConfigLoader,
@@ -839,6 +865,9 @@ export async function materializeStationAgent(
       slug: STATION_AGENT_ID,
       name: 'Station',
       prompt: '',
+      tools: {
+        mcpServers: [...BUILTIN_STATION_AGENT_MCP_SERVER_IDS],
+      },
       provenance: {
         origin: 'engine-detection',
         engineId: STATION_AGENT_ID,
@@ -854,7 +883,9 @@ export async function materializeStationAgent(
       // function the read boundary applies, so a healed file and an unhealed
       // one are read identically. `null` declines the write outright, which is
       // what keeps a per-boot heal from being a self-write→watcher loop.
-      const healed = withoutReservedStationBinding(current);
+      const healed = withReservedStationCapabilities(
+        withoutReservedStationBinding(current),
+      );
       return healed === current ? null : healed;
     },
   );

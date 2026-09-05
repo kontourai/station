@@ -10,6 +10,10 @@ import { createRequire } from 'node:module';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  prepareDependencyInstallDrivers,
+  withDependencyInstallGuard,
+} from './lib/dependency-install-retirement.mjs';
+import {
   assertNodePtyPrebuildConsistency,
   confinedPackageTarget,
   degradableLifecycleCapability,
@@ -111,7 +115,11 @@ export function inertInstallTimeout(
   return platform === 'win32' ? 1_200_000 : 600_000;
 }
 
-function npmCommand(args, cwd = root) {
+function npmCommand(
+  args,
+  cwd = root,
+  drivers = { nodePath: process.execPath, npmCliPath: resolveNpmCli() },
+) {
   // A cold workspace install can legitimately exceed the short lifecycle-hook
   // bound, and the default here is not a claim about the slowest supported
   // machine: a cold 1552-package install measured 11 minutes on an ARM64
@@ -119,7 +127,7 @@ function npmCommand(args, cwd = root) {
   // deadline stays finite so a wedged install still fails, and
   // STATION_DEPENDENCY_INSTALL_TIMEOUT_MS raises it for a host that is merely
   // slow rather than stuck. Lifecycle hooks stay at 2 minutes.
-  command(process.execPath, [resolveNpmCli(), ...args], {
+  command(drivers.nodePath, [drivers.npmCliPath, ...args], {
     cwd,
     timeout: inertInstallTimeout(),
   });
@@ -361,11 +369,6 @@ function stationOwnedHooks() {
     );
 }
 
-function inertInstall(developer) {
-  const verb = developer ? 'install' : 'ci';
-  npmCommand([verb, '--ignore-scripts']);
-}
-
 /**
  * #1245: stage the pinned, attested node-pty Linux prebuild (when this
  * checkout ships one for this platform/arch) into the installed package
@@ -386,16 +389,49 @@ export function stageLifecyclePrebuilds(allowlist, { cwd = root } = {}) {
   }
 }
 
-export function install({ developer = false } = {}) {
+/** The injected execution is a test seam for this exact production phase order. */
+export function install(
+  { developer = false } = {},
+  execution = {
+    root,
+    nodePath: process.execPath,
+    resolveNpmCli,
+    command,
+    check,
+    npmCommand,
+    stageLifecyclePrebuilds,
+    runApprovedHooks,
+    stationOwnedHooks,
+    verify,
+  },
+) {
   // Node is a trust boundary for every following command. Check it before npm.
-  command(process.execPath, ['scripts/node-runtime-contract.mjs']);
-  const allowlist = check();
-  inertInstall(developer);
-  check();
-  stageLifecyclePrebuilds(allowlist);
-  runApprovedHooks(allowlist);
-  stationOwnedHooks();
-  return verify();
+  const drivers = prepareDependencyInstallDrivers({
+    root: execution.root,
+    nodePath: execution.nodePath,
+    npmCliPath: execution.resolveNpmCli(),
+    clean: !developer,
+  });
+  execution.command(drivers.nodePath, ['scripts/node-runtime-contract.mjs'], {
+    cwd: execution.root,
+  });
+  const allowlist = execution.check({ cwd: execution.root });
+  return withDependencyInstallGuard({
+    root: execution.root,
+    clean: !developer,
+    run: () => {
+      execution.npmCommand(
+        [developer ? 'install' : 'ci', '--ignore-scripts'],
+        execution.root,
+        drivers,
+      );
+      execution.check({ cwd: execution.root });
+      execution.stageLifecyclePrebuilds(allowlist, { cwd: execution.root });
+      execution.runApprovedHooks(allowlist, { cwd: execution.root });
+      execution.stationOwnedHooks();
+      return execution.verify({ cwd: execution.root });
+    },
+  });
 }
 
 export function propose({ cwd = root } = {}) {

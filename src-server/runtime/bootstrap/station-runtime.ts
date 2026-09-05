@@ -2757,6 +2757,11 @@ export class StationRuntime {
           acpBridge: this.acpBridge,
           resolveBuiltinEngineBinding: (appConfig) =>
             this.resolveBuiltinEngineBinding(appConfig),
+          // ACP connections finish their first capability handshake in the
+          // background. Re-resolve the reserved Station role once that live
+          // evidence exists so a persisted OpenCode/Kiro choice does not stay
+          // failed-safe on Station's native engine until another config write.
+          onACPConnectionsReady: () => this.reloadDefaultAgent(),
           orchestrationEventStore: this.orchestrationEventStore,
           credentialProfileRecoveryAdapter:
             this.connectionService.createCredentialProfileRecoveryAdapter(

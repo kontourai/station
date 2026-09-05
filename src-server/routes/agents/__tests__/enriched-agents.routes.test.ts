@@ -202,6 +202,20 @@ describe('registry-backed enriched Agent routes', () => {
     ]);
   });
 
+  test('keeps delegated-child denial details on Agent detail, not every catalog row', async () => {
+    const { app } = setup();
+
+    const list = await json(await app.request('/'));
+    expect(list.success).toBe(true);
+    expect(list.data.length).toBeGreaterThan(0);
+    for (const agent of list.data) {
+      expect(agent).not.toHaveProperty('deniedCommandCatalog');
+    }
+
+    const detail = await json(await app.request('/writer'));
+    expect(detail.data.deniedCommandCatalog.builtIn.length).toBeGreaterThan(0);
+  });
+
   test('retries past a transient runtime-generation change and serves a stable catalog', async () => {
     // Attempt 1 straddles a revision bump (7 → 8); attempt 2 reads under a
     // stable 8. The route must resolve this itself instead of telling the

@@ -601,6 +601,14 @@ Agents never live in the hub. The new-chat picker groups by engine (today's
 "External" + per-ACP-connection groups converge), with default agents appearing as
 ordinary members of their engine's group; Recent stays first.
 
+First run asks two separate questions through shared production seams: which
+detected engines should receive ordinary default Agent wrappers, and which
+control-plane-capable engine should execute the reserved Station role. The
+latter reuses the same `EnginePicker` and
+`resolveBuiltinAgentEngineBinding` used by Settings and bootstrap. When no
+capable engine or Station-native Model connection is ready, onboarding routes
+to Connections rather than completing over a decorative Station role.
+
 ## 9. Slice map
 
 | # | Slice | Contents | Depends on |

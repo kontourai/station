@@ -114,6 +114,7 @@ import {
 } from '../turn-completion-notifications.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
+  agentCapabilityUndelivered: { add: vi.fn() },
   attachedSessionMutationRejected: { add: vi.fn() },
   adapterReadiness: { add: vi.fn() },
   adapterSessionStartDuration: { record: vi.fn() },
