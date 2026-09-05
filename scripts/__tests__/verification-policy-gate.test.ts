@@ -80,8 +80,17 @@ function completeVitestGroups() {
 describe('verification policy gate', () => {
   test('keeps public heavy lanes coordinated and guidance progressive', () => {
     expect(verificationPolicyErrors()).toEqual([]);
-    expect(packageJson.scripts['verification:policy:gate']).toBe(
-      'node scripts/verification-policy-gate.mjs && node scripts/product-law-gate.mjs && npm run test:fixtures:guard',
+    // Required wiring, not an exact spelling of the entire command chain:
+    // additional guards and whitespace changes must not break this contract.
+    const commands = packageJson.scripts['verification:policy:gate']
+      .split('&&')
+      .map((command: string) => command.trim().replace(/\s+/g, ' '));
+    expect(commands).toEqual(
+      expect.arrayContaining([
+        'node scripts/verification-policy-gate.mjs',
+        'node scripts/product-law-gate.mjs',
+        'npm run test:fixtures:guard',
+      ]),
     );
     expect(PREPUSH_TEST_FILES).toContain(
       'scripts/__tests__/verification-policy-gate.test.ts',
