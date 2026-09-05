@@ -107,6 +107,10 @@ function ToolbarMenu({
     <>
       <button
         type="button"
+        // A pointer convenience, not a tab stop: it sits immediately before the
+        // menu in document order, so as a tab stop Shift+Tab off the first row
+        // landed on it and `useMenuFocus`'s focusout closed the menu.
+        tabIndex={-1}
         className="header-menu__dismiss-backdrop"
         aria-label={dismissLabel}
         style={{

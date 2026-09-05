@@ -74,6 +74,69 @@ export function useMenuFocus<T extends HTMLElement>(
     // an empty ref and never run again when the menu actually opened.
   }, [isOpen, containerRef]);
 
+  /**
+   * Roving focus. A `role="menu"` is a single tab stop whose items are reached
+   * with the arrow keys — a menu whose only navigation is Tab is not a menu,
+   * it is a list of buttons wearing the role. Home/End because a seven-row menu
+   * is exactly where "back to the top" is worth a key.
+   *
+   * Lives here rather than in a consumer so every portalled menu behaves the
+   * same way, which is the reason this hook exists at all. Two guards keep it
+   * from stealing keys it has no business owning: a text field inside a menu
+   * (the command palette's shape) uses arrows for the caret, and a key that
+   * arrives while the menu has no focusable item is nobody's business.
+   */
+  useEffect(() => {
+    if (!isOpen) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key !== 'ArrowDown' &&
+        event.key !== 'ArrowUp' &&
+        event.key !== 'Home' &&
+        event.key !== 'End'
+      )
+        return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          /^(input|textarea|select)$/i.test(target.tagName))
+      )
+        return;
+      const items = [...container.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      if (items.length === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const current = items.indexOf(
+        document.activeElement as unknown as HTMLElement,
+      );
+      const next =
+        event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? items.length - 1
+            : current < 0
+              ? // Nothing inside the menu holds focus yet (the container does):
+                // Down enters at the top, Up enters at the bottom.
+                event.key === 'ArrowDown'
+                ? 0
+                : items.length - 1
+              : // Wraps, which is what a menu does: the last row's Down is the
+                // first row, not a dead key.
+                (current +
+                  (event.key === 'ArrowDown' ? 1 : -1) +
+                  items.length) %
+                items.length;
+      items[next]?.focus();
+    };
+
+    container.addEventListener('keydown', onKeyDown);
+    return () => container.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, containerRef]);
+
   // Dismiss when focus leaves. `tabIndex={-1}` makes the container focusable
   // programmatically but does not put it in tab order, and the portal sits at
   // the end of the document — so without this, Tab walks out of an open menu

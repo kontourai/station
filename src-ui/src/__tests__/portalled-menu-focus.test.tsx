@@ -116,6 +116,79 @@ describe('portalled header menus stay reachable from the keyboard', () => {
   });
 });
 
+/**
+ * M4: a `role="menu"` is ONE tab stop whose items are reached with the arrow
+ * keys. Before this, `useMenuFocus` only moved focus in on open and back out on
+ * close, so an open menu's rows were reachable exclusively by Tab — which is
+ * also what walks OUT of the menu and, via the focusout dismissal, closes it.
+ * A list of buttons wearing the role is not a menu.
+ *
+ * Driven through a real portalled menu rather than a bare hook harness, because
+ * the behaviour under test is the one a keyboard user gets from these menus.
+ */
+describe('portalled header menus are navigable with the arrow keys', () => {
+  function rows(): HTMLElement[] {
+    const menu = screen
+      .getByLabelText('Connections')
+      .closest('.app-toolbar__overflow-menu') as HTMLElement;
+    return [...menu.querySelectorAll<HTMLElement>('button')];
+  }
+
+  test('Down and Up walk the rows and wrap at both ends', () => {
+    render(<Harness isOpen />);
+    const items = rows();
+    expect(items.length).toBeGreaterThan(2);
+    const menu = items[0]!.closest(
+      '.app-toolbar__overflow-menu',
+    ) as HTMLElement;
+
+    // Opening already focused the first row.
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(items[0]);
+    // The first row's Up is the last row, not a dead key.
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(items[items.length - 1]);
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(items[0]);
+  });
+
+  test('Home and End jump to the ends', () => {
+    render(<Harness isOpen />);
+    const items = rows();
+    const menu = items[0]!.closest(
+      '.app-toolbar__overflow-menu',
+    ) as HTMLElement;
+
+    fireEvent.keyDown(menu, { key: 'End' });
+    expect(document.activeElement).toBe(items[items.length - 1]);
+    fireEvent.keyDown(menu, { key: 'Home' });
+    expect(document.activeElement).toBe(items[0]);
+  });
+
+  test('an arrow key inside a text field is the caret’s, not the menu’s', () => {
+    // The shape this guard exists for: a menu that hosts a filter input. The
+    // hook must not swallow the keys that move the caret.
+    function InputMenu() {
+      const ref = useMenuFocus<HTMLDivElement>(true);
+      return (
+        <div ref={ref} role="menu" tabIndex={-1}>
+          <input data-testid="filter" />
+          <button type="button">Row</button>
+        </div>
+      );
+    }
+    render(<InputMenu />);
+    const input = screen.getByTestId('filter');
+    input.focus();
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(input);
+  });
+});
+
 describe('portalled header menu click-away controls', () => {
   test('shows native tray reveal only on desktop hosts', () => {
     isDesktop = true;

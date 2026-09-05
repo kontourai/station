@@ -306,6 +306,29 @@ describe('RegionToolbarControls', () => {
    * placements, an occupied region's Hide plus its swap). A dropped command
    * reds this; so does a relabel.
    */
+  test('the grouped rows are navigable with the arrow keys, and the backdrop is not a tab stop', () => {
+    render(<RegionToolbarControls />);
+    const { menu } = openLayoutMenu();
+    const items = [...menu.querySelectorAll<HTMLElement>('button')];
+    expect(items.length).toBeGreaterThan(3);
+
+    // Roving focus crosses the group boundaries — the groups name the rows,
+    // they do not partition the keyboard.
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(menu, { key: 'End' });
+    expect(document.activeElement).toBe(items[items.length - 1]);
+    fireEvent.keyDown(menu, { key: 'Home' });
+    expect(document.activeElement).toBe(items[0]);
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Close layout menu' })
+        .getAttribute('tabindex'),
+    ).toBe('-1');
+  });
+
   test('the menu carries every command the five buttons exposed, grouped by region', () => {
     render(<RegionToolbarControls />);
     const { menu } = openLayoutMenu();

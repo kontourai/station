@@ -1711,11 +1711,34 @@ button:hover {
 /* The menu is `position: fixed` from the trigger's own rect (the header sits at
    the top of a bottom dock, the top of a side dock, and in a 40px collapsed
    bar, so no single direction is on screen in all three), which means the
-   family's `bottom`/`left` anchoring must not also apply. */
+   family's `bottom`/`left` anchoring must not also apply.
+
+   And it PORTALS TO THE BODY, which is what makes the family's
+   `--layer-popover` (1000) wrong here rather than merely redundant: it is no
+   longer a descendant of `.chat-dock`, which is fixed at `--layer-dock`
+   (9200), so on an expanded, maximized or side dock the menu opens down into
+   the dock's own band and paints underneath it — nothing appears, and the rows
+   hit-test to the dock. Exactly station#3766's shape (see
+   `.app-toolbar__overflow-menu` in components/chat/chat.css, which records the
+   same lesson for the header's overflow menu), so the same remedy:
+   `--layer-navigation`, the token for chrome that must beat the dock and
+   passive notices while still yielding to a dialog.
+
+   The backdrop is derived from the SAME token, one step below, so raising one
+   can never strand the other: it has to beat the dock to catch outside clicks
+   and stay under its own menu or it swallows the menu's own rows. Both live
+   here rather than half in `ChatDockHeaderMoreMenu.tsx`'s inline styles for
+   that reason. */
 .chat-dock__more-menu {
   bottom: auto;
   left: auto;
-  z-index: var(--layer-popover);
+  z-index: var(--layer-navigation);
+}
+
+.chat-dock__more-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--layer-navigation) - 1);
 }
 
 .dock-placement-target {

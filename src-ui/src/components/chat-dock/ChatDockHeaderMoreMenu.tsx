@@ -123,15 +123,17 @@ export function ChatDockHeaderMoreMenu({
       {open
         ? createPortal(
             <>
+              {/* Geometry and layer live in `index.css` beside the menu's own
+                  rule, derived from one token — see `.chat-dock__more-backdrop`.
+                  `tabIndex={-1}`: it is a pointer convenience, and as a tab
+                  stop it sat immediately before the menu in document order, so
+                  Shift+Tab off the first row landed on it and `useMenuFocus`'s
+                  focusout closed the menu. */}
               <button
                 type="button"
-                className="header-menu__dismiss-backdrop"
+                tabIndex={-1}
+                className="header-menu__dismiss-backdrop chat-dock__more-backdrop"
                 aria-label="Close more dock actions"
-                style={{
-                  position: 'fixed',
-                  inset: 0,
-                  zIndex: 'calc(var(--layer-popover) - 1)',
-                }}
                 onClick={() => setOpen(false)}
               />
               <div

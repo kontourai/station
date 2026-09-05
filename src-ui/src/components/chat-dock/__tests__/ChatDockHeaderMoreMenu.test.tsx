@@ -178,6 +178,47 @@ describe('ChatDockHeaderMoreMenu', () => {
     ).toContain('dock-placement-menu__item');
   });
 
+  /**
+   * M4: the backdrop sits immediately before the menu in document order, so as
+   * a tab stop it was where Shift+Tab off the first row landed — and
+   * `useMenuFocus` dismisses on focusout, so the menu closed instead of the
+   * user walking back out of it. A pointer convenience is not a tab stop.
+   */
+  test('the dismiss backdrop is not a tab stop', () => {
+    render(<ChatDockHeaderMoreMenu actions={[COMMAND]} />);
+    fireEvent.click(screen.getByLabelText('More dock actions'));
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Close more dock actions' })
+        .getAttribute('tabindex'),
+    ).toBe('-1');
+  });
+
+  test('the rows are navigable with the arrow keys', () => {
+    render(
+      <ChatDockHeaderMoreMenu
+        actions={[
+          COMMAND,
+          { key: 'b', label: 'Background tasks', onSelect: vi.fn() },
+          { key: 'c', label: 'Copy thread ID', onSelect: vi.fn() },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText('More dock actions'));
+    const menu = screen.getByRole('menu', { name: 'More dock actions' });
+    const items = [...menu.querySelectorAll<HTMLElement>('button')];
+    expect(items).toHaveLength(3);
+
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(menu, { key: 'End' });
+    expect(document.activeElement).toBe(items[2]);
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(items[0]);
+  });
+
   test('a pointerdown on the backdrop does not dismiss before the click lands', () => {
     render(<ChatDockHeaderMoreMenu actions={[COMMAND]} />);
     fireEvent.click(screen.getByLabelText('More dock actions'));
