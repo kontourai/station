@@ -1412,6 +1412,30 @@ export async function synchronizePluginAgentDefinitions(options: {
       options.pluginName,
       options.manifest,
     );
+  // Validate every selected source before deleting any prior Agent. Legacy
+  // manifests omitted source or used agent.json relative to agents/<slug>;
+  // namespaced declarations carry explicit package-relative ./ paths.
+  const sources = new Map<string, { directory: string; manifest: string }>();
+  for (const agent of options.manifest.agents ?? []) {
+    assertPluginNameSegment(agent.slug);
+    if (options.include && !options.include(agentId(agent.slug))) continue;
+    const source =
+      !agent.source || agent.source === 'agent.json'
+        ? join(options.pluginDir, 'agents', agent.slug)
+        : resolve(options.pluginDir, agent.source);
+    assertPathInside(options.pluginDir, source, 'Plugin agent source');
+    if (!existsSync(source))
+      throw new Error(`Declared Agent '${agent.slug}' source is missing`);
+    const sourceStatus = lstatSync(source);
+    const directory = sourceStatus.isDirectory() ? source : dirname(source);
+    const manifest = sourceStatus.isDirectory()
+      ? join(source, 'agent.json')
+      : source;
+    assertNoSymlinkTree(options.pluginDir, directory, 'Plugin agent source');
+    if (!lstatSync(manifest).isFile())
+      throw new Error('Plugin agent source manifest must be a regular file');
+    sources.set(agent.slug, { directory, manifest });
+  }
   if (options.previousManifest) {
     await removePluginAgentDefinitions(
       options.agentsDir,
@@ -1427,12 +1451,13 @@ export async function synchronizePluginAgentDefinitions(options: {
     assertPluginNameSegment(agent.slug);
     const slug = agentId(agent.slug);
     if (options.include && !options.include(slug)) continue;
-    const sourceDir = join(options.pluginDir, 'agents', agent.slug);
+    const source = sources.get(agent.slug)!;
+    const sourceDir = source.directory;
     const targetDir = join(options.agentsDir, slug);
     assertPathInside(options.agentsDir, targetDir, 'Plugin agent target');
     if (existsSync(sourceDir)) {
       assertNoSymlinkTree(options.pluginDir, sourceDir, 'Plugin agent source');
-      const agentManifestPath = join(sourceDir, 'agent.json');
+      const agentManifestPath = source.manifest;
       const agentManifestStatus = lstatSync(agentManifestPath);
       if (!agentManifestStatus.isFile()) {
         throw new Error('Plugin agent source manifest must be a regular file');
@@ -1450,6 +1475,8 @@ export async function synchronizePluginAgentDefinitions(options: {
           );
         }
         cpSync(sourceDir, targetDir, { recursive: true });
+        if (basename(source.manifest) !== 'agent.json')
+          cpSync(source.manifest, join(targetDir, 'agent.json'));
         writeFileSync(
           join(targetDir, PLUGIN_AGENT_OWNER_FILE),
           JSON.stringify({ plugin: options.pluginName }, null, 2),
