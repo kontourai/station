@@ -1,4 +1,4 @@
-import { createHash, generateKeyPairSync, randomUUID } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
@@ -19,6 +19,14 @@ import { afterEach, expect, test } from 'vitest';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
 import { EventStore } from '../../orchestration/event-store.js';
+import {
+  registryAcquisitionRefusalDetails,
+  verifyRegistryAcquisition,
+} from '../registry-acquisition.js';
+import {
+  type RegistryPackageClaim,
+  registryPackageSignaturePayload,
+} from '../registry-supply-chain.js';
 import {
   createLocalRegistryTrustPolicyAuthority,
   registryTrustPolicyIdentity,
@@ -303,4 +311,143 @@ test('private key material is refused before app configuration is persisted', as
   expect(
     readFileSync(join(home, 'config', 'app.json'), 'utf8').includes(privatePem),
   ).toBe(false);
+});
+
+test('exact claim continuity includes configured signing principal, actual SPKI and applied policy epoch', async () => {
+  const directory = root(),
+    home = join(directory, 'home');
+  mkdirSync(home);
+  await ensureStationHomeSchema(home);
+  const loader = new ConfigLoader({ projectHomeDir: home });
+  const firstKey = generateKeyPairSync('ed25519'),
+    secondKey = generateKeyPairSync('ed25519');
+  const publicPem = (pair: typeof firstKey) =>
+    pair.publicKey.export({ type: 'spki', format: 'pem' }).toString();
+  const configuration: RegistryTrustConfiguration = {
+    profiles: [
+      {
+        registryKey: 'registry:public',
+        signatures: 'optional',
+        trustedEd25519Keys: {
+          first: publicPem(firstKey),
+          second: publicPem(secondKey),
+        },
+      },
+    ],
+  };
+  await loader.mutateAppConfig(() => ({ registryTrust: configuration }));
+  const authority = createLocalRegistryTrustPolicyAuthority(
+    home,
+    store(
+      join(directory, 'events.sqlite'),
+    ).createRegistryTrustPolicyDecisions(),
+  );
+  await authority.publishApplied(
+    await authority.captureApplication(),
+    configuration,
+  );
+  const admission = await authority.captureAdmission();
+  const source =
+    'https://example.invalid/package?token=fixture-not-to-disclose';
+  const observedSourceDigest = `sha256:${createHash('sha256').update('observed source bytes').digest('hex')}`;
+  const plain: RegistryPackageClaim = {
+    packageSchema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+    registryId: 'claim-fixture',
+    registryKey: 'registry:public',
+    pluginName: 'claim-fixture',
+    packageVersion: '1.0.0',
+    source,
+    packageDigest: observedSourceDigest,
+  };
+  const signed = (
+    keyId: string,
+    pair: typeof firstKey,
+  ): RegistryPackageClaim => ({
+    ...plain,
+    signature: {
+      algorithm: 'ed25519',
+      keyId,
+      value: sign(
+        null,
+        registryPackageSignaturePayload(plain),
+        pair.privateKey,
+      ).toString('base64'),
+    },
+  });
+  const input = {
+    admission,
+    registryId: plain.registryId,
+    registryKey: plain.registryKey,
+    fresh: true,
+    source,
+    pluginName: plain.pluginName,
+    packageVersion: plain.packageVersion,
+    observedSourceDigest,
+  };
+  const receipt = await verifyRegistryAcquisition({
+    ...input,
+    claim: signed('first', firstKey),
+  });
+  expect(receipt?.signer?.spkiFingerprint).toBe(
+    `sha256:${createHash('sha256')
+      .update(firstKey.publicKey.export({ type: 'spki', format: 'der' }))
+      .digest('hex')}`,
+  );
+  expect(JSON.stringify(receipt)).not.toContain('fixture-not-to-disclose');
+  await expect(
+    verifyRegistryAcquisition({
+      ...input,
+      claim: signed('first', firstKey),
+      previous: receipt,
+    }),
+  ).resolves.toEqual(receipt);
+  for (const claim of [signed('second', secondKey), plain]) {
+    await expect(
+      verifyRegistryAcquisition({ ...input, claim, previous: receipt }),
+    ).rejects.toMatchObject({ reason: 'continuity-change' });
+  }
+  await expect(
+    verifyRegistryAcquisition({
+      ...input,
+      claim: signed('first', firstKey),
+      observedSourceDigest: `sha256:${'0'.repeat(64)}`,
+    }),
+  ).rejects.toMatchObject({ reason: 'signature-mismatch' });
+  const rotated = {
+    profiles: [
+      {
+        ...configuration.profiles[0]!,
+        trustedEd25519Keys: { first: publicPem(secondKey) },
+      },
+    ],
+  };
+  await loader.mutateAppConfig(() => ({ registryTrust: rotated }));
+  await authority.publishApplied(await authority.captureApplication(), rotated);
+  const current = await authority.captureAdmission();
+  expect(admission.isApplied()).toBe(false);
+  await expect(
+    verifyRegistryAcquisition({
+      ...input,
+      admission: current,
+      claim: signed('first', secondKey),
+      previous: receipt,
+    }),
+  ).rejects.toMatchObject({ reason: 'continuity-change' });
+  await verifyRegistryAcquisition({
+    ...input,
+    admission: current,
+    claim: signed('first', firstKey),
+  }).then(
+    () => {
+      throw new Error('Expected signing-key refusal');
+    },
+    (error: unknown) => {
+      expect(registryAcquisitionRefusalDetails(error)).toMatchObject({
+        reason: 'signature-mismatch',
+      });
+      expect(
+        JSON.stringify(registryAcquisitionRefusalDetails(error)),
+      ).not.toContain('fixture-not-to-disclose');
+    },
+  );
 });

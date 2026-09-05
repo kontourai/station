@@ -18,6 +18,8 @@ import {
   sep,
 } from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
+import type { RegistryPackageClaim } from '@kontourai/station-contracts/registry-trust';
+import { registryPackageSignaturePayload } from '@kontourai/station-shared/plugin-registry-signature';
 import {
   AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL,
   isBoundedRegistryPackageVersion,
@@ -41,24 +43,10 @@ const SIGNATURE = /^[A-Za-z0-9+/]+={0,2}$/;
 const MAX_SOURCE_CHARS = 2_048;
 const MAX_KEY_CHARS = 16 * 1_024;
 
-export interface RegistryPackageSignature {
-  readonly algorithm: 'ed25519';
-  readonly keyId: string;
-  readonly value: string;
-}
-
-/** Claim issued by a registry for one immutable package source tree. */
-export interface RegistryPackageClaim {
-  readonly packageSchema: typeof AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL;
-  readonly registryId: string;
-  readonly registryKey: string;
-  readonly pluginName: string;
-  readonly packageVersion: string;
-  readonly source: string;
-  readonly packageDigest: string;
-  readonly signature?: RegistryPackageSignature;
-}
-
+export type {
+  RegistryPackageClaim,
+  RegistryPackageSignature,
+} from '@kontourai/station-contracts/registry-trust';
 export interface RegistrySupplyChainPolicy {
   readonly signatures: 'optional' | 'required';
   readonly pins: 'exact';
@@ -153,23 +141,7 @@ function validClaim(claim: unknown): claim is RegistryPackageClaim {
   }
 }
 
-/** Domain-separated canonical bytes signed by the registry's trusted key. */
-export function registryPackageSignaturePayload(
-  claim: Omit<RegistryPackageClaim, 'signature'>,
-): Buffer {
-  return Buffer.from(
-    JSON.stringify([
-      'station.registry-package-signature/v1',
-      claim.packageSchema,
-      claim.registryId,
-      claim.registryKey,
-      claim.pluginName,
-      claim.packageVersion,
-      claim.source,
-      claim.packageDigest,
-    ]),
-  );
-}
+export { registryPackageSignaturePayload } from '@kontourai/station-shared/plugin-registry-signature';
 
 function claimMatchesPin(
   claim: RegistryPackageClaim,

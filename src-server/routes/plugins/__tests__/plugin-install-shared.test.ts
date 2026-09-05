@@ -1377,12 +1377,16 @@ describe('installPluginFromSource', () => {
       version: '1.0.0',
     });
     const pair = generateKeyPairSync('ed25519');
+    const secondary = generateKeyPairSync('ed25519');
     const config = {
       profiles: [
         {
           registryKey: registryPath,
           signatures: 'required' as const,
           trustedEd25519Keys: {
+            secondary: secondary.publicKey
+              .export({ type: 'spki', format: 'pem' })
+              .toString(),
             primary: pair.publicKey
               .export({ type: 'spki', format: 'pem' })
               .toString(),
@@ -1481,6 +1485,55 @@ describe('installPluginFromSource', () => {
       .spyOn(pluginBundles, 'buildPlugin')
       .mockImplementation(async () => installDeps.buildPlugin());
     try {
+      const changedClaim = {
+        ...claim,
+        signature: {
+          algorithm: 'ed25519',
+          keyId: 'secondary',
+          value: sign(
+            null,
+            registryPackageSignaturePayload(claim),
+            secondary.privateKey,
+          ).toString('base64'),
+        },
+      };
+      writeFileSync(
+        registryPath,
+        JSON.stringify({
+          version: 1,
+          plugins: [{ id: 'signed-tools', source, claim: changedClaim }],
+        }),
+      );
+      const stale = await registryApp.request(
+        'http://localhost/plugins/install',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            id: 'signed-tools',
+            consent: {
+              ...consent,
+              registryTrustRevision: preview.registryTrustRevision,
+            },
+          }),
+        },
+      );
+      expect(stale.status).toBe(409);
+      expect(await stale.json()).toMatchObject({
+        code: 'registry-trust-refused',
+        reason: 'stale-review',
+      });
+      expect(installDeps.buildPlugin).not.toHaveBeenCalled();
+      expect(journal.currentInstallation('signed-tools').state).not.toBe(
+        'observed',
+      );
+      writeFileSync(
+        registryPath,
+        JSON.stringify({
+          version: 1,
+          plugins: [{ id: 'signed-tools', source, claim: signedClaim }],
+        }),
+      );
       const installedResponse = await registryApp.request(
         'http://localhost/plugins/install',
         {
