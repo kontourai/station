@@ -5,12 +5,15 @@
 
 import {
   closeSync,
+  constants,
   copyFileSync,
   existsSync,
+  fstatSync,
   fsyncSync,
   mkdirSync,
   openSync,
   readFileSync,
+  readSync,
   renameSync,
   unlinkSync,
   writeFileSync,
@@ -44,6 +47,8 @@ export type JsonStoreCorruptionMode = 'default-value' | 'throw';
 export type JsonStoreAtomicWriteDurability = 'crash-safe' | 'tear-safe';
 
 export interface JsonFileStoreOptions {
+  /** Opt-in read-owner bound. Oversize/non-regular files are not corruption. */
+  maxReadBytes?: number;
   /** Existing stores return their configured default value on corruption. */
   onCorruption?: JsonStoreCorruptionMode;
   /** Write via a same-directory temp file and retain one prior complete value. */
@@ -62,12 +67,55 @@ export class JsonFileStoreCorruptionError extends Error {
   }
 }
 
+export class JsonFileStoreReadLimitError extends Error {}
+
 export class JsonFileStore<T> {
   constructor(
     private filePath: string,
     private defaultValue: T,
     private options: JsonFileStoreOptions = {},
-  ) {}
+  ) {
+    if (
+      options.maxReadBytes !== undefined &&
+      (!Number.isSafeInteger(options.maxReadBytes) || options.maxReadBytes < 1)
+    )
+      throw new TypeError('JSON read byte limit must be a positive integer');
+  }
+
+  private readText(path: string): string {
+    const maximum = this.options.maxReadBytes;
+    if (maximum === undefined) return readFileSync(path, 'utf-8');
+    // The bound applies to the opened file, not a racy path-size precheck.
+    // O_NONBLOCK avoids hanging on a substituted FIFO before fstat refuses it.
+    const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
+    try {
+      const stat = fstatSync(fd);
+      if (!stat.isFile() || stat.size > maximum)
+        throw new JsonFileStoreReadLimitError(
+          'JSON read exceeds its allowance',
+        );
+      const buffer = Buffer.alloc(maximum + 1);
+      let length = 0;
+      while (length < buffer.length) {
+        const count = readSync(
+          fd,
+          buffer,
+          length,
+          buffer.length - length,
+          null,
+        );
+        if (count === 0) break;
+        length += count;
+      }
+      if (length > maximum)
+        throw new JsonFileStoreReadLimitError(
+          'JSON read exceeds its allowance',
+        );
+      return buffer.toString('utf8', 0, length);
+    } finally {
+      closeSync(fd);
+    }
+  }
 
   read(): T {
     if (!existsSync(this.filePath)) {
@@ -78,8 +126,9 @@ export class JsonFileStore<T> {
             'JSON store primary is missing; recovering the prior complete value:',
             this.filePath,
           );
-          return JSON.parse(readFileSync(previousPath, 'utf-8'));
+          return JSON.parse(this.readText(previousPath));
         } catch (e) {
+          if (e instanceof JsonFileStoreReadLimitError) throw e;
           if (this.options.onCorruption === 'throw') {
             throw new JsonFileStoreCorruptionError(previousPath, e);
           }
@@ -88,8 +137,9 @@ export class JsonFileStore<T> {
       return structuredClone(this.defaultValue);
     }
     try {
-      return JSON.parse(readFileSync(this.filePath, 'utf-8'));
+      return JSON.parse(this.readText(this.filePath));
     } catch (e) {
+      if (e instanceof JsonFileStoreReadLimitError) throw e;
       if (this.options.onCorruption === 'throw') {
         throw new JsonFileStoreCorruptionError(this.filePath, e);
       }

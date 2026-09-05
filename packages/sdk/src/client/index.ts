@@ -84,3 +84,4 @@ export {
   getWorkspacePaneHostActions,
   prepareWorkspacePaneHostAction,
 } from './workspace-pane-host-actions';
+export * from './unified-search';

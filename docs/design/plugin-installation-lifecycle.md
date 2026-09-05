@@ -190,7 +190,9 @@ owner when applicable. A changed or missing historical origin refuses data
 continuity with a migration-needed outcome; it does not reset or copy data.
 This token does not authenticate a publisher. Registry signatures and trusted
 publisher changes must remain governed by the registry claim/pin owner, whose
-complete production integration is a separate qualification requirement.
+production integration is tracked in [#1521](https://github.com/kontourai/station/issues/1521).
+Until that acceptance is met, acquisition-origin continuity does not establish
+signer-bound data ownership or curated registry trust.
 
 The selected generation records pending activation before host effects. The
 existing runtime configuration owner verifies the declared resources and commits

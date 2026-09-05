@@ -1,7 +1,7 @@
 import type { NativePlatformAdapter } from './types';
 import { WebNativePlatformAdapter } from './web';
 
-function hasTauriRuntime(): boolean {
+export function hasTauriRuntime(): boolean {
   return (
     typeof window !== 'undefined' &&
     Object.hasOwn(window, '__TAURI_INTERNALS__')
