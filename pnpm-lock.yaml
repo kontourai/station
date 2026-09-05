@@ -201,11 +201,11 @@ importers:
         specifier: ^5.102.8
         version: 5.102.8
       '@tanstack/react-query':
-        specifier: ^5.102.3
-        version: 5.102.3(react@19.2.8)
+        specifier: ^5.102.8
+        version: 5.102.8(react@19.2.8)
       '@tanstack/react-query-persist-client':
         specifier: ^5.102.3
-        version: 5.102.3(@tanstack/react-query@5.102.3(react@19.2.8))(react@19.2.8)
+        version: 5.102.3(@tanstack/react-query@5.102.8(react@19.2.8))(react@19.2.8)
       '@tanstack/react-virtual':
         specifier: ^3.14.10
         version: 3.14.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -480,8 +480,8 @@ importers:
         version: link:../../packages/sdk
     devDependencies:
       '@tanstack/react-query':
-        specifier: ^5.101.4
-        version: 5.102.3(react@19.2.8)
+        specifier: ^5.102.8
+        version: 5.102.8(react@19.2.8)
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -3264,6 +3264,11 @@ packages:
 
   '@tanstack/react-query@5.102.3':
     resolution: {integrity: sha512-nHazxUEUQSGJOswGgSL2DI77f2K75WRCowDgaiyEi0ACocZTFKewTv+A/rJfq6QkuE35rVPff1QUT3ClbaePGQ==}
+    peerDependencies:
+      react: ^18 || ^19
+
+  '@tanstack/react-query@5.102.8':
+    resolution: {integrity: sha512-TYBea4OuXWD7MhaSHq069TWbFe7rcwWN6kzT7JF0OKi1K6c1gTv2IzD6A6ExJsCMozdkqBWeuIUZmu4KQg0O5A==}
     peerDependencies:
       react: ^18 || ^19
 
@@ -9995,15 +10000,20 @@ snapshots:
     dependencies:
       '@tanstack/query-core': 5.102.8
 
-  '@tanstack/react-query-persist-client@5.102.3(@tanstack/react-query@5.102.3(react@19.2.8))(react@19.2.8)':
+  '@tanstack/react-query-persist-client@5.102.3(@tanstack/react-query@5.102.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@tanstack/query-persist-client-core': 5.102.3
-      '@tanstack/react-query': 5.102.3(react@19.2.8)
+      '@tanstack/react-query': 5.102.8(react@19.2.8)
       react: 19.2.8
 
   '@tanstack/react-query@5.102.3(react@19.2.8)':
     dependencies:
       '@tanstack/query-core': 5.102.3
+      react: 19.2.8
+
+  '@tanstack/react-query@5.102.8(react@19.2.8)':
+    dependencies:
+      '@tanstack/query-core': 5.102.8
       react: 19.2.8
 
   '@tanstack/react-virtual@3.14.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
