@@ -54,21 +54,17 @@ export function bindProjectTaskRoomExecution(
       | { project_id: string; task_id: string }
       | undefined;
     if (prior) {
+      const kind =
+        prior.project_id !== input.projectId || prior.task_id !== input.taskId
+          ? 'conflict'
+          : readProjectTaskRoomSourceSeal(db, input)
+            ? 'unavailable'
+            : 'bound';
       db.exec('ROLLBACK');
-      return {
-        kind:
-          prior.project_id === input.projectId && prior.task_id === input.taskId
-            ? 'bound'
-            : 'conflict',
-      };
+      return { kind };
     }
     if (
       readProjectTaskRoomSourceSeal(db, input) ||
-      !db
-        .prepare(
-          'SELECT 1 FROM project_task_room_heads WHERE project_id=? AND task_id=?',
-        )
-        .get(input.projectId, input.taskId) ||
       db
         .prepare(
           'SELECT 1 FROM orchestration_turn_boundaries WHERE thread_id=? LIMIT 1',

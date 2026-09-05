@@ -60,6 +60,8 @@ export interface SessionCommandModule {
 
 /** Service-only recovery choices. They cannot cross the public command seam. */
 export type SessionCommandInternalOptions = {
+  /** Exact server-owned Task reservation scope; never read from public metadata. */
+  roomExecutionBinding?: { projectId: string; taskId: string };
   /** Captured server-owned action admission; never accepted from public JSON. */
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /** Server-minted correlation for an exact higher-level start claim. */

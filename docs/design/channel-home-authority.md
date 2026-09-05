@@ -116,10 +116,18 @@ the claim; an ambiguous adapter failure retains possible-effect truth and
 reports an indeterminate, non-retryable outcome. The resulting diagnostic
 `runtime.error` does not clear that record, either live or during replay.
 
-Automatic binding at Task dispatch is not yet connected. Existing or unbound sessions therefore remain an
-explicit missing integration; a future move caller must not claim full source
-quiescence from the private room seal alone. Lifecycle cleanup remains allowed
-after a seal so the old source can stop idle sessions.
+Task dispatch supplies its exact persisted Project/Task scope through the
+server-only start options. Startup binds that scope before invoking an adapter,
+including when the room has not yet been opened. Public session metadata does
+not create a binding. Hosted binding is refused until tenant-owned stores are
+composed. Existing bindings cannot reopen sealed admission.
+
+Legacy sessions and other execution ingress still need verified scope binding.
+The external assignment-claim phase before provider startup and final Task graph
+association after startup also remain outside the room's SQLite transaction.
+A move caller must not claim full source quiescence from the private room seal
+alone. Lifecycle cleanup remains allowed after a seal so the old source can
+stop idle sessions.
 The barrier tests exercise real SQLite worker connections and restart; they
 do not substitute for the independent-process, network-partition acceptance
 journey below.

@@ -322,6 +322,8 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  /** Exact server-owned Task reservation scope; never read from public metadata. */
+  roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /** Skip the modelOptions per-provider support check for this one command. */
   skipModelOptionSupportCheck?: boolean;
@@ -3778,6 +3780,22 @@ export class OrchestrationService {
             throw new Error(
               'Credential profile selection is reserved for Station-managed recovery.',
             );
+          if (internal?.roomExecutionBinding) {
+            if (this.options.requireTenantExecutionContext?.())
+              throw new Error(
+                'Room execution binding is unavailable in hosted mode.',
+              );
+            const bound = this.options.eventStore?.bindProjectTaskRoomExecution(
+              {
+                ...internal.roomExecutionBinding,
+                sessionId: input.threadId,
+              },
+            );
+            if (bound?.kind !== 'bound')
+              throw new Error(
+                'Room execution binding is unavailable; the provider was not started.',
+              );
+          }
         },
         validateReattachAgainstPersisted: (input, session) => {
           // archive#3493 residual 6: the reattach conflicts that need no

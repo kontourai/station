@@ -2771,9 +2771,15 @@ export class TaskGraphService {
               },
             },
             undefined,
-            taskSlug
-              ? { workflowSidecarAttachMode: 'read-only-join' as const }
-              : undefined,
+            {
+              roomExecutionBinding: {
+                projectId: reservation.task.projectId,
+                taskId: reservation.task.id,
+              },
+              ...(taskSlug
+                ? { workflowSidecarAttachMode: 'read-only-join' as const }
+                : {}),
+            },
           )) as ProviderSession;
           return { session, outcome: 'started' as const };
         }

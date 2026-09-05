@@ -1663,9 +1663,9 @@ it('source closure joins durable provider admission and refuses a new bound turn
       }),
     ).rejects.toThrow('no provider call was made');
     expect(invoked).toBe(false);
-    // The immutable association is readable, but cannot admit another session.
+    // An existing association does not reopen sealed admission.
     expect(events.bindProjectTaskRoomExecution(binding)).toEqual({
-      kind: 'bound',
+      kind: 'unavailable',
     });
     expect(
       events.bindProjectTaskRoomExecution({
