@@ -3,33 +3,15 @@ import {
   resolveTurnEngine,
   resolveTurnModelIdentity,
 } from '../components/chat/message-bubble/utils';
-import { modelIdentityLabel } from '../utils/modelCapabilities';
 
 /**
  * #1536 B5: this file used to pin `getModelDisplayName`, a private table of
- * five Claude 3 ids that answered "Custom" for everything else — so a row
- * running claude-opus-5 named it "Custom" while Home named the same session
- * "Opus 5". The table is gone; these assert the shared rule reaches the cases
- * the table used to own.
+ * five Claude 3 ids that answered "Custom" for everything else. The rule that
+ * replaced it is pinned in `modelIdentityLabel.test.ts`, and the BADGE that
+ * renders it in `MessageBubble.identityComposition.test.tsx` — a second copy
+ * of the helper's own assertions here would prove nothing about this module,
+ * which no longer names a model at all.
  */
-describe('the model a bubble names comes from the shared identity rule', () => {
-  test('a modern model gets its own name, not "Custom"', () => {
-    expect(modelIdentityLabel('claude-opus-5')).toBe('Opus 5');
-    expect(modelIdentityLabel('claude-opus-5[1m]')).toBe('Opus 5 (1M)');
-  });
-
-  test('an engine default is "Default", not the catalog\'s option copy', () => {
-    expect(
-      modelIdentityLabel('default', [
-        {
-          id: 'default',
-          name: 'Default (recommended)',
-          capabilities: {},
-        } as never,
-      ]),
-    ).toBe('Default');
-  });
-});
 
 const gap = { state: 'unavailable', reason: 'not-reported-by-engine' } as const;
 const stationGap = {

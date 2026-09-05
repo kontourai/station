@@ -389,4 +389,40 @@ describe('assistant row identity composition (station#1434)', () => {
     expect(screen.getByText('3 7 Sonnet Latest')).toBeTruthy();
     expect(screen.getByText('Here is the answer.')).toBeTruthy();
   });
+  /**
+   * #1536 B5 / review H1. The badge is the row's ONLY model statement when the
+   * envelope is absent or unreadable, and the private table it used to call —
+   * five Claude 3 ids, "Custom" for everything else — was deleted with no
+   * render assertion left behind. Calling the helper directly (as
+   * `modelIdentityLabel.test.ts` does) does not prove this element renders its
+   * result: the badge could go back to a table, or to `msg.requestedModel`,
+   * and every helper test would stay green.
+   */
+  it('renders the shared identity label as the badge text when no envelope is readable', () => {
+    const { container } = renderRow({
+      role: 'assistant',
+      content: 'Here is the answer.',
+      model: 'claude-opus-5',
+      provenance: { envelopeVersion: 9999, engine: { state: 'observed' } },
+    });
+
+    const badge = container.querySelector('.message__model-badge');
+    expect(badge).toBeTruthy();
+    expect(badge?.textContent).toBe('Opus 5');
+    // Never the raw id in primary text, and never the retired table's answer.
+    expect(badge?.textContent).not.toBe('claude-opus-5');
+    expect(badge?.textContent).not.toBe('Custom');
+  });
+
+  it('renders the badge for a row carrying no provenance at all', () => {
+    const { container } = renderRow({
+      role: 'assistant',
+      content: 'Here is the answer.',
+      model: 'claude-opus-5[1m]',
+    });
+
+    expect(container.querySelector('.message__model-badge')?.textContent).toBe(
+      'Opus 5 (1M)',
+    );
+  });
 });
