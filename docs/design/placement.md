@@ -147,7 +147,7 @@ map; anything not listed is a label.
 | `WorkspacePanePlacement.supportedRegions` | `primary`, `secondary`, `standalone`, `docked` | parse validation; `instantiateWorkspaceComposition` (does a composition slot fit this pane); `isWorkspaceHomeRoleEligibleDescriptor` (`standalone` means "may be a route"); the docked-capability pins (`docked` means "may be a region surface"): `src-ui/src/__tests__/docked-capability-derivation.test.ts` over the built-in descriptor constants and `workspace-pane-known-declarations.test.ts` over the server's inline declarations |
 | `WorkspacePanePlacement.preferredRegion` | same | parse validation and canonical-identity equality only |
 | `WorkspaceCompositionPaneSpec.role` | `navigation`, `content`, `auxiliary`, `inspector` | the composition algorithm groups panes by role: tabs within a role, splits between roles. Runs on real data through the coding file/diff/evidence compositions (behind `workspaceComposition*` layout config controls) and the task room |
-| `RegionState.size` | pixels | round-trips through device settings; does not yet drive the rendered shell (#1380) |
+| `RegionState.size` | pixels | round-trips through the record; a shell seeds its own region's size from it and falls back to the legacy keys only without a region model (`useDockShellChrome`, #928 D, closed #1380) |
 | `RegionState.maximized` | boolean, at most one region, never `main`, never a hidden or empty region (`updateRegion`, the parser) | `useDockShellChrome` (the shell's `isDockMaximized`, for ANY occupant — `DockShell` renders the class and side-panel width from it), `App.tsx` (mobile full-screen, Chat's region), `placeSurface` (clears both ends of a move or swap, #1385); navigation's `maximize` param and `lastDockMaximized` are Chat's MIRROR of it (`dockMirrorDiff`, `RegionModelContext`), never its source — the region is also seeded from them inbound (`?maximize=true`, `focusSession`'s restore) |
 
 Two facts that follow from the map and are easy to get wrong:
@@ -181,6 +181,11 @@ Two facts that follow from the map and are easy to get wrong:
   burst (150 ms trailing edge, flushed on `pagehide`), and adopts another
   tab's write through the store's `storage` listener without writing it back.
   A mount never writes.
+  Maximize persists across launches through the record (#928 slice iii);
+  before it, `maximize=true` lived in the URL alone and a relaunch lost it.
+  A maximized region also owns the dock area in CSS: while one shell is
+  maximized every other shell is hidden (`index.css`, pinned by
+  `region-maximize-owns-dock-area.test.ts`).
   Precedence at load, highest first: a URL deep link, for Chat only —
   `dockSlotPlacement` places Chat there through `placeSurface`, relocating an
   occupant by the model's own rule, `dock=open` shows it, and `maximize=true`

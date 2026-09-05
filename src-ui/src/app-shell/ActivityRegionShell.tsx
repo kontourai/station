@@ -124,6 +124,7 @@ export function ActivityRegionShell({ regionId }: { regionId: RegionId }) {
             shellMaximized={chrome.isDockMaximized}
             canMaximize={chrome.canMaximize}
             showMaximizeShortcut={chrome.ownsMaximizeShortcut}
+            restoreSnap={chrome.dockSnap}
             surfaceShortcutId={chrome.surfaceShortcutId}
             surfaceTitle={REGION_SURFACE_REGISTRY.get('activity')?.title}
             isDragging={chrome.isDragging}

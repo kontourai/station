@@ -43,7 +43,7 @@ import { ProjectsProvider } from './contexts/ProjectsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
-import { chatRegion } from './regions/region-model';
+import { foldedDockRegion } from './regions/region-model';
 
 /**
  * The cheatsheet is an overlay behind a keystroke — nothing about first paint
@@ -188,7 +188,17 @@ function App() {
     effective: effectiveDockSlotPlacement,
   } = useDockSlotPlacement(dockSlotPreference);
   const regionModel = useRegionModelOptional();
-  const modelChatRegion = regionModel && chatRegion(regionModel.regions);
+  // The dock region a coarse device renders: `RegionShells` mounts exactly
+  // this one there (the fold), whatever its occupant — so it, not Chat's
+  // region, is what the mobile full-screen predicate below must read (#1385
+  // review). Undefined when no dock region is occupied.
+  const renderedDockRegion = regionModel
+    ? foldedDockRegion(regionModel.regions, regionModel.lastShownRegion)
+    : undefined;
+  const renderedDockState =
+    regionModel && renderedDockRegion
+      ? regionModel.regions[renderedDockRegion]
+      : null;
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const {
@@ -412,11 +422,9 @@ function App() {
    */
   const isAmbientMobileDockFullscreen = isMobileDockFullscreenState({
     isMobile: isMobileViewport,
-    isDockOpen: modelChatRegion
-      ? regionModel.regions[modelChatRegion].visible
-      : isDockOpen,
-    isDockMaximized: modelChatRegion
-      ? regionModel.regions[modelChatRegion].maximized
+    isDockOpen: renderedDockState ? renderedDockState.visible : isDockOpen,
+    isDockMaximized: renderedDockState
+      ? renderedDockState.maximized
       : isDockMaximized,
     isDockOwnedView: isDockOwnedViewType(displayCurrentView.type),
   });

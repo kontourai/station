@@ -819,7 +819,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     descriptor: { kind: 'composite' },
     label: 'Region arrangement',
     description:
-      "Which surfaces occupy the main, left, right, and bottom regions on this device, with each region's size and visibility.",
+      "Which surfaces occupy the main, left, right, and bottom regions on this device, with each region's size, visibility, and whether it is maximized.",
     // #928 slice D: new device setting; the arrangement was previously seeded
     // from the chat dock's own keys on every load and nothing else survived.
     defaultValue: DEFAULT_REGION_ARRANGEMENT_RECORD,

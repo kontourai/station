@@ -457,12 +457,16 @@ export function useDockShellChrome({
   // leave `lastDockMaximized` alone.
   //
   // With a region model the region's `maximized` is what renders, so it is
-  // restored here too. ORDER MATTERS: `collapseMaximizedDock` first, so the
-  // URL already reads restored when the provider's mirror sees the region
-  // change and therefore writes nothing (RegionModelContext.tsx) — the
-  // reverse order would reach `setDockState(true, false)` and clobber the
-  // memory this method exists to keep. A non-chat region has no navigation
-  // mirror and only its region to restore.
+  // restored here too. THE PAIRING IS LOAD-BEARING: for Chat, the region
+  // restore must be accompanied by `collapseMaximizedDock`. The provider's
+  // mirror writes a maximize change only when navigation disagrees with it
+  // (RegionModelContext.tsx); with the URL param already cleared here, the
+  // region's clear is not re-written, and `lastDockMaximized` is left alone.
+  // A region-only restore would reach `setDockState(true, false)` through
+  // the mirror and clobber the memory this method exists to keep (the order
+  // of the two calls within this handler is not what protects it — React
+  // commits both before the mirror effect runs). A non-chat region has no
+  // navigation mirror and only its region to restore.
   const restoreDockToDocked = useCallback(() => {
     const reconciled = snapAfterNavigationRestore(dockSnap);
     if (reconciled) {
