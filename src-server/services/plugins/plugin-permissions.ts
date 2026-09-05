@@ -403,6 +403,14 @@ export function readPluginGrantRecord(
   return toGrantRecord(grantsStore(projectHomeDir).read()[pluginName]);
 }
 
+/** Server-owned artifact capture. Callers obtain it from installation authority,
+ * never from request JSON; currentness includes a fresh physical digest check. */
+export interface CapturedPluginPermissionArtifact {
+  readonly pluginId: string;
+  readonly digest: string;
+  isCurrent(): boolean;
+}
+
 /**
  * **The derivation.** What this plugin may actually do right now, and why.
  *
@@ -479,6 +487,7 @@ export function readPluginGrantRecord(
 export function readPluginGrantState(
   projectHomeDir: string,
   pluginName: string,
+  artifact?: CapturedPluginPermissionArtifact,
 ): PluginGrantState {
   const record = readPluginGrantRecord(projectHomeDir, pluginName);
   // A plugin with no recorded grants has nothing to bind, so it never walks
@@ -486,7 +495,11 @@ export function readPluginGrantState(
   const currentDigest =
     record.permissions.length === 0
       ? null
-      : pluginContentDigest(pluginsDirFor(projectHomeDir), pluginName);
+      : artifact
+        ? artifact.pluginId === pluginName && artifact.isCurrent()
+          ? artifact.digest
+          : null
+        : pluginContentDigest(pluginsDirFor(projectHomeDir), pluginName);
   const { binding, granted, withheld } = derivePluginGrantBinding(
     record,
     currentDigest,
@@ -562,6 +575,7 @@ export async function grantPermissions(
   projectHomeDir: string,
   pluginName: string,
   permissions: string[],
+  artifact?: CapturedPluginPermissionArtifact,
 ): Promise<{ granted: string[]; withdrawn: string[] }> {
   let outcome: { granted: string[]; withdrawn: string[] } = {
     granted: [],
@@ -572,10 +586,11 @@ export async function grantPermissions(
     // succeeded and its lock is held, so an unreadable grants store reports
     // itself as such rather than being masked by whatever the tree read says,
     // and the digest is taken with the write serialized behind it.
-    const contentDigest = refreshPluginContentDigest(
-      pluginsDirFor(projectHomeDir),
-      pluginName,
-    );
+    const contentDigest = artifact
+      ? artifact.pluginId === pluginName && artifact.isCurrent()
+        ? artifact.digest
+        : null
+      : refreshPluginContentDigest(pluginsDirFor(projectHomeDir), pluginName);
     if (contentDigest === null) {
       throw new PluginContentUnavailableError(pluginName);
     }
@@ -1254,9 +1269,16 @@ export async function withPluginPermissionInvocation<T>(
   pluginName: string,
   permission: string,
   invoke: () => Promise<T>,
+  artifact?: CapturedPluginPermissionArtifact,
 ): Promise<T> {
   return grantsStore(projectHomeDir).withReadLease(async () => {
-    if (!hasGrantOrThrow(projectHomeDir, pluginName, permission)) {
+    if (
+      !readPluginGrantState(
+        projectHomeDir,
+        pluginName,
+        artifact,
+      ).granted.includes(permission)
+    ) {
       throw new Error('The required plugin permission is unavailable.');
     }
     return invoke();
@@ -1274,9 +1296,14 @@ export function hasGrant(
   pluginName: string,
   permission: string,
   deniedLogger: Pick<Logger, 'error'> = logger,
+  artifact?: CapturedPluginPermissionArtifact,
 ): boolean {
   try {
-    return hasGrantOrThrow(projectHomeDir, pluginName, permission);
+    return readPluginGrantState(
+      projectHomeDir,
+      pluginName,
+      artifact,
+    ).granted.includes(permission);
   } catch (error) {
     if (error instanceof PluginGrantsUnavailableError) {
       deniedLogger.error(
@@ -1337,7 +1364,10 @@ export async function processInstallPermissions(
   projectHomeDir: string,
   pluginName: string,
   declaredPermissions: string[],
-  options?: { consented?: readonly string[] },
+  options?: {
+    consented?: readonly string[];
+    artifact?: CapturedPluginPermissionArtifact;
+  },
 ): Promise<{
   autoGranted: string[];
   consentGranted: string[];
@@ -1365,7 +1395,14 @@ export async function processInstallPermissions(
   const granting = [...autoGranted, ...consentGranted];
   const withdrawn =
     granting.length > 0
-      ? (await grantPermissions(projectHomeDir, pluginName, granting)).withdrawn
+      ? (
+          await grantPermissions(
+            projectHomeDir,
+            pluginName,
+            granting,
+            options?.artifact,
+          )
+        ).withdrawn
       : [];
 
   return { autoGranted, consentGranted, pendingConsent, withdrawn };
