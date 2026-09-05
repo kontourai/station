@@ -5,7 +5,9 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { afterEach, describe, expect, test } from 'vitest';
 import { EventStore } from '../event-store.js';
 import {
+  createInMemorySessionTurnBoundaryAuthority,
   createSessionTurnBoundaryAuthority,
+  runSessionStartWithBoundary,
   SESSION_START_INDETERMINATE_CODE,
   SESSION_TURN_ACCEPTED_CAPACITY,
   type SessionTurnBoundaryCoordinator,
@@ -38,6 +40,160 @@ describe('SessionTurnBoundaryAuthority', () => {
     roots.push(root);
     return join(root, 'orchestration.sqlite');
   }
+
+  test.each(['sqlite', 'memory'] as const)(
+    'dispatch completion remains owned after provider start and terminal evidence (%s)',
+    async (backend) => {
+      const store =
+        backend === 'sqlite' ? new EventStore(databasePath()) : undefined;
+      const authority =
+        store?.sessionTurnBoundaryAuthority() ??
+        createInMemorySessionTurnBoundaryAuthority();
+      try {
+        const owned = authority.claimTaskDispatch(
+          'dispatch-session',
+          '2026-09-05T00:00:00.000Z',
+        );
+        if (owned.kind !== 'owner')
+          throw new Error('Expected dispatch ownership');
+        expect(owned.claim.beginEffects('2026-09-05T00:00:01.000Z')).toEqual({
+          kind: 'applied',
+        });
+        let calls = 0;
+        expect(
+          await runSessionStartWithBoundary(
+            authority,
+            'dispatch-session',
+            async () => {
+              calls++;
+              return 'started';
+            },
+            owned.claim.sessionStart,
+          ),
+        ).toBe('started');
+        const exited: CanonicalRuntimeEvent = {
+          eventId: 'dispatch-session-exited',
+          provider: 'claude',
+          threadId: 'dispatch-session',
+          sessionId: 'dispatch-session',
+          method: 'session.exited',
+          createdAt: '2026-09-05T00:00:02.000Z',
+          exitCode: 0,
+        };
+        store?.appendEvent(exited);
+        expect(authority.observe(exited)).toEqual({ kind: 'applied' });
+        expect(authority.hasPossibleEffect('dispatch-session')).toEqual({
+          kind: 'available',
+          active: true,
+        });
+        await expect(
+          runSessionStartWithBoundary(
+            authority,
+            'dispatch-session',
+            async () => {
+              calls++;
+            },
+            owned.claim.sessionStart,
+          ),
+        ).rejects.toThrow('no provider call was made');
+        expect(calls).toBe(1);
+        expect(owned.claim.settled()).toEqual({ kind: 'applied' });
+        expect(authority.hasPossibleEffect('dispatch-session')).toEqual({
+          kind: 'available',
+          active: false,
+        });
+      } finally {
+        if (store) expect(store.close()).toEqual({ kind: 'closed' });
+      }
+    },
+  );
+
+  test('borrowed startup admission refuses another session and cannot accept a late result after dispatch uncertainty', async () => {
+    const store = new EventStore(databasePath());
+    try {
+      const authority = store.sessionTurnBoundaryAuthority();
+      const owned = authority.claimTaskDispatch(
+        'exact-dispatch',
+        new Date().toISOString(),
+      );
+      if (owned.kind !== 'owner')
+        throw new Error('Expected dispatch ownership');
+      let calls = 0;
+      await expect(
+        runSessionStartWithBoundary(
+          authority,
+          'wrong-session',
+          async () => {
+            calls++;
+          },
+          owned.claim.sessionStart,
+        ),
+      ).rejects.toThrow('does not match');
+      expect(calls).toBe(0);
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const starting = runSessionStartWithBoundary(
+        authority,
+        'exact-dispatch',
+        async () => {
+          calls++;
+          await held;
+          return 'late';
+        },
+        owned.claim.sessionStart,
+      );
+      expect(calls).toBe(1);
+      expect(owned.claim.indeterminate(new Date().toISOString())).toEqual({
+        kind: 'applied',
+      });
+      release();
+      await expect(starting).rejects.toThrow('may have completed');
+      expect(owned.claim.settled()).toEqual({ kind: 'stale' });
+      expect(authority.hasPossibleEffect('exact-dispatch')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+    } finally {
+      expect(store.close()).toEqual({ kind: 'closed' });
+    }
+  });
+
+  test('a crashed dispatch guard is not cleared by replaying provider terminal evidence', () => {
+    const path = databasePath();
+    const first = new EventStore(path);
+    const owned = first
+      .sessionTurnBoundaryAuthority()
+      .claimTaskDispatch('crashed-dispatch', '2026-09-05T00:00:00.000Z');
+    if (owned.kind !== 'owner') throw new Error('Expected dispatch ownership');
+    owned.claim.beginEffects('2026-09-05T00:00:01.000Z');
+    first.appendEvent({
+      eventId: 'crashed-dispatch-terminal',
+      provider: 'claude',
+      threadId: 'crashed-dispatch',
+      sessionId: 'crashed-dispatch',
+      method: 'session.exited',
+      createdAt: '2026-09-05T00:00:02.000Z',
+      exitCode: 0,
+    });
+    expect(first.close()).toEqual({ kind: 'closed' });
+    const second = new EventStore(path);
+    try {
+      expect(
+        second
+          .sessionTurnBoundaryAuthority()
+          .hasPossibleEffect('crashed-dispatch'),
+      ).toEqual({ kind: 'available', active: true });
+      expect(
+        second
+          .sessionTurnBoundaryAuthority()
+          .claimTaskDispatch('crashed-dispatch', '2026-09-05T00:01:00.000Z'),
+      ).toEqual({ kind: 'busy' });
+    } finally {
+      expect(second.close()).toEqual({ kind: 'closed' });
+    }
+  });
 
   test('session creation settles without inventing a provider turn and cannot reopen after settlement', () => {
     const store = new EventStore(databasePath());

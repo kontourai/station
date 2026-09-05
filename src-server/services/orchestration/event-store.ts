@@ -62,6 +62,7 @@ import {
   ensureCredentialApplicationCommitPendingIndex,
   ensureNativeInvocationRunColumns,
   ensureOrchestrationAdoptionColumns,
+  ensureOrchestrationBoundaryPurpose,
   ensureOrchestrationEventStoreColumns,
   ensureOrchestrationRecoverySettlementColumns,
   ensureOrchestrationSessionStateColumns,
@@ -1700,6 +1701,7 @@ export class EventStore {
       // `value` is NULL while the claiming request's `adapter.sendTurn` call is
       // still in flight, and set once it resolves.
       ensureOrchestrationTurnDedupColumns(this.db);
+      ensureOrchestrationBoundaryPurpose(this.db);
       this.turnIdempotence = new TurnIdempotencyStore(
         new SqliteTurnIdempotencyPersistence(this.db, this.turnDedupMaxEntries),
         turnProcessIdentity,
@@ -8233,8 +8235,8 @@ export class EventStore {
             .prepare(
               `INSERT INTO orchestration_turn_boundaries
                 (boundary_id, thread_id, state, provider_turn_id, owner_id,
-                 owner_pid, owner_birth, owner_identity_kind, created_at, updated_at)
-               VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
+                 owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose)
+               VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .run(
               record.boundaryId,
@@ -8246,6 +8248,7 @@ export class EventStore {
               record.ownerIdentityKind,
               record.createdAt,
               record.updatedAt,
+              record.purpose ?? 'turn',
             );
           this.db.exec('COMMIT');
           return { kind: 'applied' };
@@ -8418,7 +8421,7 @@ export class EventStore {
             this.db
               .prepare(
                 `DELETE FROM orchestration_turn_boundaries
-                  WHERE thread_id = ? AND state != 'lifecycle'
+                  WHERE thread_id = ? AND state != 'lifecycle' AND purpose != 'task-dispatch'
                     AND created_at <= ?`,
               )
               .run(input.threadId, input.terminalCreatedAt);
@@ -8426,7 +8429,7 @@ export class EventStore {
             this.db
               .prepare(
                 `DELETE FROM orchestration_turn_boundaries
-                  WHERE thread_id = ? AND state = 'accepted'
+                  WHERE thread_id = ? AND state = 'accepted' AND purpose != 'task-dispatch'
                     AND provider_turn_id = ? AND created_at <= ?`,
               )
               .run(
@@ -8456,13 +8459,16 @@ export class EventStore {
           this.db
             .prepare(
               `SELECT boundary_id, thread_id, state, provider_turn_id, owner_id,
-                      owner_pid, owner_birth, owner_identity_kind, created_at, updated_at
+                      owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose
                  FROM orchestration_turn_boundaries`,
             )
             .all() as Array<Record<string, unknown>>
         ).map(
           (row): SessionTurnBoundaryRecord => ({
             boundaryId: row.boundary_id as string,
+            ...(row.purpose === 'task-dispatch'
+              ? { purpose: 'task-dispatch' as const }
+              : {}),
             threadId: row.thread_id as string,
             state: row.state as SessionTurnBoundaryRecord['state'],
             ...(row.provider_turn_id
@@ -8577,7 +8583,7 @@ export class EventStore {
     this.db
       .prepare(
         `DELETE FROM orchestration_turn_boundaries
-          WHERE state != 'lifecycle'
+          WHERE state != 'lifecycle' AND purpose != 'task-dispatch'
             AND (? IS NULL OR thread_id = ?)
             AND EXISTS (
               SELECT 1 FROM orchestration_events AS event

@@ -322,6 +322,7 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
@@ -3840,8 +3841,8 @@ export class OrchestrationService {
             );
         },
         requireAdapter: (provider) => this.requireAdapter(provider),
-        materializeRestoredSession: (threadId) =>
-          this.materializeRecoveredSession(threadId),
+        materializeRestoredSession: (threadId, admission) =>
+          this.materializeRecoveredSession(threadId, admission),
         prepareStart: async (input, context, internal, adapter) => {
           if (!internal?.skipModelOptionSupportCheck) {
             const unsupported = unsupportedModelOptionKeys(
@@ -3961,6 +3962,7 @@ export class OrchestrationService {
                   this.sessionStartBoundaries,
                   input.threadId,
                   () => adapter.startSession(input),
+                  internal?.sessionStartAdmission,
                 ),
               );
             session = await (internal?.foregroundInvocationAdmission
@@ -4056,6 +4058,24 @@ export class OrchestrationService {
    * `ForegroundMessageIndeterminateError` handling. Never call this from a
    * route handling a client-supplied command body.
    */
+  /** Server-only Task reservation admission, before any assignment/provider effect. */
+  claimTaskDispatchBoundary(input: {
+    projectId: string;
+    taskId: string;
+    sessionId: string;
+  }): ReturnType<SessionTurnBoundaryAuthority['claimTaskDispatch']> {
+    if (
+      this.options.requireTenantExecutionContext?.() ||
+      this.options.eventStore?.bindProjectTaskRoomExecution(input).kind !==
+        'bound'
+    )
+      return { kind: 'unavailable' };
+    return this.sessionStartBoundaries.claimTaskDispatch(
+      input.sessionId,
+      new Date().toISOString(),
+    );
+  }
+
   async startSessionInternal(
     command: SessionCommand,
     context: SessionCommandContext,
@@ -6560,13 +6580,16 @@ export class OrchestrationService {
    * archive#3476: the engine-start half of recovery, shared by every caller
    * that needs a restored session to have a live engine.
    */
-  private recoveredSessionStartOptions(): RecoveredSessionStartOptions {
+  private recoveredSessionStartOptions(
+    admission?: SessionCommandInternalOptions['sessionStartAdmission'],
+  ): RecoveredSessionStartOptions {
     return {
       invokeSessionStart: (threadId, invoke) =>
         runSessionStartWithBoundary(
           this.sessionStartBoundaries,
           threadId,
           invoke,
+          admission,
         ),
       eventStore: this.options.eventStore,
       assertAdapterReady: (adapter, connectionId) =>
@@ -6637,20 +6660,23 @@ export class OrchestrationService {
    */
   private materializeRecoveredSession(
     threadId: string,
+    admission?: SessionCommandInternalOptions['sessionStartAdmission'],
   ): Promise<ProviderAdapterShape | undefined> {
     const inFlight = this.materializingSessions.get(threadId);
     if (inFlight) return inFlight;
-    const started = this.materializeRecoveredSessionOnce(threadId).finally(
-      () => {
-        this.materializingSessions.delete(threadId);
-      },
-    );
+    const started = this.materializeRecoveredSessionOnce(
+      threadId,
+      admission,
+    ).finally(() => {
+      this.materializingSessions.delete(threadId);
+    });
     this.materializingSessions.set(threadId, started);
     return started;
   }
 
   private async materializeRecoveredSessionOnce(
     threadId: string,
+    admission?: SessionCommandInternalOptions['sessionStartAdmission'],
   ): Promise<ProviderAdapterShape | undefined> {
     if (this.quarantinedThreads.has(threadId)) return undefined;
     if (this.isReadOnlyAttachedSession(threadId)) return undefined;
@@ -6671,7 +6697,7 @@ export class OrchestrationService {
       session,
       adapter,
       ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
-      options: this.recoveredSessionStartOptions(),
+      options: this.recoveredSessionStartOptions(admission),
     });
     return adapter;
   }

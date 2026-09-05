@@ -12,7 +12,10 @@ import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
 import type { RuntimeEngineStartIntent } from '../infra/resource-posture.js';
 import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
-import { SessionStartIndeterminateError } from './session-turn-boundary.js';
+import {
+  type SessionStartBoundaryClaim,
+  SessionStartIndeterminateError,
+} from './session-turn-boundary.js';
 
 /** The only start-session intent callers may issue. */
 export type SessionCommand = {
@@ -60,6 +63,8 @@ export interface SessionCommandModule {
 
 /** Service-only recovery choices. They cannot cross the public command seam. */
 export type SessionCommandInternalOptions = {
+  /** Borrowed dispatch capability; provider completion cannot release its parent. */
+  sessionStartAdmission?: SessionStartBoundaryClaim;
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: { projectId: string; taskId: string };
   /** Captured server-owned action admission; never accepted from public JSON. */
@@ -171,6 +176,7 @@ export interface SessionCommandDependencies {
      */
     materializeRestoredSession?(
       threadId: string,
+      admission?: SessionStartBoundaryClaim,
     ): Promise<ProviderAdapterShape | undefined>;
     prepareStart(
       input: OrchestrationStartSessionInput,
@@ -421,7 +427,10 @@ export function createSessionCommandModule(
               input,
               existing.session,
             );
-            await deps.launchPolicy.materializeRestoredSession(input.threadId);
+            await deps.launchPolicy.materializeRestoredSession(
+              input.threadId,
+              internal?.sessionStartAdmission,
+            );
             existing = deps.sessionState.existing(input.threadId);
           }
           if (

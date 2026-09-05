@@ -98,8 +98,8 @@ receipts remain available. There is no unseal operation.
 
 This barrier does not yet have a public runtime/HTTP caller. The supplied home
 references are intent bindings, not independently verified host identities.
-Execution admission, target activation, the external authority adapter and
-cross-host acceptance remain to be composed before exposing a move command.
+Target activation, the external authority adapter and cross-host acceptance
+remain to be composed before exposing a move command.
 An immutable server-owned session/room binding now joins the existing
 `orchestration_turn_boundaries` records to the source seal in the same SQLite
 transaction. Pending bound execution prevents closure, including indeterminate
@@ -122,12 +122,23 @@ including when the room has not yet been opened. Public session metadata does
 not create a binding. Hosted binding is refused until tenant-owned stores are
 composed. Existing bindings cannot reopen sealed admission.
 
+The dispatcher retains one `task-dispatch` admission record across external
+assignment claiming, provider startup, graph association and publication
+preparation. The adapter receives a capability bound to the exact session;
+its startup acknowledgement cannot release the enclosing dispatch record.
+Provider terminal events do not settle that broader ownership, either live or
+through replay. A late provider result cannot undo an indeterminate dispatch.
+Known completion or compensation releases the record; uncertain effects or
+publication preparation retain it. A crashed dispatch therefore needs explicit
+dispatch reconciliation, not an assumption that provider exit completed every
+other phase.
+
 Legacy sessions and other execution ingress still need verified scope binding.
-The external assignment-claim phase before provider startup and final Task graph
-association after startup also remain outside the room's SQLite transaction.
-A move caller must not claim full source quiescence from the private room seal
-alone. Lifecycle cleanup remains allowed after a seal so the old source can
-stop idle sessions.
+A move caller must not claim full home or Project quiescence from one private
+room seal: new Task creation and other home mutations require their own
+admission boundary. Lifecycle cleanup remains allowed after a seal so the old
+source can stop idle sessions. Only a reviewed compatible runtime may operate
+a sealed source; downgrading to code that predates the barrier is not fencing.
 The barrier tests exercise real SQLite worker connections and restart; they
 do not substitute for the independent-process, network-partition acceptance
 journey below.

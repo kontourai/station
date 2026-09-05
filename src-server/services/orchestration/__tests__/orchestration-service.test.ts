@@ -800,7 +800,7 @@ describe('OrchestrationService', () => {
     ).toEqual({ kind: 'bound' });
   });
 
-  test('real Task dispatch binds its session before provider creation even before its room is opened', async () => {
+  test('source closure waits through real Task claim, provider creation and dispatch finalization', async () => {
     mkdirSync(join(tmp, 'transfer-task-graph'), { recursive: true });
     const graph = new TaskGraphService(join(tmp, 'transfer-task-graph'), {
       projectService: {
@@ -817,10 +817,38 @@ describe('OrchestrationService', () => {
     const task = await graph.createTask({
       projectId: 'transfer-project',
       title: 'Bound execution',
+      workItemRef: 'github:example/transfer#1',
     });
-    const dispatcher = composeTaskDispatcher(graph, {
-      orchestrationService: service,
-    });
+    const releaseClaim = deferred<void>();
+    const releasePublication = deferred<void>();
+    let claimEntered = false;
+    let publicationEntered = false;
+    const dispatcher = composeTaskDispatcher(
+      graph,
+      {
+        orchestrationService: service,
+        resolveProjectWorkspace: () => tmp,
+        assignmentClaimService: {
+          claim: vi.fn(async () => {
+            claimEntered = true;
+            await releaseClaim.promise;
+            return {
+              outcome: 'claimed',
+              record: { claimed_at: '2026-09-05T00:00:00.000Z' },
+            } as never;
+          }),
+          release: vi.fn(),
+          status: vi.fn(),
+        },
+      },
+      {
+        prepareAgentStarted: async () => {
+          publicationEntered = true;
+          await releasePublication.promise;
+        },
+        publishAgentStarted: async () => {},
+      },
+    );
     const release = deferred<void>();
     let entered = false;
     const original = claude.startSession.getMockImplementation()!;
@@ -869,15 +897,34 @@ describe('OrchestrationService', () => {
     };
     try {
       await waitFor(
-        () => entered,
+        () => claimEntered,
         (value) => value,
         5000,
       );
+      expect(entered).toBe(false);
       await room.open({ grant: grant('discover') });
       expect(await room.sealSource(intent)).toEqual({
         kind: 'execution-pending',
       });
+      releaseClaim.resolve();
+      await waitFor(
+        () => entered,
+        (value) => value,
+        5000,
+      );
+      expect(await room.sealSource(intent)).toEqual({
+        kind: 'execution-pending',
+      });
       release.resolve();
+      await waitFor(
+        () => publicationEntered,
+        (value) => value,
+        5000,
+      );
+      expect(await room.sealSource(intent)).toEqual({
+        kind: 'execution-pending',
+      });
+      releasePublication.resolve();
       const result = await dispatched;
       expect(result.kind).toBe('dispatched');
       if (result.kind !== 'dispatched')
@@ -910,6 +957,8 @@ describe('OrchestrationService', () => {
       ).rejects.toThrow('coordination is temporarily unavailable');
       expect(claude.sendTurn).not.toHaveBeenCalled();
     } finally {
+      releaseClaim.resolve();
+      releasePublication.resolve();
       release.resolve();
       await dispatched;
       await room.close();

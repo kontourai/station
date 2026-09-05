@@ -63,6 +63,7 @@ import type {
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
+import type { SessionStartBoundaryClaim } from '../orchestration/session-turn-boundary.js';
 import { createIsolatedTaskSearch } from '../search/isolated-task-search.js';
 import { ProjectResourceResolver } from './project-resource-resolver.js';
 import type { ProjectService } from './project-service.js';
@@ -70,6 +71,7 @@ import {
   resolveProjectWorkspaceOutcome,
   type WorkspacePathResolver,
 } from './project-workspace-path.js';
+import type { TaskDispatchExecutionAuthority } from './task-dispatcher.js';
 import {
   type TaskDispatchReservation as DispatcherReservation,
   type TaskDispatchAssociation,
@@ -222,11 +224,14 @@ interface TaskGraphServiceLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
 }
 
+type TaskDispatchOrchestration = Pick<
+  OrchestrationService,
+  'dispatch' | 'seedSessionRecord'
+> &
+  Partial<Pick<OrchestrationService, 'claimTaskDispatchBoundary'>>;
+
 interface TaskGraphServiceDeps {
-  orchestrationService?: Pick<
-    OrchestrationService,
-    'dispatch' | 'seedSessionRecord'
-  >;
+  orchestrationService?: TaskDispatchOrchestration;
   projectService?: Pick<ProjectService, 'getProject'>;
   execGit?: typeof execGit;
   /** AssignmentProvider claim/release/status backend (roadmap archive#584). When
@@ -261,10 +266,7 @@ interface TaskGraphServiceDeps {
 
 /** Concrete integrations captured at the TaskDispatcher composition Seam. */
 export interface TaskDispatchAdapterDeps {
-  orchestrationService?: Pick<
-    OrchestrationService,
-    'dispatch' | 'seedSessionRecord'
-  >;
+  orchestrationService?: TaskDispatchOrchestration;
   assignmentClaimService?: Pick<
     AssignmentClaimService,
     'claim' | 'release' | 'status'
@@ -1413,9 +1415,7 @@ export class TaskGraphService {
    */
   private readonly projectResourceResolver?: ProjectResourceResolver;
   private readonly runGit: typeof execGit;
-  private readonly orchestrationService:
-    | Pick<OrchestrationService, 'dispatch' | 'seedSessionRecord'>
-    | undefined;
+  private readonly orchestrationService: TaskDispatchOrchestration | undefined;
   private readonly assignmentClaimService:
     | Pick<AssignmentClaimService, 'claim' | 'release' | 'status'>
     | undefined;
@@ -2673,6 +2673,7 @@ export class TaskGraphService {
     claims: TaskDispatchClaims;
     remoteSessions: TaskDispatchRemoteSessions;
     telemetry: TaskDispatchTelemetry;
+    execution?: TaskDispatchExecutionAuthority;
   } {
     const orchestrationService =
       deps.orchestrationService ?? this.orchestrationService;
@@ -2749,6 +2750,7 @@ export class TaskGraphService {
       startOrSeed: async (
         reservation: DispatcherReservation,
         input: TaskDispatchInput,
+        admission?: SessionStartBoundaryClaim,
       ) => {
         if (reservation.provider !== 'task-dispatch' && orchestrationService) {
           const taskSlug = this.resolveDispatchTaskSlug(
@@ -2776,6 +2778,7 @@ export class TaskGraphService {
                 projectId: reservation.task.projectId,
                 taskId: reservation.task.id,
               },
+              ...(admission ? { sessionStartAdmission: admission } : {}),
               ...(taskSlug
                 ? { workflowSidecarAttachMode: 'read-only-join' as const }
                 : {}),
@@ -2823,7 +2826,24 @@ export class TaskGraphService {
         });
       },
     };
-    return { graph, claims, remoteSessions, telemetry };
+    const execution: TaskDispatchExecutionAuthority | undefined =
+      orchestrationService?.claimTaskDispatchBoundary
+        ? {
+            claim: async (reservation) =>
+              orchestrationService.claimTaskDispatchBoundary!({
+                projectId: reservation.task.projectId,
+                taskId: reservation.task.id,
+                sessionId: reservation.sessionId,
+              }),
+          }
+        : undefined;
+    return {
+      graph,
+      claims,
+      remoteSessions,
+      telemetry,
+      ...(execution ? { execution } : {}),
+    };
   }
 
   /**

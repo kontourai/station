@@ -13,6 +13,7 @@ type BoundaryState =
   | 'indeterminate';
 
 export interface SessionTurnBoundaryRecord {
+  purpose?: 'task-dispatch';
   boundaryId: string;
   threadId: string;
   state: BoundaryState;
@@ -100,6 +101,7 @@ export interface SessionTurnBoundaryClaim {
 
 /** Session creation has no provider turn ID. Its possible effect is still durable. */
 export interface SessionStartBoundaryClaim {
+  readonly threadId: string;
   beginInvocation(now: string): SessionTurnBoundaryTransition;
   started(): SessionTurnBoundaryTransition;
   notInvoked(): SessionTurnBoundaryTransition;
@@ -124,8 +126,15 @@ export async function runSessionStartWithBoundary<T>(
   authority: SessionTurnBoundaryAuthority,
   threadId: string,
   invoke: () => Promise<T>,
+  admission?: SessionStartBoundaryClaim,
 ): Promise<T> {
-  const owned = authority.claimSessionStart(threadId, new Date().toISOString());
+  if (admission && admission.threadId !== threadId)
+    throw new Error(
+      'Session start admission does not match the requested session.',
+    );
+  const owned = admission
+    ? { kind: 'owner' as const, claim: admission }
+    : authority.claimSessionStart(threadId, new Date().toISOString());
   if (owned.kind !== 'owner')
     throw new Error(
       'Session start admission is unavailable; no provider call was made.',
@@ -150,7 +159,22 @@ export async function runSessionStartWithBoundary<T>(
   return result;
 }
 
+export interface TaskDispatchBoundaryClaim {
+  beginEffects(now: string): SessionTurnBoundaryTransition;
+  settled(): SessionTurnBoundaryTransition;
+  notInvoked(): SessionTurnBoundaryTransition;
+  indeterminate(now: string): SessionTurnBoundaryTransition;
+  readonly sessionStart: SessionStartBoundaryClaim;
+}
+
 export interface SessionTurnBoundaryAuthority {
+  claimTaskDispatch(
+    threadId: string,
+    now: string,
+  ):
+    | { kind: 'owner'; claim: TaskDispatchBoundaryClaim }
+    | { kind: 'busy' | 'unavailable' };
+
   claimSessionStart(
     threadId: string,
     now: string,
@@ -305,69 +329,134 @@ export function createSessionTurnBoundaryAuthority(options: {
     } as const;
   };
 
+  const claimStart = (
+    threadId: string,
+    now: string,
+    purpose?: 'task-dispatch',
+  ): ReturnType<SessionTurnBoundaryAuthority['claimSessionStart']> => {
+    const record = {
+      ...preparedRecord(threadId, now, purpose ?? 'session-start-boundary'),
+      ...(purpose ? { purpose } : {}),
+    };
+    const created = createWithRecovery(record);
+    if (created.kind !== 'applied')
+      return { kind: created.kind === 'busy' ? 'busy' : 'unavailable' };
+    const boundaryId = record.boundaryId;
+    let attempted = false;
+    let invoked = false;
+    let terminal: 'started' | 'not-invoked' | 'indeterminate' | undefined;
+    const remove = (from: BoundaryState[]) =>
+      retainUntilApplied(boundaryId, () =>
+        options.coordinator.remove({
+          boundaryId,
+          ownerId: options.owner.id,
+          from,
+        }),
+      );
+    return {
+      kind: 'owner',
+      claim: Object.freeze({
+        threadId,
+        beginInvocation(at: string) {
+          if (terminal) return { kind: 'stale' } as const;
+          if (invoked) return { kind: 'applied' } as const;
+          attempted = true;
+          return retainUntilApplied(boundaryId, () => {
+            const result = options.coordinator.transition({
+              boundaryId,
+              ownerId: options.owner.id,
+              from: ['prepared'],
+              to: 'invoking',
+              now: at,
+            });
+            if (result.kind === 'applied') invoked = true;
+            return result;
+          });
+        },
+        started() {
+          if (!invoked || (terminal && terminal !== 'started'))
+            return { kind: 'stale' } as const;
+          terminal = 'started';
+          return remove(['invoking']);
+        },
+        notInvoked() {
+          if (attempted || (terminal && terminal !== 'not-invoked'))
+            return { kind: 'stale' } as const;
+          terminal = 'not-invoked';
+          return remove(['prepared']);
+        },
+        indeterminate(at: string) {
+          if (terminal && terminal !== 'indeterminate')
+            return { kind: 'stale' } as const;
+          terminal = 'indeterminate';
+          return retainUntilApplied(boundaryId, () =>
+            options.coordinator.transition({
+              boundaryId,
+              ownerId: options.owner.id,
+              from: ['prepared', 'invoking', 'indeterminate'],
+              to: 'indeterminate',
+              now: at,
+            }),
+          );
+        },
+      }),
+    };
+  };
+
   return {
-    claimSessionStart(threadId, now) {
-      const record = preparedRecord(threadId, now, 'session-start-boundary');
-      const created = createWithRecovery(record);
-      if (created.kind !== 'applied')
-        return { kind: created.kind === 'busy' ? 'busy' : 'unavailable' };
-      const boundaryId = record.boundaryId;
-      let attempted = false;
-      let invoked = false;
-      let terminal: 'started' | 'not-invoked' | 'indeterminate' | undefined;
-      const remove = (from: BoundaryState[]) =>
-        retainUntilApplied(boundaryId, () =>
-          options.coordinator.remove({
-            boundaryId,
-            ownerId: options.owner.id,
-            from,
-          }),
-        );
+    claimSessionStart: (threadId, now) => claimStart(threadId, now),
+    claimTaskDispatch(threadId, now) {
+      const owned = claimStart(threadId, now, 'task-dispatch');
+      if (owned.kind !== 'owner') return owned;
+      const parent = owned.claim;
+      let childInvoked = false;
+      let childSettled = false;
+      let dispatchTerminal = false;
+      const sessionStart: SessionStartBoundaryClaim = Object.freeze({
+        threadId,
+        beginInvocation(at: string) {
+          if (dispatchTerminal || childSettled)
+            return { kind: 'stale' } as const;
+          const result = parent.beginInvocation(at);
+          if (result.kind === 'applied') childInvoked = true;
+          return result;
+        },
+        started() {
+          if (dispatchTerminal || !childInvoked)
+            return { kind: 'stale' } as const;
+          childSettled = true;
+          return { kind: 'applied' } as const;
+        },
+        notInvoked() {
+          if (dispatchTerminal || childInvoked)
+            return { kind: 'stale' } as const;
+          childSettled = true;
+          return { kind: 'applied' } as const;
+        },
+        indeterminate(at: string) {
+          if (childSettled) return { kind: 'stale' } as const;
+          childSettled = true;
+          return parent.indeterminate(at);
+        },
+      });
       return {
         kind: 'owner',
         claim: Object.freeze({
-          beginInvocation(at: string) {
-            if (terminal) return { kind: 'stale' } as const;
-            if (invoked) return { kind: 'applied' } as const;
-            attempted = true;
-            return retainUntilApplied(boundaryId, () => {
-              const result = options.coordinator.transition({
-                boundaryId,
-                ownerId: options.owner.id,
-                from: ['prepared'],
-                to: 'invoking',
-                now: at,
-              });
-              if (result.kind === 'applied') invoked = true;
-              return result;
-            });
-          },
-          started() {
-            if (!invoked || (terminal && terminal !== 'started'))
-              return { kind: 'stale' } as const;
-            terminal = 'started';
-            return remove(['invoking']);
+          beginEffects: parent.beginInvocation,
+          settled() {
+            dispatchTerminal = true;
+            return parent.started();
           },
           notInvoked() {
-            if (attempted || (terminal && terminal !== 'not-invoked'))
-              return { kind: 'stale' } as const;
-            terminal = 'not-invoked';
-            return remove(['prepared']);
+            const result = parent.notInvoked();
+            if (result.kind !== 'stale') dispatchTerminal = true;
+            return result;
           },
           indeterminate(at: string) {
-            if (terminal && terminal !== 'indeterminate')
-              return { kind: 'stale' } as const;
-            terminal = 'indeterminate';
-            return retainUntilApplied(boundaryId, () =>
-              options.coordinator.transition({
-                boundaryId,
-                ownerId: options.owner.id,
-                from: ['prepared', 'invoking', 'indeterminate'],
-                to: 'indeterminate',
-                now: at,
-              }),
-            );
+            dispatchTerminal = true;
+            return parent.indeterminate(at);
           },
+          sessionStart,
         }),
       };
     },
@@ -681,7 +770,8 @@ export function createInMemorySessionTurnBoundaryAuthority(): SessionTurnBoundar
       for (const [id, record] of records) {
         if (
           record.threadId !== input.threadId ||
-          record.state === 'lifecycle'
+          record.state === 'lifecycle' ||
+          record.purpose === 'task-dispatch'
         ) {
           continue;
         }
