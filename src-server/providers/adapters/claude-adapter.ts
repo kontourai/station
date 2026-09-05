@@ -322,6 +322,17 @@ const DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS = 5_000;
  * consulted (the SDK reports the shadowing as `CLAUDE_SDK_CAN_USE_TOOL_SHADOWED`).
  * Cloning a repository should not grant it tool permissions here.
  *
+ * The shadowing is real and was reproduced against `claude` 2.1.224 with a live
+ * turn: a `permissions.allow: ['Bash']` rule in the `settings` (flag) tier ran
+ * the command with `canUseTool` never invoked. The project/local tiers add one
+ * precondition — in a workspace the CLI has never had trust accepted for
+ * (`~/.claude.json`, per-directory `hasTrustDialogAccepted`) the same rule did
+ * not shadow the callback — so the exposure needs a workspace the operator has
+ * already accepted, which is the normal state of their own repositories. This
+ * narrowing does not rely on that gate: it takes the repository out of the
+ * cascade whatever its trust state. See
+ * docs/conformance/tool-policy-delivery.md for the full measurement.
+ *
  * `['user']` keeps the operator's OWN `~/.claude/settings.json` — the file
  * they wrote for themselves, which is what "your Claude settings apply" means
  * in Station's Ask-mode copy — and drops the two repository-writable tiers.

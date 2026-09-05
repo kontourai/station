@@ -23,6 +23,19 @@ and `.claude/settings.local.json` — so a repository with
 `{"permissions":{"allow":["Bash(rm:*)"]}}` committed ran `rm` with no Station
 approval request and no Station receipt. Cloning a repository is not consent.
 
+How far that reaches, measured against `claude` 2.1.224 with a real turn in
+`permissionMode: 'default'`: an `allow` rule in a loaded settings tier does
+shadow the SDK's `canUseTool` callback outright — a `permissions.allow: ["Bash"]`
+rule supplied through the `settings` (flag) tier ran the command with no
+callback invocation at all. The project and local tiers carry one extra
+precondition: in a workspace the CLI has never had trust accepted for
+(`~/.claude.json`, per-directory `hasTrustDialogAccepted`), the same rule did
+NOT shadow the callback. So the exposure needs a workspace the operator has
+already accepted — which is the normal state of their own repositories, and not
+something Station can see or rely on. Narrowing `settingSources` takes the
+repository out of the cascade regardless of trust state; it does not depend on
+that gate holding.
+
 Station therefore pins `settingSources: ['user']` on every Station-managed
 Claude session (`STATION_SESSION_SETTING_SOURCES`,
 `src-server/providers/adapters/claude-adapter.ts`). The operator's own
