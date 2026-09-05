@@ -1718,6 +1718,10 @@ button:hover {
    is a second click for nothing, so the row renders as its own labelled button
    in the bar. Text, not a glyph — an unlabelled icon is what #1536 F removed. */
 .chat-dock__more-inline {
+  /* `relative` for the same reason the ⋯ trigger has it: this form carries the
+     folded row's live count too, and an absolutely positioned badge needs a
+     positioned ancestor or it anchors to the page. */
+  position: relative;
   flex: 0 0 auto;
   padding: var(--space-1) var(--space-2);
   border: 0;
@@ -1773,7 +1777,15 @@ button:hover {
    can never strand the other: it has to beat the dock to catch outside clicks
    and stay under its own menu or it swallows the menu's own rows. Both live
    here rather than half in `ChatDockHeaderMoreMenu.tsx`'s inline styles for
-   that reason. */
+   that reason.
+
+   It shares tier 9350 with the header's `.app-toolbar__overflow-menu`, and that
+   is safe because the two can never be open together: this one belongs to the
+   dock's own chrome and the other is the toolbar's overflow, each opened by its
+   own trigger, and either menu's dismiss backdrop covers the viewport — pressing
+   the other trigger closes the first before it can open. Sharing a tier with a
+   surface you can co-render is the thing to avoid; sharing it with one you
+   cannot is what the named tiers are for. */
 .chat-dock__more-menu {
   bottom: auto;
   left: auto;
@@ -3278,7 +3290,15 @@ button:hover {
 }
 
 .chat-dock__active-identity-agent {
-  flex-shrink: 0;
+  /* Shrinks, with a floor. It held its full width at every size, which on a
+     280px side dock (`MIN_DOCK_WIDTH`) left the conversation title 5px — worse
+     than the overprint this arc set out to fix. The avatar beside it also
+     carries the agent's identity, and this arc's finding is that the title is
+     the row's subject; #3309's claim is that the agent is NAMED, not that it is
+     never abbreviated. Four times the title's shrink factor, so it gives way
+     earlier, and never below ~5 glyphs. */
+  flex: 0 4 auto;
+  min-width: 40px;
   overflow: hidden;
   font-size: var(--text-sm);
   text-overflow: ellipsis;
@@ -3319,7 +3339,7 @@ button:hover {
    and the title yields after that. */
 .chat-dock__active-identity-engine {
   flex: 0 100 auto;
-  min-width: 64px;
+  min-width: 48px;
   overflow: hidden;
   color: var(--text-tertiary);
   font-size: var(--text-xs);

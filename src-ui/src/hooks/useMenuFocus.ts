@@ -23,6 +23,10 @@ const FOCUSABLE =
  * Attach the returned ref to the menu container, or pass one the caller
  * already holds. The container needs `tabIndex={-1}` so it can receive focus
  * when the menu has no focusable content of its own.
+ *
+ * Focus entry, focusout dismissal and focus return apply to every consumer.
+ * Arrow-key roving focus applies only to a container that declares
+ * `role="menu"` — see that effect for why the distinction is not optional.
  */
 export function useMenuFocus<T extends HTMLElement>(
   isOpen: boolean,
@@ -75,21 +79,32 @@ export function useMenuFocus<T extends HTMLElement>(
   }, [isOpen, containerRef]);
 
   /**
-   * Roving focus. A `role="menu"` is a single tab stop whose items are reached
-   * with the arrow keys — a menu whose only navigation is Tab is not a menu,
-   * it is a list of buttons wearing the role. Home/End because a seven-row menu
-   * is exactly where "back to the top" is worth a key.
+   * Roving focus, for a `role="menu"` container ONLY.
    *
-   * Lives here rather than in a consumer so every portalled menu behaves the
-   * same way, which is the reason this hook exists at all. Two guards keep it
-   * from stealing keys it has no business owning: a text field inside a menu
-   * (the command palette's shape) uses arrows for the caret, and a key that
-   * arrives while the menu has no focusable item is nobody's business.
+   * A menu is a single tab stop whose items are reached with the arrow keys — a
+   * menu whose only navigation is Tab is not a menu, it is a list of buttons
+   * wearing the role. Home/End because a seven-row menu is exactly where "back
+   * to the top" is worth a key.
+   *
+   * The role gate is DERIVED from the container, not an opt-in flag a caller
+   * could forget or claim wrongly, and it is the load-bearing part: this hook's
+   * other three effects serve every portalled popover, and two of its consumers
+   * are not menus. `NotificationHistory` is a SCROLLING list of headings and
+   * per-card Allow/Deny buttons, so swallowing Arrow keys killed keyboard
+   * scrolling outright and made focus wrap between two destructive actions;
+   * `OverflowMenu` deliberately never claimed the role (see its own comment on
+   * `menuitemcheckbox` ownership). Arrow keys belong to whoever declares the
+   * pattern that owns them.
+   *
+   * Two further guards, inside: a text field in a menu (the command palette's
+   * shape) keeps its caret keys, and a key arriving with nothing focusable in
+   * the container is nobody's business.
    */
   useEffect(() => {
     if (!isOpen) return;
     const container = containerRef.current;
     if (!container) return;
+    if (container.getAttribute('role') !== 'menu') return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (

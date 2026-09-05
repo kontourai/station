@@ -450,33 +450,6 @@ describe('RegionToolbarControls', () => {
     ]);
   });
 
-  /**
-   * D3: the shared `.app-toolbar__overflow-menu button + button` hairline draws
-   * a line between EVERY row, which is right for the header's flat ⋯ menu and
-   * wrong here: it turns a grouped arrangement into a ruled table where the
-   * group boundary — the only division that carries meaning — looks exactly like
-   * the six that do not. The legends and one border per group carry it instead.
-   */
-  test('the Layout menu rules its groups, not its every row', () => {
-    const rowHairline = chatCss.match(
-      /\.app-toolbar__region-menu button \+ button\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(rowHairline, 'the per-row hairline must be turned off here').toMatch(
-      /border-top:\s*0/,
-    );
-    const groupDivider = chatCss.match(
-      /\.app-toolbar__region-menu-group \+ \.app-toolbar__region-menu-group\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(groupDivider).toMatch(/border-top:\s*1px solid/);
-    // The premise: the flat menu this family belongs to still rules its rows,
-    // so this is a scoped override and not a global removal.
-    expect(
-      chatCss.match(
-        /\.app-toolbar__overflow-menu button \+ button\s*\{([^}]*)\}/,
-      )?.[1],
-    ).toMatch(/border-top:\s*1px solid/);
-  });
-
   test('the region fieldset holds its controls’ width (#917)', () => {
     const regionsRule = chatCss.match(
       /\.app-toolbar__regions\s*\{([^}]*)\}/,

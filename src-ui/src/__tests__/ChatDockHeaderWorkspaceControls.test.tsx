@@ -362,6 +362,40 @@ describe('one-bar rule (#3309)', () => {
     expect(screen.getByRole('button', { name: 'Start a chat' })).toBeTruthy();
   });
 
+  /**
+   * H3: the two early returns in `ChatDockHeaderMoreMenu` (no rows, one row
+   * rendered inline) unmount the portal without clearing the open state. A
+   * collapse takes every pane command away and leaves Chat settings alone, so
+   * the real 3→1→3 sequence — ⌘D with the menu open, then re-expand — used to
+   * come back with a menu nobody pressed, anchored to a rect measured before the
+   * collapse. Driven through the real component, because the defect is in the
+   * interaction between its state and its branches, not in either alone.
+   */
+  test('collapsing with the menu open does not re-open it on the way back', async () => {
+    const controls = workspaceControls();
+    const { rerender, props } = renderHeader({ workspaceControls: controls });
+
+    openMoreMenu();
+    expect(
+      screen.getByRole('menu', { name: 'More dock actions' }),
+    ).toBeTruthy();
+
+    // The collapse: `ChatDock` stops passing `workspaceControls` while the pane
+    // is closed, which leaves Chat settings as the only folded command.
+    rerender(<ChatDockHeader {...props} workspaceControls={undefined} />);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Chat settings' })).toBeTruthy();
+
+    // And back. Nothing pressed the trigger, so nothing should be open.
+    rerender(<ChatDockHeader {...props} workspaceControls={controls} />);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: /^More dock actions/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
   test('renders the context meter beside identity when supplied', () => {
     renderHeader({
       contextMeter: <span data-testid="meter">42%</span>,

@@ -113,6 +113,25 @@ export function ChatDockHeaderMoreMenu({
     return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [open]);
 
+  /**
+   * Close whenever the row count changes the branch that OWNS the menu.
+   *
+   * The two early returns below (no rows, one row rendered inline) unmount the
+   * portal without touching this state, so collapsing the dock with the menu
+   * open — which takes every pane command away and leaves Chat settings alone —
+   * left `open` true behind an inline button. Re-expanding then re-opened a menu
+   * nobody pressed, positioned from a trigger rect measured before the collapse.
+   * `RegionToolbarControls` guards its own branch changes the same way.
+   *
+   * On the count, not on a branch boolean: the count is what both early returns
+   * and the anchor's `roomNeededPx` are derived from, so a future third branch
+   * cannot slip past this.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the row count is this effect's trigger, not a value it reads.
+  useEffect(() => {
+    setOpen(false);
+  }, [actions.length]);
+
   if (actions.length === 0) return null;
 
   /**
@@ -128,13 +147,31 @@ export function ChatDockHeaderMoreMenu({
    */
   if (actions.length === 1) {
     const only = actions[0]!;
+    const inlineName =
+      badgeCount > 0 && badgeLabel
+        ? `${only.label} — ${badgeLabel}`
+        : undefined;
     return (
       <button
         ref={setTrigger}
         type="button"
         className="chat-dock__more-inline"
         disabled={only.disabled}
-        title={only.label}
+        // Everything the row would have carried in the menu carries here: a row
+        // that opens a surface of its own still says so, a toggle still reports
+        // its state, and live work behind it is still visible. Folding a command
+        // into one control must not drop what the control promised.
+        {...(only.haspopup
+          ? {
+              'aria-haspopup': only.haspopup,
+              'aria-expanded': Boolean(only.expanded),
+            }
+          : {})}
+        {...(only.checked === undefined
+          ? {}
+          : { 'aria-pressed': only.checked })}
+        {...(inlineName ? { 'aria-label': inlineName } : {})}
+        title={inlineName ?? only.label}
         onClick={(event) => {
           event.stopPropagation();
           const trigger = event.currentTarget;
@@ -142,6 +179,11 @@ export function ChatDockHeaderMoreMenu({
         }}
       >
         {only.label}
+        {badgeCount > 0 && (
+          <span className="chat-dock__more-badge" aria-hidden="true">
+            {badgeCount}
+          </span>
+        )}
       </button>
     );
   }

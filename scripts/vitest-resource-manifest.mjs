@@ -680,6 +680,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // `playwright-core`, so the classification is the only thing that keeps a
   // browser launch out of the ordinary four-worker lane.
   'src-ui/src/__tests__/ChatDockHeaderMoreMenu.layering.test.tsx',
+  // #1536 F (round 3): same shape again — launches a real Chromium to read the
+  // Layout menu's RESOLVED row/group borders. A text scan could not: the first
+  // fix tied on specificity with a rule 90 lines below it and lost on source
+  // order while the declaration read correct.
+  'src-ui/src/__tests__/RegionLayoutMenu.dividers.test.tsx',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

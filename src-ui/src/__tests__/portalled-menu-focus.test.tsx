@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen } from '@testing-library/react';
 import { createPortal } from 'react-dom';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -123,24 +123,37 @@ describe('portalled header menus stay reachable from the keyboard', () => {
  * also what walks OUT of the menu and, via the focusout dismissal, closes it.
  * A list of buttons wearing the role is not a menu.
  *
- * Driven through a real portalled menu rather than a bare hook harness, because
- * the behaviour under test is the one a keyboard user gets from these menus.
+ * B3: and a container that never claimed the role is not one either. The hook
+ * serves several portalled popovers that are NOT menus — `OverflowMenu` by its
+ * own decision, `NotificationHistory` because it is a scrolling list of cards —
+ * so the roving effect is gated on the container's own `role`, which is why the
+ * negative below matters as much as the two positives.
  */
-describe('portalled header menus are navigable with the arrow keys', () => {
-  function rows(): HTMLElement[] {
-    const menu = screen
-      .getByLabelText('Connections')
-      .closest('.app-toolbar__overflow-menu') as HTMLElement;
-    return [...menu.querySelectorAll<HTMLElement>('button')];
+describe('arrow-key navigation belongs to a role=menu container', () => {
+  /**
+   * A minimal `role="menu"`, because the two properties under test are the
+   * HOOK's — wrapping, and the ends. Both real consumers (the toolbar's Layout
+   * menu, the dock header's More menu) pin them again against their own rows in
+   * their own suites.
+   */
+  function Menu({ count = 3 }: { count?: number }) {
+    const ref = useMenuFocus<HTMLDivElement>(true);
+    return (
+      <div ref={ref} role="menu" aria-label="Rows" tabIndex={-1}>
+        {Array.from({ length: count }, (_, index) => (
+          <button key={`row-${index}`} type="button" role="menuitem">
+            {`Row ${index + 1}`}
+          </button>
+        ))}
+      </div>
+    );
   }
 
   test('Down and Up walk the rows and wrap at both ends', () => {
-    render(<Harness isOpen />);
-    const items = rows();
-    expect(items.length).toBeGreaterThan(2);
-    const menu = items[0]!.closest(
-      '.app-toolbar__overflow-menu',
-    ) as HTMLElement;
+    render(<Menu />);
+    const items = screen.getAllByRole('menuitem');
+    expect(items).toHaveLength(3);
+    const menu = screen.getByRole('menu');
 
     // Opening already focused the first row.
     expect(document.activeElement).toBe(items[0]);
@@ -150,22 +163,45 @@ describe('portalled header menus are navigable with the arrow keys', () => {
     expect(document.activeElement).toBe(items[0]);
     // The first row's Up is the last row, not a dead key.
     fireEvent.keyDown(menu, { key: 'ArrowUp' });
-    expect(document.activeElement).toBe(items[items.length - 1]);
+    expect(document.activeElement).toBe(items[2]);
     fireEvent.keyDown(menu, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(items[0]);
   });
 
   test('Home and End jump to the ends', () => {
-    render(<Harness isOpen />);
-    const items = rows();
-    const menu = items[0]!.closest(
-      '.app-toolbar__overflow-menu',
-    ) as HTMLElement;
+    render(<Menu />);
+    const items = screen.getAllByRole('menuitem');
+    const menu = screen.getByRole('menu');
 
     fireEvent.keyDown(menu, { key: 'End' });
-    expect(document.activeElement).toBe(items[items.length - 1]);
+    expect(document.activeElement).toBe(items[2]);
     fireEvent.keyDown(menu, { key: 'Home' });
     expect(document.activeElement).toBe(items[0]);
+  });
+
+  test('the keys are prevented only where the role claims them', () => {
+    const { unmount } = render(<Menu />);
+    const menu = screen.getByRole('menu');
+    const claimed = createEvent.keyDown(menu, { key: 'ArrowDown' });
+    fireEvent(menu, claimed);
+    expect(claimed.defaultPrevented).toBe(true);
+    unmount();
+
+    // `OverflowMenu` shares this hook and deliberately never claimed the role
+    // (see its own comment on `menuitemcheckbox` ownership), so its Arrow keys
+    // stay the browser's and its rows stay Tab-navigable. Focus entry, the
+    // focusout dismissal and focus return — every test above — are unaffected.
+    render(<Harness isOpen />);
+    const overflow = screen
+      .getByLabelText('Connections')
+      .closest('.app-toolbar__overflow-menu') as HTMLElement;
+    expect(overflow.getAttribute('role')).toBeNull();
+    const firstRow = screen.getByLabelText('Connections');
+    firstRow.focus();
+    const unclaimed = createEvent.keyDown(overflow, { key: 'ArrowDown' });
+    fireEvent(overflow, unclaimed);
+    expect(unclaimed.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(firstRow);
   });
 
   test('an arrow key inside a text field is the caret’s, not the menu’s', () => {

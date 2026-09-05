@@ -111,7 +111,7 @@ function dockFixtureHtml(headerMarkup: string, width: number): string {
  * The whole title cluster as `ChatDockHeader` composes it: the identity block,
  * the project context, and the empty spacer that owns the row's growth.
  */
-function titleClusterMarkup(): string {
+function titleClusterMarkup(title = 'New chat'): string {
   const { container, unmount } = render(
     <div className="chat-dock__title">
       <div className="chat-dock__header-identity">
@@ -119,7 +119,7 @@ function titleClusterMarkup(): string {
           session={
             {
               id: 'chat-1',
-              title: 'New chat',
+              title,
               agentSlug: 'codex',
               agentName: 'Claude Code',
             } as ChatSession
@@ -137,10 +137,13 @@ function titleClusterMarkup(): string {
         />
       </div>
       <div className="chat-dock__header-context">
+        {/* A real project name and path, not "No project": the badge is the
+            identity cluster's competitor for the row, and an empty one would
+            make every narrow measurement below optimistic. */}
         <ChatDockProjectContext
-          projectSlug={null}
-          projectName={null}
-          workingDirectory={null}
+          projectSlug="kontourai-station"
+          projectName="kontourai-station"
+          workingDirectory="/Users/someone/dev/kontourai-station"
           projects={[]}
           onSelectProject={() => {}}
           onSwitchProject={() => {}}
@@ -239,31 +242,93 @@ describe.skipIf(!chromiumAvailable)(
     });
 
     /**
-     * Squeezed past that, the token stops at its floor and the title takes over
-     * the yielding. The floor is the point: with `min-width: 0` the token
-     * reached ZERO before the title lost a character, so on a ~400px side dock
-     * nothing named the engine or the model and its `title` tooltip had no box
-     * left to hover — the trade #1536 F asked for, taken one step too far.
+     * Squeezed past that, the parts that are not the row's subject stop at their
+     * floors and the title takes over the yielding.
      *
-     * The trade that REMAINS, stated plainly: below ~520px both parts are
-     * truncated. The token keeps a legible prefix and a hover target rather than
-     * the whole string, and the agent's own name — which never shrinks — is what
-     * still identifies who is answering at any width.
+     * Measured in the REAL CLUSTER — identity plus the project badge plus the
+     * spacer — because the identity-only fixture is optimistic: the badge is the
+     * identity's competitor for the row, and every earlier version of this claim
+     * was measured without it. A side dock's floor is `MIN_DOCK_WIDTH` = 280px
+     * (`useDockShellChrome`), so every width here is reachable by dragging the
+     * resize handle; none of it is hypothetical.
+     *
+     * WHAT HOLDS, and what does not:
+     *  - the engine/model token never drops below 48px (a legible prefix and a
+     *    hover target for its `title`) and the agent's name never below 40px;
+     *  - at 320px and wider the conversation title keeps ~9 glyphs or more;
+     *  - at the 280px floor it holds ~5. That is the disclosed limit of a
+     *    CSS-only distribution: the floors cannot be conditional on the DOCK's
+     *    width, because a media query sees the viewport (a 280px side dock lives
+     *    in a 1456px window) and a container query would need `container-type`
+     *    on a flex item that has to stay content-sized. Tapering them properly
+     *    belongs to the header-composition pass, not here.
+     * Before this round the same measurement read 21px at 320 and 5px at 280 —
+     * a title of one or two characters, which is the defect this arc opened on.
      */
-    test.each([520, 420, 320, 260])(
-      'at %ipx the token holds its floor and the title yields instead',
-      async (width) => {
-        const { title, engine, row } = await measure(width);
+    test.each([
+      [520, 180],
+      [460, 140],
+      [420, 110],
+      [380, 90],
+      [320, 64],
+      [280, 32],
+    ])(
+      'at %ipx in the real cluster the floors hold and the title keeps %ipx',
+      async (width, minTitle) => {
+        const page = await browser.newPage({
+          viewport: { width: Math.max(width, 400), height: 400 },
+        });
+        try {
+          // The LONG title, so the title is a starvation candidate: at
+          // `flex-basis: auto` a short one simply fits and the measurement says
+          // nothing about the distribution.
+          await page.setContent(
+            dockFixtureHtml(titleClusterMarkup(LONG_TITLE), width),
+          );
+          const measured = await page.evaluate(() => {
+            const box = (selector: string) => {
+              const element = document.querySelector(selector);
+              if (!element) throw new Error(`missing ${selector}`);
+              const rect = element.getBoundingClientRect();
+              return {
+                left: rect.left,
+                right: rect.right,
+                width: rect.width,
+                clipped: element.scrollWidth > element.clientWidth + 1,
+              };
+            };
+            return {
+              agent: box('.chat-dock__active-identity-agent'),
+              title: box('.chat-dock__active-identity-title'),
+              engine: box('.chat-dock__active-identity-engine'),
+              close: box('.chat-dock__active-identity-close'),
+              badge: box('.chat-dock__project-badge'),
+              row: box('.chat-dock__header'),
+            };
+          });
 
-        // Measured floor: 64px renders "Claude…" at this font-size, so what
-        // survives is an identity and something to hover, not a sliver.
-        expect(Math.round(engine.width)).toBe(64);
-        expect(engine.clipped).toBe(true);
-        expect(title.clipped).toBe(true);
-        // The title is still the larger of the two — it yields, it does not
-        // vanish.
-        expect(title.width).toBeGreaterThan(engine.width);
-        expect(engine.right).toBeLessThanOrEqual(row.right + 1);
+          expect(Math.round(measured.engine.width)).toBeGreaterThanOrEqual(48);
+          expect(Math.round(measured.agent.width)).toBeGreaterThanOrEqual(40);
+          expect(Math.round(measured.title.width)).toBeGreaterThanOrEqual(
+            minTitle,
+          );
+          // Still one run, still ordered, and the close control — the only
+          // destructive one here — is never pushed out of the row.
+          expect(measured.agent.right).toBeLessThanOrEqual(
+            measured.title.left + 1,
+          );
+          expect(measured.title.right).toBeLessThanOrEqual(
+            measured.engine.left + 1,
+          );
+          expect(measured.close.right).toBeLessThanOrEqual(
+            measured.row.right + 1,
+          );
+          expect(measured.badge.right).toBeLessThanOrEqual(
+            measured.row.right + 1,
+          );
+        } finally {
+          await page.close();
+        }
       },
     );
   },

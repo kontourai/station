@@ -50,6 +50,58 @@ describe('ChatDockHeaderMoreMenu', () => {
     expect(screen.queryByRole('button', { name: 'Chat settings' })).toBeNull();
   });
 
+  /**
+   * L10: folding a command into one control must not drop what the control
+   * promised. A row that opens a surface says so, a toggle reports its state,
+   * and live work behind it stays visible — the inline form is the same command,
+   * not a plainer one.
+   */
+  test('the inline form carries the row’s popup semantics, state and count', () => {
+    const { unmount } = render(
+      <ChatDockHeaderMoreMenu
+        actions={[
+          {
+            key: 'tasks',
+            label: 'Background tasks',
+            haspopup: 'dialog',
+            expanded: true,
+            onSelect: vi.fn(),
+          },
+        ]}
+        badgeCount={4}
+        badgeLabel="4 background tasks running"
+      />,
+    );
+
+    const inline = screen.getByRole('button', {
+      name: 'Background tasks — 4 background tasks running',
+    });
+    expect(inline.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(inline.getAttribute('aria-expanded')).toBe('true');
+    expect(inline.querySelector('.chat-dock__more-badge')?.textContent).toBe(
+      '4',
+    );
+    unmount();
+
+    render(
+      <ChatDockHeaderMoreMenu
+        actions={[
+          {
+            key: 'list',
+            label: 'Collapse chat list',
+            checked: true,
+            onSelect: vi.fn(),
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen
+        .getByRole('button', { name: 'Collapse chat list' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
+
   test('the inline form keeps its own click off the header’s dock toggle', () => {
     const onHeaderClick = vi.fn();
     render(

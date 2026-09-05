@@ -145,6 +145,23 @@ describe('copy affordance failed-state cascade (station#3341)', () => {
     expect(componentsRenderingTheMarker()).toEqual(
       [...sharedButtonAdopters, ...ownClassAdopters].sort(),
     );
+    // Membership in that first list is a CLAIM about which pairing covers each
+    // file — that it reaches the shared `Button`, whose
+    // `.button.copy-affordance--failed` rule is the one asserted above. Checked,
+    // not asserted by listing: a file that stopped using the primitive would
+    // still sit in the array while its marker went inert, which is the exact
+    // shape archive#3341 was made of.
+    for (const source of sharedButtonAdopters) {
+      const contents = read(source);
+      expect(
+        /import\s*\{[^}]*\bButton\b[^}]*\}\s*from/.test(contents),
+        `${source} must import the shared Button primitive`,
+      ).toBe(true);
+      expect(
+        /<Button[\s/>]/.test(contents),
+        `${source} must render the shared Button primitive`,
+      ).toBe(true);
+    }
     // The own-class adopters are exactly the non-`button` rows above, so a row
     // deleted from ADOPTERS without its component losing the marker reds here.
     expect(
