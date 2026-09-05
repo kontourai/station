@@ -37,6 +37,18 @@ Pages. Use generic hostnames and paths. Keep private research, credentials,
 customer data, and machine-specific operational logs outside the repository.
 See [Contributing](../../CONTRIBUTING.md) for disclosure guidance.
 
+## Document reusable integrations as they ship
+
+For deployment, storage adapters, authentication, execution, and integration
+changes, document the external company or project journey in the same PR. Use
+[Integrating Station](integrating-station.md) for the delivery expectations:
+prerequisites, runnable example or template, public contract, operating lifecycle,
+and evidence. Keep generic domains and paths, state provider-specific dependencies,
+and record unverified steps. Distinguish the self-operated path from managed
+service conveniences without promising undelivered features or service levels.
+The PR documentation-impact entry should link the affected guide/example or
+explain concretely why that change does not affect the integration journey.
+
 ## Retire or move a document
 
 1. Search incoming links and tooling references with `rg` before moving or

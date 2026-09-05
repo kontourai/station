@@ -21,6 +21,21 @@
       "reason": "Builds a URLSearchParams value sent to the server, which re-derives and expands the value itself (see runtime-routes.ts's pull-request context resolver). The client never resolves it against a filesystem."
     },
     {
+      "entry": "packages/shared/src/cloud-move.ts :: workingDirectory :: (value.workingDirectory !== undefined &&",
+      "category": 1,
+      "reason": "Presence validation of selected Project metadata in previewCloudMove; never passed to path resolution or a filesystem operation."
+    },
+    {
+      "entry": "packages/shared/src/cloud-move.ts :: workingDirectory :: typeof value.workingDirectory !== 'string')",
+      "category": 1,
+      "reason": "Type validation of selected Project metadata in previewCloudMove; the workspace is deliberately not expanded, resolved, or opened."
+    },
+    {
+      "entry": "packages/shared/src/cloud-move.ts :: workingDirectory :: value.workingDirectory",
+      "category": 1,
+      "reason": "Boolean selection of the cloud-preview review message only. The stored workspace may belong to another host; its bytes are never inspected by this preview."
+    },
+    {
       "entry": "src-server/domain/file-storage-adapter.ts :: workingDirectory :: hasWorkingDirectory: !!config.workingDirectory,",
       "category": 1,
       "reason": "Boolean existence flag for ProjectMetadata (API response DTO), consumed only by UI conditional rendering (chat-dock-utils.ts). Never reaches a filesystem call."
