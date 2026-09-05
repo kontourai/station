@@ -1,13 +1,20 @@
 /** Disposable real installer. Checkpoints terminate without running cleanup. */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { Hono } from 'hono';
+import { JsonManifestRegistryProvider } from '../../../../providers/registries/json-manifest-registry.js';
+import { replacePluginProvidersForSource } from '../../../../providers/registries/registry.js';
+import { registerPluginInstallRoutes } from '../../../../routes/plugins/plugin-install-routes.js';
 import {
   installPluginFromSource,
   previewInstalledPluginRecovery,
   recoverInstalledPlugin,
 } from '../../../../routes/plugins/plugin-install-shared.js';
 import { EventStore } from '../../../orchestration/event-store.js';
-import { derivePluginConsentBasis } from '../../plugin-install-consent.js';
+import {
+  derivePluginConsentBasis,
+  type PluginInstallConsent,
+} from '../../plugin-install-consent.js';
 import { createLocalPluginInstallationHost } from '../../plugin-installation-local.js';
 import { readPluginManifestFile } from '../../plugin-manifest-loader.js';
 import { readPluginGrantRevision } from '../../plugin-permissions.js';
@@ -59,7 +66,7 @@ const deps = {
   packageMcpJournal: journal,
   installationHost: host,
   buildPlugin: async () => {
-    if (stage === 'offline')
+    if (stage.startsWith('offline'))
       throw new Error('Offline recovery must not rebuild');
   },
   reconcileEngineConnections: async () => {
@@ -68,9 +75,10 @@ const deps = {
   logger: { info() {}, warn() {}, debug() {}, error() {} } as any,
 };
 try {
-  if (stage === 'offline') {
-    const preview = await previewInstalledPluginRecovery('recoverable', deps);
-    await recoverInstalledPlugin('recoverable', deps, {
+  if (stage === 'offline' || stage.startsWith('offline:')) {
+    const name = stage.split(':')[1] ?? 'recoverable';
+    const preview = await previewInstalledPluginRecovery(name, deps);
+    await recoverInstalledPlugin(name, deps, {
       recoveryRevision: preview.recoveryRevision,
       consent: {
         kind: 'operator-decision',
@@ -89,6 +97,35 @@ try {
   }
   const manifest = await readPluginManifestFile(join(source, 'plugin.json'));
   const basis = derivePluginConsentBasis(source, manifest)!;
+  let dependencyApprovals: Extract<
+    PluginInstallConsent,
+    { kind: 'operator-decision' }
+  >['dependencyApprovals'];
+  if (existsSync(join(home, 'registry.json'))) {
+    const provider = new JsonManifestRegistryProvider(
+      join(home, 'registry.json'),
+      home,
+    );
+    await replacePluginProvidersForSource('restart-catalog', [
+      { type: 'pluginRegistry', provider, source: 'restart-catalog' },
+    ]);
+    const app = new Hono();
+    registerPluginInstallRoutes(app, deps);
+    const response = await app.request('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source }),
+    });
+    const preview = (await response.json()) as any;
+    if (!preview.valid) throw new Error(JSON.stringify(preview));
+    dependencyApprovals = preview.dependencies.map((entry: any) => ({
+      id: entry.id,
+      contentDigest: entry.consent.contentDigest,
+      permissions: entry.consent.permissions,
+      dependencies: entry.consent.dependencies,
+      grantRevision: entry.consent.grantRevision,
+    }));
+  }
   const consent =
     stage === 'stale'
       ? JSON.parse(readFileSync(join(home, 'initial-consent.json'), 'utf8'))
@@ -96,7 +133,10 @@ try {
           kind: 'operator-decision' as const,
           permissions: basis.required,
           contentDigest: basis.contentDigest,
-          dependencies: basis.dependencies,
+          dependencies:
+            dependencyApprovals?.map((entry: any) => entry.id) ??
+            basis.dependencies,
+          dependencyApprovals,
           grantRevision: readPluginGrantRevision(home, manifest.name),
         };
   if (['selected', 'after-host', 'before-ready'].includes(stage))
@@ -107,7 +147,7 @@ try {
 } catch (error) {
   writeFileSync(
     join(home, 'last-refusal'),
-    error instanceof Error ? error.message : 'Unknown refusal',
+    error instanceof Error ? (error.stack ?? error.message) : 'Unknown refusal',
   );
   store.close();
   process.exit(2);
