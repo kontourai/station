@@ -239,6 +239,50 @@ describe('one-bar rule (#3309)', () => {
     ).toBeTruthy();
   });
 
+  /**
+   * #1536 F: "1 session" is the state you are always in with one chat open — a
+   * count that never counts anything, in a bar that could not fit the
+   * conversation's own title. The rail enumerates sessions either way.
+   */
+  test('shows no session count for a single session, and a real one above that', () => {
+    const session = (id: string) => ({ id, title: id, status: 'idle' });
+
+    const { unmount } = renderHeader({
+      chatControls: {
+        sessions: [session('a')],
+        unreadCount: 0,
+        focusSession: vi.fn(),
+        onNewChat: vi.fn(),
+        setShowChatSettings: vi.fn(),
+      },
+    });
+    expect(document.querySelector('.chat-dock__counter')).toBeNull();
+    unmount();
+
+    renderHeader({
+      chatControls: {
+        sessions: [session('a'), session('b')],
+        unreadCount: 0,
+        focusSession: vi.fn(),
+        onNewChat: vi.fn(),
+        setShowChatSettings: vi.fn(),
+      },
+    });
+    expect(document.querySelector('.chat-dock__counter')?.textContent).toBe(
+      '2 sessions',
+    );
+  });
+
+  /**
+   * The zero case is a CTA, not a count, and it has two forms — a real button
+   * while the pane is collapsed (archive#800) and inert text once the body's
+   * own CTA is on screen. Neither is what the count rule above removed.
+   */
+  test('keeps the empty-state CTA, which is not a count', () => {
+    renderHeader({ regionVisible: false });
+    expect(screen.getByRole('button', { name: 'Start a chat' })).toBeTruthy();
+  });
+
   test('renders the context meter beside identity when supplied', () => {
     renderHeader({
       contextMeter: <span data-testid="meter">42%</span>,
