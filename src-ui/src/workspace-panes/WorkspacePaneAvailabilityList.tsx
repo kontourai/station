@@ -82,6 +82,7 @@ function WorkspacePaneAvailabilityCard({
   const presentation = presentWorkspacePaneAvailability(
     entry.availability,
     entry.rendererGate,
+    entry.rendererResolution,
   );
   // A direct route has no Registry navigation callback. Keep the gate's
   // truthful explanation there, but retain the ordinary bounded action so a

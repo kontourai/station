@@ -96,6 +96,26 @@ export function clientWorkspacePaneRendererPresence(
     : 'missing';
 }
 
+/**
+ * Whether this descriptor's renderer selection reads a client fact that may not
+ * have settled yet.
+ *
+ * A `plugin-component` is present only once its bundle registers a trusted
+ * layout, and an `mcp-tool-ui` only while app config admits the MCP host — both
+ * arrive after first paint. A `builtin-component`'s presence is a static
+ * canonical-registry check and a `standard-data` view is decided by the
+ * instance's own bound contribution: neither can be "not known yet", so
+ * neither may claim to be still loading.
+ */
+function rendererSelectionReadsUnsettledFacts(
+  descriptor: WorkspacePaneDescriptor,
+): boolean {
+  return [
+    descriptor.renderer.kind,
+    descriptor.alternativeRenderer?.renderer.kind,
+  ].some((kind) => kind === 'plugin-component' || kind === 'mcp-tool-ui');
+}
+
 function unavailableUntilCatalogIsResolved(): PaneAvailability {
   return {
     state: 'unsupported',
@@ -116,6 +136,14 @@ export function resolveWorkspacePaneCatalogPresentation(
   mcpAppsEnabled = true,
   pluginFramesEnabled = false,
   rendererGate: 'remote-isolation' | null = null,
+  /**
+   * The client facts renderer selection reads — the plugin registry's bundles
+   * and app config — have not settled. A renderer that is not registered YET
+   * is indistinguishable here from one that is gone, so without this the
+   * resolver reported `renderer: 'missing'` during every cold load and each
+   * plugin pane spent seconds claiming to be "Temporarily unavailable".
+   */
+  rendererFactsPending = false,
 ): ResolvedWorkspacePaneCatalog {
   const availabilityByDescriptor = new Map<
     WorkspacePaneDescriptor['id'],
@@ -191,6 +219,16 @@ export function resolveWorkspacePaneCatalogPresentation(
       ...(rendererGate && descriptor.renderer.kind === 'plugin-component'
         ? { rendererGate }
         : {}),
+      // Only where the renderer is not selected AND its selection actually
+      // depends on a fact still arriving. A descriptor whose renderer resolved
+      // does not become "pending" because some OTHER pane's bundle is slow, and
+      // a built-in that is genuinely absent from the canonical registry is not
+      // waiting for anything.
+      ...(rendererFactsPending &&
+      rendererSelection.state !== 'selected' &&
+      rendererSelectionReadsUnsettledFacts(descriptor)
+        ? { rendererResolution: 'pending' as const }
+        : {}),
       clientRendererPresence,
       ...(rendererSelection.state === 'selected'
         ? { selectedRenderer: rendererSelection.candidate }
@@ -242,8 +280,10 @@ export function useResolvedWorkspacePaneCatalog(projectSlug: string) {
       config?.mcpUiHost !== false,
       isDistinctFrameOrigin(config?.pluginFrameOrigin),
       rendererGateFromPluginRegistryLoadStatus(pluginRegistryLoadStatus),
+      pluginRegistryLoadStatus.state === 'loading' || config === null,
     );
   }, [
+    config,
     config?.mcpUiHost,
     config?.pluginFrameOrigin,
     facts,

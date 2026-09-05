@@ -719,4 +719,55 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect(toggleRule).toContain('min-height: 44px');
     expect(toggleRule).toContain('min-width: 44px');
   });
+
+  /**
+   * #1536 H1: a loading state labelled as an outage. On every cold load a
+   * plugin pane read "Temporarily unavailable" for 3–10 seconds before
+   * flipping to "Available" — the renderer had not arrived yet, which the
+   * resolver cannot distinguish from a renderer that is gone.
+   */
+  describe('a renderer fact that has not settled', () => {
+    const loading: WorkspacePaneAvailabilityCatalogEntry = {
+      descriptor: {
+        id: 'pane.remote-review' as never,
+        name: 'Remote review',
+        description: 'A plugin-hosted pane',
+      },
+      availability: {
+        state: 'temporarily-unavailable',
+        reason: { code: 'renderer-missing', source: 'renderer' },
+        action: { type: 'retry', code: 'retry-availability-check' },
+      },
+      rendererResolution: 'pending',
+    };
+
+    test('reads as loading, not as an outage, and offers no retry', () => {
+      render(
+        <WorkspacePaneAvailabilityList
+          entries={[loading]}
+          onSelect={vi.fn()}
+          onAction={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Loading…')).toBeTruthy();
+      expect(screen.queryByText('Temporarily unavailable')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+    });
+
+    test('still names a refusal the resolver already settled', () => {
+      // The pending fact must not swallow a reason the reader can act on:
+      // this pane is refused for a missing Project, which is known.
+      render(
+        <WorkspacePaneAvailabilityList
+          entries={[{ ...unavailable, rendererResolution: 'pending' }]}
+          onSelect={vi.fn()}
+          onAction={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Setup needed')).toBeTruthy();
+      expect(screen.queryByText('Loading…')).toBeNull();
+    });
+  });
 });

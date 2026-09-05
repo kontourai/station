@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { describe, expect, test } from 'vitest';
@@ -604,5 +605,117 @@ describe('direct plugin Pane occurrences (station#3543)', () => {
         hasTrustedPluginLayout: () => true,
       }),
     ).toMatchObject({ state: 'unavailable' });
+  });
+
+  /**
+   * #1536 H1. A renderer that is not registered YET is indistinguishable, to
+   * the resolver, from one that is gone — so on every cold load each plugin
+   * pane spent 3–10 seconds reporting "Temporarily unavailable", an outage
+   * report for a page that was merely still loading.
+   */
+  describe('unsettled renderer facts', () => {
+    const plugin = {
+      id: 'plugin:review:remote',
+      name: 'Remote review',
+      renderer: { kind: 'plugin-component', name: 'remote-review' },
+      placement: { supportedRegions: ['main'] },
+      modes: [{ id: 'default' }],
+      provenance: { origin: 'plugin', pluginId: 'review' },
+      lifecycle: { stage: 'stable' },
+    } as unknown as WorkspacePaneDescriptor;
+
+    const snapshot = (descriptors: WorkspacePaneDescriptor[]) =>
+      ({
+        descriptors,
+        instances: [],
+        availability: descriptors.map((entry) => ({
+          descriptorId: entry.id,
+          input: { rollout: 'available', distribution: 'enabled' },
+          availability: {
+            state: 'temporarily-unavailable',
+            reason: { code: 'renderer-missing', source: 'renderer' },
+          },
+        })),
+      }) as any;
+
+    test('marks an unselected renderer pending while the client facts are still arriving', () => {
+      const result = resolveWorkspacePaneCatalogPresentation(
+        snapshot([plugin]),
+        profile,
+        undefined,
+        true,
+        false,
+        null,
+        true,
+      );
+
+      expect(result.entries[0]).toMatchObject({
+        clientRendererPresence: 'missing',
+        rendererResolution: 'pending',
+      });
+    });
+
+    test('claims nothing pending once those facts have settled', () => {
+      const result = resolveWorkspacePaneCatalogPresentation(
+        snapshot([plugin]),
+        profile,
+        undefined,
+        true,
+        false,
+        null,
+        false,
+      );
+
+      expect(result.entries[0]).not.toHaveProperty('rendererResolution');
+    });
+
+    test('never marks a built-in pending: nothing about its renderer is still arriving', () => {
+      const builtin = descriptor('not-in-the-canonical-registry');
+      const result = resolveWorkspacePaneCatalogPresentation(
+        snapshot([builtin]),
+        profile,
+        undefined,
+        true,
+        false,
+        null,
+        true,
+      );
+
+      // A built-in absent from the canonical registry is absent, full stop —
+      // no bundle and no config flag can make it appear, so "Loading…" would
+      // be a promise nothing is going to keep.
+      expect(result.entries[0]).toMatchObject({
+        clientRendererPresence: 'missing',
+      });
+      expect(result.entries[0]).not.toHaveProperty('rendererResolution');
+    });
+
+    test('leaves a pane whose renderer DID resolve alone, however slow a sibling bundle is', () => {
+      const builtin = WORKSPACE_ACTIVITY_PANE_DESCRIPTOR;
+      // Guard: this fixture only proves anything while the builtin's renderer
+      // really does select. If that stops being true the assertion below
+      // becomes vacuous.
+      expect(
+        selectClientWorkspacePaneRenderer(builtin, { mcpAppsEnabled: true })
+          .state,
+      ).toBe('selected');
+
+      const result = resolveWorkspacePaneCatalogPresentation(
+        snapshot([builtin, plugin]),
+        profile,
+        undefined,
+        true,
+        false,
+        null,
+        true,
+      );
+
+      expect(
+        result.entries.find((entry) => entry.descriptor.id === builtin.id),
+      ).not.toHaveProperty('rendererResolution');
+      expect(
+        result.entries.find((entry) => entry.descriptor.id === plugin.id),
+      ).toHaveProperty('rendererResolution', 'pending');
+    });
   });
 });
