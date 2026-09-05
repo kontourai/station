@@ -123,6 +123,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/run-connected-agent-tests.test.ts',
   // Real peer EventStores share one disposable SQLite home and survive owner death.
   'src-server/services/plugins/__tests__/package-mcp-admission.test.ts',
+  'src-server/services/plugins/__tests__/plugin-tree-v2-compatibility.test.ts',
   'src-server/services/plugins/__tests__/plugin-installation-restart.test.ts',
   // Real child-process installation transport, MCP custody, and Git fixtures.
   'src-server/services/plugins/__tests__/plugin-installation.integration.test.ts',
