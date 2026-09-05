@@ -7,11 +7,16 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { serve } from '@hono/node-server';
 import { observeLearningSource } from '@kontourai/station-sdk/client';
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { afterEach, expect, test, vi } from 'vitest';
 import { createLearningSourceFixture } from '../../../__test-utils__/learning-source-test-harness';
 import * as transactions from '../../../knowledge-store/adapters/shared/file-transactions';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  isBoundRuntimeLocalOperator,
+} from '../../../security/runtime-request-security';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -279,4 +284,77 @@ test('public SDK source fetch reaches the production route and canonical owner f
       title: 'Keep verification evidence visible',
     },
   });
+});
+
+test('authenticated Node ingress remains valid when another adapter replaces the global Request constructor', async () => {
+  const f = await fixture();
+  const originalRequest = globalThis.Request;
+  vi.stubGlobal('Request', originalRequest);
+  vi.stubGlobal('Response', globalThis.Response);
+  let proof:
+    | { nativeRequest: boolean; principalBound: boolean; localOwner: boolean }
+    | undefined;
+  const server = await new Promise<ReturnType<typeof serve>>((resolve) => {
+    const started = serve(
+      {
+        hostname: '127.0.0.1',
+        port: 0,
+        fetch: async (request, environment) => {
+          const response = await f.app.fetch(request, environment);
+          proof = {
+            nativeRequest: request instanceof Request,
+            principalBound: Boolean(
+              getRuntimeAuthenticatedRequestPrincipal(request),
+            ),
+            localOwner: isBoundRuntimeLocalOperator(request),
+          };
+          return response;
+        },
+      },
+      () => resolve(started),
+    );
+  });
+  try {
+    // A later Node adapter can replace the global constructor while the first
+    // listener continues producing its own valid lightweight Request objects.
+    vi.stubGlobal('Request', class extends globalThis.Request {});
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('Missing owned listener address');
+    const response = await fetch(`http://127.0.0.1:${address.port}${f.path}`, {
+      headers: f.headers(),
+    });
+    const result = (await response.json()) as any;
+    expect(proof).toMatchObject({ principalBound: true, localOwner: true });
+    expect(result.data.state, JSON.stringify(proof)).toBe('observed');
+  } finally {
+    if ('closeAllConnections' in server) server.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+});
+
+test('unbound Request objects and caller-shaped locality claims never become source authority', async () => {
+  const f = await fixture();
+  const read = vi.spyOn(f.persistence, 'observeKnowledgeStoreRoots');
+  const request = new Request(`http://station.test${f.path}`, {
+    headers: f.headers(),
+  });
+  for (const authority of [
+    true,
+    request,
+    {
+      url: request.url,
+      method: 'GET',
+      headers: request.headers,
+      locality: 'home-possession',
+      credential: 'local-fixture',
+    },
+  ]) {
+    expect(
+      f.provider.observeExactRecord(f.root.id, f.recordId, authority),
+    ).toEqual({ state: 'restricted' });
+  }
+  expect(read).not.toHaveBeenCalled();
 });

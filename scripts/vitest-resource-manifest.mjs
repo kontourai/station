@@ -107,6 +107,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Owns a real loopback listener and fsync-backed source records; no child process.
+  'src-server/routes/knowledge/__tests__/knowledge-source.routes.test.ts',
   // Type-only child_process import; the macro's spawn boundary is simulated
   // with streams, so this adds no real child launches or timing assertion.
   'scripts/__tests__/run-connected-agent-tests.test.ts',

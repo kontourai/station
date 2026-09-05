@@ -20,20 +20,22 @@ export function isLocalKnowledgeSourceRequestCurrent(
   security: LocalSourceSecurity,
   isPersonalRequest: (request: Request) => boolean,
 ): authority is Request {
+  if (typeof authority !== 'object' || authority === null) return false;
+  const request = authority as Request;
+  // The ingress-owned WeakMap is the proof. Node adapters can legitimately
+  // replace global Request while earlier listeners retain their own proxies;
+  // constructor identity is neither a stable brand nor request authority.
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   if (
-    !(authority instanceof Request) ||
-    !isPersonalRequest(authority) ||
-    !isBoundRuntimeLocalOperator(authority) ||
-    !isRuntimeRequestPrincipalCurrent(authority, security)
+    !principal ||
+    !isPersonalRequest(request) ||
+    !isBoundRuntimeLocalOperator(request) ||
+    !isRuntimeRequestPrincipalCurrent(request, security)
   )
     return false;
-  const principal = getRuntimeAuthenticatedRequestPrincipal(authority);
   return (
-    principal?.kind === 'internal' ||
-    Boolean(
-      principal &&
-        security.credentialLocality(principal.credential) === 'home-possession',
-    )
+    principal.kind === 'internal' ||
+    security.credentialLocality(principal.credential) === 'home-possession'
   );
 }
 
