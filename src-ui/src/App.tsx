@@ -609,7 +609,13 @@ function App() {
                 and the toolbar's `header`. `tabIndex={-1}` makes it a
                 programmatic focus target for the skip control without adding
                 a tab stop of its own. */}
-              <main className="main-content" id="station-main" tabIndex={-1}>
+              <main
+                className={`main-content${isAmbientMobileDockFullscreen ? ' main-content--covered' : ''}`}
+                id="station-main"
+                tabIndex={-1}
+                inert={isAmbientMobileDockFullscreen || undefined}
+                aria-hidden={isAmbientMobileDockFullscreen || undefined}
+              >
                 <div className="content-view" ref={contentViewRef}>
                   {window.location.pathname === '/' &&
                   homeSurface.status === 'pending' ? (

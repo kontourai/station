@@ -3,7 +3,7 @@ import {
   buildLongSessionTurns,
   createLongSessionEventWindowHandler,
 } from './fixtures/long-session';
-import { backgroundPaint } from './helpers/color-contrast';
+import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
@@ -1429,7 +1429,7 @@ test('switches between mobile tasks and restores the exact active chat context',
 
 test('completed-answer Task and rating controls are real 44x44 touch targets', async ({
   page,
-}) => {
+}, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
   await page.route('**/api/orchestration/sessions/read-model', (route) =>
@@ -1537,10 +1537,45 @@ test('completed-answer Task and rating controls are real 44x44 touch targets', a
     },
   ]);
 
+  await page.route(
+    '**/api/conversations/touch-target-conversation/open',
+    (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: {
+            status: 'resolved',
+            conversation: {
+              id: 'touch-target-conversation',
+              title: 'Touch target transcript',
+              agentSlug: 'station',
+              source: 'runtime',
+            },
+            currentSessionId: 'touch-target-conversation',
+            transcript: { available: true, owner: 'runtime', messageCount: 2 },
+            canContinue: true,
+            answerability: { answerable: true },
+            recoveryActions: [],
+          },
+        }),
+      ),
+  );
   await page.goto('/?dock=open&maximize=true&chat=touch-target-conversation');
   await dismissSetupLauncher(page);
+  await expect(page.locator('#station-main')).toBeHidden();
+  await expect(page.locator('#station-main')).toHaveAttribute('inert', '');
+  const inputTask = page.getByRole('button', {
+    name: 'Add input to Task',
+    exact: true,
+  });
+  await expect(inputTask).toBeVisible();
+  expect(await contrastRatio(inputTask)).toBeGreaterThanOrEqual(4.5);
+  await page.screenshot({
+    path: testInfo.outputPath('mobile-chat-fixed-390.png'),
+  });
+
   for (const control of [
-    page.getByRole('button', { name: /Add this answer to a Task/ }),
+    page.getByRole('button', { name: 'More answer actions' }),
     page.getByRole('button', { name: 'Good response' }),
     page.getByRole('button', { name: 'Bad response' }),
   ]) {
@@ -2370,6 +2405,22 @@ for (const viewport of [
     expect(inputBox).not.toBeNull();
     expect(textareaBox).not.toBeNull();
     expect(textareaBox!.width).toBeGreaterThanOrEqual(inputBox!.width * 0.9);
+
+    const drafts = page.getByRole('button', { name: 'Drafts', exact: true });
+    await expect(drafts).toBeVisible();
+    const draftsBox = await drafts.boundingBox();
+    expect(draftsBox!.y).toBeGreaterThanOrEqual(
+      textareaBox!.y + textareaBox!.height,
+    );
+    expect(draftsBox!.x + draftsBox!.width).toBeLessThanOrEqual(viewport.width);
+    await drafts.click();
+    await expect(
+      page.getByRole('dialog', { name: 'Portable drafts' }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Close portable drafts' }).click();
+    await expect(
+      page.getByRole('dialog', { name: 'Portable drafts' }),
+    ).toBeHidden();
 
     // Row 2: the controls strip sits below the textarea and every visible
     // control stays fully inside the viewport (the reported bug clipped the
