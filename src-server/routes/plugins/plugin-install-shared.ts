@@ -2755,6 +2755,7 @@ async function inspectRetainedPluginRecovery(
       permissions: string[];
       dependencies: string[];
       grantRevision: string;
+      registryTrustRevision?: string;
     };
   }> = [];
   const versions = new Map<string, string>();
@@ -2812,6 +2813,22 @@ async function inspectRetainedPluginRecovery(
       const expectedInstallation = revision(captured.installation);
       dependencies.set(dependency.id, expectedInstallation);
       captures.push(captured);
+      const childTrust = journal.registryAcquisition(captured.installation);
+      if (childTrust.state === 'unavailable')
+        throw new RegistryAcquisitionRefused('receipt-unavailable');
+      let childTrustRevision: string | undefined;
+      if (childTrust.receipt) {
+        const admission =
+          await deps.registryTrustPolicyAuthority?.captureAdmission();
+        if (!admission)
+          throw new RegistryAcquisitionRefused('policy-unavailable');
+        childTrustRevision = registryAcquisitionRevision(
+          await verifyRetainedRegistryAcquisition(
+            admission,
+            childTrust.receipt,
+          ),
+        );
+      }
       approvals.push({
         id: dependency.id,
         expectedInstallation,
@@ -2820,6 +2837,7 @@ async function inspectRetainedPluginRecovery(
           permissions: childBasis.required,
           dependencies: childBasis.dependencies,
           grantRevision: grantRevisions.revisionFor(dependency.id),
+          registryTrustRevision: childTrustRevision,
         },
       });
       visiting.add(dependency.id);
@@ -3174,7 +3192,7 @@ async function installPluginFromSourceUnderContext(
       (dependency) =>
         resolvePluginDependencySource(dependency, source, dependencySourceRoot),
     );
-    if (isAgentPlugin && manifest.dependencies?.length) {
+    if (isAgentPlugin && manifest.dependencies?.length && !recovery) {
       const approvals = new Map(
         consent.kind === 'operator-decision'
           ? (consent.dependencyApprovals ?? []).map(
@@ -3321,9 +3339,47 @@ async function installPluginFromSourceUnderContext(
         throw new Error(
           `Plugin dependency '${dependency.id}' installation changed; preview again`,
         );
+      const approval =
+        consent.kind === 'operator-decision'
+          ? consent.dependencyApprovals?.find(
+              (entry) => entry.id === dependency.id,
+            )
+          : undefined;
+      if (!approval)
+        throw new Error(
+          `Portable dependency '${dependency.id}' requires its own preview-bound approval`,
+        );
+      const childTrust = deps.packageMcpJournal.registryAcquisition(
+        captured.installation,
+      );
+      if (childTrust.state === 'unavailable')
+        throw new RegistryAcquisitionRefused('receipt-unavailable');
+      if (childTrust.receipt) {
+        if (
+          approval?.registryTrustRevision !==
+          registryAcquisitionRevision(childTrust.receipt)
+        )
+          throw new RegistryAcquisitionRefused('stale-review');
+        const admission =
+          await deps.registryTrustPolicyAuthority?.captureAdmission();
+        if (!admission)
+          throw new RegistryAcquisitionRefused('policy-unavailable');
+        await verifyRetainedRegistryAcquisition(admission, childTrust.receipt);
+      }
       const installed = readPluginManifestFileSync(
         join(captured.root.packageRoot, 'plugin.json'),
       );
+      const adoptedBasis = derivePluginConsentBasis(
+        captured.root.packageRoot,
+        installed,
+      );
+      if (!adoptedBasis)
+        throw new Error('Dependency consent basis is unavailable');
+      assertPluginInstallConsent({
+        pluginName: dependency.id,
+        consent: { ...approval, kind: 'operator-decision' },
+        basis: adoptedBasis,
+      });
       if (installed.name !== dependency.id)
         throw new Error(
           'Plugin dependency installation identity does not match',

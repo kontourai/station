@@ -865,6 +865,13 @@ Fetches provider override state for a plugin. Disabled when `pluginName` is unde
 
 Installs a plugin from a source URL. Invalidates plugins, layouts, and agents caches on success.
 
+For verified registry acquisitions, carry the preview's optional
+`registryTrustRevision` in root and dependency consent. The normal SDK/CLI/UI
+paths forward it; it is an opaque precondition, not caller-supplied verification.
+The server obtains the claim and signing policy from host owners and returns
+`registry-trust-refused` with a closed reason when the review or continuity no
+longer matches. See [registry trust policy](../design/registry-trust-policy.md).
+
 `consent` is required (station#4288). It is the operator's decision, taken from
 the preview they read: the permission set the preview derived, the digest of
 the bytes it staged, and the dependency ids it resolved. The server re-derives
@@ -884,6 +891,8 @@ mutate({
   source: 'https://github.com/org/my-plugin.git',
   skip: ['agent:plugin:chat'],
   consent: {
+    registryTrustRevision: preview.registryTrustRevision,
+    grantRevision: preview.grantRevision,
     permissions: preview.permissions.required,
     contentDigest: preview.contentDigest,
     dependencies: preview.dependencies.map((entry) => entry.id),
@@ -891,6 +900,8 @@ mutate({
       entry.consent
         ? [{
             id: entry.id,
+            registryTrustRevision: entry.consent.registryTrustRevision,
+            grantRevision: entry.consent.grantRevision,
             permissions: entry.consent.permissions,
             contentDigest: entry.consent.contentDigest,
             dependencies: entry.consent.dependencies,
@@ -924,9 +935,11 @@ provides the same read without a hook. The React-free client entry exports
 and origin options. No local paths or internal runtime imports are required.
 
 The preview carries the exact installation, retained content digest, opaque
-`recoveryRevision`, current `grantRevision`, permission review, skipped components,
-and dependency installation/consent rows. These are review preconditions, not
-permission grants. Show the review and obtain an explicit decision before calling
+`recoveryRevision`, current `grantRevision`, optional `registryTrustRevision`, permission review, skipped components,
+and dependency installation/consent rows. A signed retained package reuses its
+original journal-bound verification under the same applied policy, without
+contacting its registry/source; ready retained children carry their own trust
+revision. These are review preconditions, not permission grants. Show the review and obtain an explicit decision before calling
 `usePluginRecoveryMutation()`. Its input is `{ name, recoveryRevision, consent }`;
 recovery consent requires the fresh grant revision, including each dependency
 approval. Never derive approval merely from a cached preview or retry an old

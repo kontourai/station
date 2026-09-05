@@ -31,6 +31,10 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import { AgentPluginLoader } from '../../../services/plugins/agent-plugin-loader.js';
 import { DistributionProfileService } from '../../../services/plugins/distribution-profile-service.js';
 import {
+  closePluginActivationSession,
+  createPluginActivationSession,
+} from '../../../services/plugins/plugin-activation-composition.js';
+import {
   computePluginContentDigest,
   findPluginContentLockCycleError,
   forgetPluginContentDigest,
@@ -1362,6 +1366,80 @@ describe('installPluginFromSource', () => {
         });
       }
       expect(installDeps.buildPlugin).toHaveBeenCalledTimes(2);
+      const firstParent = journal.currentInstallation('graph-parent');
+      if (firstParent.state !== 'observed') throw new Error('Missing parent');
+      const freshResponse = await app.request('http://localhost/preview', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ registryId: 'graph-parent' }),
+      });
+      expect(freshResponse.status).toBe(200);
+      const fresh = (await freshResponse.json()) as typeof preview;
+      const pendingSession = createPluginActivationSession();
+      try {
+        await installPluginFromSource(parentSource, [], installDeps, {
+          registryId: 'graph-parent',
+          registryKey: registryPath,
+          activationSession: pendingSession,
+          consent: {
+            kind: 'operator-decision',
+            contentDigest: fresh.contentDigest,
+            permissions: fresh.permissions.required,
+            grantRevision: fresh.grantRevision,
+            registryTrustRevision: fresh.registryTrustRevision,
+            dependencies: fresh.dependencies.map((entry) => entry.id),
+            dependencyApprovals: fresh.dependencies.map((entry) => ({
+              id: entry.id,
+              contentDigest: entry.consent.contentDigest,
+              permissions: entry.consent.permissions,
+              dependencies: entry.consent.dependencies,
+              grantRevision: entry.consent.grantRevision,
+              registryTrustRevision: entry.consent.registryTrustRevision,
+            })),
+          },
+        });
+      } finally {
+        closePluginActivationSession(pendingSession);
+      }
+      rmSync(parentSource, { recursive: true });
+      rmSync(childSource, { recursive: true });
+      rmSync(registryPath);
+      for (const id of ['graph-parent', 'graph-child'])
+        rmSync(join(root, 'plugins', id), { recursive: true, force: true });
+      rmSync(join(root, 'config', 'registry-installs.json'), { force: true });
+      getPluginRegistryProviders.mockImplementation(() => {
+        throw new Error('Registry is offline');
+      });
+      const recovery = await previewInstalledPluginRecovery(
+        'graph-parent',
+        installDeps,
+      );
+      expect(recovery.dependencies[0]?.consent.registryTrustRevision).toMatch(
+        /^sha256:/,
+      );
+      await recoverInstalledPlugin('graph-parent', installDeps, {
+        recoveryRevision: recovery.recoveryRevision,
+        consent: {
+          kind: 'operator-decision',
+          grantRevision: recovery.grantRevision,
+          registryTrustRevision: recovery.registryTrustRevision,
+          contentDigest: recovery.contentDigest,
+          permissions: recovery.permissions.required,
+          dependencies: recovery.dependencies.map((entry) => entry.id),
+          dependencyApprovals: recovery.dependencies.map((entry) => ({
+            id: entry.id,
+            ...entry.consent,
+          })),
+        },
+      });
+      const recovered = journal.currentInstallation('graph-parent');
+      if (recovered.state !== 'observed')
+        throw new Error('Missing recovered parent');
+      expect(journal.admissionOpen(recovered.installation)).toBe(true);
+      expect(recovered.installation.dataScope).toBe(
+        firstParent.installation.dataScope,
+      );
+      expect(installDeps.buildPlugin).toHaveBeenCalledTimes(3);
     },
   );
 
