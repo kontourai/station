@@ -1,4 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import type {
+  ConversationSummary,
+  OrchestrationProviderSummary,
+} from '../query-domains/chatRuntimeTypes';
 
 vi.mock('../api', () => ({
   _getApiBase: vi.fn().mockResolvedValue('http://example.test'),
@@ -11,7 +16,11 @@ vi.mock('../client/http', async (importOriginal) => ({
   authenticatedFetch: authenticatedFetchMock,
 }));
 
-import { agentQueries } from '../queryFactories';
+import {
+  agentQueries,
+  conversationQueries,
+  orchestrationQueries,
+} from '../queryFactories';
 
 describe('query factories authenticate (station#2614)', () => {
   beforeEach(() => {
@@ -164,6 +173,113 @@ describe('query factories authenticate (station#2614)', () => {
       agentQueries.stats('codex', 'null-prototype').queryFn(),
     ).resolves.toMatchObject({
       modelStats: { current: { totalTokens: 1 } },
+    });
+  });
+
+  it('keeps typed Agent, tool, conversation and provider data without changing authenticated paths', async () => {
+    const agent = { slug: 'agent/one', name: 'One' };
+    authenticatedFetchMock.mockResolvedValueOnce(
+      Response.json({ success: true, data: agent }),
+    );
+    const detail = await agentQueries.agent('agent/one').queryFn();
+    expectTypeOf(detail).toEqualTypeOf<EnrichedAgentProjection>();
+    expect(detail).toEqual(agent);
+    expect(authenticatedFetchMock).toHaveBeenLastCalledWith(
+      'http://example.test/api/agents/agent%2Fone',
+    );
+    const tools = [{ id: 'lookup', name: 'lookup', server: null }];
+    authenticatedFetchMock.mockResolvedValueOnce(
+      Response.json({ success: true, data: tools }),
+    );
+    const toolData = await agentQueries.tools('one').queryFn();
+    expectTypeOf(toolData).toEqualTypeOf<unknown[]>();
+    expect(toolData).toEqual(tools);
+    const conversations = [
+      { id: 'conversation', createdAt: '2026-01-01', updatedAt: '2026-01-01' },
+    ];
+    for (const data of [conversations, { items: conversations }]) {
+      authenticatedFetchMock.mockResolvedValueOnce(
+        Response.json({ success: true, data }),
+      );
+      const listed = await conversationQueries.list('agent/one').queryFn();
+      expectTypeOf(listed).toEqualTypeOf<ConversationSummary[]>();
+      expect(listed).toEqual(conversations);
+    }
+    authenticatedFetchMock.mockResolvedValueOnce(
+      Response.json({ success: true }),
+    );
+    expect(await conversationQueries.list('one').queryFn()).toEqual([]);
+    const providers = [
+      { provider: 'codex', activeSessions: 0, prerequisites: [] },
+    ];
+    authenticatedFetchMock.mockResolvedValueOnce(
+      Response.json({ success: true, data: providers }),
+    );
+    const available = await orchestrationQueries.providers().queryFn();
+    expectTypeOf(available).toEqualTypeOf<OrchestrationProviderSummary[]>();
+    expect(available).toEqual(providers);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('preserves Agent HTTP precedence and successful-HTTP envelope failures', async () => {
+    for (const [status, message] of [
+      [404, 'Agent not found'],
+      [500, 'Failed to fetch agent'],
+    ] as const) {
+      authenticatedFetchMock.mockResolvedValueOnce(
+        Response.json({ success: false, error: 'server detail' }, { status }),
+      );
+      await expect(agentQueries.agent('one').queryFn()).rejects.toThrow(
+        message,
+      );
+    }
+    authenticatedFetchMock.mockResolvedValueOnce(
+      Response.json({ success: false, error: 'Envelope refusal' }),
+    );
+    await expect(agentQueries.agent('one').queryFn()).rejects.toThrow(
+      'Envelope refusal',
+    );
+    authenticatedFetchMock.mockResolvedValueOnce(
+      Response.json(
+        {
+          success: false,
+          error: 'Validation failed',
+          details: { formErrors: ['Action unavailable'] },
+        },
+        { status: 400 },
+      ),
+    );
+    await expect(orchestrationQueries.providers().queryFn()).rejects.toThrow(
+      'Action unavailable',
+    );
+  });
+
+  it('keeps tools status and server detail while accepting unknown or malformed failure bodies', async () => {
+    for (const status of [409, 503]) {
+      authenticatedFetchMock.mockResolvedValueOnce(
+        Response.json({ error: 'Server tools detail' }, { status }),
+      );
+      await expect(agentQueries.tools('one').queryFn()).rejects.toMatchObject({
+        message: 'Server tools detail',
+        status,
+        activating: status === 503,
+      });
+    }
+    authenticatedFetchMock.mockResolvedValueOnce(
+      Response.json(null, { status: 503 }),
+    );
+    await expect(agentQueries.tools('one').queryFn()).rejects.toMatchObject({
+      status: 503,
+      activating: true,
+      message: 'Agent tools are not available yet; it is still activating.',
+    });
+    authenticatedFetchMock.mockResolvedValueOnce(
+      new Response('not json', { status: 500 }),
+    );
+    await expect(agentQueries.tools('one').queryFn()).rejects.toMatchObject({
+      status: 500,
+      activating: false,
+      message: 'Failed to fetch tools',
     });
   });
 });
