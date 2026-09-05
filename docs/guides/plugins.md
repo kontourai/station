@@ -98,6 +98,7 @@ All fields:
 | `layout` | object | no | Single layout config to install |
 | `layouts` | array | no | Multiple layout configs to install |
 | `workspacePanes` | WorkspacePaneDescriptor[] | no | Portable Pane declarations; cannot be combined with legacy `layout` or `layouts` |
+| `workspacePaneHost` | WorkspacePaneHostContributionV1 | no | Inert package-level action and Agent-selection declarations; the server owns admission and authorization |
 | `providers` | array | no | Server-side provider modules to load |
 | `operationalEventSubscriptions` | array | no | Versioned durable event observations handled by `serverModule`; Station derives identity, grants, and delivery ownership |
 | `integrations.required` | string[] | no | Integration IDs required by the plugin |

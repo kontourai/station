@@ -812,3 +812,20 @@ The project-resource shadow report is an evidence gate, not a cutover signal. It
 ### #2525 retained internal boundaries
 
 Turn deduplication, adoption, recovery, and private credential application are completed behavioural ledgers. Remaining EventStore details are retained on purpose: command receipts still participate in adoption's atomic commit; delivery checkpoints currently have one narrow caller; and a broader session journal has no deletion-complete caller family. Wrapping any of these in storage-shaped CRUD would be shallow. Their disposition and the next evidence required for a deep extraction are in [EventStore ledger migration](../design/event-store-ledger-migration.md).
+
+
+## Cloud move preparation
+
+`@kontourai/station-contracts/cloud-move` owns the public preview shape.
+`@kontourai/station-shared/cloud-move` owns bounded read-only setup inventory and
+explicit provider selection. The AWS adapter in `packages/shared/src/cloud-aws-ec2.ts`
+renders a deployment template; `packages/cli/src/commands/cloud.ts` is the thin
+command caller. Preview is non-atomic and never grants transfer or execution
+authority. Credential stores, plugin journals, live capabilities, workspace bytes,
+and session databases are not exported. The [cloud-move design](../design/cloud-move.md)
+owns the remaining transfer, enrollment, fencing, and UI sequence.
+
+Actual filesystem and command tests live in
+`packages/shared/src/__tests__/cloud-move.test.ts` and
+`packages/cli/src/__tests__/cloud.test.ts`. Template generation and schema
+validation do not establish AWS provisioning or application readiness.
