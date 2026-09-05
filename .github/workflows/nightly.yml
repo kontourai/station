@@ -58,6 +58,8 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
+      - name: Check native platform boundary before staging
+        run: npm run native-platform:ratchet
       - name: Lint
         run: npm run lint:check
       - run: npm run build:connect
