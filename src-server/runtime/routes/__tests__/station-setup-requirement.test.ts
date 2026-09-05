@@ -355,6 +355,31 @@ describe('createStationEngineAvailabilityReader (#1536 D8 review H2)', () => {
     expect(chatReason()).toBeNull();
   });
 
+  test('the chat adapter carries the check-gated receipts too', () => {
+    // DM1 was TWO omissions at that site: the boot snapshot and the dropped
+    // receipts. The flip test above passes an empty gated map, so it cannot
+    // observe the second one — an injection emptying it stayed green until this
+    // existed.
+    expect(
+      createStationEngineAvailabilityReader(
+        chatStationEngineAvailabilitySource({
+          appConfig: { defaultLLMProvider: 'anthropic-main' },
+          getLiveAppConfig: () => ({
+            defaultLLMProvider: 'anthropic-main',
+          }),
+          providerService: {
+            listProviderConnections: () => twoConnections,
+          },
+          checkGatedModelConnectionIds: () =>
+            new Map([['anthropic-main', 'failed' as const]]),
+        } as never),
+      )({ name: 'Station', model: 'anthropic/opus' } as never),
+    ).toBe(
+      "Model connection 'anthropic-main' was refused by its provider at its " +
+        'last check. Fix its settings and test it again in Connections.',
+    );
+  });
+
   test('a chat context that threads neither live field keeps its old boot-snapshot behaviour', () => {
     // The `??` fallbacks exist for an older wiring or a test that omits them;
     // making them required would have broken those instead of fixing this.
