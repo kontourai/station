@@ -143,11 +143,13 @@ export async function requestRegistryCatalogAction<
      * refuses a code-contributing plugin without it.
      */
     consent?: {
+      grantRevision?: string;
       permissions: string[];
       contentDigest: string;
       dependencies: string[];
       dependencyApprovals?: Array<{
         id: string;
+        grantRevision?: string;
         permissions: string[];
         contentDigest: string;
         dependencies: string[];
