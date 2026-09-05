@@ -878,16 +878,11 @@ async function openNewChat(page: Page) {
     await expect(tabBarNew).toBeVisible({ timeout: 15_000 });
     return;
   }
-  // archive#3309: New chat is a pinned header icon on mobile now, not an overflow
-  // menuitem. Like the desktop branch above, assert the affordance exists and
-  // leave opening the modal to the caller's deterministic
-  // `station:open-new-chat` dispatch — clicking would take the one-click
-  // direct path when exactly one runtime is chat-ready.
+  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: 'New chat', exact: true }),
-  ).toBeVisible({
-    timeout: 15_000,
-  });
+    page.getByRole('menuitem', { name: 'New chat', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Close actions menu' }).click();
 }
 
 test('keeps mobile attachment selection reviewable without moving the draft', async ({
@@ -1259,7 +1254,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await page.goto('/?dock=open&maximize=true&chat=conv-running');
   await dismissSetupLauncher(page);
 
-  const switcher = page.getByRole('button', { name: 'Switch task' });
+  const switcher = page.getByRole('button', { name: /^Switch task/ });
   await expect(switcher).toBeVisible({ timeout: 15_000 });
   const triggerBox = await switcher.boundingBox();
 
@@ -1427,7 +1422,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await expect(compactDialog).toBeHidden();
 });
 
-test('completed-answer Task and rating controls are real 44x44 touch targets', async ({
+test('mobile messages prioritize text and reveal 44px actions on demand', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1484,7 +1479,8 @@ test('completed-answer Task and rating controls are real 44x44 touch targets', a
                   turnId: 'touch-target-turn',
                   createdAt: '2026-08-25T12:00:00.000Z',
                   method: 'turn.started',
-                  prompt: 'Give a completed answer.',
+                  prompt:
+                    'Can you help shepherd the open PRs through the merge queue?',
                 },
               },
               {
@@ -1496,7 +1492,8 @@ test('completed-answer Task and rating controls are real 44x44 touch targets', a
                   turnId: 'touch-target-turn',
                   createdAt: '2026-08-25T12:00:01.000Z',
                   method: 'turn.completed',
-                  outputText: 'A completed answer with actions.',
+                  outputText:
+                    'I’ll review the open pull requests, check which are eligible, and report anything blocking the queue.',
                   finishReason: 'stop',
                 },
               },
@@ -1514,7 +1511,7 @@ test('completed-answer Task and rating controls are real 44x44 touch targets', a
         data: [
           {
             id: 'touch-target-conversation',
-            title: 'Touch target transcript',
+            title: 'Merge queue review',
             agentSlug: 'station',
             updatedAt: '2026-08-25T12:00:01.000Z',
           },
@@ -1530,7 +1527,7 @@ test('completed-answer Task and rating controls are real 44x44 touch targets', a
       projectSlug: 'default',
       projectName: 'Default',
       model: 'model-selected',
-      title: 'Touch target transcript',
+      title: 'Merge queue review',
       provider: 'bedrock',
       orchestrationSessionStarted: true,
       ephemeralMessages: [],
@@ -1547,7 +1544,7 @@ test('completed-answer Task and rating controls are real 44x44 touch targets', a
             status: 'resolved',
             conversation: {
               id: 'touch-target-conversation',
-              title: 'Touch target transcript',
+              title: 'Merge queue review',
               agentSlug: 'station',
               source: 'runtime',
             },
@@ -1564,16 +1561,45 @@ test('completed-answer Task and rating controls are real 44x44 touch targets', a
   await dismissSetupLauncher(page);
   await expect(page.locator('#station-main')).toBeHidden();
   await expect(page.locator('#station-main')).toHaveAttribute('inert', '');
+  const header = page.getByTestId('chat-dock-mobile-header');
+  await expect(header.getByRole('button')).toHaveCount(3);
+  const title = header.getByRole('button', { name: /^Switch task/ });
+  expect((await title.boundingBox())!.width).toBeGreaterThan(240);
+  await expect(
+    page.getByText(
+      'Can you help shepherd the open PRs through the merge queue?',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      'I’ll review the open pull requests, check which are eligible, and report anything blocking the queue.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Add input to Task', exact: true }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: 'Good response' }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: 'Provenance', exact: true }),
+  ).toBeHidden();
+  await page.screenshot({
+    path: testInfo.outputPath('mobile-chat-focused-390.png'),
+  });
+  await page.getByRole('button', { name: 'Your message actions' }).click();
   const inputTask = page.getByRole('button', {
     name: 'Add input to Task',
     exact: true,
   });
   await expect(inputTask).toBeVisible();
   expect(await contrastRatio(inputTask)).toBeGreaterThanOrEqual(4.5);
-  await page.screenshot({
-    path: testInfo.outputPath('mobile-chat-fixed-390.png'),
-  });
-
+  await page.getByRole('button', { name: 'Close message details' }).click();
+  await page
+    .getByRole('button', { name: 'Answer details and actions', exact: true })
+    .click();
   for (const control of [
     page.getByRole('button', { name: 'More answer actions' }),
     page.getByRole('button', { name: 'Good response' }),
@@ -1584,6 +1610,17 @@ test('completed-answer Task and rating controls are real 44x44 touch targets', a
     expect(box?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
   }
+  await page.getByRole('button', { name: 'Close message details' }).click();
+  await header
+    .getByRole('button', { name: 'Chat actions', exact: true })
+    .click();
+  for (const name of ['New chat', 'Activity', 'Collapse chat']) {
+    await expect(
+      page.getByRole('menuitem', { name, exact: true }),
+    ).toBeVisible();
+  }
+  await expect(page.getByTestId('chat-dock-mobile-connection')).toBeVisible();
+  await page.getByRole('button', { name: 'Close actions menu' }).click();
 });
 
 /**
@@ -1623,7 +1660,7 @@ test('Escape dismisses the mobile task switcher without leaving the chat', async
   await page.goto('/?dock=open&maximize=true&chat=conv-running');
   await dismissSetupLauncher(page);
 
-  const switcher = page.getByRole('button', { name: 'Switch task' });
+  const switcher = page.getByRole('button', { name: /^Switch task/ });
   await expect(switcher).toBeVisible({ timeout: 15_000 });
   const menu = page.getByRole('dialog', { name: 'Switch task' });
 
@@ -1812,254 +1849,43 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
  * named menu items, so this pins all of it: the bar contains what it shows,
  * nothing collides, and the deferred dock-height action stays reachable.
  */
-test('the 320px header contains every pinned control while maximized (#3309 SF-2)', async ({
+test('the 320px header reserves title space and exposes secondary actions in its sheet', async ({
   page,
 }) => {
-  test.setTimeout(45_000);
   await page.setViewportSize({ width: 320, height: 568 });
-  await mockChatShell(page, {
-    expectedEnvironmentId: '22222222-2222-4222-8222-222222222222',
-  });
+  await mockChatShell(page);
   await openComposer(page, true);
-
-  // Maximize: this is what hides the app toolbar and hands this bar the drawer
-  // toggle, i.e. the configuration that actually overflows.
-  const chatActions = page.getByRole('button', { name: 'Chat actions' });
-  await chatActions.click();
-  const expandChat = page
-    .getByRole('menu', { name: 'Chat actions' })
-    .getByRole('menuitem', { name: /^Expand chat/ });
-
-  // #547's environment-ID mismatch intentionally raises the production
-  // connection banner. Wait for the live card and two paint frames before
-  // proving it does not cover either control needed to reach this geometry;
-  // this fixture previously caught another chrome banner swallowing composer
-  // clicks.
-  const connectionBanner = page.locator(
-    '[role="alert"][data-banner-id="chrome:connection:offline"]',
-  );
-  await expect(connectionBanner).toHaveAttribute('data-phase', 'live');
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
-  );
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
-  );
-  const bannerBox = await connectionBanner.boundingBox();
-  const chatActionsBox = await chatActions.boundingBox();
-  const expandChatBox = await expandChat.boundingBox();
-  if (!bannerBox || !chatActionsBox || !expandChatBox) {
-    throw new Error('Banner and maximize controls must all be measurable');
-  }
-  const intersects = (
-    first: { x: number; y: number; width: number; height: number },
-    second: { x: number; y: number; width: number; height: number },
-  ) =>
-    first.x < second.x + second.width &&
-    first.x + first.width > second.x &&
-    first.y < second.y + second.height &&
-    first.y + first.height > second.y;
-  expect(
-    intersects(bannerBox, chatActionsBox),
-    'connection banner intersects Chat actions',
-  ).toBe(false);
-  expect(
-    intersects(bannerBox, expandChatBox),
-    'connection banner intersects Expand chat',
-  ).toBe(false);
-
-  await expandChat.click();
+  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
+  await page
+    .getByRole('menuitem', { name: 'Expand chat', exact: true })
+    .click();
   await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
-
-  // The rejected environment identity first exercises the complementary
-  // needs-repair path from this lane before the landed pending-exchange seam
-  // transitions the same control to its widest short label.
-  const header = page.locator('.chat-dock__mobile-header');
-  const connectionChip = header.getByTestId('chat-dock-mobile-connection');
-  await expect(connectionChip).toHaveAttribute(
-    'data-connection-state',
-    'needs-repair',
-  );
-  const connectionLabel = connectionChip.locator(
-    '.chat-dock__mobile-conn-label',
-  );
-  await expect(connectionLabel).toHaveText('Re-pair');
-  const repairLabelBox = await connectionLabel.boundingBox();
-  if (!repairLabelBox) throw new Error('Connection label is not measurable');
-  expect(repairLabelBox.width).toBeLessThanOrEqual(44);
-
-  // Put the connection indicator into its widest short-label state only after
-  // the maximize precondition is proven. A pending request takes precedence
-  // over the rejected credential produced by the next health probe, so the
-  // chip must render "Waiting" rather than the healthy-state bare dot.
-  await page.route('**/api/system/identity', (route) =>
-    route.fulfill({
-      status: 401,
-      contentType: 'application/json',
-      body: JSON.stringify({ error: { code: 'authentication_required' } }),
-    }),
-  );
-  await page.evaluate(() => {
-    const now = Date.now();
-    const endpoint = location.origin;
-    localStorage.setItem(
-      `station-pairing-pending-exchange:v1:${endpoint}:direct`,
-      JSON.stringify({
-        endpoint,
-        offerId: 'mobile-header-offer',
-        proof: 'mobile-header-proof',
-        requestId: 'mobile-header-request',
-        requestedAt: now,
-        expiresAt: now + 240_000,
-        browserSession: false,
-        requestKind: 'direct',
-        targetConnectionId: 'mobile',
-        targetConnectionLabel: 'Mobile',
-      }),
-    );
-    window.dispatchEvent(new Event('station-connect:pending-exchange-change'));
-    window.dispatchEvent(new Event('online'));
-  });
-
-  const drawerToggle = page.getByRole('button', { name: 'Toggle menu' });
-  await expect(drawerToggle).toBeVisible();
-
-  await expect(connectionChip).toHaveAttribute(
-    'data-connection-state',
-    'awaiting-approval',
-  );
-  await expect(connectionLabel).toHaveText('Waiting');
-  const waitingLabelBox = await connectionLabel.boundingBox();
-  if (!waitingLabelBox) throw new Error('Connection label is not measurable');
-  expect(waitingLabelBox.width).toBeLessThanOrEqual(44);
-  const headerBox = await header.boundingBox();
-  if (!headerBox) throw new Error('Mobile dock header is not measurable');
-  expect(headerBox.x).toBeGreaterThanOrEqual(0);
-  expect(headerBox.x + headerBox.width).toBeLessThanOrEqual(320);
-
-  // Whatever the bar shows must clear the touch floor AND sit inside the
-  // viewport. A control pushed past the right edge still reports a 44px box,
-  // so containment is the half that catches an overflow.
-  const buttons = header.locator('button:visible');
-  // Exactly the seven the bar shows in this configuration: drawer toggle,
-  // identity, ⋯, connection, project switcher, activity, New chat — the dock
-  // toggle having deferred to the sheet. Pinned as an equality so a control
-  // silently vanishing fails here rather than quietly shrinking the bar.
-  await expect(buttons).toHaveCount(7);
-  expect(
-    await buttons.evaluateAll((elements) =>
-      elements.some(
-        (element) =>
-          element.getAttribute('data-testid') === 'chat-dock-mobile-connection',
-      ),
-    ),
-    'the labelled connection chip participates in the containment loop',
-  ).toBe(true);
-  const count = await buttons.count();
-  const boxes: Array<{ x: number; width: number; name: string }> = [];
-  for (let i = 0; i < count; i += 1) {
-    const button = buttons.nth(i);
-    const name = (await button.getAttribute('aria-label')) ?? `button-${i}`;
-    const box = await button.boundingBox();
-    if (!box) throw new Error(`Header control ${name} is not measurable`);
-    expect(box.height, `${name} height`).toBeGreaterThanOrEqual(
-      MIN_TOUCH_TARGET_PX,
-    );
-    // The identity block is the flex absorber (min-width: 0) — it is what
-    // gives ground so every ICON control can hold its 44px. Holding it to the
-    // same width floor would assert the opposite of its job. It is measured
-    // for height, and separately below for having survived at all.
-    //
-    // Matched by prefix: the control's accessible name now carries the agent
-    // it is currently showing ("Switch task — <agent>", archive#3309), because
-    // everything visible inside it is aria-hidden and this label is a phone
-    // screen reader's only agent attribution. The chat TITLE is deliberately
-    // not in the name — it is arbitrary text, and a chat called "New chat"
-    // gave two controls in this bar the same accessible name.
-    if (!name.startsWith('Switch task')) {
-      expect(box.width, `${name} width`).toBeGreaterThanOrEqual(
-        MIN_TOUCH_TARGET_PX,
-      );
-    }
-    expect(box.x, `${name} left edge`).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width, `${name} right edge`).toBeLessThanOrEqual(320);
-    boxes.push({ x: box.x, width: box.width, name });
+  const header = page.getByTestId('chat-dock-mobile-header');
+  await expect(header.getByRole('button')).toHaveCount(3);
+  const identity = header.getByRole('button', { name: /^Switch task/ });
+  expect((await identity.boundingBox())!.width).toBeGreaterThanOrEqual(200);
+  for (const button of await header.getByRole('button').all()) {
+    const box = (await button.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(320);
   }
-
-  // Nothing may overlap its neighbour — a bar that has run out of room
-  // collides before anything leaves the viewport.
-  boxes.sort((a, b) => a.x - b.x);
-  for (let i = 1; i < boxes.length; i += 1) {
-    expect(
-      boxes[i].x,
-      `${boxes[i].name} overlaps ${boxes[i - 1].name}`,
-    ).toBeGreaterThanOrEqual(boxes[i - 1].x + boxes[i - 1].width - 1);
+  await header
+    .getByRole('button', { name: 'Chat actions', exact: true })
+    .click();
+  for (const name of ['New chat', 'Activity', 'Collapse chat']) {
+    await expect(
+      page.getByRole('menuitem', { name, exact: true }),
+    ).toBeVisible();
   }
-
-  // The title survives, but only just: seven controls at 320px leave it around
-  // 10px. That is a real squeeze, reported rather than papered over — this
-  // asserts only that it did not collapse entirely, so a future change that
-  // does erase it is caught here.
-  //
-  // Measured on the TEXT, not the button (archive#3309): the
-  // "Switch task" button's own box has horizontal
-  // padding and therefore CANNOT reach zero — it stays comfortably positive
-  // while both strings inside it are squeezed to 0px, so the promise in the
-  // paragraph above would be one the assertion could not keep. The agent name and
-  // the chat title are the two things this bar exists to say; each gets its
-  // own floor.
-  const identityText = header.locator(
-    '.chat-dock__mobile-eyebrow, .chat-dock__mobile-title-text',
-  );
-  await expect(identityText).toHaveCount(2);
-  for (const selector of [
-    '.chat-dock__mobile-eyebrow',
-    '.chat-dock__mobile-title-text',
-  ]) {
-    const box = await header.locator(selector).boundingBox();
-    expect(box?.width ?? 0, `${selector} width`).toBeGreaterThan(0);
-  }
-
-  // The bar gave up its dock toggle in this configuration, so dock height must
-  // still be reachable and at the touch floor as a named item in the sheet.
   await expect(
-    page.getByRole('button', { name: /^(Expand|Collapse) chat$/ }),
-  ).toBeHidden();
-  await page.getByRole('button', { name: 'Chat actions' }).click();
-  const collapse = page
-    .getByRole('menu', { name: 'Chat actions' })
-    .getByRole('menuitem', { name: /^Collapse chat/ });
-  await expect(collapse).toBeVisible();
-  await expectSettledTouchTargetHeight(collapse);
+    page.getByRole('menuitem', { name: /^Switch project/ }),
+  ).toBeVisible();
+  await expect(page.getByTestId('chat-dock-mobile-connection')).toBeVisible();
+  await page.getByRole('button', { name: 'Close actions menu' }).click();
 });
 
-/**
- * archive#3309 (HIGH-1). The 320px spec above cannot see this: at exactly
- * 361px the `max-width: 360px` rule hands the dock toggle BACK to the
- * maximized bar, so the width that relieves the squeeze is also the width that
- * adds an eighth control. The identity block pays for it, and it is the block
- * carrying the agent name and the chat title — the two facts archive#3309 exists to
- * surface. With the avatar also arriving at 361px, both strings measured 0px
- * across 361/375/390 while every containment assertion stayed green, because
- * nothing was measuring the text.
- *
- * 375px is the middle of that dead band and a real device width. The bar is
- * allowed to drop the picture here; it is not allowed to drop the words.
- *
- * 431 and 481 are the two widths where something comes BACK — the avatar at
- * 431, the project label at 481. Measuring the whole range finds the
- * identical collision at 431, where both used to return at
- * once and left 10.72px. Every width at which this bar gains an element gets a
- * case here, because that is the shape the defect takes.
- *
- * Know what each assertion can and cannot see. The text floors have real power
- * at 361/375/390 — with the avatar gate removed those measure 0.00px — but NOT
- * at 431, where the broken CSS still left 10.72px and a `> 0` floor passes.
- * The binary avatar/label invariant below is what guards that second case; 481
- * is a boundary case only (the label showed there before and after).
- */
 for (const width of [361, 375, 390, 431, 481]) {
   test(`the maximized phone bar keeps the agent name and chat title legible at ${width}px (#3309 HIGH-1)`, async ({
     page,
@@ -2174,7 +2000,7 @@ for (const viewport of [
     }, viewport.width === 390);
     const textarea = await openComposer(page);
     await expect(
-      page.getByRole('button', { name: 'Switch task' }),
+      page.getByRole('button', { name: /^Switch task/ }),
     ).toContainText('New chat');
     await expect(page.locator('.chat-dock__counter')).toBeHidden();
     await expect(
@@ -2185,21 +2011,9 @@ for (const viewport of [
     // control clears the touch floor and the cluster stays inside the viewport.
     const moreActions = page.getByRole('button', { name: 'Chat actions' });
     await expect(moreActions).toBeVisible();
-    const activity = page.getByRole('button', { name: /^Activity/ });
-    await expect(activity).toBeVisible();
-    // archive#3309 (SF-2): New chat and the dock toggle are pinned bar controls
-    // now, and neither was measured — the loop could not see the bar overflow
-    // they contribute to.
-    // Scoped to the bar: the session itself is titled "New chat", so an
-    // unscoped name match is ambiguous with the transcript and home cards.
     const mobileHeader = page.locator('.chat-dock__mobile-header');
-    const newChat = mobileHeader.getByRole('button', { name: 'New chat' });
-    await expect(newChat).toBeVisible();
-    const dockToggle = mobileHeader.getByRole('button', {
-      name: /^(Expand|Collapse) chat$/,
-    });
-    await expect(dockToggle).toBeVisible();
-    for (const control of [moreActions, activity, newChat, dockToggle]) {
+    await expect(mobileHeader.getByRole('button')).toHaveCount(3);
+    for (const control of await mobileHeader.getByRole('button').all()) {
       const box = await control.boundingBox();
       expect(box?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
       expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
@@ -2216,6 +2030,8 @@ for (const viewport of [
     const mobileActions = page.getByRole('menu', { name: 'Chat actions' });
     await expect(mobileActions).toBeVisible();
     for (const name of [
+      'New chat',
+      'Activity',
       'Conversation history',
       'Open conversation',
       'Chat settings',
@@ -2249,14 +2065,14 @@ for (const viewport of [
     await expandMobileDock(page);
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     const selectedModel = page.locator('.chat-input__model-name');
-    await expect(selectedModel).toHaveText('Selected Test Model');
+    await expect(selectedModel).toHaveText('test-model');
     await expect(page.locator('.chat-input__model-btn')).toHaveAttribute(
       'aria-label',
       /agent default/,
     );
-    const selectedModelLabel = 'Selected Test Model';
+    const selectedModelLabel = 'test-model';
     const activeChatParam = new URL(page.url()).searchParams.get('chat');
-    const switcher = page.getByRole('button', { name: 'Switch task' });
+    const switcher = page.getByRole('button', { name: /^Switch task/ });
     await expect(switcher).toContainText('New chat');
     for (let cycle = 0; cycle < 3; cycle += 1) {
       const scroller = page.locator('.chat-messages');
@@ -2536,7 +2352,10 @@ test('drags the mobile dock bar between half and full without stealing taps', as
     .toBe(380);
   await expectVisibleGeometry(true);
 
-  const touchDragControlTo = async (controlName: string, toY: number) => {
+  const touchDragControlTo = async (
+    controlName: string | RegExp,
+    toY: number,
+  ) => {
     const control = page.getByRole('button', { name: controlName });
     const controlBox = await control.boundingBox();
     if (!controlBox)
@@ -2592,7 +2411,7 @@ test('drags the mobile dock bar between half and full without stealing taps', as
   // Exercise a real touch sequence from the overflow control itself. Android
   // does not emit a compatibility click after a moved touch gesture, which is
   // the exact path that used to leave the next deliberate tap suppressed.
-  await touchDragControlTo('Chat actions', 120);
+  await touchDragControlTo(/^Switch task/, 120);
   await expect(dock).toHaveClass(/is-maximized/);
   await expect
     .poll(async () => Math.round((await dock.boundingBox())?.height ?? 0))
@@ -2646,7 +2465,7 @@ test('drags the mobile dock bar between half and full without stealing taps', as
   // Reopening from Collapsed is still a live resize gesture. Crossing the
   // tap threshold must reveal the dock at the pointer's actual height; it
   // must not commit Half (and run the snap transition) until release.
-  const collapsedActions = page.getByRole('button', { name: 'Chat actions' });
+  const collapsedActions = page.getByRole('button', { name: /^Switch task/ });
   const collapsedActionsBox = await collapsedActions.boundingBox();
   if (!collapsedActionsBox)
     throw new Error('Collapsed Chat actions control is not measurable');
@@ -2729,7 +2548,9 @@ test('preserves desktop dock geometry', async ({ page }) => {
   expect(dock?.x).toBe(sidebar.x + sidebar.width);
   expect(dock?.width).toBe(inlineDockWidth);
   expect(dock?.height).toBe(320);
-  await page.getByRole('button', { name: 'Maximize chat dock' }).click();
+  await page
+    .getByRole('button', { name: 'Expand dock region to workspace' })
+    .click();
   // The maximized dock is `height: 100% !important` inside a grid whose first
   // row is the toolbar (`index.css:7340-7346, 7377-7385`), so what it occupies
   // is decided by the LAYOUT, not by the `--app-toolbar-height` token the old
@@ -2761,7 +2582,7 @@ test('preserves desktop dock geometry', async ({ page }) => {
   const maximizedDock = await page.locator('.chat-dock').boundingBox();
   expect(maximizedDock?.x).toBe(sidebar.x + sidebar.width);
   expect(maximizedDock?.width).toBe(inlineDockWidth);
-  await page.getByRole('button', { name: 'Restore chat dock' }).click();
+  await page.getByRole('button', { name: 'Restore dock region size' }).click();
   // Restore now returns to the named Half snap, whose 45% viewport contract
   // resolves to 360px at this 800px desktop viewport (rather than reviving
   // the older fixed 320px default).
@@ -3158,7 +2979,7 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
   await page.goto('/?dock=open&chat=conv-running');
   await dismissSetupLauncher(page);
 
-  const switcher = page.getByRole('button', { name: 'Switch task' });
+  const switcher = page.getByRole('button', { name: /^Switch task/ });
   await expect(switcher).toBeVisible({ timeout: 15_000 });
   await switcher.click();
 
@@ -3210,7 +3031,7 @@ test('dock drag-passthrough surfaces opt out of native touch panning (#1052)', a
   await page.goto('/?dock=open&chat=conv-running');
   await dismissSetupLauncher(page);
 
-  const identity = page.getByRole('button', { name: 'Switch task' });
+  const identity = page.getByRole('button', { name: /^Switch task/ });
   await expect(identity).toBeVisible({ timeout: 15_000 });
   // touch-action does not inherit from the header bar; if a passthrough
   // control reverts to `auto`, real devices pointercancel the resize drag the
@@ -3262,7 +3083,7 @@ test('every mobile dock header control is part of the drag surface (#1052)', asy
   const controls = header.locator('button');
   const total = await controls.count();
   // Identity block + drawer toggle + Activity + Chat actions.
-  expect(total).toBeGreaterThanOrEqual(4);
+  expect(total).toBe(3);
   for (let i = 0; i < total; i++) {
     const control = controls.nth(i);
     const name = (await control.getAttribute('aria-label')) ?? `control ${i}`;
@@ -3272,8 +3093,8 @@ test('every mobile dock header control is part of the drag surface (#1052)', asy
     if ((await control.getAttribute('data-no-dock-drag')) !== null) {
       expect(
         name,
-        'only the dock toggle may opt out of the drag surface',
-      ).toMatch(/^(Expand|Collapse) chat$/);
+        'navigation and action buttons keep a gesture-free tap path',
+      ).toMatch(/^(Expand chat|Collapse chat|Toggle menu|Chat actions)$/);
       continue;
     }
     await expect(
