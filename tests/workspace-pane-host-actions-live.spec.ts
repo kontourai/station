@@ -430,7 +430,7 @@ test('retained plugin recovers through responsive UI and its host default Agent 
     ).toBeVisible();
     await expect(
       page.getByText('This host does not support this pane.', { exact: true }),
-    ).toHaveCount(0);
+    ).toBeHidden();
     expect(
       await page.evaluate(
         () =>

@@ -88,3 +88,8 @@
 .workspace-host-actions .button {
   min-height: 44px;
 }
+.workspace-host-actions .button:disabled,
+.workspace-host-actions .editor-select:disabled {
+  color: var(--text-secondary);
+  opacity: 1;
+}
