@@ -1564,3 +1564,55 @@ it('source seal refuses an unpublished committed document instead of hiding it b
     await working.close();
   }
 });
+
+it('source seal serializes behind an admitted transaction and closes at its committed checkpoint', async () => {
+  const path = databasePath();
+  let entered!: () => void;
+  let release!: () => void;
+  const atCommit = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const proceed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let checks = 0;
+  const source = history(path, {
+    capabilities: {
+      resolve: async (input) => {
+        if (input.required === 'message-write' && ++checks === 3) {
+          entered();
+          await proceed;
+        }
+        return capabilities.resolve(input);
+      },
+    },
+  });
+  const sealer = history(path);
+  try {
+    await source.open({ grant: grant('discover') });
+    await sealer.open({ grant: grant('discover') });
+    const append = source.append(message('in-flight-at-closure'));
+    await atCommit;
+    const sealing = sealer.sealSource({
+      grant: grant('home-transfer'),
+      ...sealIntent,
+    });
+    release();
+    const committed = await append;
+    expect(committed.kind).toBe('committed');
+    if (committed.kind !== 'committed') throw new Error('Expected real commit');
+    expect(await sealing).toMatchObject({
+      kind: 'sealed',
+      seal: {
+        checkpoint: committed.receipt.checkpoint,
+      },
+    });
+    expect(await source.append(message('after-race'))).toEqual({
+      kind: 'denied',
+    });
+  } finally {
+    release();
+    await source.close();
+    await sealer.close();
+  }
+});
