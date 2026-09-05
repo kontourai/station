@@ -144,6 +144,30 @@ function resetState() {
   deviceSettingsStore.reloadFromStorage();
 }
 
+/**
+ * #928 C2a: Home is a region surface whose only placement is `main`. Both
+ * sidebar Home affordances (the header's app-name button and the Work list's
+ * Home row) reveal it through `showSurface('home')`; navigating to `/` is the
+ * region model's job once the placement lands, and a sidebar that navigated
+ * itself would show whatever surface occupies `main`.
+ */
+describe('ProjectSidebar Home affordances reveal the Home surface (#928 C2a)', () => {
+  test('the Work list Home row and the header home button call showSurface(home) and do not navigate', () => {
+    resetState();
+    showSurfaceStub.mockClear();
+    render(<ProjectSidebar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    expect(showSurfaceStub).toHaveBeenCalledWith('home');
+    expect(navigate).not.toHaveBeenCalled();
+
+    showSurfaceStub.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Station home' }));
+    expect(showSurfaceStub).toHaveBeenCalledWith('home');
+    expect(navigate).not.toHaveBeenCalled();
+  });
+});
+
 describe('ProjectSidebar WORK list labeling (station#1300)', () => {
   test.each([
     ['Stable', 'unexpected package title', 'stable', undefined],

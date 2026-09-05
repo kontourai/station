@@ -2,10 +2,6 @@
  * @vitest-environment jsdom
  */
 
-import {
-  WORKSPACE_HOME_PANE_DESCRIPTOR,
-  WORKSPACE_HOME_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-home-pane';
 import { act, fireEvent, screen } from '@testing-library/react';
 import { createRef, type ReactElement } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -611,14 +607,21 @@ describe('ChatDockMobileHeader overflow sheet occupant switch (station#520/524)'
     };
   }
 
-  test('lists every other ambient occupant when onSwitchOccupant is supplied', async () => {
+  // #928 C2a: Home is a region surface whose only placement is `main`, so
+  // Chat is the only pane the ambient dock admits and the sheet has no other
+  // occupant to switch to. The two cases that used to drive the
+  // `chooseAmbientOccupant` routing through a "Switch to Home" item went
+  // with the item; the routing itself keeps its tests in
+  // `mobile-chrome-safety.test.ts`.
+  test('lists no switch item when Chat is the only ambient occupant, even with onSwitchOccupant supplied', async () => {
     renderHeader({ onSwitchOccupant: switcher() });
 
     fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
+    await screen.findByRole('menuitem', { name: 'Chat settings' });
     expect(
-      await screen.findByRole('menuitem', { name: 'Switch to Home' }),
-    ).toBeTruthy();
-    // Activity owns a separate region surface, not an ambient Chat/Home slot.
+      screen.queryByRole('menuitem', { name: 'Switch to Home' }),
+    ).toBeNull();
+    // Activity owns a separate region surface, not an ambient Chat slot.
     expect(
       screen.queryByRole('menuitem', { name: 'Switch to Activity' }),
     ).toBeNull();
@@ -626,59 +629,6 @@ describe('ChatDockMobileHeader overflow sheet occupant switch (station#520/524)'
     expect(
       screen.queryByRole('menuitem', { name: 'Switch to Chat' }),
     ).toBeNull();
-  });
-
-  test('desktop or off-route: calls the plain onChoose and closes the sheet', async () => {
-    mobileFlag.isMobile = false;
-    pathnameFlag.pathname = '/';
-    const onChoose = vi.fn<OccupantChooser>();
-    const onChooseAsOnlyContent = vi.fn<OccupantChooser>();
-    renderHeader({
-      onSwitchOccupant: switcher({ onChoose, onChooseAsOnlyContent }),
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
-    const item = await screen.findByRole('menuitem', {
-      name: 'Switch to Home',
-    });
-    fireEvent.click(item);
-
-    expect(onChoose).toHaveBeenCalledWith(
-      WORKSPACE_HOME_PANE_DESCRIPTOR,
-      WORKSPACE_HOME_PANE_INSTANCE,
-    );
-    expect(onChooseAsOnlyContent).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).toBeNull();
-  });
-
-  /**
-   * station#520 (review round 3, B1): the reproduction the reviewer named
-   * verbatim — the header's own `isDockMaximized: false` default (a
-   * COLLAPSED or HALF dock, not maximized) with the picked pane's own
-   * route (`/`) already on screen. Before this fix the sheet always called
-   * the plain action here, stranding `WorkspacePaneAwayState` as the whole
-   * main area exactly like #520's acceptance criterion describes.
-   */
-  test("mobile + on the picked pane's own route (dock NOT maximized): routes through onChooseAsOnlyContent", async () => {
-    mobileFlag.isMobile = true;
-    pathnameFlag.pathname = '/'; // Home's own canonical route.
-    const onChoose = vi.fn<OccupantChooser>();
-    const onChooseAsOnlyContent = vi.fn<OccupantChooser>();
-    renderHeader({
-      onSwitchOccupant: switcher({ onChoose, onChooseAsOnlyContent }),
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
-    const item = await screen.findByRole('menuitem', {
-      name: 'Switch to Home',
-    });
-    fireEvent.click(item);
-
-    expect(onChooseAsOnlyContent).toHaveBeenCalledWith(
-      WORKSPACE_HOME_PANE_DESCRIPTOR,
-      WORKSPACE_HOME_PANE_INSTANCE,
-    );
-    expect(onChoose).not.toHaveBeenCalled();
   });
 
   test('renders no switch items when onSwitchOccupant is absent (full-screen placement)', async () => {

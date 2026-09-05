@@ -21,6 +21,7 @@ import {
   revealSurface,
   seedRegionArrangementFromDock,
   showSurfaceAlone,
+  surfaceMayOccupy,
   syncRegionArrangementFromDock,
   updateRegion,
 } from '../regions/region-model';
@@ -29,6 +30,7 @@ import {
   useDeviceSettingsActions,
 } from './DeviceSettingsContext';
 import { useNavigation } from './NavigationContext';
+import { navigationStore } from './navigation-store';
 import { clearSurfaceDeepLinkParams } from './surface-deep-link';
 
 export interface SurfaceIntent {
@@ -91,6 +93,18 @@ interface RegionModelValue {
 
 const RegionModelContext = createContext<RegionModelValue | null>(null);
 
+/**
+ * `main` is the route outlet at `/` and nowhere else (`App.tsx`): a surface
+ * placed there is only on screen at `/`. The model is the one place that
+ * knows a placement landed in `main`, so it is the model that navigates —
+ * after the state write, through the same store call `useShowSurface` makes.
+ * On any other route the routed view renders and `main`'s occupant is kept,
+ * not cleared, so coming back to `/` shows what was placed (#928 C2a).
+ */
+function navigateToMainOutlet() {
+  if (window.location.pathname !== '/') navigationStore.navigate('/');
+}
+
 export function RegionModelProvider({ children }: { children: ReactNode }) {
   const settings = useDeviceSettings();
   const {
@@ -128,15 +142,20 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const placeSurface = useCallback((surfaceId: string, regionId: RegionId) => {
+    // A refused placement (the surface does not declare this region) must not
+    // navigate either: nothing was placed, so there is nothing to go and see.
+    if (!surfaceMayOccupy(surfaceId, regionId)) return;
     const next = placeSurfaceInArrangement(
       regionsRef.current,
       surfaceId,
       regionId,
     );
-    if (next === regionsRef.current) return;
-    regionsRef.current = next;
-    setLastShownRegion(regionId);
-    setRegions(next);
+    if (next !== regionsRef.current) {
+      regionsRef.current = next;
+      setLastShownRegion(regionId);
+      setRegions(next);
+    }
+    if (regionId === 'main') navigateToMainOutlet();
   }, []);
 
   const showSurface = useCallback(
@@ -149,6 +168,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       regionsRef.current = shown.arrangement;
       setLastShownRegion(shown.region);
       setRegions(shown.arrangement);
+      if (shown.region === 'main') navigateToMainOutlet();
       if (intent) {
         const token = ++surfaceIntentTokenRef.current;
         // The record is exactly what this caller asked for. It used to

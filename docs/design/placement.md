@@ -35,14 +35,47 @@ different owners.
 ```
 
 **Layer 1: shell regions.** The shell owns four fixed slots: `main`, `left`,
-`right`, `bottom` (`REGION_IDS`, `src-ui/src/regions/region-model.ts`). The
-three dock regions (`DOCK_REGION_IDS`) each hold at most one registered
-**surface**, plus `visible` and `size`. `main` is the route outlet today and
-becomes a choosable region when Home is registered as a surface (#928 slice
-C2). This layer is user-facing chrome: the region toolbar
+`right`, `bottom` (`REGION_IDS`, `src-ui/src/regions/region-model.ts`). Each
+holds at most one registered **surface**, plus `visible` and `size`. The
+three dock regions (`DOCK_REGION_IDS`) show and hide; `main` is always
+visible and is a choosable region since Home became a surface (#928 slice
+C2a, below). This layer is user-facing chrome: the region toolbar
 (`src-ui/src/components/header/RegionToolbarControls.tsx`) places, swaps,
 shows and hides; an empty region offers what can occupy it. No surface reads
 its own placement (pinned by `region-surface-boundary.test.ts`).
+
+### `main`
+
+`main` is the primary area: the route outlet at `/`, and the routed view on
+every other route. Four rules make it a region rather than a special case
+(#928 slice C2a, owner decisions of 2026-09-05):
+
+- **Surfaces declare where they may be placed.** `RegisteredSurface.regions`
+  lists the regions a surface may occupy, and `placeSurface` refuses any
+  other (`surfaceMayOccupy`). Home declares only `main`; Activity declares all
+  four; Chat declares the three dock regions (its `main` placement would be a
+  projectless full-screen Chat, a mount no entry point has made). The toolbar
+  offers a surface only for the regions it declares, so this refusal is the
+  backstop, not the UI.
+- **Displacement from `main` unplaces.** A surface taking `main` replaces what
+  it shows; the previous occupant becomes the occupant of no region. It is not
+  relocated to a dock region, because a replacement in the primary area must
+  not spawn a panel nobody asked for. Dock-region swaps keep their relocation
+  rule.
+- **A placement into `main` navigates to `/`.** `main` renders only at `/`
+  (`App.tsx` renders `main`'s occupant there through `MainRegionSurface`; a
+  null occupant is Home). `RegionModelContext` is the one place that knows a
+  placement landed in `main`, so it navigates after the state write, through
+  the same store call `useShowSurface` makes. On any other route the routed
+  view renders and the occupant is kept, not cleared. The Home destination
+  (`regionSurface: 'home'`) therefore reveals Home by placing it, rather than
+  navigating to `/` and showing whatever occupies `main`.
+- **Coarse devices defer `main`.** The `main` toolbar control (a filled centre
+  glyph; its click opens the placement menu, since `main` has no show/hide)
+  exists on a fine pointer only. A bottom-only device folds its region
+  commands into one control (#1400's toolbar occlusion floor) and this slice
+  does not widen that fold; Home still reaches `main` there through the
+  palette and the deep link.
 
 **Layer 2: pane hosts.** Inside a surface, or inside a project layout, a
 `WorkspacePaneHost` renders a persisted tree of **panes**. The tree has two
@@ -62,7 +95,7 @@ below is cheap.
 | word | means | exists as |
 |---|---|---|
 | **Region** | a fixed shell slot: `main`, `left`, `right`, `bottom` | `REGION_IDS`, `RegionState` |
-| **Surface** | a thing registered to occupy a region: id, title, icon, chord, default region | `REGION_SURFACE_REGISTRY`, `RegisteredSurface` |
+| **Surface** | a thing registered to occupy a region: id, title, icon, optional chord, the regions it declares, default region | `REGION_SURFACE_REGISTRY`, `RegisteredSurface` |
 | **Layout** | a project's named view the sidebar navigates between (Coding, Tasks, Session board, a plugin's) | `LayoutConfig` server record; `type` selects the renderer |
 | **Pane** | the smallest addressable UI unit; what plugins contribute | `WorkspacePaneDescriptor`, `WorkspacePaneInstance` |
 | **Pane host** | a tree of panes arranged as splits and tab groups, inside a region or a layout | `WorkspacePaneHost`, `WorkspacePaneHostDocumentV1` |
@@ -102,6 +135,7 @@ map; anything not listed is a label.
 | declaration | vocabulary | readers |
 |---|---|---|
 | `REGION_SURFACE_REGISTRY` | surface ids | `RegionModelContext` (direct), `ActivityRegionShell` (direct), the region toolbar and `useRegionSurfaceMenu` via `regionModel.surfaces`, `CommandPalette` via the destination registry's `regionSurface` field |
+| `RegisteredSurface.regions` | `main`, `left`, `right`, `bottom` | `placeSurface` via `surfaceMayOccupy` (refuses an undeclared region), `RegionModelContext.placeSurface` (a refused placement does not navigate), the region toolbar (each region's menu lists the surfaces declaring it; `useRegionSurfaceMenu` lists dock toggles only) |
 | `WorkspacePanePlacement.supportedRegions` | `primary`, `secondary`, `standalone`, `docked` | parse validation; `instantiateWorkspaceComposition` (does a composition slot fit this pane); `isWorkspaceHomeRoleEligibleDescriptor` (`standalone` means "may be a route"); the docked-capability pins (`docked` means "may be a region surface"): `src-ui/src/__tests__/docked-capability-derivation.test.ts` over the built-in descriptor constants and `workspace-pane-known-declarations.test.ts` over the server's inline declarations |
 | `WorkspacePanePlacement.preferredRegion` | same | parse validation and canonical-identity equality only |
 | `WorkspaceCompositionPaneSpec.role` | `navigation`, `content`, `auxiliary`, `inspector` | the composition algorithm groups panes by role: tabs within a role, splits between roles. Runs on real data through the coding file/diff/evidence compositions (behind `workspaceComposition*` layout config controls) and the task room |
@@ -125,7 +159,7 @@ Two facts that follow from the map and are easy to get wrong:
   seeds from the legacy dock keys (`chatDockHeight`/`chatDockWidth` in device
   settings, `dock`/`maximize`/`dockSlotPlacement` in the URL) and mirrors chat's
   placement, visibility and size back to them. Any other surface's placement
-  is lost on reload. The `?surface=` deep link reveals a surface once and then
+  is lost on reload, including `main`'s occupant, which reloads as Home. The `?surface=` deep link reveals a surface once and then
   clears itself; it is a command, not persistence. Slice D adds the per-device
   record.
 - **Pane hosts:** each host persists its own document in localStorage under

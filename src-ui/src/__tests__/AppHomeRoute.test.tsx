@@ -259,6 +259,14 @@ vi.mock('../components/chat-dock/ChatDock', () => ({
 vi.mock('../components/CommandPalette', () => ({
   CommandPalette: () => null,
 }));
+// #928 C2a: the Activity shell is what `main` renders when Activity occupies
+// it. Stubbed: its content (the sessions surface) is not this route's
+// subject; WHICH shell the outlet mounts, and with which region, is.
+vi.mock('../app-shell/ActivityRegionShell', () => ({
+  ActivityRegionShell: ({ regionId }: { regionId: string }) => (
+    <div data-testid="activity-region-shell">{regionId}</div>
+  ),
+}));
 vi.mock('../components/header/Header', () => ({ Header: () => null }));
 vi.mock('../components/notifications/ConnectionBannerSource', () => ({
   ConnectionBannerSource: () => null,
@@ -566,6 +574,107 @@ describe('App home route resolution', () => {
     await act(async () => undefined);
 
     expect(registerRegionSurfaceHost).toHaveBeenCalled();
+  });
+
+  /**
+   * #928 C2a: `/` renders the `main` region's occupant. With the default
+   * arrangement (Home in `main`) — and with no region model at all, the
+   * legacy mount every other test here uses — the outlet is exactly the Home
+   * route it always was.
+   */
+  test('the default arrangement renders the Home route at / unchanged', async () => {
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.layouts = {
+      data: [{ slug: 'code' }],
+      isLoading: false,
+      isError: false,
+    };
+    expect(DEFAULT_DEVICE_REGION_ARRANGEMENT.main.occupant).toBe('home');
+    const outletHtml = () =>
+      document.querySelector('main#station-main .content-view')?.innerHTML;
+
+    // The legacy mount (no region model) is the oracle: what `/` rendered
+    // before `main` became choosable.
+    hooks.regionModel = null;
+    const legacy = render(<App />);
+    await act(async () => undefined);
+    const legacyHtml = outletHtml();
+    expect(legacyHtml).toContain('{"type":"home"}');
+    legacy.unmount();
+
+    hooks.regionModel = regionModelStub();
+    render(<App />);
+    await act(async () => undefined);
+
+    expect(outletHtml()).toBe(legacyHtml);
+    expect(screen.queryByTestId('activity-region-shell')).toBeNull();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test('with Activity in main, / renders the Activity shell for main and not Home', async () => {
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.regionModel = {
+      ...regionModelStub(),
+      regions: {
+        ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        main: { visible: true, size: 0, occupant: 'activity' },
+      },
+    };
+
+    render(<App />);
+    await act(async () => undefined);
+
+    const shell = await screen.findByTestId('activity-region-shell');
+    expect(shell.textContent).toBe('main');
+    expect(shell.closest('main#station-main')).not.toBeNull();
+    expect(screen.queryByTestId('app-view-content')).toBeNull();
+    expect(screen.queryByRole('status', { name: /loading/i })).toBeNull();
+  });
+
+  test('a routed view renders on another route while main keeps its occupant', async () => {
+    window.history.replaceState({}, '', '/plugins');
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    const stub = {
+      ...regionModelStub(),
+      setRegion: vi.fn(),
+      regions: {
+        ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        main: { visible: true, size: 0, occupant: 'activity' },
+      },
+    };
+    hooks.regionModel = stub;
+
+    render(<App />);
+    await act(async () => undefined);
+
+    expect(screen.getByTestId('app-view-content').textContent).toBe(
+      '{"type":"plugins"}',
+    );
+    expect(screen.queryByTestId('activity-region-shell')).toBeNull();
+    // Ignored, not cleared: App writes nothing to the model on a route change.
+    expect(stub.placeSurface).not.toHaveBeenCalled();
+    expect(stub.setRegion).not.toHaveBeenCalled();
+    expect(stub.regions.main.occupant).toBe('activity');
+
+    // Coming back to `/` shows the kept occupant.
+    await act(async () => {
+      window.history.pushState({}, '', '/');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(await screen.findByTestId('activity-region-shell')).toBeTruthy();
+    expect(screen.queryByTestId('app-view-content')).toBeNull();
   });
 
   test('registers no region surface host for a full-screen chat layout', async () => {
