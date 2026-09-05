@@ -123,10 +123,103 @@ describe('UX audit A7: two capable engines and no default', () => {
     expect(later.disabled).toBe(false);
   });
 
-  test('the picker is announced as a modal dialog named by its title', () => {
+  test('the picker is announced as a dialog whose label resolves to its title', () => {
     renderPicker();
     const dialog = screen.getByRole('dialog');
-    expect(dialog.getAttribute('aria-modal')).toBe('true');
-    expect(dialog.getAttribute('aria-labelledby')).toBe('engine-picker-title');
+    const labelId = dialog.getAttribute('aria-labelledby');
+    expect(labelId).toBe('engine-picker-title');
+    expect(document.getElementById(labelId!)?.textContent).toBe(
+      'Choose what powers your default assistant',
+    );
+    // No focus trap, Escape handler or focus restoration lives here (that is
+    // ResponsiveDialogSurface's contract), so the picker must not claim
+    // `aria-modal` — KeyboardShortcutsContext derives `dialogOpen` from it.
+    expect(dialog.getAttribute('aria-modal')).toBeNull();
+  });
+
+  test('the none-capable panel is a dialog too, with the same resolvable label', () => {
+    connectionsData = [];
+    renderPicker();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.getAttribute('data-testid')).toBe(
+      'engine-picker-none-capable',
+    );
+    expect(
+      document.getElementById(dialog.getAttribute('aria-labelledby')!)
+        ?.textContent,
+    ).toMatch(/No connected engine can run the built-in assistant/);
+  });
+});
+
+/**
+ * Review finding B1 on the first cut of this fix: `null` is NOT always
+ * "nothing chosen". When a Station model provider is chat-ready,
+ * `readyEngineOptions` offers a selectable "Station" row whose value IS
+ * `null` (`src-ui/src/utils/engineBinding.ts`), and an explicit Station
+ * binding is a sticky first-class config value (`packages/contracts/src/
+ * config.ts`). Disabling the primary on `null` alone would grey it out under
+ * a CHECKED radio and make Station unreachable from the only UI that writes
+ * it. The guard must discriminate on whether a null row is on offer.
+ */
+describe('UX audit A7 review B1: null is a real choice when the Station row is offered', () => {
+  beforeEach(() => {
+    statusData = { providers: { configuredChatReady: true } };
+    mutate.mockClear();
+    reconnectMutate.mockReset();
+    invalidateQueries.mockClear();
+  });
+
+  test('an explicit Station binding opens with Station checked and the primary ENABLED; confirming saves null', () => {
+    connectionsData = [
+      nativeConnection('claude', 'Claude Code'),
+      nativeConnection('codex', 'Codex'),
+    ];
+    configData = { builtinAgentEngineConnectionId: null };
+    renderPicker();
+
+    const station = screen.getByLabelText(/^Station/) as HTMLInputElement;
+    expect(station.checked).toBe(true);
+    const primary = screen.getByRole('button', {
+      name: 'Use this engine',
+    }) as HTMLButtonElement;
+    expect(primary.disabled).toBe(false);
+
+    fireEvent.click(primary);
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(mutate.mock.calls[0][0]).toEqual({
+      builtinAgentEngineConnectionId: null,
+    });
+  });
+
+  test('moving the choice from Codex back to Station keeps the primary live', () => {
+    connectionsData = [nativeConnection('codex', 'Codex')];
+    configData = { builtinAgentEngineConnectionId: 'codex' };
+    renderPicker();
+
+    fireEvent.click(screen.getByLabelText(/^Station/));
+    const primary = screen.getByRole('button', {
+      name: 'Use this engine',
+    }) as HTMLButtonElement;
+    expect(primary.disabled).toBe(false);
+    fireEvent.click(primary);
+    expect(mutate.mock.calls[0][0]).toEqual({
+      builtinAgentEngineConnectionId: null,
+    });
+  });
+
+  test('with no explicit choice and Station chat-ready, Station is the resolved default and the primary is live', () => {
+    connectionsData = [nativeConnection('codex', 'Codex')];
+    configData = {};
+    renderPicker();
+    expect((screen.getByLabelText(/^Station/) as HTMLInputElement).checked).toBe(
+      true,
+    );
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Use this engine',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
   });
 });

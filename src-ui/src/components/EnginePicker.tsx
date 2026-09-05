@@ -281,7 +281,6 @@ export function EnginePicker({
           className="engine-picker__panel"
           data-testid="engine-picker-none-capable"
           role="dialog"
-          aria-modal="true"
           aria-labelledby="engine-picker-title"
         >
           <div className="engine-picker__eyebrow">{eyebrow}</div>
@@ -380,7 +379,6 @@ export function EnginePicker({
       <div
         className="engine-picker__panel"
         role="dialog"
-        aria-modal="true"
         aria-labelledby="engine-picker-title"
       >
         <div className="engine-picker__eyebrow">{eyebrow}</div>
@@ -435,15 +433,24 @@ export function EnginePicker({
         <button
           type="button"
           className="engine-picker__primary"
-          // UX audit 2026-09-05 A7: with two or more capable engines the
-          // resolver has no default (`resolveBuiltinAgentEngineBinding`
-          // returns null when the choice is ambiguous), so no radio is
-          // preselected. An enabled primary in that state saved
-          // `builtinAgentEngineConnectionId: null` while reading "Saving…",
-          // left the built-in assistant unrunnable, and the wizard moved on
-          // as if a choice had been made. No row in this picker means
-          // "null", so a null selection is "nothing chosen", not a choice.
-          disabled={updateConfig.isPending || resolvedSelectedId === null}
+          // UX audit 2026-09-05 A7: with two or more capable external
+          // engines and no Station model provider, the resolver has no
+          // default (`resolveBuiltinAgentEngineBinding` returns null when the
+          // choice is ambiguous), so no radio is preselected. An enabled
+          // primary in that state saved `builtinAgentEngineConnectionId:
+          // null` while reading "Saving…", left the built-in assistant
+          // unrunnable, and the wizard moved on as if a choice had been made.
+          //
+          // `null` is only "nothing chosen" when NO row carries it. When a
+          // Station model provider is chat-ready, `readyEngineOptions` offers
+          // a "Station" row whose value IS null, and an explicit Station
+          // binding is a sticky first-class config value — so the guard asks
+          // whether a null row is on offer, not whether null is selected.
+          disabled={
+            updateConfig.isPending ||
+            (resolvedSelectedId === null &&
+              !options.some((option) => option.connectionId === null))
+          }
           onClick={() => {
             if (onSelect) {
               // route the choice through the caller's own
