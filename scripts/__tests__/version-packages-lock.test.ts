@@ -141,6 +141,29 @@ test('managed version pipeline repairs stale pnpm locks offline without pnpm on 
     peerDependencies: { 'fixture-a': '^1.0.0' },
   });
 
+  // Make this test's one external precondition explicit (#1517).
+  //
+  // `repair()` below runs with `npm_config_offline`, and the repair step is
+  // `npm exec --package=<packageManager>`, so pnpm must ALREADY be in npm's
+  // cache. That used to hold for free: when the repo installed through npm,
+  // ordinary setup ran `npm exec … pnpm` and warmed the cache as a side
+  // effect. Since the pnpm migration, installs go through pnpm directly, so
+  // nothing populates npm's cache and the offline exec has nothing to
+  // resolve -- `ENOTCACHED`, deterministically, on every CI run.
+  //
+  // Warming here rather than in the workflow keeps the requirement visible to
+  // the next reader of this file. It does not weaken what the test proves:
+  // the subject is still `dependencies:lock` completing with no network, and
+  // this step is setup, exactly as the old toolchain's accidental warming was.
+  execFileSync(process.execPath, [npmCli, 'cache', 'add', packageManager], {
+    cwd: root,
+    encoding: 'utf8',
+    windowsHide: true,
+    // Deliberately NOT `env`: that carries `npm_config_offline`, which would
+    // make this step unable to do the one thing it exists to do.
+    env: { ...process.env, CI: 'true' },
+  });
+
   // No registry dependencies exist in this fixture; this creates its lock
   // entirely locally and proves the exact release repair stays network-free.
   repair();

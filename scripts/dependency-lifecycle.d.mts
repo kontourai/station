@@ -47,3 +47,11 @@ export function stageLifecyclePrebuilds(
 export function verify(options?: { cwd?: string }): unknown;
 export function install(options?: { developer?: boolean }): void;
 export function propose(options?: { cwd?: string }): unknown;
+export function describeFailure(
+  error: unknown,
+  options?: { maxDepth?: number; maxLength?: number },
+): string;
+export function reportCliFailure(
+  error: unknown,
+  options?: { log?: (line: string) => void },
+): number;

@@ -63,6 +63,7 @@ import type {
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
+import { createIsolatedTaskSearch } from '../search/isolated-task-search.js';
 import { ProjectResourceResolver } from './project-resource-resolver.js';
 import type { ProjectService } from './project-service.js';
 import {
@@ -1373,6 +1374,33 @@ function buildProjectResourceResolver(
   });
 }
 
+function createTaskGraphStore(storePath: string, maxReadBytes?: number) {
+  return new JsonFileStore<TaskGraphStoreData>(
+    storePath,
+    {
+      tasks: [],
+      links: [],
+      dispatches: [],
+      answerNarrativePins: [],
+      declaredPullRequestKeeps: [],
+      declaredPullRequestKeepTombstones: [],
+    },
+    { onCorruption: 'throw', durableAtomicWrite: true, maxReadBytes },
+  );
+}
+
+/** Owner-private worker read: the same canonical parser and recovery as TaskGraph. */
+export function readTaskGraphForIsolatedSearch(
+  storePath: string,
+  maxReadBytes: number,
+): TaskRecord[] {
+  const data = validateTaskGraphStoreData(
+    createTaskGraphStore(storePath, maxReadBytes).read(),
+    storePath,
+  );
+  return data.tasks.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 export class TaskGraphService {
   private readonly storePath: string;
   private readonly store: JsonFileStore<TaskGraphStoreData>;
@@ -1410,18 +1438,7 @@ export class TaskGraphService {
     this.workflowSidecarReader = deps.workflowSidecarReader;
     this.logger = deps.logger;
     this.storePath = join(projectHomeDir, 'task-graph.json');
-    this.store = new JsonFileStore<TaskGraphStoreData>(
-      this.storePath,
-      {
-        tasks: [],
-        links: [],
-        dispatches: [],
-        answerNarrativePins: [],
-        declaredPullRequestKeeps: [],
-        declaredPullRequestKeepTombstones: [],
-      },
-      { onCorruption: 'throw', durableAtomicWrite: true },
-    );
+    this.store = createTaskGraphStore(this.storePath);
     this.acquireMutationLock =
       deps.acquireMutationLock ?? acquireFileMutationLockAsync;
   }
@@ -1562,6 +1579,15 @@ export class TaskGraphService {
     return tasks
       .filter((task) => !projectId || task.projectId === projectId)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  /**
+   * Personal-only, explicit lifecycle. Composition owns one reader per runtime
+   * and must close it; this does not authorize a hosted or external caller.
+   * No route/runtime caller is installed by the Task search tracer (#1413).
+   */
+  createPersonalSearchReader(stationId: string) {
+    return createIsolatedTaskSearch({ storePath: this.storePath, stationId });
   }
 
   readTask(taskId: string): TaskRecord | null {

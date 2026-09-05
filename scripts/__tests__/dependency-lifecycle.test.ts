@@ -18,10 +18,12 @@ import { delimiter, join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  describeFailure,
   INERT_INSTALL_TIMEOUT_ENV,
   inertInstallTimeout,
   pnpmInvocation,
   preflightInstalledLifecycle,
+  reportCliFailure,
   resolveNpmCli,
   runApprovedHooks,
   verifyLifecycleArtifacts,
@@ -1602,4 +1604,80 @@ describe('dependency lifecycle policy', () => {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }
   }, 60_000);
+});
+
+describe('describeFailure surfaces the cause chain', () => {
+  it('reports the reason a retired install attached as cause', () => {
+    // The real shape: `retireDependencyInstall` reports the guard directory
+    // and attaches the actual constraint as `cause`. The CLI printed only
+    // `error.message`, so CI logs named a runner directory that is never
+    // uploaded, and no reason at all -- the failure was diagnosable only by
+    // reproducing it locally (dependabot #1353 sat blocked on exactly this).
+    const cause = new Error(
+      'lifecycle artifact esbuild:bin/esbuild is missing after install',
+    );
+    const thrown = new Error(
+      'Dependencies are not verified. Installer state is retained at "/x".',
+      { cause },
+    );
+
+    const described = describeFailure(thrown);
+
+    expect(described).toContain('Dependencies are not verified');
+    expect(described).toContain(
+      'lifecycle artifact esbuild:bin/esbuild is missing after install',
+    );
+  });
+
+  it('walks more than one level and marks each hop', () => {
+    const described = describeFailure(
+      new Error('outer', {
+        cause: new Error('middle', { cause: new Error('root') }),
+      }),
+    );
+    expect(described.split('\n')).toEqual([
+      'outer',
+      '  caused by: middle',
+      '  caused by: root',
+    ]);
+  });
+
+  it('terminates on a cause cycle rather than looping', () => {
+    const a = new Error('a');
+    const b = new Error('b', { cause: a });
+    (a as { cause?: unknown }).cause = b;
+    // Without the seen-set this never returns.
+    expect(describeFailure(a).split('\n')).toEqual(['a', '  caused by: b']);
+  });
+
+  it('bounds depth and message length rather than trusting them', () => {
+    let deepest: Error | undefined;
+    for (let i = 0; i < 40; i += 1)
+      deepest = new Error(`level ${i}`, { cause: deepest });
+    expect(describeFailure(deepest).split('\n')).toHaveLength(8);
+    expect(describeFailure(new Error('x'.repeat(5000))).length).toBe(2000);
+  });
+
+  it('handles a non-Error throw without inventing structure', () => {
+    expect(describeFailure('plain string')).toBe('plain string');
+  });
+
+  it('reports the cause chain, not just the outermost message', () => {
+    // The seam that actually matters. Testing `describeFailure` alone does
+    // NOT cover this: reverting the reporter to `error.message` leaves every
+    // test above green, which is exactly how the cause came to be discarded.
+    // Fault-injected both ways before this test was accepted.
+    const lines: string[] = [];
+    const code = reportCliFailure(
+      new Error('Dependencies are not verified.', {
+        cause: new Error('esbuild:bin/esbuild missing after install'),
+      }),
+      { log: (line: string) => lines.push(line) },
+    );
+
+    expect(code).toBe(1);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('Dependencies are not verified.');
+    expect(lines[0]).toContain('esbuild:bin/esbuild missing after install');
+  });
 });
