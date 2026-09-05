@@ -10,6 +10,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
+  DEFAULT_REGION_ARRANGEMENT_RECORD,
   DEVICE_SETTINGS_PRIOR_KEYS,
   DEVICE_SETTINGS_REGISTRY,
   extractPriorDeviceSettingsRoot,
@@ -80,6 +81,9 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         // station#4525 — the chat dock's remembered project binding; never
         // persisted pre-unification (it did not previously exist).
         'chatDockProjectSlug',
+        // #928 D — the per-device region arrangement; no record existed
+        // before it.
+        'regionArrangement',
       ] as const) {
         const definition = byKey.get(key);
         expect(definition, `${key} must be registered`).toBeDefined();
@@ -131,7 +135,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
     expect(byKey.get('modelPickerPreferences')).toBe('station.device-settings');
   });
 
-  test('registers exactly the twenty-six documented DeviceSettings fields', () => {
+  test('registers exactly the twenty-seven documented DeviceSettings fields', () => {
     const keys = DEVICE_SETTINGS_REGISTRY.map(
       (definition) => definition.key as string,
     ).sort();
@@ -171,6 +175,8 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'developerToolsEnabled',
         // station#4525 — the chat dock's remembered project binding.
         'chatDockProjectSlug',
+        // #928 D — which surface occupies which region on this device.
+        'regionArrangement',
       ].sort(),
     );
   });
@@ -228,6 +234,28 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
     expect(byKey.get('chatFontSize')).toBeNull();
     expect(byKey.get('dockSlotPlacement')).toBe('bottom');
     expect(byKey.get('chatDockProjectSlug')).toBeNull();
+    // #928 D — the serialized twin of the UI's DEFAULT_DEVICE_REGION_ARRANGEMENT
+    // (pinned equal in src-ui's region-arrangement-record.test.ts).
+    expect(byKey.get('regionArrangement')).toBe(
+      DEFAULT_REGION_ARRANGEMENT_RECORD,
+    );
+    expect(DEFAULT_REGION_ARRANGEMENT_RECORD).toEqual({
+      version: 1,
+      regions: {
+        main: {
+          visible: true,
+          size: 0,
+          occupant: { kind: 'surface', id: 'home' },
+        },
+        left: { visible: false, size: 400, occupant: null },
+        right: { visible: false, size: 400, occupant: null },
+        bottom: {
+          visible: false,
+          size: 320,
+          occupant: { kind: 'surface', id: 'chat' },
+        },
+      },
+    });
   });
 
   test('priorRead extracts shortcutOverrides and modelPickerPreferences from the shared #1359 root', () => {
