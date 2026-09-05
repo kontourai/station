@@ -158,6 +158,8 @@ async function seed(home: string, workspace: string) {
     intentDigest: plan.digest,
   });
   if (edited.kind !== 'committed') throw new Error('Expected a committed edit');
+  if (!('revisionEvidence' in edited))
+    throw new Error('Expected the committed edit to report revision evidence');
   expect(edited).toMatchObject({
     kind: 'committed',
     revisionEvidence: { kind: 'linked' },
