@@ -50,6 +50,29 @@ const READY_CODEX = engine({
 });
 
 describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
+  test('a detected registry Engine is selectable, pre-ticked, and labelled as a connect action', () => {
+    const [option] = buildFirstRunEngineOptions({
+      engines: [
+        engine({
+          name: 'Kiro CLI',
+          detected: true,
+          reason: 'not_connected',
+          registryEntryId: 'kiro',
+        }),
+      ],
+      agents: [],
+    });
+    expect(option).toMatchObject({
+      state: 'detected_connect',
+      registryEntryId: 'kiro',
+      defaultChecked: true,
+      selectable: true,
+    });
+    expect(firstRunEngineRowLabel(option)).toBe('Connect and set up Kiro CLI');
+    expect(buildFirstRunEnableBatch([option], [option.engineId])).toEqual([
+      expect.objectContaining({ registryEntryId: 'kiro' }),
+    ]);
+  });
   test('a ready, addressable engine is offered and pre-ticked', () => {
     const [option] = buildFirstRunEngineOptions({
       engines: [READY_CODEX],

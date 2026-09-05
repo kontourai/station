@@ -264,6 +264,38 @@ export async function installACPConnectionRegistryEntry(
   return result.data;
 }
 
+/** The registry install's additive Agent receipt, when this is a local home. */
+export interface ACPRegistryInstallAgentReceipt {
+  data: unknown;
+  created: boolean;
+  warnings?: string[];
+}
+
+export async function connectAndMaterializeACPRegistryEngine(
+  id: string,
+): Promise<ACPRegistryInstallAgentReceipt> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/acp/registry/${encodeURIComponent(id)}/install`,
+    { method: 'POST' },
+  );
+  const result = (await response.json()) as {
+    success?: boolean;
+    error?: string;
+    agent?: { created?: boolean; [key: string]: unknown };
+  };
+  if (!response.ok || !result.success) {
+    throw new Error(result.error ?? 'Failed to connect engine');
+  }
+  if (!result.agent) {
+    throw new Error(
+      'Engine connection was saved, but no Agent receipt was returned.',
+    );
+  }
+  const { created, ...data } = result.agent;
+  return { data, created: created === true };
+}
+
 export function useTemplatesQuery<T = any>(
   type?: string,
   config?: QueryConfig<T[]>,

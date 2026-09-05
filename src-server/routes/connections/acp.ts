@@ -58,6 +58,25 @@ function mergeACPConnections(
   ];
 }
 
+/**
+ * Registry entries whose command Station observed on the host but which have
+ * no ACP connection yet (neither user-authored nor plugin-provided). Keyed on
+ * the ACP connection id, because a connected ACP Engine reports the generic
+ * `engineId: 'acp'` in `listEngineConnectionStates` and can never be matched
+ * against a registry id that way (station#1548). Read-only: nothing here
+ * launches the command.
+ */
+export async function listDetectedUnconnectedACPRegistryEntries(configLoader: {
+  loadACPConfig: () => Promise<{ connections: ACPConnectionConfig[] }>;
+}): Promise<Array<{ id: string; name: string }>> {
+  const config = await configLoader.loadACPConfig();
+  return getRegistryEntries(
+    mergeACPConnections(config.connections, getProviderConnections()),
+  )
+    .filter((entry) => entry.detected === true && !entry.installed)
+    .map((entry) => ({ id: entry.id, name: entry.name }));
+}
+
 function getRegistryEntries(
   installedConnections: ACPConnectionConfig[],
 ): ACPConnectionRegistryEntry[] {
@@ -137,7 +156,7 @@ async function registerPersistedACPConnection(
   ctx: RuntimeContext,
   id: string,
   name: string = id,
-): Promise<void> {
+): Promise<Awaited<ReturnType<typeof materializeEngineAgent>> | undefined> {
   // Transport-only route fixtures do not expose a filesystem loader. Real
   // runtime contexts do, and therefore always take the durable identity path.
   if (typeof (ctx.configLoader as any).getProjectHomeDir !== 'function') return;
@@ -146,7 +165,7 @@ async function registerPersistedACPConnection(
     engineConnectionId(id),
     { kind: 'user-acp' },
   );
-  await materializeEngineAgent(ctx.configLoader as ConfigLoader, id, name);
+  return materializeEngineAgent(ctx.configLoader as ConfigLoader, id, name);
 }
 
 async function unregisterPersistedACPConnection(
@@ -261,11 +280,26 @@ export function createACPRoutes(ctx: RuntimeContext) {
           // Durable ACP config first, then the identity/default CAS. A failed
           // CAS deliberately leaves retryable config that remains invisible.
           await ctx.configLoader.saveACPConfig(config);
-          await registerPersistedACPConnection(ctx, newConn.id, newConn.name);
+          const agent = await registerPersistedACPConnection(
+            ctx,
+            newConn.id,
+            newConn.name,
+          );
           beginMutation();
           await ctx.acpBridge.addConnection(newConn);
           acpOps.add(1, { op: 'create' });
-          return c.json({ success: true, data: newConn });
+          return c.json({
+            success: true,
+            data: newConn,
+            ...(agent
+              ? {
+                  agent: {
+                    engineConnectionId: engineConnectionId(newConn.id),
+                    created: agent.created,
+                  },
+                }
+              : {}),
+          });
         },
       ),
     );

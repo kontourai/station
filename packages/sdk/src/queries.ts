@@ -50,6 +50,7 @@ export {
   useAwsProfilesQuery,
   useConfigProvenanceQuery,
   useConfigQuery,
+  useConnectAndMaterializeEngineMutation,
   useCreateAgentDetailedMutation,
   useCreateAgentMutation,
   useDeleteAgentMutation,

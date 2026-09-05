@@ -735,6 +735,7 @@ export {
   useCodingFilesQuery,
   useConfigProvenanceQuery,
   useConfigQuery,
+  useConnectAndMaterializeEngineMutation,
   useConnectionQuery,
   useConnectionsQuery,
   useConnectSshEnvironmentMutation,

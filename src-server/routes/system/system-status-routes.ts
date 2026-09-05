@@ -337,6 +337,7 @@ export async function resolveExternalEngineReadiness(
   resolveEngineConnectionId: (
     adapter: ProviderAdapterShape,
   ) => EngineConnectionId | undefined = connectionIdForAdapter,
+  detectedACPRegistryEntries: ReadonlyArray<{ id: string; name: string }> = [],
 ): Promise<ExternalEngineReadiness> {
   const candidates = adapters.filter(
     (adapter) =>
@@ -464,8 +465,21 @@ export async function resolveExternalEngineReadiness(
       },
     ),
   );
-  const ready = readiness.find((candidate) => candidate.ready);
-  return { ready: !!ready, source: ready?.source ?? null, engines: readiness };
+  // ACP registry detection is deliberately an observation only: unlike a
+  // configured adapter it has no connection identity or readiness evidence.
+  // It becomes actionable through the explicit install route after consent.
+  const detectedNotConnected = detectedACPRegistryEntries.map((entry) => ({
+    engineId: entry.id as EngineId,
+    name: entry.name,
+    registryEntryId: entry.id,
+    detected: true,
+    ready: false,
+    source: null,
+    reason: 'not_connected' as const,
+  }));
+  const engines = [...readiness, ...detectedNotConnected];
+  const ready = engines.find((candidate) => candidate.ready);
+  return { ready: !!ready, source: ready?.source ?? null, engines };
 }
 
 /**
@@ -774,6 +788,10 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         isEnabled: () => false,
         connectionIdFor: () => undefined,
       }));
+      const detectedACPRegistryEntries = await raceWithSignal(
+        deps.listDetectedACPRegistryEntries?.() ?? Promise.resolve([]),
+        controller.signal,
+      ).catch(() => []);
       const [
         credentialsFound,
         kiroCliInstalled,
@@ -801,6 +819,7 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
                   engineIdForAdapter(adapter),
                 )
               : connectionIdForAdapter(adapter),
+          detectedACPRegistryEntries,
         ),
         getAllPrerequisites({ signal: controller.signal }),
         discoverDeveloperServices(),

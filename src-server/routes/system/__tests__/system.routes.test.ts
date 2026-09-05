@@ -29,6 +29,7 @@ const { createConnectionRoutes } = await import(
 const {
   readBuildProvenance,
   reconcileExternalEngineReadiness,
+  resolveExternalEngineReadiness,
   STATUS_PREREQUISITES_CACHE_TTL_MS,
 } = await import('../system-status-routes.js');
 const { buildCliRuntimePrerequisites } = await import(
@@ -127,6 +128,48 @@ async function waitForStatusDiscovery(
 }
 
 describe('System Routes', () => {
+  test('projects a detected ACP registry Engine as not connected, never ready', async () => {
+    const readiness = await resolveExternalEngineReadiness(
+      [],
+      undefined,
+      () => true,
+      undefined,
+      [{ id: 'kiro', name: 'Kiro CLI' }],
+    );
+    expect(readiness).toEqual({
+      ready: false,
+      source: null,
+      engines: [
+        {
+          engineId: 'kiro',
+          name: 'Kiro CLI',
+          registryEntryId: 'kiro',
+          detected: true,
+          ready: false,
+          source: null,
+          reason: 'not_connected',
+        },
+      ],
+    });
+  });
+
+  test('does not project ACP entries when discovery is disabled or the runtime reports one connected', async () => {
+    const discoveryDisabled = await resolveExternalEngineReadiness();
+    expect(discoveryDisabled.engines).toEqual([]);
+
+    const app = createSystemRoutes(
+      {
+        ...createMockDeps(),
+        // The production dependency excludes connected ids before passing
+        // observations to readiness; an empty result is what keeps the
+        // configured ACP Engine from duplicating its regular connection row.
+        listDetectedACPRegistryEntries: async () => [],
+      } as any,
+      mockLogger,
+    );
+    const body = await waitForStatusDiscovery(app);
+    expect(body.externalEngines).toEqual([]);
+  });
   test('GET /boot-history returns bounded records without fabricating a cause', async () => {
     const getBootHistory = vi.fn().mockResolvedValue({
       currentUptimeSeconds: 43,

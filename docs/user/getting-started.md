@@ -71,7 +71,9 @@ runs its own agent loop.
 
 1. Open **Connections**.
 2. On the **Models** tab choose a detected service or **Add model connection**;
-   on the **Engines** tab choose a detected engine or **Add engine**.
+   on the **Engines** tab choose a detected engine or **Add engine**. During
+   first run, a detected Engine can be ticked to connect it and create its
+   External agent in the same confirmed action.
 3. Follow its setup action until it reports **Ready**.
 
 For a credential-free first path, use a supported local model service and then
