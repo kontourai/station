@@ -55,7 +55,12 @@ curl http://localhost:3000/__station/identity
 ```
 
 For a local source build, provide immutable provenance explicitly; the Docker
-context intentionally excludes `.git` and credentials:
+context intentionally excludes `.git`, credentials, nested `node_modules`, and
+generated `dist` directories. Docker installs its own platform dependencies in
+the manifest-driven dependency stage; host output must not overlay that stage.
+`node scripts/check-container-build-context.mjs` verifies this with Docker before
+the container smoke build:
+
 
 ```bash
 export STATION_RELEASE_SHA="$(git rev-parse HEAD)"
@@ -126,6 +131,20 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 ./station start
 
 The standalone stack in `monitoring/` is independently managed from Station's
 production container.
+
+## Private cloud environment
+
+See the [private cloud environment design](../design/private-cloud-environment.md)
+for the initial single-VM architecture, execution boundaries, storage, and
+backup/restore plan. Provider provisioning and workload sizing remain separate
+validation work.
+
+The container includes Git, an OpenSSH client, certificate trust, and terminal
+support. Additional engine CLIs and language toolchains must be deliberately
+installed and authenticated for the selected workload. The default Compose
+configuration rotates container output logs and grants a 30-second stop grace
+period. Its health check requires both image identity and live backend
+readiness. Application and workspace files need their own retention/backup policy.
 
 ## Reverse Proxy
 

@@ -52,6 +52,8 @@ clearly mark the stale document.
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
 - **[Architecture](architecture/)** — current module boundaries and ownership.
+- **[Private cloud environment](design/private-cloud-environment.md)** — working
+  single-VM deployment and execution design.
 - **[Design records](design/README.md)** — proposals, accepted decisions, and
   superseded designs. A design file is not current merely because it remains
   in the repository; read its status and follow its named successor.
