@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, test } from 'vitest';
+import { createStationEngineAvailabilityReader } from '../../plugins/runtime-provider-resolution.js';
 import {
   memoizeStationSetupRequirement,
   readStationSetupRequirement,
@@ -21,6 +22,8 @@ function contextWith(input: {
   connections?: unknown[];
   defaultLLMProvider?: string;
   listAgents?: () => Promise<never>;
+  /** Read on every call, so a test can change it mid-run. */
+  liveDefaultLLMProvider?: () => string | undefined;
 }): ConfigureRuntimeRoutesContext {
   return {
     agentService: {
@@ -33,7 +36,9 @@ function contextWith(input: {
       },
     },
     getLiveAppConfig: () => ({
-      defaultLLMProvider: input.defaultLLMProvider,
+      defaultLLMProvider: input.liveDefaultLLMProvider
+        ? input.liveDefaultLLMProvider()
+        : input.defaultLLMProvider,
     }),
     providerService: {
       listProviderConnections: () => input.connections ?? [],
@@ -181,5 +186,83 @@ describe('memoizeStationSetupRequirement', () => {
     await expect(read()).rejects.toThrow('store unavailable');
     // Same window, but there is no observation to reuse.
     await expect(read()).resolves.toBe(2);
+  });
+});
+
+/**
+ * #1536 D8 review H2. Four surfaces asked `resolveManagedAvailabilityReason`
+ * separately and had already drifted: three passed the BOOT snapshot
+ * (`context.appConfig`) and one of those also omitted `gatedConnectionIds`.
+ * With two enabled LLM connections, setting a default at runtime cleared the
+ * attention item while the New Chat picker went on refusing until restart —
+ * the disagreement D8 exists to close, inverted.
+ */
+describe('createStationEngineAvailabilityReader (#1536 D8 review H2)', () => {
+  const twoConnections = [
+    {
+      id: 'anthropic-main',
+      type: 'anthropic',
+      enabled: true,
+      capabilities: ['llm'],
+      config: {},
+    },
+    {
+      id: 'openai-main',
+      type: 'openai',
+      enabled: true,
+      capabilities: ['llm'],
+      config: {},
+    },
+  ];
+
+  test('the picker reason and the attention requirement follow a runtime default change together', async () => {
+    let liveDefault: string | undefined;
+    const context = contextWith({
+      agents: [{ slug: 'station', name: 'Station' }],
+      specs: { station: { name: 'Station', model: 'anthropic/opus' } },
+      connections: twoConnections,
+      liveDefaultLLMProvider: () => liveDefault,
+    });
+    // Both read the same reader, so `spec` is the picker's question and
+    // `readStationSetupRequirement` is the inbox's.
+    const pickerReason = createStationEngineAvailabilityReader(context);
+    const spec = { name: 'Station', model: 'anthropic/opus' } as never;
+
+    // Ambiguous: two candidates, no default. Both refuse.
+    expect(pickerReason(spec)).toBe(
+      'Multiple enabled LLM provider connections require an explicit default.',
+    );
+    expect(await readStationSetupRequirement(context)).toMatchObject({
+      reason:
+        'Multiple enabled LLM provider connections require an explicit default.',
+    });
+
+    // The operator sets a default while Station runs.
+    liveDefault = 'anthropic-main';
+
+    // Both clear. Reading the boot snapshot here left the picker refusing.
+    expect(pickerReason(spec)).toBeNull();
+    expect(await readStationSetupRequirement(context)).toBeNull();
+  });
+
+  test('carries the check-gated connection receipts, so a faulted binding is not reported runnable', () => {
+    const gated = new Map([['anthropic-main', 'failed' as const]]);
+    const context = contextWith({
+      agents: [],
+      specs: {},
+      connections: [twoConnections[0]],
+    }) as ConfigureRuntimeRoutesContext & {
+      connectionService: { checkGatedModelConnectionIds: () => unknown };
+    };
+    context.connectionService.checkGatedModelConnectionIds = () => gated;
+
+    // `/api/boot`'s catalog omitted this argument entirely, so it reported an
+    // agent bound to a faulted connection as runnable.
+    expect(
+      createStationEngineAvailabilityReader(context)({
+        name: 'Station',
+        model: 'anthropic/opus',
+      } as never),
+    ).not.toBeNull();
   });
 });

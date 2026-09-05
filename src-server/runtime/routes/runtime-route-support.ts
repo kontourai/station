@@ -28,7 +28,7 @@ import { isExternalEngineBoundAgent } from '../agents/agent-engine-classificatio
 import { runWithScheduledPrincipal } from '../agents/scheduled-principal-context.js';
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
 import {
-  resolveManagedAvailabilityReason,
+  createStationEngineAvailabilityReader,
   resolveManagedChatBinding,
 } from '../plugins/runtime-provider-resolution.js';
 import type { ConfigureRuntimeRoutesContext } from './runtime-routes.js';
@@ -195,18 +195,6 @@ export function createRuntimeSystemRouteDeps(
 }
 
 /**
- * #1536 D8: the one thing standing between this Station and a working chat on
- * its own engine, or `null` when nothing is.
- *
- * `resolveManagedAvailabilityReason` is the authority — the identical call the
- * agents route makes for `available: false`/`unavailableReason` and the chat
- * route makes for its 409 — so the attention item's body is the picker's
- * sentence rather than a second wording of the same requirement. An agent
- * bound to an EXTERNAL engine has no managed-model concept, so it is skipped:
- * asking a model-resolution probe about Claude Code reports a working Agent as
- * broken (the `deriveAgentCatalog` lesson).
- */
-/**
  * Ceiling on how long a setup-requirement observation is reused across
  * `/api/attention` reads. The inbox polls every 10s, and each read costs an
  * agent-directory listing plus one spec read plus the provider-connection
@@ -240,6 +228,19 @@ export function memoizeStationSetupRequirement<T>(
   };
 }
 
+/**
+ * #1536 D8: the one thing standing between this Station and a working chat on
+ * its own engine, or `null` when nothing is.
+ *
+ * `createStationEngineAvailabilityReader` is the authority — the same function
+ * with the same inputs the agents route reads for
+ * `available: false`/`unavailableReason` — so the attention item's body is the
+ * picker's sentence rather than a second wording of the same requirement, and
+ * the two cannot disagree about which app config they read. An agent
+ * bound to an EXTERNAL engine has no managed-model concept, so it is skipped:
+ * asking a model-resolution probe about Claude Code reports a working Agent as
+ * broken (the `deriveAgentCatalog` lesson).
+ */
 export async function readStationSetupRequirement(
   context: ConfigureRuntimeRoutesContext,
 ): Promise<{ agentSlug: string; agentName: string; reason: string } | null> {
@@ -250,13 +251,7 @@ export async function readStationSetupRequirement(
     if (!metadata) return null;
     const spec = await context.agentService.getAgent(metadata.slug);
     if (isExternalEngineBoundAgent(spec)) return null;
-    const reason = resolveManagedAvailabilityReason(spec, {
-      appConfig: context.getLiveAppConfig(),
-      listProviderConnections: () =>
-        context.providerService.listProviderConnections(),
-      gatedConnectionIds:
-        context.connectionService.checkGatedModelConnectionIds(),
-    });
+    const reason = createStationEngineAvailabilityReader(context)(spec);
     if (!reason) return null;
     return {
       agentSlug: metadata.slug,
@@ -518,12 +513,13 @@ export function configureRuntimeSupportServices(
     // #765 D5: pending pairing requests project as needs-attention items,
     // from the same resolver the notification provider polls.
     resolveDevicePairing,
-    // #1536 D8: whether Station's own Agent can run, through the SAME
-    // derivation the New Chat picker's Station row and the chat route's 409
-    // use — live app config, live provider connections, live check-gated ids.
-    // An inbox that reads "Nothing needs you right now" while that row says
-    // "Needs: No enabled LLM provider connection is configured" is reading a
-    // fact nobody projected, not a quiet Station.
+    // #1536 D8: whether Station's own Agent can run, through
+    // `createStationEngineAvailabilityReader` — the same function with the
+    // same inputs the New Chat picker's Station row and `/api/boot`'s catalog
+    // now read. An inbox that reads "Nothing needs you right now" while that
+    // row says "Needs: No enabled LLM provider connection is configured" is
+    // reading a fact nobody projected, not a quiet Station; the two reading
+    // different app configs (review H2) is that same disagreement inverted.
     memoizeStationSetupRequirement(() => readStationSetupRequirement(context)),
   );
   return {
