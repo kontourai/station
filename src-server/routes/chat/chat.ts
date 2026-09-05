@@ -23,6 +23,7 @@ import {
 import {
   INTERNAL_NATIVE_WORKSPACE_HEADER,
   type NativeExecutionWorkspace,
+  NativeExecutionWorkspaceUnavailableError,
 } from '../../runtime/conversation/native-execution-workspace.js';
 import { INTERNAL_NATIVE_FOREGROUND_HEADER } from '../../runtime/conversation/native-foreground-invocation.js';
 import {
@@ -184,6 +185,8 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
       nativeWorkspace = nativeOutputRelay?.readExecutionWorkspace?.(
         rawOptions.conversationId,
       );
+      if (nativeOutputRelay?.workspaceRequired && !nativeWorkspace)
+        throw new NativeExecutionWorkspaceUnavailableError();
       const nativeOutputGrant = nativeOutputRelay?.issueForRuntimeConfiguration(
         configurationLease,
         () => runtimeConfigurationLeaseIsCurrent(ctx, configurationLease),

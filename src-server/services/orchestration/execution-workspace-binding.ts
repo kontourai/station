@@ -49,7 +49,12 @@ export async function captureExecutionWorkspaceBinding(input: {
 export function readExecutionWorkspaceBinding(
   binding: unknown,
 ): Coordinate | undefined {
-  return binding !== null && typeof binding === 'object'
-    ? bindings.get(binding)
-    : undefined;
+  if (binding === undefined) return undefined;
+  const coordinate =
+    binding !== null && typeof binding === 'object'
+      ? bindings.get(binding)
+      : undefined;
+  if (!coordinate)
+    throw new Error('The owned conversation worktree binding is unavailable.');
+  return coordinate;
 }

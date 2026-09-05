@@ -897,6 +897,15 @@ function resolveStartSessionCwd(
       ? rawProjectSlug
       : undefined;
   const suppliedCwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
+  if (
+    admittedWorkspace &&
+    (admittedWorkspace.threadId !== input.threadId ||
+      admittedWorkspace.projectSlug !== projectSlug ||
+      admittedWorkspace.cwd !== suppliedCwd)
+  )
+    throw new Error(
+      'The owned conversation worktree binding does not match this Session.',
+    );
 
   // `listProjects` is optional on the service options, so an installation
   // that never wired it cannot resolve project bindings at all. Keep the
