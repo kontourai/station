@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const setDockState = vi.fn();
 const onNewChat = vi.fn();
 const onDockSnap = vi.fn();
+const setShowChatSettings = vi.fn();
 let isDockOpen = true;
 let isDockMaximized = true;
 let dockMode: 'left' | 'bottom' | 'right' = 'bottom';
@@ -50,7 +51,7 @@ function renderHeader({
         unreadCount: 0,
         focusSession: vi.fn(),
         onNewChat,
-        setShowChatSettings: vi.fn(),
+        setShowChatSettings,
       }}
       isDragging={false}
       onDockSnap={onDockSnap}
@@ -69,6 +70,7 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
     setDockState.mockClear();
     onNewChat.mockClear();
     onDockSnap.mockClear();
+    setShowChatSettings.mockClear();
     window.localStorage.clear();
     isDockOpen = true;
     isDockMaximized = true;
@@ -121,6 +123,7 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     setDockState.mockClear();
     onNewChat.mockClear();
     onDockSnap.mockClear();
+    setShowChatSettings.mockClear();
     window.localStorage.clear();
     isDockOpen = true;
     isDockMaximized = true;
@@ -153,21 +156,36 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     expect(screen.getByText('Start a chat')).toBeTruthy();
   });
 
-  test('the region visibility and settings controls carry accessible names', () => {
+  test('the region visibility control carries an accessible name, and Chat settings is a named row of the More menu', () => {
     isDockOpen = false;
     renderHeader();
 
     expect(screen.getByLabelText('Show dock region')).toBeTruthy();
-    expect(screen.getByLabelText('Chat settings')).toBeTruthy();
+    // #1536 F: the gear left the bar. The command did not.
+    expect(screen.queryByLabelText('Chat settings')).toBeNull();
+    fireEvent.click(screen.getByLabelText('More dock actions'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Chat settings' }));
+    expect(setShowChatSettings).toHaveBeenCalledTimes(1);
   });
 
-  test('groups the dock shortcut directly with Chat settings', () => {
+  /**
+   * #1536 F: the bar carried two bare keycap spans — a ⌘D beside the settings
+   * gear and a ⌘M inside Maximize — as visible chrome. Every other shortcut in
+   * this bar lives in its control's tooltip, which is where these are now.
+   */
+  test('renders no bare keycap chrome, keeping the chords in tooltips', () => {
     const { container } = renderHeader();
-    const settings = screen.getByLabelText('Chat settings');
-    const shortcut = container.querySelector('.chat-dock__toggle-shortcut');
 
-    expect(shortcut?.getAttribute('data-chrome-group')).toBe('chat-settings');
-    expect(settings.nextElementSibling).toBe(shortcut);
+    expect(container.querySelector('.chat-dock__toggle-shortcut')).toBeNull();
+    expect(
+      container.querySelectorAll('.chat-dock__header .chat-dock__subtitle'),
+    ).toHaveLength(0);
+    // The chord is still announced — `useShortcutDisplay` is stubbed to '' in
+    // this file, so `withShortcutHint` yields the bare label here; what this
+    // pins is that the visibility control's TOOLTIP is the channel.
+    expect(screen.getByLabelText('Hide dock region').title).toBe(
+      'Hide dock region',
+    );
   });
 
   test('mirrors the collapse direction for a left-side dock', () => {
@@ -260,6 +278,7 @@ describe('occupant picker (station#4460)', () => {
     setDockState.mockClear();
     onNewChat.mockClear();
     onDockSnap.mockClear();
+    setShowChatSettings.mockClear();
     isDockOpen = true;
     isDockMaximized = false;
     dockMode = 'bottom';

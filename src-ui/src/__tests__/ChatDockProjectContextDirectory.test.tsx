@@ -1,22 +1,24 @@
 /**
  * @vitest-environment jsdom
  *
- * archive#1146 — what the dock's directory row actually RENDERS, per case.
+ * archive#1146 — what the dock's project row actually says about the session's
+ * DIRECTORY, per case. The view-model test next door pins the resolution; this
+ * pins the rendering it produces, because the defect was a rendered string (the
+ * no-directory fallback) and not a value.
  *
- * The view-model test next door pins the resolution; this pins the pixels it
- * produces, because the defect was a rendered string (the no-directory
- * fallback label) and not a value. `ChatDockProjectContext` renders the
- * fallback copy purely from the absence of a directory, so a resolution
- * regression is only visible here as the wrong sentence.
+ * #1536 F changed the channel, not the contract: the directory is the project
+ * badge's tooltip rather than a start-truncated visible segment, because on a
+ * 110-character worktree path that segment left the conversation title beside it
+ * about one character wide. A resolution regression is still only visible here,
+ * as the wrong sentence — now in a `title` instead of in text.
  *
- * #765 F8: the fallback copy is the plain "Home folder" label (shared
- * `HomeFolderLabel`), never the old machine literal "~ (defaults to home)".
+ * #765 F8: the no-directory case is plain copy about a home folder, never the
+ * old machine literal "~ (defaults to home)".
  */
 
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { ChatDockProjectContext } from '../components/chat-dock/ChatDockProjectContext';
-import { HOME_FOLDER_LABEL } from '../components/HomeFolderLabel';
 
 afterEach(cleanup);
 
@@ -26,47 +28,45 @@ function renderRow(workingDirectory: string | null) {
       projectSlug="default"
       projectName="Default"
       workingDirectory={workingDirectory}
-      codingLayoutSlug={null}
       projects={[]}
       onSelectProject={() => {}}
-      onOpenLayout={() => {}}
       onSwitchProject={() => {}}
     />,
   );
-  return document.querySelector('.chat-dock__project-context') as HTMLElement;
+  return {
+    row: document.querySelector('.chat-dock__project-context') as HTMLElement,
+    badge: screen.getByRole('button', { name: 'Default' }),
+  };
 }
 
-describe('ChatDockProjectContext directory row (station#1146)', () => {
+describe('ChatDockProjectContext directory (station#1146)', () => {
   test("names the session's directory instead of claiming home", () => {
-    const row = renderRow('/tmp/s1146-elsewhere');
+    const { badge } = renderRow('/tmp/s1146-elsewhere');
 
-    expect(row.textContent).toContain('s1146-elsewhere');
-    expect(screen.queryByText(HOME_FOLDER_LABEL)).toBe(null);
+    expect(badge.getAttribute('title')).toBe('Default — /tmp/s1146-elsewhere');
+    expect(badge.getAttribute('title')).not.toContain('home folder');
   });
 
-  test('says "Home folder" (plain copy, tilde kept as tooltip) when there is no directory to name', () => {
-    renderRow(null);
+  test('says so plainly when there is no directory to name', () => {
+    const { badge } = renderRow(null);
 
-    const fallback = screen.getByText(HOME_FOLDER_LABEL);
-    expect(fallback).toBeDefined();
-    // The old label's machine framing is gone from the visible text but the
-    // concrete path answer survives as the hover/assistive detail.
-    expect(fallback.getAttribute('title')).toContain('~');
-    expect(fallback.textContent).not.toContain('defaults to home');
-  });
-
-  test('renders an absolute session path with its parent and leaf split intact', () => {
-    // The parent span is `direction: rtl` so long paths truncate from the
-    // START (#304); the split must survive an absolute path, not just the
-    // tilde form a project's `workingDirectory` is stored in.
-    const row = renderRow('/Users/someone/dev/worktrees/wt-9');
-
-    expect(
-      row.querySelector('.chat-dock__project-dir-parent-text')?.textContent,
-    ).toBe('/Users/someone/dev/worktrees/');
-    expect(row.querySelector('.chat-dock__project-dir-leaf')?.textContent).toBe(
-      'wt-9',
+    expect(badge.getAttribute('title')).toBe(
+      '~ (no project folder set — chats start in your home folder)',
     );
-    expect(row.querySelector('.chat-dock__project-dir--fallback')).toBe(null);
+    expect(badge.getAttribute('title')).not.toContain('defaults to home');
+  });
+
+  test('carries an absolute session path whole, with nothing truncated away', () => {
+    // The visible segment used to be `direction: rtl` so a long path truncated
+    // from the START (#304), which is also how the bidi reordering defect got
+    // in. A tooltip has no such geometry: the path arrives intact.
+    const { row, badge } = renderRow('/Users/someone/dev/worktrees/wt-9');
+
+    expect(badge.getAttribute('title')).toBe(
+      'Default — /Users/someone/dev/worktrees/wt-9',
+    );
+    // And it is not ALSO printed into the row, which is the width this change
+    // was reclaiming.
+    expect(row.textContent).toBe('Default');
   });
 });

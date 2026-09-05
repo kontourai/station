@@ -82,72 +82,106 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
-describe('header inbox toggle (from #1064 AC1/AC2)', () => {
-  test('open state renders "Collapse chat list" with aria-pressed=true', async () => {
-    renderHeader({ workspaceControls: workspaceControls() });
+/**
+ * #1536 F: these two panel toggles were icon buttons in the header row, two of
+ * the thirteen controls a 40px bar was carrying. They are rows of the More menu
+ * now. Their CONTRACTS — the two-state name, the state an assistive technology
+ * reads, the running-count variant, the right-mode gate — are unchanged, so
+ * these carry forward against the new host.
+ */
+function openMoreMenu() {
+  fireEvent.click(screen.getByLabelText('More dock actions'));
+  return screen.getByRole('menu', { name: 'More dock actions' });
+}
 
-    const toggle = await screen.findByRole('button', {
+describe('header inbox toggle (from #1064 AC1/AC2)', () => {
+  test('open state renders "Collapse chat list" checked', async () => {
+    const controls = workspaceControls();
+    renderHeader({ workspaceControls: controls });
+    openMoreMenu();
+
+    const row = await screen.findByRole('menuitemcheckbox', {
       name: 'Collapse chat list',
     });
-    expect(toggle.getAttribute('title')).toBe('Collapse chat list');
-    expect(toggle.getAttribute('aria-pressed')).toBe('true');
-    expect(toggle.className).toContain('chat-dock__inbox-toggle');
+    expect(row.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(row);
+    expect(controls.onToggleInbox).toHaveBeenCalledTimes(1);
   });
 
-  test('collapsed state renders "Expand chat list" with aria-pressed=false', async () => {
+  test('collapsed state renders "Expand chat list" unchecked', async () => {
     renderHeader({
       workspaceControls: workspaceControls({ isInboxOpen: false }),
     });
+    openMoreMenu();
 
-    const toggle = await screen.findByRole('button', {
+    const row = await screen.findByRole('menuitemcheckbox', {
       name: 'Expand chat list',
     });
-    expect(toggle.getAttribute('title')).toBe('Expand chat list');
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(row.getAttribute('aria-checked')).toBe('false');
   });
 
-  test('renders no inbox toggle when showInboxToggle is false (right-mode gate)', () => {
+  test('offers no chat-list row when showInboxToggle is false (right-mode gate)', () => {
     renderHeader({
       workspaceControls: workspaceControls({ showInboxToggle: false }),
     });
+    openMoreMenu();
 
     expect(
-      screen.queryByRole('button', { name: 'Collapse chat list' }),
+      screen.queryByRole('menuitemcheckbox', { name: 'Collapse chat list' }),
     ).toBeNull();
     expect(
-      screen.queryByRole('button', { name: 'Expand chat list' }),
+      screen.queryByRole('menuitemcheckbox', { name: 'Expand chat list' }),
     ).toBeNull();
+    // Its neighbours are still there, so an empty menu cannot pass this.
+    expect(
+      screen.getByRole('menuitem', { name: 'Background tasks' }),
+    ).toBeTruthy();
   });
 });
 
 describe('header background tasks button (from #1064 AC3)', () => {
-  test('keeps its label, aria-haspopup/aria-expanded, and the shared shell class', async () => {
-    renderHeader({
-      workspaceControls: workspaceControls({ isBackgroundTasksOpen: true }),
-    });
+  test('keeps its label and the dialog semantics its row promises', async () => {
+    const controls = workspaceControls({ isBackgroundTasksOpen: true });
+    renderHeader({ workspaceControls: controls });
+    openMoreMenu();
 
-    const button = await screen.findByRole('button', {
+    const row = await screen.findByRole('menuitem', {
       name: 'Background tasks',
     });
-    expect(button.getAttribute('aria-haspopup')).toBe('dialog');
-    expect(button.getAttribute('aria-expanded')).toBe('true');
-    expect(button.className).toContain('chat-dock__inbox-toggle');
-    expect(button.className).toContain('is-active');
+    expect(row.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(row);
+    expect(controls.onToggleBackgroundTasks).toHaveBeenCalledTimes(1);
   });
 
-  test('shows the running-count variant label and badge when tasks are running', async () => {
+  test('shows the running-count variant label when tasks are running', async () => {
     renderHeader({
       workspaceControls: workspaceControls({
         backgroundTasksRunningCount: 3,
       }),
     });
+    openMoreMenu();
 
     expect(
-      await screen.findByRole('button', {
+      await screen.findByRole('menuitem', {
         name: 'Background tasks — 3 running',
       }),
     ).toBeTruthy();
-    expect(screen.getByText('3')).toBeTruthy();
+  });
+
+  /**
+   * The sheet anchors to the control that opened it. That used to be this
+   * button; it is the More menu's trigger now, and an unpopulated ref sends
+   * `ResponsiveDialogSurface` to its un-anchored fallback — a silently
+   * mispositioned sheet, not an error.
+   */
+  test('adopts the caller\u2019s trigger ref so the sheet still anchors to the control that opened it', () => {
+    const controls = workspaceControls();
+    renderHeader({ workspaceControls: controls });
+
+    expect(controls.backgroundTasksTriggerRef.current).toBe(
+      screen.getByLabelText('More dock actions'),
+    );
   });
 });
 
@@ -179,19 +213,30 @@ describe('one-bar rule (#3309)', () => {
       true,
     );
     expect(right.contains(screen.getByTitle('New Chat'))).toBe(true);
+    // #1536 F: the folded commands' one control belongs to the actions cluster
+    // too, not to the identity's side of the bar.
+    expect(right.contains(screen.getByLabelText('More dock actions'))).toBe(
+      true,
+    );
   });
 
-  test('a collapsed pane renders none of the workspace controls', () => {
+  test('a collapsed pane offers none of the workspace controls', () => {
     renderHeader();
+    openMoreMenu();
 
     expect(
-      screen.queryByRole('button', { name: 'Collapse chat list' }),
+      screen.queryByRole('menuitemcheckbox', { name: 'Collapse chat list' }),
     ).toBeNull();
     expect(
-      screen.queryByRole('button', { name: 'Background tasks' }),
+      screen.queryByRole('menuitem', { name: 'Background tasks' }),
     ).toBeNull();
     expect(screen.queryByTitle('Open Conversation')).toBeNull();
     expect(screen.queryByTitle('New Chat')).toBeNull();
+    // Chat settings is the dock's own command, not the pane's, so it survives
+    // a collapse — which is also what keeps the menu from being empty here.
+    expect(
+      screen.getByRole('menuitem', { name: 'Chat settings' }),
+    ).toBeTruthy();
   });
 
   test('renders the context meter beside identity when supplied', () => {

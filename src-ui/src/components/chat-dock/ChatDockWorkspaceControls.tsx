@@ -1,20 +1,13 @@
-import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
-import {
-  ArrowLeftGlyph,
-  ArrowRightGlyph,
-  MessageGlyph,
-  TerminalGlyph,
-} from '../icons/Glyph';
+import { MessageGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ChatDockWorkspaceControls as Controls } from './ChatDockHeader';
 import {
   closeSessionInventoryOccurrence,
-  openSessionInventoryOccurrence,
   registerSessionInventoryHost,
   useSessionInventoryOccurrence,
 } from './sessionInventoryOccurrence';
@@ -32,19 +25,37 @@ function NewChatGlyph() {
   );
 }
 
-export function ChatDockWorkspaceControls(props: Controls) {
+/**
+ * The session inventory's host: the authority-scoped registration the store
+ * matches an occurrence against, and the portal the panel renders through. No
+ * visible chrome of its own.
+ *
+ * #1536 F moved the inventory's BUTTON into the dock header's More menu, which
+ * is not this component and holds no authority scope — so the two halves are
+ * split by what each one needs. The row presses
+ * `toggleSessionInventoryOccurrence`, which reads the identity out of the
+ * registration written here; this stays mounted for as long as the pane is
+ * open, so a menu closing behind an open panel cannot unmount its host.
+ *
+ * Still behind a `LazyBoundary`: this reads the authority scope and the
+ * occurrence store, and pulls the panel's own chunk on demand.
+ */
+export function ChatDockSessionInventoryHost({
+  sessionInventory: inventory,
+}: {
+  sessionInventory: NonNullable<Controls['sessionInventory']>;
+}) {
   const authority = useHostRequestAuthorityScope();
-  const hostId = useRef(`session-inventory:${randomCorrelationId()}`).current;
-  const inventory = props.sessionInventory;
+  const hostId = inventory.hostId;
   const authorityKey = authority?.authorityKey;
-  const chatStoreId = inventory?.chatStoreId;
-  const executionId = inventory?.executionId;
+  const chatStoreId = inventory.chatStoreId;
+  const executionId = inventory.executionId;
   const occurrence = useSessionInventoryOccurrence(hostId);
   useEffect(
     () =>
       registerSessionInventoryHost(
         hostId,
-        authorityKey && chatStoreId && executionId
+        hostId && authorityKey && chatStoreId && executionId
           ? {
               authorityKey,
               chatStoreId,
@@ -54,96 +65,21 @@ export function ChatDockWorkspaceControls(props: Controls) {
       ),
     [authorityKey, chatStoreId, executionId, hostId],
   );
-  const toggleInventory = (trigger: HTMLElement) => {
-    if (!inventory || !authority) return;
-    if (occurrence)
-      return (
-        (
-          trigger as HTMLElement & { focusFullBasis?: () => boolean }
-        ).focusFullBasis?.() || closeSessionInventoryOccurrence(hostId)
-      );
-    openSessionInventoryOccurrence({
-      hostId,
-      authorityKey: authority.authorityKey,
-      activeSessionId: inventory.chatStoreId,
-      executionSessionId: inventory.executionId,
-      projectId: inventory.projectId,
-      executionRead: inventory.executionRead,
-      trigger,
-    });
-  };
-  return (
-    <div className="chat-dock__header-workspace">
-      {props.showInboxToggle && (
-        <button
-          type="button"
-          className={`chat-dock__inbox-toggle${props.isInboxOpen ? ' is-active' : ''}`}
-          onClick={props.onToggleInbox}
-          title={props.isInboxOpen ? 'Collapse chat list' : 'Expand chat list'}
-          aria-label={
-            props.isInboxOpen ? 'Collapse chat list' : 'Expand chat list'
-          }
-          aria-pressed={props.isInboxOpen}
-        >
-          {props.isInboxOpen ? <ArrowLeftGlyph /> : <ArrowRightGlyph />}
-        </button>
-      )}
-      <button
-        ref={props.backgroundTasksTriggerRef}
-        type="button"
-        className={`chat-dock__inbox-toggle${props.isBackgroundTasksOpen ? ' is-active' : ''}`}
-        onClick={props.onToggleBackgroundTasks}
-        title="Background tasks"
-        aria-label={
-          props.backgroundTasksRunningCount > 0
-            ? `Background tasks — ${props.backgroundTasksRunningCount} running`
-            : 'Background tasks'
-        }
-        aria-haspopup="dialog"
-        aria-expanded={props.isBackgroundTasksOpen}
-      >
-        <TerminalGlyph />
-        {props.backgroundTasksRunningCount > 0 && (
-          <span
-            className="chat-dock__background-tasks-badge"
-            aria-hidden="true"
-          >
-            {props.backgroundTasksRunningCount}
-          </span>
-        )}
-      </button>
-      {inventory ? (
-        <button
-          type="button"
-          className="chat-dock__inbox-toggle"
-          onClick={(event) => toggleInventory(event.currentTarget)}
-          title="Session inventory"
-          aria-label="Session inventory"
-          aria-pressed={Boolean(occurrence)}
-          aria-expanded={Boolean(occurrence)}
-          aria-controls={`session-inventory-${hostId}`}
-        >
-          <span aria-hidden="true">◫</span>
-        </button>
-      ) : null}
-      {occurrence && inventory?.mountRef.current
-        ? createPortal(
-            <LazyBoundary
-              load={loadSessionInventoryEntryPoint}
-              pending={null}
-              componentProps={{
-                launch: occurrence,
-                isMobile: false,
-                dockMode: inventory.dockMode,
-                fullscreen: inventory.fullscreen,
-                controlsId: `session-inventory-${hostId}`,
-                onClose: () => closeSessionInventoryOccurrence(hostId),
-              }}
-            />,
-            inventory.mountRef.current,
-          )
-        : null}
-    </div>
+  if (!occurrence || !inventory.mountRef.current) return null;
+  return createPortal(
+    <LazyBoundary
+      load={loadSessionInventoryEntryPoint}
+      pending={null}
+      componentProps={{
+        launch: occurrence,
+        isMobile: false,
+        dockMode: inventory.dockMode,
+        fullscreen: inventory.fullscreen,
+        controlsId: `session-inventory-${hostId}`,
+        onClose: () => closeSessionInventoryOccurrence(hostId),
+      }}
+    />,
+    inventory.mountRef.current,
   );
 }
 

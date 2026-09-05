@@ -188,9 +188,15 @@ describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site
     expect(source).toMatch(
       /workingDirectory=\{\s*scopedProjectSlug\s*\?\s*null\s*:\s*sessionDisplayCwd\s*\}/,
     );
+    // #1536 F: the coding layout is no longer a prop of the project-context
+    // row (its start-truncated path segment, which carried the link, left the
+    // conversation title about one character). It is an "Open code layout" row
+    // of the dock header's More menu, and the fact it must stay ungated on is
+    // the same one: the SESSION's own project, never the badge's.
     expect(source).toMatch(
-      /codingLayoutSlug=\{\s*scopedProjectSlug\s*\?\s*null\s*:\s*\(sessionCodingLayout\?\.slug\s*\?\?\s*null\)\s*\}/,
+      /sessionCodingLayout && activeSession\?\.projectSlug/,
     );
+    expect(source).toMatch(/label: 'Open code layout'/);
     expect(source).toMatch(
       /gitStatus=\{\s*scopedProjectSlug\s*\?\s*undefined\s*:\s*gitStatus\s*\}/,
     );

@@ -1,10 +1,7 @@
 import { memo, type RefObject, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
-import { activatable } from '../../utils/activatable';
 import { GitBadge } from '../badges/GitBadge';
-import { HomeFolderLabel } from '../HomeFolderLabel';
 import { LazyBoundary } from '../LazyBoundary';
-import { splitWorkingDirectoryPath } from './chat-dock-utils';
 
 const loadChatDockProjectSwitcherSheet = () =>
   import('./ChatDockProjectSwitcherSheet').then((module) => ({
@@ -70,9 +67,14 @@ interface ChatDockProjectContextProps {
    * the SESSION's own resolved `cwd`, not the project's `workingDirectory` —
    * see `useChatDockViewModel`'s `sessionDisplayCwd` for the resolution order
    * and for why `gitStatus` below deliberately did NOT move with it.
+   *
+   * #1536 F: it is the badge's `title` now, not a visible segment. A 110-char
+   * worktree path left the conversation title beside it about one character
+   * wide, and a path is a thing you occasionally need to paste rather than one
+   * you read continuously — "Copy project path" in the dock header's More menu
+   * is the other half of this change.
    */
   workingDirectory: string | null;
-  codingLayoutSlug: string | null;
   /** The PROJECT's git state — see `workingDirectory`'s note. */
   gitStatus?: any;
   /**
@@ -86,7 +88,6 @@ interface ChatDockProjectContextProps {
   sessionProjectMismatchLabel?: string | null;
   projects: ProjectMetadata[];
   onSelectProject: (projectSlug: string) => void;
-  onOpenLayout: (projectSlug: string, layoutSlug: string) => void;
   /**
    * station#4524: switches the dock's own project binding directly — no
    * navigation, no chat creation. Renamed from `onContinueInProject`: the
@@ -108,19 +109,21 @@ function ChatDockProjectContextImpl({
   projectSlug,
   projectName,
   workingDirectory,
-  codingLayoutSlug,
   gitStatus,
   sessionProjectMismatchLabel,
   projects,
   onSelectProject,
-  onOpenLayout,
   onSwitchProject,
   onClearProjectScope,
 }: ChatDockProjectContextProps) {
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const badgeTriggerRef = useRef<HTMLButtonElement>(null);
-  const { parentPath, leafName, hasWorkingDirectory } =
-    splitWorkingDirectoryPath(workingDirectory);
+  // The concrete path answer survives as the hover/assistive detail, including
+  // for the no-directory case, whose sentence #765 F8 wrote and which used to
+  // be `HomeFolderLabel`'s own tooltip.
+  const directoryTitle = workingDirectory
+    ? `${projectName || projectSlug || 'Project'} — ${workingDirectory}`
+    : '~ (no project folder set — chats start in your home folder)';
 
   return (
     <div className="chat-dock__project-context">
@@ -130,6 +133,7 @@ function ChatDockProjectContextImpl({
         className="chat-dock__project-badge"
         aria-haspopup="dialog"
         aria-expanded={isSwitcherOpen}
+        title={directoryTitle}
         onClick={(event) => {
           // This row is also the dock's click-to-toggle surface since #1064
           // folded the project context into the header; without this,
@@ -171,42 +175,6 @@ function ChatDockProjectContextImpl({
         <span className="chat-dock__project-session-name">
           {sessionProjectMismatchLabel} ·
         </span>
-      )}
-      {hasWorkingDirectory && (
-        <span
-          className={`chat-dock__project-dir${codingLayoutSlug ? ' chat-dock__project-dir--link' : ''}`}
-          {...activatable(
-            // A coding layout always belongs to a real project, so
-            // `projectSlug` is non-null whenever `codingLayoutSlug` is —
-            // guarded explicitly anyway since the prop is now nullable.
-            codingLayoutSlug && projectSlug
-              ? (event) => {
-                  event.stopPropagation();
-                  onOpenLayout(projectSlug, codingLayoutSlug);
-                }
-              : undefined,
-            { role: 'link' },
-          )}
-        >
-          {/* The parent span is `direction: rtl` purely so text-overflow
-              truncates the START of a long path. Without bidi isolation that
-              reorders leading neutral characters — `~/dev/github/` rendered
-              as `/dev/github/~`, splicing the tilde mid-path (#304). The
-              inner `dir="ltr"` isolate keeps character order intact while
-              the outer rtl keeps the ellipsis on the left. */}
-          <span className="chat-dock__project-dir-parent">
-            <span dir="ltr" className="chat-dock__project-dir-parent-text">
-              {parentPath}
-            </span>
-          </span>
-          <span className="chat-dock__project-dir-leaf">{leafName}</span>
-        </span>
-      )}
-      {!hasWorkingDirectory && (
-        <HomeFolderLabel
-          className="chat-dock__project-dir chat-dock__project-dir--fallback"
-          title="~ (no project folder set — chats start in your home folder)"
-        />
       )}
       {gitStatus?.isRepo && <GitBadge git={gitStatus} />}
     </div>

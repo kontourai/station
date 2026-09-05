@@ -62,6 +62,48 @@ export function readSessionInventoryOccurrence(hostId?: string) {
       ? occurrences.values().next().value
       : undefined;
 }
+/**
+ * Open the host's inventory, or leave it — the one implementation of the
+ * inventory control's own verb, so a caller does not have to hold the
+ * authority scope to press it.
+ *
+ * It reads the `authorityKey`/session identity from the REGISTRATION the host
+ * wrote rather than from the caller: since #1536 F the control is a row of the
+ * dock header's More menu, which is not the component that mounts the host and
+ * has no authority scope of its own to capture. A caller with no registration
+ * (the host has not mounted, or its scope is incomplete) gets `false`.
+ *
+ * `focusFullBasis` is `SessionInventoryHost`'s handle, stamped on the trigger
+ * element: while a full-height fallback host is up, a second activation focuses
+ * it instead of closing the occurrence out from under the user.
+ */
+export function toggleSessionInventoryOccurrence(input: {
+  hostId: string;
+  projectId?: string;
+  executionRead: string;
+  trigger: HTMLElement;
+}): boolean {
+  const registration = registrations.get(input.hostId);
+  if (!registration) return false;
+  if (occurrences.has(input.hostId)) {
+    const focusFullBasis = (
+      input.trigger as HTMLElement & { focusFullBasis?: () => boolean }
+    ).focusFullBasis;
+    if (focusFullBasis?.()) return true;
+    closeSessionInventoryOccurrence(input.hostId);
+    return true;
+  }
+  return openSessionInventoryOccurrence({
+    hostId: input.hostId,
+    authorityKey: registration.authorityKey,
+    activeSessionId: registration.chatStoreId,
+    executionSessionId: registration.executionId,
+    projectId: input.projectId,
+    executionRead: input.executionRead,
+    trigger: input.trigger,
+  });
+}
+
 export function readSessionInventoryHostRegistration(hostId: string) {
   return registrations.get(hostId);
 }

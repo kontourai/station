@@ -1682,6 +1682,42 @@ button:hover {
   color: var(--accent-primary);
 }
 
+/* #1536 F: the dock header's More control. Same 28px square as the placement
+   grab beside it, and its menu is the same `.dock-placement-menu` family —
+   this is one more folded menu in that bar, not a new control vocabulary. */
+.chat-dock__more-btn {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.chat-dock__more-btn:hover,
+.chat-dock__more-btn:focus-visible,
+.chat-dock__more-btn.is-active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* The menu is `position: fixed` from the trigger's own rect (the header sits at
+   the top of a bottom dock, the top of a side dock, and in a 40px collapsed
+   bar, so no single direction is on screen in all three), which means the
+   family's `bottom`/`left` anchoring must not also apply. */
+.chat-dock__more-menu {
+  bottom: auto;
+  left: auto;
+  z-index: var(--layer-popover);
+}
+
 .dock-placement-target {
   position: fixed;
   z-index: var(--layer-dialog);
@@ -1868,20 +1904,12 @@ button:hover {
   border-color: var(--accent-primary);
 }
 
-/* archive#3309: the tab strip is retired — its controls live in the header bar.
-   The panel toggles (inbox, background tasks) cluster beside the gear; the
-   context meter sits beside the identity block. */
-.chat-dock__header-workspace {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 2px;
-}
-
-.chat-dock__header-workspace .chat-dock__inbox-toggle {
-  padding: var(--space-1) var(--space-2);
-}
-
+/* archive#3309 retired the tab strip and clustered its panel toggles (inbox,
+   background tasks) in this bar beside the gear. #1536 F folded that cluster,
+   the gear, and Session inventory into the header's More menu — thirteen
+   controls in a 40px bar left the conversation title about one character — so
+   `.chat-dock__header-workspace` and the `.chat-dock__inbox-toggle` shell it
+   sized are gone with the buttons. The context meter still shares the row. */
 .chat-dock__header-meter {
   display: flex;
   flex-shrink: 0;
@@ -1896,7 +1924,6 @@ button:hover {
    the pane opens, so a mount-triggered entrance is the whole mechanism: no
    state to track, and nothing runs on collapse (they unmount). Same idiom as
    the inbox panel's own entrance below. */
-.chat-dock__header-workspace,
 .chat-dock__header-meter,
 .chat-dock__tab-actions {
   animation: chat-dock-chrome-enter var(--motion-base) var(--ease-standard);
@@ -1931,12 +1958,12 @@ button:hover {
 /* this rendered `--accent-primary` (the same green as a
    READY badge or a live connection dot) unconditionally — bound project or
    none, the color never changed, so it encoded no state, only "this text is
-   clickable." Muted to the neutral status-text tone the fallback path
-   (`.chat-dock__project-dir`) already uses, and set to the same monospace:
-   together the badge and the dir form ONE plain-text status segment (a
-   project/path name), not a colored label beside a muted one. The click
-   affordance survives as an underline on hover/focus, same as any other
-   text trigger in this bar. */
+   clickable." Muted to the neutral status-text tone, and monospace, so the
+   badge read as a plain-text status segment (a project/path name) rather than
+   a colored label. The directory segment it used to share that segment with is
+   gone (#1536 F); the tone and family stay, because the badge still sits in a
+   row of muted status text. The click affordance survives as an underline on
+   hover/focus, same as any other text trigger in this bar. */
 .chat-dock__project-badge {
   border: none;
   border-radius: 3px;
@@ -1947,6 +1974,14 @@ button:hover {
   font-size: inherit;
   font-weight: 600;
   cursor: pointer;
+  /* #1536 F: one line, always. A long project name used to wrap this row into
+     a second line inside a bar whose height is a shared geometry token, and
+     the token then lied about it. It truncates instead; the full path (and the
+     name with it) is the button's `title`. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .chat-dock__project-badge:hover,
 .chat-dock__project-badge:focus-visible {
@@ -1980,64 +2015,14 @@ button:hover {
   font-size: var(--text-xs);
   color: var(--text-muted);
 }
-.chat-dock__project-dir {
-  display: flex;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  /* This is supporting context, but it still has to meet text contrast in
-     every audited surface. Opacity also attenuated the accent leaf below. */
-  color: var(--text-secondary);
-  overflow: hidden;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.chat-dock__project-dir-parent {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  /* rtl only for start-side ellipsis; the inner isolate below restores
-     character order (#304 — leading `~`/`/` were bidi-reordered mid-path). */
-  direction: rtl;
-  flex-shrink: 1;
-  min-width: 0;
-}
-.chat-dock__project-dir-parent-text {
-  direction: ltr;
-  unicode-bidi: isolate;
-}
-.chat-dock__project-dir-leaf {
-  flex-shrink: 0;
-  color: var(--accent-primary);
-  opacity: 1;
-  font-weight: 500;
-}
-/* #765 F8: plain copy ("Home folder"), not machine framing — normal type in
-   the UI face, muted, never italic monospace.
-   #1046: this is real content (station#4525/1.4.3 — "Placeholders are
-   content, not inactive chrome" applies here too), not decorative chrome, so
-   it has to clear 4.5:1 like the working-directory text beside it. --text-muted
-   (--k-text-faint) measures 4.37:1 on dark's --bg-tertiary (#16202d) and
-   4.33:1 on light's — the actual surface this label composites over inside
-   the dock header, where `.chat-dock__header-context .chat-dock__project-context`
-   sets `background: none` and the header's own --bg-tertiary shows through.
-   --text-secondary — the same "neutral status-text tone" the base
-   `.chat-dock__project-dir` rule already uses — measures 11.38:1 dark /
-   9.68:1 light on that surface. Still visually muted relative to the accent
-   leaf/badge; just not the fainter token. */
-.chat-dock__project-dir--fallback {
-  font-family: var(--font-sans);
-  font-style: normal;
-  color: var(--text-secondary);
-}
-.chat-dock__project-dir--link {
-  cursor: pointer;
-}
-.chat-dock__project-dir--link:hover {
-  opacity: 1;
-}
-.chat-dock__project-dir--link:hover .chat-dock__project-dir-leaf {
-  text-decoration: underline;
-}
+/* #1536 F: the start-truncated directory segment (parent + accent leaf, its
+   bidi isolate for #304, and the `HomeFolderLabel` fallback) is gone from this
+   row. It was the widest thing in the dock header and it left the conversation
+   title beside it about one character on a 110-character worktree path. The
+   path is the project badge's `title` and the More menu's "Copy project path";
+   the coding-layout link the leaf carried is that menu's "Open code layout".
+   `.new-chat-modal__context-dir--fallback` still names the retired
+   `--fallback` rule in a comment: that surface keeps its own visible path. */
 .chat-dock__project-context > .git-tooltip-anchor {
   margin-left: auto;
 }
@@ -2913,13 +2898,6 @@ button:hover {
   font-weight: 500;
 }
 
-/* ChatDockHeader icon classes (replaces inline styles) */
-.chat-dock__icon-svg {
-  width: 14px;
-  height: 14px;
-  display: block;
-}
-
 .chat-dock__chevron-svg {
   width: 14px;
   height: 14px;
@@ -3193,22 +3171,20 @@ button:hover {
   gap: var(--space-2);
 }
 
-/* archive#3341: the refused-clipboard colour, paired with this button's own
-   class so it wins on specificity rather than source order. */
-.chat-dock__active-identity-copy.copy-affordance--failed {
-  color: var(--status-error);
-}
-
 .chat-dock__active-identity-text {
   display: flex;
+  /* Grows as well as shrinks: the title inside it is the row's flexible
+     element, and a `0 1 auto` wrapper would never hand it the spare width. */
+  flex: 1 1 auto;
   min-width: 0;
   align-items: center;
   gap: var(--space-2);
 }
 
-/* archive#3309: agent-first. The avatar and the agent's name hold their size;
-   the session title is the one part that yields, because it is the label that
-   changes per chat while the agent identity is what the row is about. */
+/* archive#3309: agent-first. The avatar and the agent's name hold their size.
+   #1536 F: what yields is the engine/model token, not the title — the title is
+   the label that changes per chat, and on a project page it was down to about
+   one character. */
 .chat-dock__active-identity-avatar {
   flex-shrink: 0;
 }
@@ -3221,25 +3197,32 @@ button:hover {
   white-space: nowrap;
 }
 
-.chat-dock__active-identity-model {
-  flex-shrink: 0;
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* Separated from the identity ahead of it by a hairline rather than another
    glyph — the title is a different KIND of fact from the agent/engine/model
    triple, not a fourth member of it. */
 .chat-dock__active-identity-title {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   padding-left: var(--space-2);
   border-left: 1px solid var(--border-primary);
   color: var(--text-secondary);
   font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Engine and model as ONE muted token behind the title. Both used to be
+   `flex-shrink: 0` spans, which in an `overflow: hidden` row does not truncate
+   — it overflows, and the two printed on top of each other ("Claude Code" over
+   "Opus 5"). A shrink factor two orders of magnitude above the title's is what
+   makes this give way FIRST rather than merely give way. */
+.chat-dock__active-identity-engine {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -5560,43 +5543,6 @@ button.tool-call__line:hover {
   position: relative;
 }
 
-.chat-dock__inbox-toggle {
-  position: relative;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: var(--space-2) var(--space-4);
-  color: var(--text-primary);
-  font-size: var(--text-lg);
-  line-height: 1;
-  display: flex;
-  align-items: center;
-}
-
-.chat-dock__inbox-toggle.is-active {
-  color: var(--accent-primary);
-}
-
-/* archive#1301: the Background tasks trigger reuses the inbox
-   toggle's shell (`.chat-dock__inbox-toggle`) plus a running-count badge,
-   hidden entirely at zero rather than showing an empty "0". */
-.chat-dock__background-tasks-badge {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  display: inline-flex;
-  min-width: 15px;
-  height: 15px;
-  align-items: center;
-  justify-content: center;
-  padding: 0 4px;
-  border-radius: var(--radius-pill);
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  font-size: var(--text-2xs);
-  line-height: 1;
-}
-
 .conversation-history {
   width: min(300px, 80vw);
   flex-shrink: 0;
@@ -6360,7 +6306,6 @@ button.tool-call__line:hover {
     overflow-x: hidden;
   }
 
-  .chat-dock__project-dir,
   .chat-dock__project-context > .git-tooltip-anchor {
     display: none;
   }
