@@ -1,0 +1,19 @@
+{
+	admin off
+	skip_install_trust
+	servers {
+		protocols h1 h2
+	}
+}
+
+{$STATION_PUBLIC_HOST} {
+	reverse_proxy station:3000 {
+		# SSE is streamed automatically; retain backend cancellation on disconnect.
+		# A public client cannot introduce identity from a different ingress.
+		header_up -Tailscale-*
+		header_up -Remote-User
+		header_up -X-Forwarded-User
+		header_up -X-Auth-Request-Email
+		header_up -Cf-Access-Jwt-Assertion
+	}
+}

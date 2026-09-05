@@ -387,6 +387,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/external-session-follow.spec.ts',
     'tests/builder-delivery-viewer.spec.ts',
     'tests/meeting-notes.spec.ts',
+    'tests/learning-source.spec.ts',
     'tests/knowledge-library.spec.ts',
     // Both drive the REAL API and mutate shared instance state — the agents
     // lane disables every LLM connection to prove the empty case, the skills
@@ -1543,6 +1544,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'K5 meeting-notes plugin (mocked /api/knowledge/* routes, mirroring knowledge-onboarding.spec.ts): capture writes a raw transcript record then a provenance-linked compiled record, the Library graph pane renders fixture nodes/edges with a selection detail panel, and the Ask pane returns provenance-linked answer cards plus the honest NO_EMBEDDER_ERROR state.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/learning-source.spec.ts',
+    bucket: 'product',
+    surface: 'Knowledge',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real managed personal root and canonical record APIs, local UI-credential source inspection on desktop/mobile, source-only semantics, and replacement-root refusal; no route mocks or external provider.',
     exceptions: [],
   },
   {
