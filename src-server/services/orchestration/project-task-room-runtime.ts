@@ -531,7 +531,7 @@ export class ProjectTaskRoomRuntime {
         association.task.dispatchedAt ?? association.task.updatedAt,
       ),
     });
-    this.#notify(association.document, { type: 'document', ...result });
+    await this.#notify(association.document, { type: 'document', ...result });
     const revisionEvidence = await this.#drainRevisionPublication({
       taskId: input.taskId,
       scope: association.document,
@@ -800,7 +800,7 @@ export class ProjectTaskRoomRuntime {
         return { kind: 'not-found' } as const;
       if (receipt.kind === 'duplicate') {
         input.onDurableSettlementForDiagnostic?.();
-        this.#notify(scope, { type: 'document', ...receipt });
+        await this.#notify(scope, { type: 'document', ...receipt });
         const revisionEvidence = await this.#drainRevisionPublication({
           taskId: input.taskId,
           request: input.request,
@@ -858,7 +858,7 @@ export class ProjectTaskRoomRuntime {
       return { kind: 'not-found' } as const;
     if (result.kind === 'committed' || result.kind === 'duplicate') {
       input.onDurableSettlementForDiagnostic?.();
-      this.#notify(scope, { type: 'document', ...result });
+      await this.#notify(scope, { type: 'document', ...result });
       if (result.kind === 'committed')
         this.#deps.afterRevisionPublicationStep?.('document-commit');
       const revisionEvidence = await this.#drainRevisionPublication({
@@ -887,7 +887,13 @@ export class ProjectTaskRoomRuntime {
   > {
     try {
       const bridge = this.#deps.revisionEvidence;
-      if (!bridge?.available()) return { kind: 'unavailable' };
+      if (!bridge) return { kind: 'unavailable' };
+      // The ordered document notification has completed its authorization and
+      // entered the transport. Give queued stream/socket work a real event-loop
+      // turn before the synchronous ledger restore in available()/freeze().
+      // Persistence remains awaited; delivery is not evidence-link completion.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      if (this.#closed || !bridge.available()) return { kind: 'unavailable' };
       const read = await this.#deps.working.readRevisionPublication({
         scope: input.scope,
       });
@@ -2285,6 +2291,7 @@ export class ProjectTaskRoomRuntime {
     void next.finally(() => {
       if (chains.get(key) === next) chains.delete(key);
     });
+    return next;
   }
   /** One teardown seam for setup failures, terminal delivery, and unsubscribe. */
   #removeSubscriber(

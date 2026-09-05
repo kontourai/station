@@ -2594,10 +2594,12 @@ from `STATION_ROOT` → `~/.station`; runtime state resolves independently from
 
 ### `cloud` — cloud move preparation
 
-`station cloud` currently offers read-only preparation, not a live move:
+`station cloud` currently offers read-only preparation, not a live move.
+Preview supports `aws-ec2` and `gcp-compute`; template generation is AWS-only:
 
 ```sh
 station cloud preview --home=/absolute/path/to/station-home --provider=aws-ec2 --region=us-east-1 --instance-type=t3.micro --json
+station cloud preview --home=/absolute/path/to/station-home --provider=gcp-compute --region=us-central1 --instance-type=e2-micro --json
 station cloud template --provider=aws-ec2 --region=us-east-1 --instance-type=t3.micro --image=REGISTRY/IMAGE@sha256:DIGEST --output=station-cloud.json
 ```
 
