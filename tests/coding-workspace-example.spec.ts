@@ -144,8 +144,8 @@ test('coding example preserves both Panes and its authored native Agent in a rea
       (entry: any) => entry.provenance.pluginId === plugin,
     );
     expect(descriptors.map((entry: any) => entry.name).sort()).toEqual([
-      'Diff',
-      'Workspace',
+      'Coding Diff Review',
+      'Coding Workspace',
     ]);
     for (const descriptor of descriptors)
       expect(
@@ -209,6 +209,33 @@ test('coding example preserves both Panes and its authored native Agent in a rea
             `coding-${name.toLowerCase().replaceAll(' ', '-')}-${width}.png`,
           ),
         );
+      }
+      if (name === 'Coding Workspace') {
+        const openDock = page.getByRole('button', {
+          name: 'Open Chat Dock',
+          exact: true,
+        });
+        await openDock.scrollIntoViewIfNeeded();
+        await page.screenshot({
+          path: testInfo.outputPath('coding-local-dock-control-390.png'),
+          animations: 'disabled',
+        });
+        copyFileSync(
+          testInfo.outputPath('coding-local-dock-control-390.png'),
+          join(evidenceRoot, 'coding-local-dock-control-390.png'),
+        );
+        const beforeDock = requests.length;
+        await openDock.click();
+        await expect(
+          page.getByRole('region', { name: 'Chat dock', exact: true }),
+        ).toBeVisible();
+        await expect(
+          page.getByText('No active session', { exact: true }),
+        ).toBeVisible();
+        expect(requests).toHaveLength(beforeDock);
+        await page
+          .getByRole('button', { name: 'Collapse chat', exact: true })
+          .click();
       }
     }
     await page.setViewportSize({ width: 1280, height: 900 });
