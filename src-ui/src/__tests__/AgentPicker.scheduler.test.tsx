@@ -6,11 +6,15 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const useAgents = vi.hoisted(() => vi.fn());
+const agentsLoaded = vi.hoisted(() => ({ value: true }));
 
-vi.mock('../contexts/AgentsContext', () => ({ useAgents }));
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents,
+  useAgentsLoaded: () => agentsLoaded.value,
+}));
 
 import { AgentPicker } from '../components/scheduler/AgentPicker';
 import {
@@ -30,6 +34,10 @@ const agent = (
 });
 
 describe('scheduler Agent options', () => {
+  beforeEach(() => {
+    agentsLoaded.value = true;
+  });
+
   test('offers only agents the in-process scheduler runner can resolve', () => {
     const offered = schedulerRunnableAgents([
       agent('station'),
@@ -136,5 +144,21 @@ describe('scheduler Agent options', () => {
     expect(stationRow.textContent).toContain('No model resolves yet.');
     fireEvent.click(stationRow);
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test('withholds the "no runnable agents" verdict until the catalog answers', () => {
+    // #1536 H1-2: an unanswered catalog is `[]`, indistinguishable from one that
+    // genuinely holds nothing. A verdict waits for the answer.
+    agentsLoaded.value = false;
+    useAgents.mockReturnValue([]);
+
+    render(<AgentPicker value="station" onChange={vi.fn()} />);
+
+    expect(
+      screen.getByRole('button', { name: 'Loading agents…' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('No runnable agents')).toBeNull();
+
+    agentsLoaded.value = true;
   });
 });

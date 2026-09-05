@@ -7,6 +7,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { AgentPicker } from '../components/scheduler/AgentPicker';
 
 vi.mock('../contexts/AgentsContext', () => ({
+  useAgentsLoaded: () => true,
   useAgents: () => [
     { slug: 'alpha', name: 'Alpha', model: 'model-a' },
     { slug: 'beta', name: 'Beta', model: 'model-b' },

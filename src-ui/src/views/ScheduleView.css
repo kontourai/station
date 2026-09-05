@@ -658,6 +658,16 @@
   color: var(--error-text);
   margin-top: 0.25rem;
 }
+/* The Agent-catalog read's own retry, inline in the field's error line. */
+.schedule__field-retry {
+  border: none;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .schedule__field input,
 .schedule__field textarea,
 .schedule__field select {

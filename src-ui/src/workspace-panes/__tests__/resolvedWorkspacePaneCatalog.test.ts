@@ -7,7 +7,9 @@ import { describe, expect, test } from 'vitest';
 import {
   rendererGateFromPluginRegistryLoadStatus,
   resolveWorkspacePaneCatalogPresentation,
+  workspacePaneRendererFactsPending,
 } from '../resolvedWorkspacePaneCatalog';
+import { presentWorkspacePaneAvailability } from '../workspacePaneAvailabilityPresentation';
 import { selectClientWorkspacePaneRenderer } from '../workspacePaneRendererSelection';
 
 const profile = {
@@ -688,6 +690,65 @@ describe('direct plugin Pane occurrences (station#3543)', () => {
         clientRendererPresence: 'missing',
       });
       expect(result.entries[0]).not.toHaveProperty('rendererResolution');
+    });
+
+    /**
+     * #1536 H1-1: this predicate was `config === null`, and `useConfig()`
+     * returns null for a FAILED read exactly as it does for one in flight. With
+     * the app's `retry: 1` / no-refetch defaults a failed `/api/config` never
+     * retries itself, so every plugin pane would have said "Loading…" forever
+     * — with the "Check again" action withheld, because a pending presentation
+     * drops it.
+     */
+    describe('whether the client facts have settled', () => {
+      test.each([
+        ['a bundle is still arriving', true, false, false, true],
+        [
+          'config is in flight with nothing readable',
+          false,
+          false,
+          false,
+          true,
+        ],
+        ['config ANSWERED WITH AN ERROR', false, false, true, false],
+        ['config is readable', false, true, true, false],
+        ['a restored config is being revalidated', false, true, false, false],
+      ] as const)(
+        'is %s → pending %o',
+        (_label, pluginRegistryLoading, configLoaded, configSettled, pending) => {
+          expect(
+            workspacePaneRendererFactsPending({
+              pluginRegistryLoading,
+              configLoaded,
+              configSettled,
+            }),
+          ).toBe(pending);
+        },
+      );
+
+      test('a settled config failure keeps the real reason AND its retry action', () => {
+        // The whole point of not calling a failure "pending": the reader gets
+        // something to do about it.
+        const presentation = presentWorkspacePaneAvailability(
+          {
+            state: 'temporarily-unavailable',
+            reason: { code: 'renderer-missing', source: 'renderer' },
+            action: { type: 'retry', code: 'retry-availability-check' },
+          },
+          undefined,
+          workspacePaneRendererFactsPending({
+            pluginRegistryLoading: false,
+            configLoaded: false,
+            configSettled: true,
+          })
+            ? 'pending'
+            : undefined,
+        );
+
+        expect(presentation.pending).toBeUndefined();
+        expect(presentation.stateLabel).toBe('Temporarily unavailable');
+        expect(presentation.actionLabel).toBe('Check again');
+      });
     });
 
     test('leaves a pane whose renderer DID resolve alone, however slow a sibling bundle is', () => {

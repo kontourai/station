@@ -3,7 +3,7 @@ import type {
   SchedulerSchedule,
 } from '@kontourai/station-contracts/scheduler';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useAgents, useAgentsLoaded } from '../../contexts/AgentsContext';
+import { useAgentCatalogRead, useAgents } from '../../contexts/AgentsContext';
 import type { SchedulerProviderInfo } from '../../hooks/useScheduler';
 import { useAddJob, useEditJob } from '../../hooks/useScheduler';
 import { errorText } from '../../utils/errorText';
@@ -56,7 +56,12 @@ export function JobFormModal({
     activeProvider?.formFields || [];
   const init = prefill || {};
   const agents = useAgents();
-  const agentsLoaded = useAgentsLoaded();
+  const {
+    loaded: agentsLoaded,
+    settled: agentsSettled,
+    failed: agentsFailed,
+    retry: retryAgents,
+  } = useAgentCatalogRead();
   const agentOptions = useMemo(() => schedulerAgentOptions(agents), [agents]);
   // Weekdays 8:00 AM, not `* * * * *`. A default nobody reads must be the
   // schedule a reasonable person would have chosen, not the one that runs
@@ -161,6 +166,13 @@ export function JobFormModal({
   );
   const namedAgentRunnability =
     form.monitorType === 'none' ? jobAgentRunnability : monitorAgentRunnability;
+  // #1536 H1-2: `useAgents()` is `[]` while the catalog is arriving AND when it
+  // failed, so every runnability answer above is "no Agent named that" until it
+  // has actually answered. Reporting that as the Agent's own fault — and
+  // refusing to submit on it — blamed a missing Agent for a read that had not
+  // happened, permanently once the read had failed. Nothing derived from an
+  // unanswered catalog may reach the reader.
+  const agentRunnabilityKnown = agentsLoaded;
 
   const scheduleFromForm = (): SchedulerSchedule => {
     if (form.scheduleKind === 'every') {
@@ -332,10 +344,13 @@ export function JobFormModal({
               // run fails. An EDIT is deliberately still saveable — an
               // existing job whose Agent went unrunnable must stay
               // reschedulable and repointable.
+              //
+              // The runnability half waits for the catalog to answer: an
+              // unanswered catalog cannot refuse anything (#1536 H1-2).
               (!isEdit &&
                 (!form.name.trim() ||
                   !form.prompt.trim() ||
-                  !namedAgentRunnability.runnable))
+                  (agentRunnabilityKnown && !namedAgentRunnability.runnable)))
             }
           >
             {isEdit ? 'Save Changes' : 'Add Job'}
@@ -389,7 +404,22 @@ export function JobFormModal({
                 setForm((f) => ({ ...f, agent: v }));
               }}
             />
-            {!jobAgentRunnability.runnable && (
+            {!agentsSettled && (
+              <span className="schedule__field-hint">Loading agents…</span>
+            )}
+            {agentsFailed && (
+              <span className="schedule__field-error">
+                Station could not load the Agent catalog.{' '}
+                <button
+                  type="button"
+                  className="schedule__field-retry"
+                  onClick={retryAgents}
+                >
+                  Try again
+                </button>
+              </span>
+            )}
+            {agentRunnabilityKnown && !jobAgentRunnability.runnable && (
               <span className="schedule__field-error">
                 {jobAgentRunnability.reason}
               </span>
@@ -420,7 +450,8 @@ export function JobFormModal({
                   setForm((current) => ({ ...current, monitorAgentId: value }))
                 }
               />
-              {form.monitorAgentId.trim().length > 0 &&
+              {agentRunnabilityKnown &&
+                form.monitorAgentId.trim().length > 0 &&
                 !monitorAgentRunnability.runnable && (
                   <span className="schedule__field-error">
                     {monitorAgentRunnability.reason}

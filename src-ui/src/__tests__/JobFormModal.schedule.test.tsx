@@ -6,11 +6,18 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const agentCatalog = vi.hoisted(() => ({
   agents: [] as EnrichedAgentProjection[],
+  /** The READ's state, not the rows: `[]` means both "arriving" and "failed". */
+  read: { loaded: true, settled: true, failed: false },
+  retry: () => {},
 }));
 
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => agentCatalog.agents,
-  useAgentsLoaded: () => true,
+  useAgentsLoaded: () => agentCatalog.read.loaded,
+  useAgentCatalogRead: () => ({
+    ...agentCatalog.read,
+    retry: agentCatalog.retry,
+  }),
 }));
 
 import { JobFormModal } from '../components/scheduler/JobFormModal';
@@ -56,6 +63,8 @@ describe('JobFormModal schedule compatibility', () => {
     agentCatalog.agents = [
       { slug: 'station', name: 'Station' } as EnrichedAgentProjection,
     ];
+    agentCatalog.read = { loaded: true, settled: true, failed: false };
+    agentCatalog.retry = () => {};
   });
 
   test('opens an exact-interval job without converting its schedule to text', () => {
@@ -315,5 +324,84 @@ describe('JobFormModal schedule compatibility', () => {
     render(<JobFormModal onClose={vi.fn()} />);
 
     expect(screen.getByLabelText('Agent')).toHaveProperty('value', 'reviewer');
+  });
+
+  /**
+   * #1536 H1-2: `useAgents()` is `[]` while the catalog is arriving AND when it
+   * failed, so a cold-open Add Job derived "No Agent named 'station'." from an
+   * unanswered read and refused to submit — permanently once `/api/agents` had
+   * failed, since the app's query defaults are `retry: 1` with no refetch. A
+   * message blaming a missing Agent sends the reader to fix the wrong thing.
+   */
+  describe('an unanswered Agent catalog', () => {
+    test('says it is loading rather than naming a missing Agent', () => {
+      agentCatalog.agents = [];
+      agentCatalog.read = { loaded: false, settled: false, failed: false };
+
+      render(<JobFormModal onClose={vi.fn()} />);
+
+      expect(screen.getByText('Loading agents…')).toBeTruthy();
+      expect(screen.queryByText(/No Agent named/)).toBeNull();
+    });
+
+    test('does not refuse a new job on a runnability nobody has computed', () => {
+      agentCatalog.agents = [];
+      agentCatalog.read = { loaded: false, settled: false, failed: false };
+
+      render(<JobFormModal onClose={vi.fn()} />);
+      fireEvent.change(screen.getByLabelText('Name'), {
+        target: { value: 'cold-open' },
+      });
+      fireEvent.change(screen.getByLabelText('Instructions'), {
+        target: { value: 'Do the thing' },
+      });
+
+      expect(
+        (screen.getByRole('button', { name: 'Add Job' }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+
+    test('names the failed READ, with its retry, when the catalog answered with an error', () => {
+      const retry = vi.fn();
+      agentCatalog.agents = [];
+      agentCatalog.read = { loaded: false, settled: true, failed: true };
+      agentCatalog.retry = retry;
+
+      render(<JobFormModal onClose={vi.fn()} />);
+
+      expect(
+        screen.getByText(/Station could not load the Agent catalog/),
+      ).toBeTruthy();
+      expect(screen.queryByText(/No Agent named/)).toBeNull();
+      expect(screen.queryByText('Loading agents…')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(retry).toHaveBeenCalledTimes(1);
+    });
+
+    test('still refuses a new job once the catalog HAS answered and the agent cannot run', () => {
+      // The guard must not swallow the real refusal it was narrowed around.
+      agentCatalog.agents = [
+        {
+          slug: 'claude',
+          name: 'Claude Code',
+          available: true,
+          execution: { agentConnectionId: 'claude' },
+        } as EnrichedAgentProjection,
+      ];
+
+      render(<JobFormModal onClose={vi.fn()} />);
+      fireEvent.change(screen.getByLabelText('Name'), {
+        target: { value: 'doomed' },
+      });
+      fireEvent.change(screen.getByLabelText('Instructions'), {
+        target: { value: 'Never runs' },
+      });
+
+      expect(
+        (screen.getByRole('button', { name: 'Add Job' }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+    });
   });
 });

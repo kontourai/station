@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type AgentData, useAgents } from '../../contexts/AgentsContext';
+import {
+  type AgentData,
+  useAgents,
+  useAgentsLoaded,
+} from '../../contexts/AgentsContext';
 import { agentRunnability } from '../agent-runnability';
 import { AgentIcon } from '../icons/AgentIcon';
 import { CheckGlyph } from '../icons/Glyph';
@@ -18,6 +22,7 @@ export function AgentPicker({
   onChange: (slug: string) => void;
 }) {
   const agents = useAgents();
+  const agentsLoaded = useAgentsLoaded();
   const { eligible } = useMemo(() => schedulerAgentOptions(agents), [agents]);
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -71,6 +76,17 @@ export function AgentPicker({
     setOpen(false);
     setFilter('');
   };
+
+  // #1536 H1-2: an unanswered catalog is `[]`, which is indistinguishable from
+  // one that genuinely holds nothing. "No runnable agents" is a verdict, so it
+  // waits for the answer; until then the trigger says only that it is waiting.
+  if (!agentsLoaded && !eligible.length) {
+    return (
+      <button type="button" className="agent-picker__trigger" disabled>
+        Loading agents…
+      </button>
+    );
+  }
 
   // Nothing the runner could resolve even in principle. The trigger stays
   // disabled because there is no list to open, and the form beside it — not a
