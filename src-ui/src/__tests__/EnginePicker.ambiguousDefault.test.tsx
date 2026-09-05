@@ -134,6 +134,9 @@ describe('UX audit A7: two capable engines and no default', () => {
     // No focus trap, Escape handler or focus restoration lives here (that is
     // ResponsiveDialogSurface's contract), so the picker must not claim
     // `aria-modal` — KeyboardShortcutsContext derives `dialogOpen` from it.
+    // Adopting ResponsiveDialogSurface (the sanctioned end state) should
+    // DELETE this assertion, not satisfy it: that surface sets aria-modal
+    // and earns it.
     expect(dialog.getAttribute('aria-modal')).toBeNull();
   });
 

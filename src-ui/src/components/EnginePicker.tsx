@@ -446,6 +446,9 @@ export function EnginePicker({
           // a "Station" row whose value IS null, and an explicit Station
           // binding is a sticky first-class config value — so the guard asks
           // whether a null row is on offer, not whether null is selected.
+          // It reads `options` (the array that renders the radios) rather
+          // than `stationChatReady`, so the guard can never disagree with
+          // the rows on screen if the Station row's derivation changes.
           disabled={
             updateConfig.isPending ||
             (resolvedSelectedId === null &&
