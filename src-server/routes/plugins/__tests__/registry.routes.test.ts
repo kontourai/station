@@ -8,6 +8,7 @@ import {
   loadIntegrationConfig,
   saveIntegrationConfig,
 } from '../../../domain/config-loader-storage.js';
+import type { AgentConfigurationMutationRunner } from '../../../runtime/types.js';
 import { PluginContentLockCycleError } from '../../../services/plugins/plugin-content-integrity.js';
 import { PluginConsentRefusedError } from '../../../services/plugins/plugin-install-consent.js';
 
@@ -448,6 +449,10 @@ describe('Registry Routes', () => {
         projectHomeDir: '/tmp',
       }),
       {
+        activationSession: expect.any(Object),
+        grantSnapshot: { revisionFor: expect.any(Function) },
+        dataPolicy: undefined,
+        expectedInstallation: undefined,
         registryId: 'p1',
         registryKey: 'test-registry',
         // archive#4288: this route installs on one click with no preview and
@@ -560,6 +565,10 @@ describe('Registry Routes', () => {
       [],
       expect.objectContaining({ pluginsDir: '/tmp/plugins' }),
       {
+        activationSession: expect.any(Object),
+        grantSnapshot: { revisionFor: expect.any(Function) },
+        dataPolicy: undefined,
+        expectedInstallation: undefined,
         registryId: 'p1',
         registryKey: 'test-registry',
         // No decision travelled with this request, and the route says so
@@ -594,8 +603,10 @@ describe('Registry Routes', () => {
 
   test('registry plugin installs forward the operator decision from the preview (both catalog faces)', async () => {
     const applyConfigurationMutation = vi.fn(
-      async (operation, _options?: unknown) =>
-        operation(vi.fn(), { status: 'applied' }),
+      async (
+        operation,
+        _options?: Parameters<AgentConfigurationMutationRunner>[1],
+      ) => operation(vi.fn(), { status: 'applied' }),
     );
     const { app } = setup(
       undefined,
@@ -624,6 +635,10 @@ describe('Registry Routes', () => {
         ['layout:demo'],
         expect.anything(),
         {
+          activationSession: expect.any(Object),
+          grantSnapshot: { revisionFor: expect.any(Function) },
+          dataPolicy: undefined,
+          expectedInstallation: undefined,
           registryId: 'p1',
           registryKey: 'test-registry',
           consent: { kind: 'operator-decision', ...consent },
@@ -632,7 +647,15 @@ describe('Registry Routes', () => {
     }
     expect(
       applyConfigurationMutation.mock.calls.map((call) => call[1]),
-    ).toEqual([{ rediscoverSkills: true }, { rediscoverSkills: true }]);
+    ).toEqual([
+      { rediscoverSkills: true, pluginActivation: expect.any(Object) },
+      { rediscoverSkills: true, pluginActivation: expect.any(Object) },
+    ]);
+    expect(
+      applyConfigurationMutation.mock.calls.at(-1)?.[1]?.pluginActivation,
+    ).toBe(
+      vi.mocked(installPluginFromSource).mock.calls[0]?.[3]?.activationSession,
+    );
   });
 
   test('a consent refusal answers 400 with the refusal sentence, on both catalog faces', async () => {
