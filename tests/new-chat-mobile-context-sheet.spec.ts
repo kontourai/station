@@ -158,14 +158,14 @@ async function seedRoutes(page: Page) {
 
 async function openNewChat(page: Page) {
   await page.goto('/?dock=open');
-  // This suite runs at 390x844. archive#3309 pinned New chat as a far-right header
-  // icon; with this fixture's single chat-ready runtime, clicking it would
-  // take the one-click direct path, so assert the affordance and open the
-  // modal via the deterministic event instead (the pattern
-  // mobile-chat-composer.spec.ts's openComposer established).
+  // Secondary chat actions live in the phone header's menu. This fixture has
+  // one ready runtime, so opening the chooser itself uses the same explicit
+  // new-chat command as the command palette rather than the quick-start path.
+  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: 'New chat', exact: true }),
+    page.getByRole('menuitem', { name: 'New chat', exact: true }),
   ).toBeVisible();
+  await page.getByRole('button', { name: 'Close actions menu' }).click();
   await page.evaluate(() =>
     window.dispatchEvent(new Event('station:open-new-chat')),
   );
