@@ -19,12 +19,12 @@ vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () => flagsState.flags,
 }));
 
+import { DEVELOPER_TOOLS_FLAG } from '../app-shell/destination-registry';
 import {
   getManagementNavigationGroup,
   getPathForView,
   resolveViewFromPath,
 } from '../app-shell/routing';
-import { DEVELOPER_TOOLS_FLAG } from '../app-shell/surface-registry';
 import { ProjectSidebarNav } from '../components/project-sidebar/ProjectSidebarNav';
 
 /**

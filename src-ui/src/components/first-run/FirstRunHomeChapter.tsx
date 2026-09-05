@@ -402,6 +402,28 @@ export function FirstRunHomeChapter() {
     continueToAboutYou();
   }, [config?.builtinAgentEngineConnectionId, continueToAboutYou]);
 
+  const continueToAboutYou = useCallback(() => {
+    firstRunStore.enterChapter('about-you');
+    setStep('about-you');
+    setEnginePickerOpen(false);
+    setOpen(true);
+  }, []);
+
+  const continueAfterEngineSetup = useCallback(() => {
+    // Engine materialization answers "which harnesses should be available?";
+    // it does not answer the separate role question "which one powers
+    // Station?". Ask that question while first run already owns the screen,
+    // and only when no explicit choice (including explicit Station/null) has
+    // been recorded. EnginePicker is shared with Settings so capability
+    // filtering and persistence stay single-sourced.
+    if (config?.builtinAgentEngineConnectionId === undefined) {
+      setOpen(false);
+      setEnginePickerOpen(true);
+      return;
+    }
+    continueToAboutYou();
+  }, [config?.builtinAgentEngineConnectionId, continueToAboutYou]);
+
   if (!offer.offered) return null;
 
   return (

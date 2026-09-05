@@ -35,8 +35,8 @@ vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => regionState.showSurface,
 }));
 
+import { DEVELOPER_TOOLS_FLAG } from '../app-shell/destination-registry';
 import { routeTransitionStore } from '../app-shell/route-transition-store';
-import { DEVELOPER_TOOLS_FLAG } from '../app-shell/surface-registry';
 import { ProjectSidebarNav } from '../components/project-sidebar/ProjectSidebarNav';
 
 describe('ProjectSidebarNav', () => {
@@ -51,8 +51,8 @@ describe('ProjectSidebarNav', () => {
     // SHELL-05: a cold route chunk takes ~1.4 s to arrive. `aria-busy` and
     // the spinner are rendered from the SAME derivation — the suspended route
     // outlet — so neither can claim a pending state the other does not have.
-    // The published value is a SURFACE ID, resolved through the same
-    // `getSurfaceForView` that decides which row is active.
+    // The published value is a DESTINATION ID, resolved through the same
+    // `getDestinationForView` that decides which row is active.
     render(
       <ProjectSidebarNav
         collapsed={false}

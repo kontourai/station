@@ -77,7 +77,7 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate }),
 }));
 
-import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
+import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
 import { NotificationsPage } from '../pages/NotificationsPage';
 
 function renderPage() {
@@ -110,10 +110,12 @@ function renderPage() {
  * than against a number restated in the test.
  */
 function bellBadgeCount(): number | null {
-  const surface = APP_SURFACE_REGISTRY.get('notifications');
-  if (!surface) throw new Error('Notifications surface is not registered');
+  const destination = APP_DESTINATION_REGISTRY.get('notifications');
+  if (!destination)
+    throw new Error('Notifications destination is not registered');
   return (
-    surface.badge?.({ attentionCount: attention.pendingCount })?.count ?? null
+    destination.badge?.({ attentionCount: attention.pendingCount })?.count ??
+    null
   );
 }
 

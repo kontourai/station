@@ -369,6 +369,11 @@ export function createNightlyDesktopConfig({
     identifier: nightlyIdentifier(productionIdentifier),
     bundle: {
       createUpdaterArtifacts,
+      // Only the .app is consumed: ops/release/macos-notarized-artifacts.mjs
+      // builds its own DMG and updater archive from the signed bundle, and
+      // Tauri's `targets: "all"` spent four minutes per Nightly on a DMG and a
+      // legacy updater archive nothing read (#1479).
+      targets: ['app'],
       macOS: { bundleVersion: String(nightlyVersionCode(date, build)) },
     },
     plugins,
