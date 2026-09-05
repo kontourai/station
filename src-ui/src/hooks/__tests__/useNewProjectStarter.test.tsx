@@ -128,6 +128,95 @@ describe('useNewProjectStarter repo discovery gate (#1536 E4)', () => {
     }
   });
 
+  /**
+   * The settle means the query can be describing a path the field no longer
+   * holds. When `gitWorkspaceDetected` ignored that, replacing a settled git
+   * repo with a plain folder re-selected Coding from the stale answer and then
+   * left it selected after detection flipped false — no card on screen, "Start
+   * without a layout" unpressed, and Create applying Coding to a non-git
+   * folder. E4 again, reached through the selection rather than the submit.
+   */
+  test('replacing a settled git repo with a plain folder withdraws the recommendation', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { result, rerender } = renderStarter('/tmp/repo');
+      await settleDiscovery();
+      await waitFor(() =>
+        expect(result.current.selectedLayoutId).toBe('builtin:coding'),
+      );
+
+      // Paste-over: the field changes, and the modal resets its non-explicit
+      // choice exactly as `NewProjectModalContent` does on a directory edit.
+      respondWithRepos([]);
+      act(() => result.current.resetForDirectory());
+      rerender({ normalizedDirectory: '/tmp/notes' });
+
+      // Mid-settle: the query still answers for /tmp/repo, so the ONLY thing
+      // that can keep the recommendation off the new folder is the
+      // discovery-is-current check.
+      expect(result.current.gitWorkspaceDetected).toBe(false);
+      expect(result.current.selectedLayoutId).toBeNull();
+
+      await settleDiscovery();
+      await waitFor(() =>
+        expect(discoveryPaths()).toEqual(['/tmp/repo', '/tmp/notes']),
+      );
+      expect(result.current.gitWorkspaceDetected).toBe(false);
+      expect(result.current.selectedLayoutId).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * The variant with no correcting answer at all: the replacement value fails
+   * `looksLikeWorkspacePath`, so the query is DISABLED and its last answer
+   * ("repo") simply stays. Nothing later flips detection false, so a
+   * set-only derivation leaves Coding selected forever.
+   */
+  test('replacing a settled git repo with a non-path withdraws it too, with no new query', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { result, rerender } = renderStarter('/tmp/repo');
+      await settleDiscovery();
+      await waitFor(() =>
+        expect(result.current.selectedLayoutId).toBe('builtin:coding'),
+      );
+
+      act(() => result.current.resetForDirectory());
+      rerender({ normalizedDirectory: 'notes' });
+      await settleDiscovery();
+
+      expect(discoveryPaths()).toEqual(['/tmp/repo']);
+      expect(result.current.gitWorkspaceDetected).toBe(false);
+      expect(result.current.selectedLayoutId).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('an explicit choice outlives a directory change', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { result, rerender } = renderStarter('/tmp/repo');
+      await settleDiscovery();
+      await waitFor(() =>
+        expect(result.current.selectedLayoutId).toBe('builtin:coding'),
+      );
+
+      // The deselect arm must never reach a choice the user made themselves.
+      act(() => result.current.selectLayout('builtin:coding'));
+      respondWithRepos([]);
+      rerender({ normalizedDirectory: '/tmp/notes' });
+      await settleDiscovery();
+
+      expect(result.current.gitWorkspaceDetected).toBe(false);
+      expect(result.current.selectedLayoutId).toBe('builtin:coding');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('the same path with no repository leaves "Start without a layout" chosen', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {

@@ -757,17 +757,20 @@ test.describe('Project Navigation', () => {
         }),
       }),
     );
-    await page.route(
-      '**/api/projects/typed-workspace/layouts/apply',
-      (route) => {
-        createdLayoutBody = route.request().postDataJSON();
-        return route.fulfill({
-          status: 201,
-          contentType: 'application/json',
-          body: JSON.stringify({ success: true, data: { slug: 'coding' } }),
-        });
-      },
-    );
+    // `seedRoutes`' POST /api/projects answers `slug: 'new-project'` whatever
+    // the body says, and the submission applies the starter to the slug the
+    // SERVER returned (`useNewProjectSubmit` uses `created.slug`, because a
+    // server may suffix a colliding slug). Routing this at the typed name would
+    // never match, and `createdLayoutBody` would stay null for a submission
+    // that applied the layout correctly.
+    await page.route('**/api/projects/new-project/layouts/apply', (route) => {
+      createdLayoutBody = route.request().postDataJSON();
+      return route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { slug: 'coding' } }),
+      });
+    });
 
     await page.goto('/projects/new');
     await page.getByPlaceholder('My Project').fill('Typed Workspace');
@@ -824,17 +827,17 @@ test.describe('Project Navigation', () => {
         }),
       }),
     );
-    await page.route(
-      '**/api/projects/typed-workspace/layouts/apply',
-      (route) => {
-        layoutPosts += 1;
-        return route.fulfill({
-          status: 201,
-          contentType: 'application/json',
-          body: JSON.stringify({ success: true, data: { slug: 'coding' } }),
-        });
-      },
-    );
+    // The slug the seeded create route returns — see the note in the test
+    // above. Pointed anywhere else, `layoutPosts` counts a route that can
+    // never be hit and the assertion below passes without proving anything.
+    await page.route('**/api/projects/new-project/layouts/apply', (route) => {
+      layoutPosts += 1;
+      return route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { slug: 'coding' } }),
+      });
+    });
 
     await page.goto('/projects/new');
     await page.getByPlaceholder('My Project').fill('Typed Workspace');
@@ -855,7 +858,8 @@ test.describe('Project Navigation', () => {
     await expect(noLayout).toHaveAttribute('aria-pressed', 'true');
 
     await page.getByRole('button', { name: 'Create', exact: true }).click();
-    await expect(page).toHaveURL(/\/projects\/typed-workspace$/);
+    // Created, navigated, and no starter applied. The slug is the server's.
+    await expect(page).toHaveURL(/\/projects\/new-project$/);
     expect(layoutPosts).toBe(0);
   });
 });
