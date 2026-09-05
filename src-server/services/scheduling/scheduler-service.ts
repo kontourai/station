@@ -4,7 +4,11 @@
  * Routes CRUD to the provider that owns each job.
  */
 
-import { nextOccurrences, type Schedule } from '@kontourai/ephemeris';
+import {
+  nextOccurrences,
+  type Schedule,
+  validateSchedule,
+} from '@kontourai/ephemeris';
 import type {
   RunOutputRef,
   RunSummary,
@@ -43,6 +47,18 @@ export interface SchedulerServiceOptions {
 export type SchedulerManualRunResult =
   | SchedulerManualRunReceipt
   | Readonly<{ output: string }>;
+
+/**
+ * A caller-supplied schedule the projector cannot evaluate — a bad cron field
+ * or an unknown IANA zone. Distinct from a storage or conflict failure because
+ * the answer is 400: nothing on the server is wrong (#1536 R3).
+ */
+export class SchedulerScheduleInvalidError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SchedulerScheduleInvalidError';
+  }
+}
 
 export class SchedulerService {
   private providers = new Map<string, ISchedulerProvider>();
@@ -368,6 +384,15 @@ export class SchedulerService {
       expr: cron,
       ...(timezone ? { timezone } : {}),
     };
+    // #1536 R3: `nextOccurrences` throws a RangeError on an unknown IANA zone,
+    // which reached the route as a 500 — an operator's typo reported as a
+    // server fault. Validated HERE, once, so every caller is covered (the HTTP
+    // route AND the MCP operator tool), with the same `validateSchedule` the
+    // add path uses so the two cannot disagree about what a valid schedule is.
+    const invalid = validateSchedule(schedule);
+    if (invalid !== null) {
+      throw new SchedulerScheduleInvalidError(`Invalid schedule: ${invalid}`);
+    }
     return nextOccurrences(schedule, count, Date.now()).map((ms) =>
       new Date(ms).toISOString(),
     );

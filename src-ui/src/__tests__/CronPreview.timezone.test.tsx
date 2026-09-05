@@ -102,10 +102,11 @@ describe("CronPreview asks the server in the schedule's zone", () => {
     expect(screen.getByText(/UTC/)).toBeTruthy();
   });
 
-  test("renders each occurrence in the schedule's zone, not the reader's", () => {
-    // 22:00 UTC on a Sunday is Monday 08:00 in Brisbane. Rendered in the
-    // reader's zone this would read as Sunday evening somewhere in the
-    // Americas — a weekday rule that looks like it fires at the weekend.
+  test("renders each occurrence as an INSTANT in the reader's zone, labelled", () => {
+    // #1536 R1: one convention for instants across the panel. An occurrence is a
+    // moment, so it reads where the reader is — the same as the jobs table's
+    // "Next Fire" column — and carries a short zone label so it can never be
+    // mistaken for the RULE above it, which is stated in the SCHEDULE's zone.
     previewState.data = ['2026-09-06T22:00:00.000Z'];
     render(
       <CronPreview
@@ -113,12 +114,19 @@ describe("CronPreview asks the server in the schedule's zone", () => {
       />,
     );
 
+    const readerZoneLabel = new Intl.DateTimeFormat(undefined, {
+      timeZoneName: 'short',
+    })
+      .formatToParts(new Date('2026-09-06T22:00:00.000Z'))
+      .find((part) => part.type === 'timeZoneName')?.value;
     const times = screen
-      .getAllByText(/2026|Mon|Sun|AM|PM/)
+      .getAllByText(/2026|Mon|Sun|AM|PM|:/)
       .map((node) => node.textContent ?? '')
       .join(' | ');
-    expect(times).toContain('Mon');
-    expect(times).toContain('8:00 AM');
+    expect(readerZoneLabel).toBeTruthy();
+    expect(times).toContain(readerZoneLabel as string);
+    // The RULE still speaks the schedule's zone, in IANA form (#1536 R6).
+    expect(screen.getByText(new RegExp(BRISBANE))).toBeTruthy();
   });
 });
 

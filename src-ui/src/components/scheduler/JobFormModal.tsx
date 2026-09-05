@@ -20,6 +20,7 @@ import {
   schedulerAgentRunnability,
 } from './schedulerAgentOptions';
 import {
+  browserTimeZone,
   datetimeLocalValue,
   type ExactIntervalUnit,
   intervalToMs,
@@ -149,8 +150,16 @@ export function JobFormModal({
   // own, or (for a new one) the default schedule's, which is the reader's. The
   // preview and the field label both read it, so what the form SAYS and what it
   // will SUBMIT cannot disagree.
+  //
+  // #1536 R4: it follows the expression the form CURRENTLY holds, not the shape
+  // it opened with. Switching an `every`/`at` job to the Calendar tab mints a
+  // cron the form did not have before, and reading `initialSchedule` alone left
+  // that expression zoneless — so a job the reader typed as a local hour would
+  // have been saved, previewed and labelled as UTC.
   const cronTimezone =
-    initialSchedule.kind === 'cron' ? initialSchedule.timezone : undefined;
+    initialSchedule.kind === 'cron'
+      ? initialSchedule.timezone
+      : browserTimeZone();
 
   // The catalog can arrive after this form mounts, so the runnable default
   // cannot be settled at first render alone. Correct it once the catalog has
@@ -425,7 +434,10 @@ export function JobFormModal({
               <SkeletonList count={1} label="Loading agents" />
             )}
             {agentsFailed && (
-              <span className="schedule__field-error">
+              <span
+                className="schedule__field-error"
+                id="schedule-agent-catalog-error"
+              >
                 Station could not load the Agent catalog.{' '}
                 {/* #1536 D7: a retry that looks idle while it is in flight
                     invites a second click at the one moment a second request
@@ -580,14 +592,30 @@ export function JobFormModal({
         )}
         <div className="schedule__form-divider" />
         <div className="schedule__field">
-          <span className="schedule__field-label" id="schedule-mode-label">
+          {/* `id` retired: it was declared and never referenced — a label
+              nothing consumed. The mode fieldset below names itself
+              ("Schedule model"), which is the right name for a tab group and
+              not this field's. */}
+          <span className="schedule__field-label">
             Schedule
             {form.scheduleKind === 'cron' && (
               // #1536 D8: a calendar time is meaningless without its zone, and
               // this is the zone the job will actually be evaluated in.
+              //
+              // #1536 R6/R7: ONE zone vocabulary in the panel's text — the IANA
+              // name, here and in the human sentence below, because that is what
+              // the schedule actually carries and what an operator would type.
+              // The short abbreviation appears only in the instant list, where
+              // it labels a moment in the reader's own zone. And it is NAMED:
+              // read on its own, "· America/Denver" says nothing about what it
+              // qualifies, so it carries its own label rather than leaning on
+              // the visual adjacency.
               <span className="schedule__field-hint">
                 {' '}
-                · {cronTimezone ?? 'UTC'}
+                <span className="sr-only">
+                  — evaluated in {cronTimezone ?? 'UTC'}
+                </span>
+                <span aria-hidden="true">· {cronTimezone ?? 'UTC'}</span>
               </span>
             )}
           </span>

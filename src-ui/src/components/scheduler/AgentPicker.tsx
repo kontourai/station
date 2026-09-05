@@ -103,7 +103,12 @@ export function AgentPicker({
         type="button"
         className="agent-picker__trigger"
         disabled
-        aria-label="Agent unavailable"
+        // #1536 R5: "Agent unavailable" overclaimed — no Agent has been found
+        // unavailable; the CATALOG did not load, which is a different fact and
+        // the one the field's error explains. Pointing at that error rather
+        // than restating it keeps one account of the failure.
+        aria-label="Agent catalog unavailable"
+        aria-describedby="schedule-agent-catalog-error"
       />
     );
   }

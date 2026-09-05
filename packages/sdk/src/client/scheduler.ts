@@ -298,19 +298,26 @@ export async function previewSchedule(
   cron: string,
   count?: number,
   /**
-   * IANA zone the expression is written in. Omitted = UTC, which is what the
-   * scheduler does with an unzoned schedule (#1536 D1).
+   * #1536 R2: `timezone` rides on the EXISTING options parameter rather than
+   * taking a new positional slot. An earlier cut inserted it fourth, ahead of
+   * `opts` — so an external `previewSchedule(base, cron, 5, { signal })` sent
+   * `timezone=[object Object]` and silently lost its abort signal. This is the
+   * shape the SDK already uses when one more query param joins an optioned call
+   * (`getSessionInventoryGroupPage`'s `continuation`,
+   * `listSessionOutputs`'s `cursor`/`limit`).
+   *
+   * `timezone` is the IANA zone the expression is written in. Omitted = UTC,
+   * which is what the scheduler does with an unzoned schedule (#1536 D1).
    */
-  timezone?: string,
-  opts?: ClientRequestOptions,
+  options?: ClientRequestOptions & { timezone?: string },
 ): Promise<string[]> {
   const query = new URLSearchParams({ cron });
   if (count !== undefined) query.set('count', String(count));
-  if (timezone) query.set('timezone', timezone);
+  if (options?.timezone) query.set('timezone', options.timezone);
   return unwrapSchedulerResponse<string[]>(
     await getJson(
       `${apiBase}/scheduler/jobs/preview-schedule?${query.toString()}`,
-      opts,
+      options,
     ),
   );
 }

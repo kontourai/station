@@ -62,7 +62,9 @@ describe('scheduler query domain', () => {
     // #1536 D1: the zone the expression is written in. Without it the server
     // projects the cron as UTC, so a zoned job's preview names the wrong
     // instants.
-    await previewSchedule(apiBase, '0 8 * * 1-5', 3, 'Australia/Brisbane');
+    await previewSchedule(apiBase, '0 8 * * 1-5', 3, {
+      timezone: 'Australia/Brisbane',
+    });
     await getJobLogs(apiBase, 'daily report', {
       count: 4,
       providerId: 'built-in',
@@ -455,5 +457,58 @@ describe('scheduler query domain', () => {
         }),
       }),
     );
+  });
+});
+
+/**
+ * #1536 R2 — `previewSchedule`'s 4th parameter is PUBLIC. An earlier cut of the
+ * timezone work inserted `timezone?: string` there, ahead of `opts`, so an
+ * external `previewSchedule(base, cron, 5, { signal })` stringified the options
+ * object into the query (`timezone=[object Object]`) and silently dropped the
+ * abort signal. This pins the call shape that break would have destroyed.
+ */
+describe('previewSchedule keeps request options in their published position', () => {
+  test('a 4th-argument ClientRequestOptions still reaches the request', async () => {
+    vi.mocked(fetch).mockReset();
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, data: [] }),
+    } as Response);
+    const controller = new AbortController();
+
+    await previewSchedule('http://example.test', '0 9 * * *', 5, {
+      signal: controller.signal,
+      headers: { 'x-test': 'yes' },
+    });
+
+    const [url, init] = vi.mocked(fetch).mock.calls[0] ?? [];
+    // The options object is options, not a query value.
+    expect(String(url)).not.toContain('timezone');
+    expect(String(url)).not.toContain('object');
+    expect(init?.signal).toBe(controller.signal);
+    expect(
+      (init?.headers as Record<string, string> | undefined)?.['x-test'],
+    ).toBe('yes');
+  });
+
+  test('a zone travels on that same options object', async () => {
+    vi.mocked(fetch).mockReset();
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, data: [] }),
+    } as Response);
+    const controller = new AbortController();
+
+    await previewSchedule('http://example.test', '0 8 * * 1-5', 3, {
+      timezone: 'Australia/Brisbane',
+      signal: controller.signal,
+    });
+
+    const [url, init] = vi.mocked(fetch).mock.calls[0] ?? [];
+    expect(String(url)).toContain('timezone=Australia%2FBrisbane');
+    // …without costing the request its signal.
+    expect(init?.signal).toBe(controller.signal);
   });
 });

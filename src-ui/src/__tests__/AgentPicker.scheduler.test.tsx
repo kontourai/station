@@ -206,12 +206,19 @@ describe('scheduler Agent options', () => {
     expect(screen.queryByLabelText('Loading agents')).toBeNull();
     // No second, weaker account of the same failure either.
     expect(screen.queryByText('No runnable agents')).toBeNull();
+    // #1536 R5: "Agent unavailable" overclaimed — no Agent was found
+    // unavailable; the CATALOG did not load, which is a different fact and the
+    // one the field's error explains.
+    const trigger = screen.getByRole('button', {
+      name: 'Agent catalog unavailable',
+    }) as HTMLButtonElement;
+    expect(trigger.disabled).toBe(true);
     expect(
-      (
-        screen.getByRole('button', {
-          name: 'Agent unavailable',
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+      screen.queryByRole('button', { name: 'Agent unavailable' }),
+    ).toBeNull();
+    // It points at that error rather than restating it, so there is one account.
+    expect(trigger.getAttribute('aria-describedby')).toBe(
+      'schedule-agent-catalog-error',
+    );
   });
 });

@@ -10,6 +10,7 @@ import {
   SchedulerStorageCorruptError,
   SchedulerStorageUnavailableError,
 } from '../../../services/scheduling/scheduler-ledger.js';
+import { SchedulerScheduleInvalidError } from '../../../services/scheduling/scheduler-service.js';
 
 const metricMocks = vi.hoisted(() => ({ schedulerJobRunsAdd: vi.fn() }));
 
@@ -292,6 +293,31 @@ describe('Scheduler Routes', () => {
       undefined,
     );
   });
+
+  test.each([
+    ['an unknown IANA zone', 'cron=0+8+*+*+1-5&timezone=Mars%2FOlympus'],
+    ['a cron field out of range', 'cron=0+99+*+*+*'],
+  ])(
+    'GET /jobs/preview-schedule answers 400 for %s, not 500',
+    async (_label, query) => {
+      // #1536 R3: `nextOccurrences` throws a RangeError on an unknown zone, and
+      // the route reported it as a 500 — an operator's typo presented as a
+      // server fault. The real service validates; only the mock is replaced
+      // here, so the STATUS MAPPING is what this exercises.
+      const { app, svc } = setup();
+      svc.previewSchedule = vi
+        .fn()
+        .mockRejectedValue(
+          new SchedulerScheduleInvalidError('Invalid schedule: bad zone'),
+        );
+
+      const res = await app.request(`/jobs/preview-schedule?${query}`);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { success: boolean; error: string };
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('Invalid schedule');
+    },
+  );
 
   test('GET /jobs/preview-schedule returns 400 without cron', async () => {
     const { app } = setup();

@@ -94,7 +94,9 @@ export function usePreviewSchedule(
   return useApiQuery(
     ['scheduler', 'preview', cron ?? '', timezone ?? ''],
     async () =>
-      previewSchedule(await _getApiBase(), cron!, undefined, timezone),
+      previewSchedule(await _getApiBase(), cron!, undefined, {
+        ...(timezone ? { timezone } : {}),
+      }),
     { staleTime: 60_000, enabled: !!cron && cron.trim().length > 0 },
   );
 }

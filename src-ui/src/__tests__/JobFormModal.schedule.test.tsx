@@ -423,9 +423,13 @@ describe('JobFormModal schedule compatibility', () => {
 
       render(<JobFormModal onClose={vi.fn()} />);
 
-      expect(
-        screen.getByText(/Station could not load the Agent catalog/),
-      ).toBeTruthy();
+      const error = screen.getByText(
+        /Station could not load the Agent catalog/,
+      );
+      expect(error).toBeTruthy();
+      // #1536 R5: the picker's disabled trigger describes itself by this id, so
+      // the id has to be here — a dangling `aria-describedby` announces nothing.
+      expect(error.getAttribute('id')).toBe('schedule-agent-catalog-error');
       expect(screen.queryByText(/No Agent named/)).toBeNull();
       expect(screen.queryByLabelText('Loading agents')).toBeNull();
       expect(screen.queryByText('No runnable agents')).toBeNull();
@@ -474,5 +478,83 @@ describe('JobFormModal schedule compatibility', () => {
           .disabled,
       ).toBe(true);
     });
+  });
+});
+
+/**
+ * #1536 R4/R5/R6/R7 — the zone the form holds, and how it says so.
+ */
+describe('the Calendar field states the zone it will be evaluated in', () => {
+  test("mints the reader's zone when switching an interval job to Calendar", () => {
+    // #1536 R4: `cronTimezone` read `initialSchedule` alone, so an `every` job
+    // switched to the Calendar tab produced an expression with NO zone — saved,
+    // previewed and labelled as UTC despite the reader typing a local hour.
+    render(
+      <JobFormModal
+        job={{
+          name: 'monitor-health',
+          provider: 'built-in',
+          schedule: { kind: 'every' as const, everyMs: 300_000 },
+          prompt: 'Check service health',
+          agent: 'station',
+          enabled: true,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Calendar' }));
+
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(screen.getByText(`· ${zone}`)).toBeTruthy();
+    // …and it is announced, not left to visual adjacency (#1536 R7).
+    expect(screen.getByText(`— evaluated in ${zone}`)).toBeTruthy();
+  });
+
+  test("keeps an edited job's own zone rather than substituting the reader's", () => {
+    render(
+      <JobFormModal
+        job={{
+          name: 'briefing',
+          provider: 'built-in',
+          schedule: {
+            kind: 'cron' as const,
+            expr: '0 8 * * 1-5',
+            timezone: 'Australia/Brisbane',
+          },
+          prompt: 'Summarize',
+          agent: 'station',
+          enabled: true,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('· Australia/Brisbane')).toBeTruthy();
+  });
+
+  test('names the IANA zone, never a short abbreviation, in the panel text', () => {
+    // #1536 R6: one vocabulary. The abbreviation belongs only to the instant
+    // list, where it labels a moment in the reader's own zone.
+    render(
+      <JobFormModal
+        job={{
+          name: 'briefing',
+          provider: 'built-in',
+          schedule: {
+            kind: 'cron' as const,
+            expr: '0 8 * * 1-5',
+            timezone: 'America/Denver',
+          },
+          prompt: 'Summarize',
+          agent: 'station',
+          enabled: true,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const label = screen.getByText('· America/Denver');
+    expect(label.textContent).not.toMatch(/\bM[SD]T\b/);
   });
 });

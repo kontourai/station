@@ -15,6 +15,7 @@ import type {
   SchedulerManualRunResult,
   SchedulerService,
 } from '../../services/scheduling/scheduler-service.js';
+import { SchedulerScheduleInvalidError } from '../../services/scheduling/scheduler-service.js';
 import { schedulerJobRuns } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -391,7 +392,11 @@ export function createSchedulerRoutes(
   return app;
 }
 
-function schedulerErrorStatus(error: unknown): 409 | 500 | 503 {
+function schedulerErrorStatus(error: unknown): 400 | 409 | 500 | 503 {
+  // #1536 R3: a schedule the projector cannot evaluate is the CALLER's, so it
+  // is a 400 carrying `validateSchedule`'s own message — not a 500 that reads
+  // as a server fault for an operator's typo in a zone name.
+  if (error instanceof SchedulerScheduleInvalidError) return 400;
   if (error instanceof SchedulerJobConflictError) return 409;
   return error instanceof SchedulerStorageUnavailableError ? 503 : 500;
 }

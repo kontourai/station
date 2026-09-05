@@ -428,13 +428,10 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
     async ({ cron, count, timezone }) =>
       jsonToolResult(
         await toOperationsEnvelope(
-          previewSchedule(
-            controlApiBase(),
-            cron,
-            count,
-            timezone,
-            controlRequestOptions(),
-          ),
+          previewSchedule(controlApiBase(), cron, count, {
+            ...controlRequestOptions(),
+            ...(timezone ? { timezone } : {}),
+          }),
         ),
       ),
   );

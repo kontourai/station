@@ -322,16 +322,19 @@ export function CronPreview({ schedule }: { schedule: SchedulerSchedule }) {
       {valid ? (
         data.slice(0, 3).map((d: string, i: number) => (
           <span key={i} className="schedule__cron-time">
+            {/* #1536 R1: ONE convention for instants across the panel — an
+                occurrence is a moment, so it reads in the READER's zone with a
+                short zone label, exactly like the jobs table's "Next Fire"
+                column (`JobDetail.localTime`). The RULE above it stays in the
+                schedule's zone, because a weekday rule is only checkable
+                against the zone it is written in; the two are different kinds
+                of fact and the panel now says which is which. */}
             {new Date(d).toLocaleString(undefined, {
               weekday: 'short',
               month: 'short',
               day: 'numeric',
               hour: 'numeric',
               minute: '2-digit',
-              // Shown in the schedule's OWN zone and named: an edited job's
-              // zone need not be the reader's, and a weekday rule is only
-              // checkable against the zone it is written in.
-              timeZone: timezone ?? 'UTC',
               timeZoneName: 'short',
             })}
           </span>
