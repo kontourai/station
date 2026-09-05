@@ -177,16 +177,34 @@ describe('System Routes', () => {
   });
 
   test('does not duplicate a detected registry Engine already reported by an adapter', async () => {
+    // The adapter must be a real readiness candidate (a known chat-capable
+    // engine with the agent-runtime capability); an unknown provider name
+    // is filtered out before the collision can occur, and the test would
+    // pass with no dedupe at all.
     const readiness = await resolveExternalEngineReadiness(
-      [fakeExternalEngineAdapter({ provider: 'Kiro CLI', engineId: 'kiro' })],
+      [
+        fakeExternalEngineAdapter({
+          provider: 'claude',
+          engineId: 'claude',
+          prerequisites: [{ id: 'claude-cli', status: 'installed' }],
+        }),
+      ],
       undefined,
       () => true,
       undefined,
-      [{ id: 'kiro', name: 'Kiro CLI' }],
+      [
+        { id: 'claude', name: 'Claude (registry)' },
+        { id: 'kiro', name: 'Kiro CLI' },
+      ],
     );
+    const claudeRows = readiness.engines.filter(
+      (entry) => entry.engineId === 'claude',
+    );
+    expect(claudeRows).toHaveLength(1);
+    expect(claudeRows[0]).toMatchObject({ engineConnectionId: 'claude' });
     expect(
       readiness.engines.filter((entry) => entry.engineId === 'kiro'),
-    ).toHaveLength(1);
+    ).toMatchObject([{ reason: 'not_connected' }]);
   });
   test('GET /boot-history returns bounded records without fabricating a cause', async () => {
     const getBootHistory = vi.fn().mockResolvedValue({
