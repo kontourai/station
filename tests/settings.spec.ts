@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { dismissSetupLauncher } from './helpers/orchestration';
 
 async function goToSettings(page: import('@playwright/test').Page) {
   await page.goto('/');
@@ -634,4 +635,59 @@ test.describe('Settings', () => {
     expect(describedBy).toBe('notif-desc');
     await expect(page.locator('#notif-desc')).toBeVisible();
   });
+});
+
+test('Save remains clickable above an open resized dock', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/settings?dock=open');
+  await dismissSetupLauncher(page);
+  await openAgentDefaults(page);
+  const prompt = page.locator('#systemPrompt');
+  await prompt.fill(`${await prompt.inputValue()}\nDock occlusion check`);
+  const save = page.locator('.settings__save-pill-btn');
+  const dock = page.locator('.chat-dock');
+  const resize = page.getByRole('separator', { name: 'Resize chat dock' });
+  await expect(save).toBeVisible();
+  await expect(dock).toBeVisible();
+  await expect(resize).toBeVisible();
+  for (const delta of [80, -40]) {
+    const before = (await dock.boundingBox())!;
+    const handle = (await resize.boundingBox())!;
+    await page.mouse.move(
+      handle.x + handle.width / 2,
+      handle.y + handle.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      handle.x + handle.width / 2,
+      handle.y + handle.height / 2 - delta,
+      { steps: 4 },
+    );
+    await page.mouse.up();
+    await expect
+      .poll(async () => (await dock.boundingBox())?.height)
+      .not.toBe(before.height);
+    const saveBox = (await save.boundingBox())!;
+    const dockBox = (await dock.boundingBox())!;
+    expect(saveBox.y + saveBox.height).toBeLessThanOrEqual(dockBox.y);
+    expect(
+      await save.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return element.contains(
+          document.elementFromPoint(
+            box.x + box.width / 2,
+            box.y + box.height / 2,
+          ),
+        );
+      }),
+    ).toBe(true);
+  }
+  const saved = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PUT' &&
+      new URL(response.url()).pathname === '/config/app',
+  );
+  await save.click();
+  expect((await saved).ok()).toBe(true);
+  await expect(page.locator('.settings__save-pill')).toBeHidden();
 });
