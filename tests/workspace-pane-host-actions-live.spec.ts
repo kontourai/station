@@ -171,9 +171,13 @@ test('retained plugin recovers through responsive UI and its host default Agent 
       ),
     ).toBe(true);
     await page.screenshot({
-      path: join(recoveryEvidenceRoot, `recovery-pending-${width}.png`),
+      path: testInfo.outputPath(`recovery-pending-${width}.png`),
       animations: 'disabled',
     });
+    copyFileSync(
+      testInfo.outputPath(`recovery-pending-${width}.png`),
+      join(recoveryEvidenceRoot, `recovery-pending-${width}.png`),
+    );
   }
   await page
     .getByRole('button', { name: 'Review recovery', exact: true })
@@ -181,9 +185,13 @@ test('retained plugin recovers through responsive UI and its host default Agent 
   const review = page.getByRole('region', { name: 'Recovery review' });
   await expect(review).toBeVisible();
   await page.screenshot({
-    path: join(recoveryEvidenceRoot, 'recovery-review-390.png'),
+    path: testInfo.outputPath('recovery-review-390.png'),
     animations: 'disabled',
   });
+  copyFileSync(
+    testInfo.outputPath('recovery-review-390.png'),
+    join(recoveryEvidenceRoot, 'recovery-review-390.png'),
+  );
   await review
     .getByRole('button', { name: 'Recover plugin', exact: true })
     .click();
@@ -195,9 +203,13 @@ test('retained plugin recovers through responsive UI and its host default Agent 
     consent.getByText('Recover this plugin?', { exact: true }),
   ).toBeVisible();
   await page.screenshot({
-    path: join(recoveryEvidenceRoot, 'recovery-consent-390.png'),
+    path: testInfo.outputPath('recovery-consent-390.png'),
     animations: 'disabled',
   });
+  copyFileSync(
+    testInfo.outputPath('recovery-consent-390.png'),
+    join(recoveryEvidenceRoot, 'recovery-consent-390.png'),
+  );
   const recoveredResponse = page.waitForResponse(
     (candidate) =>
       candidate.request().method() === 'POST' &&
@@ -239,14 +251,22 @@ test('retained plugin recovers through responsive UI and its host default Agent 
       .getByRole('button', { name: 'Remove', exact: true }),
   ).toBeVisible();
   await page.screenshot({
-    path: join(recoveryEvidenceRoot, 'recovery-ready-390.png'),
+    path: testInfo.outputPath('recovery-ready-390.png'),
     animations: 'disabled',
   });
+  copyFileSync(
+    testInfo.outputPath('recovery-ready-390.png'),
+    join(recoveryEvidenceRoot, 'recovery-ready-390.png'),
+  );
   await observer.setViewportSize({ width: 1280, height: 900 });
   await observer.screenshot({
-    path: join(recoveryEvidenceRoot, 'recovery-ready-1280.png'),
+    path: testInfo.outputPath('recovery-ready-1280.png'),
     animations: 'disabled',
   });
+  copyFileSync(
+    testInfo.outputPath('recovery-ready-1280.png'),
+    join(recoveryEvidenceRoot, 'recovery-ready-1280.png'),
+  );
   await observer.close();
   writeFileSync(
     join(recoveryEvidenceRoot, 'recovery-receipt.json'),
