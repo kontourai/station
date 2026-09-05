@@ -1031,6 +1031,11 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     replaceTerminalListener(runtime);
     const peer = new EventStore(getOrchestrationDatabasePath(home));
     const internal = runtime as any;
+    await internal.configLoader.mutateAppConfig(() => ({
+      registryTrust: { profiles: [] },
+    }));
+    const policyDecisions = peer.createRegistryTrustPolicyDecisions();
+    expect(policyDecisions.read()).toBeNull();
     const capture = internal.captureAgentConfigurationRevisions.bind(runtime);
     let count = 0;
     const captureSpy = vi
@@ -1056,12 +1061,14 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       );
       expect(captureSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
       expect(ready).not.toHaveBeenCalled();
+      expect(policyDecisions.read()).toBeNull();
       expect(internal.getStableAgentConfigurationRevision()).toBeNull();
       await expect(runtime.initialize()).resolves.toBeUndefined();
       // Startup may already have queued a normal configuration notification.
       // Observe its owning queue rather than treating in-flight work as ready.
       await internal.agentConfigurationMutationQueue;
       expect(internal.getStableAgentConfigurationRevision()).not.toBeNull();
+      expect(policyDecisions.read()?.identity.configured).toBe(true);
     } finally {
       captureSpy.mockRestore();
       ready.mockRestore();

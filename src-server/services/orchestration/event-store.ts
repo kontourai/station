@@ -126,6 +126,11 @@ import {
   type PackageMcpAdmissionJournal,
 } from '../plugins/package-mcp-admission.js';
 import {
+  createRegistryTrustPolicyDecisions as composeRegistryTrustPolicyDecisions,
+  REGISTRY_TRUST_POLICY_SCHEMA,
+  type RegistryTrustPolicyDecisions,
+} from '../plugins/registry-trust-policy.js';
+import {
   createIsolatedTranscriptReads,
   type IsolatedTranscriptReads,
 } from '../search/isolated-transcript-search.js';
@@ -1500,6 +1505,7 @@ export class EventStore {
   private transcriptReadClose?: Promise<unknown>;
   private storeClosed = false;
   private packageMcpAdmissionJournal?: PackageMcpAdmissionJournal;
+  private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
 
   constructor(
     dbPath: string,
@@ -1635,6 +1641,7 @@ export class EventStore {
     try {
       this.db.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
       this.db.exec(PACKAGE_MCP_ADMISSION_SCHEMA);
+      this.db.exec(REGISTRY_TRUST_POLICY_SCHEMA);
       this.db
         .prepare(
           'INSERT OR IGNORE INTO package_mcp_admission_journal(singleton, journal_id, state_json) VALUES (1, ?, ?)',
@@ -7736,6 +7743,15 @@ export class EventStore {
         this.adoptionReservesProviderCursor(provider, providerResumeCursor),
     };
     return createAdoptionLedger({ coordinator });
+  }
+
+  createRegistryTrustPolicyDecisions(): RegistryTrustPolicyDecisions {
+    if (this.messageSearchBackfillClosed)
+      throw new Error('Registry policy decision owner is closing');
+    this.registryTrustPolicyDecisions ??= composeRegistryTrustPolicyDecisions(
+      this.db,
+    );
+    return this.registryTrustPolicyDecisions;
   }
 
   /** Same already-open home store; package callers never open another SQLite path. */

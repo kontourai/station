@@ -257,7 +257,7 @@
         },
         "connectionIds": {
           "type": "array",
-          "description": "Ids of the local model connections offered to the fleet. Explicit allowlist — never 'all local connections'.",
+          "description": "Ids of the local model connections offered to the fleet. Explicit allowlist \u2014 never 'all local connections'.",
           "items": {
             "type": "string"
           }
@@ -267,7 +267,7 @@
     },
     "contribution": {
       "type": "object",
-      "description": "What this Station offers per space (station#1500), keyed by scope key (\"project:<projectId>\"). Default off: absent, disabled, or empty allowlists all offer nothing. The \"fleet\" scope is NOT configured here — its one writable home is the fleetContribution setting. Key shape is deliberately NOT constrained here: this schema is validated on the config LOAD path (src-server/domain/config-loader-app.ts), so a pattern would turn a key written by a NEWER Station (a future \"channel:...\" scope) into an unloadable config after a downgrade — converting the graceful degradation parseContributionScopeKey exists to provide into a hard failure. PUT /config/app refuses an unusable key at the write, where the operator is present.",
+      "description": "What this Station offers per space (station#1500), keyed by scope key (\"project:<projectId>\"). Default off: absent, disabled, or empty allowlists all offer nothing. The \"fleet\" scope is NOT configured here \u2014 its one writable home is the fleetContribution setting. Key shape is deliberately NOT constrained here: this schema is validated on the config LOAD path (src-server/domain/config-loader-app.ts), so a pattern would turn a key written by a NEWER Station (a future \"channel:...\" scope) into an unloadable config after a downgrade \u2014 converting the graceful degradation parseContributionScopeKey exists to provide into a hard failure. PUT /config/app refuses an unusable key at the write, where the operator is present.",
       "additionalProperties": {
         "type": "object",
         "properties": {
@@ -277,7 +277,7 @@
           },
           "execution": {
             "type": "object",
-            "description": "Repo resource ids this Station offers to run work in. Explicit allowlist — never 'every repo I have checked out'.",
+            "description": "Repo resource ids this Station offers to run work in. Explicit allowlist \u2014 never 'every repo I have checked out'.",
             "properties": {
               "repoIds": {
                 "type": "array",
@@ -328,8 +328,12 @@
           "type": "string",
           "enum": ["pending", "skipped", "completed"]
         },
-        "completedAt": { "type": "string" },
-        "skippedAt": { "type": "string" }
+        "completedAt": {
+          "type": "string"
+        },
+        "skippedAt": {
+          "type": "string"
+        }
       }
     },
     "userProfile": {
@@ -344,6 +348,41 @@
         "comfort": {
           "type": "string",
           "enum": ["new-to-this", "comfortable", "expert"]
+        }
+      }
+    },
+    "registryTrust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profiles"],
+      "properties": {
+        "profiles": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["registryKey", "signatures", "trustedEd25519Keys"],
+            "properties": {
+              "registryKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "signatures": {
+                "enum": ["optional", "required"]
+              },
+              "trustedEd25519Keys": {
+                "type": "object",
+                "maxProperties": 16,
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16384
+                }
+              }
+            }
+          }
         }
       }
     }

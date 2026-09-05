@@ -68,6 +68,17 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) | Dispatch a task while keeping graph state and orchestration detail local. | `src-server/services/projects/task-dispatcher.ts` |
 | [StationInstanceReconciler](#stationinstancereconciler) | Observe and converge one installed Station instance safely. | `packages/cli/src/commands/station-instance-reconciler.ts` |
 
+## Registry trust policy decisions
+
+`registry-trust-policy.ts` owns bounded policy identity and EventStore CAS decision
+publication. `registryTrust` in AppConfig is only candidate configuration; the
+existing applied startup/reload owner publishes its epoch after successful
+configuration construction and rechecks the candidate under the existing mutation
+authority. Observations use `observeAppConfigFile` without initialization or
+migration. The journal stores SPKI fingerprints, not PEM keys. The implementation
+and remaining acquisition/admission wiring are described in
+[Applied registry trust policy](../design/registry-trust-policy.md).
+
 ## AgentPluginLoader
 
 **Intent and Interface.** `AgentPluginLoader` selects only locally vendored

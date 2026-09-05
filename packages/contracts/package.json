@@ -163,7 +163,8 @@
     "./workspace-evidence-panels": "./src/workspace-evidence-panels.ts",
     "./workspace-file-preview": "./src/workspace-file-preview.ts",
     "./workspace-isolation": "./src/workspace-isolation.ts",
-    "./cloud-move": "./src/cloud-move.ts"
+    "./cloud-move": "./src/cloud-move.ts",
+    "./registry-trust": "./src/registry-trust.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",

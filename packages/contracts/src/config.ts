@@ -2,6 +2,7 @@ import type { EngineConnectionId } from './agent-identity.js';
 import type { ContributionConfig } from './contribution.js';
 import type { DistributionProfileSelection } from './distribution.js';
 import type { FleetContributionConfig } from './fleet-contribution.js';
+import type { RegistryTrustConfiguration } from './registry-trust.js';
 import type { AgentConnectionSettings } from './tool.js';
 import type { UserProfileSettings } from './user-profile.js';
 
@@ -27,6 +28,7 @@ export interface AppConfig {
   /** Default on, but nothing is sent unless an endpoint is configured. */
   telemetryEnabled?: boolean;
   registryUrl?: string;
+  registryTrust?: RegistryTrustConfiguration;
   gitRemote?: string;
   defaultLLMProvider?: string;
   defaultEmbeddingProvider?: string;

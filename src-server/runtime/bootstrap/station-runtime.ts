@@ -8,6 +8,10 @@ import {
 } from '../../services/plugins/plugin-activation-composition.js';
 import { createLocalPluginInstallationHost } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import {
+  createLocalRegistryTrustPolicyAuthority,
+  type RegistryTrustPolicyAuthority,
+} from '../../services/plugins/registry-trust-policy.js';
 /**
  * VoltAgent runtime integration for Station
  * Handles dynamic agent loading, switching, and MCP tool management
@@ -727,6 +731,7 @@ export class StationRuntime {
   private attachedSessionFollowService?: AttachedSessionFollowService;
   private consoleBridgeService?: ConsoleBridgeService;
   private orchestrationEventStore: EventStore;
+  private registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   /**
    * The store `startStoreIntegrityVerification` verifies on a schedule. Held
    * because the constructor's own derivation is a local, and re-deriving it at
@@ -944,6 +949,11 @@ export class StationRuntime {
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
       );
+      this.registryTrustPolicyAuthority =
+        createLocalRegistryTrustPolicyAuthority(
+          projectHomeDir,
+          this.orchestrationEventStore.createRegistryTrustPolicyDecisions(),
+        );
       this.pluginInstallationHost =
         options.pluginInstallationHost ??
         createLocalPluginInstallationHost(
@@ -2082,6 +2092,8 @@ export class StationRuntime {
   ): Promise<void> {
     const configurationBefore =
       this.captureAgentConfigurationRevisions(composition);
+    const registryPolicyApplication =
+      await this.registryTrustPolicyAuthority?.captureApplication();
     this.loadedProviderLaunchabilityRevision = null;
     this.loadedAppConfigLaunchabilityRevision = null;
     const preparationState: RuntimeAgentPreparationState = {
@@ -2218,6 +2230,11 @@ export class StationRuntime {
     this.appConfig = appConfig;
     this.usageTelemetry?.reconfigure(appConfig);
     applyConfiguredLogLevel(appConfig.logLevel, this.logger);
+    if (registryPolicyApplication)
+      await this.registryTrustPolicyAuthority!.publishApplied(
+        registryPolicyApplication,
+        appConfig.registryTrust,
+      );
     this.recordLoadedConfigurationRevisions(configurationBefore);
   }
 
@@ -3058,6 +3075,7 @@ export class StationRuntime {
           reloadAgents: async () => this.reloadAgents(),
           captureAgentConfigurationRevisions: () =>
             this.captureAgentConfigurationRevisions(),
+          registryTrustPolicyAuthority: this.registryTrustPolicyAuthority,
           onAgentConfigurationReady: (revisions) =>
             this.recordLoadedConfigurationRevisions(revisions),
           guardDefaultAgentTools: (tools) => this.guardDefaultAgentTools(tools),
