@@ -729,9 +729,11 @@ opaque installation identity, never physical artifact paths.
 `workspace-pane-host-actions.ts` routes are composed with the same request
 principal and session read authority as foreground chat. SDK queries/mutations
 own HTTP and React Query behavior. `WorkspacePaneHostActionsFrame` composes one
-bar around direct and placed Project surfaces; `LayoutView` suppresses duplicate
-legacy global actions when that exact installed package declares a host
-contribution. Persisted Layout data is unchanged. Native Agents use the existing runtime instance under a configuration lease, with a private relay companion that is never serialized as Agent data. Native execution location has a separate private ALS/cleanup scope, so ordinary later turns and child Sessions retain the persisted directory even when optional output-declaration grants are unavailable. Canonical Git path/branch and Session-derived ownership checks mint an opaque exact start binding for a retained worktree; public metadata cannot supply that capability. The directory reaches Project context, per-invocation Bash children, and relative file operations. Known worktree Sessions require their private relay marker, and closed scopes refuse late tool entry. Explicit MCP resource roots retain their configured meaning; this is execution location, not a universal filesystem sandbox. Non-plugin Agent execution remains unavailable. Tests cover
+bar around direct and placed Project surfaces. `LayoutView` never launches
+plugin-owned actions through the unqualified chat path: safe installed legacy
+declarations reuse captured host admission, while saved or unsupported controls
+are review-only with an explanation. Non-plugin user-authored actions retain
+their explicit Agent launch. Persisted Layout data is unchanged. Native Agents use the existing runtime instance under a configuration lease, with a private relay companion that is never serialized as Agent data. Native execution location has a separate private ALS/cleanup scope, so ordinary later turns and child Sessions retain the persisted directory even when optional output-declaration grants are unavailable. Canonical Git path/branch and Session-derived ownership checks mint an opaque exact start binding for a retained worktree; public metadata cannot supply that capability. The directory reaches Project context, per-invocation Bash children, and relative file operations. Known worktree Sessions require their private relay marker, and closed scopes refuse late tool entry. Explicit MCP resource roots retain their configured meaning; this is execution location, not a universal filesystem sandbox. Non-plugin Agent execution remains unavailable. Tests cover
 actor/Project isolation, duplicate delivery, final permission withdrawal, stale
 installation/Agent identity, fixed bindings, public response certainty, and the
 real host control surface.

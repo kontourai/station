@@ -185,6 +185,52 @@ async function ticket(input = request()) {
   return prepared.ticket;
 }
 
+async function legacyRequest() {
+  const root = join(home, 'plugins', pluginId);
+  const manifest = JSON.parse(readFileSync(join(root, 'plugin.json'), 'utf8'));
+  delete manifest.workspacePaneHost;
+  manifest.layout = { slug: 'legacy', source: './layout.json' };
+  writeFileSync(join(root, 'plugin.json'), JSON.stringify(manifest));
+  writeFileSync(
+    join(root, 'layout.json'),
+    JSON.stringify({
+      availableAgents: [`${pluginId}:assistant`],
+      defaultAgent: `${pluginId}:assistant`,
+      globalSkills: [
+        {
+          id: 'safe-skill',
+          label: 'Legacy label is not the prompt',
+          prompt: 'Exact legacy Skill prompt.',
+        },
+      ],
+    }),
+  );
+  await grantPermissions(home, pluginId, ['agents.invoke']);
+  const projection = (await service.catalog('one')).contributions[0]!
+    .projection;
+  return { ...projection.owner, actionKey: projection.actions[0]!.key };
+}
+
+test('safe legacy declarations use the same captured action admission and exact authored body', async () => {
+  const prepared = await ticket(Promise.resolve(await legacyRequest()));
+  expect((await service.execute(actor, 'one', prepared)).state).toBe(
+    'accepted',
+  );
+  expect(provider).toHaveBeenCalledWith(
+    'assistant',
+    'Exact legacy Skill prompt.',
+  );
+});
+
+test('uninstall after a legacy catalog and preparation cannot launch the saved action', async () => {
+  const prepared = await ticket(Promise.resolve(await legacyRequest()));
+  rmSync(join(home, 'plugins', pluginId), { recursive: true, force: true });
+  expect((await service.execute(actor, 'one', prepared)).state).toBe(
+    'unavailable',
+  );
+  expect(provider).not.toHaveBeenCalled();
+});
+
 test('invalid Station namespace does not claim known absence of host actions', async () => {
   writeFileSync(
     join(home, 'plugins', pluginId, 'plugin.json'),

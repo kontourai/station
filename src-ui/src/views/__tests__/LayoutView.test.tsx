@@ -10,6 +10,12 @@ const layoutQueryState = vi.hoisted(() => ({
   isLoading: false,
   error: undefined as unknown,
 }));
+const agentState = vi.hoisted(() => ({
+  agents: [] as any[],
+  project: { data: undefined as any, isSuccess: false },
+}));
+const legacyCreate = vi.hoisted(() => vi.fn(() => 'legacy-session'));
+const legacySend = vi.hoisted(() => vi.fn(async () => {}));
 const refetchLayoutMock = vi.hoisted(() => vi.fn());
 const navigateMock = vi.hoisted(() => vi.fn());
 const hostQuery = vi.hoisted(() => ({
@@ -55,7 +61,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     ...layoutQueryState,
     refetch: refetchLayoutMock,
   }),
-  useProjectQuery: () => ({ data: undefined, isSuccess: false }),
+  useProjectQuery: () => agentState.project,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -63,7 +69,9 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 
-vi.mock('../../contexts/AgentsContext', () => ({ useAgents: () => [] }));
+vi.mock('../../contexts/AgentsContext', () => ({
+  useAgents: () => agentState.agents,
+}));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3000' }),
   useHostRequestAuthorityScope: () => ({
@@ -85,8 +93,8 @@ vi.mock('../../core/SDKAdapter', () => ({
   SDKAdapter: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock('../../hooks/useActiveChatSessions', () => ({
-  useCreateChatSession: () => vi.fn(),
-  useSendMessage: () => vi.fn(),
+  useCreateChatSession: () => legacyCreate,
+  useSendMessage: () => legacySend,
 }));
 vi.mock('../../hooks/useSlashCommandHandler', () => ({
   useSlashCommandHandler: () => vi.fn(),
@@ -116,6 +124,10 @@ import { LayoutView } from '../LayoutView';
 describe('LayoutView terminal states (4-HOME-009)', () => {
   beforeEach(() => {
     localStorage.clear();
+    agentState.agents = [];
+    agentState.project = { data: undefined, isSuccess: false };
+    legacyCreate.mockClear();
+    legacySend.mockClear();
     navigateMock.mockReset();
     refetchLayoutMock.mockReset();
     layoutQueryState.data = undefined;
@@ -146,7 +158,9 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     render(<LayoutView projectSlug="one" layoutSlug="demo" />);
     expect(renderedLayout.value.actions).toEqual([]);
     expect(renderedLayout.value.globalSkills).toEqual([]);
-    expect(renderedLayout.value.tabs[0].actions).toEqual([local]);
+    expect(renderedLayout.value.tabs[0].actions).toEqual([
+      { ...local, label: 'Review Local' },
+    ]);
   });
 
   test('migrated tab Review focuses the existing host action without an ambient Agent', () => {
@@ -169,6 +183,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     render(
       <>
         <button
+          type="button"
           id={workspacePaneHostActionControlId(
             'one',
             'demo-plugin',
@@ -178,6 +193,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
           Log Activity
         </button>
         <button
+          type="button"
           onClick={() =>
             renderedLayout.launch({
               id: 'demo-plugin:activity',
@@ -197,6 +213,96 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
       screen.getByRole('button', { name: 'Log Activity' }),
     );
     expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  test('uninstall after a catalog cannot revive a stale plugin callback and explains the unavailable action', async () => {
+    agentState.agents = [{ slug: 'assistant', name: 'Available assistant' }];
+    agentState.project = { data: { agents: ['assistant'] }, isSuccess: true };
+    layoutQueryState.data = {
+      slug: 'demo',
+      name: 'Demo',
+      config: {
+        plugin: 'demo-plugin',
+        defaultAgent: 'assistant',
+        actions: [
+          {
+            type: 'inline-prompt',
+            label: 'Legacy action',
+            data: 'legacy body',
+          },
+        ],
+        tabs: [],
+      },
+    };
+    hostQuery.data.contributions = [
+      {
+        projection: {
+          owner: { pluginId: 'demo-plugin' },
+          actions: [{ id: 'current' }],
+        },
+      },
+    ];
+    const view = render(<LayoutView projectSlug="one" layoutSlug="demo" />);
+    const stale = renderedLayout.launch;
+    hostQuery.data.contributions = [];
+    view.rerender(<LayoutView projectSlug="one" layoutSlug="demo" />);
+    render(
+      <button
+        type="button"
+        onClick={() =>
+          stale({
+            id: 'legacy-action',
+            label: 'Legacy action',
+            prompt: 'legacy body',
+          })
+        }
+      >
+        Review saved action
+      </button>,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Review saved action' }),
+    );
+    expect(
+      await screen.findByText(/This saved plugin action is unavailable/),
+    ).toBeTruthy();
+    expect(renderedLayout.value.actions).toEqual([]);
+    expect(legacyCreate).not.toHaveBeenCalled();
+    expect(legacySend).not.toHaveBeenCalled();
+  });
+
+  test('genuinely user-authored non-plugin Layout actions retain their explicit Agent launch', async () => {
+    agentState.agents = [{ slug: 'assistant', name: 'Available assistant' }];
+    agentState.project = { data: { agents: ['assistant'] }, isSuccess: true };
+    layoutQueryState.data = {
+      slug: 'mine',
+      name: 'Mine',
+      config: {
+        defaultAgent: 'assistant',
+        actions: [
+          { type: 'inline-prompt', label: 'My action', data: 'my exact body' },
+        ],
+        tabs: [],
+      },
+    };
+    render(<LayoutView projectSlug="one" layoutSlug="mine" />);
+    await renderedLayout.launch({
+      id: 'my-action',
+      label: 'My action',
+      prompt: 'my exact body',
+    });
+    expect(legacyCreate).toHaveBeenCalledWith(
+      'assistant',
+      'Available assistant',
+      'My action',
+      'one',
+    );
+    expect(legacySend).toHaveBeenCalledWith(
+      'legacy-session',
+      'assistant',
+      undefined,
+      'my exact body',
+    );
   });
 
   test('unknown host capability does not briefly activate a persisted plugin global action', () => {

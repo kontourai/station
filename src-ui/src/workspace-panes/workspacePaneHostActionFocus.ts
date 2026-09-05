@@ -21,6 +21,8 @@ export function focusWorkspacePaneHostAction(
     control instanceof HTMLButtonElement && control.disabled
       ? control.closest('fieldset')
       : control;
-  target?.scrollIntoView?.({ block: 'nearest' });
-  target?.focus();
+  if (!target) return false;
+  target.scrollIntoView?.({ block: 'nearest' });
+  target.focus();
+  return true;
 }

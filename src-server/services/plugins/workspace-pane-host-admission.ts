@@ -22,6 +22,7 @@ import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
 import { captureLocalPluginInstallation } from './plugin-installation-local.js';
 import { parsePluginManifestDocumentWithFormat } from './plugin-manifest-loader.js';
 import type { CapturedPluginPermissionArtifact } from './plugin-permissions.js';
+import { migrateLegacyLayoutHostContribution } from './workspace-pane-host-contributions.js';
 
 /** Read the selected immutable artifact through its installation owner. */
 export function captureWorkspacePaneHostPackage(
@@ -35,7 +36,7 @@ export function captureWorkspacePaneHostPackage(
     : (() => {
         const root = resolveInstalledPluginRoot(pluginsDir, pluginId);
         // Legacy compatibility only: retained installations require journal authority.
-        if (!root || root.kind !== 'legacy') return null;
+        if (root?.kind !== 'legacy') return null;
         return {
           root,
           installation: null,
@@ -44,8 +45,7 @@ export function captureWorkspacePaneHostPackage(
             root.packageRoot,
         };
       })();
-  if (!captured || !captured.isCurrent())
-    throw new ForegroundInvocationUnavailableError();
+  if (!captured?.isCurrent()) throw new ForegroundInvocationUnavailableError();
   const pluginDir = captured.root.packageRoot;
   const manifestPath = join(pluginDir, 'plugin.json');
   const stat = lstatSync(manifestPath);
@@ -59,7 +59,23 @@ export function captureWorkspacePaneHostPackage(
   );
   if (parsed.stationExtension?.status === 'disabled')
     throw new ForegroundInvocationUnavailableError();
-  const manifest = parsed.manifest;
+  let manifest = parsed.manifest;
+  if (
+    parsed.format === 'legacy' &&
+    !manifest.workspacePaneHost &&
+    manifest.layout?.source
+  ) {
+    const layout = JSON.parse(
+      readRegularFileNoFollow(
+        pluginDir,
+        join(pluginDir, manifest.layout.source),
+        { maxBytes: 256 * 1024 },
+      ),
+    );
+    const migration = migrateLegacyLayoutHostContribution({ pluginId, layout });
+    if (migration.state === 'migrated')
+      manifest = { ...manifest, workspacePaneHost: migration.contribution };
+  }
   const digest = computePluginContentDigest(
     dirname(pluginDir),
     basename(pluginDir),

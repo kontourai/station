@@ -26,6 +26,7 @@ import {
 import { useSlashCommandHandler } from '../hooks/useSlashCommandHandler';
 import { LayoutRenderer } from '../layouts';
 import { focusWorkspacePaneHostAction } from '../workspace-panes/workspacePaneHostActionFocus';
+import './LayoutView.css';
 import {
   annotateUnavailableAgentLabel,
   type ProjectAgentFilterState,
@@ -91,15 +92,28 @@ export function LayoutView({
     enabled: Boolean(hostAuthority),
   });
   const packageId = layoutData?.config?.plugin;
-  // The host bar owns declared package-global actions. Keep unknown capability
-  // reads inactive instead of briefly activating a stale persisted legacy path.
-  const hostOwnsGlobalActions =
-    typeof packageId === 'string' &&
-    (!hostActions.isSuccess ||
-      !hostActions.data.complete ||
-      hostActions.data.contributions.some(
-        ({ projection }) => projection.owner.pluginId === packageId,
-      ));
+  // Plugin-owned launches always belong to captured server admission. A
+  // catalog is display evidence, never permission to revive saved actions.
+  const hostOwnsGlobalActions = typeof packageId === 'string';
+  const noticeScope = JSON.stringify([packageId, projectSlug, layoutSlug]);
+  const [pluginActionNotice, setPluginActionNotice] = useState<{
+    scope: string;
+    message: string;
+  }>();
+  const hasSavedPluginGlobals =
+    hostOwnsGlobalActions &&
+    Boolean(
+      layoutData?.config?.actions?.length ||
+        layoutData?.config?.globalSkills?.length,
+    );
+  const notice = hostOwnsGlobalActions
+    ? ((pluginActionNotice?.scope === noticeScope
+        ? pluginActionNotice.message
+        : undefined) ??
+      (hasSavedPluginGlobals
+        ? 'Run supported plugin actions from the workspace action bar. Other saved actions are unavailable until the plugin is updated.'
+        : undefined))
+    : undefined;
   const projectAgentFilterAgents = projectConfig?.agents;
   const projectAgentFilter: ProjectAgentFilterState = useMemo(
     () =>
@@ -125,6 +139,17 @@ export function LayoutView({
       projectAgentFilter,
     );
 
+  const reviewPluginAction = <T extends { label: string }>(item: T): T =>
+    hostOwnsGlobalActions
+      ? {
+          ...item,
+          type: 'prompt',
+          label: item.label.startsWith('Review ')
+            ? item.label
+            : `Review ${item.label}`,
+        }
+      : item;
+
   // Map LayoutConfig → workspace shape
   const layout = layoutData
     ? {
@@ -138,8 +163,12 @@ export function LayoutView({
           component: t.component,
           icon: t.icon,
           description: t.description,
-          actions: (t.actions ?? []).map(annotateAgentRef),
-          skills: (t.skills ?? []).map(annotateAgentRef),
+          actions: (t.actions ?? [])
+            .map(annotateAgentRef)
+            .map(reviewPluginAction),
+          skills: (t.skills ?? [])
+            .map(annotateAgentRef)
+            .map(reviewPluginAction),
         })),
         globalSkills: (hostOwnsGlobalActions
           ? []
@@ -207,25 +236,30 @@ export function LayoutView({
 
   const handleLaunchPrompt = useCallback(
     async (prompt: any) => {
-      // Migrated tab links review the single host control. Labels/bodies never
-      // become a second launch route or an unqualified Agent fallback.
-      if (
-        hostOwnsGlobalActions &&
-        typeof packageId === 'string' &&
-        typeof prompt.id === 'string' &&
-        prompt.id.startsWith(`${packageId}:`)
-      ) {
-        const actionId = prompt.id.slice(packageId.length + 1);
+      // Even a stale renderer callback cannot select an unqualified Agent
+      // after uninstall, withdrawal, or a catalog/SSE race.
+      if (typeof packageId === 'string') {
+        const actionId =
+          typeof prompt.id === 'string' && prompt.id.startsWith(`${packageId}:`)
+            ? prompt.id.slice(packageId.length + 1)
+            : undefined;
         const contribution = hostActions.data?.contributions.find(
           ({ projection }) => projection.owner.pluginId === packageId,
         );
         if (
+          actionId &&
           hostAuthority?.isCurrent() &&
           contribution?.projection.actions.some(
             (action) => action.id === actionId,
-          )
+          ) &&
+          focusWorkspacePaneHostAction(projectSlug, packageId, actionId)
         )
-          focusWorkspacePaneHostAction(projectSlug, packageId, actionId);
+          return;
+        setPluginActionNotice({
+          scope: noticeScope,
+          message:
+            'This saved plugin action is unavailable. Use a supported workspace action, or update or reinstall the plugin.',
+        });
         return;
       }
       // Never a silent launch (archive#1004): resolves only
@@ -257,8 +291,8 @@ export function LayoutView({
       await sendMessage(sessionId, targetAgent.slug, undefined, promptText);
     },
     [
-      hostOwnsGlobalActions,
       packageId,
+      noticeScope,
       hostActions.data,
       hostAuthority,
       agents,
@@ -372,6 +406,11 @@ export function LayoutView({
         activeTabId={activeTabId}
         layoutSlug={layout?.slug}
       >
+        {notice ? (
+          <p className="layout-action-notice" role="status">
+            {notice}
+          </p>
+        ) : null}
         <LayoutRenderer
           layout={layout}
           activeTab={activeTabObject}

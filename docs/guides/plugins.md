@@ -1396,6 +1396,15 @@ shape with the same contribution parser used by legacy manifests. Registered
 prompt actions read the normalized namespace's `prompts.source`; unknown
 portable root fields never supply fallback actions or Agents.
 
+Legacy plugin Layout actions never launch through an unqualified Agent fallback.
+Station can project unambiguous `inline-prompt` and `globalSkills` declarations
+from the installed artifact into the same captured host admission path, with an
+explicit available/default Agent and the current invocation permission. Ambiguous
+`prompt` declarations and unsupported action kinds remain review-only until the
+plugin is updated. Saved plugin Layout controls cannot revive execution after
+uninstall or a stale catalog response. User-authored Layouts without a plugin
+owner retain their explicit Agent actions.
+
 The five examples above retain their legacy manifest format because their
 structural Layout declarations have not yet been mapped. The remaining
 [example migration](https://github.com/kontourai/station/issues/265) work is specific; the related [authoring-default decision](https://github.com/kontourai/station/issues/346) supplies its authoring context:
