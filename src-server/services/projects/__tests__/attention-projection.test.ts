@@ -92,6 +92,12 @@ function makeService(opts: {
   getUserId?: () => string;
   /** #765 D5: the pairing service's current request list. */
   pairingRequests?: unknown[];
+  /** #1536 D8: what stands between Station's own Agent and running. */
+  stationSetupRequirement?: {
+    agentSlug: string;
+    agentName: string;
+    reason: string;
+  } | null;
 }) {
   const {
     notifications = [],
@@ -104,6 +110,7 @@ function makeService(opts: {
     acknowledgementStore,
     getUserId,
     pairingRequests,
+    stationSetupRequirement,
   } = opts;
   // Production receives a complete registry dependency. Keep older fixtures
   // terse while supplying its harmless personal-mode default explicitly.
@@ -140,6 +147,9 @@ function makeService(opts: {
     pairingRequests
       ? () => ({ listRequests: () => pairingRequests as never })
       : undefined,
+    stationSetupRequirement === undefined
+      ? undefined
+      : async () => stationSetupRequirement,
   );
 }
 
@@ -2501,5 +2511,72 @@ describe('device pairing requests need attention (#765 D5)', () => {
         acknowledgedAt: expect.any(String),
       }),
     ]);
+  });
+});
+
+/**
+ * #1536 D8. The inbox read "All caught up · Nothing needs you right now" on
+ * a fresh home whose New Chat picker, one surface away, marked the Station
+ * row "Needs: No enabled LLM provider connection is configured."
+ */
+describe('Station cannot run its own Agent (#1536 D8)', () => {
+  const requirement = {
+    agentSlug: 'station',
+    agentName: 'Station',
+    reason: 'No enabled LLM provider connection is configured.',
+  };
+
+  test("projects the requirement, in the picker's own sentence", async () => {
+    const service = makeService({ stationSetupRequirement: requirement });
+
+    const result = await service.list();
+
+    expect(result.pendingCount).toBe(1);
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'setup-incomplete:model-connection:station',
+        kind: 'setup-incomplete',
+        title: 'Station cannot run yet',
+        body: 'No enabled LLM provider connection is configured.',
+        openHref: '/connections/models',
+        source: { requirement: 'model-connection', agentSlug: 'station' },
+      }),
+    ]);
+  });
+
+  test('projects nothing once the Agent resolves', async () => {
+    const service = makeService({ stationSetupRequirement: null });
+
+    await expect(service.list()).resolves.toEqual({
+      items: [],
+      pendingCount: 0,
+    });
+  });
+
+  test('is unavailable, not assumed, when no resolver is wired', async () => {
+    const service = makeService({});
+
+    await expect(service.list()).resolves.toEqual({
+      items: [],
+      pendingCount: 0,
+    });
+  });
+
+  test('host model configuration is not projected to a hosted tenant read', async () => {
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [{ id: 'alpha', authority: 'alpha.example.test' }],
+    });
+    const service = makeService({ stationSetupRequirement: requirement });
+
+    const result = await service.list(
+      sessionReadAuthorityFromRequest(
+        'alpha',
+        { tenantId: registry.tenants[0].id },
+        registry,
+      ),
+    );
+
+    expect(result.items).toEqual([]);
   });
 });

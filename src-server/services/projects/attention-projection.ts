@@ -4,6 +4,7 @@ import type {
   AttentionProjection,
   DevicePairingAttentionItem,
   SessionFailedAttentionItem,
+  SetupIncompleteAttentionItem,
 } from '@kontourai/station-contracts/attention';
 import type { DevicePairingRequest } from '@kontourai/station-contracts/environment-security';
 import type { Notification } from '@kontourai/station-contracts/notification';
@@ -135,6 +136,24 @@ export class AttentionProjectionService {
     private readonly resolvePairingRequests?: () => {
       listRequests(): DevicePairingRequest[];
     } | null,
+    /**
+     * #1536 D8: whether Station's own Agent can run right now, and why not.
+     *
+     * Deliberately injected rather than derived here: the answer is
+     * `resolveManagedAvailabilityReason` over the LIVE app config and provider
+     * connections — the same call the New Chat picker's Station row and the
+     * chat route's 409 already make — and a projection that re-derived it from
+     * its own read of the connections would be a second rule with a delay on
+     * it. The caller hands back `null` when the Agent resolves, or the
+     * requirement's own sentence when it does not. Optional so every existing
+     * caller/test keeps compiling with setup attention simply unavailable.
+     */
+    private readonly readStationSetupRequirement?: () => Promise<{
+      agentSlug: string;
+      /** The Agent's own display name, so the row is not a slug (#3139). */
+      agentName: string;
+      reason: string;
+    } | null>,
   ) {}
 
   /**
@@ -258,11 +277,14 @@ export class AttentionProjectionService {
       viewer?.mayDecidePairingRequests ?? false,
     );
 
+    const setupItems = await this.projectSetupRequirement(readAuthority);
+
     const undecorated = [
       ...approvals,
       ...lifecycle,
       ...gateItems,
       ...pairingItems,
+      ...setupItems,
     ];
     const decorated = this.acknowledgementStore
       ? undecorated.map((item) =>
@@ -742,6 +764,44 @@ export class AttentionProjectionService {
    * with the host — the same posture the session-less-notification filter in
    * `list()` takes for hosted reads.
    */
+  /**
+   * #1536 D8: Station's own Agent cannot run — no model connection resolves
+   * for it, so every chat that would use the managed engine refuses. The
+   * inbox used to read "Nothing needs you right now" in exactly that state.
+   *
+   * The fact is the injected resolver's, not this projection's; all that
+   * happens here is turning it into an item. Hosted reads project nothing,
+   * the same posture device pairing takes: host model configuration is not a
+   * tenant-scoped fact, and a tenant read has no standing to be told to go
+   * fix it.
+   */
+  private async projectSetupRequirement(
+    authority: SessionReadAuthority,
+  ): Promise<SetupIncompleteAttentionItem[]> {
+    if (!this.readStationSetupRequirement) return [];
+    if (isHostedSessionReadAuthority(authority)) return [];
+    const requirement = await this.readStationSetupRequirement();
+    if (!requirement) return [];
+    // The observation time, because the requirement is continuously observed
+    // and carries no event of its own; it stops projecting when it resolves.
+    const observedAt = new Date().toISOString();
+    return [
+      {
+        id: `setup-incomplete:model-connection:${requirement.agentSlug}`,
+        kind: 'setup-incomplete',
+        title: `${requirement.agentName} cannot run yet`,
+        body: requirement.reason,
+        createdAt: observedAt,
+        updatedAt: observedAt,
+        source: {
+          requirement: 'model-connection',
+          agentSlug: requirement.agentSlug,
+        },
+        openHref: '/connections/models',
+      },
+    ];
+  }
+
   private projectDevicePairingItems(
     authority: SessionReadAuthority,
     activeNotifications: Notification[],

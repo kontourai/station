@@ -239,8 +239,38 @@ export interface DevicePairingAttentionItem extends AttentionItemBase {
   openHref: string;
 }
 
+/**
+ * Station's own Agent cannot run at all — the managed engine resolves no model
+ * connection (#1536 D8).
+ *
+ * Notifications said "All caught up · Nothing needs you right now" on a fresh
+ * home whose New Chat picker, one surface away, marked the Station row
+ * "Needs: No enabled LLM provider connection is configured." Both were reading
+ * real state; only one of them was reading THIS state, because nothing
+ * projected it. `body` is that same sentence, from the same derivation
+ * (`resolveManagedAvailabilityReason`) the picker's row renders — never a
+ * second wording of the same requirement.
+ *
+ * It is a live PRECONDITION rather than an event: it stops projecting the
+ * moment a connection resolves, so `createdAt`/`updatedAt` are the time the
+ * projection observed it, and the surfaces do not offer to dismiss it —
+ * acknowledging the only row that says why chat cannot start would leave the
+ * inbox claiming nothing needs you while the same thing still does.
+ */
+export interface SetupIncompleteAttentionItem extends AttentionItemBase {
+  kind: 'setup-incomplete';
+  source: {
+    /** What is missing. One member today; a discriminator, not a label. */
+    requirement: 'model-connection';
+    /** The Agent the requirement was evaluated for. */
+    agentSlug: string;
+  };
+  openHref: string;
+}
+
 export type AttentionItem =
   | ApprovalAttentionItem
+  | SetupIncompleteAttentionItem
   | NeedsInputAttentionItem
   | ReviewPendingAttentionItem
   | SessionFailedAttentionItem

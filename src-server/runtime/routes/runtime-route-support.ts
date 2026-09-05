@@ -24,9 +24,13 @@ import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-sch
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { DevicePairingNotificationProvider } from '../../services/ssh/device-pairing-notifications.js';
+import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
 import { runWithScheduledPrincipal } from '../agents/scheduled-principal-context.js';
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
-import { resolveManagedChatBinding } from '../plugins/runtime-provider-resolution.js';
+import {
+  resolveManagedAvailabilityReason,
+  resolveManagedChatBinding,
+} from '../plugins/runtime-provider-resolution.js';
 import type { ConfigureRuntimeRoutesContext } from './runtime-routes.js';
 
 const WEB_PUSH_FALLBACK_SUBJECT = 'mailto:push@station.local';
@@ -188,6 +192,50 @@ export function createRuntimeSystemRouteDeps(
     // readiness record that carries chat/runtime/acp.
     probeTerminalCapability: () => context.terminalService.probeCapability(),
   };
+}
+
+/**
+ * #1536 D8: the one thing standing between this Station and a working chat on
+ * its own engine, or `null` when nothing is.
+ *
+ * `resolveManagedAvailabilityReason` is the authority — the identical call the
+ * agents route makes for `available: false`/`unavailableReason` and the chat
+ * route makes for its 409 — so the attention item's body is the picker's
+ * sentence rather than a second wording of the same requirement. An agent
+ * bound to an EXTERNAL engine has no managed-model concept, so it is skipped:
+ * asking a model-resolution probe about Claude Code reports a working Agent as
+ * broken (the `deriveAgentCatalog` lesson).
+ */
+export async function readStationSetupRequirement(
+  context: ConfigureRuntimeRoutesContext,
+): Promise<{ agentSlug: string; agentName: string; reason: string } | null> {
+  try {
+    const agents = await context.agentService.listAgents();
+    const metadata =
+      agents.find((agent) => agent.slug === 'station') ?? agents[0];
+    if (!metadata) return null;
+    const spec = await context.agentService.getAgent(metadata.slug);
+    if (isExternalEngineBoundAgent(spec)) return null;
+    const reason = resolveManagedAvailabilityReason(spec, {
+      appConfig: context.getLiveAppConfig(),
+      listProviderConnections: () =>
+        context.providerService.listProviderConnections(),
+      gatedConnectionIds:
+        context.connectionService.checkGatedModelConnectionIds(),
+    });
+    if (!reason) return null;
+    return {
+      agentSlug: metadata.slug,
+      agentName: metadata.name ?? spec.name ?? metadata.slug,
+      reason,
+    };
+  } catch (error) {
+    // A read that could not answer is not a claim that setup is incomplete.
+    context.logger.warn('Station setup requirement probe failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 export function configureRuntimeSupportServices(
@@ -436,6 +484,13 @@ export function configureRuntimeSupportServices(
     // #765 D5: pending pairing requests project as needs-attention items,
     // from the same resolver the notification provider polls.
     resolveDevicePairing,
+    // #1536 D8: whether Station's own Agent can run, through the SAME
+    // derivation the New Chat picker's Station row and the chat route's 409
+    // use — live app config, live provider connections, live check-gated ids.
+    // An inbox that reads "Nothing needs you right now" while that row says
+    // "Needs: No enabled LLM provider connection is configured" is reading a
+    // fact nobody projected, not a quiet Station.
+    () => readStationSetupRequirement(context),
   );
   return {
     schedulerService,

@@ -82,7 +82,13 @@ export function AttentionCard({
         </time>
       </header>
       <AttentionAction item={item} />
-      {item.kind !== 'approval' && <DismissAttentionItem item={item} />}
+      {/* #1536 D8: `setup-incomplete` is a live precondition, not an event.
+          Acknowledging the only row that says why chat cannot start would
+          leave the inbox claiming nothing needs you while it still does; it
+          clears itself the moment a connection resolves. */}
+      {item.kind !== 'approval' && item.kind !== 'setup-incomplete' && (
+        <DismissAttentionItem item={item} />
+      )}
     </article>
   );
 }
@@ -133,6 +139,10 @@ function AttentionAction({ item }: { item: AttentionItem }) {
       return <GateExceptionAction item={item} />;
     case 'device-pairing':
       return <DevicePairingActions item={item} />;
+    // #1536 D8: the requirement's own route out. No secondary action —
+    // the item resolves by configuring a connection, not by answering here.
+    case 'setup-incomplete':
+      return <OpenModelConnectionsLink href={item.openHref} />;
   }
 }
 
@@ -663,6 +673,14 @@ function OpenFlowConsoleLink({ href }: { href: string }) {
   return (
     <a className="attention-open-link" href={href}>
       Open flow console
+    </a>
+  );
+}
+
+function OpenModelConnectionsLink({ href }: { href: string }) {
+  return (
+    <a className="attention-open-link" href={href}>
+      Open model connections
     </a>
   );
 }
