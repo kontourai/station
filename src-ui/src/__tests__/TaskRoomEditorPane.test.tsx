@@ -1,7 +1,13 @@
 /** @vitest-environment jsdom */
 
 import { toWorkspacePaneInstanceId } from '@kontourai/station-contracts/workspace-pane';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -23,13 +29,29 @@ const mocks = vi.hoisted(() => ({
   batch: vi.fn(),
   adoptCommitted: vi.fn(),
   refetchAuthoritative: vi.fn(),
-  queryClient: { setQueryData: vi.fn(), fetchQuery: vi.fn() },
+  queryClient: {
+    setQueryData: vi.fn(),
+    fetchQuery: vi.fn(),
+    getQueryData: vi.fn(),
+  },
   command: vi.fn(),
   stream: 'live' as 'live' | 'terminal',
+  documentListener: undefined as
+    | ((document: {
+        kind: 'snapshot' | 'delta';
+        revision: string;
+        text: string;
+      }) => void)
+    | undefined,
 }));
 
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   adoptCommittedProjectTaskRoomDocument: mocks.adoptCommitted,
+  projectTaskRoomQueries: {
+    document: (taskId: string) => ({
+      queryKey: ['task-room-document', taskId],
+    }),
+  },
   refetchAuthoritativeProjectTaskRoomDocument: mocks.refetchAuthoritative,
   useProjectTaskRoomDiscoveryQuery: () => mocks.discovery,
   useProjectTaskRoomDocumentQuery: () => mocks.document,
@@ -53,6 +75,15 @@ vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
     live: { panes: [], cursors: [] },
     command: mocks.command,
     commandPending: false,
+    subscribeDocument: (
+      listener: NonNullable<typeof mocks.documentListener>,
+    ) => {
+      mocks.documentListener = listener;
+      return () => {
+        if (mocks.documentListener === listener)
+          mocks.documentListener = undefined;
+      };
+    },
   }),
 }));
 
@@ -97,6 +128,9 @@ beforeEach(() => {
   mocks.document.isLoading = false;
   mocks.document.isFetching = false;
   mocks.document.isError = false;
+  mocks.queryClient.getQueryData
+    .mockReset()
+    .mockImplementation(() => mocks.document.data);
   mocks.document.refetch.mockReset();
   mocks.document.refetch.mockResolvedValue({ data: undefined });
   mocks.plan.mockReset();
@@ -116,6 +150,7 @@ beforeEach(() => {
   mocks.command.mockReset();
   mocks.command.mockResolvedValue({ kind: 'available' });
   mocks.stream = 'live';
+  mocks.documentListener = undefined;
 });
 
 describe('TaskRoomEditorPane', () => {
@@ -190,6 +225,120 @@ describe('TaskRoomEditorPane', () => {
       }),
     ]);
     unsubscribe();
+  });
+
+  test('commits a parsed stream document without waiting for query notification', async () => {
+    const marks: InteractiveWorkspacePerformanceProductMark[] = [];
+    const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks((event) =>
+      marks.push(event),
+    );
+    render(<TaskRoomEditorPane taskId="task-1" />);
+    await waitFor(() => expect(mocks.documentListener).toBeDefined());
+    marks.splice(0);
+
+    act(() =>
+      mocks.documentListener?.({
+        kind: 'delta',
+        revision: 'revision-stream',
+        text: 'stream applied',
+      }),
+    );
+
+    await waitFor(() =>
+      expect((editor() as HTMLTextAreaElement).value).toBe('stream applied'),
+    );
+    expect(mocks.document.data.revision).toBe('revision-1');
+    const relevant = marks.filter(
+      (event) =>
+        (event.kind === 'task-apply' || event.kind === 'task-commit') &&
+        event.mark.workingRevision === 'revision-stream',
+    );
+    expect(relevant.map((event) => event.kind)).toEqual([
+      'task-apply',
+      'task-commit',
+    ]);
+    unsubscribe();
+  });
+
+  test.each([
+    {
+      label: 'gap',
+      data: { kind: 'gap', floor: 'revision-stream' },
+      isError: false,
+      status: 'The shared document is stale. Resync before editing.',
+    },
+    {
+      label: 'unavailable',
+      data: { kind: 'unavailable' },
+      isError: false,
+      status: 'The shared document is unavailable. Editing is disabled.',
+    },
+    {
+      label: 'failed read',
+      data: {
+        kind: 'snapshot',
+        revision: 'revision-before-failure',
+        text: 'older query text',
+      },
+      isError: true,
+      status:
+        'The shared document could not be loaded. Editing is disabled until a successful resync.',
+    },
+  ])(
+    'keeps stream text visible but revokes edit/save authority after $label query truth',
+    async ({ data, isError, status }) => {
+      const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+      await waitFor(() => expect(mocks.documentListener).toBeDefined());
+      act(() =>
+        mocks.documentListener?.({
+          kind: 'delta',
+          revision: 'revision-stream',
+          text: 'stream applied',
+        }),
+      );
+      await waitFor(() =>
+        expect((editor() as HTMLTextAreaElement).value).toBe('stream applied'),
+      );
+      expect((editor() as HTMLTextAreaElement).readOnly).toBe(false);
+
+      mocks.document.data = data as never;
+      mocks.document.isError = isError;
+      rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+
+      expect((editor() as HTMLTextAreaElement).value).toBe('stream applied');
+      expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
+      expect(screen.getByText(status)).toBeTruthy();
+      const save = screen.getByRole('button', {
+        name: 'Save shared document',
+      });
+      expect(save.matches(':disabled')).toBe(true);
+      fireEvent.click(save);
+      expect(mocks.plan).not.toHaveBeenCalled();
+    },
+  );
+
+  test('does not submit an in-flight edit plan after document authority becomes a gap', async () => {
+    let finishPlan!: (value: ReturnType<typeof planned>) => void;
+    mocks.plan.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishPlan = resolve;
+        }),
+    );
+    const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+    changeDraft('pending gap draft');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save shared document' }),
+    );
+    await waitFor(() => expect(mocks.plan).toHaveBeenCalledOnce());
+    mocks.document.data = { kind: 'gap', floor: 'floor' } as never;
+    rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+    await act(async () => {
+      finishPlan(planned());
+    });
+    expect(mocks.batch).not.toHaveBeenCalled();
+    expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
+    expect((editor() as HTMLTextAreaElement).value).toBe('pending gap draft');
   });
 
   test('guards browser Back and keeps the draft on cancel before replaying on confirm', async () => {
@@ -827,5 +976,23 @@ describe('TaskRoomEditorPane', () => {
         .getByRole('button', { name: 'Save shared document' })
         .matches(':disabled'),
     ).toBe(true);
+  });
+
+  test('does not apply a query notification that arrives after stream revocation', async () => {
+    const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+    await waitFor(() =>
+      expect((editor() as HTMLTextAreaElement).value).toBe('shared base'),
+    );
+    mocks.stream = 'terminal';
+    rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+    mocks.document.data = {
+      kind: 'snapshot',
+      revision: 'revision-after-revocation',
+      text: 'must not apply',
+    };
+    rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+
+    expect((editor() as HTMLTextAreaElement).value).toBe('shared base');
+    expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
   });
 });

@@ -36,6 +36,12 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  parseHostedTenantRegistry,
+  sessionReadAuthorityFromRequest,
+  tenantId,
+} from '@kontourai/station-contracts/tenancy';
+import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { createStationHomeBackup } from '@kontourai/station-shared/station-home-archive';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -46,6 +52,7 @@ import {
   UnattendedGrantStore,
 } from '../../services/agents/unattended-grant-store.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../services/usage-telemetry-inventory.js';
 
 const TEST_PORT = 31_141;
@@ -861,6 +868,133 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       '127.0.0.1',
       expect.objectContaining({ verifyCredential: expect.any(Function) }),
     );
+  });
+
+  it('failed initialization blocks replacement while search retirement is pending, then a fresh hosted owner really reads', async () => {
+    home = await createSchemaHome('station-search-init-retry-');
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [{ id: tenantId('alpha'), authority: 'alpha.station.test' }],
+    });
+    const registryPath = join(home, 'hosted-tenants.json');
+    writeFileSync(
+      registryPath,
+      JSON.stringify({
+        schemaVersion: registry.schemaVersion,
+        tenants: registry.tenants,
+      }),
+    );
+    process.env[hostedRegistryFileEnv] = registryPath;
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    replaceTerminalListener(runtime);
+    const subject = runtime as unknown as {
+      eventLog: { loadRecentEvents(): Promise<void> };
+      orchestrationEventStore: EventStore;
+      runtimeSearch?: RuntimeSearch;
+    };
+    const originalLoad = subject.eventLog.loadRecentEvents.bind(
+      subject.eventLog,
+    );
+    let oldSearch!: RuntimeSearch;
+    let retirementBlocked = true;
+    const failure = new Error('post-routes search retry fixture');
+    subject.eventLog.loadRecentEvents = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        oldSearch = subject.runtimeSearch!;
+        const retire =
+          oldSearch.retireAfterFailedInitialization.bind(oldSearch);
+        vi.spyOn(
+          oldSearch,
+          'retireAfterFailedInitialization',
+        ).mockImplementation(() =>
+          retirementBlocked
+            ? Promise.resolve({ state: 'winding-down' })
+            : retire(),
+        );
+        throw failure;
+      })
+      .mockImplementation(originalLoad);
+    await expect(runtime.initialize()).rejects.toBeInstanceOf(AggregateError);
+    expect(subject.runtimeSearch).toBe(oldSearch);
+    expect(routeMocks.configureRuntimeRoutes).toHaveBeenCalledTimes(1);
+    await expect(runtime.initialize()).rejects.toThrow('still retiring');
+    expect(routeMocks.configureRuntimeRoutes).toHaveBeenCalledTimes(1);
+    retirementBlocked = false;
+    const store = subject.orchestrationEventStore;
+    store.upsertSession({
+      provider: 'claude',
+      threadId: 'new-hosted-session',
+      status: 'ready',
+      controlMode: 'read-only-attached',
+      createdAt: '2026-09-04T00:00:00Z',
+      updatedAt: '2026-09-04T00:00:00Z',
+      tenantExecutionContext: {
+        tenantId: tenantId('alpha'),
+        source: 'session',
+      },
+    });
+    store.appendEvent({
+      eventId: 'new-start',
+      provider: 'claude',
+      threadId: 'new-hosted-session',
+      sessionId: 'new-hosted-session',
+      createdAt: '2026-09-04T00:00:00Z',
+      method: 'session.started',
+      metadata: { userId: 'owner' },
+    });
+    store.appendEvent({
+      eventId: 'new-message',
+      provider: 'claude',
+      threadId: 'new-hosted-session',
+      turnId: 'new-turn',
+      createdAt: '2026-09-04T00:00:01Z',
+      method: 'turn.started',
+      prompt: 'cobalt after retry',
+    });
+    await runtime.initialize();
+    expect(oldSearch.inspect().phase).toBe('closed');
+    expect(subject.runtimeSearch).not.toBe(oldSearch);
+    const context = {
+      authority: sessionReadAuthorityFromRequest(
+        'owner',
+        { tenantId: tenantId('alpha') },
+        registry,
+      ),
+      current: () => true,
+    };
+    const request = {
+      version: UNIFIED_SEARCH_V1,
+      query: 'cobalt',
+      filters: { kinds: ['message' as const] },
+    };
+    expect(await subject.runtimeSearch!.search(request, context)).toMatchObject(
+      { results: [{ scope: { sessionId: 'new-hosted-session' } }] },
+    );
+    expect(
+      await subject.runtimeSearch!.open(
+        {
+          kind: 'session-message',
+          sessionId: 'new-hosted-session',
+          matchedEventId: 'new-message',
+        },
+        context,
+      ),
+    ).toMatchObject({ state: 'resolved' });
+    expect(await oldSearch.search(request, context)).toMatchObject({
+      state: 'unavailable',
+      results: [],
+    });
+    expect(
+      await oldSearch.open(
+        { kind: 'session', sessionId: 'new-hosted-session' },
+        context,
+      ),
+    ).toEqual({ state: 'unavailable' });
   });
 
   it('settles async route-service readiness before capturing agent configuration', async () => {

@@ -10,7 +10,7 @@
 
 ## Docker Production
 
-Station publishes one same-origin image: its lifecycle UI proxy serves the UI,
+Station's container image has one public origin: its lifecycle UI proxy serves the UI,
 API, streaming, terminal/voice WebSockets, identity, and device pairing from
 port 3000. It runs as Node's unprivileged UID/GID `1000` and persists its home
 in the `station-data` volume.
@@ -45,9 +45,11 @@ docker compose up -d
 Use a comma-separated list only when the same Station is deliberately reachable
 through multiple exact origins. Do not use wildcard origins.
 
-The published `ghcr.io/kontourai/station:latest` image is the stable channel;
-preview releases use `:preview`. Releases also publish the exact `vX.Y.Z`,
-semver-without-`v`, and immutable `sha-<40-character-SHA>` tags. Inspect the
+Stable publication targets `ghcr.io/kontourai/station:latest`; preview
+publication targets `:preview`. The release pipeline also defines exact
+`vX.Y.Z`, semver-without-`v`, and immutable `sha-<40-character-SHA>` tags.
+Check the registry and release record for availability before selecting a tag;
+use the source-build path below when the selected artifact is not published. Inspect the
 runtime identity through the public same-origin endpoint:
 
 ```bash
@@ -55,7 +57,12 @@ curl http://localhost:3000/__station/identity
 ```
 
 For a local source build, provide immutable provenance explicitly; the Docker
-context intentionally excludes `.git` and credentials:
+context intentionally excludes `.git`, credentials, nested `node_modules`, and
+generated `dist` directories. Docker installs its own platform dependencies in
+the manifest-driven dependency stage; host output must not overlay that stage.
+`node scripts/check-container-build-context.mjs` verifies this with Docker before
+the container smoke build:
+
 
 ```bash
 export STATION_RELEASE_SHA="$(git rev-parse HEAD)"
@@ -126,6 +133,20 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 ./station start
 
 The standalone stack in `monitoring/` is independently managed from Station's
 production container.
+
+## Private cloud environment
+
+See the [private cloud environment design](../design/private-cloud-environment.md)
+for the initial single-VM architecture, execution boundaries, storage, and
+backup/restore plan. Provider provisioning and workload sizing remain separate
+validation work.
+
+The container includes Git, an OpenSSH client, certificate trust, and terminal
+support. Additional engine CLIs and language toolchains must be deliberately
+installed and authenticated for the selected workload. The default Compose
+configuration rotates container output logs and grants a 30-second stop grace
+period. Its health check requires both image identity and live backend
+readiness. Application and workspace files need their own retention/backup policy.
 
 ## Reverse Proxy
 

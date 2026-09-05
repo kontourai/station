@@ -175,6 +175,7 @@ import {
 } from '../../routes/projects/projects.js';
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
+import { createSearchRoutes } from '../../routes/search.js';
 import { createSecretBindingRoutes } from '../../routes/secret-bindings.js';
 import { createSetupImportRoutes } from '../../routes/setup-imports.js';
 import {
@@ -471,6 +472,7 @@ export function pullRequestThreadForProject<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
   app: HonoApp;
   logger: Logger;
   eventBus: EventBus;
@@ -1570,6 +1572,8 @@ export function configureRuntimeRoutes(
   context.app.use('/agents/*', bindConversationReadAuthority);
   context.app.use('/api/conversations', bindConversationReadAuthority);
   context.app.use('/api/conversations/*', bindConversationReadAuthority);
+  context.app.use('/api/search', bindConversationReadAuthority);
+  context.app.use('/api/search/*', bindConversationReadAuthority);
   context.app.route(
     '/agents',
     createAgentRoutes(
@@ -1797,6 +1801,13 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService,
     );
   };
+  context.app.route(
+    '/api/search',
+    createSearchRoutes(context.runtimeSearch, {
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
+      isRequestPrincipalCurrent,
+    }),
+  );
   const sessionInventoryAppRead = createSessionInventoryAppReadModule({
     read: async ({ scope, authority, request: _request, current }) => {
       const outcome = await sessionInventory.read({
