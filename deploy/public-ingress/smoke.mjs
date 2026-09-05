@@ -51,6 +51,10 @@ function request(url, options = {}) {
 try {
   const env = {
     ...process.env,
+    COMPOSE_PROJECT_NAME: network,
+    STATION_BIND_HOST: '127.0.0.1',
+    STATION_UI_PORT: '3000',
+    STATION_WORKSPACE_DIR: 'station-workspace',
     STATION_IMAGE: 'station-qualification-fixture:unused',
     STATION_PUBLIC_HOST: 'localhost',
   };
@@ -68,6 +72,24 @@ try {
       ],
       { env },
     ),
+  );
+  assert.equal(composed.name, network);
+  const missingName = { ...env };
+  missingName.COMPOSE_PROJECT_NAME = ''; // Override any unrelated local .env file too.
+  assert.throws(
+    () =>
+      docker(
+        [
+          'compose',
+          '-f',
+          join(root, 'docker-compose.yml'),
+          '-f',
+          join(root, 'deploy/public-ingress/compose.yaml'),
+          'config',
+        ],
+        { env: missingName },
+      ),
+    /COMPOSE_PROJECT_NAME/,
   );
   assert.deepEqual(composed.services.station.ports ?? [], []);
   assert.deepEqual(

@@ -18,8 +18,8 @@ Requirements: a reviewed Station container image pinned by digest, Docker
 Compose 2.24 or later, a DNS hostname you control, a persistent host, and existing
 operator access through Station's normal enrollment flow. The proxy image is
 pinned to an official Caddy image index supporting multiple architectures; review
-its release and digest when updating. Keep the Compose project name stable to
-retain the existing volumes.
+its release and digest when updating. The overlay requires an explicit, unique Compose project name. Keep it stable
+to retain the existing volumes; never reuse it for a different customer.
 
 From the repository root, prepare a private `deploy/public-ingress/.env` file
 (the repository ignores `.env` files):

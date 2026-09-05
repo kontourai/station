@@ -1,4 +1,5 @@
 # Apply after the root docker-compose.yml. Compose 2.24+ is required for !reset.
+name: ${COMPOSE_PROJECT_NAME:?Set a unique stable deployment name}
 services:
   station:
     image: ${STATION_IMAGE:?Set a reviewed digest-pinned Station image}
