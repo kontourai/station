@@ -19,6 +19,7 @@ import {
   PROJECT_TASK_ROOM_LIMITS,
   type ProjectTaskRoomCapabilityAuthority,
 } from '../project-task-room-history.js';
+import { createProjectTaskRoomWorkingState } from '../project-task-room-working-state.js';
 
 const TEST_RETENTION = 16;
 function sortJson(value: unknown): unknown {
@@ -1381,4 +1382,185 @@ describe('ProjectTaskRoomHistory v2', () => {
     check.close();
     restartedStore.close();
   });
+});
+
+const sealIntent = {
+  operationId: 'transfer-fixture',
+  sourceHomeRef: 'source-home',
+  targetHomeRef: 'target-home',
+};
+
+it('source seal fences already-running history and document workers and survives restart', async () => {
+  const path = databasePath();
+  const source = history(path);
+  const peer = history(path);
+  const working = createProjectTaskRoomWorkingState(path);
+  const documentScope = {
+    projectId: scope.projectId,
+    taskId: scope.taskId,
+    documentId: 'document',
+  };
+  const edit = (id: string) => ({
+    scope: documentScope,
+    intentId: id,
+    intentDigest: sha(id),
+    actorId: 'operator',
+    epoch: 1,
+    suppressRevisionPublicationForDiagnostic: true as const,
+    operations: [
+      {
+        schemaVersion: 1 as const,
+        operationId: id,
+        documentId: 'document',
+        replicaId: id,
+        actor: { actorId: 'operator', kind: 'human' as const },
+        parents: [],
+        authorizationEpoch: 1,
+        kind: 'insert' as const,
+        after: null,
+        text: id,
+      },
+    ],
+  });
+  try {
+    await source.open({ grant: grant('discover') });
+    await peer.open({ grant: grant('discover') });
+    expect((await source.append(message('before-seal'))).kind).toBe(
+      'committed',
+    );
+    expect((await working.settle(edit('first-edit'))).kind).toBe('committed');
+    const before = await working.read({ scope: documentScope });
+    const sealed = await source.sealSource({
+      grant: grant('home-transfer'),
+      ...sealIntent,
+    });
+    expect(sealed).toMatchObject({
+      kind: 'sealed',
+      seal: { ...sealIntent, checkpoint: { throughSeq: 1 } },
+    });
+    expect(await peer.append(message('after-seal'))).toEqual({
+      kind: 'denied',
+    });
+    expect(await working.settle(edit('second-edit'))).toMatchObject({
+      kind: 'unavailable',
+    });
+    expect(await working.read({ scope: documentScope })).toEqual(before);
+    expect(
+      await peer.sealSource({ grant: grant('home-transfer'), ...sealIntent }),
+    ).toEqual(sealed);
+    expect(
+      await peer.sealSource({
+        grant: grant('home-transfer'),
+        ...sealIntent,
+        targetHomeRef: 'wrong-home',
+      }),
+    ).toEqual({ kind: 'conflict' });
+    await source.close();
+    const restarted = history(path);
+    try {
+      await restarted.open({ grant: grant('discover') });
+      expect(await restarted.append(message('after-restart'))).toEqual({
+        kind: 'denied',
+      });
+      expect(
+        await restarted.sealSource({
+          grant: grant('home-transfer'),
+          ...sealIntent,
+        }),
+      ).toEqual(sealed);
+      expect(
+        await restarted.read({ grant: grant('history-read') }),
+      ).toMatchObject({
+        kind: 'available',
+        records: [{ body: { text: 'before-seal' } }],
+      });
+    } finally {
+      await restarted.close();
+    }
+  } finally {
+    await source.close();
+    await peer.close();
+    await working.close();
+  }
+});
+
+it('source seal requires a dedicated grant and rechecks it at the commit boundary', async () => {
+  let checks = 0;
+  const source = history(undefined, {
+    capabilities: {
+      resolve: async (input) => {
+        if (input.required === 'home-transfer' && ++checks >= 2)
+          return { kind: 'revoked' };
+        return capabilities.resolve(input);
+      },
+    },
+  });
+  try {
+    await source.open({ grant: grant('discover') });
+    expect(
+      await source.sealSource({
+        grant: grant('home-transfer', 'denied'),
+        ...sealIntent,
+      }),
+    ).toEqual({ kind: 'denied' });
+    checks = 0;
+    expect(
+      await source.sealSource({ grant: grant('home-transfer'), ...sealIntent }),
+    ).toEqual({ kind: 'denied' });
+    expect(checks).toBeGreaterThanOrEqual(2);
+    expect((await source.append(message('not-sealed'))).kind).toBe('committed');
+  } finally {
+    await source.close();
+  }
+});
+
+it('source seal refuses an unpublished committed document instead of hiding it behind a closing checkpoint', async () => {
+  const path = databasePath();
+  const source = history(path);
+  const working = createProjectTaskRoomWorkingState(path);
+  try {
+    await source.open({ grant: grant('discover') });
+    const documentScope = {
+      projectId: scope.projectId,
+      taskId: scope.taskId,
+      documentId: 'document',
+    };
+    expect(
+      (
+        await working.settle({
+          scope: documentScope,
+          intentId: 'pending-edit',
+          intentDigest: sha('pending-edit'),
+          actorId: 'operator',
+          epoch: 1,
+          publicationPrincipal: {
+            operatorId: 'operator',
+            deviceId: 'device',
+            policyRevision: 'policy-1',
+          },
+          operations: [
+            {
+              schemaVersion: 1,
+              operationId: 'pending-op',
+              documentId: 'document',
+              replicaId: 'replica',
+              actor: { actorId: 'operator', kind: 'human' },
+              parents: [],
+              authorizationEpoch: 1,
+              kind: 'insert',
+              after: null,
+              text: 'not yet published',
+            },
+          ],
+        })
+      ).kind,
+    ).toBe('committed');
+    expect(
+      await source.sealSource({ grant: grant('home-transfer'), ...sealIntent }),
+    ).toEqual({ kind: 'publication-pending' });
+    expect((await source.append(message('still-open'))).kind).toBe('committed');
+  } finally {
+    await source.close();
+    await working.close();
+  }
 });

@@ -87,6 +87,23 @@ and write sinks meet it, automatic witnessed promotion remains unavailable.
 
 ## Production integration points
 
+The initial private source barrier is `ProjectTaskRoomHistory.sealSource`.
+It requires a dedicated `home-transfer` grant from an operator principal,
+reauthorized while the history worker holds its write transaction. It validates
+retained history, refuses pending revision/lifecycle publications, and stores
+one immutable source/target intent plus closing checkpoint. A repeated intent
+returns the same seal; a changed intent conflicts. History and document workers
+consult that seal inside their commit transactions. Reads and exact duplicate
+receipts remain available. There is no unseal operation.
+
+This barrier does not yet have a public runtime/HTTP caller. The supplied home
+references are intent bindings, not independently verified host identities.
+Execution admission, target activation, the external authority adapter and
+cross-host acceptance remain to be composed before exposing a move command.
+The barrier tests exercise real SQLite worker connections and restart; they
+do not substitute for the independent-process, network-partition acceptance
+journey below.
+
 | Existing owner | Integration required |
 | --- | --- |
 | ProjectTaskRoomRuntime | Resolve authenticated home authority; fence message, edit and publication admission; name moved/frozen/unavailable outcomes |

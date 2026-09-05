@@ -10,6 +10,10 @@ import {
   type WorkingStateSnapshot,
 } from '../../domain/shared-working-state.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
+import {
+  initializeProjectTaskRoomSourceSeals,
+  readProjectTaskRoomSourceSeal,
+} from './project-task-room-source-seal.js';
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -26,6 +30,7 @@ applyWalJournalMode(db, {
   onUnavailable: 'throw',
 });
 db.exec(PROJECT_TASK_ROOM_RUNTIME_MIGRATION);
+initializeProjectTaskRoomSourceSeals(db);
 db.exec(PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION);
 ensureProjectTaskRoomRevisionAttributionColumn(db);
 const maxRetainedOperations = Number.isSafeInteger(
@@ -602,6 +607,10 @@ async function handle(message: any) {
               ? { kind: 'duplicate', ...JSON.parse(existing.receipt_json) }
               : { kind: 'conflict' },
           );
+        }
+        if (readProjectTaskRoomSourceSeal(db, value.scope)) {
+          db.exec('ROLLBACK');
+          return send(id, { kind: 'unavailable' });
         }
         const pending = db
           .prepare(
