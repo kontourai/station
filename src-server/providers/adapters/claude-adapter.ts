@@ -109,12 +109,6 @@ type PendingRequest = {
   resolve: (result: PermissionResult) => void;
   suggestions?: PermissionUpdate[];
   toolInput: Record<string, unknown>;
-  /**
-   * The SDK tool name this request was opened for. Needed because
-   * `acceptForSession` has to be recordable even when the engine suggested no
-   * rules to carry it — see `recordClaudeSessionGrants`.
-   */
-  toolName: string;
 };
 
 const CLAUDE_EFFORT_LEVELS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
@@ -214,22 +208,6 @@ type ClaudeSessionRecord = {
   interruptingTurnId?: string;
   /** Mirrors `ClaudeMessageState.interruptedResultObserved`. */
   interruptedResultObserved?: boolean;
-  /**
-   * Tool names the operator granted for THIS session through Station's own
-   * approval flow (`respondToRequest`'s `acceptForSession`, which forces every
-   * suggested `PermissionUpdate` to `destination: 'session'`).
-   *
-   * Read only by the `PreToolUse` ask floor. The floor exists to override
-   * authorities Station never saw — the engine's command classifier and the
-   * settings files the CLI loaded — but a session grant is an authority
-   * Station itself issued, on this operator's answer, so overriding it would
-   * make "Allow for this session" mean nothing: the floor re-asks every time
-   * and the engine's session rule never gets consulted (measured live before
-   * this carve-out existed). Tracked by tool NAME only, which is coarser than
-   * the engine's own rule (`Bash(pwd)` vs any `Bash`) — the residual is
-   * recorded on `claudePermissionModeForcesAsk`.
-   */
-  sessionGrantedTools?: Set<string>;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** Tracks the live SDK permission mode so sendTurn only calls
@@ -350,77 +328,7 @@ function serverDelegation(
     : undefined;
 }
 
-/**
- * Whether Station's approval mode obliges the hook to force an approval for a
- * call Station's own policy did not decide.
- *
- * `'default'` is what Station's `ask` approval mode resolves to
- * (claude-approval-mode.ts), and `ask` means ask. The engine's `default` mode
- * on its own does NOT: it consults its command classifier and every settings
- * file it loaded first, and `query()` here never narrows `settingSources`, so
- * the CLI default applies and a workspace's checked-in
- * `.claude/settings.json` `permissions.allow` (say `Bash(rm:*)`) is honored —
- * running the tool with no `request.opened` and no chance for the operator to
- * see it. `permissionDecision: 'ask'` is the hook's floor over all of that,
- * so it is the only value that makes the chip's promise true.
- *
- * `'acceptEdits'` and `'bypassPermissions'` are the opposite promise —
- * `auto` accepts edits, `never` never asks — so for those the hook must state
- * no opinion and let the engine's mode mean what it says. `'plan'` (raw
- * `modelOptions.permissionMode`, no `ApprovalMode` analog) keeps the engine's
- * own behavior for the same reason.
- */
-function claudePermissionModeForcesAsk(mode: PermissionMode): boolean {
-  return mode === 'default';
-}
-
-/**
- * Records what `acceptForSession` granted, so the ask floor can stand down for
- * it. Reads the tool names off the SDK's own suggested rules — the exact
- * updates Station forwarded — rather than inferring them from the tool that
- * happened to be pending.
- *
- * DISCLOSED RESIDUAL: matching is by tool name, not by the engine's rule
- * content, so after the operator allows (say) `Bash(pwd)` for the session, a
- * settings-file `allow` rule for a DIFFERENT `Bash` command is no longer
- * re-asked by the floor for the rest of that session. Narrowing this needs the
- * engine's rule matcher, and reimplementing that here is how a second reader
- * of an authorization eventually gets it wrong; the honest bound is to record
- * the gap where the decision is made.
- */
-function recordClaudeSessionGrants(
-  record: { sessionGrantedTools?: Set<string> },
-  pending: { suggestions?: PermissionUpdate[]; toolName: string },
-): void {
-  const granted = new Set<string>();
-  for (const update of pending.suggestions ?? []) {
-    if (update.type !== 'addRules' && update.type !== 'replaceRules') continue;
-    if (update.behavior !== 'allow') continue;
-    for (const rule of update.rules) {
-      if (typeof rule.toolName === 'string' && rule.toolName) {
-        granted.add(rule.toolName);
-      }
-    }
-  }
-  // A request the ASK FLOOR forced arrives with no suggested rules at all
-  // (measured live: `request.opened` for a floored `Bash pwd` carries none),
-  // so `updatedPermissions` goes back empty and the engine records nothing —
-  // "Allow for this session" would silently mean "allow once". Station asked
-  // the question ("Allow Bash") and the operator answered it for the session,
-  // so Station records the answer against the tool it asked about. Subsequent
-  // calls to that tool still reach the engine's own flow, which asks again for
-  // anything it does not already allow.
-  if (granted.size === 0) granted.add(pending.toolName);
-  for (const toolName of granted) {
-    record.sessionGrantedTools ??= new Set<string>();
-    record.sessionGrantedTools.add(toolName);
-  }
-}
-
-function preToolPolicyHookOutput(
-  decision: PreToolPolicyDecision,
-  forcesAsk: boolean,
-) {
+function preToolPolicyHookOutput(decision: PreToolPolicyDecision) {
   if (decision.behavior === 'allow') {
     return {
       continue: true,
@@ -441,14 +349,21 @@ function preToolPolicyHookOutput(
       },
     };
   }
-  // `ask` and `defer` both mean the same thing here: Station's policy is not
-  // deciding this call, so the engine's permission flow owns it and
-  // `canUseTool` is where it reaches Station's ApprovalRegistry. Neither ever
-  // opens a second Station request from inside the hook.
+  // `ask` and `defer` both mean the same thing here, in every mode: Station's
+  // policy is not deciding this call, so the engine's own permission flow owns
+  // it and `canUseTool` is where that flow reaches Station's ApprovalRegistry.
+  // Carrying NO `permissionDecision` is what expresses that. The hook never
+  // opens a second Station request from inside itself.
   //
-  // What the hook says about it depends on the mode Station promised the
-  // operator — see `claudePermissionModeForcesAsk`. In `ask` the hook forces
-  // the request; otherwise it states no opinion at all.
+  // Deliberately NOT `permissionDecision: 'ask'` in `default`/Ask mode, which
+  // was tried and reverted: `'ask'` is a floor over the engine's OWN
+  // read-only-command classifier as well as over its settings files, so a
+  // coding agent's Read/Grep/Glob sweep turns into one approval per call, each
+  // showing only a tool name. Which of those two costs Station should pay is a
+  // product decision, tracked separately, not something this translation layer
+  // should settle. The settings-file half of the exposure — a workspace's
+  // checked-in `.claude/settings.json` `permissions.allow` running a tool with
+  // no Station request — is real and filed as an owner decision.
   //
   // NEVER `permissionDecision: 'defer'`, which this used to return for both.
   // `'defer'` is not a pass-through in the Claude hook contract: it hands the
@@ -463,17 +378,8 @@ function preToolPolicyHookOutput(
   // presented as intermittent rather than total. Verified live against
   // `claude` 2.1.261: with `defer`, `permissionMode` `default`, `acceptEdits`
   // and `bypassPermissions` all returned `stop_reason: 'tool_deferred'`,
-  // `result: ''`, `num_turns: 1` with `canUseTool` uncalled; with `'ask'` and
-  // with no `permissionDecision` the same prompt reached `canUseTool` and ran.
-  if (forcesAsk) {
-    return {
-      continue: true,
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse' as const,
-        permissionDecision: 'ask' as const,
-      },
-    };
-  }
+  // `result: ''`, `num_turns: 1` with `canUseTool` uncalled; with no
+  // `permissionDecision` the same prompt reached `canUseTool` and ran.
   return { continue: true };
 }
 
@@ -482,15 +388,6 @@ async function evaluateClaudePreToolPolicy(
   input: { tool_name: string; tool_input: unknown; tool_use_id: string },
   invocation: InvocationContext,
   timeoutMs: number,
-  /**
-   * Whether the hook must force an approval for THIS call, resolved per call
-   * rather than captured at spawn: `sendTurn` can move a live session between
-   * approval modes via `setPermissionMode` (see `record.currentPermissionMode`)
-   * and `acceptForSession` can add a session grant mid-turn, so a hook that
-   * answered from a closed-over spawn-time value would keep forcing — or keep
-   * not forcing — an approval the operator has since changed.
-   */
-  resolveForcesAsk: (toolName: string) => boolean,
 ) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -522,15 +419,13 @@ async function evaluateClaudePreToolPolicy(
         );
       }),
     ]);
-    return preToolPolicyHookOutput(decision, resolveForcesAsk(input.tool_name));
+    return preToolPolicyHookOutput(decision);
   } catch (error) {
     const reason = `Station pre-tool policy failed; tool execution was denied: ${error instanceof Error ? error.message : String(error)}`;
-    // A deny ignores this argument; it is still resolved from the same seam so
-    // there is only one way to answer the question.
-    return preToolPolicyHookOutput(
-      { behavior: 'deny', denial: { allowed: false, reason } },
-      resolveForcesAsk(input.tool_name),
-    );
+    return preToolPolicyHookOutput({
+      behavior: 'deny',
+      denial: { allowed: false, reason },
+    });
   } finally {
     if (timeout) clearTimeout(timeout);
   }
@@ -1144,9 +1039,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
 
     record.pendingRequests.delete(requestId);
-    if (decision === 'acceptForSession') {
-      recordClaudeSessionGrants(record, pending);
-    }
     pending.resolve(
       mapClaudeDecisionToPermissionResult(
         decision,
@@ -1624,7 +1516,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             resolve,
             suggestions: options.suggestions,
             toolInput,
-            toolName,
           });
         });
       },
@@ -1653,25 +1544,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                         },
                         this.options.preToolPolicyTimeoutMs ??
                           DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
-                        // Read per call, from the record `sendTurn` and
-                        // `respondToRequest` keep current, so a mid-session
-                        // approval-mode change or session grant is honored by
-                        // the next tool call rather than by the next session.
-                        // The spawn-time argument is the fallback for the
-                        // window before the record exists.
-                        (toolName) => {
-                          const live = this.sessions.get(input.threadId);
-                          if (
-                            !claudePermissionModeForcesAsk(
-                              live?.currentPermissionMode ?? permissionMode,
-                            )
-                          ) {
-                            return false;
-                          }
-                          return (
-                            live?.sessionGrantedTools?.has(toolName) !== true
-                          );
-                        },
                       ),
                   ],
                 },

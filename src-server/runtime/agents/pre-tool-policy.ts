@@ -309,13 +309,26 @@ export function createStagedPreToolPolicyEvaluator(
     //
     // KNOWN GAP (#1536 follow-up): this returns before the unattended stages
     // below, so an external session with nobody to ask waits on an approval
-    // request instead of taking their fail-fast denial. Fixing it needs an
-    // unattended signal the external adapters do not carry —
-    // `invocation.unattendedPrincipal` is populated only by the two managed
-    // framework adapters from `currentScheduledPrincipal()`, so simply moving
-    // the stages up would make `resolveUnattendedGrant` return `false` for
-    // every ATTENDED external call and deny it. Do not reorder without
-    // threading that signal through first.
+    // request instead of taking their fail-fast denial.
+    //
+    // What blocks a straight reorder is not that the signal is unavailable —
+    // it exists and has three writers (`strands-adapter.ts`,
+    // `voltagent-adapter.ts` via `currentScheduledPrincipal()`, and
+    // `voice-session.ts`'s `kind: 'voice'`), and the scheduler establishes it
+    // at the route boundary through `runWithScheduledPrincipal`'s
+    // AsyncLocalStorage (`scheduled-principal-context.ts`;
+    // `runtime-route-support.ts`). The blocker is WHERE the external hook
+    // runs: the Claude `PreToolUse` hook fires from the SDK message loop, on a
+    // long-lived stream task outside any request scope, so an ALS read there
+    // finds nothing. The principal has to be CAPTURED into the session record
+    // at `startSession`/`sendTurn` — while the request scope still exists —
+    // and threaded into this `InvocationContext`.
+    //
+    // Until it is, reordering is unsafe rather than merely incomplete:
+    // `resolveUnattendedGrant` returns `false` whenever
+    // `invocation.unattendedPrincipal` is absent, so moving the stages up
+    // would take every ATTENDED external call down the
+    // `unattended_grant_denied` path.
     if (options.interaction === 'external') return { behavior: 'defer' };
     if (options.hasInteractiveApproval) return { behavior: 'ask' };
 

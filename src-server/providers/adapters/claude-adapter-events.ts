@@ -703,7 +703,8 @@ export function mapClaudeSdkMessage({
       // of a started call with no outcome (#1536 finding B1) — and so this
       // class can never again read as an ordinary stop, whatever produced it.
       const deferred = claudeDeferredToolUse(message);
-      const deferredTurn = deferred || claudeResultDeferredTurn(message);
+      const deferredTurn =
+        Boolean(deferred) || claudeResultDeferredTurn(message);
       // The name comes from the tracked `tool_use` this call was started from,
       // or from the engine's own report of it — never invented: with neither,
       // the completion is skipped and `finishReason` below carries the signal

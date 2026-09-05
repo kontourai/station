@@ -13,7 +13,15 @@ approval-guardian decisions DO reach the actual tool-call path. What it still
 does not deliver is the unattended-grant chain: the staged evaluator hands
 external interaction back to the engine's own permission flow before those
 stages, and the external adapters carry no unattended principal for them to
-read. ACP is equivalently partial at its protocol `requestPermission`
+read.
+
+Handing interaction back is also all Station does about consent on that path:
+in Ask mode the engine asks before tool calls its own rules and classifier do
+not already allow, and the user's and the workspace's Claude settings files
+apply (no `settingSources` is set), so a rule in one of those allows a call
+without a Station approval request. Station adds no floor over it.
+
+ACP is equivalently partial at its protocol `requestPermission`
 callback, through the same staged evaluator and with the same one gap. Codex
 has no Station pre-tool interception seam. Muse is also unsupported. An
 unknown external engine fails closed with no pre-tool delivery.

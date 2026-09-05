@@ -1045,8 +1045,14 @@ describe('ClaudeAdapter', () => {
     // `permissionDecision: 'defer'` means "host, you execute this call", so
     // the engine ends the turn immediately (`stop_reason: 'tool_deferred'`)
     // and NEVER consults `canUseTool`. Station has no deferred-call executor,
-    // so `'defer'` is never a correct answer in any mode; WHICH of the two
-    // remaining answers is correct depends on what the mode promised.
+    // so the hook must state NO permission opinion and let the engine's own
+    // flow — which is what `approvalMode` selects — decide and ask.
+    //
+    // Parameterised over every mode ON PURPOSE, even though the expectation is
+    // identical: a `permissionDecision: 'ask'` floor for `default`/Ask mode
+    // was built and reverted (it overrides the engine's read-only-command
+    // classifier, so a Read/Grep sweep becomes one approval per call), and a
+    // future attempt to land one must fail a test rather than pass unnoticed.
     async function preToolOutputForMode(
       approvalMode: 'ask' | 'auto' | 'never',
       behavior: 'defer' | 'ask',
@@ -1070,49 +1076,28 @@ describe('ClaudeAdapter', () => {
       )) as Record<string, unknown>;
     }
 
-    test.each([['defer' as const], ['ask' as const]])(
-      'ask mode forces the request: a %s decision answers permissionDecision ask',
-      async (behavior) => {
-        // The engine's own `default` mode is not "ask before every tool call":
-        // it honours its command classifier and every settings file it loaded,
-        // and `query()` never narrows `settingSources`, so a workspace's
-        // checked-in `.claude/settings.json` `permissions.allow` would run a
-        // tool with no `request.opened` at all. `'ask'` is the hook's floor
-        // over that, which is what makes Station's Ask chip true.
-        expect(await preToolOutputForMode('ask', behavior)).toEqual({
-          continue: true,
-          hookSpecificOutput: {
-            hookEventName: 'PreToolUse',
-            permissionDecision: 'ask',
-          },
-        });
-      },
-    );
-
     test.each([
+      ['ask' as const, 'defer' as const],
+      ['ask' as const, 'ask' as const],
       ['auto' as const, 'defer' as const],
       ['auto' as const, 'ask' as const],
       ['never' as const, 'defer' as const],
       ['never' as const, 'ask' as const],
     ])(
-      '%s mode states NO permissionDecision for a %s decision, leaving the engine its mode',
+      '%s mode states NO permissionDecision for a %s decision, leaving the engine its own flow',
       async (approvalMode, behavior) => {
-        // `auto` accepts edits and `never` never asks — forcing an approval
-        // here would break the promise the operator selected. No opinion at
-        // all is the only answer that lets the engine's mode mean what it
-        // says.
         const output = await preToolOutputForMode(approvalMode, behavior);
         expect(output).toEqual({ continue: true });
-        // Asserted on the wire shape too, so a future edit that reintroduces
-        // a decision under a new key still fails here.
+        // Asserted on the wire shape too, so a decision reintroduced under a
+        // new key still fails here rather than changing consent silently.
         expect(JSON.stringify(output)).not.toContain('permissionDecision');
       },
     );
 
-    test('the hook reads the mode in force now, not the one captured at spawn', async () => {
+    test('a mid-session downgrade to ask does not start forcing approvals', async () => {
       // `sendTurn` moves a live session between modes via `setPermissionMode`.
-      // A hook answering from a closed-over spawn-time value would keep the
-      // old promise for the rest of the session.
+      // Whatever the mode becomes, the hook's answer for an undecided call is
+      // the same — this pins that the transition itself introduces no floor.
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter({
         resolvePreToolPolicy: async () =>
@@ -1138,187 +1123,9 @@ describe('ClaudeAdapter', () => {
         modelOptions: { approvalMode: 'ask' },
       });
 
-      expect(await call()).toEqual({
-        continue: true,
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'ask',
-        },
-      });
-    });
-
-    test('an acceptForSession grant stands the ask floor down for that tool', async () => {
-      // Measured live before this carve-out existed: with the floor answering
-      // `ask` unconditionally, a second identical Bash call after
-      // `acceptForSession` opened a SECOND request.opened — the engine's own
-      // session rule never got consulted, so "Allow for this session" meant
-      // nothing. The floor overrides authorities Station never saw; a session
-      // grant is one Station itself issued.
-      mockQuery.mockReturnValue(createMockQuery([]));
-      const adapter = new ClaudeAdapter({
-        resolvePreToolPolicy: async () =>
-          vi.fn().mockResolvedValue({ behavior: 'defer' }),
-      });
-      const events = adapter.streamEvents()[Symbol.asyncIterator]();
-      await adapter.startSession({
-        provider: 'claude',
-        threadId: 'thread-pre-tool-session-grant',
-        agent: { slug: 'engine-lab' },
-        modelOptions: { approvalMode: 'ask' },
-      });
-      await events.next();
-      await events.next();
-      const queryArgs = mockQuery.mock.calls.at(-1)?.[0];
-      const hook = async () =>
-        (await preToolUse(queryArgs)(preToolInput, preToolInput.tool_use_id, {
-          signal: new AbortController().signal,
-        })) as Record<string, unknown>;
-
-      // Before any grant, Ask mode forces the request.
-      expect(await hook()).toMatchObject({
-        hookSpecificOutput: { permissionDecision: 'ask' },
-      });
-
-      // Drive the real approval round-trip, including the SDK's own suggested
-      // rules, rather than reaching into the record.
-      const permission = queryArgs.options.canUseTool(
-        preToolInput.tool_name,
-        preToolInput.tool_input,
-        {
-          signal: new AbortController().signal,
-          toolUseID: preToolInput.tool_use_id,
-          suggestions: [
-            {
-              type: 'addRules',
-              behavior: 'allow',
-              destination: 'localSettings',
-              rules: [{ toolName: preToolInput.tool_name }],
-            },
-          ],
-        },
-      );
-      const opened = await events.next();
-      await adapter.respondToRequest(
-        'thread-pre-tool-session-grant',
-        opened.value.requestId,
-        'acceptForSession',
-      );
-      await expect(permission).resolves.toMatchObject({ behavior: 'allow' });
-
-      // Same tool again: no floor, so the engine's session rule decides.
-      const after = await hook();
+      const after = await call();
       expect(after).toEqual({ continue: true });
       expect(JSON.stringify(after)).not.toContain('permissionDecision');
-
-      // A tool the operator never granted is still floored.
-      expect(
-        await preToolUse(queryArgs)(
-          { ...preToolInput, tool_name: 'Bash', tool_use_id: 'pre-tool-2' },
-          'pre-tool-2',
-          { signal: new AbortController().signal },
-        ),
-      ).toMatchObject({
-        hookSpecificOutput: { permissionDecision: 'ask' },
-      });
-    });
-
-    test('acceptForSession still grants when the engine suggested no rules', async () => {
-      // Measured live: a request the ask floor FORCED arrives with no
-      // `suggestions`, so `updatedPermissions` goes back empty and the engine
-      // records nothing — the floor then re-asked the identical call and
-      // "Allow for this session" silently meant "allow once". Station asked
-      // about a tool and must honour the answer it got.
-      mockQuery.mockReturnValue(createMockQuery([]));
-      const adapter = new ClaudeAdapter({
-        resolvePreToolPolicy: async () =>
-          vi.fn().mockResolvedValue({ behavior: 'defer' }),
-      });
-      const events = adapter.streamEvents()[Symbol.asyncIterator]();
-      await adapter.startSession({
-        provider: 'claude',
-        threadId: 'thread-pre-tool-grant-no-suggestions',
-        agent: { slug: 'engine-lab' },
-        modelOptions: { approvalMode: 'ask' },
-      });
-      await events.next();
-      await events.next();
-      const queryArgs = mockQuery.mock.calls.at(-1)?.[0];
-
-      const permission = queryArgs.options.canUseTool(
-        preToolInput.tool_name,
-        preToolInput.tool_input,
-        {
-          signal: new AbortController().signal,
-          toolUseID: preToolInput.tool_use_id,
-          // No `suggestions` — the shape a floored request actually has.
-        },
-      );
-      const opened = await events.next();
-      await adapter.respondToRequest(
-        'thread-pre-tool-grant-no-suggestions',
-        opened.value.requestId,
-        'acceptForSession',
-      );
-      await expect(permission).resolves.toMatchObject({ behavior: 'allow' });
-
-      const after = await preToolUse(queryArgs)(
-        preToolInput,
-        preToolInput.tool_use_id,
-        { signal: new AbortController().signal },
-      );
-      expect(after).toEqual({ continue: true });
-    });
-
-    test('a plain accept grants nothing beyond the one call', async () => {
-      // `accept` forwards no `updatedPermissions`, so nothing may be recorded
-      // from it — otherwise "just this once" silently becomes "for the session".
-      mockQuery.mockReturnValue(createMockQuery([]));
-      const adapter = new ClaudeAdapter({
-        resolvePreToolPolicy: async () =>
-          vi.fn().mockResolvedValue({ behavior: 'defer' }),
-      });
-      const events = adapter.streamEvents()[Symbol.asyncIterator]();
-      await adapter.startSession({
-        provider: 'claude',
-        threadId: 'thread-pre-tool-once',
-        agent: { slug: 'engine-lab' },
-        modelOptions: { approvalMode: 'ask' },
-      });
-      await events.next();
-      await events.next();
-      const queryArgs = mockQuery.mock.calls.at(-1)?.[0];
-
-      const permission = queryArgs.options.canUseTool(
-        preToolInput.tool_name,
-        preToolInput.tool_input,
-        {
-          signal: new AbortController().signal,
-          toolUseID: preToolInput.tool_use_id,
-          suggestions: [
-            {
-              type: 'addRules',
-              behavior: 'allow',
-              destination: 'localSettings',
-              rules: [{ toolName: preToolInput.tool_name }],
-            },
-          ],
-        },
-      );
-      const opened = await events.next();
-      await adapter.respondToRequest(
-        'thread-pre-tool-once',
-        opened.value.requestId,
-        'accept',
-      );
-      await expect(permission).resolves.toMatchObject({ behavior: 'allow' });
-
-      expect(
-        await preToolUse(queryArgs)(preToolInput, preToolInput.tool_use_id, {
-          signal: new AbortController().signal,
-        }),
-      ).toMatchObject({
-        hookSpecificOutput: { permissionDecision: 'ask' },
-      });
     });
 
     test('routes the interactive approval to canUseTool without a duplicate request', async () => {

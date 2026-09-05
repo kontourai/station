@@ -6,22 +6,19 @@ const CLAUDE_APPROVAL_MODE_MAP: Record<
   Exclude<ApprovalMode, 'connection-default'>,
   PermissionMode
 > = {
-  // Claude Code's own default mode. On its OWN that is not "ask before every
-  // tool call" — it consults the engine's command classifier and every
-  // settings file the CLI loaded (`~/.claude/settings.json`, a workspace's
-  // checked-in `.claude/settings.json`, `.claude/settings.local.json`; the
-  // session sets no `settingSources`, so all of them apply) and runs whatever
-  // those already allow without asking anyone. Station's `ask` promise is made
-  // true one layer up, by the `PreToolUse` hook answering
-  // `permissionDecision: 'ask'` for any call Station's own policy did not
-  // decide — see `preToolPolicyHookOutput` and
-  // `claudePermissionModeForcesAsk` in claude-adapter.ts. Without that hook
-  // (an agent-less/synthetic session, which gets no staged policy at all)
-  // this mode means exactly what the engine says and nothing more.
+  // Claude Code's own default mode: the engine asks before tool calls its own
+  // rules and classifier do not already allow. Not "ask before every tool
+  // call" — its read-only-command classifier allows some calls outright, and
+  // the user's and the workspace's Claude settings files apply (no
+  // `settingSources` is set, so the CLI loads them all), so a rule in one of
+  // those allows a call without a Station request. Station adds no floor over
+  // that: `preToolPolicyHookOutput` (claude-adapter.ts) states no permission
+  // opinion for a call Station's own policy did not decide, and the engine's
+  // consent path reaches Station through `canUseTool`.
   ask: 'default',
   // Auto-accept file edits within the workspace; still ask before
   // anything riskier (e.g. shell commands outside that boundary). The hook
-  // states no opinion here, so this is the engine's own behavior.
+  // states no opinion here either, so this is the engine's own behavior.
   auto: 'acceptEdits',
   // Never ask; the agent runs fully autonomously. Requires
   // `allowDangerouslySkipPermissions: true` in Options — see
