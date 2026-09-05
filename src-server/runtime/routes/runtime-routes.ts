@@ -1171,6 +1171,7 @@ export function configureRuntimeRoutes(
   const layoutCatalog = new DistributionProfileService(
     context.configLoader.getProjectHomeDir(),
     context.appConfig.distributionProfile,
+    context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
   );
   const kitObservabilityRegistry = new StationKitObservabilityRegistry(
     new StationKitObservabilityHost({

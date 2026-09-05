@@ -1,4 +1,5 @@
 import type {
+  PluginInstallationReadiness,
   PluginInstallationRevision,
   PluginInstallResult,
   PluginManifest,
@@ -13,8 +14,23 @@ import {
 } from './http';
 
 export type InstalledPluginRecord =
-  | (PluginManifest & { hasBundle?: boolean; retainedOnRemoval?: boolean })
+  | (PluginManifest & {
+      hasBundle?: boolean;
+      retainedOnRemoval?: boolean;
+      installationReadiness?: PluginInstallationReadiness;
+    })
   | RejectedInstalledPluginRecord;
+
+function isPluginInstallationReadiness(
+  value: unknown,
+): value is PluginInstallationReadiness {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return row.state === 'pending'
+    ? row.recovery === 'review' && exactFields(row, ['state', 'recovery'])
+    : (row.state === 'ready' || row.state === 'unavailable') &&
+        exactFields(row, ['state']);
+}
 
 const REJECTION_CODES = new Set([
   'manifest-missing',
@@ -160,6 +176,8 @@ export async function listPlugins(
       return (
         typeof record.name !== 'string' ||
         typeof record.version !== 'string' ||
+        (record.installationReadiness !== undefined &&
+          !isPluginInstallationReadiness(record.installationReadiness)) ||
         (record.retainedOnRemoval !== undefined &&
           typeof record.retainedOnRemoval !== 'boolean')
       );

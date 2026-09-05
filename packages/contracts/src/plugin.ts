@@ -319,3 +319,9 @@ export interface PluginInstallationRevision {
   /** Acquisition-owner scoped continuity token; not authenticated publisher identity. */
   readonly origin?: string;
 }
+
+/** Server-observed runtime readiness, independent of install/consent completion. */
+export type PluginInstallationReadiness =
+  | { readonly state: 'ready' }
+  | { readonly state: 'pending'; readonly recovery: 'review' }
+  | { readonly state: 'unavailable' };

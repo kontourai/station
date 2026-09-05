@@ -240,8 +240,8 @@ installed-plugin management surface. On a fresh Station installation, open
 and choose **Install**. No local path is needed for a bundled item.
 
 After installation, refresh Registry or open **Plugins** to confirm the item is
-installed. Installing makes a layout contribution available; it does not add
-that layout to every project. Open the target project, choose **Add**, then
+installed and runtime activation is ready. A ready installation makes a layout
+contribution available; it does not add that layout to every project. Open the target project, choose **Add**, then
 select the installed layout and open it from the project's layout cards.
 
 Removing a plugin from Registry or Plugins removes its installed contribution
@@ -256,6 +256,21 @@ keeps the folder visible with a **Rejected** badge, the validation reason, and
 specific repair guidance. Fix or restore the manifest, then choose **Reload
 plugins**. Station does not invent a version or expose normal settings, update,
 permission, or removal controls until the manifest validates again.
+
+### Recover interrupted activation
+
+An **Activation pending** plugin retains its code and data while its runtime
+contributions remain unavailable. Open **Plugins**, select it, and choose
+**Review recovery**. Review the permissions and retained dependencies, then
+choose **Recover plugin** and confirm the permission review. Recovery does not
+fetch replacement code or reset stored data. Trusted permissions still require
+the separate host approval flow.
+
+A recovery request may be accepted while runtime activation remains pending.
+Use **Refresh status** to read its current state; do not automatically replay the
+request. If a dependency must recover first, follow the server's dependency
+message, then obtain a fresh review for the parent. A changed approval or
+installation requires a new review, never reuse of an earlier decision.
 
 ## layout.json
 

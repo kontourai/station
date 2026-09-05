@@ -1268,3 +1268,16 @@
     overflow-y: auto;
   }
 }
+
+.plugins__recovery {
+  overflow-wrap: anywhere;
+}
+.plugins__recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.plugins__recovery-actions button {
+  min-height: 44px;
+}

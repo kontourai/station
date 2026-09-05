@@ -35,6 +35,8 @@ export type WorkspacePaneAvailabilityReasonCode =
   | 'ready'
   | 'coming-soon'
   | 'rollout-unknown'
+  | 'installation-pending'
+  | 'installation-unavailable'
   | 'distribution-disabled'
   | 'distribution-policy-unknown'
   | 'unsupported-host'
@@ -135,6 +137,7 @@ export interface WorkspacePaneAvailabilityRequirements {
  * diagnostic enters the public result.
  */
 export interface WorkspacePaneAvailabilityInput {
+  installation?: 'ready' | 'pending' | 'unavailable';
   rollout?: 'available' | 'coming-soon' | 'unknown';
   distribution?: 'enabled' | 'disabled' | 'unknown';
   host?: {
@@ -282,6 +285,19 @@ export function resolveWorkspacePaneAvailability(
       type: 'learn-more',
       code: 'view-rollout',
     });
+  }
+  if (
+    input.installation === 'pending' ||
+    input.installation === 'unavailable'
+  ) {
+    return result(
+      'temporarily-unavailable',
+      input.installation === 'pending'
+        ? 'installation-pending'
+        : 'installation-unavailable',
+      'configuration',
+      { type: 'retry', code: 'retry-availability-check' },
+    );
   }
   if (input.distribution === 'disabled') {
     return result(
