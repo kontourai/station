@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const REQUIRED_ANDROID_PERMISSIONS = new Set([
   'android.permission.INTERNET',
+  'android.permission.ACCESS_NETWORK_STATE',
   'android.permission.POST_NOTIFICATIONS',
   'android.permission.CAMERA',
   'android.permission.RECORD_AUDIO',

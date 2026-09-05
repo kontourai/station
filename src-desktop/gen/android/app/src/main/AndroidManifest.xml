@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Native Station requests resolve through Android's active application
+         network so VPN DNS (including Tailscale MagicDNS) is honored. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Device pairing scans QR codes via the WebView getUserMedia camera. The
          WebView's onPermissionRequest handler forwards the request to the OS
