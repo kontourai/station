@@ -20,9 +20,7 @@ afterEach(() => {
 
 test('observes closed failure state without copying page text or actor identities', async () => {
   browser.document.body.innerHTML = `<section data-station-performance-surface="task-room-presence" data-viewer-actor-id="private-actor"><header><p role="status">Live room connected.</p></header><button>Join room</button><button disabled>Announce work</button></section><div role="dialog" aria-labelledby="title"><h2 id="title">What Station sends</h2><p>private page content</p></div>`;
-  vi.spyOn(browser.Element.prototype, 'getClientRects').mockReturnValue([
-    {},
-  ] as unknown as DOMRectList);
+  vi.spyOn(browser.Element.prototype, 'getClientRects').mockReturnValue([{}]);
   const result = await readLiveCommandFailureState({
     evaluate: async (read: () => unknown) => read(),
   });
