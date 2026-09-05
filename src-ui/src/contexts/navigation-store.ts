@@ -17,6 +17,15 @@ import {
 } from '../workspace-panes/openFilePreviewIntent';
 import { parseSurfaceDeepLink } from './surface-deep-link';
 
+/** An exact temporary return location, owned and restored by this navigator. */
+export type NavigationLocation = Readonly<{ pathname: string; search: string }>;
+
+function canonicalSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  params.sort();
+  return params.toString();
+}
+
 export type NavigationState = {
   pathname: string;
   selectedAgent: string | null;
@@ -512,6 +521,39 @@ class NavigationStore {
     this.listeners.forEach((listener) => listener());
   };
 
+  captureLocation(): NavigationLocation {
+    return {
+      pathname: window.location.pathname,
+      search: window.location.search,
+    };
+  }
+
+  isCurrentLocation(location: NavigationLocation): boolean {
+    return (
+      window.location.pathname === location.pathname &&
+      canonicalSearch(window.location.search) ===
+        canonicalSearch(location.search)
+    );
+  }
+
+  restoreLocation(
+    location: NavigationLocation,
+    admission: Parameters<NavigationStore['navigateWithPrecommit']>[1],
+  ): Promise<boolean> {
+    const captured = new URLSearchParams(location.search);
+    const clear: Record<string, null> = {};
+    for (const key of new URLSearchParams(window.location.search).keys()) {
+      if (!captured.has(key)) clear[key] = null;
+    }
+    // Keep exact Pane paths, tabs, and query selections through the same
+    // guarded navigation path. A Project-only projection cannot restore them.
+    return this.navigateWithPrecommit(
+      `${location.pathname}${location.search}`,
+      admission,
+      clear,
+    );
+  }
+
   /** Fixed destination, fresh admission after any dirty-state delay. No alternate router. */
   navigateWithPrecommit(
     pathname: string,
@@ -520,8 +562,10 @@ class NavigationStore {
       prepare: () => Promise<boolean>;
       signal: AbortSignal;
     },
+    params?: Record<string, string | null>,
   ): Promise<boolean> {
     const captured = { ...admission };
+    const capturedParams = params ? { ...params } : undefined;
     const navigation = this.navigationGeneration;
     return import('./navigation-precommit')
       .then(({ runNavigationPrecommit }) => {
@@ -540,7 +584,7 @@ class NavigationStore {
             const previousBypass = this.navigationGuardBypass;
             this.navigationGuardBypass = true;
             try {
-              this.navigate(pathname);
+              this.navigate(pathname, capturedParams);
             } finally {
               this.navigationGuardBypass = previousBypass;
             }

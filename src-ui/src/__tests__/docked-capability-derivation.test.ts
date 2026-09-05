@@ -5,6 +5,7 @@ import * as boardPane from '@kontourai/station-board-pane/workspace-board-pane';
 import * as contracts from '@kontourai/station-contracts';
 import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
+import { WORKSPACE_HOME_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-home-pane';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { describe, expect, test } from 'vitest';
@@ -76,6 +77,7 @@ const EXPECTED_BUILTIN_DESCRIPTOR_EXPORTS = [
 const SURFACE_DESCRIPTORS: Record<string, WorkspacePaneDescriptor> = {
   chat: WORKSPACE_CHAT_PANE_DESCRIPTOR,
   activity: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+  home: WORKSPACE_HOME_PANE_DESCRIPTOR,
 };
 
 function isDescriptorShaped(value: unknown): value is WorkspacePaneDescriptor {

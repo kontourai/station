@@ -714,16 +714,16 @@ describe('CommandPalette', () => {
     expect(chat).toBeTruthy();
     expect(activity).toBeTruthy();
     registeredShortcutIdentity = {
-      id: chat!.shortcut.id,
-      key: chat!.shortcut.key,
-      modifiers: [...chat!.shortcut.modifiers],
+      id: chat!.shortcut!.id,
+      key: chat!.shortcut!.key,
+      modifiers: [...chat!.shortcut!.modifiers],
       description: `Toggle ${chat!.title} region`,
     };
     additionalRegisteredShortcutIdentities = [
       {
-        id: activity!.shortcut.id,
-        key: activity!.shortcut.key,
-        modifiers: [...activity!.shortcut.modifiers],
+        id: activity!.shortcut!.id,
+        key: activity!.shortcut!.key,
+        modifiers: [...activity!.shortcut!.modifiers],
         description: `Toggle ${activity!.title} region`,
       },
     ];

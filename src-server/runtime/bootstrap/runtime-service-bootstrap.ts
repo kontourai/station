@@ -13,6 +13,7 @@ import {
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { createLocalKnowledgeSourceObservationPolicy } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import { MonitoringEmitter } from '../../monitoring/emitter.js';
 import {
@@ -58,6 +59,7 @@ import {
 import { NovaSonicProvider } from '../../voice/providers/nova-sonic.js';
 import { VoiceSessionService } from '../../voice/voice-session.js';
 import type { IAgentHooks } from '../types.js';
+import { createPersonalRuntimeRequestGuard } from './runtime-tenant-context.js';
 
 type ToolNameMapping = Map<
   string,
@@ -81,7 +83,10 @@ interface RuntimeServiceBootstrapContext {
   orchestrationEventStore: EventStore;
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
-    'verifyCredential' | 'resolveGrantedScope'
+    | 'verifyCredential'
+    | 'resolveGrantedScope'
+    | 'authorizeCredential'
+    | 'credentialLocality'
   >;
   monitoringEvents: EventEmitter;
   memoryAdapters: Map<string, FileMemoryAdapter>;
@@ -311,7 +316,15 @@ export function createRuntimeServiceBundle(
   // calls this provider or `projectNamespacesToRoots`.
   const knowledgeStoreProvider =
     factories.createKnowledgeStoreProvider?.(storageAdapter) ??
-    new KnowledgeStoreProvider(storageAdapter);
+    new KnowledgeStoreProvider(
+      storageAdapter,
+      createLocalKnowledgeSourceObservationPolicy({
+        stationHome: context.configLoader.getProjectHomeDir(),
+        persistence: storageAdapter,
+        security: context.environmentSecurityService,
+        isPersonalRequest: createPersonalRuntimeRequestGuard(),
+      }),
+    );
 
   const fileTreeService =
     factories.createFileTreeService?.() ?? new FileTreeService();

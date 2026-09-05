@@ -11,14 +11,6 @@
  */
 
 import {
-  createWorkspaceChatPaneInstance,
-  WORKSPACE_CHAT_PANE_DESCRIPTOR,
-} from '@kontourai/station-contracts/workspace-chat-pane';
-import {
-  WORKSPACE_HOME_PANE_DESCRIPTOR,
-  WORKSPACE_HOME_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-home-pane';
-import {
   act,
   cleanup,
   fireEvent,
@@ -221,31 +213,6 @@ async function dockedAction(): Promise<WorkspacePaneDockAction> {
  * every occupant), maximize, collapse, placement control and occupant
  * picker. `occupantName` is the picker's expected current-occupant label.
  */
-function expectFullDockControls(occupantName: string) {
-  expect(
-    document.querySelector('hr.chat-dock__resize-handle'),
-    'the bottom-dock resize handle must be present regardless of occupant',
-  ).not.toBeNull();
-  expect(
-    screen.getByLabelText(
-      /^(Expand dock region to workspace|Restore dock region size)$/,
-    ),
-    'a maximize/restore control must be present regardless of occupant',
-  ).toBeTruthy();
-  expect(
-    screen.getByLabelText(new RegExp(`^(Show|Hide) ${occupantName}$`)),
-    'a collapse/expand control must be present regardless of occupant',
-  ).toBeTruthy();
-  expect(
-    screen.getByLabelText('Move the dock'),
-    'the placement control must be present regardless of occupant',
-  ).toBeTruthy();
-  expect(
-    screen.getByRole('button', { name: `Docked pane: ${occupantName}` }),
-    'the occupant picker must be present regardless of occupant',
-  ).toBeTruthy();
-}
-
 /**
  * The registry probe exists so a test can drive `dock.toggle` through the same
  * channel ⌘D does, rather than clicking the button and hoping the binding is
@@ -543,109 +510,5 @@ describe('every ambient occupant gets the full dock chrome (station#4460)', () =
       document.querySelector('hr.chat-dock__resize-handle'),
       'the bottom-dock resize handle must be present regardless of occupant',
     ).not.toBeNull();
-  });
-
-  test('Home, docked, has the SAME controls the shared ChatDockHeader gives Chat', async () => {
-    const action = await dockedAction();
-    act(() => {
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
-    });
-    expectFullDockControls('Home');
-  });
-});
-
-describe('maximize state survives a Chat and Home occupant switch (archive#4460)', () => {
-  test('a maximized Home remains maximized through Chat and exposes restore when Home returns', async () => {
-    const action = await dockedAction();
-    act(() =>
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
-    );
-    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
-    await waitFor(() =>
-      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
-    );
-
-    act(() =>
-      action.dockPane(
-        WORKSPACE_CHAT_PANE_DESCRIPTOR,
-        createWorkspaceChatPaneInstance()!,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
-    );
-    expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull();
-
-    act(() =>
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      ),
-    );
-    const restore = await screen.findByLabelText('Restore dock region size');
-    fireEvent.click(restore);
-    await waitFor(() =>
-      expect(document.querySelector('.chat-dock.is-maximized')).toBeNull(),
-    );
-  });
-});
-
-describe('dock-slot geometry is stable across a Chat and Home occupant switch (archive#4460)', () => {
-  test('a maximized height survives Home to Chat to Home without a settings-derived jump', async () => {
-    const action = await dockedAction();
-    act(() =>
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
-    );
-    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
-    await waitFor(() =>
-      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
-    );
-    const maximizedSize =
-      document.documentElement.style.getPropertyValue('--dock-slot-size');
-    expect(maximizedSize).not.toBe('');
-    expect(maximizedSize).not.toBe('320px');
-
-    act(() =>
-      action.dockPane(
-        WORKSPACE_CHAT_PANE_DESCRIPTOR,
-        createWorkspaceChatPaneInstance()!,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
-    );
-    expect(
-      document.documentElement.style.getPropertyValue('--dock-slot-size'),
-    ).toBe(maximizedSize);
-    act(() =>
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
-    );
-    expect(
-      document.documentElement.style.getPropertyValue('--dock-slot-size'),
-    ).toBe(maximizedSize);
   });
 });

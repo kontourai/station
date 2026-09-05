@@ -322,6 +322,7 @@ export {
   useKnowledgeRecordQuery,
   useKnowledgeRecordsByTypeQuery,
   useKnowledgeRootsQuery,
+  useLearningSourceObservationQuery,
   useLinkKnowledgeRecordMutation,
   useMigratePreIndexKnowledgeMutation,
   useSearchKnowledgeIndexMutation,

@@ -70,6 +70,30 @@ Choose the simplest path for what you want to do:
 | Use an existing agent engine | A supported engine Provider and its External agent |
 | Use a hosted model through Station | A hosted Model Provider and a Station agent |
 
+## Start Your First Chat
+
+At the end of first-run setup, choose **Start your first chat**. Station saves
+any personalization answers you selected, then opens New Chat. Unanswered
+questions add no profile. A failed save keeps setup open so you can retry.
+
+New Chat lets you choose an Agent, Model, and workspace. It shows loading,
+connection errors, or setup actions when a choice is not ready. Opening it does
+not send a message. **Take the tour** is an optional alternative that saves the
+same selected answers before showing Station's key surfaces.
+
+### Finish setup and return
+
+If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
+Connections**, use that action to open the owning setup page. The picker steps
+aside while keeping your chosen workspace, Agent, Model, and selected context.
+Use **Return to New Chat** when finished, or browser Back to return to the page
+you left. Station rechecks setup before you choose an Agent; returning sends no
+message. If a choice was removed or access changed, choose an available option.
+
+**Cancel return**, opening a fresh New Chat, navigating elsewhere, changing
+Stations or authorization, and reloading the page end this temporary return
+flow. Connection changes you already saved remain saved.
+
 ## Start Your First Task
 
 When Home offers **Start your first task**, it appears only after the durable
@@ -195,3 +219,36 @@ directory for manual review.
 - Read [Station concepts](concepts.md).
 - Customize [keyboard shortcuts](../guides/keyboard-shortcuts.md).
 - Review the [Station privacy policy](https://kontourai.io/privacy/station/).
+
+## Inspect a learning source
+
+Open **Developer → Memory** and select a record from a personal Default File
+Store, then choose **Inspect learning source**. If Developer is hidden, enable
+developer tools in Settings. The inspector requires local access to the Station
+that owns the store; remote pairing or an operator API credential alone is not
+enough. Hosted Stations and tenant-scoped requests are not supported by this
+personal-store inspection.
+
+The inspector shows the source text, provenance, and observation time. **Refresh
+source** reads it again. If the store was replaced, access changed, or the source
+cannot be verified, the old content is withheld. Inspection does not repair or
+change the source.
+
+A record marked active is not evidence that a learning was activated. This view
+shows source records only; candidate decisions, active learning revisions, and
+observed effects require records from their respective owners. It offers no
+promotion or retirement action.
+
+## Return to a decision
+
+Open Notifications to find work that needs your attention. When an approval or
+permission has recorded request evidence, **Inspect request** opens its current
+details. Choose **Approve once** or **Deny** only after reviewing the request.
+You can expand **Request identity** for its exact record or open the Session for
+more context.
+
+A resolved or changed request must be inspected again from refreshed attention.
+A request that cannot currently be answered remains visible without decision
+buttons. If the decision cannot be confirmed, **Check request again** refreshes
+its state before another attempt. Other notifications retain their existing
+Session and action controls.

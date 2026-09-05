@@ -19,6 +19,7 @@ import {
   MAX_ANDROID_VERSION_CODE,
   NIGHTLY_PUBLISHED_VERSION_CODE_FLOOR,
   NIGHTLY_VERSION_CODE_TAG_PREFIX,
+  nightlyCliVersion,
   nightlyDayNumber,
   nightlyIdentifier,
   nightlyVersion,
@@ -1185,4 +1186,41 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     expect(ledgerStep).not.toMatch(/git rev-parse/);
     expect(ledgerStep).not.toContain('continue-on-error');
   });
+});
+
+describe('CLI publications do not collide within a UTC day', () => {
+  const date = new Date('2026-09-05T09:00:00Z');
+  it('sorts a replacement after the already published day-only version and a prior run', () => {
+    const prior = nightlyCliVersion('0.6.0', date, '33929822729');
+    const replacement = nightlyCliVersion('0.6.0', date, '33965345304');
+    expect(gt(prior, '0.6.0-nightly.2439')).toBe(true);
+    expect(gt(replacement, prior)).toBe(true);
+    expect(replacement).not.toBe(prior);
+  });
+  it('retains one identity for same-day reruns but advances on the next day', () => {
+    const version = nightlyCliVersion('0.6.0', date, '33965345304');
+    expect(
+      nightlyCliVersion(
+        '0.6.0',
+        new Date('2026-09-05T23:59:59Z'),
+        '33965345304',
+      ),
+    ).toBe(version);
+    expect(
+      gt(
+        nightlyCliVersion(
+          '0.6.0',
+          new Date('2026-09-06T00:00:00Z'),
+          '33965345305',
+        ),
+        version,
+      ),
+    ).toBe(true);
+  });
+  it.each(['', '0', '01', '-1', '1.2', '9007199254740992', 'bad'])(
+    'rejects ambiguous run ID %s',
+    (runId) => {
+      expect(() => nightlyCliVersion('0.6.0', date, runId)).toThrow(/run ID/);
+    },
+  );
 });

@@ -10,10 +10,12 @@ import type {
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import {
   useACPConnectionsQuery,
+  useAgentsQuery,
   useEngineConnectionsQuery,
   useModelConnectionsQuery,
   useProjectLayoutQuery,
   useProjectQuery,
+  useProjectsQuery,
 } from '@kontourai/station-sdk';
 import { useCallback, useMemo, useState } from 'react';
 import {
@@ -140,16 +142,44 @@ export function useNewChatSelectionModel({
   selectedContext,
   contextSearch = '',
   agentSearch = '',
+  revalidateSelection = false,
 }: {
   agents: AgentData[];
   projects: ProjectMetadata[];
   selectedContext: string;
   contextSearch?: string;
   agentSearch?: string;
+  revalidateSelection?: boolean;
 }) {
   const { selectedProject: activeLayoutProject, selectedProjectLayout } =
     useNavigation();
   const appConfig = useConfig();
+  const agentCatalog = useAgentsQuery();
+  const projectCatalog = useProjectsQuery();
+  const qualifiedAgents = useMemo(
+    () =>
+      revalidateSelection
+        ? agents.flatMap((agent) => {
+            const current = agentCatalog.data?.find(
+              (candidate) => candidate.slug === agent.slug,
+            );
+            return current ? [current] : [];
+          })
+        : agents,
+    [agents, agentCatalog.data, revalidateSelection],
+  );
+  const qualifiedProjects = useMemo(
+    () =>
+      revalidateSelection
+        ? projects.flatMap((project) => {
+            const current = (
+              projectCatalog.data as ProjectMetadata[] | undefined
+            )?.find((candidate) => candidate.slug === project.slug);
+            return current ? [current] : [];
+          })
+        : projects,
+    [projects, projectCatalog.data, revalidateSelection],
+  );
   const { data: layout } = useProjectLayoutQuery(
     activeLayoutProject || '',
     selectedProjectLayout || '',
@@ -158,36 +188,46 @@ export function useNewChatSelectionModel({
   const {
     data: agentConnections = [],
     isLoading: runtimeLoading,
+    isFetching: runtimeFetching,
     error: runtimeError,
     refetch: refetchAgentConnections,
   } = useEngineConnectionsQuery() as {
     data?: AgentConnectionView[];
     isLoading?: boolean;
+    isFetching?: boolean;
     error?: unknown;
-    refetch: () => unknown;
+    refetch: (options?: { throwOnError?: boolean }) => Promise<unknown>;
   };
   const {
     data: modelConnections = [],
     isLoading: modelsLoading,
+    isFetching: modelsFetching,
     error: modelsError,
     refetch: refetchModelConnections,
   } = useModelConnectionsQuery() as {
     data?: ConnectionConfig[];
     isLoading?: boolean;
+    isFetching?: boolean;
     error?: unknown;
-    refetch: () => unknown;
+    refetch: (options?: { throwOnError?: boolean }) => Promise<unknown>;
   };
-  const { data: acpConnections = [], refetch: refreshACPConnections } =
-    useACPConnectionsQuery() as {
-      data?: ACPSelectionConnection[];
-      refetch: () => Promise<unknown>;
-    };
+  const {
+    data: acpConnections = [],
+    refetch: refreshACPConnections,
+    isFetching: acpFetching,
+    error: acpError,
+  } = useACPConnectionsQuery() as {
+    data?: ACPSelectionConnection[];
+    isFetching?: boolean;
+    error?: unknown;
+    refetch: (options?: { throwOnError?: boolean }) => Promise<unknown>;
+  };
   const selectedProjectSlug =
     selectedContext !== GLOBAL_CONTEXT ? selectedContext : null;
-  const { data: selectedProjectConfig } = useProjectQuery(
-    selectedProjectSlug ?? '',
-    { enabled: !!selectedProjectSlug },
-  ) as {
+  const selectedProjectQuery = useProjectQuery(selectedProjectSlug ?? '', {
+    enabled: !!selectedProjectSlug,
+  });
+  const { data: selectedProjectConfig } = selectedProjectQuery as {
     data?: {
       agents?: AgentId[];
       defaultProviderId?: string;
@@ -219,8 +259,8 @@ export function useNewChatSelectionModel({
     [agentConnections],
   );
   const modalAgents = useMemo(() => {
-    if (!providerManagedExecution) return agents;
-    return agents.map((agent) =>
+    if (!providerManagedExecution) return qualifiedAgents;
+    return qualifiedAgents.map((agent) =>
       supportsProviderManagedBinding(agent, agentConnections)
         ? {
             ...agent,
@@ -243,7 +283,12 @@ export function useNewChatSelectionModel({
           }
         : agent,
     );
-  }, [agents, agentConnections, managedRuntime?.id, providerManagedExecution]);
+  }, [
+    qualifiedAgents,
+    agentConnections,
+    managedRuntime?.id,
+    providerManagedExecution,
+  ]);
   const providerManagedAgentSlugs = useMemo(
     () =>
       providerManagedExecution
@@ -266,7 +311,7 @@ export function useNewChatSelectionModel({
     () =>
       buildNewChatModalViewModel({
         agents: modalAgents,
-        projects,
+        projects: qualifiedProjects,
         agentConnections,
         selectedContext,
         contextSearch,
@@ -291,7 +336,7 @@ export function useNewChatSelectionModel({
       layout?.icon,
       layout?.name,
       modalAgents,
-      projects,
+      qualifiedProjects,
       providerManagedAgentSlugs,
       selectedContext,
       selectedProjectConfig?.agents,
@@ -401,6 +446,59 @@ export function useNewChatSelectionModel({
     };
   };
 
+  const setupError =
+    runtimeError ??
+    modelsError ??
+    acpError ??
+    agentCatalog.error ??
+    projectCatalog.error ??
+    selectedProjectQuery.error;
+  const setupFetching = Boolean(
+    runtimeFetching ||
+      modelsFetching ||
+      acpFetching ||
+      agentCatalog.isFetching ||
+      projectCatalog.isFetching ||
+      selectedProjectQuery.isFetching ||
+      agentCatalog.catalogState === 'reconciling',
+  );
+  const refreshSetup = async () => {
+    const options = { throwOnError: true };
+    const projectsRead = projectCatalog.refetch(options);
+    const selectedProjectRead = projectsRead.then((result) => {
+      // The authorized list proves absence before a detail request is needed.
+      // Avoid retrying a known missing/revoked Project; keep its selection for
+      // explicit replacement instead of interpreting it as another Project.
+      const exists = (result.data as ProjectMetadata[] | undefined)?.some(
+        (project) => project.slug === selectedProjectSlug,
+      );
+      return selectedProjectSlug && exists
+        ? selectedProjectQuery.refetch(options)
+        : undefined;
+    });
+    const outcomes = await Promise.allSettled([
+      refetchAgentConnections(options),
+      refetchModelConnections(options),
+      refreshACPConnections(options),
+      agentCatalog.refetch(options),
+      projectsRead,
+      selectedProjectRead,
+    ]);
+    for (const outcome of outcomes) {
+      if (outcome.status === 'rejected') throw outcome.reason;
+      const result = outcome.value;
+      if (
+        result &&
+        typeof result === 'object' &&
+        'isError' in result &&
+        result.isError
+      ) {
+        throw 'error' in result
+          ? result.error
+          : new Error('Chat setup could not be verified.');
+      }
+    }
+  };
   return {
     viewModel,
     defaultSelection,
@@ -411,6 +509,13 @@ export function useNewChatSelectionModel({
     selectedProjectConfig,
     runtimeLoading,
     modelsLoading,
+    runtimeFetching,
+    modelsFetching,
+    setupFetching,
+    projectCatalogResolved:
+      projectCatalog.isSuccess && !projectCatalog.isFetching,
+    setupError,
+    refreshSetup,
     // archive#771: both flow into a single `flatList.length === 0` gate in
     // `NewChatModal` that previously only checked `runtimeLoading ||
     // modelsLoading` — a settled error rendered as "Nothing to chat with
