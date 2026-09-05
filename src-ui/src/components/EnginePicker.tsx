@@ -280,10 +280,13 @@ export function EnginePicker({
         <div
           className="engine-picker__panel"
           data-testid="engine-picker-none-capable"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="engine-picker-title"
         >
           <div className="engine-picker__eyebrow">{eyebrow}</div>
           <div className="engine-picker__header">
-            <div className="engine-picker__title">
+            <div className="engine-picker__title" id="engine-picker-title">
               {pendingOptions.length > 0
                 ? 'No connected engine can run the built-in assistant yet'
                 : 'No connected engine can run the built-in assistant'}
@@ -374,10 +377,17 @@ export function EnginePicker({
   return (
     <div className="engine-picker" data-testid="engine-picker">
       <div className="engine-picker__backdrop" />
-      <div className="engine-picker__panel">
+      <div
+        className="engine-picker__panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="engine-picker-title"
+      >
         <div className="engine-picker__eyebrow">{eyebrow}</div>
         <div className="engine-picker__header">
-          <div className="engine-picker__title">{title}</div>
+          <div className="engine-picker__title" id="engine-picker-title">
+            {title}
+          </div>
           <button
             type="button"
             aria-label="Dismiss engine picker"
@@ -425,7 +435,15 @@ export function EnginePicker({
         <button
           type="button"
           className="engine-picker__primary"
-          disabled={updateConfig.isPending}
+          // UX audit 2026-09-05 A7: with two or more capable engines the
+          // resolver has no default (`resolveBuiltinAgentEngineBinding`
+          // returns null when the choice is ambiguous), so no radio is
+          // preselected. An enabled primary in that state saved
+          // `builtinAgentEngineConnectionId: null` while reading "Saving…",
+          // left the built-in assistant unrunnable, and the wizard moved on
+          // as if a choice had been made. No row in this picker means
+          // "null", so a null selection is "nothing chosen", not a choice.
+          disabled={updateConfig.isPending || resolvedSelectedId === null}
           onClick={() => {
             if (onSelect) {
               // route the choice through the caller's own
