@@ -6,7 +6,10 @@ import {
   registryPackageSignaturePayload,
   verifyRegistryPackage,
 } from './registry-supply-chain.js';
-import type { RegistryTrustPolicyAuthority } from './registry-trust-policy.js';
+import {
+  type RegistryTrustPolicyAuthority,
+  RegistryTrustPolicyConflict,
+} from './registry-trust-policy.js';
 
 /** Stored only in the selected generation's activation plan. Source and registry
  * URLs are hashed: credentials, PEM keys and signatures never enter this receipt. */
@@ -73,9 +76,18 @@ export class RegistryAcquisitionRefused extends Error {
     );
   }
 }
+export function isRegistryAcquisitionRefusal(error: unknown): boolean {
+  return (
+    error instanceof RegistryAcquisitionRefused ||
+    error instanceof RegistryTrustPolicyConflict
+  );
+}
 export type RegistryPolicyAdmission = Awaited<
   ReturnType<RegistryTrustPolicyAuthority['captureAdmission']>
 >;
+export const registryAcquisitionRevision = (
+  receipt: RegistryAcquisitionReceipt,
+) => digest(JSON.stringify(receipt));
 
 /** Called with a fresh HOST-resolved provider observation, never request claims. */
 export async function verifyRegistryAcquisition(input: {
@@ -166,4 +178,33 @@ export function registryReceiptMatchesAppliedPolicy(
     decision.epoch === receipt.policyEpoch &&
     decision.identity.fingerprint === receipt.policyFingerprint
   );
+}
+
+/** Retained immutable code is bound to an original verification, not a new
+ * source observation. Recovery remains local when the registry is offline. */
+export async function verifyRetainedRegistryAcquisition(
+  admission: RegistryPolicyAdmission,
+  receipt: RegistryAcquisitionReceipt,
+): Promise<RegistryAcquisitionReceipt> {
+  await admission.assertCurrent();
+  if (
+    !validRegistryAcquisitionReceipt(receipt) ||
+    !registryReceiptMatchesAppliedPolicy(receipt, admission.decision)
+  )
+    throw new RegistryAcquisitionRefused();
+  const profile = admission.decision!.identity.profiles.find(
+    (entry) => digest(entry.registryKey) === receipt.registryKeyDigest,
+  );
+  if (
+    !profile ||
+    (receipt.signer
+      ? !profile.trustedKeys.some(
+          (key) =>
+            key.keyId === receipt.signer!.keyId &&
+            key.spkiFingerprint === receipt.signer!.spkiFingerprint,
+        )
+      : profile.signatures === 'required')
+  )
+    throw new RegistryAcquisitionRefused();
+  return receipt;
 }

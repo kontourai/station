@@ -38,6 +38,7 @@ export async function loadPluginProviders(
     packageRoot?: string;
     artifact?: CapturedPluginPermissionArtifact;
     visibility?: PluginProviderVisibility;
+    beforeEffect?: () => Promise<void>;
   } = {},
 ): Promise<number> {
   const expectedProviderGeneration = pluginProviderSourceGeneration(pluginName);
@@ -220,6 +221,7 @@ export async function preparePluginProviders(
     packageRoot?: string;
     artifact?: CapturedPluginPermissionArtifact;
     visibility?: PluginProviderVisibility;
+    beforeEffect?: () => Promise<void>;
   } = {},
 ): Promise<PreparedPluginProviderRegistration[]> {
   if (!manifest.providers) return [];
@@ -233,6 +235,7 @@ export async function preparePluginProviders(
 
   const prepared: PreparedPluginProviderRegistration[] = [];
   for (const provider of manifest.providers) {
+    await options.beforeEffect?.();
     const pluginRoot = options.packageRoot ?? join(pluginsDir, pluginName);
     if (options.artifact && !options.artifact.isCurrent())
       throw new Error('Plugin installation changed before provider import');
@@ -287,9 +290,16 @@ export async function preparePluginProviders(
         'stationPluginRevision',
         String(++pluginProviderImportRevision),
       );
+      await options.beforeEffect?.();
       const mod = await import(fileUrl.href);
       const factory = mod.default || mod;
-      if (options.artifact && !options.artifact.isCurrent()) {
+      try {
+        await options.beforeEffect?.();
+        if (options.artifact && !options.artifact.isCurrent())
+          throw new Error(
+            'Plugin installation changed before provider construction',
+          );
+      } catch (admissionError) {
         // An object export was already constructed by module evaluation. Its
         // existing owner must dispose it even though publication is refused.
         // A factory has not run and must not run merely to obtain a disposer.
@@ -303,9 +313,7 @@ export async function preparePluginProviders(
             },
           ]);
         }
-        throw new Error(
-          'Plugin installation changed before provider construction',
-        );
+        throw admissionError;
       }
       let instance: unknown;
       try {

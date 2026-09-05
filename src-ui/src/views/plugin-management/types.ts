@@ -66,6 +66,7 @@ export interface GitInfo {
 
 export interface PreviewData {
   grantRevision?: string;
+  registryTrustRevision?: string;
   installationRevision?: PluginInstallationRevision | null;
   existingDataScope?: boolean;
   valid: boolean;
@@ -99,6 +100,7 @@ export interface PreviewData {
     git?: GitInfo;
     consent?: {
       grantRevision?: string;
+      registryTrustRevision?: string;
       contentDigest: string;
       permissions: string[];
       dependencies: string[];

@@ -391,6 +391,7 @@ export function RegistryView({
       id: itemId,
       action: 'install' as const,
       consent: {
+        registryTrustRevision: data.registryTrustRevision,
         ...(data.grantRevision !== undefined
           ? { grantRevision: data.grantRevision }
           : {}),
@@ -407,6 +408,8 @@ export function RegistryView({
                     ? [
                         {
                           id: dependency.id,
+                          registryTrustRevision:
+                            dependency.consent.registryTrustRevision,
                           ...(dependency.consent.grantRevision !== undefined
                             ? {
                                 grantRevision: dependency.consent.grantRevision,

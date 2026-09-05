@@ -125,6 +125,7 @@ import {
   PACKAGE_MCP_ADMISSION_SCHEMA,
   type PackageMcpAdmissionJournal,
 } from '../plugins/package-mcp-admission.js';
+import { registryReceiptMatchesAppliedPolicy } from '../plugins/registry-acquisition.js';
 import {
   createRegistryTrustPolicyDecisions as composeRegistryTrustPolicyDecisions,
   REGISTRY_TRUST_POLICY_SCHEMA,
@@ -7762,6 +7763,11 @@ export class EventStore {
       this.db,
       this.recoveryLedgerOwner,
       this.packageMcpCommitFault,
+      (receipt) =>
+        registryReceiptMatchesAppliedPolicy(
+          receipt,
+          this.createRegistryTrustPolicyDecisions().read(),
+        ),
     );
     return this.packageMcpAdmissionJournal;
   }

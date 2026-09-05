@@ -18,6 +18,7 @@ import {
   validPluginActivationPlan,
   verifyPluginActivation,
 } from './plugin-activation-plan.js';
+import { registryAcquisitionRevision } from './registry-acquisition.js';
 
 export const PACKAGE_MCP_ADMISSION_SCHEMA = `
 CREATE TABLE IF NOT EXISTS package_mcp_admission_journal (
@@ -84,6 +85,7 @@ type Generation = {
   dataScope?: string;
   origin?: string;
   activation?: 'pending' | 'ready';
+  registryAcquisitionDigest?: string;
   current: boolean;
   claims: Claim[];
   settledEffects?: number;
@@ -156,6 +158,16 @@ export interface PackageMcpAdmissionJournal {
   ): ReturnType<PackageMcpAdmissionJournal['reserve']>;
   installationRecorded(installation: PackageMcpInstallation): boolean;
   admissionOpen(installation: PackageMcpInstallation): boolean;
+  registryAcquisition(
+    installation: PackageMcpInstallation,
+  ):
+    | {
+        state: 'observed';
+        receipt:
+          | import('./registry-acquisition.js').RegistryAcquisitionReceipt
+          | null;
+      }
+    | { state: 'unavailable' };
   selectedInstallations():
     | { state: 'observed'; installations: PackageMcpInstallation[] }
     | { state: 'unavailable' };
@@ -264,6 +276,7 @@ function validJournal(value: unknown): value is Journal {
         'origin',
         'current',
         'activation',
+        'registryAcquisitionDigest',
         'claims',
         'settledEffects',
         'retirement',
@@ -274,6 +287,9 @@ function validJournal(value: unknown): value is Journal {
       generations.has(generation.incarnation) ||
       typeof generation.contentDigest !== 'string' ||
       !DIGEST.test(generation.contentDigest) ||
+      (generation.registryAcquisitionDigest !== undefined &&
+        (typeof generation.registryAcquisitionDigest !== 'string' ||
+          !DIGEST.test(generation.registryAcquisitionDigest))) ||
       (generation.materialization !== undefined &&
         (typeof generation.materialization !== 'string' ||
           !UUID.test(generation.materialization))) ||
@@ -345,6 +361,10 @@ export function createPackageMcpAdmissionJournal(
   runtimeOwner: RuntimeOwner,
   /** Private fault seam proving unknown post-commit results never permit effects. */
   afterCommit?: () => void,
+  /** Local custody fence. An absent/unqualified adapter refuses pinned effects. */
+  registryTrustCurrent?: (
+    receipt: import('./registry-acquisition.js').RegistryAcquisitionReceipt,
+  ) => boolean,
 ): PackageMcpAdmissionJournal {
   const capturedOwner: StoredOwner | undefined =
     runtimeOwner.identityKind === 'exact' &&
@@ -626,6 +646,7 @@ export function createPackageMcpAdmissionJournal(
     const outcome = transaction((state) => {
       const generation = find(state, captured);
       if (!generation?.current) return 'stale' as const;
+      if (!trustCurrent(captured)) return 'blocked' as const;
       if (
         ((permit || generation.activation === 'pending') &&
           !activationCurrent()) ||
@@ -668,6 +689,7 @@ export function createPackageMcpAdmissionJournal(
         if (operation === 'enter') {
           if (
             !generation.current ||
+            !trustCurrent(captured) ||
             ((permit || generation.activation === 'pending') &&
               !activationCurrent()) ||
             fenced(state, captured.pluginId)
@@ -710,6 +732,7 @@ export function createPackageMcpAdmissionJournal(
         const generation = find(loaded.value, captured);
         return (
           generation?.current === true &&
+          trustCurrent(captured) &&
           ((!permit && generation.activation !== 'pending') ||
             activationCurrent()) &&
           generation.claims.some(
@@ -779,7 +802,42 @@ export function createPackageMcpAdmissionJournal(
       'INSERT INTO package_plugin_activation_plans(journal_id, incarnation, plan_json) VALUES (?, ?, ?)',
     ).run(journalId!, generation.incarnation, JSON.stringify(plan));
   };
+  const trustCurrent = (installation: PackageMcpInstallation): boolean =>
+    observe(() => {
+      const observed = journal.registryAcquisition(installation);
+      return (
+        observed.state === 'observed' &&
+        (!observed.receipt || registryTrustCurrent?.(observed.receipt) === true)
+      );
+    }, false);
   const journal: PackageMcpAdmissionJournal = {
+    registryAcquisition(installation) {
+      return observe<
+        ReturnType<PackageMcpAdmissionJournal['registryAcquisition']>
+      >(
+        () => {
+          const loaded = read();
+          const generation =
+            loaded && loaded.id === journalId
+              ? find(loaded.value, installation)
+              : undefined;
+          if (!generation) return { state: 'unavailable' };
+          const plan = journal.activationPlan(installation);
+          if (
+            generation.registryAcquisitionDigest &&
+            (!plan?.registryAcquisition ||
+              registryAcquisitionRevision(plan.registryAcquisition) !==
+                generation.registryAcquisitionDigest)
+          )
+            return { state: 'unavailable' };
+          return {
+            state: 'observed',
+            receipt: plan?.registryAcquisition ?? null,
+          };
+        },
+        { state: 'unavailable' },
+      );
+    },
     activationState(installation) {
       const loaded = read();
       const generation =
@@ -823,6 +881,7 @@ export function createPackageMcpAdmissionJournal(
         return (
           generation?.current === true &&
           generation.activation === 'pending' &&
+          trustCurrent(captured) &&
           !fenced(loaded!.value, captured.pluginId)
         );
       };
@@ -851,6 +910,7 @@ export function createPackageMcpAdmissionJournal(
         if (
           !generation?.current ||
           generation.activation !== 'pending' ||
+          !trustCurrent(captured) ||
           fenced(state, captured.pluginId)
         )
           return 'stale' as const;
@@ -890,6 +950,7 @@ export function createPackageMcpAdmissionJournal(
         loaded.id === journalId &&
         find(loaded.value, installation)?.current === true &&
         find(loaded.value, installation)?.activation !== 'pending' &&
+        trustCurrent(installation) &&
         !fenced(loaded.value, installation.pluginId)
       );
     },
@@ -1067,6 +1128,13 @@ export function createPackageMcpAdmissionJournal(
           ...(input.origin ? { origin: input.origin } : {}),
           contentDigest: input.contentDigest,
           activation: input.activationPlan ? 'pending' : 'ready',
+          ...(input.activationPlan?.registryAcquisition
+            ? {
+                registryAcquisitionDigest: registryAcquisitionRevision(
+                  input.activationPlan.registryAcquisition,
+                ),
+              }
+            : {}),
           current: true,
           claims: [],
         };
@@ -1166,6 +1234,13 @@ export function createPackageMcpAdmissionJournal(
                 dataScope: input.dataScope,
                 ...(input.origin ? { origin: input.origin } : {}),
                 activation: input.activationPlan ? 'pending' : 'ready',
+                ...(input.activationPlan?.registryAcquisition
+                  ? {
+                      registryAcquisitionDigest: registryAcquisitionRevision(
+                        input.activationPlan.registryAcquisition,
+                      ),
+                    }
+                  : {}),
                 current: true,
                 claims: [],
               };

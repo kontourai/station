@@ -6,6 +6,7 @@ import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import { observePluginGrantRevisions } from '../../services/plugins/plugin-permissions.js';
+import { isRegistryAcquisitionRefusal } from '../../services/plugins/registry-acquisition.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 /**
@@ -687,12 +688,14 @@ export function createRegistryRoutes(
       skip?: string[];
       consent?: {
         grantRevision?: string;
+        registryTrustRevision?: string;
         permissions: string[];
         contentDigest: string;
         dependencies?: string[];
         dependencyApprovals?: Array<{
           id: string;
           grantRevision?: string;
+          registryTrustRevision?: string;
           permissions: string[];
           contentDigest: string;
           dependencies: string[];
@@ -724,6 +727,7 @@ export function createRegistryRoutes(
     const consent: PluginInstallConsent = consentBody
       ? {
           kind: 'operator-decision',
+          registryTrustRevision: consentBody.registryTrustRevision,
           grantRevision: consentBody.grantRevision,
           permissions: consentBody.permissions,
           contentDigest: consentBody.contentDigest,
@@ -794,6 +798,16 @@ export function createRegistryRoutes(
           : 500,
       );
     } catch (error: unknown) {
+      if (isRegistryAcquisitionRefusal(error))
+        return c.json(
+          {
+            success: false,
+            code: 'registry-trust-refused',
+            error:
+              'Registry trust changed or could not be verified. Preview again; retained data has not been migrated.',
+          },
+          409,
+        );
       if (error instanceof PluginInstallationPending)
         return c.json(
           {

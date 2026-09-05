@@ -46,6 +46,7 @@ import {
   observePluginGrantRevisions,
   rebindGrantsAfterContentChange,
 } from '../../services/plugins/plugin-permissions.js';
+import { isRegistryAcquisitionRefusal } from '../../services/plugins/registry-acquisition.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { pluginUpdates } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
@@ -976,6 +977,16 @@ export function registerPluginLifecycleRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (isRegistryAcquisitionRefusal(error))
+        return c.json(
+          {
+            success: false,
+            code: 'registry-trust-refused',
+            error:
+              'Registry trust changed or could not be verified. Preview again; retained data has not been migrated.',
+          },
+          409,
+        );
       if (
         isContextSafetyError(error) ||
         error instanceof PluginUpdateRejectedError

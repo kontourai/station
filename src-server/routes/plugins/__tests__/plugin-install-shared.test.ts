@@ -13,6 +13,7 @@ import {
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -58,13 +59,16 @@ import {
 import { createLocalRegistryTrustPolicyAuthority } from '../../../services/plugins/registry-trust-policy.js';
 import { readCurrentWorkspacePaneCatalog } from '../../../services/projects/workspace-pane-catalog.js';
 import type { Logger } from '../../../utils/logger.js';
+import * as pluginBundles from '../plugin-bundles.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 import {
   backupPluginDurableState,
   capturePersistedAgentOwnership,
   ensureCanonicalRegistryInstallAliases,
   installPluginFromSource,
+  previewInstalledPluginRecovery,
   readRegistryPluginAvailability,
+  recoverInstalledPlugin,
   removeDependencyTreesCreatedByThisInstall,
   resolvePluginRegistrySource,
   restorePluginDurableState,
@@ -1168,11 +1172,93 @@ describe('installPluginFromSource', () => {
       packageMcpJournal: journal,
       registryTrustPolicyAuthority: policy,
     };
-    await installPluginFromSource(source, [], installDeps, {
-      registryId: 'signed-tools',
-      registryKey: registryPath,
-      consent,
+    await expect(
+      installPluginFromSource(source, [], installDeps, {
+        registryId: 'signed-tools',
+        registryKey: registryPath,
+        consent,
+      }),
+    ).rejects.toThrow('trust continuity');
+    expect(installDeps.buildPlugin).not.toHaveBeenCalled();
+    const app = new Hono();
+    registerPluginInstallRoutes(app, installDeps);
+    const previewResponse = await app.request('http://localhost/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ registryId: 'signed-tools' }),
     });
+    const preview = (await previewResponse.json()) as {
+      valid: boolean;
+      registryTrustRevision?: string;
+    };
+    expect(previewResponse.status).toBe(200);
+    expect(preview.valid).toBe(true);
+    expect(preview.registryTrustRevision).toMatch(/^sha256:/);
+    const registryApp = createRegistryRoutes(
+      loader,
+      async () => {},
+      undefined,
+      undefined,
+      {
+        ...installDeps,
+        applyConfigurationMutation: (operation) =>
+          operation(() => {}, {
+            status: 'pending',
+            reason: 'controlled runtime activation pause',
+          }),
+      },
+    );
+    const buildSpy = vi
+      .spyOn(pluginBundles, 'buildPlugin')
+      .mockImplementation(async () => installDeps.buildPlugin());
+    try {
+      const installedResponse = await registryApp.request(
+        'http://localhost/plugins/install',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            id: 'signed-tools',
+            consent: {
+              ...consent,
+              registryTrustRevision: preview.registryTrustRevision,
+            },
+          }),
+        },
+      );
+      expect(installedResponse.status).toBe(202);
+    } finally {
+      buildSpy.mockRestore();
+    }
+    const pending = journal.currentInstallation('signed-tools');
+    if (pending.state !== 'observed')
+      throw new Error('Expected pending installation');
+    expect(journal.activationState(pending.installation)).toBe('pending');
+    const sourceManifest = readFileSync(join(source, 'plugin.json'));
+    rmSync(source, { recursive: true });
+    rmSync(registryPath);
+    rmSync(join(root, 'config', 'registry-installs.json'), { force: true });
+    getPluginRegistryProviders.mockImplementation(() => {
+      throw new Error('Registry is offline');
+    });
+    const recoveryPreview = await previewInstalledPluginRecovery(
+      'signed-tools',
+      installDeps,
+    );
+    await recoverInstalledPlugin('signed-tools', installDeps, {
+      recoveryRevision: recoveryPreview.recoveryRevision,
+      consent: {
+        kind: 'operator-decision',
+        grantRevision: recoveryPreview.grantRevision,
+        registryTrustRevision: recoveryPreview.registryTrustRevision,
+        contentDigest: recoveryPreview.contentDigest,
+        permissions: recoveryPreview.permissions.required,
+        dependencies: [],
+      },
+    });
+    getPluginRegistryProviders.mockReturnValue([]);
+    mkdirSync(source);
+    writeFileSync(join(source, 'plugin.json'), sourceManifest);
     const selected = journal.currentInstallation('signed-tools');
     expect(selected.state).toBe('observed');
     if (selected.state !== 'observed')
@@ -1189,6 +1275,39 @@ describe('installPluginFromSource', () => {
       installPluginFromSource(source, [], installDeps, { consent }),
     ).rejects.toThrow('trust continuity');
     expect(journal.currentInstallation('signed-tools')).toEqual(selected);
+    expect(installDeps.buildPlugin).toHaveBeenCalledTimes(1);
+    expect(journal.admissionOpen(selected.installation)).toBe(true);
+    const reserved = journal.reserve(selected.installation, 'probe');
+    expect(reserved.state).toBe('reserved');
+    if (reserved.state !== 'reserved') throw new Error('Expected reservation');
+    const changed = { profiles: [] };
+    await loader.mutateAppConfig(() => ({ registryTrust: changed }));
+    await policy.publishApplied(await policy.captureApplication(), changed);
+    expect(journal.admissionOpen(selected.installation)).toBe(false);
+    expect(reserved.claim.enterEffectBoundary().state).toBe('blocked');
+    expect(journal.reserve(selected.installation, 'probe').state).toBe(
+      'blocked',
+    );
+    expect(journal.currentInstallation('signed-tools')).toEqual(selected);
+    const fault = new DatabaseSync(join(root, 'events.sqlite'));
+    try {
+      fault
+        .prepare(
+          'DELETE FROM package_plugin_activation_plans WHERE journal_id = ? AND incarnation = ?',
+        )
+        .run(
+          selected.installation.journalId,
+          selected.installation.incarnation,
+        );
+    } finally {
+      fault.close();
+    }
+    expect(journal.registryAcquisition(selected.installation).state).toBe(
+      'unavailable',
+    );
+    await expect(
+      installPluginFromSource(source, [], installDeps, { consent }),
+    ).rejects.toThrow('trust continuity');
     expect(installDeps.buildPlugin).toHaveBeenCalledTimes(1);
   });
 

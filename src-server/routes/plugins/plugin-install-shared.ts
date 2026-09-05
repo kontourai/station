@@ -146,7 +146,9 @@ import {
 } from '../../services/plugins/plugin-permissions.js';
 import {
   RegistryAcquisitionRefused,
+  registryAcquisitionRevision,
   verifyRegistryAcquisition,
+  verifyRetainedRegistryAcquisition,
 } from '../../services/plugins/registry-acquisition.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
@@ -647,6 +649,17 @@ function registerInstalledPluginActivation(
     journal,
     observed.installation,
     async (recordedPlan) => {
+      if (recordedPlan.registryAcquisition) {
+        const current = await deps.registryTrustPolicyAuthority?.current();
+        if (
+          !current ||
+          current.scope !== recordedPlan.registryAcquisition.policyScope ||
+          current.epoch !== recordedPlan.registryAcquisition.policyEpoch ||
+          current.identity.fingerprint !==
+            recordedPlan.registryAcquisition.policyFingerprint
+        )
+          throw new RegistryAcquisitionRefused();
+      }
       if (
         computePluginContentDigest(dirname(pluginDir), basename(pluginDir)) !==
         selectedRevision.artifact.digest
@@ -2608,6 +2621,8 @@ const retainedRecoveryAuthorizations = new WeakMap<
     origin: string;
     current(): boolean;
     dependencies: Map<string, PluginInstallationRevision>;
+    originalSourceDigest: string;
+    registryReceipt?: import('../../services/plugins/registry-acquisition.js').RegistryAcquisitionReceipt;
   }
 >();
 
@@ -2667,6 +2682,15 @@ async function inspectRetainedPluginRecovery(
     throw new Error(
       'Retained plugin bytes changed; recover from a verified original source',
     );
+  const priorTrust = journal.registryAcquisition(observed.installation);
+  if (priorTrust.state === 'unavailable')
+    throw new RegistryAcquisitionRefused();
+  if (priorTrust.receipt) {
+    const admission =
+      await deps.registryTrustPolicyAuthority?.captureAdmission();
+    if (!admission) throw new RegistryAcquisitionRefused();
+    await verifyRetainedRegistryAcquisition(admission, priorTrust.receipt);
+  }
   const dependencies = new Map<string, PluginInstallationRevision>();
   const captures: Array<
     NonNullable<ReturnType<typeof captureLocalPluginInstallation>>
@@ -2792,6 +2816,8 @@ async function inspectRetainedPluginRecovery(
     .digest('hex')}`;
   return {
     source: root.packageRoot,
+    originalSourceDigest: plan.sourceDigest,
+    registryReceipt: priorTrust.receipt ?? undefined,
     origin,
     current,
     dependencies,
@@ -2801,6 +2827,9 @@ async function inspectRetainedPluginRecovery(
       recoveryRevision,
       contentDigest: basis.contentDigest,
       grantRevision,
+      registryTrustRevision: priorTrust.receipt
+        ? registryAcquisitionRevision(priorTrust.receipt)
+        : undefined,
       permissions: {
         required: basis.required,
         autoGranted: basis.autoGranted,
@@ -3418,40 +3447,38 @@ async function installPluginFromSourceUnderContext(
             priorJournalInstallation.installation,
           )
         : null;
-    const policyAdmission =
-      await deps.registryTrustPolicyAuthority?.captureAdmission();
-    if (
-      !policyAdmission &&
-      (priorActivationPlan?.registryAcquisition ||
-        (await observeAppConfigFile(projectHomeDir))?.registryTrust !==
-          undefined)
-    )
-      throw new RegistryAcquisitionRefused();
-    const registryObservation =
-      policyAdmission?.configuration && options?.registryId
-        ? await resolveSinglePluginRegistryProvider(options.registryId)
+    const priorTrust =
+      priorJournalInstallation?.state === 'observed'
+        ? deps.packageMcpJournal!.registryAcquisition(
+            priorJournalInstallation.installation,
+          )
         : undefined;
-    if (
-      registryObservation &&
-      (registryObservation.source !== source ||
-        registryObservation.provider.registryKey !== options?.registryKey)
-    )
+    if (priorTrust?.state === 'unavailable')
       throw new RegistryAcquisitionRefused();
-    const registryAcquisition = policyAdmission
-      ? await verifyRegistryAcquisition({
-          admission: policyAdmission,
-          registryId: options?.registryId,
-          registryKey: options?.registryKey,
-          fresh: registryObservation?.fresh === true,
-          claim: registryObservation?.claim,
-          source,
-          pluginName,
-          packageVersion: manifest.version,
-          observedSourceDigest: consentBasis.contentDigest,
-          previous: priorActivationPlan?.registryAcquisition,
-        })
-      : undefined;
+    const { policyAdmission, registryAcquisition } =
+      options?.retainedRecovery && recovery?.registryReceipt
+        ? await captureRetainedPluginRegistryAcquisition(
+            options.retainedRecovery,
+            deps,
+            priorTrust?.receipt ?? undefined,
+          )
+        : await capturePluginRegistryAcquisition(
+            source,
+            manifest,
+            recovery?.originalSourceDigest ?? consentBasis.contentDigest,
+            deps,
+            options?.registryId,
+            options?.registryKey,
+            priorTrust?.receipt ?? undefined,
+          );
     if (registryAcquisition && !isAgentPlugin)
+      throw new RegistryAcquisitionRefused();
+    if (
+      registryAcquisition &&
+      (consent.kind !== 'operator-decision' ||
+        consent.registryTrustRevision !==
+          registryAcquisitionRevision(registryAcquisition))
+    )
       throw new RegistryAcquisitionRefused();
     let permissionArtifact: CapturedPluginPermissionArtifact | undefined;
     let managedLifecycle:
@@ -3573,7 +3600,8 @@ async function installPluginFromSourceUnderContext(
                 version: 1,
                 ...(registryAcquisition ? { registryAcquisition } : {}),
                 artifactDigest: artifact.digest,
-                sourceDigest: consentBasis.contentDigest,
+                sourceDigest:
+                  recovery?.originalSourceDigest ?? consentBasis.contentDigest,
                 descriptorDigest: pluginActivationDescriptorDigest(manifest),
                 origin,
                 consent:
@@ -3945,6 +3973,8 @@ async function installPluginFromSourceUnderContext(
           logger,
           {
             strict: true,
+            beforeEffect: () =>
+              policyAdmission?.assertCurrent() ?? Promise.resolve(),
             ...(permissionArtifact
               ? (captureManagedPluginPermission(deps, pluginName) ?? {
                   artifact: permissionArtifact,
@@ -4757,4 +4787,79 @@ export async function readRegistryPluginAvailability(projectHomeDir: string) {
   );
 
   return groups.flat();
+}
+
+export async function capturePluginRegistryAcquisition(
+  source: string,
+  manifest: PluginManifest,
+  sourceDigest: string,
+  deps: Pick<
+    PluginInstallSharedDeps,
+    'registryTrustPolicyAuthority' | 'projectHomeDir'
+  >,
+  registryId?: string,
+  registryKey?: string,
+  previous?: import('../../services/plugins/registry-acquisition.js').RegistryAcquisitionReceipt,
+) {
+  const policyAdmission =
+    await deps.registryTrustPolicyAuthority?.captureAdmission();
+  if (
+    !policyAdmission &&
+    (previous ||
+      (await observeAppConfigFile(deps.projectHomeDir))?.registryTrust !==
+        undefined)
+  )
+    throw new RegistryAcquisitionRefused();
+  const registryObservation =
+    policyAdmission?.configuration && registryId
+      ? await resolveSinglePluginRegistryProvider(registryId)
+      : undefined;
+  if (
+    registryObservation &&
+    (registryObservation.source !== source ||
+      registryObservation.provider.registryKey !== registryKey)
+  )
+    throw new RegistryAcquisitionRefused();
+  const registryAcquisition = policyAdmission
+    ? await verifyRegistryAcquisition({
+        admission: policyAdmission,
+        registryId: registryId,
+        registryKey: registryKey,
+        fresh: registryObservation?.fresh === true,
+        claim: registryObservation?.claim,
+        source,
+        pluginName: manifest.name,
+        packageVersion: manifest.version,
+        observedSourceDigest: sourceDigest,
+        previous: previous,
+      })
+    : undefined;
+  return { policyAdmission, registryAcquisition };
+}
+
+async function captureRetainedPluginRegistryAcquisition(
+  authorization: RetainedRecoveryAuthorization,
+  deps: PluginInstallSharedDeps,
+  receipt:
+    | import('../../services/plugins/registry-acquisition.js').RegistryAcquisitionReceipt
+    | undefined,
+) {
+  const captured = retainedRecoveryAuthorizations.get(authorization);
+  if (
+    !captured?.current() ||
+    !receipt ||
+    !isDeepStrictEqual(captured.registryReceipt, receipt)
+  )
+    throw new RegistryAcquisitionRefused();
+  const policyAdmission =
+    await deps.registryTrustPolicyAuthority?.captureAdmission();
+  if (!policyAdmission || !captured.current())
+    throw new RegistryAcquisitionRefused();
+  return {
+    policyAdmission,
+    registryAcquisition: await verifyRetainedRegistryAcquisition(
+      policyAdmission,
+      receipt,
+    ),
+  };
 }

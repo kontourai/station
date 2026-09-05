@@ -389,6 +389,7 @@ export function usePluginManagementViewModel() {
         dataPolicy,
         expectedInstallation: basis.installationRevision,
         consent: {
+          registryTrustRevision: basis.registryTrustRevision,
           ...(basis.grantRevision !== undefined
             ? { grantRevision: basis.grantRevision }
             : {}),
@@ -407,6 +408,8 @@ export function usePluginManagementViewModel() {
                       ? [
                           {
                             id: dependency.id,
+                            registryTrustRevision:
+                              dependency.consent.registryTrustRevision,
                             ...(dependency.consent.grantRevision !== undefined
                               ? {
                                   grantRevision:

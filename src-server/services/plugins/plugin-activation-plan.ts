@@ -75,9 +75,13 @@ function validConsent(value: unknown): boolean {
       'dependencies',
       'dependencyApprovals',
       'grantRevision',
+      'registryTrustRevision',
     ]) ||
     value.kind !== 'operator-decision' ||
     !optionalRevision(value.grantRevision) ||
+    (value.registryTrustRevision !== undefined &&
+      (typeof value.registryTrustRevision !== 'string' ||
+        !DIGEST.test(value.registryTrustRevision))) ||
     typeof value.contentDigest !== 'string' ||
     !DIGEST.test(value.contentDigest) ||
     !strings(value.permissions, 64, 128) ||
@@ -98,8 +102,12 @@ function validConsent(value: unknown): boolean {
             'permissions',
             'dependencies',
             'grantRevision',
+            'registryTrustRevision',
           ]) &&
           optionalRevision(approval.grantRevision) &&
+          (approval.registryTrustRevision === undefined ||
+            (typeof approval.registryTrustRevision === 'string' &&
+              DIGEST.test(approval.registryTrustRevision))) &&
           typeof approval.id === 'string' &&
           isCanonicalPluginId(approval.id) &&
           typeof approval.contentDigest === 'string' &&

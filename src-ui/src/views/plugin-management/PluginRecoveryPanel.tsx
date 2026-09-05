@@ -62,6 +62,7 @@ export function PluginRecoveryPanel({
         recoveryRevision: basis.recoveryRevision,
         consent: {
           contentDigest: basis.contentDigest,
+          registryTrustRevision: basis.registryTrustRevision,
           grantRevision: basis.grantRevision,
           permissions: basis.permissions.required,
           dependencies: basis.dependencies.map((dependency) => dependency.id),
