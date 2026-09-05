@@ -5,6 +5,11 @@
 > validated. [Deployment](../guides/deployment.md) owns supported commands and
 > ingress behavior. This design does not establish a multi-user service.
 
+For a company or project integration, including the separate multi-tenant SaaS
+target, start with [Integrating Station](../guides/integrating-station.md).
+This private-VM design remains useful for a single environment; it is not the
+architecture or isolation proof for the managed multi-tenant offering.
+
 ## Initial shape
 
 ```mermaid

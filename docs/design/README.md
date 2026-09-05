@@ -36,6 +36,7 @@ category.
 - [chat-composer.md](chat-composer.md) — Design: Chat composer & the agent-navigability principle
 - [cli-product.md](cli-product.md) — Design: the Station CLI as a published product
 - [cli-triage.md](cli-triage.md) — Design: bounded guided triage
+- [cloud-move.md](cloud-move.md) — Move a Station setup to the cloud
 - [collaborative-editor-pane.md](collaborative-editor-pane.md) — Collaborative editor pane
 - [conduit-runtime-integration.md](conduit-runtime-integration.md) — Conduit runtime integration
 - [connections-onboarding.md](connections-onboarding.md) — Design: Connections onboarding & capability passthrough
