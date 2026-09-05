@@ -1,7 +1,9 @@
+import { execFileSync } from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -37,6 +39,10 @@ import { createChatRoutes } from '../../../routes/chat/chat.js';
 import { createWorkspacePaneHostActionRoutes } from '../../../routes/orchestration/workspace-pane-host-actions.js';
 import { INTERNAL_NATIVE_FOREGROUND_HEADER } from '../../../runtime/conversation/native-foreground-invocation.js';
 import { createRuntimeWorkspacePaneHostActions } from '../../../runtime/routes/workspace-pane-host-actions.js';
+import {
+  createBuiltinVendedTool,
+  createBuiltinVendedToolDef,
+} from '../../../runtime/tools/vended-tool-compat.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import type { ForegroundInvocationAdmission } from '../../orchestration/foreground-invocation-admission.js';
@@ -263,7 +269,7 @@ describe('Workspace Pane host invocation admission', () => {
       loadAgentPresentation: async () => {
         throw new Error('Must consume captured presentation, not reread');
       },
-      listProjects: () => [{ slug: projectSlug, workingDirectory: home }],
+      listProjects: () => [storage.projectRevision(projectSlug).value],
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     beforeReady = undefined;
@@ -392,6 +398,7 @@ describe('Workspace Pane host invocation admission', () => {
   async function nativeHostProof(
     options: {
       beforeModel?: () => Promise<void>;
+      inModel?: () => Promise<void>;
       dropCompanionMarker?: boolean;
       waitForModel?: Promise<void>;
     } = {},
@@ -423,6 +430,7 @@ describe('Workspace Pane host invocation admission', () => {
     );
     const streamText = vi.fn(
       async (_input: unknown, _context: Record<string, unknown>) => {
+        await options.inModel?.();
         await options.waitForModel;
         return {
           fullStream: (async function* () {
@@ -905,15 +913,117 @@ describe('Workspace Pane host invocation admission', () => {
     });
   });
 
-  test('refuses worktree provisioning before any adapter effect', async () => {
+  test('a changed Project refuses captured provisioning before the Git effect', async () => {
     const revision = storage.projectRevision(projectSlug);
     await revision.replace({
       ...revision.value,
       defaultWorkspaceIsolation: 'worktree',
     });
-    await expect(prepare()).rejects.toThrow();
-    expect(start).not.toHaveBeenCalled();
-    expect(send).not.toHaveBeenCalled();
+    const prepared = await prepare();
+    const changed = storage.projectRevision(projectSlug);
+    await changed.replace({ ...changed.value, name: 'Changed after capture' });
+    const provision = vi.fn(async () => ({
+      path: join(home, 'never-created'),
+    }));
+    await expect(
+      prepared.run((admission) =>
+        admission.invoke(
+          'provision',
+          {
+            threadId: 'worktree-thread',
+            agentId: slug,
+            projectSlug,
+          },
+          provision,
+        ),
+      ),
+    ).rejects.toThrow();
+    expect(provision).not.toHaveBeenCalled();
+  });
+
+  test('provisioned workspace admission refuses another Session or CWD and cannot start twice', async () => {
+    const revision = storage.projectRevision(projectSlug);
+    await revision.replace({
+      ...revision.value,
+      defaultWorkspaceIsolation: 'worktree',
+    });
+    const prepared = await prepare();
+    const effect = vi.fn(async () => undefined);
+    await prepared.run(async (admission) => {
+      const actual = {
+        threadId: 'captured-thread',
+        agentId: slug,
+        projectSlug,
+      };
+      const cwd = join(home, 'owned-worktree');
+      await admission.invoke('provision', actual, async () => ({ path: cwd }));
+      await expect(
+        admission.invoke(
+          'start',
+          { ...actual, threadId: 'other', cwd },
+          effect,
+        ),
+      ).rejects.toThrow();
+      await expect(
+        admission.invoke('start', { ...actual, cwd: home }, effect),
+      ).rejects.toThrow();
+      expect(effect).not.toHaveBeenCalled();
+      await admission.invoke('start', { ...actual, cwd }, effect);
+      await expect(
+        admission.invoke('start', { ...actual, cwd }, effect),
+      ).rejects.toThrow();
+      expect(effect).toHaveBeenCalledOnce();
+    });
+  });
+
+  test('captured native worktree action invokes a real Bash child in its provisioned Session workspace', async () => {
+    const repo = join(home, 'repository');
+    mkdirSync(repo);
+    execFileSync('git', ['init', '--quiet', repo], { windowsHide: true });
+    execFileSync(
+      'git',
+      [
+        '-C',
+        repo,
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'fixture',
+      ],
+      { windowsHide: true },
+    );
+    const revision = storage.projectRevision(projectSlug);
+    await revision.replace({
+      ...revision.value,
+      workingDirectory: repo,
+      defaultWorkspaceIsolation: 'worktree',
+    });
+    const bash = createBuiltinVendedTool(
+      slug,
+      createBuiltinVendedToolDef('bash')!,
+    )!;
+    let observed: unknown;
+    const proof = await nativeHostProof({
+      inModel: async () => {
+        observed = await bash.execute({ mode: 'execute', command: 'pwd -P' });
+      },
+    });
+    const result = await proof.execute();
+    expect(result.state).toBe('accepted');
+    await expect.poll(() => observed).toBeDefined();
+    const session = await service.readSession(
+      result.sessionId,
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(session?.session.cwd).not.toBe(repo);
+    expect(observed).toMatchObject({
+      output: realpathSync(session!.session.cwd!),
+    });
+    expect(session?.session.cwd).toContain('repository-worktrees');
   });
 
   test('refuses native Agent execution that cannot consume the captured spec', async () => {

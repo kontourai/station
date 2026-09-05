@@ -3411,6 +3411,26 @@ export async function executeExecutionTargetMessage(
     },
     getProviderAdapter: (provider) =>
       orchestrationService.getProviderAdapter(provider),
+    ...(admission
+      ? {
+          admitWorktreeProvisioning: (
+            threadId: string,
+            effect: () => Promise<
+              | import('@kontourai/station-contracts/workspace-isolation').WorktreeSessionMetadata
+              | null
+            >,
+          ) =>
+            admission.invoke(
+              'provision',
+              {
+                threadId,
+                agentId: admission.agentId,
+                projectSlug: admission.project.slug,
+              },
+              effect,
+            ),
+        }
+      : {}),
     readSessionBinding: async (
       _access: EnvironmentAccess,
       sessionId: string,

@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -6,6 +6,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { ForegroundInvocationAdmission } from '../../../services/orchestration/foreground-invocation-admission.js';
+import {
+  createNativeForegroundRelay,
+  runWithNativeForegroundRelay,
+} from '../../conversation/native-foreground-invocation.js';
 import {
   loadStrandsTools,
   type StrandsToolLoadOptions,
@@ -335,6 +340,56 @@ describe('vended tool compatibility', () => {
     await expect(
       tools[0]?.execute({ mode: 'read', name: 'checklist' }),
     ).resolves.toContain('- one');
+  });
+
+  test('concurrent captured workspaces isolate real Bash children for the same Agent', async () => {
+    const roots = [0, 1].map(() =>
+      mkdtempSync(join(tmpdir(), 'station-native-workspace-')),
+    );
+    cleanupDirs.push(...roots);
+    const tool = createBuiltinTool(
+      'same-agent',
+      createBuiltinVendedToolDef('bash')!,
+      {} as any,
+    )!;
+    const scopes = roots.map((workspaceRoot, index) =>
+      createNativeForegroundRelay(
+        {
+          agentId: 'same-agent',
+          agentSpec: {},
+          project: { slug: 'project' },
+          message: 'run',
+          invoke: async (
+            _phase: unknown,
+            _actual: unknown,
+            effect: () => Promise<unknown>,
+          ) => effect(),
+        } as ForegroundInvocationAdmission,
+        { threadId: `thread-${index}`, userId: 'owner', workspaceRoot },
+      ),
+    );
+    try {
+      const results = await Promise.all(
+        scopes.map((scope, index) =>
+          runWithNativeForegroundRelay(scope, async () => {
+            await tool.execute!({
+              mode: 'execute',
+              command: `export STATION_SCOPE=${index}`,
+            });
+            return tool.execute!({
+              mode: 'execute',
+              command: 'pwd -P; echo "$STATION_SCOPE"',
+            });
+          }),
+        ),
+      );
+      for (let index = 0; index < roots.length; index++)
+        expect(results[index]).toMatchObject({
+          output: `${realpathSync(roots[index]!)}\n${index}`,
+        });
+    } finally {
+      scopes.forEach((scope) => scope.close());
+    }
   });
 
   test('bash preserves shell session state across calls', async () => {

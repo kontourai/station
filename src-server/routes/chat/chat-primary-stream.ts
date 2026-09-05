@@ -8,7 +8,10 @@ import {
   type AuthorizedTurnCorrelation,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
-import type { NativeForegroundRelayCompanion } from '../../runtime/conversation/native-foreground-invocation.js';
+import {
+  type NativeForegroundRelayCompanion,
+  runWithNativeForegroundRelay,
+} from '../../runtime/conversation/native-foreground-invocation.js';
 import * as StreamOrchestrator from '../../runtime/conversation/stream-orchestrator.js';
 import { stripOutputDeclarationHandles } from '../../runtime/native-output-declaration.js';
 import {
@@ -720,12 +723,17 @@ export function streamPrimaryAgentChat({
         return await writeStream(streamWriter);
       } finally {
         nativeForeground?.refuse();
+        nativeForeground?.close();
       }
     };
+    const withWorkspace = () =>
+      nativeForeground
+        ? runWithNativeForegroundRelay(nativeForeground, write)
+        : write();
     const correlated = () =>
       turnCorrelation
-        ? runWithAuthorizedTurnCorrelation(turnCorrelation, write)
-        : write();
+        ? runWithAuthorizedTurnCorrelation(turnCorrelation, withWorkspace)
+        : withWorkspace();
     return nativeOutputGrant
       ? runWithNativeOutputTurnContext(nativeOutputGrant, async () => {
           try {

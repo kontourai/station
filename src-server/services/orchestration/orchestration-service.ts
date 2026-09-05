@@ -884,6 +884,7 @@ function resolveStartSessionCwd(
   input: ProviderSessionStartInput,
   listProjects?: () => AttachedProjectRoot[],
   observeShadow?: (sample: CwdShadowSample) => void,
+  admittedWorkspace?: ForegroundInvocationAdmission['provisionedWorkspace'],
 ): ProviderSessionStartInput {
   const rawProjectSlug = input.metadata?.projectSlug;
   const projectSlug =
@@ -971,7 +972,12 @@ function resolveStartSessionCwd(
   if (
     projectCwd &&
     suppliedCwd &&
-    !isWithinDirectory(projectCwd, suppliedCwd)
+    !isWithinDirectory(projectCwd, suppliedCwd) &&
+    !(
+      admittedWorkspace?.threadId === input.threadId &&
+      admittedWorkspace.projectSlug === projectSlug &&
+      admittedWorkspace.cwd === suppliedCwd
+    )
   ) {
     sessionCwdResolution.add(1, {
       provider: input.provider,
@@ -3715,6 +3721,7 @@ export class OrchestrationService {
             ),
             this.options.listProjects,
             this.options.observeCwdShadow,
+            internal?.foregroundInvocationAdmission?.provisionedWorkspace,
           );
           if (internal?.reviewIsolation) {
             startInput = {
@@ -3808,6 +3815,7 @@ export class OrchestrationService {
                   'start',
                   {
                     threadId: input.threadId,
+                    cwd: input.cwd,
                     agentId: input.metadata?.agentSlug,
                     projectSlug: input.metadata?.projectSlug,
                   },
@@ -4515,6 +4523,12 @@ export class OrchestrationService {
                               internal.foregroundInvocationAdmission,
                               {
                                 threadId: turnInput.threadId,
+                                workspaceRoot:
+                                  this.sessionReadModel.get(turnInput.threadId)
+                                    ?.cwd ??
+                                  this.options.eventStore?.readSessionByThread(
+                                    turnInput.threadId,
+                                  )?.cwd,
                                 userId: accountId!,
                                 modelId: turnInput.modelId,
                                 clientTurnId: turnInput.clientTurnId,

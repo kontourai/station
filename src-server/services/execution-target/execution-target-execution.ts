@@ -48,12 +48,16 @@ async function provisionProjectWorktree(
   deps: ExecutionTargetExecutionDependencies,
 ): Promise<WorktreeSessionMetadata | null> {
   await assertProjectWorktreeDirectory(workspace.projectSlug, workspace.cwd);
-  return await (deps.provisionWorktree ?? defaultWorktreeProvisioner)({
-    repoPath: workspace.cwd,
-    threadId,
-    providerKind,
-    isolation: workspace.workspaceIsolation,
-  });
+  const provision = () =>
+    (deps.provisionWorktree ?? defaultWorktreeProvisioner)({
+      repoPath: workspace.cwd,
+      threadId,
+      providerKind,
+      isolation: workspace.workspaceIsolation,
+    });
+  return await (deps.admitWorktreeProvisioning
+    ? deps.admitWorktreeProvisioning(threadId, provision)
+    : provision());
 }
 
 export interface ForegroundMessageInput {
@@ -335,6 +339,11 @@ export interface ExecutionTargetExecutionDependencies
     access: EnvironmentAccess,
     input: { conversationId: string; idempotencyKey: string },
   ) => Promise<{ providerTurnId?: string } | null>;
+  /** Private captured caller guard at the existing provisioning effect. */
+  admitWorktreeProvisioning?: (
+    threadId: string,
+    effect: () => Promise<WorktreeSessionMetadata | null>,
+  ) => Promise<WorktreeSessionMetadata | null>;
   /** Server-local provisioning seam. Remote execution reaches this seam on the target Station. */
   provisionWorktree?: (
     request: WorktreeProvisionRequest,

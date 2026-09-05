@@ -21,6 +21,9 @@ interface NativeForegroundRequest {
 
 /** Private companion to the existing authorized-turn relay; never JSON. */
 export interface NativeForegroundRelayCompanion {
+  readonly workspaceRoot: string | undefined;
+  onClose(cleanup: () => void): void;
+  close(): void;
   readonly agentSpec: AgentSpec;
   readonly project: ProjectConfig;
   assertRequest(request: NativeForegroundRequest): void;
@@ -60,6 +63,7 @@ export function createNativeForegroundRelay(
   admission: ForegroundInvocationAdmission,
   binding: {
     threadId: string;
+    workspaceRoot?: string;
     userId: string;
     modelId?: string;
     clientTurnId?: string;
@@ -70,6 +74,15 @@ export function createNativeForegroundRelay(
     throw new ForegroundInvocationUnavailableError();
   const capturedSpec = admission.agentSpec;
   const capturedProject = admission.project;
+  const workspaceRoot = binding.workspaceRoot;
+  if (
+    capturedProject.defaultWorkspaceIsolation === 'worktree' &&
+    !workspaceRoot
+  )
+    throw new ForegroundInvocationUnavailableError();
+  if (workspaceRoot) capturedProject.workingDirectory = workspaceRoot;
+  const cleanup = new Set<() => void>();
+  let closed = false;
   const expectedOptions = {
     conversationId: binding.threadId,
     userId: binding.userId,
@@ -101,6 +114,17 @@ export function createNativeForegroundRelay(
     reject(new ForegroundInvocationUnavailableError());
   };
   return Object.freeze({
+    workspaceRoot,
+    onClose(dispose: () => void) {
+      if (closed) throw new ForegroundInvocationUnavailableError();
+      cleanup.add(dispose);
+    },
+    close() {
+      if (closed) return;
+      closed = true;
+      for (const dispose of cleanup) dispose();
+      cleanup.clear();
+    },
     get agentSpec() {
       return structuredClone(capturedSpec);
     },

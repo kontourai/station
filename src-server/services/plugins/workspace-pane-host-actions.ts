@@ -115,7 +115,6 @@ export function createWorkspacePaneHostActions(input: {
       );
       if (!installationGeneration) continue;
       const granted = permission(pluginId);
-      const worktree = project.defaultWorkspaceIsolation === 'worktree';
       const owner = { pluginId, installationGeneration };
       const source = createWorkspacePaneHostContribution({
         declaration: installed.manifest.workspacePaneHost,
@@ -135,7 +134,7 @@ export function createWorkspacePaneHostActions(input: {
           resolveOwnPluginAgent: async ({
             agentId,
           }): Promise<WorkspacePaneHostAgentResolution> => {
-            if (!granted || worktree) return { state: 'unavailable' };
+            if (!granted) return { state: 'unavailable' };
             try {
               const spec = (
                 await capturePluginAgentInvocation(
@@ -182,13 +181,11 @@ export function createWorkspacePaneHostActions(input: {
         projection: projected.projection,
         ...(!granted
           ? { reason: 'permission-required' as const }
-          : worktree
-            ? { reason: 'shared-workspace-required' as const }
-            : projected.projection.agentSelection.availableAgents.every(
-                  (agent) => agent.resolution.state !== 'available',
-                )
-              ? { reason: 'agent-unavailable' as const }
-              : {}),
+          : projected.projection.agentSelection.availableAgents.every(
+                (agent) => agent.resolution.state !== 'available',
+              )
+            ? { reason: 'agent-unavailable' as const }
+            : {}),
       });
     }
     return {
@@ -276,6 +273,9 @@ export function createWorkspacePaneHostActions(input: {
         const handle = await value.prepared.run((captured) =>
           input.execute(actor, {
             ...captured,
+            get provisionedWorkspace() {
+              return captured.provisionedWorkspace;
+            },
             invoke: (phase, actual, effect) =>
               captured.invoke(phase, actual, () => {
                 if (!actor.isCurrent())

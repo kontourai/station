@@ -13,14 +13,21 @@ export interface ForegroundInvocationAdmission {
   readonly agentSpec: AgentSpec;
   readonly project: ProjectConfig;
   readonly message: string;
+  /** Minted only by canonical worktree provisioning, never public metadata. */
+  readonly provisionedWorkspace?: {
+    readonly threadId: string;
+    readonly projectSlug: string;
+    readonly cwd: string;
+  };
   readonly source?: WorkspacePaneHostActionProvenance;
   invoke<R>(
-    phase: 'start' | 'turn' | 'native-relay',
+    phase: 'provision' | 'start' | 'turn' | 'native-relay',
     actual: {
       threadId: string;
       agentId: unknown;
       projectSlug: unknown;
       message?: string;
+      cwd?: string;
     },
     effect: () => Promise<R>,
   ): Promise<R>;

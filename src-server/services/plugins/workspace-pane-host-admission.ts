@@ -114,14 +114,8 @@ export function createWorkspacePaneHostAdmission(input: {
         const withCurrentProject =
           projectRevision.withCurrentRead.bind(projectRevision);
         const project = structuredClone(projectRevision.value);
-        if (
-          project.slug !== projectSlug ||
-          project.defaultWorkspaceIsolation === 'worktree'
-        ) {
-          // Worktree provisioning is a pre-invocation effect and is not admitted
-          // by this bounded first slice. Never silently substitute shared work.
+        if (project.slug !== projectSlug)
           throw new ForegroundInvocationUnavailableError();
-        }
         const agentSnapshot = await capturePluginAgentInvocation(
           projectHomeDir,
           agent.agentId,
@@ -162,6 +156,8 @@ export function createWorkspacePaneHostAdmission(input: {
         let used = false;
         let active = false;
         let thread: string | undefined;
+        let provisionedThread: string | undefined;
+        let provisionedWorkspace: ForegroundInvocationAdmission['provisionedWorkspace'];
         let turnInvoked = false;
         let nativeRelayInvoked = false;
         const admission: ForegroundInvocationAdmission = Object.freeze({
@@ -178,8 +174,11 @@ export function createWorkspacePaneHostAdmission(input: {
             return structuredClone(project);
           },
           message,
+          get provisionedWorkspace() {
+            return provisionedWorkspace;
+          },
           async invoke<R>(
-            phase: 'start' | 'turn' | 'native-relay',
+            phase: 'provision' | 'start' | 'turn' | 'native-relay',
             actual: Parameters<ForegroundInvocationAdmission['invoke']>[1],
             effect: () => Promise<R>,
           ): Promise<R> {
@@ -206,14 +205,26 @@ export function createWorkspacePaneHostAdmission(input: {
                     (phase === 'turn' &&
                       !agentSpec.execution?.agentConnectionId &&
                       !nativeRelayInvoked) ||
-                    (phase === 'start'
-                      ? thread !== undefined
-                      : thread !== actual.threadId ||
-                        turnInvoked ||
-                        actual.message !== message)
+                    (phase === 'provision'
+                      ? project.defaultWorkspaceIsolation !== 'worktree' ||
+                        provisionedThread !== undefined ||
+                        thread !== undefined
+                      : phase === 'start'
+                        ? thread !== undefined ||
+                          (provisionedWorkspace !== undefined &&
+                            actual.cwd !== provisionedWorkspace.cwd) ||
+                          (provisionedThread !== undefined &&
+                            provisionedThread !== actual.threadId) ||
+                          (project.defaultWorkspaceIsolation === 'worktree' &&
+                            provisionedThread === undefined)
+                        : thread !== actual.threadId ||
+                          turnInvoked ||
+                          actual.message !== message)
                   )
                     throw new ForegroundInvocationUnavailableError();
-                  if (phase === 'start') thread = actual.threadId;
+                  if (phase === 'provision')
+                    provisionedThread = actual.threadId;
+                  else if (phase === 'start') thread = actual.threadId;
                   else if (phase === 'native-relay') nativeRelayInvoked = true;
                   else turnInvoked = true;
                   // Box the Promise: Project and Agent mutation locks release
@@ -227,7 +238,23 @@ export function createWorkspacePaneHostAdmission(input: {
                   invokeWithProject,
                 )
               : await invokeWithProject();
-            return invoked.pending;
+            const result = await invoked.pending;
+            if (phase === 'provision') {
+              if (
+                !result ||
+                typeof result !== 'object' ||
+                !('path' in result) ||
+                typeof result.path !== 'string' ||
+                !result.path
+              )
+                throw new ForegroundInvocationUnavailableError();
+              provisionedWorkspace = Object.freeze({
+                threadId: actual.threadId,
+                projectSlug,
+                cwd: result.path,
+              });
+            }
+            return result;
           },
         });
         return Object.freeze({
