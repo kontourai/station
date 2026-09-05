@@ -375,13 +375,17 @@ export class AgentPluginLoader {
     this.validateStationExtension = validators.stationExtension;
   }
 
-  private selectedRoot(pluginId: string) {
+  private selectedRoot(
+    pluginId: string,
+    purpose: 'execution' | 'legacy-scan-exclusion' = 'execution',
+  ) {
     const journal = this.options.journal?.();
     if (journal) {
       const current = journal.currentInstallation(pluginId);
       if (current.state === 'unavailable')
         throw new MCPLocalCustodyError('stale');
       if (
+        purpose === 'execution' &&
         current.state === 'observed' &&
         !journal.admissionOpen(current.installation)
       )
@@ -666,7 +670,7 @@ export class AgentPluginLoader {
       )
         continue;
       try {
-        const root = this.selectedRoot(entry.name);
+        const root = this.selectedRoot(entry.name, 'legacy-scan-exclusion');
         if (root && this.hasAgentPluginSchema(root.packageRoot))
           candidates.set(entry.name, root.packageRoot);
       } catch {
@@ -677,7 +681,10 @@ export class AgentPluginLoader {
     if (selected?.state === 'observed')
       for (const installation of selected.installations) {
         try {
-          const root = this.selectedRoot(installation.pluginId);
+          const root = this.selectedRoot(
+            installation.pluginId,
+            'legacy-scan-exclusion',
+          );
           if (root && this.hasAgentPluginSchema(root.packageRoot))
             candidates.set(installation.pluginId, root.packageRoot);
         } catch {

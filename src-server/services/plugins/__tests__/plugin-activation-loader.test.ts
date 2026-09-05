@@ -70,7 +70,10 @@ test('the production Agent Plugin catalog withholds pending core and namespace c
       journal: () => journal,
     });
     expect(loader.listInstalled()).toEqual([]);
-    expect(loader.skillSources()).toEqual([]);
+    expect(loader.skillSources()).toEqual([
+      expect.objectContaining({ excludeOnly: true }),
+    ]);
+    expect(loader.skillSources()[0]!.isCurrent?.()).toBe(false);
     expect(loader.listIntegrations()).toEqual([]);
     const selected = journal.currentInstallation('pending-loader');
     if (selected.state !== 'observed') throw new Error('Missing installation');
