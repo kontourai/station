@@ -603,7 +603,7 @@ export default {
     expect((globalThis as any).__ungrantedSingletonImported).toBeUndefined();
   });
 
-  test('retains the active plugin generation when replacement staging fails', async () => {
+  test('retains registration ownership but fences prior content when replacement staging fails', async () => {
     const logger = createLogger();
     const pluginsDir = join(projectHomeDir, 'plugins');
     writePlugin(
@@ -626,6 +626,8 @@ export default {
     };
     await loadRuntimePluginProviders(context);
     const stable = getProviderAdapter('custom');
+    const registeredGeneration =
+      pluginProviderSourceGeneration('custom-runtime');
     writeFileSync(
       join(pluginsDir, 'custom-runtime', 'broken.mjs'),
       `export default { provider: 'custom', metadata: { displayName: 'Broken' } };`,
@@ -641,14 +643,18 @@ export default {
 
     await loadRuntimePluginProviders(context);
 
-    expect(getProviderAdapter('custom')).toBe(stable);
+    expect(getProviderAdapter('custom')).toBeUndefined();
+    expect(pluginProviderSourceGeneration('custom-runtime')).toBe(
+      registeredGeneration,
+    );
+    expect(() => stable!.startSession({} as never)).toThrow('unavailable');
     expect(logger.error).toHaveBeenCalledWith(
       'Invalid plugin provider adapter shape',
       { plugin: 'custom-runtime', type: 'providerAdapter' },
     );
   });
 
-  test('retains the active plugin generation when a replacement factory throws', async () => {
+  test('retains registration ownership but fences prior content when a replacement factory throws', async () => {
     const logger = createLogger();
     const pluginsDir = join(projectHomeDir, 'plugins');
     writePlugin(
@@ -671,6 +677,8 @@ export default {
     };
     await loadRuntimePluginProviders(context);
     const stable = getProviderAdapter('custom');
+    const registeredGeneration =
+      pluginProviderSourceGeneration('custom-runtime');
     writeFileSync(
       join(pluginsDir, 'custom-runtime', 'adapter.mjs'),
       `export default () => { throw new Error('factory failed'); };`,
@@ -678,7 +686,11 @@ export default {
 
     await loadRuntimePluginProviders(context);
 
-    expect(getProviderAdapter('custom')).toBe(stable);
+    expect(getProviderAdapter('custom')).toBeUndefined();
+    expect(pluginProviderSourceGeneration('custom-runtime')).toBe(
+      registeredGeneration,
+    );
+    expect(() => stable!.startSession({} as never)).toThrow('unavailable');
     expect(logger.error).toHaveBeenCalledWith('Plugin provider factory threw', {
       plugin: 'custom-runtime',
       type: 'providerAdapter',

@@ -179,7 +179,13 @@ accepts the installer's private pending-activation composition capability. Ordin
 ready captured manifests to the existing provider resolver, carries the physical
 artifact into preparation, and checks grants/currentness before construction and
 at registry publication. An object exported before a failed post-import check
-is disposed through the existing provider owner; a refused factory is not run.
+is disposed through the existing provider owner; a refused factory is not run. Registry entries retain a separate
+ordinary readiness guard and explicit activation-view predicate. Ordinary
+getters hide pending entries; a view expires with its issuing activation owner.
+Returned methods recheck that same authority, including previously captured
+method references. The existing retirement owner can still call cleanup methods
+after revocation. A failed replacement keeps registry ownership unchanged but
+does not leave changed source bytes callable through an older handle.
 
 ## InstalledPluginInventory
 
