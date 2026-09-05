@@ -359,11 +359,12 @@ test.describe('Project Sidebar', () => {
   test('project page shows layout affordances', async ({ page }) => {
     await alphaProjectButton(page).click();
     await expect(page.getByRole('heading', { name: 'Alpha' })).toBeVisible();
-    // `+ Add` became `+ Add layout` once `+ Add pane` joined it
-    // (`src-ui/src/views/ProjectPage.tsx:300-315`). `exact` keeps this off the
-    // layouts empty state's own `Add layout` action
-    // (`views/project-page/ProjectLayoutsSection.tsx:83-89`), which is a
-    // different affordance in a different place.
+    // `+ Add` became `+ Add layout` once `+ Add pane` joined it, and both live
+    // in the Open section header (`src-ui/src/views/ProjectPage.tsx`). `exact`
+    // stays because these are the only two add affordances the section has:
+    // #1536 E4 dropped the layouts empty state's duplicate `Add layout` button
+    // when embedded, so a loose matcher would now be ambiguous only if that
+    // duplicate came back.
     await expect(
       page.getByRole('button', { name: '+ Add layout', exact: true }),
     ).toBeVisible();
