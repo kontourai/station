@@ -268,16 +268,23 @@ describe('ChatDockHeaderMoreMenu', () => {
     expect(menu.style.bottom).toBe('46px');
   });
 
-  test('the menu row family is the dock header’s own, not a new one', () => {
+  test('the menu wears the shell’s one menu primitive, not a family of its own', () => {
     render(<ChatDockHeaderMoreMenu actions={TWO} />);
     fireEvent.click(screen.getByLabelText('More dock actions'));
 
-    expect(
-      screen.getByRole('menu', { name: 'More dock actions' }).className,
-    ).toContain('dock-placement-menu');
-    expect(
-      screen.getByRole('menuitem', { name: 'Chat settings' }).className,
-    ).toContain('dock-placement-menu__item');
+    // #1552 D4: `.menu-surface`/`.menu-row` are the shell's one menu spec, shared
+    // with the header's overflow, help and profile menus, the Layout picker, the
+    // dock placement menu and the occupant picker. `.dock-placement-menu`
+    // survives on the panel because it still owns where THIS family opens, which
+    // is the one thing those menus do not share.
+    const menu = screen.getByRole('menu', { name: 'More dock actions' });
+    expect(menu.className).toContain('menu-surface');
+    expect(menu.className).toContain('dock-placement-menu');
+    const row = screen.getByRole('menuitem', { name: 'Chat settings' });
+    expect(row.className).toContain('menu-row');
+    // And the row reserves the family's glyph slot even with no glyph in it, so
+    // its label lines up with the rows of every other menu in the shell.
+    expect(row.querySelector('.menu-row__glyph')).not.toBeNull();
   });
 
   /**

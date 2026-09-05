@@ -203,8 +203,12 @@ describe.skipIf(!chromiumAvailable)(
       }
     }
 
-    // Measured, not chosen: with this fixture nothing clips at 700 and wider,
-    // the token alone clips at 600, and the title joins it below ~520.
+    // Measured, not chosen: with this fixture nothing clips at 800 and wider,
+    // the token alone clips from ~780 down, and the title joins it at ~700.
+    // Re-measured for #1552 D3, which took the title from 11px to 14px and the
+    // engine token from 10px to 12px — the same content needs more room, so every
+    // threshold moved out. What did not move is the ORDER, which is the contract:
+    // the token gives way first and the title last.
     test.each([700, 600, 420, 260])(
       'nothing overprints at %ipx: the row is ordered left to right and stays inside its host',
       async (width) => {
@@ -220,14 +224,17 @@ describe.skipIf(!chromiumAvailable)(
     );
 
     test('a dock with room for the whole row truncates neither part', async () => {
-      const { title, engine } = await measure(700);
+      const { title, engine } = await measure(850);
 
       expect(title.clipped).toBe(false);
       expect(engine.clipped).toBe(false);
     });
 
     test('the engine/model token is the first thing to give way', async () => {
-      const { title, engine } = await measure(600);
+      // 750: inside the band where the token has started truncating and the title
+      // has not. That band is 780→720 with the #1552 D3 type sizes; it was
+      // 700→~520 before them.
+      const { title, engine } = await measure(750);
 
       expect(
         engine.clipped,
@@ -255,15 +262,21 @@ describe.skipIf(!chromiumAvailable)(
      * WHAT HOLDS, and what does not:
      *  - the engine/model token never drops below 48px (a legible prefix and a
      *    hover target for its `title`) and the agent's name never below 40px;
-     *  - at 320px and wider the conversation title keeps ~9 glyphs or more;
-     *  - at the 280px floor it holds ~5. That is the disclosed limit of a
+     *  - at 320px and wider the conversation title keeps 64px or more, and at the
+     *    280px floor 32px. #1552 D3 raised the title from 11px to 14px, so those
+     *    same pixel floors now hold FEWER characters than the glyph counts this
+     *    comment used to quote — a deliberate trade (the row's subject is legible
+     *    at a glance in the common case; the narrowest side dock gives up
+     *    characters it was already short of). The pixel floors are what the
+     *    distribution actually guarantees, so they are what is asserted.
+     *  - That is the disclosed limit of a
      *    CSS-only distribution: the floors cannot be conditional on the DOCK's
      *    width, because a media query sees the viewport (a 280px side dock lives
      *    in a 1456px window) and a container query would need `container-type`
      *    on a flex item that has to stay content-sized. Tapering them properly
      *    belongs to the header-composition pass, not here.
-     * Before this round the same measurement read 21px at 320 and 5px at 280 —
-     * a title of one or two characters, which is the defect this arc opened on.
+     * Before #1536 F the same measurement read 21px at 320 and 5px at 280 — a
+     * title of one or two characters, which is the defect that arc opened on.
      */
     test.each([
       [520, 180],

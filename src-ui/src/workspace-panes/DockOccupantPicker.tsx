@@ -140,7 +140,7 @@ export function DockOccupantPicker({
       {menuOpen ? (
         <div
           ref={menuRef}
-          className="dock-placement-menu dock-occupant-menu"
+          className="menu-surface dock-placement-menu dock-occupant-menu"
           role="menu"
           aria-label="Docked pane"
         >
@@ -150,11 +150,9 @@ export function DockOccupantPicker({
               type="button"
               role="menuitemradio"
               aria-checked={choice.descriptor.id === current.id}
-              className={`dock-placement-menu__item${
-                choice.descriptor.id === current.id
-                  ? ' dock-placement-menu__item--active'
-                  : ''
-              }`}
+              // `.menu-row[aria-checked="true"]` paints the chosen entry from
+              // the state above it — see DockPlacementControl's note.
+              className="menu-row"
               onClick={() => {
                 // The current occupant is already placed: choosing it again
                 // is a no-op that closes the menu, not a replace that churns
@@ -173,6 +171,7 @@ export function DockOccupantPicker({
                 triggerRef.current?.focus();
               }}
             >
+              <span className="menu-row__glyph" aria-hidden="true" />
               {choice.descriptor.name}
             </button>
           ))}

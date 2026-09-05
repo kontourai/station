@@ -170,13 +170,23 @@ function dockParam(): string | null {
 }
 
 /**
- * #1536 F: the toolbar's five per-region buttons folded into ONE "Layout"
- * menu whose rows are grouped by region, so a placement is now the region's
- * group plus its row rather than a button of its own.
+ * #1536 F folded the toolbar's five per-region buttons into ONE "Layout" control;
+ * #1552 D2 made what it opens a placement PICKER — a `radiogroup` row per
+ * surface whose segments are the regions it may occupy plus `Hidden`. A
+ * placement is therefore the surface's row plus the region's segment, and the
+ * panel is a `group` rather than a `menu` (the arrow keys belong to the rows).
  */
-function layoutMenu() {
+function layoutPicker() {
   fireEvent.click(screen.getByRole('button', { name: 'Layout regions' }));
-  return screen.getByRole('menu', { name: 'Layout regions' });
+  return screen.getByRole('group', { name: 'Layout regions' });
+}
+
+/** Press one segment of one surface's row of the picker. */
+function chooseSegment(surfaceTitle: string, segmentLabel: string) {
+  const row = within(layoutPicker()).getByRole('radiogroup', {
+    name: `${surfaceTitle} placement`,
+  });
+  fireEvent.click(within(row).getByRole('radio', { name: segmentLabel }));
 }
 
 async function placeChatRight() {
@@ -191,10 +201,8 @@ async function placeChatRight() {
 }
 
 function chooseChatForEmptyRight() {
-  const right = within(layoutMenu()).getByRole('group', { name: 'Right' });
-  fireEvent.click(
-    within(right).getByRole('menuitem', { name: 'Place Chat here' }),
-  );
+  // The retired "Place Chat here" under a Right heading.
+  chooseSegment('Chat', 'Right');
 }
 
 function dockToggle(): () => void {
@@ -492,10 +500,8 @@ describe('every ambient occupant gets the full dock chrome (station#4460)', () =
       expect(document.querySelector('.chat-dock')).not.toBeNull();
     });
     expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
-    const control = within(layoutMenu()).getByRole('menuitemcheckbox', {
-      name: 'Hide Chat',
-    });
-    fireEvent.click(control);
+    // The retired "Hide Chat" row: Chat's `Hidden` segment.
+    chooseSegment('Chat', 'Hidden');
     await waitFor(() => {
       expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull();
     });

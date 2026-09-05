@@ -196,6 +196,9 @@ async function renderMarkupForState(state: ChipState): Promise<string> {
       showHelp={false}
       showNotifications={false}
       showOverflow={false}
+      showProfileMenu={false}
+      onCloseProfileMenu={vi.fn()}
+      onToggleProfileMenu={vi.fn()}
       userInitials="ST"
       onCloseHelp={() => {}}
       onCloseNotifications={() => {}}
@@ -246,7 +249,18 @@ describe.skipIf(!chromiumAvailable)(
       cleanup();
     });
 
-    async function settingsX(
+    /**
+     * The x of the row's TRAILING control — the sibling furthest from the chip,
+     * so any width the chip fails to reserve shows up here.
+     *
+     * It used to be the Settings gear. #1552 D1 moved Settings into the avatar's
+     * menu on a fine pointer (the gear is `--compact-only`, phone-only, and this
+     * fixture is 1280px wide), so the gear is legitimately absent here and the
+     * avatar is now the trailing control. Retargeted rather than deleted: the
+     * contract station#4474 pinned is about the chip not reflowing its siblings,
+     * and it holds for whichever sibling is last.
+     */
+    async function trailingControlX(
       markup: string,
       viewport: { width: number; height: number },
     ): Promise<number> {
@@ -254,16 +268,16 @@ describe.skipIf(!chromiumAvailable)(
       try {
         await page.setContent(buildFixtureHtml(markup));
         const box = await page
-          .locator('[aria-label="Open settings"]')
+          .locator('[aria-label="Profile and settings"]')
           .boundingBox();
-        expect(box, 'Open settings control not visible').not.toBe(null);
+        expect(box, 'trailing toolbar control not visible').not.toBe(null);
         return box!.x;
       } finally {
         await page.close();
       }
     }
 
-    test('the Settings control holds its position across every label-bearing state on a desktop-width toolbar', async () => {
+    test('the trailing control holds its position across every label-bearing state on a desktop-width toolbar', async () => {
       // Every visibly different label this chip can show — including the two
       // widest, "Needs re-pairing" and "Awaiting approval" — must not move any
       // sibling control.
@@ -287,12 +301,14 @@ describe.skipIf(!chromiumAvailable)(
       ];
       const xs: number[] = [];
       for (const state of states) {
-        xs.push(await settingsX(await renderMarkupForState(state), viewport));
+        xs.push(
+          await trailingControlX(await renderMarkupForState(state), viewport),
+        );
       }
 
       expect(
         xs,
-        'Settings control shifted horizontally as the connection chip flipped state — the chip must reserve its own width rather than reflow the rest of the toolbar.',
+        'The trailing toolbar control shifted horizontally as the connection chip flipped state — the chip must reserve its own width rather than reflow the rest of the toolbar.',
       ).toEqual(states.map(() => xs[0]));
     });
 
@@ -316,14 +332,38 @@ describe.skipIf(!chromiumAvailable)(
         }
       };
 
+      /** Any sibling icon button, for the one-button-size comparison below. */
+      const siblingWidth = async (): Promise<number> => {
+        const page = await browser.newPage({ viewport });
+        try {
+          await page.setContent(
+            buildFixtureHtml(await renderMarkupForState('connected')),
+          );
+          const box = await page
+            .locator('[aria-label="Notifications"]')
+            .boundingBox();
+          expect(box, 'notifications control not visible').not.toBe(null);
+          return box!.width;
+        } finally {
+          await page.close();
+        }
+      };
+
       const collapsed = await chipWidth('connected');
       const widest = await chipWidth('awaiting-approval');
+      const sibling = await siblingWidth();
 
-      // 44px is the hit-target floor the collapsed form sets for itself
-      // (`.app-toolbar__conn--compact`), and it must not have grown a label
-      // back: a chip still rendering "Connected · Default" measures ~200px.
-      expect(Math.round(collapsed)).toBeLessThanOrEqual(56);
-      expect(Math.round(collapsed)).toBeGreaterThanOrEqual(44);
+      // #1552 D1: the collapsed chip is the SAME size as its siblings, which is
+      // the whole of "one button size" — asserted as an equality against a
+      // measured sibling rather than as the literal 44px this used to pin, so it
+      // cannot pass while the row holds two different box sizes and cannot red
+      // merely because the shared size changed. (It was 44px on every pointer,
+      // making the smallest-content control the largest box in the row; the 44px
+      // floor still applies under the coarse-pointer query, where it is a WCAG
+      // 2.5.5 obligation rather than a look.)
+      expect(Math.round(collapsed)).toBe(Math.round(sibling));
+      // And it must not have grown a label back: a chip still rendering
+      // "Connected · Default" measures ~200px.
       expect(collapsed).toBeLessThan(widest - 80);
     });
 

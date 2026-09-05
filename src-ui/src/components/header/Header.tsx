@@ -28,6 +28,7 @@ export function Header({
     closeHelp,
     closeNotifications,
     closeOverflow,
+    closeProfileMenu,
     goHome,
     handleHelpPrompt,
     helpPrompts,
@@ -37,9 +38,11 @@ export function Header({
     showHelp,
     showNotifications,
     showOverflow,
+    showProfileMenu,
     toggleHelp,
     toggleNotifications,
     toggleOverflow,
+    toggleProfileMenu,
     userInitials,
   } = useHeaderViewModel({ currentView, agents, onNavigate });
 
@@ -144,10 +147,12 @@ export function Header({
         showHelp={showHelp}
         showNotifications={showNotifications}
         showOverflow={showOverflow}
+        showProfileMenu={showProfileMenu}
         userInitials={userInitials}
         onCloseHelp={closeHelp}
         onCloseNotifications={closeNotifications}
         onCloseOverflow={closeOverflow}
+        onCloseProfileMenu={closeProfileMenu}
         onHelpPrompt={handleHelpPrompt}
         onOpenConnections={openConnectionModal}
         onOpenProfile={openProfile}
@@ -155,6 +160,7 @@ export function Header({
         onToggleNotifications={toggleNotifications}
         onToggleSettings={onToggleSettings}
         onToggleOverflow={toggleOverflow}
+        onToggleProfileMenu={toggleProfileMenu}
         onViewAllNotifications={() => onNavigate({ type: 'notifications' })}
       />
     </header>

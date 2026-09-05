@@ -6,6 +6,7 @@ import { toastStore } from '../../contexts/ToastContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { nativePlatformPromise } from '../../platform/native';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { MonitorGlyph, QuestionGlyph } from '../icons/Glyph';
 import './HeaderMenu.css';
 import { useRegionSurfaceMenu } from './useRegionSurfaceMenu';
 
@@ -32,18 +33,20 @@ function RegionMenuSection({ onClose }: { onClose: () => void }) {
   const { commandsInOverflowMenu, menuItems } = useRegionSurfaceMenu();
   if (!commandsInOverflowMenu) return null;
   return (
-    <fieldset className="app-toolbar__overflow-regions">
+    <fieldset className="menu-group app-toolbar__overflow-regions">
       <legend>Regions</legend>
       {menuItems.map((item) => (
         <button
           key={item.key}
           type="button"
+          className="menu-row"
           aria-pressed={item.checked}
           onClick={() => {
             onClose();
             item.onSelect();
           }}
         >
+          <span className="menu-row__glyph" aria-hidden="true" />
           {item.label}
         </button>
       ))}
@@ -114,40 +117,37 @@ export function OverflowMenu({
         }}
         onClick={onClose}
       />
-      <div ref={menuRef} className="app-toolbar__overflow-menu" tabIndex={-1}>
+      <div
+        ref={menuRef}
+        className="menu-surface app-toolbar__overflow-menu"
+        tabIndex={-1}
+      >
         <button
           type="button"
+          className="menu-row"
           aria-label="Connections"
           onClick={() => {
             onClose();
             onOpenConnections();
           }}
         >
-          <ConnectionStatusDot status={connStatus} size={7} />
+          <span className="menu-row__glyph" aria-hidden="true">
+            <ConnectionStatusDot status={connStatus} size={7} />
+          </span>
           Connections
         </button>
         {openDesktopTrayMenu && (
           <button
             type="button"
+            className="menu-row"
             onClick={() => {
               onClose();
               void openDesktopTrayMenu();
             }}
           >
-            <svg
-              aria-hidden="true"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="4" y="4" width="16" height="13" rx="2" />
-              <path d="M9 21h6M12 17v4" />
-            </svg>
+            <span className="menu-row__glyph" aria-hidden="true">
+              <MonitorGlyph />
+            </span>
             Open desktop tray
           </button>
         )}
@@ -161,40 +161,32 @@ export function OverflowMenu({
             reconnect banner up. */}
         <button
           type="button"
+          className="menu-row"
           aria-label="Profile"
           onClick={() => {
             onClose();
             onOpenProfile();
           }}
         >
-          <span className="app-toolbar__overflow-initials" aria-hidden="true">
-            {userInitials}
+          <span className="menu-row__glyph" aria-hidden="true">
+            <span className="app-toolbar__overflow-initials">
+              {userInitials}
+            </span>
           </span>
           Profile
         </button>
         <button
           type="button"
+          className="menu-row"
           onClick={(event) => {
             event.stopPropagation();
             onClose();
             onOpenHelp();
           }}
         >
-          <svg
-            aria-hidden="true"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
+          <span className="menu-row__glyph" aria-hidden="true">
+            <QuestionGlyph />
+          </span>
           Help
         </button>
         {/* Appended, not prepended: every row above keeps the position the

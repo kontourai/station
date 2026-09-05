@@ -43,6 +43,8 @@ export function useHeaderViewModel({
   const [showHelp, setShowHelp] = useState(false);
   const [showOverflow, setShowOverflow] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  /** #1552 D1: the avatar's menu, which carries Profile, Help and Settings. */
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const helpPrompts = getHelpPrompts(currentView);
   const breadcrumb = getHeaderBreadcrumb(currentView);
@@ -101,15 +103,18 @@ export function useHeaderViewModel({
     showHelp,
     showNotifications,
     showOverflow,
+    showProfileMenu,
     userInitials,
     closeHelp: () => setShowHelp(false),
     closeNotifications: () => setShowNotifications(false),
     closeOverflow: () => setShowOverflow(false),
+    closeProfileMenu: () => setShowProfileMenu(false),
     handleHelpPrompt,
     openConnectionModal: openConnectionsModal,
     toggleHelp: () => setShowHelp((current) => !current),
     toggleNotifications: () => setShowNotifications((current) => !current),
     toggleOverflow: () => setShowOverflow((current) => !current),
+    toggleProfileMenu: () => setShowProfileMenu((current) => !current),
     goHome: () => showSurface('home'),
     openProfile: () => {
       if (currentView?.type === 'profile') {
