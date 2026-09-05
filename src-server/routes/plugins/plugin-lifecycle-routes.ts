@@ -46,7 +46,10 @@ import {
   observePluginGrantRevisions,
   rebindGrantsAfterContentChange,
 } from '../../services/plugins/plugin-permissions.js';
-import { isRegistryAcquisitionRefusal } from '../../services/plugins/registry-acquisition.js';
+import {
+  isRegistryAcquisitionRefusal,
+  registryAcquisitionRefusalDetails,
+} from '../../services/plugins/registry-acquisition.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { pluginUpdates } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
@@ -981,9 +984,7 @@ export function registerPluginLifecycleRoutes(
         return c.json(
           {
             success: false,
-            code: 'registry-trust-refused',
-            error:
-              'Registry trust changed or could not be verified. Preview again; retained data has not been migrated.',
+            ...registryAcquisitionRefusalDetails(error),
           },
           409,
         );

@@ -11,12 +11,14 @@ const input: PluginRecoveryInput = {
   consent: {
     contentDigest: `sha256:${'b'.repeat(64)}`,
     grantRevision: 'fresh-parent-grants',
+    registryTrustRevision: `sha256:${'d'.repeat(64)}`,
     permissions: ['network.fetch'],
     dependencies: ['dependency'],
     dependencyApprovals: [
       {
         id: 'dependency',
         grantRevision: 'fresh-child-grants',
+        registryTrustRevision: `sha256:${'e'.repeat(64)}`,
         contentDigest: `sha256:${'c'.repeat(64)}`,
         permissions: [],
         dependencies: [],
@@ -32,6 +34,7 @@ test('preview uses the exact encoded read route and preserves captured revisions
     recoveryRevision: input.recoveryRevision,
     contentDigest: input.consent.contentDigest,
     grantRevision: input.consent.grantRevision,
+    registryTrustRevision: input.consent.registryTrustRevision,
     permissions: {
       required: ['network.fetch'],
       autoGranted: [],

@@ -69,11 +69,37 @@ export function validRegistryAcquisitionReceipt(
       DIGEST.test(value.signer.spkiFingerprint))
   );
 }
+const REFUSALS = {
+  'invalid-claim':
+    'The registry package claim does not match the requested package.',
+  'unsigned-package': 'The selected registry requires a signed package.',
+  'untrusted-signing-key':
+    'The package signing key is not trusted by the applied host policy.',
+  'signature-mismatch':
+    'The package signature or signed source bytes do not match.',
+  'content-mismatch':
+    'The package source bytes do not match the registry claim.',
+  'pin-mismatch': 'The package claim changed from its installed pin.',
+  'missing-claim': 'The selected registry did not provide a package claim.',
+  'unqualified-provider':
+    'This registry cannot provide a fresh coherent package claim.',
+  'stale-review':
+    'The registry review changed. Preview again before installing.',
+  'policy-unavailable':
+    'Registry trust policy is unavailable or awaiting application.',
+  'receipt-unavailable':
+    'The installed registry verification receipt is unavailable. Retained data has not been migrated.',
+  'unsupported-path':
+    'Registry verification is unavailable for this mutation path. Retained data has not been migrated.',
+  'continuity-change':
+    'Registry trust continuity changed. Retained installation data requires reviewed migration.',
+} as const;
+export type RegistryAcquisitionRefusalReason = keyof typeof REFUSALS;
 export class RegistryAcquisitionRefused extends Error {
-  constructor() {
-    super(
-      'Registry acquisition requires a fresh verified claim and unchanged trust continuity. Retained installation data has not been migrated.',
-    );
+  constructor(
+    readonly reason: RegistryAcquisitionRefusalReason = 'continuity-change',
+  ) {
+    super(REFUSALS[reason]);
   }
 }
 export function isRegistryAcquisitionRefusal(error: unknown): boolean {
@@ -81,6 +107,18 @@ export function isRegistryAcquisitionRefusal(error: unknown): boolean {
     error instanceof RegistryAcquisitionRefused ||
     error instanceof RegistryTrustPolicyConflict
   );
+}
+/** Closed outward diagnostic; no claim fields, URLs, PEMs or arbitrary error text. */
+export function registryAcquisitionRefusalDetails(error: unknown) {
+  const reason: RegistryAcquisitionRefusalReason =
+    error instanceof RegistryAcquisitionRefused
+      ? error.reason
+      : 'policy-unavailable';
+  return {
+    code: 'registry-trust-refused' as const,
+    reason,
+    error: REFUSALS[reason],
+  };
 }
 export type RegistryPolicyAdmission = Awaited<
   ReturnType<RegistryTrustPolicyAuthority['captureAdmission']>
@@ -108,31 +146,26 @@ export async function verifyRegistryAcquisition(input: {
     (entry) => entry.registryKey === input.registryKey,
   );
   if (!profile) {
-    if (
-      input.previous ||
-      configuration?.profiles.some(
-        (entry) => entry.signatures === 'required',
-      ) ||
-      input.claim !== undefined
-    )
-      throw new RegistryAcquisitionRefused();
+    if (input.previous)
+      throw new RegistryAcquisitionRefused('continuity-change');
+    if (input.claim !== undefined)
+      throw new RegistryAcquisitionRefused('policy-unavailable');
     return undefined;
   }
   const decision = input.admission.decision;
-  if (
-    !decision ||
-    !input.fresh ||
-    !input.registryId ||
-    !input.registryKey ||
-    !input.claim
-  )
-    throw new RegistryAcquisitionRefused();
+  if (!decision) throw new RegistryAcquisitionRefused('policy-unavailable');
+  if (!input.fresh)
+    throw new RegistryAcquisitionRefused('unqualified-provider');
+  if (!input.registryId || !input.registryKey)
+    throw new RegistryAcquisitionRefused('invalid-claim');
+  if (!input.claim) throw new RegistryAcquisitionRefused('missing-claim');
   const verified = verifyRegistryPackage({
     claim: input.claim as RegistryPackageClaim,
     observedPackageDigest: input.observedSourceDigest,
     policy: { ...profile, pins: 'exact' },
   });
-  if (verified.kind !== 'verified') throw new RegistryAcquisitionRefused();
+  if (verified.kind !== 'verified')
+    throw new RegistryAcquisitionRefused(verified.reason);
   const claim = verified.package.claim;
   if (
     claim.registryId !== input.registryId ||
@@ -147,7 +180,8 @@ export async function verifyRegistryAcquisition(input: {
         .find((entry) => entry.registryKey === input.registryKey)
         ?.trustedKeys.find((key) => key.keyId === claim.signature!.keyId)
     : null;
-  if (claim.signature && !signer) throw new RegistryAcquisitionRefused();
+  if (claim.signature && !signer)
+    throw new RegistryAcquisitionRefused('untrusted-signing-key');
   const receipt: RegistryAcquisitionReceipt = {
     version: 1,
     policyScope: decision.scope,

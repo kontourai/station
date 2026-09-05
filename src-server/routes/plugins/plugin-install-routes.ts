@@ -37,7 +37,9 @@ import {
 import {
   isRegistryAcquisitionRefusal,
   RegistryAcquisitionRefused,
+  registryAcquisitionRefusalDetails,
   registryAcquisitionRevision,
+  verifyRetainedRegistryAcquisition,
 } from '../../services/plugins/registry-acquisition.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { Logger } from '../../utils/logger.js';
@@ -528,6 +530,75 @@ export function registerPluginInstallRoutes(
           logger,
           undefined,
           source,
+          undefined,
+          {
+            beforeResolve: () => {},
+            async resolved(entry, evidence) {
+              if (!entry.consent || !evidence.manifest) return;
+              const selection = deps.packageMcpJournal?.currentInstallation(
+                entry.id,
+              );
+              const trust =
+                selection?.state === 'observed'
+                  ? deps.packageMcpJournal!.registryAcquisition(
+                      selection.installation,
+                    )
+                  : undefined;
+              if (trust?.state === 'unavailable')
+                throw new RegistryAcquisitionRefused();
+              const policy =
+                await deps.registryTrustPolicyAuthority?.captureAdmission();
+              if (entry.status === 'installed' && trust?.receipt) {
+                if (!policy) throw new RegistryAcquisitionRefused();
+                entry.consent.registryTrustRevision =
+                  registryAcquisitionRevision(
+                    await verifyRetainedRegistryAcquisition(
+                      policy,
+                      trust.receipt,
+                    ),
+                  );
+                return;
+              }
+              const required =
+                policy?.configuration?.profiles.some(
+                  (profile) =>
+                    profile.registryKey === registryKey &&
+                    profile.signatures === 'required',
+                ) === true;
+              if (entry.status === 'installed') {
+                if (required) throw new RegistryAcquisitionRefused();
+                return;
+              }
+              const registry =
+                !entry.source || required
+                  ? await resolvePluginRegistryInstall(entry.id)
+                  : undefined;
+              if (!evidence.source) {
+                if (required) throw new RegistryAcquisitionRefused();
+                return;
+              }
+              if (required && !registry) throw new RegistryAcquisitionRefused();
+              const verified = await capturePluginRegistryAcquisition(
+                evidence.source,
+                evidence.manifest,
+                entry.consent.contentDigest,
+                deps,
+                registry ? entry.id : undefined,
+                registry?.registryKey,
+                trust?.receipt ?? undefined,
+              );
+              if (required && !verified.registryAcquisition)
+                throw new RegistryAcquisitionRefused();
+              if (
+                verified.registryAcquisition &&
+                evidence.format !== 'agent-plugin-1.0'
+              )
+                throw new RegistryAcquisitionRefused();
+              if (verified.registryAcquisition)
+                entry.consent.registryTrustRevision =
+                  registryAcquisitionRevision(verified.registryAcquisition);
+            },
+          },
         );
         const git = await getPluginGitInfo(tempDir, logger);
         // archive#4288: the preview already staged and validated everything a
@@ -567,6 +638,8 @@ export function registerPluginInstallRoutes(
           registryKey,
           priorTrust?.receipt ?? undefined,
         );
+        if (registryAcquisition && format !== 'agent-plugin-1.0')
+          throw new RegistryAcquisitionRefused();
         const registryTrustRevision = registryAcquisition
           ? registryAcquisitionRevision(registryAcquisition)
           : undefined;
@@ -618,9 +691,7 @@ export function registerPluginInstallRoutes(
         return c.json(
           {
             valid: false,
-            code: 'registry-trust-refused',
-            error:
-              'Registry trust could not be verified. Apply the intended host policy and preview again.',
+            ...registryAcquisitionRefusalDetails(error),
             components: [],
             conflicts: [],
           },
@@ -750,9 +821,7 @@ export function registerPluginInstallRoutes(
         return c.json(
           {
             success: false,
-            code: 'registry-trust-refused',
-            error:
-              'Registry trust changed or could not be verified. Preview again; retained data has not been migrated.',
+            ...registryAcquisitionRefusalDetails(error),
           },
           409,
         );

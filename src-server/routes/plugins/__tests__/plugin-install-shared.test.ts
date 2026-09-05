@@ -52,6 +52,7 @@ import {
   readPluginDependencyOwnership,
   readPluginGrantState,
 } from '../../../services/plugins/plugin-permissions.js';
+import { registryAcquisitionRevision } from '../../../services/plugins/registry-acquisition.js';
 import {
   type RegistryPackageClaim,
   registryPackageSignaturePayload,
@@ -64,6 +65,7 @@ import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 import {
   backupPluginDurableState,
   capturePersistedAgentOwnership,
+  capturePluginRegistryAcquisition,
   ensureCanonicalRegistryInstallAliases,
   installPluginFromSource,
   previewInstalledPluginRecovery,
@@ -142,6 +144,28 @@ function deps(root: string) {
     pluginsDir: join(root, 'plugins'),
     projectHomeDir: root,
   };
+}
+
+function registrySourceFixture(
+  id: string,
+  registryKey: string,
+  source: string,
+) {
+  getPluginRegistryProviders.mockReturnValue([
+    {
+      source: registryKey,
+      provider: {
+        registryKey,
+        resolvePackage: async (requested: string) =>
+          requested === id ? { source } : null,
+        listAvailable: async () => [{ id, source }],
+        listInstalled: async () => [],
+        install: async () => {
+          throw new Error('Fixture must use the shared source installer');
+        },
+      },
+    },
+  ]);
 }
 
 function writePlugin(
@@ -1096,6 +1120,251 @@ describe('installPluginFromSource', () => {
     expect(existsSync(join(root, 'integrations'))).toBe(false);
   });
 
+  test.each([false, true])(
+    'signed graph carries child trust consent and refuses qualified legacy build (legacy=%s)',
+    async (legacy) => {
+      const root = mkdtempSync(join(tmpdir(), 'station-signed-graph-'));
+      cleanupDirs.push(root);
+      await ensureStationHomeSchema(root);
+      const parentSource = join(root, 'parent-source'),
+        childSource = join(root, 'child-source'),
+        registryPath = join(root, 'catalog.json');
+      writePlugin(parentSource, {
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'graph-parent',
+        version: '1.0.0',
+        extensions: {
+          'io.kontourai.station': {
+            schemaVersion: '1.0',
+            dependencies: [{ name: 'graph-child', version: '1.0.0' }],
+          },
+        },
+      });
+      writePlugin(childSource, {
+        ...(legacy
+          ? {}
+          : {
+              $schema:
+                'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+            }),
+        name: 'graph-child',
+        version: '1.0.0',
+      });
+      const pair = generateKeyPairSync('ed25519');
+      const configuration = {
+        profiles: [
+          {
+            registryKey: registryPath,
+            signatures: 'required' as const,
+            trustedEd25519Keys: {
+              primary: pair.publicKey
+                .export({ type: 'spki', format: 'pem' })
+                .toString(),
+            },
+          },
+        ],
+      };
+      const loader = new ConfigLoader({ projectHomeDir: root });
+      await loader.mutateAppConfig(() => ({ registryTrust: configuration }));
+      const store = new EventStore(join(root, 'events.sqlite'));
+      packageStores.push(store);
+      const policy = createLocalRegistryTrustPolicyAuthority(
+        root,
+        store.createRegistryTrustPolicyDecisions(),
+      );
+      await policy.publishApplied(
+        await policy.captureApplication(),
+        configuration,
+      );
+      const normalizedParent = await readPluginManifestFile(
+        join(parentSource, 'plugin.json'),
+      );
+      expect(normalizedParent.dependencies).toEqual([
+        { id: 'graph-child', version: '1.0.0' },
+      ]);
+      const consent = await approvedConsent(parentSource, root);
+      const childApproval = await dependencyApproval(
+        'graph-child',
+        childSource,
+        root,
+      );
+      const claims = [
+        {
+          id: 'graph-parent',
+          source: parentSource,
+          digest: consent.contentDigest,
+        },
+        {
+          id: 'graph-child',
+          source: childSource,
+          digest: childApproval.contentDigest,
+        },
+      ].map((item) => {
+        const claim: RegistryPackageClaim = {
+          packageSchema:
+            'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+          registryId: item.id,
+          registryKey: registryPath,
+          pluginName: item.id,
+          packageVersion: '1.0.0',
+          source: item.source,
+          packageDigest: item.digest,
+        };
+        return {
+          id: item.id,
+          source: item.source,
+          claim: {
+            ...claim,
+            signature: {
+              algorithm: 'ed25519',
+              keyId: 'primary',
+              value: sign(
+                null,
+                registryPackageSignaturePayload(claim),
+                pair.privateKey,
+              ).toString('base64'),
+            },
+          },
+        };
+      });
+      writeFileSync(
+        registryPath,
+        JSON.stringify({ version: 1, plugins: claims }),
+      );
+      getPluginRegistryProviders.mockReturnValue([
+        {
+          source: 'signed-graph',
+          provider: new JsonManifestRegistryProvider(registryPath, root),
+        },
+      ]);
+      const journal = store.createPackageMcpAdmissionJournal();
+      const installDeps = {
+        ...deps(root),
+        registryTrustPolicyAuthority: policy,
+        packageMcpJournal: journal,
+      };
+      if (!legacy) {
+        const local = join(root, 'unrelated-local');
+        writePlugin(local, {
+          $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+          name: 'unrelated-local',
+          version: '1.0.0',
+        });
+        await installPluginFromSource(local, [], installDeps);
+        const selectedLocal = journal.currentInstallation('unrelated-local');
+        if (selectedLocal.state !== 'observed')
+          throw new Error('Local unsigned install was refused');
+        expect(journal.admissionOpen(selectedLocal.installation)).toBe(true);
+        expect(journal.registryAcquisition(selectedLocal.installation)).toEqual(
+          { state: 'observed', receipt: null },
+        );
+        installDeps.buildPlugin.mockClear();
+      }
+
+      const app = new Hono();
+      registerPluginInstallRoutes(app, installDeps);
+      const previewResponse = await app.request('http://localhost/preview', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ registryId: 'graph-parent' }),
+      });
+      if (legacy) {
+        expect(previewResponse.status).toBe(409);
+        const manifest = await readPluginManifestFile(
+          join(parentSource, 'plugin.json'),
+        );
+        const rootTrust = await capturePluginRegistryAcquisition(
+          parentSource,
+          manifest,
+          consent.contentDigest,
+          installDeps,
+          'graph-parent',
+          registryPath,
+        );
+        if (!rootTrust.registryAcquisition)
+          throw new Error('Missing root trust');
+        await expect(
+          installPluginFromSource(parentSource, [], installDeps, {
+            registryId: 'graph-parent',
+            registryKey: registryPath,
+            consent: {
+              ...consent,
+              registryTrustRevision: registryAcquisitionRevision(
+                rootTrust.registryAcquisition,
+              ),
+              dependencyApprovals: [childApproval],
+            },
+          }),
+        ).rejects.toThrow('trust continuity');
+        expect(
+          installDeps.buildPlugin.mock.calls.some(
+            (call) => (call as unknown[])[1] === 'graph-child',
+          ),
+        ).toBe(false);
+        expect(journal.currentInstallation('graph-child').state).not.toBe(
+          'observed',
+        );
+        return;
+      }
+      const preview = (await previewResponse.json()) as {
+        valid: boolean;
+        contentDigest: string;
+        registryTrustRevision: string;
+        grantRevision: string;
+        permissions: { required: string[] };
+        dependencies: Array<{
+          id: string;
+          consent: {
+            contentDigest: string;
+            registryTrustRevision: string;
+            grantRevision: string;
+            permissions: string[];
+            dependencies: string[];
+          };
+        }>;
+      };
+      expect(previewResponse.status).toBe(200);
+      expect(preview.valid).toBe(true);
+      expect(preview.dependencies).toHaveLength(1);
+      expect(preview.dependencies[0]?.consent.registryTrustRevision).toMatch(
+        /^sha256:/,
+      );
+      await installPluginFromSource(parentSource, [], installDeps, {
+        registryId: 'graph-parent',
+        registryKey: registryPath,
+        consent: {
+          kind: 'operator-decision',
+          contentDigest: preview.contentDigest,
+          permissions: preview.permissions.required,
+          grantRevision: preview.grantRevision,
+          registryTrustRevision: preview.registryTrustRevision,
+          dependencies: preview.dependencies.map((entry) => entry.id),
+          dependencyApprovals: preview.dependencies.map((entry) => ({
+            id: entry.id,
+            contentDigest: entry.consent.contentDigest,
+            permissions: entry.consent.permissions,
+            dependencies: entry.consent.dependencies,
+            grantRevision: entry.consent.grantRevision,
+            registryTrustRevision: entry.consent.registryTrustRevision,
+          })),
+        },
+      });
+      for (const id of ['graph-parent', 'graph-child']) {
+        const selected = journal.currentInstallation(id);
+        if (selected.state !== 'observed')
+          throw new Error('Missing signed graph selection');
+        expect(journal.admissionOpen(selected.installation)).toBe(true);
+        expect(
+          journal.registryAcquisition(selected.installation),
+        ).toMatchObject({
+          state: 'observed',
+          receipt: { registryId: id, signer: { keyId: 'primary' } },
+        });
+      }
+      expect(installDeps.buildPlugin).toHaveBeenCalledTimes(2);
+    },
+  );
+
   test('central signed installation records journal trust and refuses alias deletion as an anonymous update bypass', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-signed-install-'));
     cleanupDirs.push(root);
@@ -1178,7 +1447,7 @@ describe('installPluginFromSource', () => {
         registryKey: registryPath,
         consent,
       }),
-    ).rejects.toThrow('trust continuity');
+    ).rejects.toMatchObject({ reason: 'stale-review' });
     expect(installDeps.buildPlugin).not.toHaveBeenCalled();
     const app = new Hono();
     registerPluginInstallRoutes(app, installDeps);
@@ -1307,7 +1576,7 @@ describe('installPluginFromSource', () => {
     );
     await expect(
       installPluginFromSource(source, [], installDeps, { consent }),
-    ).rejects.toThrow('trust continuity');
+    ).rejects.toMatchObject({ reason: 'receipt-unavailable' });
     expect(installDeps.buildPlugin).toHaveBeenCalledTimes(1);
   });
 
@@ -1976,6 +2245,7 @@ describe('installPluginFromSource', () => {
       ...deps(root),
       reconcileEngineConnections: vi.fn().mockResolvedValue(undefined),
     };
+    registrySourceFixture('curated-demo', 'test-registry', sourceDir);
     await installPluginFromSource(sourceDir, [], installDeps, {
       registryId: 'curated-demo',
       registryKey: 'test-registry',
@@ -2011,6 +2281,7 @@ describe('installPluginFromSource', () => {
     const sourceDir = join(root, 'registry', 'same-plugin');
     writePlugin(sourceDir, { name: 'same-plugin', version: '1.0.0' });
 
+    registrySourceFixture('same-plugin', 'test-registry', sourceDir);
     await installPluginFromSource(sourceDir, [], deps(root), {
       registryId: 'same-plugin',
       registryKey: 'test-registry',
@@ -2068,6 +2339,7 @@ describe('installPluginFromSource', () => {
       }),
     );
 
+    registrySourceFixture('new-demo', 'new-registry', sourceDir);
     await installPluginFromSource(sourceDir, [], deps(root), {
       registryId: 'new-demo',
       registryKey: 'new-registry',
@@ -4052,6 +4324,7 @@ describe('plugin install consent gate (station#4288)', () => {
     writeContributingPlugin(source);
 
     const probes = mutationProbes(root);
+    registrySourceFixture('contributor', 'curated', source);
     await installPluginFromSource(source, [], probes.deps, {
       consent: await approvedConsent(source, root),
       registryId: 'contributor',

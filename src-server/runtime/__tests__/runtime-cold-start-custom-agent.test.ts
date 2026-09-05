@@ -48,6 +48,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfigLoader } from '../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
+import { listProviders } from '../../providers/registries/registry.js';
 import {
   principalKey,
   UnattendedGrantStore,
@@ -55,6 +56,7 @@ import {
 import { EventStore } from '../../services/orchestration/event-store.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../services/usage-telemetry-inventory.js';
+import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
 
 const TEST_PORT = 31_141;
 const hostedRegistryFileEnv = 'STATION_HOSTED_TENANT_REGISTRY_FILE';
@@ -1028,6 +1030,51 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     await expect(runtime.initialize()).resolves.toBeUndefined();
     expect(captureSpy).toHaveBeenCalled();
     captureSpy.mockRestore();
+  });
+
+  it('applies a changed policy with a pinned provider present and fences its old composition without blocking startup', async () => {
+    home = await createSchemaHome('station-coldstart-pinned-policy-');
+    const fixture = await installSignedStartupProvider(home);
+    await new ConfigLoader({ projectHomeDir: home }).mutateAppConfig(() => ({
+      registryTrust: { profiles: [] },
+    }));
+    const globals = globalThis as typeof globalThis & {
+      __stationSignedStartupImports?: number;
+    };
+    const before = globals.__stationSignedStartupImports ?? 0;
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    replaceTerminalListener(runtime);
+    await expect(runtime.initialize()).resolves.toBeUndefined();
+    expect(globals.__stationSignedStartupImports).toBeGreaterThan(before);
+    const internal = runtime as unknown as {
+      orchestrationEventStore: EventStore;
+      agentConfigurationMutationQueue: Promise<unknown>;
+      reconcileAgentConfigurationSources(): Promise<void>;
+      getStableAgentConfigurationRevision(): number | null;
+    };
+    const decision = internal.orchestrationEventStore
+      .createRegistryTrustPolicyDecisions()
+      .read();
+    expect(decision?.epoch).not.toBe(fixture.applied?.epoch);
+    expect(decision?.identity.profiles).toEqual([]);
+    expect(
+      listProviders('branding').some(
+        (entry) => entry.source === fixture.pluginName,
+      ),
+    ).toBe(false);
+    const journal =
+      internal.orchestrationEventStore.createPackageMcpAdmissionJournal();
+    const selected = journal.currentInstallation(fixture.pluginName);
+    if (selected.state !== 'observed')
+      throw new Error('Missing pinned selection');
+    expect(journal.admissionOpen(selected.installation)).toBe(false);
+    await internal.agentConfigurationMutationQueue;
+    await internal.reconcileAgentConfigurationSources();
+    expect(internal.getStableAgentConfigurationRevision()).not.toBeNull();
   });
 
   it('rejects a foreign selected-package change across startup capture and recovers on retry', async () => {

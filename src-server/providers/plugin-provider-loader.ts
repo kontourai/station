@@ -234,142 +234,157 @@ export async function preparePluginProviders(
   const pluginSettings = overrides[pluginName]?.settings || {};
 
   const prepared: PreparedPluginProviderRegistration[] = [];
-  for (const provider of manifest.providers) {
-    await options.beforeEffect?.();
-    const pluginRoot = options.packageRoot ?? join(pluginsDir, pluginName);
-    if (options.artifact && !options.artifact.isCurrent())
-      throw new Error('Plugin installation changed before provider import');
-    const modulePath = join(pluginRoot, provider.module);
-    assertExistingPathInside(pluginRoot, modulePath, 'Plugin provider module');
-    if (!existsSync(modulePath)) {
-      if (options.strict) {
-        throw new Error(`Plugin provider module not found: ${modulePath}`);
+  try {
+    for (const provider of manifest.providers) {
+      let admissionFailure = false;
+      const checkAdmission = async () => {
+        try {
+          await options.beforeEffect?.();
+        } catch (error) {
+          admissionFailure = true;
+          throw error;
+        }
+      };
+      await checkAdmission();
+      const pluginRoot = options.packageRoot ?? join(pluginsDir, pluginName);
+      if (options.artifact && !options.artifact.isCurrent())
+        throw new Error('Plugin installation changed before provider import');
+      const modulePath = join(pluginRoot, provider.module);
+      assertExistingPathInside(
+        pluginRoot,
+        modulePath,
+        'Plugin provider module',
+      );
+      if (!existsSync(modulePath)) {
+        if (options.strict) {
+          throw new Error(`Plugin provider module not found: ${modulePath}`);
+        }
+        continue;
       }
-      continue;
-    }
 
-    try {
-      if (
-        modulePath.endsWith('.json') &&
-        (provider.type === 'agentRegistry' ||
-          provider.type === 'integrationRegistry' ||
-          provider.type === 'pluginRegistry')
-      ) {
-        const { JsonManifestRegistryProvider } = await import(
-          './registries/json-manifest-registry.js'
-        );
-        if (options.artifact && !options.artifact.isCurrent())
-          throw new Error(
-            'Plugin installation changed before provider construction',
+      try {
+        if (
+          modulePath.endsWith('.json') &&
+          (provider.type === 'agentRegistry' ||
+            provider.type === 'integrationRegistry' ||
+            provider.type === 'pluginRegistry')
+        ) {
+          const { JsonManifestRegistryProvider } = await import(
+            './registries/json-manifest-registry.js'
           );
-        const instance = new JsonManifestRegistryProvider(
-          modulePath,
-          dirname(pluginsDir),
-          undefined,
-          'warn' in logger ? (logger as Pick<Logger, 'warn'>) : undefined,
+          if (options.artifact && !options.artifact.isCurrent())
+            throw new Error(
+              'Plugin installation changed before provider construction',
+            );
+          const instance = new JsonManifestRegistryProvider(
+            modulePath,
+            dirname(pluginsDir),
+            undefined,
+            'warn' in logger ? (logger as Pick<Logger, 'warn'>) : undefined,
+          );
+          prepared.push({
+            type: provider.type,
+            visibility:
+              options.visibility ??
+              (options.artifact
+                ? { ready: () => false, permits: () => false }
+                : undefined),
+            provider:
+              provider.type === 'integrationRegistry'
+                ? instance.integrationRegistry()
+                : instance,
+            source: pluginName,
+            layout: provider.layout,
+          });
+          continue;
+        }
+
+        const fileUrl = pathToFileURL(modulePath);
+        fileUrl.searchParams.set(
+          'stationPluginRevision',
+          String(++pluginProviderImportRevision),
         );
+        await checkAdmission();
+        const mod = await import(fileUrl.href);
+        const factory = mod.default || mod;
+        try {
+          await checkAdmission();
+          if (options.artifact && !options.artifact.isCurrent())
+            throw new Error(
+              'Plugin installation changed before provider construction',
+            );
+        } catch (admissionError) {
+          // An object export was already constructed by module evaluation. Its
+          // existing owner must dispose it even though publication is refused.
+          // A factory has not run and must not run merely to obtain a disposer.
+          if (typeof factory !== 'function') {
+            await disposePreparedPluginProviders([
+              {
+                type: provider.type,
+                provider: factory,
+                source: pluginName,
+                layout: provider.layout,
+              },
+            ]);
+          }
+          throw admissionError;
+        }
+        let instance: unknown;
+        try {
+          instance =
+            typeof factory === 'function' ? factory(pluginSettings) : factory;
+        } catch (factoryError: unknown) {
+          logger.error('Plugin provider factory threw', {
+            plugin: pluginName,
+            type: provider.type,
+            error: errorMessage(factoryError),
+          });
+          if (options.strict) throw factoryError;
+          continue;
+        }
+
+        if (provider.type === 'providerAdapter') {
+          if (!isProviderAdapterShape(instance)) {
+            const error = new Error('Invalid plugin provider adapter shape');
+            if (options.strict) throw error;
+            logger.error(error.message, {
+              plugin: pluginName,
+              type: provider.type,
+            });
+            continue;
+          }
+        }
         prepared.push({
-          type: provider.type,
           visibility:
             options.visibility ??
             (options.artifact
               ? { ready: () => false, permits: () => false }
               : undefined),
-          provider:
-            provider.type === 'integrationRegistry'
-              ? instance.integrationRegistry()
-              : instance,
+          type: provider.type,
+          provider: instance,
           source: pluginName,
           layout: provider.layout,
         });
-        continue;
-      }
-
-      const fileUrl = pathToFileURL(modulePath);
-      fileUrl.searchParams.set(
-        'stationPluginRevision',
-        String(++pluginProviderImportRevision),
-      );
-      await options.beforeEffect?.();
-      const mod = await import(fileUrl.href);
-      const factory = mod.default || mod;
-      try {
-        await options.beforeEffect?.();
-        if (options.artifact && !options.artifact.isCurrent())
-          throw new Error(
-            'Plugin installation changed before provider construction',
-          );
-      } catch (admissionError) {
-        // An object export was already constructed by module evaluation. Its
-        // existing owner must dispose it even though publication is refused.
-        // A factory has not run and must not run merely to obtain a disposer.
-        if (typeof factory !== 'function') {
-          await disposePreparedPluginProviders([
-            {
-              type: provider.type,
-              provider: factory,
-              source: pluginName,
-              layout: provider.layout,
-            },
-          ]);
-        }
-        throw admissionError;
-      }
-      let instance: unknown;
-      try {
-        instance =
-          typeof factory === 'function' ? factory(pluginSettings) : factory;
-      } catch (factoryError: unknown) {
-        logger.error('Plugin provider factory threw', {
+      } catch (error: unknown) {
+        if (options.strict || admissionFailure) throw error;
+        logger.error('Failed to load provider', {
           plugin: pluginName,
           type: provider.type,
-          error: errorMessage(factoryError),
+          error: errorMessage(error),
         });
-        if (options.strict) throw factoryError;
-        continue;
       }
-
-      if (provider.type === 'providerAdapter') {
-        if (!isProviderAdapterShape(instance)) {
-          const error = new Error('Invalid plugin provider adapter shape');
-          if (options.strict) throw error;
-          logger.error(error.message, {
-            plugin: pluginName,
-            type: provider.type,
-          });
-          continue;
-        }
-      }
-      prepared.push({
-        visibility:
-          options.visibility ??
-          (options.artifact
-            ? { ready: () => false, permits: () => false }
-            : undefined),
-        type: provider.type,
-        provider: instance,
-        source: pluginName,
-        layout: provider.layout,
-      });
-    } catch (error: unknown) {
-      if (options.strict) {
-        try {
-          await disposePreparedPluginProviders(prepared);
-        } catch (cleanupError) {
-          throw new AggregateError(
-            [error, cleanupError],
-            'Plugin provider preparation and cleanup both failed.',
-          );
-        }
-        throw error;
-      }
-      logger.error('Failed to load provider', {
-        plugin: pluginName,
-        type: provider.type,
-        error: errorMessage(error),
-      });
     }
-  }
 
-  return prepared;
+    return prepared;
+  } catch (error) {
+    try {
+      await disposePreparedPluginProviders(prepared);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        'Plugin provider preparation and cleanup both failed.',
+      );
+    }
+    throw error;
+  }
 }

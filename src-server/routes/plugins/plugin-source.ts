@@ -82,6 +82,7 @@ export interface ResolvedPluginDependency {
   git?: PluginGitInfo;
   consent?: {
     contentDigest: string;
+    registryTrustRevision?: string;
     permissions: string[];
     dependencies: string[];
     pendingConsent: Array<{ permission: string; tier: string }>;
@@ -89,6 +90,10 @@ export interface ResolvedPluginDependency {
 }
 
 export interface PluginDependencyLifecycle {
+  beforeLegacyMutation?(input: {
+    dependencyId: string;
+    source?: string;
+  }): Promise<void>;
   commit?(): void;
   validatePortableInstalled?(dependency: {
     id: string;
@@ -638,7 +643,14 @@ export async function resolvePluginDependencies(
   allowedLocalRoot: string = dirname(resolve(parentSourceDir)),
   validation?: {
     beforeResolve(id: string): void;
-    resolved(dependency: ResolvedPluginDependency): void | Promise<void>;
+    resolved(
+      dependency: ResolvedPluginDependency,
+      evidence: {
+        manifest: PluginManifest | null;
+        source?: string;
+        format?: string;
+      },
+    ): void | Promise<void>;
   },
 ): Promise<ResolvedPluginDependency[]> {
   const dependencies: ResolvedPluginDependency[] = [];
@@ -650,6 +662,12 @@ export async function resolvePluginDependencies(
     seen.add(dependency.id);
 
     let depManifest: PluginManifest | null = null;
+    let depFormat: string | undefined;
+    const readDependency = (path: string) => {
+      const read = readPluginManifestFileSyncWithFormat(path);
+      depFormat = read.format;
+      return read.manifest;
+    };
     let depGit: PluginGitInfo | undefined;
     let status: ResolvedPluginDependency['status'] = 'missing';
     let consent: ResolvedPluginDependency['consent'];
@@ -665,9 +683,7 @@ export async function resolvePluginDependencies(
     if (existsSync(join(dependencyDir, 'plugin.json'))) {
       status = 'installed';
       try {
-        depManifest = readPluginManifestFileSync(
-          join(dependencyDir, 'plugin.json'),
-        );
+        depManifest = readDependency(join(dependencyDir, 'plugin.json'));
       } catch (error) {
         logger.debug('Failed to read installed dependency manifest', {
           dep: dependency.id,
@@ -703,9 +719,7 @@ export async function resolvePluginDependencies(
       if (!('error' in result)) {
         try {
           try {
-            depManifest = readPluginManifestFileSync(
-              join(result.tempDir, 'plugin.json'),
-            );
+            depManifest = readDependency(join(result.tempDir, 'plugin.json'));
           } catch (error) {
             logger.debug('Failed to read fetched dependency manifest', {
               dep: dependency.id,
@@ -752,7 +766,7 @@ export async function resolvePluginDependencies(
             );
             if (!('error' in result)) {
               try {
-                depManifest = readPluginManifestFileSync(
+                depManifest = readDependency(
                   join(result.tempDir, 'plugin.json'),
                 );
                 unsupported = unsupportedDependencyFeatures(
@@ -819,7 +833,11 @@ export async function resolvePluginDependencies(
     // An installation preflight validates this exact source before recursion
     // can acquire anything named by its manifest. Ordinary preview is inert
     // discovery and does not supply an installation decision.
-    await validation?.resolved(resolved);
+    await validation?.resolved(resolved, {
+      manifest: depManifest,
+      source: dependencySourceContext,
+      format: depFormat,
+    });
     dependencies.push(resolved);
 
     if (depManifest) {
@@ -919,6 +937,7 @@ async function validateAndBuildInstalledDependency(
         manifest,
       });
     }
+    await lifecycle?.beforeLegacyMutation?.({ dependencyId });
     await buildDependencyIfNeeded(
       pluginsDir,
       dependencyId,
@@ -1136,6 +1155,10 @@ export async function installPluginDependency(
           dependencyDir: tempDir,
           manifest: depManifest,
         });
+        await lifecycle?.beforeLegacyMutation?.({
+          dependencyId: dependency.id,
+          source: dependencySource,
+        });
         await buildPlugin(tempDir, dependency.id);
         for (const transitive of depManifest.dependencies || []) {
           const resolvedTransitive = resolvePluginDependencySource(
@@ -1291,6 +1314,7 @@ export async function installPluginDependency(
         return { success: true };
       }
       const registryProvider = getPluginRegistryProvider();
+      await lifecycle?.beforeLegacyMutation?.({ dependencyId: dependency.id });
       const registryResult = await registryProvider.install(
         dependency.id,
         // See `PluginRegistryInstaller.install`: the provider picks its target
@@ -1321,6 +1345,9 @@ export async function installPluginDependency(
           dependencyId: dependency.id,
           dependencyDir: targetDir,
           manifest: depManifest,
+        });
+        await lifecycle?.beforeLegacyMutation?.({
+          dependencyId: dependency.id,
         });
         await buildDependencyIfNeeded(
           pluginsDir,

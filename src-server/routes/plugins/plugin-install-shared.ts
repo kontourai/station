@@ -1023,6 +1023,8 @@ async function rollbackOwnershipHandoffs(
 }
 
 function createDependencyLifecycle(options: {
+  parentRegistryKey?: string;
+  dependencyRegistryKey(id: string): string | undefined;
   grantRevisions: PluginGrantRevisionSnapshot;
   registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
@@ -1102,6 +1104,56 @@ function createDependencyLifecycle(options: {
   };
 
   return {
+    async beforeLegacyMutation({ dependencyId, source }) {
+      const selected =
+        options.packageMcpJournal?.currentInstallation(dependencyId);
+      if (selected?.state === 'unavailable')
+        throw new RegistryAcquisitionRefused();
+      if (selected?.state === 'observed') {
+        const trust = options.packageMcpJournal!.registryAcquisition(
+          selected.installation,
+        );
+        if (trust.state === 'unavailable' || trust.receipt)
+          throw new RegistryAcquisitionRefused();
+      }
+      const policy =
+        await options.registryTrustPolicyAuthority?.captureAdmission();
+      if (!policy) {
+        if (
+          (await observeAppConfigFile(options.projectHomeDir))
+            ?.registryTrust !== undefined
+        )
+          throw new RegistryAcquisitionRefused();
+        return;
+      }
+      if (
+        policy.configuration?.profiles.some(
+          (profile) =>
+            profile.registryKey === options.parentRegistryKey &&
+            profile.signatures === 'required',
+        )
+      )
+        throw new RegistryAcquisitionRefused();
+      let registryKey = options.dependencyRegistryKey(dependencyId);
+      if (!source && policy.configuration?.profiles.length) {
+        try {
+          registryKey = (
+            await resolveSinglePluginRegistryProvider(dependencyId)
+          ).provider.registryKey;
+        } catch (error) {
+          if (!errorMessage(error).startsWith('No plugin registry provider'))
+            throw error;
+        }
+      }
+      if (
+        registryKey &&
+        policy.configuration?.profiles.some(
+          (profile) => profile.registryKey === registryKey,
+        )
+      )
+        throw new RegistryAcquisitionRefused();
+      await policy.assertCurrent();
+    },
     validateInstalled({ dependencyId, manifest }) {
       assertDependencyProviderSlotsAvailable(
         options.pluginsDir,
@@ -2972,6 +3024,7 @@ async function installPluginFromSourceUnderContext(
   options?: {
     registryId?: string;
     registryKey?: string;
+    requireRegistryClaim?: boolean;
     activationSession?: PluginActivationSession;
     activationParent?: { installation: string; generation: string };
     retainedRecovery?: RetainedRecoveryAuthorization;
@@ -3221,6 +3274,8 @@ async function installPluginFromSourceUnderContext(
       visit(pluginName);
     }
     const dependencyLifecycle = createDependencyLifecycle({
+      parentRegistryKey: options?.registryKey,
+      dependencyRegistryKey: (id) => registryDependencyOwners.get(id),
       registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
       packageMcpJournal: deps.packageMcpJournal,
       grantRevisions: requestGrants,
@@ -3330,6 +3385,13 @@ async function installPluginFromSourceUnderContext(
                 registryKey: registryDependencyOwners.get(dependencyId)!,
               }
             : {}),
+          requireRegistryClaim:
+            options?.requireRegistryClaim === true ||
+            policyAdmission?.configuration?.profiles.some(
+              (profile) =>
+                profile.registryKey === options?.registryKey &&
+                profile.signatures === 'required',
+            ) === true,
           activationSession: options?.activationSession,
           ...(managedLifecycle
             ? {
@@ -3344,6 +3406,7 @@ async function installPluginFromSourceUnderContext(
           consent: {
             kind: 'operator-decision',
             contentDigest: approval.contentDigest,
+            registryTrustRevision: approval.registryTrustRevision,
             grantRevision:
               approval.grantRevision ?? requestGrants.revisionFor(dependencyId),
             permissions: approval.permissions,
@@ -3454,7 +3517,7 @@ async function installPluginFromSourceUnderContext(
           )
         : undefined;
     if (priorTrust?.state === 'unavailable')
-      throw new RegistryAcquisitionRefused();
+      throw new RegistryAcquisitionRefused('receipt-unavailable');
     const { policyAdmission, registryAcquisition } =
       options?.retainedRecovery && recovery?.registryReceipt
         ? await captureRetainedPluginRegistryAcquisition(
@@ -3471,6 +3534,8 @@ async function installPluginFromSourceUnderContext(
             options?.registryKey,
             priorTrust?.receipt ?? undefined,
           );
+    if (options?.requireRegistryClaim && !registryAcquisition)
+      throw new RegistryAcquisitionRefused();
     if (registryAcquisition && !isAgentPlugin)
       throw new RegistryAcquisitionRefused();
     if (
@@ -3479,7 +3544,7 @@ async function installPluginFromSourceUnderContext(
         consent.registryTrustRevision !==
           registryAcquisitionRevision(registryAcquisition))
     )
-      throw new RegistryAcquisitionRefused();
+      throw new RegistryAcquisitionRefused('stale-review');
     let permissionArtifact: CapturedPluginPermissionArtifact | undefined;
     let managedLifecycle:
       | Awaited<ReturnType<NonNullable<typeof installationService>['install']>>
@@ -4810,10 +4875,11 @@ export async function capturePluginRegistryAcquisition(
         undefined)
   )
     throw new RegistryAcquisitionRefused();
-  const registryObservation =
-    policyAdmission?.configuration && registryId
-      ? await resolveSinglePluginRegistryProvider(registryId)
-      : undefined;
+  const registryObservation = registryId
+    ? await resolveSinglePluginRegistryProvider(registryId)
+    : undefined;
+  if (registryObservation?.claim !== undefined && !policyAdmission)
+    throw new RegistryAcquisitionRefused('policy-unavailable');
   if (
     registryObservation &&
     (registryObservation.source !== source ||

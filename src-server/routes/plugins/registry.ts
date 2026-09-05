@@ -6,7 +6,10 @@ import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import { observePluginGrantRevisions } from '../../services/plugins/plugin-permissions.js';
-import { isRegistryAcquisitionRefusal } from '../../services/plugins/registry-acquisition.js';
+import {
+  isRegistryAcquisitionRefusal,
+  registryAcquisitionRefusalDetails,
+} from '../../services/plugins/registry-acquisition.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 /**
@@ -802,9 +805,7 @@ export function createRegistryRoutes(
         return c.json(
           {
             success: false,
-            code: 'registry-trust-refused',
-            error:
-              'Registry trust changed or could not be verified. Preview again; retained data has not been migrated.',
+            ...registryAcquisitionRefusalDetails(error),
           },
           409,
         );
