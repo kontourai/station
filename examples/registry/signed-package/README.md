@@ -11,7 +11,9 @@ publisher identity.
 - Node 24, tsx, and matching candidate builds of the Station contracts and shared
   packages containing the registry-trust, plugin-tree-digest, and
   plugin-registry-signature public leaves. New exports in a candidate checkout
-  are not a claim that they are already available on npm.
+  are not a claim that they are already available on npm. The required tree
+  encoding is station-plugin-tree/v2, with explicit kinds and length frames;
+  legacy delimiter-only digests are not v2 integrity evidence.
 - A frozen source snapshot exactly matching the Git ref that consumers fetch.
   Use a clean clone or export. The tree digest excludes only the root .git
   directory: build output, dependencies, and private files must stay outside

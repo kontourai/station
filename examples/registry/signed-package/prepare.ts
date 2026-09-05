@@ -32,7 +32,10 @@ import {
 } from '@kontourai/station-contracts/registry-trust';
 import { parseAgentPluginManifest } from '@kontourai/station-shared/agent-plugin-manifest';
 import { registryPackageSignaturePayload } from '@kontourai/station-shared/plugin-registry-signature';
-import { computePluginTreeDigest } from '@kontourai/station-shared/plugin-tree-digest';
+import {
+  computePluginTreeDigest,
+  PLUGIN_TREE_DIGEST_FORMAT,
+} from '@kontourai/station-shared/plugin-tree-digest';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const usage =
@@ -248,6 +251,7 @@ export function prepareSignedPackage(options: PrepareOptions) {
   );
   return {
     output,
+    treeDigestFormat: PLUGIN_TREE_DIGEST_FORMAT,
     packageDigest,
     publicKeyFingerprint:
       'sha256:' +
