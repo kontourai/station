@@ -19,7 +19,7 @@ const reference = {
 };
 let current = true;
 const authority = {
-  apiBase: 'https://station.test/api',
+  apiBase: 'https://station.test',
   authorityKey: 'authority-a',
   isCurrent: () => current,
 };
@@ -69,13 +69,11 @@ function mount(
 }
 beforeEach(() => {
   current = true;
-  window.matchMedia = vi
-    .fn()
-    .mockReturnValue({
-      matches: false,
-      addEventListener() {},
-      removeEventListener() {},
-    });
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  });
   setClientCredentialResolver(() => ({
     origin: 'https://station.test',
     credential: 'fixture',

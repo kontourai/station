@@ -7,6 +7,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { observeLearningSource } from '@kontourai/station-sdk/client';
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { afterEach, expect, test, vi } from 'vitest';
 import { createLearningSourceFixture } from '../../../__test-utils__/learning-source-test-harness';
@@ -21,6 +22,7 @@ const owned: Array<Awaited<ReturnType<typeof createLearningSourceFixture>>> =
   [];
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   for (const fixture of owned.splice(0).reverse()) fixture.close();
 });
@@ -253,4 +255,28 @@ test('verified tenant ingress cannot inherit internal local personal-store acces
     state: 'restricted',
   });
   expect(read).not.toHaveBeenCalled();
+});
+
+test('public SDK source fetch reaches the production route and canonical owner from a Station origin', async () => {
+  const f = await fixture();
+  vi.stubGlobal('fetch', (input: string | URL | Request, init?: RequestInit) =>
+    f.app.request(input instanceof Request ? input : String(input), init),
+  );
+  const result = await observeLearningSource(
+    'http://station.test',
+    {
+      rootId: f.root.id,
+      recordId: f.recordId,
+      rootIdentity: knowledgeRootIncarnationKey(f.root),
+    },
+    { headers: { Authorization: 'Bearer local-fixture' } },
+  );
+  expect(result).toMatchObject({
+    state: 'observed',
+    kind: 'source-only',
+    source: {
+      recordId: f.recordId,
+      title: 'Keep verification evidence visible',
+    },
+  });
 });

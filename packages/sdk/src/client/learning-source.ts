@@ -33,7 +33,7 @@ export async function observeLearningSource(
   if (identityHeader.length > KNOWLEDGE_ROOT_IDENTITY_MAX_CHARS)
     throw new Error('Source registration identity exceeds the request budget.');
   const response = await getJson(
-    `${apiBase}/knowledge/roots/${encodeURIComponent(reference.rootId)}/records/${encodeURIComponent(reference.recordId)}/source-observation`,
+    `${apiBase}/api/knowledge/roots/${encodeURIComponent(reference.rootId)}/records/${encodeURIComponent(reference.recordId)}/source-observation`,
     {
       ...options,
       headers: {

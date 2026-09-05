@@ -1780,7 +1780,7 @@ Ordinary unscoped SDK calls do not gain a host binding requirement.
 
 `observeLearningSource(apiBase, reference, options?)` is available from
 `@kontourai/station-sdk/client`; `useLearningSourceObservationQuery(reference,
-requestScope, enabled?)` is available from the SDK root. The reference carries
+requestScope, enabled?)` is available from the SDK root. The `apiBase` is the Station origin, as with other client operations. The reference carries
 `rootId`, exact `recordId`, and `rootIdentity: knowledgeRootIncarnationKey(root)`.
 The existing root identity helper remains exported by the SDK. The client sends
 its URI-encoded value in the bounded `x-station-knowledge-root-identity` header;

@@ -45,12 +45,9 @@ test('source fetch uses encoded exact registration precondition and strips unown
     reply({ ...observed, activation: { status: 'active' } }),
   );
   vi.stubGlobal('fetch', fetch);
-  const result = await observeLearningSource(
-    'https://station.test/api',
-    reference,
-  );
-  expect(String(fetch.mock.calls[0][0])).toContain(
-    'root%3Apersonal/records/source-a/source-observation',
+  const result = await observeLearningSource('https://station.test', reference);
+  expect(String(fetch.mock.calls[0][0])).toBe(
+    'https://station.test/api/knowledge/roots/root%3Apersonal/records/source-a/source-observation',
   );
   const headers = new Headers(
     (fetch.mock.calls[0] as unknown as [string, RequestInit])[1].headers,
@@ -75,10 +72,10 @@ test('restricted observations discard protected identity and mismatched sources 
     );
   vi.stubGlobal('fetch', fetch);
   expect(
-    await observeLearningSource('https://station.test/api', reference),
+    await observeLearningSource('https://station.test', reference),
   ).toEqual({ state: 'restricted' });
   await expect(
-    observeLearningSource('https://station.test/api', reference),
+    observeLearningSource('https://station.test', reference),
   ).rejects.toThrow('Invalid source observation');
 });
 test('a stale Station authority cannot dispatch source inspection', async () => {
@@ -88,15 +85,15 @@ test('a stale Station authority cannot dispatch source inspection', async () => 
     origin: 'https://station.test',
     credential: 'fixture',
     requestAuthority: {
-      apiBase: 'https://station.test/api',
+      apiBase: 'https://station.test',
       authorityKey: 'new',
       isCurrent: () => true,
     },
   }));
   await expect(
-    observeLearningSource('https://station.test/api', reference, {
+    observeLearningSource('https://station.test', reference, {
       requestScope: {
-        apiBase: 'https://station.test/api',
+        apiBase: 'https://station.test',
         authorityKey: 'old',
       },
     }),
