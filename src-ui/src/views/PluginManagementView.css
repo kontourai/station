@@ -1281,3 +1281,10 @@
 .plugins__recovery button {
   min-height: 44px;
 }
+
+.plugins__list .split-pane__item--selected .split-pane__item-name {
+  color: var(--text-primary);
+}
+.plugins__list .split-pane__item--selected .split-pane__item-subtitle {
+  color: var(--text-secondary);
+}

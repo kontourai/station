@@ -15,7 +15,17 @@ import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { getOrchestrationDatabasePath } from '../src-server/domain/migrations/003-orchestration-events.js';
+import { buildPlugin } from '../src-server/routes/plugins/plugin-bundles.js';
+import { installPluginFromSource } from '../src-server/routes/plugins/plugin-install-shared.js';
 import { EventStore } from '../src-server/services/orchestration/event-store.js';
+import {
+  closePluginActivationSession,
+  createPluginActivationSession,
+} from '../src-server/services/plugins/plugin-activation-composition.js';
+import { derivePluginConsentBasis } from '../src-server/services/plugins/plugin-install-consent.js';
+import { createLocalPluginInstallationHost } from '../src-server/services/plugins/plugin-installation-local.js';
+import { readPluginManifestFile } from '../src-server/services/plugins/plugin-manifest-loader.js';
+import { readPluginGrantRevision } from '../src-server/services/plugins/plugin-permissions.js';
 import {
   authenticatedE2EFetch,
   createAuthenticatedE2ERequest,
@@ -32,7 +42,7 @@ let created = false;
 
 /** Deliberately models an interrupted owner in the runner's disposable home.
  * Recovery itself still goes through the actual browser/SDK/HTTP/runtime owner. */
-function leaveRetainedActivationPending() {
+async function leaveRetainedActivationPending() {
   const home = process.env.STATION_E2E_HOME;
   if (process.env.STATION_E2E_RUNNER !== '1' || !home || !isAbsolute(home))
     throw new Error('Recovery proof requires the managed runner-owned home.');
@@ -40,28 +50,58 @@ function leaveRetainedActivationPending() {
   if (!existsSync(database))
     throw new Error('Managed runtime EventStore must already exist.');
   const store = new EventStore(database);
+  const session = createPluginActivationSession();
   try {
     const journal = store.createPackageMcpAdmissionJournal();
-    const current = journal.currentInstallation(plugin);
-    if (current.state !== 'observed')
-      throw new Error('Installed fixture selection is missing.');
-    const plan = journal.activationPlan(current.installation);
-    if (!plan) throw new Error('Installed fixture activation plan is missing.');
-    const pending = journal.recordInstallation({
-      pluginId: plugin,
-      contentDigest: current.installation.contentDigest,
-      previous: current.installation,
-      materialization: current.installation.materialization,
-      dataScope: current.installation.dataScope,
-      origin: current.installation.origin,
-      activationPlan: plan,
-    });
+    const source = resolve('tests/fixtures/workspace-pane-host-actions');
+    const grantRevision = readPluginGrantRevision(home, plugin);
+    const manifest = await readPluginManifestFile(join(source, 'plugin.json'));
+    const basis = derivePluginConsentBasis(source, manifest);
+    if (!basis) throw new Error('Fixture consent basis is unavailable.');
+    const pluginsDir = join(home, 'plugins');
+    const logger = { info() {}, warn() {}, debug() {}, error() {} } as any;
+    const installed = await installPluginFromSource(
+      source,
+      [],
+      {
+        projectHomeDir: home,
+        pluginsDir,
+        agentsDir: join(home, 'agents'),
+        packageMcpJournal: journal,
+        installationHost: createLocalPluginInstallationHost(
+          pluginsDir,
+          journal,
+        ),
+        buildPlugin: (directory, name, declaration) =>
+          buildPlugin(directory, name, logger, declaration),
+        logger,
+      },
+      {
+        expectedPluginName: plugin,
+        activationSession: session,
+        consent: {
+          kind: 'operator-decision',
+          contentDigest: basis.contentDigest,
+          permissions: basis.required,
+          dependencies: basis.dependencies,
+          grantRevision,
+        },
+      },
+    );
+    if (!installed.success)
+      throw new Error(
+        'Fixture installation did not settle its retained resources.',
+      );
+    const pending = journal.currentInstallation(plugin);
     if (
-      pending.state !== 'recorded' ||
+      pending.state !== 'observed' ||
       journal.admissionOpen(pending.installation)
     )
       throw new Error('Fixture must remain activation-pending.');
   } finally {
+    // Closing before runtime composition leaves the real installer-owned
+    // generation and Agent markers pending; no synthetic journal plan is used.
+    closePluginActivationSession(session);
     store.close();
   }
 }
@@ -88,6 +128,12 @@ test('retained plugin recovers through responsive UI and its host default Agent 
   page,
 }, testInfo) => {
   test.setTimeout(120_000);
+  const cssResponses: Array<{ path: string; status: number }> = [];
+  page.on('response', (response) => {
+    const path = new URL(response.url()).pathname;
+    if (path.endsWith('.css'))
+      cssResponses.push({ path, status: response.status() });
+  });
   const connection = await (
     await authenticatedE2EFetch(`${api}/api/connections/muse`)
   ).json();
@@ -112,6 +158,10 @@ test('retained plugin recovers through responsive UI and its host default Agent 
     execution: { agentConnectionId: 'muse' },
   });
   workspace = mkdtempSync(join(tmpdir(), 'station-host-action-live-'));
+  writeFileSync(
+    join(workspace, 'HOST-ACTION-README.md'),
+    '# Host action workspace\nThis file belongs to the disposable browser proof.\n',
+  );
   const project = await authenticatedE2EFetch(`${api}/api/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -133,7 +183,7 @@ test('retained plugin recovers through responsive UI and its host default Agent 
     },
   );
   expect(layout.status).toBe(201);
-  leaveRetainedActivationPending();
+  await leaveRetainedActivationPending();
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/plugins');
   await page
@@ -219,7 +269,7 @@ test('retained plugin recovers through responsive UI and its host default Agent 
     .getByRole('button', { name: 'Recover plugin', exact: true })
     .click();
   const recoveryReceipt = await (await recoveredResponse).json();
-  expect(recoveryReceipt.success).toBe(true);
+  expect(recoveryReceipt.success, JSON.stringify(recoveryReceipt)).toBe(true);
   // No reload or user refresh in the other already-connected client.
   await expect(
     observer
@@ -288,6 +338,39 @@ test('retained plugin recovers through responsive UI and its host default Agent 
     exact: true,
   });
   await expect(bar).toBeVisible({ timeout: 20_000 });
+  const hostStyles = await bar.evaluate((element) => {
+    const controls = element.querySelector(
+      '.workspace-host-actions__controls',
+    )!;
+    const select = element.querySelector('select')!;
+    return {
+      bar: {
+        padding: getComputedStyle(element).padding,
+        background: getComputedStyle(element).backgroundColor,
+      },
+      controls: {
+        display: getComputedStyle(controls).display,
+        gap: getComputedStyle(controls).gap,
+      },
+      select: {
+        background: getComputedStyle(select).backgroundColor,
+        color: getComputedStyle(select).color,
+      },
+      stylesheets: [...document.styleSheets].map((sheet) => ({
+        href: sheet.href,
+        disabled: sheet.disabled,
+      })),
+    };
+  });
+  writeFileSync(
+    join(recoveryEvidenceRoot, 'host-style-diagnostic.json'),
+    JSON.stringify({ ...hostStyles, cssResponses }, null, 2),
+  );
+  await page.getByRole('tab', { name: 'Files', exact: true }).click();
+  await expect(
+    page.getByText('HOST-ACTION-README.md', { exact: true }).first(),
+  ).toBeVisible();
+
   await expect(bar.getByRole('combobox', { name: 'Agent' })).toHaveValue(
     'own-plugin-agent:host-action-echo',
   );
@@ -340,6 +423,32 @@ test('retained plugin recovers through responsive UI and its host default Agent 
   expect(source).toMatchObject({ pluginId: plugin, actionId: 'echo-proof' });
   expect(typeof source.installationGeneration).toBe('string');
   expect(source.installationGeneration.length).toBeGreaterThan(0);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(button).toBeDisabled();
+    await expect(
+      page.getByText('HOST-ACTION-README.md', { exact: true }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByText('This host does not support this pane.', { exact: true }),
+    ).toBeHidden();
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth + 1,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`host-actions-files-${width}.png`),
+      animations: 'disabled',
+    });
+    copyFileSync(
+      testInfo.outputPath(`host-actions-files-${width}.png`),
+      join(recoveryEvidenceRoot, `host-actions-files-${width}.png`),
+    );
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
   await bar
     .getByRole('button', { name: 'Open conversation', exact: true })
     .click();

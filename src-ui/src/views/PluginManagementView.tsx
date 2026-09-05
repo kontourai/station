@@ -89,6 +89,7 @@ export function PluginManagementView({
     <>
       <SplitPaneLayout
         label="plugins"
+        listClassName="plugins__list"
         title="Plugins"
         subtitle="Manage installed plugins"
         items={items}
