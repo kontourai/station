@@ -340,13 +340,14 @@ container port-map is indistinguishable from a direct same-host process at
 that layer, so an unauthenticated `station acp status
 --api-base=http://127.0.0.1:<port>` fails with `authentication_required` even
 though nothing but this OS user could plausibly have reached that port. This
-is correct fail-closed behavior, not a bug — but the sanctioned way to satisfy
-it non-interactively is documented only in the implementation, not here.
+is expected authentication enforcement. The supported non-interactive
+local-grant exchange is documented below.
 
-The interactive paths (`station setup local`, `station setup existing <name> <endpoint> --pair`,
-and the bare `station` launcher's browser bootstrap) all end up minting a
-device-session credential through the same underlying primitive: **local
-grant**. A per-boot, owner-only secret file under the Station home is proof of
+Local setup, remote pairing, and browser bootstrap issue device-session
+credentials through distinct authority paths. `station setup local` uses
+**local grant**; `station setup existing <name> <endpoint> --pair` uses pairing,
+and the launcher’s browser bootstrap retains its separate `ui-bootstrap` mint
+kind. These paths do not confer interchangeable approval authority. A per-boot, owner-only secret file under the Station home is proof of
 authority, because whoever can already read that file has unconfined access to
 everything the exchange grants — same-user code execution is already
 unauthenticated with respect to the filesystem. See
