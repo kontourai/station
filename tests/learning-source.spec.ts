@@ -234,24 +234,39 @@ test('learning source inspection refuses a real replacement root with the same r
       dialog.getByRole('heading', { name: TITLE, exact: true }),
     ).toBeVisible();
     const originalId = root.id;
+    const originalRegistration = knowledgeRootIncarnationKey(root);
     await remove(authenticatedRequest, root);
     root = undefined;
     root = await seed(
       authenticatedRequest,
       second,
-      'REPLACEMENT_SOURCE_MUST_NOT_APPEAR',
+      'Replacement source after explicit selection',
     );
     expect(root.id).toBe(originalId);
-    await dialog
-      .getByRole('button', { name: 'Refresh source', exact: true })
+    // Real root notifications revoke the old selection before another refresh
+    // can be sent. Preserve that cancellation instead of forcing a stale dialog.
+    await expect(dialog).toHaveCount(0);
+    const refused = await local.context.request.get(
+      `${baseURL}/api/knowledge/roots/${encodeURIComponent(originalId)}/records/${RECORD_ID}/source-observation`,
+      {
+        headers: {
+          [KNOWLEDGE_ROOT_IDENTITY_HEADER]:
+            encodeURIComponent(originalRegistration),
+        },
+      },
+    );
+    expect(refused.status()).toBe(200);
+    expect((await refused.json()).data).toEqual({ state: 'restricted' });
+    await page.getByTestId(`knowledge-recall-node-${RECORD_ID}`).click();
+    await page
+      .getByRole('button', { name: 'Inspect learning source', exact: true })
       .click();
-    await expect(dialog.getByText(/source is not disclosed/)).toBeVisible();
     await expect(
-      dialog.getByText('REPLACEMENT_SOURCE_MUST_NOT_APPEAR'),
-    ).toHaveCount(0);
-    await expect(
-      dialog.getByRole('heading', { name: TITLE, exact: true }),
-    ).toHaveCount(0);
+      dialog.getByRole('heading', {
+        name: 'Replacement source after explicit selection',
+        exact: true,
+      }),
+    ).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath('learning-source-replaced.png'),
       animations: 'disabled',
