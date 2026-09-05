@@ -3,13 +3,14 @@
  *
  * #1552 D4 — ONE MENU PRIMITIVE, proved in a real engine.
  *
- * This shell had six independent menu vocabularies: the dock's placement menu
+ * This shell had five independent menu vocabularies across the six surfaces this
+ * file measures: the dock's placement menu
  * and its More menu (6px radius, 2px padding, 32px rows, no label inset), the
- * occupant picker (the same family), the header's `⋯` overflow menu (8px radius,
- * no padding, 44px rows, a hairline between EVERY row), the region Layout menu
- * (that surface again, plus ruled `fieldset` groups), the breadcrumb's layout
- * switcher (a 6px radius over `6px 10px` rows with an accent-tinted active row),
- * and `HelpMenu`, which had no class at all — every rule of it was an inline style, including its own
+ * header's `⋯` overflow menu (8px radius, no padding, 44px rows, a hairline
+ * between EVERY row), the region Layout menu (that surface again, plus ruled
+ * `fieldset` groups), the breadcrumb's layout switcher (a 6px radius over
+ * `6px 10px` rows with an accent-tinted active row), and the header's help menu,
+ * which had no class at all — every rule of it was an inline style, including its own
  * per-row `borderBottom` and a pair of mouse handlers assigning
  * `style.background` because there was no selector to hang `:hover` on.
  *

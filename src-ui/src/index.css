@@ -1417,65 +1417,19 @@ button:hover {
     var(--ease-standard);
 }
 
-/* Every non-chat occupant's scroll container (archive#4460: the occupant
-   renders directly inside the shared `DockShell` — see `.chat-dock` above —
-   not a second `.dock-slot` wrapper of its own; `.dock-slot` and
+/* Every non-chat region surface's scroll container (archive#4460: the
+   surface renders directly inside the shared `DockShell` — see `.chat-dock`
+   above — not a second `.dock-slot` wrapper of its own; `.dock-slot` and
    `.dock-slot__header` were retired with it).
 
-   Scrolling lives here, not on the shell root, because the header's occupant
-   picker opens its menu UPWARD out of the dock (a bottom dock IS the bottom
+   Scrolling lives here, not on the shell root, because the header's
+   placement menu opens UPWARD out of the dock (a bottom dock IS the bottom
    of the viewport — the S4 lesson), and an `overflow: auto` on the shell
    root would clip that menu at the dock's top edge. */
 .dock-slot__body {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-}
-
-/* The occupant picker (archive#4090). The trigger names the CURRENT
-   occupant; the menu reuses the placement menu's visual family. The wrapper
-   is the menu's positioned ancestor, so `.dock-placement-menu`'s
-   `bottom: calc(100% + …)` opens the menu UPWARD from the trigger — above
-   the whole bottom dock, the only direction with viewport left to open into
-   (the same geometry lesson `.dock-placement-menu` records above). */
-.dock-occupant-picker {
-  position: relative;
-  display: inline-flex;
-}
-
-.dock-occupant-picker__trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: 32px;
-  padding: var(--space-1) var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-primary);
-  cursor: pointer;
-  font: inherit;
-  font-weight: 600;
-}
-
-.dock-occupant-picker__trigger:hover,
-.dock-occupant-picker__trigger:focus-visible {
-  background: var(--bg-tertiary);
-}
-
-/* A SIDE dock is the one placement where upward is wrong: its header sits at
-   the top of a full-height column, so above the header is out of the window.
-   Downward opens over the occupant's own body instead. */
-.chat-dock:is(.chat-dock--left, .chat-dock--right) .dock-occupant-menu {
-  top: calc(100% + var(--space-1));
-  bottom: auto;
-}
-
-/* A MAXIMIZED dock is the same exception, same reason: its header sits at
-   the top of a near-full-viewport box (#1046). */
-.chat-dock.is-maximized .dock-occupant-menu {
-  top: calc(100% + var(--space-1));
-  bottom: auto;
 }
 
 /* A Chat layout is a full-screen placement of the dock's existing renderer
@@ -1498,8 +1452,8 @@ button:hover {
 .chat-dock.is-collapsed {
   border-top: 1px solid var(--border-primary);
   box-shadow: var(--shadow-sm);
-  /* NOT overflow:hidden (#1046): a collapsed non-chat occupant has real
-     content height (#765 C1), so this would clip the picker's escaping
+  /* NOT overflow:hidden (#1046): a collapsed non-chat region surface has
+     real content height (#765 C1), so this would clip the header's escaping
      upward menu at the dock's own top edge. Chat clips via .chat-dock__body. */
 }
 
@@ -1667,19 +1621,23 @@ button:hover {
 
 /* ─────────────────────────── ONE MENU PRIMITIVE ───────────────────────────
  *
- * #1552 D4. This shell had four independent menu vocabularies: the dock's
- * `.dock-placement-menu` (6px radius, 2px padding, 32px rows, no inset),
- * the header's `.app-toolbar__overflow-menu` (8px radius, no padding, 44px
- * rows, a hairline between EVERY row), the region `ToolbarMenu` (the overflow
- * surface again, plus ruled fieldset groups), and `HelpMenu`, which had no
- * class at all — every rule of it was an inline style, including its own
- * per-row `borderBottom`. Four surfaces, four radii, four row heights, three
- * divider policies, and labels that started at a different x in each.
+ * #1552 D4. This shell had five independent menu vocabularies across six
+ * surfaces: the dock's `.dock-placement-menu` and its More menu (6px radius,
+ * 2px padding, 32px rows, no inset), the header's
+ * `.app-toolbar__overflow-menu` (8px radius, no padding, 44px rows, a hairline
+ * between EVERY row), the region `ToolbarMenu` (the overflow surface again,
+ * plus ruled fieldset groups), the breadcrumb's `.layout-switcher__menu` (6px
+ * radius over `6px 10px` rows with an accent-tinted active row), and `HelpMenu`,
+ * which had no class at all — every rule of it was an inline style, including
+ * its own per-row `borderBottom`. Five radii, four row heights, three divider
+ * policies, and labels that started at a different x in each.
  *
- * One spec now, consumed by all four. `.menu-surface` is the panel and
- * `.menu-row` is a row; positioning, layer and width stay with each menu,
- * because where a menu opens is genuinely its own business and is the one
- * thing these four do not share (see `.chat-dock__more-menu`).
+ * One spec now, consumed by all of them plus the avatar's new `ProfileMenu`.
+ * `.menu-surface` is the panel and `.menu-row` is a row; positioning, layer and
+ * width stay with each menu, because where a menu opens is genuinely its own
+ * business and is the one thing they do not share (see
+ * `.chat-dock__more-menu`). `src-ui/src/__tests__/menu-primitive.cascade.test.tsx`
+ * measures all six in one real Chromium cascade.
  *
  * WHAT IS DELIBERATELY ABSENT: per-row dividers. A rule between every row
  * turns a list into a ruled table in which the ONE division that carries
@@ -4894,8 +4852,10 @@ button.tool-call__line:hover {
   transition: border-color var(--motion-base) var(--ease-standard);
 }
 
-.chat-input__capsule:focus-within {
-  border-color: var(--accent-primary);
+/* The capsule owns the textarea focus indicator, avoiding nested rings. */
+.chat-input__capsule:has(textarea:focus) {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
 }
 
 .chat-input__textarea-wrapper {
@@ -4974,7 +4934,6 @@ button.tool-call__line:hover {
   color: var(--text-primary);
 }
 
-.chat-controls-row button:focus,
 .chat-controls-row button:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
@@ -5051,9 +5010,9 @@ button.tool-call__line:hover {
 .chat-input textarea {
   flex: 1;
   padding: 12px 16px;
-  border: 1px solid var(--border-primary);
+  border: 0;
   border-radius: 8px;
-  background: var(--bg-input);
+  background: transparent;
   color: var(--text-primary);
   font-family: inherit;
   font-size: var(--text-lg);
@@ -5063,11 +5022,12 @@ button.tool-call__line:hover {
 }
 
 .chat-input textarea:focus {
-  outline: none;
-  border-color: var(--accent-primary);
+  /* Focus remains visible on the containing capsule. */
+  outline: none !important;
+  box-shadow: none;
 }
 
-.chat-input button {
+.chat-input button:where(:not(.choice-trigger)) {
   padding: 0;
   border: none;
   border-radius: 8px;
@@ -5087,7 +5047,11 @@ button.tool-call__line:hover {
   transition: opacity var(--motion-base) var(--ease-standard);
 }
 
-.chat-input button:hover:not(:disabled, [aria-disabled="true"]) {
+.chat-input
+  button:where(:not(.choice-trigger)):hover:not(
+    :disabled,
+    [aria-disabled="true"]
+  ) {
   opacity: 0.8;
 }
 
@@ -5157,6 +5121,54 @@ button.tool-call__line:hover {
 }
 
 /* Workspace dashboard styles are provided by plugins via their CSS bundles */
+
+/* Shared value-picker treatment. Callers own labels, menus and authority. */
+.choice-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 36px;
+  max-width: 100%;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
+.choice-trigger[aria-expanded="true"] {
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
+}
+
+.choice-trigger:disabled,
+.choice-trigger[aria-disabled="true"] {
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.choice-caret {
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-left: auto;
+  color: var(--text-secondary);
+}
+
+/* `.choice-trigger`'s coarse-pointer 44px floor lives in
+   components/chat/chat.css, beside `.menu-row`'s, and NOT here:
+   `useIsMobile.test.tsx` requires every `@media` condition in this ENTRY sheet
+   to spell `MOBILE_MEDIA_QUERY` byte-for-byte so the hook and the stylesheet
+   cannot disagree about the breakpoint, and `(max-width: 768px), (pointer:
+   coarse)` is not that constant. A touch-target floor is the `(pointer: coarse)`
+   question anyway, not the mobile-layout one. */
 
 /* Buttons */
 .button {
@@ -6724,7 +6736,7 @@ button.tool-call__line:hover {
   }
 
   .chat-dock__maximize-btn,
-  .chat-input button {
+  .chat-input button:where(:not(.choice-trigger)) {
     min-width: 44px;
     min-height: 44px;
   }
@@ -8507,13 +8519,6 @@ button.tool-call__line:hover {
   font-style: normal;
 }
 
-.new-chat-modal__chevron {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
 /* Mobile context sheet — a true bottom sheet rendered in place of the
    anchored dropdown when the viewport is at/below the mobile breakpoint. The
    fixed overlay escapes the header's `overflow-y: auto` clipping box (that
@@ -9336,14 +9341,6 @@ button.tool-call__line:hover {
     min-width: 44px;
     min-height: 44px;
     justify-content: center;
-  }
-
-  /* The dock-slot header's occupant picker: the trigger and every menu
-     entry are the touched primary controls of a docked non-chat pane. */
-  .dock-occupant-picker__trigger,
-  .dock-occupant-menu .menu-row {
-    min-width: 44px;
-    min-height: 44px;
   }
 
   /* Maximized dock on a phone. On mobile every dock mode renders as a fixed

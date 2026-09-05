@@ -2,6 +2,7 @@ import { useProjectLayoutsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { Button } from '../Button';
+import { ArrowDownGlyph } from '../icons/Glyph';
 import { describeReadFailure, Empty, ErrorState } from '../state';
 import './LayoutSwitcher.css';
 
@@ -44,7 +45,7 @@ export function LayoutSwitcher({
     <span className="layout-switcher">
       <button
         type="button"
-        className="layout-switcher__trigger"
+        className="choice-trigger layout-switcher__trigger"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Switch layout"
@@ -54,7 +55,7 @@ export function LayoutSwitcher({
           <span className="layout-switcher__icon">{current.icon}</span>
         )}
         <span className="layout-switcher__label">{label}</span>
-        <span className="layout-switcher__chevron">▾</span>
+        <ArrowDownGlyph className="choice-caret" />
       </button>
 
       {open && (

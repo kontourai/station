@@ -32,6 +32,7 @@ copying commands from an issue or pull request:
 - [Agent and repository instructions](AGENTS.md)
 - [Developer guide](docs/guides/development.md)
 - [Testing guide](docs/guides/testing.md)
+- [Workspace release notes](.changeset/README.md)
 - [Code-quality guide](docs/guides/code-quality.md)
 - [Module map](docs/architecture/module-map.md)
 - [Repository layout and naming](docs/guides/repository-layout.md)

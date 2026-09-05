@@ -107,6 +107,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Owns Chromium and esbuild children for the real exposed-binding artifact seam.
+  'scripts/__tests__/interactive-workspace-driver-artifact.test.ts',
+  // Real runtime identity probes and SQLite workers for source-absent recovery.
+  'src-server/services/orchestration/__tests__/home-reference-recovery.test.ts',
   // Owns a real loopback listener and fsync-backed source records; no child process.
   'src-server/routes/knowledge/__tests__/knowledge-source.routes.test.ts',
   // Actual authenticated search routes include Task/transcript worker owners.

@@ -131,17 +131,6 @@ interface ChatDockHeaderProps {
   availableDockSlotPlacements: readonly DockMode[];
   effectiveDockSlotPlacement: DockMode;
   onDockPlacementChange: (placement: DockMode) => void;
-  /**
-   * A pre-rendered `DockOccupantPicker`, not `{current, onChoose}` data
-   * (station#4460 review M4): this component is imported by the EAGER entry
-   * path (`ChatDock.tsx` → `App.tsx`), and `DockOccupantPicker` pulls in
-   * `ambientDockOccupants.ts` plus all three pane-descriptor contracts
-   * modules — real weight that belongs in the ambient host's LAZY chunk,
-   * which is the only place that still imports `DockOccupantPicker` and
-   * builds this node. Absent only for the full-screen Chat layout
-   * placement, which has no ambient occupant to switch away from.
-   */
-  occupantPicker?: React.ReactNode;
   regionVisible: boolean;
   shellMaximized: boolean;
   /** Registered visibility shortcut for the shell's surface. */
@@ -171,7 +160,6 @@ export function ChatDockHeader({
   availableDockSlotPlacements,
   effectiveDockSlotPlacement,
   onDockPlacementChange,
-  occupantPicker,
   regionVisible,
   shellMaximized,
   surfaceShortcutId = 'dock.toggle',
@@ -337,20 +325,18 @@ export function ChatDockHeader({
             onPlacementChange={onDockPlacementChange}
           />
         ) : null}
-        {/* station#4460: every ambient occupant carries the SAME switcher —
-            Chat is one entry in the menu, not a special case with no way
-            back in. Replaces the old fixed "Dock this pane"/"return to
-            Chat" idea entirely: choosing THIS occupant again is a no-op
-            (`DockOccupantPicker` itself guards that), so there is no
-            meaningful second control to suppress. Pre-rendered by the
-            caller — see the `occupantPicker` prop doc. */}
-        {!fullscreen ? occupantPicker : null}
         {/* #1536 F: the chat-settings gear, the chat-list toggle, Background
             tasks, Session inventory and the bare ⌘D keycap that sat here are
             rows of the More menu in the actions cluster now. The keycap is
             gone rather than moved: `withShortcutHint` already puts the chord
             in the visibility control's tooltip, which is where every other
-            shortcut in this bar lives. */}
+            shortcut in this bar lives.
+
+            #1529 (#928 C2b) emptied this row further from the other side: the
+            occupant picker went with the legacy docked-Home path, because Chat
+            is the only pane this dock can hold now and there is nothing to
+            switch away to. Both removals stand — this row is the placement grab
+            and the invisible inventory host. */}
         {inventory ? (
           <LazyBoundary
             load={loadChatDockSessionInventoryHost}

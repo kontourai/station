@@ -274,9 +274,9 @@ describe('ChatDockHeaderMoreMenu', () => {
 
     // #1552 D4: `.menu-surface`/`.menu-row` are the shell's one menu spec, shared
     // with the header's overflow, help and profile menus, the Layout picker, the
-    // dock placement menu and the occupant picker. `.dock-placement-menu`
-    // survives on the panel because it still owns where THIS family opens, which
-    // is the one thing those menus do not share.
+    // breadcrumb's layout switcher and the dock placement menu.
+    // `.dock-placement-menu` survives on the panel because it still owns where
+    // THIS family opens, which is the one thing those menus do not share.
     const menu = screen.getByRole('menu', { name: 'More dock actions' });
     expect(menu.className).toContain('menu-surface');
     expect(menu.className).toContain('dock-placement-menu');

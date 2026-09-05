@@ -1076,26 +1076,6 @@
 }
 
 /* ── ChatInputArea ── */
-.chat-input__clear {
-  position: absolute;
-  right: 20px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  font-size: var(--text-2xl);
-  color: var(--text-muted);
-  padding: 4px;
-  line-height: 1;
-  z-index: 1;
-  transition: color var(--motion-fast) var(--ease-standard);
-}
-
-.chat-input__clear:hover {
-  color: var(--text-primary);
-}
-
 /* archive#3344: attached files, shown in the composer rather than only behind
    the paperclip popover, so a pasted screenshot is visibly attached. The row
    scrolls instead of wrapping — wrapping grows the composer upward and pushes
@@ -1235,8 +1215,9 @@
 }
 
 /* #1552 D4: `.menu-row` is now EVERY menu's row — the dock's placement and More
-   menus, the occupant picker, the header's overflow and Layout menus, and the
-   help menu — and its 32px height is a fine-pointer height. A coarse device too
+   menus, the header's overflow, help and profile menus, the Layout picker and
+   the breadcrumb's layout switcher — and its 32px height is a fine-pointer
+   height. A coarse device too
    wide to render the mobile dock header (a tablet in landscape) reaches all of
    them with a finger, and station#923 sized one of those commands (Copy ID) at
    44px back when it was a button in the bar. Before D4 this floor reached one
@@ -1252,6 +1233,17 @@
    specificity rather than on which sheet the bundler emitted last. */
 @media (max-width: 768px), (pointer: coarse) {
   .menu-row.menu-row {
+    min-height: 44px;
+  }
+
+  /* Moved here from index.css, unchanged. It was added to the entry sheet on
+     this lane's base branch, where `useIsMobile.test.tsx` forbids any `@media`
+     condition that is not `MOBILE_MEDIA_QUERY` byte-for-byte — so the base
+     branch reds that test on its own tip (verified against 8ae038646: the same
+     single offending condition, and no other). Same query, same rule, a sheet
+     that is allowed to ask the `(pointer: coarse)` question. */
+  .choice-trigger {
+    min-width: 44px;
     min-height: 44px;
   }
 }
@@ -1273,8 +1265,8 @@
 /* The composer's primary action: one circular, accent-filled target pinned to
    the capsule's trailing edge. It used to be a text button that shared the
    wrapping row with five peers and could end up below the fold on a phone. */
-.chat-input__send-btn,
-.chat-input__stop-btn {
+.chat-input .chat-input__send-btn,
+.chat-input .chat-input__stop-btn {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -1295,12 +1287,12 @@
    Scoped to Send only (not Stop, which the shared selector above only
    covers for geometry) — Send is the "primary action button" the design
    names; Stop is a distinct, always-enabled control. */
-.chat-input__send-btn:active:not(:disabled) {
+.chat-input .chat-input__send-btn:active:not(:disabled) {
   transform: scale(0.97);
   transition: transform var(--motion-instant) var(--ease-standard);
 }
 
-.chat-input__send-btn--active {
+.chat-input .chat-input__send-btn--active {
   background: var(--color-primary);
   /* --color-primary IS --accent-primary, so a literal white foreground was a
      contrast claim about whatever accent happens to be set: 1.62:1 against the
@@ -1312,11 +1304,12 @@
   color: var(--text-on-accent);
 }
 
-.chat-input__send-btn--active:hover:not(:disabled) {
+.chat-input .chat-input__send-btn--active:hover:not(:disabled) {
   background: var(--accent-hover-fill);
+  opacity: 1;
 }
 
-.chat-input__send-btn--inactive {
+.chat-input .chat-input__send-btn--inactive {
   background: var(--bg-tertiary);
   color: var(--text-muted);
   cursor: not-allowed;
@@ -1328,12 +1321,12 @@
 /* Stop shares Send's geometry so the control does not jump position when a turn
    starts; only its fill and glyph change. Always enabled — stopping a running
    turn must not depend on there being text in the input. */
-.chat-input__stop-btn {
+.chat-input .chat-input__stop-btn {
   background: var(--error-bg);
   color: var(--error-text, var(--text-primary));
 }
 
-.chat-input__stop-btn svg {
+.chat-input .chat-input__stop-btn svg {
   fill: currentColor;
 }
 
@@ -1342,74 +1335,29 @@
    light theme that painted a white Stop icon onto a white composer, i.e. the
    control for interrupting a running turn disappeared under the cursor.
    --error-fill is the white-carrying danger fill (4.98:1 in both themes). */
-.chat-input__stop-btn:hover:not(:disabled) {
+.chat-input .chat-input__stop-btn:hover:not(:disabled) {
   background: var(--error-fill);
   color: white;
 }
 
-/* Scoped under `.chat-input__meta` for the same reason as the approval chip
-   below — `.chat-input button` was stripping this pill's padding and
-   background too, so the model control rendered as bare text (#1010 item 1). */
-.chat-input__meta :is(.chat-input__model-btn, .chat-input__agent-btn) {
-  min-width: 0;
-  min-height: 24px;
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-xs);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-/* Agent and Model are the composer's two primary choices. Provider/engine
-   stay in the model detail, not as competing selector nouns. */
-.chat-input__meta .chat-input__agent-btn {
-  background: var(--accent-subtle);
-  color: var(--text-secondary);
-}
-
-.chat-input__agent-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-input__meta .chat-input__agent-btn:hover:not([aria-disabled="true"]) {
-  background: var(--accent-light);
-}
-
-.chat-input__model-identity {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.chat-input__model-provider,
+.chat-input__agent-name,
 .chat-input__model-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.chat-input__model-provider {
-  color: var(--text-secondary);
+.chat-controls-row :is(.chat-input__drafts-button, .chat-input__clear) {
+  font-size: var(--text-sm);
+  font-weight: 500;
 }
 
-.chat-input__model-source {
-  /* --font-sans, not the --font-family this read until archive#1254. There is
-     no --font-family token; tokens.css declares --font-sans and --font-mono.
-     The declaration was dropped and the label inherited body copy — which is
-     --font-sans, so this is the one conversion in that sweep that changes no
-     pixels. Naming the token that exists is still worth doing: the next
-     reader should not have to establish that by hand. */
-  font-family: var(--font-sans);
-  font-size: 9px;
-  font-weight: 400;
-  opacity: 0.8;
+.chat-input__meta
+  :is(.chat-input__agent-btn, .chat-input__model-btn)[aria-disabled="true"] {
+  color: var(--text-secondary);
+  cursor: default;
+  opacity: 1;
 }
 
 .chat-input__meta .chat-input__model-reset {
@@ -1429,21 +1377,6 @@
   white-space: nowrap;
 }
 
-/* `--accent-primary-rgb` is not defined anywhere in this repo, so every
-   `rgba(var(--accent-primary-rgb, 0, 102, 204), …)` here was resolving to its
-   literal fallback — a hardcoded #0066cc that ignores the theme and the brand
-   token. `--accent-subtle`/`--accent-light` are the real tokens for these two
-   weights and are defined in both skins. */
-.chat-input__meta .chat-input__model-btn--default {
-  color: var(--text-muted);
-  font-weight: 400;
-  background: var(--accent-subtle);
-}
-
-.chat-input__meta .chat-input__model-btn--default:hover {
-  background: var(--accent-light);
-}
-
 /* Fill derived from the same yellow as the text, not the brand mint. Review
    found `--accent-light` (a brand-tinted color-mix) under `--accent-yellow`
    measured 1.60:1 in light theme — olive on mint, and unreadable. This is the
@@ -1454,38 +1387,9 @@
   background: color-mix(in srgb, var(--accent-yellow) 12%, transparent);
 }
 
-.chat-input__meta .chat-input__model-btn--override:hover {
-  background: color-mix(in srgb, var(--accent-yellow) 20%, transparent);
-}
-
-/* archive#1010 — the meta row's pills are scoped under `.chat-input__meta`
-   (0,2,0) on purpose. `.chat-input button` (index.css, 0,1,1) sets
-   `padding: 0` and `background: transparent`, which beat these single-class
-   component rules and silently stripped BOTH off every chip that is a
-   `<button>`. Measured on origin/main: the interactive chips rendered at
-   `padding: 0px` with `background: rgba(0,0,0,0)` while the inert read-only
-   `<span>` — exempt from that selector — kept its `0 6px` padding and its
-   filled background. The row therefore read exactly backwards: the controls
-   you can click looked like loose text, and the one thing you cannot click
-   looked like the only real control. That file already documents this
-   clobbering hazard for `color` (station#763); this is the same trap for the
-   two properties that make a pill a pill. */
 .chat-input__meta .chat-input__approval-chip {
   flex: 0 0 auto;
-  /* 24, not 32: this row is a status readout above the composer, and at a
-     10px label 32px was mostly empty box (#1010 item 1). The mobile block
-     below restores the 44px touch floor where a finger has to hit it. */
-  min-height: 24px;
-  padding: 0 var(--space-3);
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
   white-space: nowrap;
-  cursor: pointer;
 }
 
 .chat-input__approval-chip-label {
@@ -1496,10 +1400,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.chat-input__approval-chip-caret {
-  opacity: 0.7;
 }
 
 @media (max-width: 480px) {
@@ -1515,17 +1415,6 @@
      mobile block below — 480px is a subset of that block's condition, so a
      second, narrower copy of the same declaration here could never change
      a computed value. See that rule's comment for the full reasoning. */
-}
-
-.chat-input__meta .chat-input__approval-chip--default {
-  /* --text-secondary, not --text-muted: at 10px this is normal text and needs
-     4.5:1; --text-muted measured 3.95:1 over --accent-subtle. */
-  color: var(--text-secondary);
-  background: var(--accent-subtle);
-}
-
-.chat-input__meta .chat-input__approval-chip--default:hover {
-  background: var(--accent-light);
 }
 
 .chat-input__meta .chat-input__approval-chip--override {
@@ -2285,7 +2174,7 @@
      `.chat-input button`'s clobber. Dropping the scope here would silently
      hand the 44px touch floor back to a 24px desktop value on a phone. */
   .chat-input__meta .chat-input__model-btn {
-    flex: 1 1 0;
+    flex: 0 1 auto;
     /* 44px for the same reason as the approval chip below: this scoped rule
        (0,2,0) outranks `.chat-input button`'s (0,1,1) touch floor, so a bare
        `min-width: 0` silently removes it. Not reachable today — the button
@@ -2295,50 +2184,21 @@
     min-width: 44px;
     max-width: 100%;
   }
-  .chat-input__meta {
-    flex-wrap: wrap;
-    overflow-x: visible;
+  .chat-input__meta .chat-input__agent-btn {
+    flex: 0 1 auto;
+    max-width: 35%;
   }
-  .chat-input__meta .chat-input__agent-btn,
-  .chat-input__meta .chat-input__model-btn,
   .chat-input__meta .chat-input__approval-chip {
-    flex: 1 1 12rem;
-    max-width: 100%;
+    flex: 0 0 auto;
+    max-width: 40%;
   }
-  /* review round 2 (M2/L5): `.chat-input__approval-chip-policy` (e.g.
-     "Station approvals do not apply") is a security-relevant NEGATION — a
-     read that truncates to "Station approvals do…" reads as the OPPOSITE
-     of what it says, which is worse than the pre-fix hard-clip this file
-     already fixed once. The chip's `flex: 1 1 12rem` right above means it
-     CAN shrink below its 12rem basis anywhere in THIS block's condition —
-     every width this rule reaches, `max-width: 768px` OR the landscape
-     `(max-height: 540px) and (pointer: coarse)` arm — not only below the
-     480px this used to be scoped to (the reported fragment can only have
-     come from the 481-768px arm or landscape-coarse; the label span's own
-     ellipsis is unaffected and stays fine to truncate). Hides the whole
-     block's span here instead of narrowing the old 480px rule, so it is
-     visible ONLY outside this media query entirely — genuine desktop,
-     where the chip is never width-constrained in the first place and the
-     12rem basis always fits untruncated. The full string stays in the
-     chip's `aria-label`/`title` regardless (archive#1010). */
+  /* Long policy explanations stay in the accessible name and tooltip. */
   .chat-input__approval-chip-policy {
     display: none;
   }
   .chat-input__meta .chat-input__agent-btn {
     min-width: 44px;
     min-height: 44px;
-  }
-  .chat-input__model-identity {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .chat-input__model-source {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .chat-input__meta .chat-input__approval-chip {
     /* 44px, not 0. The old `min-width: 0` was harmless only because the long
@@ -2353,7 +2213,7 @@
     text-overflow: ellipsis;
     min-height: 44px;
   }
-  .chat-input__send-btn,
+  .chat-input .chat-input__send-btn,
   .chat-input__cancel-btn {
     min-height: 44px;
   }

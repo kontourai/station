@@ -36,6 +36,10 @@ export const CONTENT_INTEGRITY_FAST_COMMAND = Object.freeze([
   'npm',
   Object.freeze(['run', 'content:integrity']),
 ]);
+export const CHANGESET_STATUS_FAST_COMMAND = Object.freeze([
+  process.execPath,
+  Object.freeze(['scripts/check-changesets.mjs']),
+]);
 export const FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze([
     process.execPath,
@@ -46,6 +50,7 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // required nested version is absent and TypeScript resolves a wrong parent.
   Object.freeze(['npm', Object.freeze(['run', 'dependencies:verify'])]),
   Object.freeze(['npm', Object.freeze(['run', 'lockfile-sync:gate'])]),
+  CHANGESET_STATUS_FAST_COMMAND,
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   CONTENT_INTEGRITY_FAST_COMMAND,

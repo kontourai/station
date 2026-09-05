@@ -92,11 +92,7 @@ test('a non-chat dock occupant renders inside the height-bearing scroll containe
       <NavigationProvider>
         <RegionModelProvider>
           <Probe />
-          <RegionShells
-            homeContinuation={null}
-            onNavigate={() => undefined}
-            onDockActionChange={() => undefined}
-          />
+          <RegionShells />
         </RegionModelProvider>
       </NavigationProvider>
     </KeyboardShortcutsProvider>,

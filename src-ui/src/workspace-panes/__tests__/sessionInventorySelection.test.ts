@@ -72,3 +72,16 @@ test('clears a repaired current-answer scope from its authority history', () => 
   clearSessionInventorySelectionsForAuthority(key.apiBase, key.authorityKey);
   expect(readSessionInventoryKnownScopes(key)).toEqual([]);
 });
+
+test('deduplicates equivalent scopes regardless of key order while retaining distinct turns and Tasks', () => {
+  const key = { apiBase: 'audit', authorityKey: 'dedup', sessionId: 's' };
+  for (const scope of [
+    { kind: 'current-answer' as const, sessionId: 's', turnId: 'a' },
+    { turnId: 'a', sessionId: 's', kind: 'current-answer' as const },
+    { kind: 'current-answer' as const, sessionId: 's', turnId: 'b' },
+    { kind: 'kept-in-task' as const, sessionId: 's', taskId: 'a' },
+  ])
+    commitSessionInventorySelection(key, { scope, groupId: 'inputs' });
+  expect(readSessionInventoryKnownScopes(key)).toHaveLength(3);
+  clearSessionInventorySelectionsForAuthority(key.apiBase, key.authorityKey);
+});
