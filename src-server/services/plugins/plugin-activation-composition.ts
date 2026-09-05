@@ -1,4 +1,4 @@
-import type { PluginProviderReadView } from '../../providers/registries/registry.js';
+import type { PluginProviderReadView } from '../../providers/plugin-provider-visibility.js';
 import type {
   PackageMcpAdmissionJournal,
   PackageMcpInstallation,

@@ -1,3 +1,13 @@
+import type {
+  PluginProviderReadView,
+  PluginProviderVisibility,
+} from '../plugin-provider-visibility.js';
+
+export type {
+  PluginProviderReadView,
+  PluginProviderVisibility,
+} from '../plugin-provider-visibility.js';
+
 /**
  * Provider registry — generic workspace-scoped store with backward-compat wrappers
  */
@@ -39,15 +49,6 @@ import { PROVIDER_TYPE_META } from '../provider-interfaces.js';
 import { createIntegrationRegistryProvider } from './integration-registry-provider.js';
 
 // ── Generic Store ──────────────────────────────────────
-
-/** Issued only by the existing activation owner; never accepted from request JSON. */
-export interface PluginProviderReadView {
-  readonly __pluginProviderReadView: unique symbol;
-}
-export interface PluginProviderVisibility {
-  ready(): boolean;
-  permits(view: PluginProviderReadView): boolean;
-}
 
 interface ProviderEntry {
   visibility?: PluginProviderVisibility;
