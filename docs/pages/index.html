@@ -40,8 +40,8 @@
           </div>
           <p class="status-line">
             Active development under Apache-2.0. Run from source on macOS or
-            Linux, or try the macOS Nightly desktop build. Signed installers
-            ship with the first stable release.
+            Linux, or try the macOS Nightly desktop build. A verified installer
+            ships with the first stable release.
           </p>
         </div>
         <div class="hero-panel" aria-label="Platform capability summary">
@@ -71,8 +71,8 @@
         </div>
         <div class="feature-grid">
           <article>
-            <h3>Any engine, one workspace</h3>
-            <p>Run Station agents on a local or hosted model, or connect the agent CLIs you already use as External agents. Each engine keeps its own behavior and tool loop; Station supplies the context, the gates, and the record.</p>
+            <h3>Supported engines, one workspace</h3>
+            <p>Run Station agents on a local or hosted model, or connect supported agent CLIs and compatible custom engines as External agents. Each engine keeps its own behavior and tool loop; Station supplies the context, the gates, and the record.</p>
             <a href="./docs/user/concepts.html">Understand agents and connections</a>
           </article>
           <article>
@@ -87,7 +87,7 @@
           </article>
           <article>
             <h3>Local-first ownership</h3>
-            <p>Runtime data lives on your machine by default. Data leaves only when you configure a hosted model connection, engine, or export endpoint and use it.</p>
+            <p>Station data lives on your machine by default. Networked features, including hosted Model connections, Engines, paired devices, remote computers, and export endpoints, transmit data only when you configure and use them.</p>
             <a href="./docs/user/getting-started.html">Get started</a>
           </article>
           <article>
@@ -119,7 +119,7 @@
           </article>
           <article>
             <h3>Use agents without a cloud account</h3>
-            <p>Point a Station agent at a local model server. Nothing leaves the machine until you add a hosted connection.</p>
+            <p>Point a Station agent at a local model server. Inference stays on this machine; every other networked feature remains opt-in.</p>
           </article>
           <article>
             <h3>Coordinate several agents</h3>
@@ -127,7 +127,8 @@
           </article>
           <article>
             <h3>Run it on a server you control</h3>
-            <p>Self-host with the shipped container setup behind your own authenticated ingress, and pair devices with scoped, revocable access.</p>
+            <p>Build the container image from the checkout, run it behind your own authenticated ingress, and pair devices with scoped, revocable access. A published image is not yet available for anonymous pulls.</p>
+            <a href="https://github.com/kontourai/station/blob/main/docs/guides/deployment.md">Read the deployment guide</a>
           </article>
           <article>
             <h3>Build a purpose-built work surface</h3>
@@ -148,11 +149,11 @@
           </article>
           <article>
             <h3>Teams</h3>
-            <p>Run a Station on a machine the team controls, pair each person's devices with scoped access, and keep verification evidence attached to the work. Independent per-person membership is on the roadmap, not shipped.</p>
+            <p>A trusted group can run one Station on a machine it controls and use separate device grants with scoped access, keeping verification evidence attached to the work. Station does not yet provide per-person membership, roles, or person-level attribution; those are on the roadmap.</p>
           </article>
           <article>
             <h3>Organizations</h3>
-            <p>Self-host on infrastructure you control, keep data local by default, and make readiness, policy depth, and audit trails visible. Hosted multi-tenant operation is a delivery target, not an available service.</p>
+            <p>Self-host on infrastructure you control, keep data local by default, and make readiness, policy depth, and receipts visible. Person-level access control and hosted multi-tenant operation are delivery targets, not available today.</p>
           </article>
         </div>
       </section>
@@ -160,8 +161,8 @@
       <section id="get-station" class="section">
         <div class="section-heading">
           <p class="eyebrow">Get Station</p>
-          <h2>Three ways to run it today.</h2>
-          <p class="section-note">Station is open source and under active development. A signed stable release ring has not been published yet.</p>
+          <h2>Two ways to run it today.</h2>
+          <p class="section-note">Station is open source and under active development. A signed stable release ring has not been published yet, so the verified installer is not available yet.</p>
         </div>
         <div class="feature-grid">
           <article>
@@ -175,8 +176,8 @@
             <a href="https://github.com/kontourai/station/releases/tag/nightly-desktop">Nightly desktop pre-release</a>
           </article>
           <article>
-            <h3>Signed installer</h3>
-            <p>Arrives with the first stable release. The installer verifies the release's build attestation and checksum before installing, and upgrades in place when run again.</p>
+            <h3>Coming: verified installer</h3>
+            <p>Arrives with the first stable release. The bootstrap verifies the release's build attestation and checksum before installing, and upgrades in place when run again. Not available until a signed release ring is published.</p>
             <a href="./docs/user/getting-started.html">Read the install guide</a>
           </article>
         </div>
@@ -200,7 +201,7 @@
           </article>
           <article>
             <h3>HTTP API and contracts</h3>
-            <p>Authenticated routes and streaming events on one origin, with runtime, provider, and orchestration contracts published as packages.</p>
+            <p>Authenticated routes and streaming events on one origin, with server, connection, and orchestration contracts published as packages.</p>
             <a href="https://github.com/kontourai/station/blob/main/docs/reference/api.md">API reference</a>
           </article>
           <article>
@@ -220,10 +221,11 @@
           </article>
         </div>
         <p class="section-note">
-          Published packages: <code>@kontourai/station-sdk</code>,
-          <code>@kontourai/station-cli</code>,
-          <code>@kontourai/station-contracts</code>, and
-          <code>@kontourai/station-shared</code>. Station consumes Kontour's
+          Published packages: <code>@kontourai/station-sdk</code> (plugin SDK),
+          <code>@kontourai/station-cli</code> (client),
+          <code>@kontourai/station-contracts</code> and
+          <code>@kontourai/station-shared</code> (server, connection, and
+          orchestration contracts plus shared helpers). Station consumes Kontour's
           primitives — Surface, Flow, Veritas, Survey, and Flow Agents —
           through the same published contracts available to any consumer.
         </p>

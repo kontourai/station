@@ -14,6 +14,7 @@ import {
   loadPublicDocs,
   renderDocsIndexSections,
   renderInline,
+  renderMarkdown,
 } from '../build-github-pages.mjs';
 import {
   marketingHygieneFindings,
@@ -189,5 +190,56 @@ describe('public documentation admission', () => {
         () => 'Configure a supported Codex engine connection.',
       ),
     ).toEqual([]);
+  });
+});
+
+describe('public documentation markdown rendering', () => {
+  it('keeps a source-wrapped paragraph and list item as one block each', () => {
+    const html = renderMarkdown(
+      [
+        'Station uses a small set of concepts. Transport names stay out of',
+        'the way unless setup requires them.',
+        '',
+        "- A **Station agent** is executed by Station's engine. Station owns its",
+        '  prompt, skills, tools, commands, and Model choice.',
+        '- An **External agent** is executed by another supported engine.',
+        '',
+        'Trailing prose.',
+      ].join('\n'),
+    );
+    expect(html).toContain(
+      '<p>Station uses a small set of concepts. Transport names stay out of the way unless setup requires them.</p>',
+    );
+    expect(html).toContain(
+      "<li>A <strong>Station agent</strong> is executed by Station's engine. Station owns its prompt, skills, tools, commands, and Model choice.</li>",
+    );
+    expect(html.match(/<li>/g)).toHaveLength(2);
+    expect(html.match(/<p>/g)).toHaveLength(2);
+    expect(html).not.toContain('<p>the way unless setup requires them.</p>');
+    expect(html).not.toContain('<p>prompt, skills');
+  });
+
+  it('closes an open list item at a heading, fence, table, or blockquote', () => {
+    const html = renderMarkdown(
+      [
+        '- item one',
+        '## Next',
+        '- item two',
+        '```',
+        'code',
+        '```',
+        '- item three',
+        '| a |',
+        '| --- |',
+        '| b |',
+        '- item four',
+        '> quoted',
+      ].join('\n'),
+    );
+    expect(html.match(/<li>/g)).toHaveLength(4);
+    expect(html.match(/<ul>/g)).toHaveLength(4);
+    expect(html.match(/<\/ul>/g)).toHaveLength(4);
+    expect(html).toContain('<h2>Next</h2>');
+    expect(html).toContain('<blockquote>quoted</blockquote>');
   });
 });

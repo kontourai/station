@@ -216,15 +216,33 @@ function extractDescription(source) {
   return stripMarkdown(candidate ?? 'Station documentation');
 }
 
-function renderMarkdown(source) {
+export function renderMarkdown(source) {
   const lines = source.split('\n');
   const html = [];
   let inFence = false;
   let inList = false;
   let inTable = false;
   let tableRows = [];
+  // Markdown wraps prose across source lines; a wrapped paragraph or list
+  // item is one block, not one block per line. Open blocks collect their
+  // continuation lines until a blank line or another block starts.
+  let openItem = null;
+  let paragraph = [];
+
+  const closeItem = () => {
+    if (openItem === null) return;
+    html.push(`<li>${renderInline(openItem.join(' '))}</li>`);
+    openItem = null;
+  };
+
+  const closeParagraph = () => {
+    if (paragraph.length === 0) return;
+    html.push(`<p>${renderInline(paragraph.join(' '))}</p>`);
+    paragraph = [];
+  };
 
   const closeList = () => {
+    closeItem();
     if (inList) {
       html.push('</ul>');
       inList = false;
@@ -242,6 +260,7 @@ function renderMarkdown(source) {
     const line = rawLine.trimEnd();
 
     if (line.startsWith('```')) {
+      closeParagraph();
       closeList();
       closeTable();
       if (inFence) {
@@ -260,6 +279,7 @@ function renderMarkdown(source) {
     }
 
     if (isTableLine(line)) {
+      closeParagraph();
       closeList();
       inTable = true;
       tableRows.push(line);
@@ -268,29 +288,34 @@ function renderMarkdown(source) {
     closeTable();
 
     if (!line.trim()) {
+      closeParagraph();
       closeList();
       continue;
     }
 
     const heading = line.match(/^(#{1,4})\s+(.+)$/);
     if (heading) {
+      closeParagraph();
       closeList();
       const level = heading[1].length;
       html.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
       continue;
     }
 
-    const listItem = line.match(/^[-*]\s+(.+)$/);
+    const listItem = line.match(/^\s*[-*]\s+(.+)$/);
     if (listItem) {
+      closeParagraph();
+      closeItem();
       if (!inList) {
         html.push('<ul>');
         inList = true;
       }
-      html.push(`<li>${renderInline(listItem[1])}</li>`);
+      openItem = [listItem[1]];
       continue;
     }
 
     if (line.startsWith('>')) {
+      closeParagraph();
       closeList();
       html.push(
         `<blockquote>${renderInline(line.replace(/^>\s?/, ''))}</blockquote>`,
@@ -298,10 +323,15 @@ function renderMarkdown(source) {
       continue;
     }
 
-    closeList();
-    html.push(`<p>${renderInline(line)}</p>`);
+    if (openItem !== null) {
+      openItem.push(line.trim());
+      continue;
+    }
+
+    paragraph.push(line.trim());
   }
 
+  closeParagraph();
   closeList();
   closeTable();
   if (inFence) html.push('</code></pre>');

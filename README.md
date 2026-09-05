@@ -15,7 +15,7 @@ means proven rather than asserted.
 
 > **Status:** open source under active development (Apache-2.0). Run Station
 > from source on macOS or Linux today, or try the macOS Nightly desktop build.
-> Signed installers ship with the first stable release. See
+> A verified installer ships with the first stable release. See
 > [Get Station](#get-station).
 
 ## Why Station
@@ -27,19 +27,20 @@ reason it is allowed to advance together.
   evidence, an exception a person explicitly accepted, or `NOT_VERIFIED`
   stated plainly. Gate outcomes, missing evidence, route-backs, and receipts
   stay beside the work instead of being reconstructed from a transcript.
-- **Any engine, one workspace** — run Station agents on a local or hosted
-  model, or connect the agent CLIs you already use as External agents. Each
-  engine keeps its own behavior and tool loop; Station supplies the project
-  context, the gates, and the record.
+- **Supported engines, one workspace** — run Station agents on a local or
+  hosted model, or connect supported agent CLIs and compatible custom engines
+  as External agents. Each engine keeps its own behavior and tool loop;
+  Station supplies the project context, the gates, and the record.
 - **Work that outlives a chat** — Projects, Tasks, Sessions, changed files,
   artifacts, and receipts stay linked. Reopen a Task later with its workspace
   binding and evidence intact.
 - **Your devices, your Station** — pair a phone, tablet, or laptop to your
   Station with scoped, revocable access, and delegate work to another
   computer you own over SSH.
-- **Local-first ownership** — runtime data lives under `~/.station` by
-  default. Data leaves the machine only when you configure a hosted model
-  connection, engine, or export endpoint and use it.
+- **Local-first ownership** — Station data lives under `~/.station` by
+  default. Networked features, including hosted Model connections, Engines,
+  paired devices, remote computers, and export endpoints, transmit data only
+  when you configure and use them.
 - **Built to extend** — plugins add layouts, agents, tools, knowledge,
   connections, skills, and purpose-built work surfaces on the same SDK the
   core uses.
@@ -50,9 +51,9 @@ reason it is allowed to advance together.
 | --- | --- |
 | Ship a code change you can stand behind | Open the repository as a Project, create a Task, pick an agent, and keep the commands that ran, their results, and the review receipts with the change. |
 | Keep a long piece of work alive | A Task spans as many Sessions as it needs. Follow it from a paired device and come back to the same context, files, and evidence. |
-| Use agents without a cloud account | Point a Station agent at a local model server. Nothing leaves the machine until you add a hosted connection. |
+| Use agents without a cloud account | Point a Station agent at a local model server. Inference stays on this machine; every other networked feature remains opt-in. |
 | Coordinate several agents | Delegate bounded work from one agent to another, or run it on a remote computer over SSH with that machine's own agents, credentials, and workspace. |
-| Run Station on a server you control | Self-host with the shipped container setup behind your own authenticated ingress, and pair devices with scoped, revocable access. |
+| Run Station on a server you control | Build the container image from this checkout, run it behind your own authenticated ingress, and pair devices with scoped, revocable access. |
 | Build a purpose-built work surface | Write a plugin: a review workbench, a release console, a domain-specific layout. Plugins get the same primitives as the core. |
 
 ## Get Station
@@ -81,10 +82,10 @@ is published from `main` for testers. It installs alongside a stable Station
 and updates through its own channel. Expect rough edges; it is not a stable
 release.
 
-### Signed installer (when a stable release is published)
+### Verified installer (when a stable release is published)
 
 Stable and beta portable releases are signed GitHub release rings. No ring has
-been published yet. Once one exists, the installer below verifies the release's
+been published yet. Once one exists, the bootstrap below verifies the release's
 GitHub OIDC attestation and SHA-256 receipt before installing under
 `~/.station/installs/stable`, linking `station` into `~/.local/bin`, and
 opening the UI at `http://localhost:18000`. It requires Node.js 24.x, npm 10
@@ -104,15 +105,17 @@ uninstall.
 
 The repository ships a `Dockerfile` and `docker-compose.yml`. Station serves
 its UI, API, and streaming from one origin on port 3000 and persists its home
-in a named volume. The [deployment guide](docs/guides/deployment.md) covers
-building the image, binding a workspace directory, and running it behind your
-own authenticated ingress.
+in a named volume. Build the image from this checkout today: the Compose
+file's default published image is not yet available for anonymous pulls. The
+[deployment guide](docs/guides/deployment.md) covers the source build, binding
+a workspace directory, and running it behind your own authenticated ingress.
 
 ## First steps
 
-1. Open **Connections** and add a Model connection (local or hosted) or an
-   Engine (an installed agent CLI). Station detects what is already on the
-   machine but never connects anything without you.
+1. Open **Connections** and choose **Add model connection** (a local or
+   hosted model service) or **Add engine** (an installed agent CLI). Station
+   detects what is already on the machine but never connects anything without
+   you.
 2. Open a local project.
 3. Start a direct chat for a quick question, or create a Task for work you
    want to keep.
@@ -140,7 +143,7 @@ Published packages:
 [`@kontourai/station-sdk`](https://www.npmjs.com/package/@kontourai/station-sdk) (plugin SDK),
 [`@kontourai/station-cli`](https://www.npmjs.com/package/@kontourai/station-cli) (client),
 [`@kontourai/station-contracts`](https://www.npmjs.com/package/@kontourai/station-contracts) and
-[`@kontourai/station-shared`](https://www.npmjs.com/package/@kontourai/station-shared) (runtime contracts and helpers).
+[`@kontourai/station-shared`](https://www.npmjs.com/package/@kontourai/station-shared) (server, connection, and orchestration contracts plus shared helpers).
 
 Station is built on Kontour's published primitives — Surface, Flow, Veritas,
 Survey, and Flow Agents — through the same packages and contracts available to
@@ -164,7 +167,8 @@ else in the repository.
 
 Station is self-hosted. It does not use data for cross-app or cross-site
 tracking. Data leaves the device only when a user or operator configures a
-hosted connection or export endpoint and uses the applicable feature. See the
+networked feature, such as a hosted Model connection, an Engine, a paired
+device, a remote computer, or an export endpoint, and uses it. See the
 [Station privacy policy](https://kontourai.io/privacy/station/).
 
 ## License
