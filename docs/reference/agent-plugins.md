@@ -106,6 +106,35 @@ expected-revision publication, explicit reset, and reclamation limits.
 Recognized Agent Plugins take this path during directory or git installation.
 The old manifest parser remains only as an explicit compatibility fallback for
 packages without an Agent Plugins `$schema`; #346 owns deleting it after the
-remaining examples move. Station namespace data is schema-validated now, but
-activation beyond the already-owned portable Skill/MCP paths remains with the
-follow-on host integration work.
+remaining examples move. Validated Station namespace declarations now use the existing host contribution
+owners. Their durable activation and retained recovery are described in the
+[installation lifecycle](../design/plugin-installation-lifecycle.md); full
+combined qualification remains required before publication.
+
+
+## Public author builds
+
+The shared `parseAgentPluginManifest` implementation performs manifest-only
+validation without deriving a Station home, provisioning data, loading package
+modules, or fetching schemas. Server loading and author builds share that parser.
+`buildPlugin` and `station plugin build` use only validated Station namespace
+build fields. An unknown root `entrypoint` does not become build authority.
+Invalid known Station namespace data is an authoring error, not an empty success.
+
+Runtime compatibility preserves the existing warning-and-ignore handling of a
+non-object `extensions` container. Author builds refuse that malformed container.
+That runtime recovery behavior is not a claim that the malformed document
+conforms to the upstream schema. Unknown namespace objects remain opaque.
+
+The standalone validators are generated from the unchanged vendored schemas by
+`node scripts/generate-agent-plugin-validators.mjs`. The generated file records
+schema hashes and tool versions and includes the bundled Ajv helper's license.
+`npm run agent-plugin:validators:gate` reproduces and compares the generated
+bytes; scoped pre-push and static verification run that check. Missing or stale
+output fails rather than downloading a schema or silently regenerating on use.
+
+The [Portable Author Kit](../../examples/portable-author-kit/README.md) provides
+an editable package and source-checkout CLI commands. Build validation is not
+installation consent or proof that runtime contributions activated. Installation
+still owns acquisition, content review, current permission decisions, and durable
+activation. The CLI carries parent and dependency grant revisions from preview.

@@ -40,7 +40,7 @@ function createPluginRoot(): string {
 }
 
 describe('buildPlugin', () => {
-  test('requires the installation owner to validate portable namespace build fields', async () => {
+  test('validates portable namespace builds and ignores unowned root lookalikes', async () => {
     const pluginDir = createPluginRoot();
     writeFileSync(
       join(pluginDir, 'plugin.json'),
@@ -50,12 +50,68 @@ describe('buildPlugin', () => {
         entrypoint: './unknown-root.js',
       }),
     );
+    await expect(buildPlugin(pluginDir)).resolves.toEqual({ built: false });
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'portable',
+        extensions: {
+          'io.kontourai.station': { schemaVersion: '1.0', entrypoint: 42 },
+        },
+      }),
+    );
     await expect(buildPlugin(pluginDir)).rejects.toThrow(
-      /validated Station namespace/,
+      /Invalid Station extension/,
     );
     await expect(
       buildPlugin(pluginDir, 'production', { name: 'portable', version: '1' }),
     ).resolves.toEqual({ built: false });
+  });
+
+  test.each([null, [], 'invalid'])(
+    'refuses malformed extensions containers in author builds: %j',
+    async (extensions) => {
+      const pluginDir = createPluginRoot();
+      writeFileSync(
+        join(pluginDir, 'plugin.json'),
+        JSON.stringify({
+          $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+          name: 'authored',
+          extensions,
+        }),
+      );
+      await expect(buildPlugin(pluginDir)).rejects.toThrow(
+        /Non-object extensions/,
+      );
+    },
+  );
+
+  test('builds authored portable entrypoints through shared validation without a Station home', async () => {
+    const pluginDir = createPluginRoot();
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'authored',
+        entrypoint: './unowned-missing.js',
+        extensions: {
+          'io.kontourai.station': {
+            schemaVersion: '1.0',
+            entrypoint: './authored.js',
+          },
+        },
+      }),
+    );
+    writeFileSync(
+      join(pluginDir, 'authored.js'),
+      'export const authorWitness = "portable-author-build";',
+    );
+    const result = await buildPlugin(pluginDir);
+    expect(result.built).toBe(true);
+    expect(readFileSync(result.bundlePath!, 'utf8')).toContain(
+      'portable-author-build',
+    );
   });
 
   test('rejects manifest.build even when an entrypoint is declared', async () => {

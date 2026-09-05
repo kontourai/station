@@ -1198,3 +1198,32 @@ test('managed provider compensation uses an expiring private view while public p
     await replacePluginProvidersForSource('fixture', []);
   }
 });
+
+test('the public portable author example installs its Skill and Station Agent through the managed owner', async () => {
+  const f = fixture();
+  const source = fileURLToPath(
+    new URL('../../../../examples/portable-author-kit/', import.meta.url),
+  );
+  const result = await installPluginFromSource(source, [], f.deps, {
+    consent: await namespaceConsent(source),
+  });
+  expect(result.plugin.name).toBe('portable-author-kit');
+  const loader = new AgentPluginLoader({
+    projectHomeDir: f.home,
+    journal: () => f.journal,
+  });
+  const installed = loader
+    .listInstalled()
+    .find((plugin) => plugin.manifest.name === 'portable-author-kit');
+  expect(installed?.skills.map((skill) => skill.name)).toEqual(['draft-brief']);
+  const agent = await new ConfigLoader({ projectHomeDir: f.home }).loadAgent(
+    'portable-author-note',
+  );
+  expect(agent?.prompt).toContain('Preserve stated facts');
+  await uninstallInstalledPlugin('portable-author-kit', f.deps);
+  expect(
+    loader
+      .listInstalled()
+      .some((plugin) => plugin.manifest.name === 'portable-author-kit'),
+  ).toBe(false);
+});

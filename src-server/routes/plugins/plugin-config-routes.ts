@@ -145,7 +145,7 @@ export function registerPluginConfigRoutes(
           return c.json(
             {
               error:
-                'Plugin changed during configuration access; reload before retrying',
+                'Plugin changed during configuration access; changes may have been saved. Reload and inspect before retrying',
             },
             409,
           );

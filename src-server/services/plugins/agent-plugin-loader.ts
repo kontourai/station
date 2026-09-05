@@ -30,6 +30,7 @@ import {
 } from '@kontourai/station-contracts/agent-plugin';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
+import { parseAgentPluginManifest } from '@kontourai/station-shared/agent-plugin-manifest';
 import {
   bindMCPDefinitionAdmission,
   MCPLocalCustodyError,
@@ -40,7 +41,6 @@ import {
   validateSkillContent,
 } from 'agent-skills-ts-sdk';
 import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020.js';
-import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
 import type { CanonicalSkillSource } from '../flow/flow-agents-skills-source.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
@@ -53,19 +53,6 @@ import {
 } from './plugin-incarnation.js';
 
 const MAX_CONFIGURATION_BYTES = 2 * 1024 * 1024;
-const CORE_MANIFEST_FIELDS = new Set([
-  '$schema',
-  'name',
-  'version',
-  'description',
-  'author',
-  'homepage',
-  'repository',
-  'license',
-  'keywords',
-  'extensions',
-]);
-const RETIRED_STATION_ROOT_FIELDS = new Set(['layout', 'layouts']);
 const WINDOWS_RESERVED_ENV = new Set(['plugin_root', 'plugin_data']);
 const PLUGIN_DATA_PLACEHOLDER = '$' + '{PLUGIN_DATA}';
 const HTTP_HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
@@ -828,118 +815,15 @@ export class AgentPluginLoader {
     root: string,
     value: unknown,
     reports: AgentPluginLoadReport[],
-  ): {
-    manifest: AgentPluginManifestV1;
-    stationExtension?: StationAgentPluginExtensionV1;
-  } | null {
-    if (!isRecord(value)) {
-      this.manifestError(root, reports, 'Plugin manifest must be an object');
-      return null;
-    }
-    if (value.$schema !== AGENT_PLUGIN_MANIFEST_SCHEMA_1_0) {
-      this.manifestError(
-        root,
-        reports,
-        'Plugin manifest has a missing or unsupported $schema',
-      );
-      return null;
-    }
-    for (const retired of RETIRED_STATION_ROOT_FIELDS) {
-      if (Object.hasOwn(value, retired)) {
-        this.manifestError(
-          root,
-          reports,
-          `Plugin manifest uses retired Station root field '${retired}'`,
-        );
-        return null;
-      }
-    }
-
-    const core: Record<string, unknown> = {};
-    for (const [key, fieldValue] of Object.entries(value)) {
-      if (!CORE_MANIFEST_FIELDS.has(key)) {
-        this.emit(reports, {
-          level: 'warning',
-          code: 'unknown-manifest-field',
-          pluginRoot: root,
-          component: 'plugin.json',
-          message: `Unknown plugin manifest field '${key}' was ignored`,
-        });
-      } else if (key !== 'extensions') {
-        core[key] = fieldValue;
-      }
-    }
-    if (isRecord(value.extensions)) {
-      const invalidNamespace = Object.entries(value.extensions).find(
-        ([, namespaceValue]) => !isRecord(namespaceValue),
-      );
-      if (invalidNamespace) {
-        this.manifestError(
-          root,
-          reports,
-          `Plugin manifest extension '${invalidNamespace[0]}' must be an object`,
-        );
-        return null;
-      }
-      // The portable schema validates only that namespace values are objects.
-      // Empty placeholders prove that shape without inspecting unknown client
-      // namespaces or assigning semantics to their contents.
-      core.extensions = Object.fromEntries(
-        Object.keys(value.extensions).map((namespace) => [namespace, {}]),
-      );
-    }
-    if (!this.validateManifest(core)) {
-      this.manifestError(
-        root,
-        reports,
-        `Plugin manifest does not satisfy Agent Plugins 1.0: ${this.validateManifest.errors?.[0]?.instancePath || 'root'}`,
-      );
-      return null;
-    }
-    if (isReservedObjectKey(core.name as string)) {
-      this.manifestError(
-        root,
-        reports,
-        'Plugin manifest name is temporarily unsupported by Station object-key stores',
-      );
-      return null;
-    }
-
-    let stationExtension: StationAgentPluginExtensionV1 | undefined;
-    if (value.extensions !== undefined && !isRecord(value.extensions)) {
-      this.emit(reports, {
-        level: 'warning',
-        code: 'manifest-invalid',
-        pluginRoot: root,
-        component: 'plugin.json#extensions',
-        message: 'Non-object extensions field was ignored',
-      });
-    } else if (isRecord(value.extensions)) {
-      const station = value.extensions[STATION_AGENT_PLUGIN_EXTENSION_ID];
-      if (station !== undefined) {
-        if (!this.validateStationExtension(station)) {
-          this.emit(reports, {
-            level: 'warning',
-            code: 'station-extension-invalid',
-            pluginRoot: root,
-            component: `plugin.json#extensions.${STATION_AGENT_PLUGIN_EXTENSION_ID}`,
-            message: 'Invalid Station extension was disabled',
-          });
-        } else {
-          stationExtension = station as StationAgentPluginExtensionV1;
-        }
-      }
-    }
-
-    const portableManifest = { ...core };
-    delete portableManifest.extensions;
-    return {
-      // Extension namespaces are not portable manifest authority. The one
-      // implemented namespace is returned separately only after validation;
-      // all others stay deliberately opaque and unprojected.
-      manifest: portableManifest as unknown as AgentPluginManifestV1,
-      ...(stationExtension ? { stationExtension } : {}),
-    };
+  ) {
+    return parseAgentPluginManifest(
+      value,
+      (report) => this.emit(reports, { ...report, pluginRoot: root }),
+      {
+        manifest: this.validateManifest,
+        stationExtension: this.validateStationExtension,
+      },
+    );
   }
 
   private discoverSkills(
@@ -1258,20 +1142,6 @@ export class AgentPluginLoader {
     const target = resolve(candidate);
     if (!isInside(root, target)) throw new Error('path escapes its root');
     return target;
-  }
-
-  private manifestError(
-    pluginRoot: string,
-    reports: AgentPluginLoadReport[],
-    message: string,
-  ): void {
-    this.emit(reports, {
-      level: 'error',
-      code: 'manifest-invalid',
-      pluginRoot,
-      component: 'plugin.json',
-      message,
-    });
   }
 
   private mcpError(

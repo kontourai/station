@@ -70,6 +70,7 @@ describe('plugin CLI API authority', () => {
           consent: {
             permissions: ['providers.register'],
             contentDigest: 'sha256:dependency',
+            grantRevision: 'dependency-reviewed-revision',
             dependencies: [],
             pendingConsent: [
               { permission: 'providers.register', tier: 'trusted' },
@@ -78,6 +79,7 @@ describe('plugin CLI API authority', () => {
         },
       ],
       contentDigest: 'sha256:reviewed',
+      grantRevision: 'parent-reviewed-revision',
       permissions: {
         required: ['navigation.dock', 'network.fetch'],
         autoGranted: ['navigation.dock'],
@@ -123,12 +125,14 @@ describe('plugin CLI API authority', () => {
           consent: {
             permissions: ['navigation.dock', 'network.fetch'],
             contentDigest: 'sha256:reviewed',
+            grantRevision: 'parent-reviewed-revision',
             dependencies: ['shared-lib'],
             dependencyApprovals: [
               {
                 id: 'shared-lib',
                 permissions: ['providers.register'],
                 contentDigest: 'sha256:dependency',
+                grantRevision: 'dependency-reviewed-revision',
                 dependencies: [],
               },
             ],
@@ -177,6 +181,7 @@ describe('plugin CLI API authority', () => {
                 consent: {
                   permissions: ['providers.register'],
                   contentDigest: 'sha256:dependency',
+                  grantRevision: 'dependency-reviewed-revision',
                   dependencies: [],
                   pendingConsent: [
                     { permission: 'providers.register', tier: 'trusted' },
@@ -185,6 +190,7 @@ describe('plugin CLI API authority', () => {
               },
             ],
             contentDigest: 'sha256:reviewed',
+            grantRevision: 'parent-reviewed-revision',
             permissions: {
               required: [],
               autoGranted: [],

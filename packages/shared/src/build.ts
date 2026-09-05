@@ -15,6 +15,10 @@ import { fileURLToPath } from 'node:url';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
 import type { build as EsbuildBuild } from 'esbuild';
+import {
+  type AgentPluginManifestReport,
+  parseAgentPluginManifest,
+} from './agent-plugin-manifest.js';
 import { readPluginManifest } from './parsers.js';
 
 const sharedDirectory = dirname(fileURLToPath(import.meta.url));
@@ -109,6 +113,45 @@ export interface BuildResult {
   cssPath?: string;
 }
 
+/** Projects only validated build fields. Root lookalikes and unknown client namespaces never control author builds. */
+export function readPluginBuildManifest(pluginDir: string): PluginManifest {
+  const candidate = readPluginManifest(pluginDir);
+  if (
+    !String(
+      (candidate as unknown as { $schema?: unknown }).$schema ?? '',
+    ).startsWith('https://agent-plugins.org/schemas/')
+  )
+    return candidate;
+  const reports: AgentPluginManifestReport[] = [];
+  const parsed = parseAgentPluginManifest(candidate, (report) =>
+    reports.push(report),
+  );
+  if (
+    !parsed ||
+    reports.some(
+      (report) =>
+        report.code === 'station-extension-invalid' ||
+        report.code === 'manifest-invalid',
+    )
+  )
+    throw new Error(
+      `Agent Plugin build manifest is invalid: ${reports.find((report) => report.code !== 'unknown-manifest-field')?.message ?? 'unknown validation failure'}`,
+    );
+  return {
+    name: parsed.manifest.name,
+    version: parsed.manifest.version ?? '0.0.0-agent-plugin-unversioned',
+    ...(parsed.stationExtension?.title
+      ? { displayName: parsed.stationExtension.title }
+      : {}),
+    ...(parsed.stationExtension?.entrypoint
+      ? { entrypoint: parsed.stationExtension.entrypoint }
+      : {}),
+    ...(parsed.stationExtension?.build
+      ? { build: parsed.stationExtension.build }
+      : {}),
+  };
+}
+
 /**
  * Build a plugin. Workspace plugins (with entrypoint) use esbuild JS API directly.
  * Manifest-controlled shell build commands are rejected by the host.
@@ -118,16 +161,7 @@ export async function buildPlugin(
   mode: 'production' | 'dev' = 'production',
   validatedManifest?: PluginManifest,
 ): Promise<BuildResult> {
-  const manifest = validatedManifest ?? readPluginManifest(pluginDir);
-  if (
-    !validatedManifest &&
-    String(
-      (manifest as unknown as { $schema?: unknown }).$schema ?? '',
-    ).startsWith('https://agent-plugins.org/schemas/')
-  )
-    throw new Error(
-      'Agent Plugin builds require a validated Station namespace manifest from the installation owner',
-    );
+  const manifest = validatedManifest ?? readPluginBuildManifest(pluginDir);
   if (manifest.build) {
     throw new Error(
       `Plugin '${manifest.name}' declares manifest.build, but host shell builds are not supported. Prebuild the plugin bundle or use Station-supported entrypoints.`,

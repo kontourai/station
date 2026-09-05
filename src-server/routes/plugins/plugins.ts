@@ -166,6 +166,7 @@ export function createPluginRoutes(
   // and for that one name, HTTP removal is intentionally forfeited (see
   // reserved-plugin-identities.ts).
   registerPluginHomeRoleRoutes(app, {
+    packageMcpJournal: runtime?.packageMcpJournal,
     eventBus,
     pluginsDir,
     projectHomeDir,
