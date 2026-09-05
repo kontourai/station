@@ -38,9 +38,9 @@ reason it is allowed to advance together.
   Station with scoped, revocable access, and delegate work to another
   computer you own over SSH.
 - **Local-first ownership** — Station data lives under `~/.station` by
-  default. Networked features, including hosted Model connections, Engines,
-  paired devices, remote computers, and export endpoints, transmit data only
-  when you configure and use them.
+  default. Hosted Model connections, Engines, paired devices, remote
+  computers, and export endpoints carry your data only when you configure
+  and use them; desktop builds also check their release feed for updates.
 - **Built to extend** — plugins add layouts, agents, tools, knowledge,
   connections, skills, and purpose-built work surfaces on the same SDK the
   core uses.
@@ -51,7 +51,7 @@ reason it is allowed to advance together.
 | --- | --- |
 | Ship a code change you can stand behind | Open the repository as a Project, create a Task, pick an agent, and keep the commands that ran, their results, and the review receipts with the change. |
 | Keep a long piece of work alive | A Task spans as many Sessions as it needs. Follow it from a paired device and come back to the same context, files, and evidence. |
-| Use agents without a cloud account | Point a Station agent at a local model server. Inference stays on this machine; every other networked feature remains opt-in. |
+| Use agents without a cloud account | Point a Station agent at a local model server. Inference stays on this machine, and every other data-carrying connection is one you add yourself. |
 | Coordinate several agents | Delegate bounded work from one agent to another, or run it on a remote computer over SSH with that machine's own agents, credentials, and workspace. |
 | Run Station on a server you control | Build the container image from this checkout, run it behind your own authenticated ingress, and pair devices with scoped, revocable access. |
 | Build a purpose-built work surface | Write a plugin: a review workbench, a release console, a domain-specific layout. Plugins get the same primitives as the core. |
@@ -166,9 +166,10 @@ else in the repository.
 ## Data and privacy
 
 Station is self-hosted. It does not use data for cross-app or cross-site
-tracking. Data leaves the device only when a user or operator configures a
+tracking. Your work leaves the device only when a user or operator configures a
 networked feature, such as a hosted Model connection, an Engine, a paired
-device, a remote computer, or an export endpoint, and uses it. See the
+device, a remote computer, or an export endpoint, and uses it; desktop builds
+also contact their release feed to check for updates. See the
 [Station privacy policy](https://kontourai.io/privacy/station/).
 
 ## License

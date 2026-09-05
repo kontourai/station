@@ -220,33 +220,50 @@ export function renderMarkdown(source) {
   const lines = source.split('\n');
   const html = [];
   let inFence = false;
-  let inList = false;
   let inTable = false;
   let tableRows = [];
   // Markdown wraps prose across source lines; a wrapped paragraph or list
   // item is one block, not one block per line. Open blocks collect their
-  // continuation lines until a blank line or another block starts.
+  // continuation lines until a blank line or another block starts. Lists
+  // nest by indentation: a deeper item opens a <ul> inside the current <li>.
+  let listStack = [];
   let openItem = null;
   let paragraph = [];
 
-  const closeItem = () => {
+  const flushItemText = () => {
     if (openItem === null) return;
-    html.push(`<li>${renderInline(openItem.join(' '))}</li>`);
+    html.push(`<li>${renderInline(openItem.join(' '))}`);
     openItem = null;
+  };
+
+  const closeCurrentItem = () => {
+    flushItemText();
+    const level = listStack[listStack.length - 1];
+    if (level?.itemOpen) {
+      html.push('</li>');
+      level.itemOpen = false;
+    }
+  };
+
+  const popListLevel = () => {
+    closeCurrentItem();
+    html.push('</ul>');
+    listStack.pop();
+    const parent = listStack[listStack.length - 1];
+    if (parent?.itemOpen) {
+      html.push('</li>');
+      parent.itemOpen = false;
+    }
+  };
+
+  const closeList = () => {
+    while (listStack.length > 0) popListLevel();
   };
 
   const closeParagraph = () => {
     if (paragraph.length === 0) return;
     html.push(`<p>${renderInline(paragraph.join(' '))}</p>`);
     paragraph = [];
-  };
-
-  const closeList = () => {
-    closeItem();
-    if (inList) {
-      html.push('</ul>');
-      inList = false;
-    }
   };
 
   const closeTable = () => {
@@ -259,7 +276,7 @@ export function renderMarkdown(source) {
   for (const rawLine of lines) {
     const line = rawLine.trimEnd();
 
-    if (line.startsWith('```')) {
+    if (/^\s*```/.test(line)) {
       closeParagraph();
       closeList();
       closeTable();
@@ -302,15 +319,29 @@ export function renderMarkdown(source) {
       continue;
     }
 
-    const listItem = line.match(/^\s*[-*]\s+(.+)$/);
+    const listItem = line.match(/^(\s*)[-*]\s+(.+)$/);
     if (listItem) {
       closeParagraph();
-      closeItem();
-      if (!inList) {
+      const indent = listItem[1].length;
+      const top = listStack[listStack.length - 1];
+      if (!top) {
         html.push('<ul>');
-        inList = true;
+        listStack.push({ indent, itemOpen: false });
+      } else if (indent > top.indent) {
+        flushItemText();
+        html.push('<ul>');
+        listStack.push({ indent, itemOpen: false });
+      } else {
+        while (
+          listStack.length > 1 &&
+          indent < listStack[listStack.length - 1].indent
+        ) {
+          popListLevel();
+        }
+        closeCurrentItem();
       }
-      openItem = [listItem[1]];
+      listStack[listStack.length - 1].itemOpen = true;
+      openItem = [listItem[2]];
       continue;
     }
 
@@ -328,6 +359,7 @@ export function renderMarkdown(source) {
       continue;
     }
 
+    closeList();
     paragraph.push(line.trim());
   }
 

@@ -211,7 +211,7 @@ describe('public documentation markdown rendering', () => {
       '<p>Station uses a small set of concepts. Transport names stay out of the way unless setup requires them.</p>',
     );
     expect(html).toContain(
-      "<li>A <strong>Station agent</strong> is executed by Station's engine. Station owns its prompt, skills, tools, commands, and Model choice.</li>",
+      "<li>A <strong>Station agent</strong> is executed by Station's engine. Station owns its prompt, skills, tools, commands, and Model choice.\n</li>",
     );
     expect(html.match(/<li>/g)).toHaveLength(2);
     expect(html.match(/<p>/g)).toHaveLength(2);
@@ -241,5 +241,67 @@ describe('public documentation markdown rendering', () => {
     expect(html.match(/<\/ul>/g)).toHaveLength(4);
     expect(html).toContain('<h2>Next</h2>');
     expect(html).toContain('<blockquote>quoted</blockquote>');
+  });
+
+  it('nests indented list items inside their parent item', () => {
+    const html = renderMarkdown(
+      [
+        '- parent',
+        '  - child one',
+        '    continues the child',
+        '  - child two',
+        '- sibling',
+      ].join('\n'),
+    );
+    expect(html).toBe(
+      [
+        '<ul>',
+        '<li>parent',
+        '<ul>',
+        '<li>child one continues the child',
+        '</li>',
+        '<li>child two',
+        '</li>',
+        '</ul>',
+        '</li>',
+        '<li>sibling',
+        '</li>',
+        '</ul>',
+      ].join('\n'),
+    );
+  });
+
+  it('renders an indented fence after a list item as code and keeps later prose out of the list', () => {
+    const html = renderMarkdown(
+      ['- item', '  ```js', '  const x = 1;', '  ```', 'After'].join('\n'),
+    );
+    expect(html).toBe(
+      [
+        '<ul>',
+        '<li>item',
+        '</li>',
+        '</ul>',
+        '<pre><code>',
+        '  const x = 1;',
+        '</code></pre>',
+        '<p>After</p>',
+      ].join('\n'),
+    );
+  });
+
+  it('closes every open list level at the end of the document', () => {
+    const html = renderMarkdown(['- outer', '  - inner'].join('\n'));
+    expect(html).toBe(
+      [
+        '<ul>',
+        '<li>outer',
+        '<ul>',
+        '<li>inner',
+        '</li>',
+        '</ul>',
+        '</li>',
+        '</ul>',
+      ].join('\n'),
+    );
   });
 });
