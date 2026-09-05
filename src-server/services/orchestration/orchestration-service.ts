@@ -60,6 +60,7 @@ import {
   stripReservedOrchestrationMetadata,
   unsupportedModelOptionError,
   unsupportedModelOptionKeys,
+  WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type {
   CanonicalRuntimeEvent,
@@ -102,6 +103,10 @@ import {
   createAuthorizedTurnCorrelation,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import {
+  createNativeForegroundRelay,
+  runWithNativeForegroundRelay,
+} from '../../runtime/conversation/native-foreground-invocation.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import {
   requiredMissingPrerequisites,
@@ -203,6 +208,10 @@ import type {
   EventStore,
   PersistedRuntimeEvent,
 } from './event-store.js';
+import {
+  type ExecutionWorkspaceBinding,
+  readExecutionWorkspaceBinding,
+} from './execution-workspace-binding.js';
 import { FlowPolicySidecar } from './flow-policy-sidecar.js';
 import {
   type ForegroundInvocationAdmission,
@@ -310,6 +319,7 @@ function telemetryEngine(
  */
 interface OrchestrationDispatchInternalOptions {
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
+  executionWorkspace?: ExecutionWorkspaceBinding;
   /** Skip the modelOptions per-provider support check for this one command. */
   skipModelOptionSupportCheck?: boolean;
   /**
@@ -879,6 +889,7 @@ function resolveStartSessionCwd(
   input: ProviderSessionStartInput,
   listProjects?: () => AttachedProjectRoot[],
   observeShadow?: (sample: CwdShadowSample) => void,
+  admittedWorkspace?: ForegroundInvocationAdmission['provisionedWorkspace'],
 ): ProviderSessionStartInput {
   const rawProjectSlug = input.metadata?.projectSlug;
   const projectSlug =
@@ -886,6 +897,15 @@ function resolveStartSessionCwd(
       ? rawProjectSlug
       : undefined;
   const suppliedCwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
+  if (
+    admittedWorkspace &&
+    (admittedWorkspace.threadId !== input.threadId ||
+      admittedWorkspace.projectSlug !== projectSlug ||
+      admittedWorkspace.cwd !== suppliedCwd)
+  )
+    throw new Error(
+      'The owned conversation worktree binding does not match this Session.',
+    );
 
   // `listProjects` is optional on the service options, so an installation
   // that never wired it cannot resolve project bindings at all. Keep the
@@ -966,7 +986,12 @@ function resolveStartSessionCwd(
   if (
     projectCwd &&
     suppliedCwd &&
-    !isWithinDirectory(projectCwd, suppliedCwd)
+    !isWithinDirectory(projectCwd, suppliedCwd) &&
+    !(
+      admittedWorkspace?.threadId === input.threadId &&
+      admittedWorkspace.projectSlug === projectSlug &&
+      admittedWorkspace.cwd === suppliedCwd
+    )
   ) {
     sessionCwdResolution.add(1, {
       provider: input.provider,
@@ -2208,8 +2233,12 @@ export class OrchestrationService {
     if (
       admission &&
       (agentSlug !== admission.agentId ||
-        !sessionDeliveryChannels(input.provider) ||
-        !this.options.resolveSessionAgent)
+        (input.provider === 'station-agent') !==
+          !admission.agentSpec.execution?.agentConnectionId ||
+        (input.provider === 'station-agent'
+          ? Boolean(admission.agentSpec.execution?.agentConnectionId)
+          : !sessionDeliveryChannels(input.provider) ||
+            !this.options.resolveSessionAgent))
     )
       throw new ForegroundInvocationUnavailableError();
     const captured = admission
@@ -2246,6 +2275,13 @@ export class OrchestrationService {
         ...resolved,
         metadata: {
           ...resolved.metadata,
+          ...(admission?.source
+            ? {
+                [WORKSPACE_PANE_HOST_ACTION_METADATA_KEY]: {
+                  ...admission.source,
+                },
+              }
+            : {}),
           [SESSION_AGENT_DISPLAY_NAME_METADATA_KEY]: captured.spec.name.slice(
             0,
             SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
@@ -3699,6 +3735,8 @@ export class OrchestrationService {
             ),
             this.options.listProjects,
             this.options.observeCwdShadow,
+            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
+              readExecutionWorkspaceBinding(internal?.executionWorkspace),
           );
           if (internal?.reviewIsolation) {
             startInput = {
@@ -3792,6 +3830,7 @@ export class OrchestrationService {
                   'start',
                   {
                     threadId: input.threadId,
+                    cwd: input.cwd,
                     agentId: input.metadata?.agentSlug,
                     projectSlug: input.metadata?.projectSlug,
                   },
@@ -4437,7 +4476,16 @@ export class OrchestrationService {
                         context.userId.trim() !== ''
                       ) {
                         const nativeTurnId = nativeTurn.turnId;
+                        const nativeWorkspaceIsolation =
+                          this.readLatestSessionStartMetadata(
+                            turnInput.threadId,
+                          )?.workspaceIsolation;
                         nativeOutputRelay = createNativeOutputRelayCompanion({
+                          workspaceRequired:
+                            !!nativeWorkspaceIsolation &&
+                            typeof nativeWorkspaceIsolation === 'object' &&
+                            'mode' in nativeWorkspaceIsolation &&
+                            nativeWorkspaceIsolation.mode === 'worktree',
                           authority: this.nativeOutputGrants,
                           facts: {
                             threadId: turnInput.threadId,
@@ -4492,6 +4540,34 @@ export class OrchestrationService {
                           );
                         }
                       }
+                      const nativeForeground =
+                        adapter.provider === 'station-agent' &&
+                        internal?.foregroundInvocationAdmission
+                          ? createNativeForegroundRelay(
+                              internal.foregroundInvocationAdmission,
+                              {
+                                threadId: turnInput.threadId,
+                                workspaceRoot:
+                                  this.sessionReadModel.get(turnInput.threadId)
+                                    ?.cwd ??
+                                  this.options.eventStore?.readSessionByThread(
+                                    turnInput.threadId,
+                                  )?.cwd,
+                                userId: accountId!,
+                                modelId: turnInput.modelId,
+                                clientTurnId: turnInput.clientTurnId,
+                                ambientContext: turnInput.ambientContext,
+                              },
+                            )
+                          : undefined;
+                      if (nativeForeground && !turnCorrelation)
+                        throw new ForegroundInvocationUnavailableError();
+                      const sendAdapter = () =>
+                        nativeForeground
+                          ? runWithNativeForegroundRelay(nativeForeground, () =>
+                              adapter.sendTurn(turnInput),
+                            )
+                          : adapter.sendTurn(turnInput);
                       const accepted = await withTenantExecutionContext(
                         context?.tenantExecutionContext ?? boundTenant,
                         () =>
@@ -4502,11 +4578,11 @@ export class OrchestrationService {
                                   nativeOutputRelay
                                     ? runWithNativeOutputRelayCompanion(
                                         nativeOutputRelay,
-                                        () => adapter.sendTurn(turnInput),
+                                        sendAdapter,
                                       )
-                                    : adapter.sendTurn(turnInput),
+                                    : sendAdapter(),
                               )
-                            : adapter.sendTurn(turnInput),
+                            : sendAdapter(),
                       );
                       providerAccepted = true;
                       // The provider has now named the exact turn. Publish a
@@ -4563,7 +4639,9 @@ export class OrchestrationService {
                   };
                   return internal?.foregroundInvocationAdmission
                     ? internal.foregroundInvocationAdmission.invoke(
-                        'turn',
+                        adapter.provider === 'station-agent'
+                          ? 'native-relay'
+                          : 'turn',
                         {
                           threadId: turnInput.threadId,
                           // `sendTurn` carries no Agent/Project fields. The

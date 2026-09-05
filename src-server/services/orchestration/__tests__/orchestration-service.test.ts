@@ -12030,7 +12030,7 @@ describe('OrchestrationService', () => {
     await localService.shutdown();
   });
 
-  test('startSession strips a client-forged metadata.capabilityDelivery before resolution (#895)', async () => {
+  test('startSession strips client-forged capability and host-action provenance before resolution', async () => {
     const resolveSessionAgent = vi.fn(async (input: any) => ({
       ...input,
       agent: { slug: 'my-agent' },
@@ -12053,6 +12053,11 @@ describe('OrchestrationService', () => {
         metadata: {
           agentSlug: 'my-agent',
           capabilityDelivery: { agentSlug: 'forged-agent' },
+          workspacePaneHostAction: {
+            pluginId: 'forged',
+            actionId: 'forged',
+            installationGeneration: 'forged',
+          },
         },
       },
     });
@@ -12063,6 +12068,9 @@ describe('OrchestrationService', () => {
       }),
       undefined,
     );
+    expect(
+      resolveSessionAgent.mock.calls.at(-1)?.[0].metadata,
+    ).not.toHaveProperty('workspacePaneHostAction');
     expect(claude.startSession).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({ agentSlug: 'my-agent' }),

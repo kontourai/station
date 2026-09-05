@@ -1361,3 +1361,64 @@ module.exports = () => ({
   "providers": [{ "type": "branding", "module": "./providers/branding.js" }]
 }
 ```
+
+### Actions that belong to the workspace host
+
+Declare package-wide actions once in `plugin.json.workspacePaneHost`, using
+`version: "station.workspace-pane-host-contribution/v1"`. A Project's direct and
+placed Pane views display the same host action bar, outside the individual Pane.
+Use `agentSelection.availableAgents` and an optional explicit `defaultAgent` to
+choose the package's Agents. An `own-plugin-agent` reference contains a clean
+`agentId`; Station supplies installation ownership. `requiredAgents` only checks
+availability and never selects an Agent.
+
+An action's `intent` is either literal `prompt` data or an exact own-package
+`plugin-prompt` id. Label text is never treated as a prompt or routing address.
+An action may fix its own Agent; that binding takes precedence over the host
+selector. Grant `agents.invoke` in Library, configure the native model or external
+engine connection, and make the Agent available in the Project before running it.
+
+The host confirms that a conversation was accepted and offers **Open
+conversation**. If delivery is uncertain, inspect Activity; the host does not
+retry a possibly started action. Revoked permissions, changed packages, missing
+Agents, and unavailable execution modes remain visible failures.
+
+The demo, enterprise, coding, getting-started, and knowledge-docs examples each
+include an explicit old-to-new behavior table. Their package-global declarations
+are migrated. Enterprise tab-local **Review** buttons focus their matching host control; invocation and Agent authority remain with that control. Existing persisted Layout records
+are not rewritten, and this does not claim the entire structural Layout
+migration is complete.
+
+For an Agent Plugins 1.0 manifest, place the declaration at
+`extensions["io.kontourai.station"].workspacePaneHost` alongside
+`schemaVersion: "1.0"` and the namespace's `agents`. Station validates the host
+shape with the same contribution parser used by legacy manifests. Registered
+prompt actions read the normalized namespace's `prompts.source`; unknown
+portable root fields never supply fallback actions or Agents.
+
+Legacy plugin Layout actions never launch through an unqualified Agent fallback.
+Station can project unambiguous `inline-prompt` and `globalSkills` declarations
+from the installed artifact into the same captured host admission path, with an
+explicit available/default Agent and the current invocation permission. Ambiguous
+`prompt` declarations and unsupported action kinds remain review-only until the
+plugin is updated. Saved plugin Layout controls cannot revive execution after
+uninstall or a stale catalog response. User-authored Layouts without a plugin
+owner retain their explicit Agent actions.
+
+The five examples above retain their legacy manifest format because their
+structural Layout declarations have not yet been mapped. The remaining
+[example migration](https://github.com/kontourai/station/issues/265) work is specific; the related [authoring-default decision](https://github.com/kontourai/station/issues/346) supplies its authoring context:
+
+| Example | Required structural mapping before switching its manifest schema |
+| --- | --- |
+| `demo-layout` | Map `layout` (`demo`, `./layout.json`) and its tab component references to declared Workspace Panes and placement. Preserve its original native `assistant`. |
+| `coding-starter` | Map `layout` (`coding`, `./layout.json`) and each authored tab component to Workspace Panes and placement. Preserve the explicit `coding-starter-assistant` host default. |
+| `getting-started-starter` | Map `layout` (`getting-started`, `./layout.json`) and its tabs to Workspace Panes and placement. Preserve the explicit `getting-started-starter-assistant` host default. |
+| `knowledge-docs-starter` | Map `layout` (`knowledge-docs`, `./layout.json`) and its tabs to Workspace Panes and placement; retain its declared knowledge namespaces through their existing owner. |
+| `enterprise-layout` | Map `layout` (`enterprise`, `./layout.json`) and Calendar/CRM Review links to Workspace Panes/placement; map the required `NOTES_VAULT_PATH` install input, the two file-based CRM/calendar integration declarations, and the local `../shared-providers` dependency source without discarding any of them. Preserve its original native `enterprise-assistant`, knowledge declaration, and four authored host prompts. |
+
+For each conversion, move `displayName` to namespace `title`, make the
+`entrypoint` explicitly package-relative (`./src/index.tsx`), and move the
+supported Agent, capability, permission, and host-action declarations into the
+Station namespace. A schema-only rewrite is insufficient: installation,
+activation, each component, and real action execution must be verified together.

@@ -59,6 +59,7 @@
         }
       }
     },
+    "workspacePaneHost": { "type": "object" },
     "workspacePanes": {
       "type": "array",
       "maxItems": 64,
@@ -276,7 +277,14 @@
           "required": ["kind", "label"],
           "properties": {
             "kind": {
-              "enum": ["text", "project", "task", "session", "file", "registry-item"]
+              "enum": [
+                "text",
+                "project",
+                "task",
+                "session",
+                "file",
+                "registry-item"
+              ]
             },
             "label": { "type": "string", "minLength": 1, "maxLength": 64 },
             "required": { "type": "boolean" }

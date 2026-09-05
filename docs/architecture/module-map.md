@@ -120,15 +120,15 @@ Skill/server, or placeholder expansion in commands/URLs/headers.
 
 **Contract.** An `own-plugin-agent` declaration carries only a clean Agent id; the host adds plugin and installation-generation identity and re-resolves that exact ownership before every launch. A `station-agent` is explicit and still passes Project availability policy. Every action Agent and default must appear in the declaration's available set. `requiredAgents` remains only a Pane availability requirement and is not accepted as action or selection authority. Projection and dispatch recheck installation authority around awaited Agent resolution, and a resolver that returns a different owner, generation, or Agent is unavailable. Legacy migration is deterministic and read-only: exact `<plugin>:<clean-agent>` spellings become owner-relative references and `globalSkills[].prompt` remains literal prompt data. Legacy `prompt` actions require manual review because the old path ambiguously used both `data` and `label`; another namespace, an external/internal action, or an action with no explicit/default Agent likewise returns `manual-review` rather than inventing routing.
 
-**Seam, Implementation, callers, and tests.** Public data shapes live in `@kontourai/station-contracts/workspace-pane-host-contribution`; validation, deterministic legacy projection, owner/Agent resolution, and prompt-launch dispatch live in `src-server/services/plugins/workspace-pane-host-contributions.ts`. The injected prototype dispatcher is not production admission. The owned WorkspacePaneHostAdmission prerequisite below supplies the real invocation guard; route/SDK/UI composition and example migration remain separate work under #1372. Focused tests execute dispatch through the bound launcher and prove owner retirement, identity equivocation, namespaced migration, and refusal without an Agent. **Do not reintroduce:** first-required-Agent selection, punctuation-based owner inference beyond exact legacy migration, ambient default Agent fallback, duplicated global actions, caller-provided plugin ownership, navigation URLs in prompt intents, or persisted Layout rewrites.
+**Seam, Implementation, callers, and tests.** Public data shapes live in `@kontourai/station-contracts/workspace-pane-host-contribution`; validation, deterministic legacy projection, owner/Agent resolution, and prompt-launch dispatch live in `src-server/services/plugins/workspace-pane-host-contributions.ts`. The injected prototype dispatcher is not production admission. WorkspacePaneHostAdmission below supplies the real invocation guard; WorkspacePaneHostActions composes its production route, SDK, host UI and example semantic migration under #1372. Focused tests execute dispatch through the bound launcher and prove owner retirement, identity equivocation, namespaced migration, and refusal without an Agent. **Do not reintroduce:** first-required-Agent selection, punctuation-based owner inference beyond exact legacy migration, ambient default Agent fallback, duplicated global actions, caller-provided plugin ownership, navigation URLs in prompt intents, or persisted Layout rewrites.
 
 ## WorkspacePaneHostAdmission
 
-**Intent and Interface.** `createWorkspacePaneHostAdmission()` prepares one installed package's inert `workspacePaneHost` action for an exact Project, then lends one server-only invocation capability to the existing foreground execution owner. It reads the canonical string installation digest, explicit own-plugin clean Agent identity/ownership marker, Project revision, authored Agent spec and exact literal or registered prompt body. Preparation is not activation or permission to execute; the capability is one-shot and valid only inside its installation lease.
+**Intent and Interface.** `createWorkspacePaneHostAdmission()` prepares one installed package's inert `workspacePaneHost` action for an exact Project, then lends one server-only invocation capability to the existing foreground execution owner. It captures the installation journal incarnation and selected physical artifact digest, explicit own-plugin clean Agent identity/ownership marker, Project revision, authored Agent spec and exact literal or registered prompt body. Legacy direct installations retain explicit compatibility. Preparation is not activation or permission to execute; the capability is one-shot and valid only inside its installation lease.
 
 **Contract.** Admission linearizes at the irreversible provider invocation, not when its Promise later settles. The existing plugin-content full-effect lease is acquired outside Session coordination. At the final start call, and before the existing turn `beginInvocation`/provider call, the Project revision read guard precedes the short Agent identity guard. These guards recheck the exact Project, Agent bytes/owner, installation digest and body binding, then synchronously invoke and return a boxed Promise; Project/Agent locks release before network settlement. The identity lock never spans an awaited provider operation. Reentrant installed-content changes are checked again, not hidden by the outer lease. After invocation, existing receipts retain accepted/pending/unknown effect truth; policy change cannot turn that into cancellation or permission to replay. Captured Agent, Project, credential, presentation and stall-window inputs are passed through the existing resolver rather than rereading ambient replacements.
 
-**Seam, Implementation, callers, and tests.** `ProjectFileTransactions` owns the additive exact-revision read guard; `capturePluginAgentInvocation` reuses the canonical Agent parser and identity mutation lock; installation and admission share one plugin-Agent marker parser. Prompt-file discovery remains the in-place command-skill source with bounded invocation reads. `OrchestrationService` and the existing foreground tool adapter accept the server-only capability, never public JSON. The first prerequisite has no route, UI, example conversion or runtime registration caller. Its controlled-provider tests exercise actual Session commands, turn invocation and EventStore receipt/event readback, including pending-resolution and final-boundary races. Native Agent relays that cannot consume the captured spec, explicit non-plugin Agent references, and worktree provisioning remain unavailable in this first slice; none silently substitutes another execution path. This is not Agent Plugins namespace activation or migration completion. **Do not reintroduce:** a content lock acquired inside Session coordination, a network await while holding the Agent identity lock, label/colon inference for registered prompts, mutable captured snapshots, first-required-Agent defaults, raw database authority or an automatic retry after possible invocation.
+**Seam, Implementation, callers, and tests.** `ProjectFileTransactions` owns the additive exact-revision read guard; `capturePluginAgentInvocation` reuses the canonical Agent parser and identity mutation lock; installation and admission share one plugin-Agent marker parser. Prompt-file discovery remains the in-place command-skill source with bounded invocation reads. `OrchestrationService` and the existing foreground tool adapter accept the server-only capability, never public JSON. The production WorkspacePaneHostActions bridge below adds the route, SDK and host UI caller, with a separate grant admission and one-shot delivery ticket. Its controlled-provider tests exercise actual Session commands, turn invocation and EventStore receipt/event readback, including pending-resolution and final-boundary races. Native execution carries a private companion through the existing authorized-turn relay and repeats captured admission at the native model-call boundary. Worktree provisioning enters the canonical execution owner through a guarded phase and mints a private exact Session/Project/CWD binding; start cannot use a pending, cross-Session, or different-directory binding. Explicit non-plugin Agent references remain unavailable; none silently substitutes another execution path. This is not Agent Plugins namespace activation or migration completion. **Do not reintroduce:** a content lock acquired inside Session coordination, a network await while holding the Agent identity lock, label/colon inference for registered prompts, mutable captured snapshots, first-required-Agent defaults, raw database authority or an automatic retry after possible invocation.
 
 ## PackageMcpAdmissionJournal
 
@@ -160,6 +160,17 @@ incarnation ABA, commit uncertainty and fixed-capacity refusal. See
 **Do not reintroduce:** new database opens, bare SDK-close drain receipts,
 dead-parent/TTL release, declaration absence as historical proof, or a mutable
 caller flag that upgrades this evidence into package deletion authority.
+
+Public executable readers use `capturePluginRuntimeArtifact()` in
+`src-server/services/plugins/plugin-runtime-artifact.ts`: the local installation
+adapter supplies the selected physical root and admission state, and the reader
+checks its fresh content digest. Pending activation cannot supply manifests,
+bundles, or server imports. Public routes retain the captured artifact through
+module acquisition and recheck currentness and grants before plugin callbacks;
+bundle delivery checks currentness again after the asynchronous read. The
+runtime helper has no activation bypass and no independent persisted state.
+`plugin-runtime-readiness.test.ts` exercises the real journal and HTTP routes
+across pending/ready selection, content mutation, and stale caller declarations.
 
 ## InstalledPluginInventory
 
@@ -713,3 +724,27 @@ The project-resource shadow report is an evidence gate, not a cutover signal. It
 ### #2525 retained internal boundaries
 
 Turn deduplication, adoption, recovery, and private credential application are completed behavioural ledgers. Remaining EventStore details are retained on purpose: command receipts still participate in adoption's atomic commit; delivery checkpoints currently have one narrow caller; and a broader session journal has no deletion-complete caller family. Wrapping any of these in storage-shaped CRUD would be shallow. Their disposition and the next evidence required for a deep extraction are in [EventStore ledger migration](../design/event-store-ledger-migration.md).
+
+## WorkspacePaneHostActions
+
+`workspace-pane-host-actions.ts` projects the existing contribution contract and
+transports already captured admission through bounded one-shot tickets. It does
+not create another run database: Session commands and EventStore remain execution
+and receipt authority. Tickets expire after one minute, are scoped to the request
+principal, tenant and Project, and are removed before invocation. Missing/spent
+tickets are indeterminate and never recreate work. Permission admission uses the
+canonical grant-store read lease before the existing short Project/Agent locks;
+all three release before network settlement. Public contracts expose intent and
+opaque installation identity, never physical artifact paths.
+
+`workspace-pane-host-actions.ts` routes are composed with the same request
+principal and session read authority as foreground chat. SDK queries/mutations
+own HTTP and React Query behavior. `WorkspacePaneHostActionsFrame` composes one
+bar around direct and placed Project surfaces. `LayoutView` never launches
+plugin-owned actions through the unqualified chat path: safe installed legacy
+declarations reuse captured host admission, while saved or unsupported controls
+are review-only with an explanation. Non-plugin user-authored actions retain
+their explicit Agent launch. Persisted Layout data is unchanged. Native Agents use the existing runtime instance under a configuration lease, with a private relay companion that is never serialized as Agent data. Native execution location has a separate private ALS/cleanup scope, so ordinary later turns and child Sessions retain the persisted directory even when optional output-declaration grants are unavailable. Canonical Git path/branch and Session-derived ownership checks mint an opaque exact start binding for a retained worktree; public metadata cannot supply that capability. The directory reaches Project context, per-invocation Bash children, and relative file operations. Known worktree Sessions require their private relay marker, and closed scopes refuse late tool entry. Explicit MCP resource roots retain their configured meaning; this is execution location, not a universal filesystem sandbox. Non-plugin Agent execution remains unavailable. Tests cover
+actor/Project isolation, duplicate delivery, final permission withdrawal, stale
+installation/Agent identity, fixed bindings, public response certainty, and the
+real host control surface.

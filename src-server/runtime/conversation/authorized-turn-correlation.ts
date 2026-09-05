@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import type { DispatchReceipt } from '@kontourai/dispatch';
 import type { NativeOutputRelayCompanion } from '../native-output-turn-grant.js';
+import type { NativeForegroundRelayCompanion } from './native-foreground-invocation.js';
 
 /**
  * The only correlation Station carries from an authorized orchestration turn
@@ -33,6 +34,7 @@ const relayHandoffs = new Map<
   {
     correlation: AuthorizedTurnCorrelation;
     nativeOutput?: NativeOutputRelayCompanion;
+    nativeForeground?: NativeForegroundRelayCompanion;
     expiresAt: number;
   }
 >();
@@ -143,6 +145,7 @@ export function createAuthorizedTurnCorrelation(input: {
 export function issueAuthorizedTurnCorrelationHandoff(
   correlation: AuthorizedTurnCorrelation,
   nativeOutput?: NativeOutputRelayCompanion,
+  nativeForeground?: NativeForegroundRelayCompanion,
 ): string {
   const exact = parseAuthorizedTurnCorrelation(correlation);
   if (!exact) {
@@ -160,6 +163,7 @@ export function issueAuthorizedTurnCorrelationHandoff(
   relayHandoffs.set(handoffId, {
     correlation: exact,
     ...(nativeOutput ? { nativeOutput } : {}),
+    ...(nativeForeground ? { nativeForeground } : {}),
     expiresAt: now + RELAY_HANDOFF_TTL_MS,
   });
   return handoffId;
@@ -173,6 +177,15 @@ export function readNativeOutputRelayCompanion(
   const handoff = relayHandoffs.get(handoffId);
   if (!handoff || handoff.expiresAt <= Date.now()) return undefined;
   return handoff.nativeOutput;
+}
+
+export function readNativeForegroundRelayCompanion(
+  handoffId: string | undefined,
+): NativeForegroundRelayCompanion | undefined {
+  if (!handoffId || handoffId.length > 128) return undefined;
+  const handoff = relayHandoffs.get(handoffId);
+  if (!handoff || handoff.expiresAt <= Date.now()) return undefined;
+  return handoff.nativeForeground;
 }
 
 /**

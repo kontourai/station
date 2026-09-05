@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const layoutQueryState = vi.hoisted(() => ({
@@ -10,8 +10,29 @@ const layoutQueryState = vi.hoisted(() => ({
   isLoading: false,
   error: undefined as unknown,
 }));
+const agentState = vi.hoisted(() => ({
+  agents: [] as any[],
+  project: { data: undefined as any, isSuccess: false },
+}));
+const legacyCreate = vi.hoisted(() => vi.fn(() => 'legacy-session'));
+const legacySend = vi.hoisted(() => vi.fn(async () => {}));
 const refetchLayoutMock = vi.hoisted(() => vi.fn());
 const navigateMock = vi.hoisted(() => vi.fn());
+const hostQuery = vi.hoisted(() => ({
+  isSuccess: true,
+  data: {
+    complete: true,
+    contributions: [] as Array<{
+      projection: {
+        owner: { pluginId: string };
+        actions?: Array<{ id: string }>;
+      };
+    }>,
+  },
+}));
+vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
+  useWorkspacePaneHostActionsQuery: () => hostQuery,
+}));
 const StationHttpError = vi.hoisted(
   () =>
     class StationHttpError extends Error {
@@ -40,7 +61,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     ...layoutQueryState,
     refetch: refetchLayoutMock,
   }),
-  useProjectQuery: () => ({ data: undefined, isSuccess: false }),
+  useProjectQuery: () => agentState.project,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -48,9 +69,16 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 
-vi.mock('../../contexts/AgentsContext', () => ({ useAgents: () => [] }));
+vi.mock('../../contexts/AgentsContext', () => ({
+  useAgents: () => agentState.agents,
+}));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3000' }),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://localhost:3000',
+    authorityKey: 'test',
+    isCurrent: () => true,
+  }),
 }));
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => ({
@@ -65,32 +93,231 @@ vi.mock('../../core/SDKAdapter', () => ({
   SDKAdapter: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock('../../hooks/useActiveChatSessions', () => ({
-  useCreateChatSession: () => vi.fn(),
-  useSendMessage: () => vi.fn(),
+  useCreateChatSession: () => legacyCreate,
+  useSendMessage: () => legacySend,
 }));
 vi.mock('../../hooks/useSlashCommandHandler', () => ({
   useSlashCommandHandler: () => vi.fn(),
 }));
-const renderedLayout = vi.hoisted(() => ({ value: undefined as any }));
+const renderedLayout = vi.hoisted(() => ({
+  value: undefined as any,
+  launch: undefined as any,
+}));
 vi.mock('../../layouts', () => ({
-  LayoutRenderer: ({ layout }: { layout: unknown }) => {
+  LayoutRenderer: ({
+    layout,
+    onLaunchPrompt,
+  }: {
+    layout: unknown;
+    onLaunchPrompt: unknown;
+  }) => {
     renderedLayout.value = layout;
+    renderedLayout.launch = onLaunchPrompt;
     return <div>Layout rendered</div>;
   },
 }));
 
 import { LAST_PROJECT_LAYOUT_KEY } from '../../contexts/navigation-store';
+import { workspacePaneHostActionControlId } from '../../workspace-panes/workspacePaneHostActionFocus';
 import { LayoutView } from '../LayoutView';
 
 describe('LayoutView terminal states (4-HOME-009)', () => {
   beforeEach(() => {
     localStorage.clear();
+    agentState.agents = [];
+    agentState.project = { data: undefined, isSuccess: false };
+    legacyCreate.mockClear();
+    legacySend.mockClear();
     navigateMock.mockReset();
     refetchLayoutMock.mockReset();
     layoutQueryState.data = undefined;
     layoutQueryState.isLoading = false;
     layoutQueryState.error = undefined;
     renderedLayout.value = undefined;
+    hostQuery.isSuccess = true;
+    hostQuery.data.contributions = [];
+  });
+
+  test('package host contribution withdraws duplicate legacy global controls while keeping tab-local actions', () => {
+    const local = { type: 'prompt', label: 'Local', data: 'Local body' };
+    layoutQueryState.data = {
+      slug: 'demo',
+      name: 'Demo',
+      config: {
+        plugin: 'demo-plugin',
+        tabs: [
+          { id: 'one', label: 'One', component: 'demo', actions: [local] },
+        ],
+        actions: [{ type: 'prompt', label: 'Global', data: 'Global body' }],
+        globalSkills: [{ id: 'hello', label: 'Hello', prompt: 'Hello body' }],
+      },
+    };
+    hostQuery.data.contributions = [
+      { projection: { owner: { pluginId: 'demo-plugin' } } },
+    ];
+    render(<LayoutView projectSlug="one" layoutSlug="demo" />);
+    expect(renderedLayout.value.actions).toEqual([]);
+    expect(renderedLayout.value.globalSkills).toEqual([]);
+    expect(renderedLayout.value.tabs[0].actions).toEqual([
+      { ...local, label: 'Review Local' },
+    ]);
+  });
+
+  test('migrated tab Review focuses the existing host action without an ambient Agent', () => {
+    layoutQueryState.data = {
+      slug: 'demo',
+      name: 'Demo',
+      config: {
+        plugin: 'demo-plugin',
+        tabs: [{ id: 'one', label: 'One', component: 'demo' }],
+      },
+    };
+    hostQuery.data.contributions = [
+      {
+        projection: {
+          owner: { pluginId: 'demo-plugin' },
+          actions: [{ id: 'activity' }],
+        },
+      },
+    ];
+    render(
+      <>
+        <button
+          type="button"
+          id={workspacePaneHostActionControlId(
+            'one',
+            'demo-plugin',
+            'activity',
+          )}
+        >
+          Log Activity
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            renderedLayout.launch({
+              id: 'demo-plugin:activity',
+              label: 'Review Log Activity',
+            })
+          }
+        >
+          Review Log Activity
+        </button>
+        <LayoutView projectSlug="one" layoutSlug="demo" />
+      </>,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Review Log Activity' }),
+    );
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Log Activity' }),
+    );
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  test('uninstall after a catalog cannot revive a stale plugin callback and explains the unavailable action', async () => {
+    agentState.agents = [{ slug: 'assistant', name: 'Available assistant' }];
+    agentState.project = { data: { agents: ['assistant'] }, isSuccess: true };
+    layoutQueryState.data = {
+      slug: 'demo',
+      name: 'Demo',
+      config: {
+        plugin: 'demo-plugin',
+        defaultAgent: 'assistant',
+        actions: [
+          {
+            type: 'inline-prompt',
+            label: 'Legacy action',
+            data: 'legacy body',
+          },
+        ],
+        tabs: [],
+      },
+    };
+    hostQuery.data.contributions = [
+      {
+        projection: {
+          owner: { pluginId: 'demo-plugin' },
+          actions: [{ id: 'current' }],
+        },
+      },
+    ];
+    const view = render(<LayoutView projectSlug="one" layoutSlug="demo" />);
+    const stale = renderedLayout.launch;
+    hostQuery.data.contributions = [];
+    view.rerender(<LayoutView projectSlug="one" layoutSlug="demo" />);
+    render(
+      <button
+        type="button"
+        onClick={() =>
+          stale({
+            id: 'legacy-action',
+            label: 'Legacy action',
+            prompt: 'legacy body',
+          })
+        }
+      >
+        Review saved action
+      </button>,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Review saved action' }),
+    );
+    expect(
+      await screen.findByText(/This saved plugin action is unavailable/),
+    ).toBeTruthy();
+    expect(renderedLayout.value.actions).toEqual([]);
+    expect(legacyCreate).not.toHaveBeenCalled();
+    expect(legacySend).not.toHaveBeenCalled();
+  });
+
+  test('genuinely user-authored non-plugin Layout actions retain their explicit Agent launch', async () => {
+    agentState.agents = [{ slug: 'assistant', name: 'Available assistant' }];
+    agentState.project = { data: { agents: ['assistant'] }, isSuccess: true };
+    layoutQueryState.data = {
+      slug: 'mine',
+      name: 'Mine',
+      config: {
+        defaultAgent: 'assistant',
+        actions: [
+          { type: 'inline-prompt', label: 'My action', data: 'my exact body' },
+        ],
+        tabs: [],
+      },
+    };
+    render(<LayoutView projectSlug="one" layoutSlug="mine" />);
+    await renderedLayout.launch({
+      id: 'my-action',
+      label: 'My action',
+      prompt: 'my exact body',
+    });
+    expect(legacyCreate).toHaveBeenCalledWith(
+      'assistant',
+      'Available assistant',
+      'My action',
+      'one',
+    );
+    expect(legacySend).toHaveBeenCalledWith(
+      'legacy-session',
+      'assistant',
+      undefined,
+      'my exact body',
+    );
+  });
+
+  test('unknown host capability does not briefly activate a persisted plugin global action', () => {
+    layoutQueryState.data = {
+      slug: 'demo',
+      name: 'Demo',
+      config: {
+        plugin: 'demo-plugin',
+        tabs: [],
+        actions: [{ type: 'prompt', label: 'Global', data: 'Global body' }],
+      },
+    };
+    hostQuery.isSuccess = false;
+    render(<LayoutView projectSlug="one" layoutSlug="demo" />);
+    expect(renderedLayout.value.actions).toEqual([]);
   });
 
   /**

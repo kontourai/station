@@ -11,6 +11,7 @@ import type { TenantExecutionContext } from '@kontourai/station-contracts/tenanc
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
 import type { RuntimeEngineStartIntent } from '../infra/resource-posture.js';
+import type { ExecutionWorkspaceBinding } from './execution-workspace-binding.js';
 import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
 
 /** The only start-session intent callers may issue. */
@@ -60,6 +61,7 @@ export interface SessionCommandModule {
 export type SessionCommandInternalOptions = {
   /** Captured server-owned action admission; never accepted from public JSON. */
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
+  executionWorkspace?: ExecutionWorkspaceBinding;
   /** Server-minted correlation for an exact higher-level start claim. */
   commandId?: string;
   skipModelOptionSupportCheck?: boolean;

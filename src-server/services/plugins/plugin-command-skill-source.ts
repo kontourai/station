@@ -128,13 +128,16 @@ function collectPluginPromptFiles(
   pluginDir: string,
   pluginName: string,
   limits?: { maxFiles: number; maxFileBytes: number },
+  capturedManifest?: Pick<PluginManifest, 'prompts'>,
 ): { prompts: PluginPromptFile[]; blockedFiles: BlockedPluginPromptFile[] } {
   const manifestPath = join(pluginDir, 'plugin.json');
   if (!existsSync(manifestPath)) return { prompts: [], blockedFiles: [] };
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as Pick<
-    PluginManifest,
-    'prompts'
-  >;
+  const manifest =
+    capturedManifest ??
+    (JSON.parse(readFileSync(manifestPath, 'utf-8')) as Pick<
+      PluginManifest,
+      'prompts'
+    >);
   if (!manifest.prompts?.source) return { prompts: [], blockedFiles: [] };
   const promptsDir = join(pluginDir, manifest.prompts.source);
   assertExistingPathInside(pluginDir, promptsDir, 'Plugin prompts source');
@@ -211,11 +214,13 @@ export function scanPluginPromptGeneration(
   pluginDir: string,
   pluginName: string,
   limits?: { maxFiles: number; maxFileBytes: number },
+  capturedManifest?: Pick<PluginManifest, 'prompts'>,
 ): PluginPromptFile[] {
   const { prompts, blockedFiles } = collectPluginPromptFiles(
     pluginDir,
     pluginName,
     limits,
+    capturedManifest,
   );
   if (blockedFiles.length > 0) {
     throw new ContextSafetyError({

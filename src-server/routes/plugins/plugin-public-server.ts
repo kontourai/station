@@ -10,12 +10,13 @@ import type {
 } from '@kontourai/station-contracts/plugin';
 import type { Context, Hono as HonoType } from 'hono';
 import { ConfigLoader } from '../../domain/config-loader.js';
-import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
-import type { Logger } from '../../utils/logger.js';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import {
-  assertExistingPathInside,
-  assertPathInside,
-} from '../../utils/path-containment.js';
+  capturePluginRuntimeArtifact,
+  type PluginRuntimeArtifact,
+} from '../../services/plugins/plugin-runtime-artifact.js';
+import type { Logger } from '../../utils/logger.js';
+import { assertExistingPathInside } from '../../utils/path-containment.js';
 import { assertPluginNameSegment } from './plugin-install-shared.js';
 
 export interface PluginServerRequestContext {
@@ -300,12 +301,13 @@ export function createScopedPluginRequest(
 export async function readPluginPublicManifest(
   pluginsDir: string,
   pluginName: string,
+  journal?: PackageMcpAdmissionJournal,
 ): Promise<PluginManifest | null> {
   assertPluginNameSegment(pluginName);
-  const manifestPath = join(pluginsDir, pluginName, 'plugin.json');
-  assertPathInside(pluginsDir, manifestPath, 'Plugin public manifest');
-  if (!existsSync(manifestPath)) return null;
-  return readPluginManifestFile(manifestPath);
+  return (
+    capturePluginRuntimeArtifact(pluginsDir, pluginName, journal)?.manifest ??
+    null
+  );
 }
 
 export async function readPluginServerSettings(
@@ -371,6 +373,7 @@ export async function acquirePluginReviewedSourcesModule(input: {
   manifest: PluginManifest;
   logger: Logger;
   projectHomeDir: string;
+  journal?: PackageMcpAdmissionJournal;
 }): Promise<{
   read(input: ReviewedSourcesInvocation): Promise<ReviewedSourcesResult>;
   release(): void;
@@ -380,6 +383,7 @@ export async function acquirePluginReviewedSourcesModule(input: {
     input.pluginName,
     input.manifest,
     input.logger,
+    { journal: input.journal },
   );
   if (!acquired) return null;
   const owner = acquired.loaded.reviewedSources;
@@ -422,7 +426,19 @@ export async function acquirePluginPublicServerModule(
   pluginName: string,
   manifest: PluginManifest,
   logger: Logger,
+  options: {
+    journal?: PackageMcpAdmissionJournal;
+    artifact?: PluginRuntimeArtifact;
+    authorize?: () => boolean;
+  } = {},
 ): Promise<AcquiredPluginPublicServerModule | null> {
+  const artifact =
+    options.artifact ??
+    capturePluginRuntimeArtifact(pluginsDir, pluginName, options.journal);
+  if (!artifact || artifact.pluginId !== pluginName || !artifact.isCurrent())
+    return null;
+  // The captured installed declaration, never a stale caller manifest, owns imports.
+  manifest = artifact.manifest;
   if (!manifest.serverModule) return null;
   const serverModulePath = manifest.serverModule;
   assertPluginNameSegment(pluginName);
@@ -436,7 +452,8 @@ export async function acquirePluginPublicServerModule(
       if ((pluginServerQuiescence.get(cacheKey) ?? 0) > 0) {
         throw new Error(`Plugin server module '${pluginName}' is quiescing`);
       }
-      const pluginRoot = join(pluginsDir, pluginName);
+      if (!artifact.isCurrent() || options.authorize?.() === false) return null;
+      const pluginRoot = artifact.packageRoot;
       const modulePath = join(pluginRoot, serverModulePath);
       assertExistingPathInside(pluginRoot, modulePath, 'Plugin server module');
       if (!existsSync(modulePath)) {
@@ -452,6 +469,8 @@ export async function acquirePluginPublicServerModule(
       let cached = loadedPluginServerModules.get(cacheKey);
       if (cached?.moduleUrl !== moduleUrl) {
         if (cached) await disposeCachedPluginServerModule(cacheKey, cached);
+        if (!artifact.isCurrent() || options.authorize?.() === false)
+          return null;
         const imported = await import(moduleUrl);
         const candidate = imported.default || imported;
         const hooks = (candidate?.hooks || imported.hooks) as
@@ -506,6 +525,8 @@ export async function acquirePluginPublicServerModule(
         loaded: cached.loaded,
         isCurrent() {
           return (
+            artifact.isCurrent() &&
+            options.authorize?.() !== false &&
             globalPluginServerQuiescence === 0 &&
             (pluginServerQuiescence.get(cacheKey) ?? 0) === 0 &&
             (pluginServerModuleGenerations.get(cacheKey) ?? 0) === generation

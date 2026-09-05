@@ -1776,6 +1776,89 @@ It is intentionally separate from `requestAuthority`: a valid authenticated
 recovery may advance credential generation while its host binding remains live.
 Ordinary unscoped SDK calls do not gain a host binding requirement.
 
+### Package host actions
+
+Import `useWorkspacePaneHostActionsQuery` and `useWorkspacePaneHostActionMutation`
+from `@kontourai/station-sdk/workspace-pane`. The query projects a Project's
+installed package actions and exact installation-bound available/default Agents.
+The mutation accepts the package id, opaque installation generation, opaque
+action key, and an optional explicit Agent reference from that package's
+available set. Fixed action bindings always take precedence. There are no
+physical package paths in this API.
+
+The portable client exports `getWorkspacePaneHostActions`,
+`prepareWorkspacePaneHostAction`, and `executeWorkspacePaneHostAction` from
+`@kontourai/station-sdk/client`. Preparation returns a short-lived, actor- and
+Project-bound one-shot ticket. Execution consumes it before any provider work.
+Do not store or log tickets, and never retry execution automatically. An
+`indeterminate` result means work may have started; use existing Activity and
+conversation evidence to inspect it. An accepted result carries distinct
+conversation, execution-session, and provider-turn identities.
+
+For an external client, obtain the Station API credential through the deployment's
+existing authentication flow and pass it to all three calls. Keep `apiBase`,
+Project, and credential fixed for the operation. This function runs a named
+installed action using its authored default or fixed Agent; it does not select
+the first available Agent:
+
+```ts
+import {
+  getWorkspacePaneHostActions,
+  prepareWorkspacePaneHostAction,
+  executeWorkspacePaneHostAction,
+} from '@kontourai/station-sdk/client';
+
+export async function runPackageAction(
+  apiBase: string,
+  projectSlug: string,
+  credential: string,
+  pluginId: string,
+  actionId: string,
+) {
+  const options = { headers: { Authorization: `Bearer ${credential}` } };
+  const catalog = await getWorkspacePaneHostActions(apiBase, projectSlug, options);
+  const contribution = catalog.contributions.find(
+    ({ projection }) => projection.owner.pluginId === pluginId,
+  );
+  const action = contribution?.projection.actions.find(({ id }) => id === actionId);
+  if (!contribution || contribution.reason || action?.availability !== 'available') {
+    throw new Error('Review the installed package and its Project Agent configuration.');
+  }
+  const prepared = await prepareWorkspacePaneHostAction(apiBase, projectSlug, {
+    ...contribution.projection.owner,
+    actionKey: action.key,
+  }, options);
+  if (prepared.state === 'unavailable') return prepared;
+  return executeWorkspacePaneHostAction(apiBase, projectSlug, prepared.ticket, options);
+}
+```
+
+Render an `unavailable` reason for the user to resolve, and expose the returned
+Session/conversation identities for an `accepted` result. Treat a thrown catalog
+or preparation error as an unavailable operation; do not downgrade to an ordinary
+chat launch. For `indeterminate`, direct the user to Activity without calling
+this function again automatically. Catalog availability is a display snapshot;
+preparation and execution repeat authorization against the current installation.
+
+Host actions require the package's current `agents.invoke` permission. They use
+captured Project and Agent authority at provider invocation and cannot substitute
+an ambient Agent, override a fixed action, or revive a retired installation.
+Host actions support native Station Agents and externally connected Agents in shared or provisioned Project worktrees. Native execution preserves the existing configured Agent and model; a private relay capability verifies its runtime generation and repeats admission immediately before the native model call. Canonical provisioning mints a private exact Session/Project/CWD binding. The native relay carries that Session directory into Project context, Bash children, and relative file operations; explicit MCP resource roots retain their configured meaning.
+
+A host-created Session retains server-stamped `workspacePaneHostAction` metadata:
+package id, action id, and opaque installation generation. These coordinates
+survive completion and package removal alongside the existing Session command
+receipts. Public metadata/options cannot forge this reserved field; callers
+receive the existing client-origin and principal attribution as well.
+
+Host action reads and mutations accept the standard `ApiRequestScope`/client
+request options so the preparation and execution stay on the same Station
+and authority. The mutation refreshes canonical Session and conversation
+inventory queries before exposing its result. In Station's host UI, **Open
+conversation** uses canonical resolution and hydration; **View result** stays
+anchored to the execution Session returned by this invocation. A removed Agent
+falls back to read-only evidence, never to another default Agent.
+
 ## Package lifecycle results
 
 `listPlugins` includes optional `retainedOnRemoval` metadata for packages using

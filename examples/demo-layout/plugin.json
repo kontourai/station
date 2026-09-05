@@ -5,7 +5,7 @@
   "description": "A demo layout showing Station capabilities \u2014 no external dependencies",
   "entrypoint": "src/index.tsx",
   "capabilities": ["chat", "navigation"],
-  "permissions": ["navigation.dock"],
+  "permissions": ["navigation.dock", "agents.invoke"],
   "agents": [
     {
       "slug": "assistant",
@@ -15,5 +15,31 @@
   "layout": {
     "slug": "demo",
     "source": "./layout.json"
+  },
+  "workspacePaneHost": {
+    "version": "station.workspace-pane-host-contribution/v1",
+    "actions": [
+      {
+        "id": "hello",
+        "label": "Say Hello",
+        "presentation": "skill-prompt",
+        "intent": {
+          "kind": "prompt",
+          "prompt": "Hello! What can you help me with today?"
+        }
+      }
+    ],
+    "agentSelection": {
+      "availableAgents": [
+        {
+          "kind": "own-plugin-agent",
+          "agentId": "assistant"
+        }
+      ],
+      "defaultAgent": {
+        "kind": "own-plugin-agent",
+        "agentId": "assistant"
+      }
+    }
   }
 }

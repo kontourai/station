@@ -718,6 +718,26 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/workspace-pane-host-actions.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves one host action bar across direct and placed real Project Pane routes, keyboard Agent selection and 390px reflow. Provider transport is intercepted; server integration separately proves actual captured invocation.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/workspace-pane-host-actions-live.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real browser host action through SDK, HTTP and captured permission/Agent admission into the external Muse echo provider, with exact turn completion read from EventStore and displayed in conversation. Requires ready Muse; no paid model or route interception.',
+    exceptions: [],
+  },
+  {
     path: 'tests/default-agent-workflow.spec.ts',
     bucket: 'product',
     surface: 'Agents',

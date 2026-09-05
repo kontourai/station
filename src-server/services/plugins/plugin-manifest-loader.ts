@@ -209,6 +209,7 @@ function readAgentPluginManifest(
       'links',
       'agents',
       'workspacePanes',
+      'workspacePaneHost',
       'operationalEventSubscriptions',
       'providers',
       'integrations',
