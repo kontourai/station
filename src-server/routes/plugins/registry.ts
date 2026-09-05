@@ -1,3 +1,7 @@
+import type { PluginInstallationRevision } from '@kontourai/station-contracts/plugin';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 /**
  * Registry Routes — browse, install, and uninstall agents and tools
  * from pluggable registry providers.
@@ -53,6 +57,8 @@ import {
 } from './plugin-install-shared.js';
 
 interface RegistryRouteDeps {
+  installationHost?: PluginInstallationHost;
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   applyConfigurationMutation?: AgentConfigurationMutationRunner;
   approveKitOperatorAction?: (
     candidate: StationKitMutationCandidate,
@@ -103,6 +109,8 @@ export function createRegistryRoutes(
     deps?.layoutCatalog ?? new DistributionProfileService(projectHomeDir);
   const pluginInstallDeps = deps
     ? {
+        packageMcpJournal: deps.packageMcpJournal,
+        installationHost: deps.installationHost,
         agentsDir: join(projectHomeDir, 'agents'),
         buildPlugin: async (pluginDir: string, name: string) => {
           const { buildPlugin } = await import('./plugin-bundles.js');
@@ -304,16 +312,28 @@ export function createRegistryRoutes(
           500,
         );
       }
-      const removed = await uninstallInstalledPlugin(
-        item.plugin,
-        pluginInstallDeps,
+      const mutation = await captureConfigurationMutation(
+        deps?.applyConfigurationMutation,
+        async (beginMutation) =>
+          uninstallInstalledPlugin(item.plugin!, {
+            ...pluginInstallDeps,
+            beginConfigurationMutation: beginMutation,
+          }),
+        { rediscoverSkills: true },
       );
       registryOps.add(1, {
         operation: 'remove-layout',
         source: 'plugin',
-        outcome: removed.success ? 'success' : 'failed',
+        outcome: mutation.value.success ? 'success' : 'failed',
       });
-      return c.json(removed, removed.success ? 200 : 500);
+      return c.json(
+        {
+          ...mutation.value,
+          success: mutation.activation?.status !== 'pending',
+          ...configurationActivationPayload(mutation.activation),
+        },
+        configurationMutationStatus(mutation.activation, 200),
+      );
     } catch (error: unknown) {
       registryOps.add(1, { operation: 'remove-layout', outcome: 'rejected' });
       return c.json({ success: false, error: errorMessage(error) }, 400);
@@ -400,6 +420,7 @@ export function createRegistryRoutes(
               await deps?.settleProviderAdapterRetirements?.();
               return removed;
             },
+            { rediscoverSkills: true },
           );
           if (mutation.value.success) {
             try {
@@ -649,6 +670,8 @@ export function createRegistryRoutes(
     c: Context,
     body: {
       id: string;
+      dataPolicy?: 'preserve' | 'retain-and-reset';
+      expectedInstallation?: PluginInstallationRevision | null;
       skip?: string[];
       consent?: {
         permissions: string[];
@@ -663,7 +686,13 @@ export function createRegistryRoutes(
       };
     },
   ) => {
-    const { id, skip, consent: consentBody } = body;
+    const {
+      id,
+      skip,
+      consent: consentBody,
+      dataPolicy,
+      expectedInstallation,
+    } = body;
     if (!pluginInstallDeps) {
       return c.json(
         { success: false, message: 'Plugin install dependencies unavailable' },
@@ -710,11 +739,14 @@ export function createRegistryRoutes(
               registryId: id,
               registryKey: registryInstall.registryKey,
               consent,
+              dataPolicy,
+              expectedInstallation,
             },
           );
           await deps?.settleProviderAdapterRetirements?.();
           return installed;
         },
+        { rediscoverSkills: true },
       );
       if (mutation.value.success) {
         try {
@@ -744,6 +776,20 @@ export function createRegistryRoutes(
           : 500,
       );
     } catch (error: unknown) {
+      if (error instanceof PluginInstallationPending)
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            lifecycle: {
+              status: 'pending',
+              selected: error.selected,
+              code: error.code,
+            },
+          },
+          202,
+        );
+
       // Same refusal, same shape as the direct install route: the request and
       // the plugin disagree about what was approved. Earlier dependency effects
       // may have been compensated; failed rollback is not a simple consent 400.
@@ -826,6 +872,7 @@ export function createRegistryRoutes(
           await deps?.settleProviderAdapterRetirements?.();
           return removed;
         },
+        { rediscoverSkills: true },
       );
       if (mutation.value.success) {
         try {

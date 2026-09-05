@@ -1,3 +1,5 @@
+import { createLocalPluginInstallationHost } from '../../services/plugins/plugin-installation-local.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 /**
  * VoltAgent runtime integration for Station
  * Handles dynamic agent loading, switching, and MCP tool management
@@ -5,7 +7,7 @@
 
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   type EngineConnectionId,
@@ -104,6 +106,7 @@ import { OrchestrationStreamPresence } from '../../services/orchestration/orches
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
+import { AgentPluginLoader } from '../../services/plugins/agent-plugin-loader.js';
 import type { MCPService } from '../../services/plugins/mcp-service.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import type { LayoutService } from '../../services/projects/layout-service.js';
@@ -333,7 +336,10 @@ import { createRuntimeInitializationDeps } from './runtime-initialize-deps.js';
 import { rebuildOrClearRuntimeProjections } from './runtime-projection-recovery.js';
 import { createRuntimeServiceBundle } from './runtime-service-bootstrap.js';
 import { shutdownRuntimeServices } from './runtime-shutdown.js';
-import { checkOllamaAvailability } from './runtime-startup.js';
+import {
+  checkOllamaAvailability,
+  getActiveRuntimeProjectSlug,
+} from './runtime-startup.js';
 import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
   stationControlRuntimeIdentity,
@@ -358,6 +364,7 @@ type PersistedAgentReloadTarget =
   | { kind: 'managed'; metadata: any; spec: AgentSpec };
 
 export interface StationRuntimeOptions {
+  pluginInstallationHost?: PluginInstallationHost;
   projectHomeDir?: string;
   port?: number;
   host?: string;
@@ -375,6 +382,7 @@ export interface StationRuntimeOptions {
  * Manages VoltAgent instances with dynamic agent loading
  */
 export class StationRuntime {
+  private readonly pluginInstallationHost: PluginInstallationHost;
   private configLoader: ConfigLoader;
   private appConfig!: AppConfig;
   private logger: Logger;
@@ -432,6 +440,9 @@ export class StationRuntime {
   private agentConfigurationMutationQueue: Promise<void> = Promise.resolve();
   private agentConfigurationPersistenceQueue: Promise<void> = Promise.resolve();
   private agentConfigurationPersistenceRevision = 0;
+  /** Installed-plugin Skill source generation requested versus loaded. */
+  private pluginSkillSourceRevision = 0;
+  private loadedPluginSkillSourceRevision = 0;
   /**
    * Bumped every time an activation is abandoned at its deadline
    * (archive#3622). It is part of the generation snapshot every reload
@@ -876,10 +887,18 @@ export class StationRuntime {
         homeDir: projectHomeDir,
       });
 
+      const agentPluginLoader = new AgentPluginLoader({
+        projectHomeDir,
+        journal: () =>
+          this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
+        report: (report) =>
+          this.logger?.warn('Agent Plugin component was not loaded', report),
+      });
       this.configLoader = openedConfigLoader = new ConfigLoader({
         projectHomeDir,
         watchFiles: true,
         enforceHomeSchema: true,
+        integrationSources: [agentPluginLoader],
       });
       // archive#3063: the built-in tool servers' spawn identity (dist path,
       // STATION_API_BASE/STATION_PORT) is THIS instance's property, resolved
@@ -902,6 +921,12 @@ export class StationRuntime {
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
       );
+      this.pluginInstallationHost =
+        options.pluginInstallationHost ??
+        createLocalPluginInstallationHost(
+          join(projectHomeDir, 'plugins'),
+          this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
+        );
       this.operationalEventPublisher =
         this.orchestrationEventStore.createOperationalEventPublisher({
           appended: ({ journalSequence, event }) => {
@@ -1016,6 +1041,7 @@ export class StationRuntime {
         host: this.host,
         logger: this.logger,
         configLoader: this.configLoader,
+        agentPluginLoader,
         approvalRegistry: this.approvalRegistry,
         eventBus: this.eventBus,
         orchestrationEventStore: this.orchestrationEventStore,
@@ -1227,7 +1253,9 @@ export class StationRuntime {
    * Reload agents from disk
    */
   async reloadAgents(): Promise<void> {
-    await this.mutateAgentConfiguration(() => this.reloadAgentsFromDisk());
+    await this.mutateAgentConfiguration(() =>
+      this.reloadConfigurationFromDisk(),
+    );
   }
 
   private async recoverRuntimeProjections(
@@ -1237,7 +1265,7 @@ export class StationRuntime {
       rebuildOrClearRuntimeProjections(
         () => {
           resetIntegrationState();
-          return this.reloadAgentsFromDisk();
+          return this.reloadConfigurationFromDisk();
         },
         () => {
           resetIntegrationState();
@@ -1352,6 +1380,10 @@ export class StationRuntime {
         const beginMutation = () => {
           if (mutationBegan) return;
           mutationBegan = true;
+          if (options?.rediscoverSkills) {
+            this.pluginSkillSourceRevision =
+              (this.pluginSkillSourceRevision ?? 0) + 1;
+          }
           this.agentConfigurationPersistenceRevision =
             (this.agentConfigurationPersistenceRevision ?? 0) + 1;
           this.loadedProviderLaunchabilityRevision = null;
@@ -1410,6 +1442,10 @@ export class StationRuntime {
         const beginMutation = () => {
           if (mutationBegan) return;
           mutationBegan = true;
+          if (options?.rediscoverSkills) {
+            this.pluginSkillSourceRevision =
+              (this.pluginSkillSourceRevision ?? 0) + 1;
+          }
           this.agentConfigurationRevision += 1;
         };
         let result: T | undefined;
@@ -1435,7 +1471,7 @@ export class StationRuntime {
               agentSlug,
               agentSlug
                 ? this.reloadPersistedAgentFromDisk(agentSlug)
-                : this.reloadAgentsFromDisk(),
+                : this.reloadConfigurationFromDisk(),
             );
             const outcome =
               await this.awaitActivationWithinDeadline(activating);
@@ -1818,13 +1854,15 @@ export class StationRuntime {
       // claim there is nothing to do.
       if (
         this.runtimeConfigurationSourcesAreLoaded() &&
+        (this.loadedPluginSkillSourceRevision ?? 0) ===
+          (this.pluginSkillSourceRevision ?? 0) &&
         !this.agentsAwaitingReconciliation?.size
       ) {
         return false;
       }
       this.agentConfigurationRevision += 1;
       try {
-        await this.reloadAgentsFromDisk();
+        await this.reloadConfigurationFromDisk();
       } finally {
         this.agentConfigurationRevision += 1;
       }
@@ -2119,6 +2157,26 @@ export class StationRuntime {
   }
 
   /**
+   * Full configuration activation plus any retained installed-plugin Skill
+   * discovery obligation. The revision comparison makes a failed activation
+   * retry discovery and prevents an older abandoned pass from clearing a newer
+   * plugin mutation's obligation.
+   */
+  private async reloadConfigurationFromDisk(): Promise<void> {
+    const requestedSkillRevision = this.pluginSkillSourceRevision ?? 0;
+    if (
+      (this.loadedPluginSkillSourceRevision ?? 0) !== requestedSkillRevision
+    ) {
+      await this.skillService.discoverSkills(
+        this.configLoader.getProjectHomeDir(),
+        getActiveRuntimeProjectSlug(this.storageAdapter),
+      );
+    }
+    await this.reloadAgentsFromDisk();
+    this.loadedPluginSkillSourceRevision = requestedSkillRevision;
+  }
+
+  /**
    * Applies one persisted agent definition without rebuilding every managed
    * agent or rebinding the default model. Agent CRUD writes do not alter the
    * provider/app-config generations, so the broad reload is both unnecessary
@@ -2128,7 +2186,7 @@ export class StationRuntime {
     const configurationBefore = this.captureAgentConfigurationRevisions();
     const target = await this.resolvePersistedAgentReloadTarget(slug);
     if (target.kind === 'reload-all') {
-      await this.reloadAgentsFromDisk();
+      await this.reloadConfigurationFromDisk();
       return;
     }
     const transaction = this.beginPersistedAgentActivationTransaction(slug);
@@ -2695,6 +2753,8 @@ export class StationRuntime {
         createVoltAgentInstance: async (slug) =>
           this.createVoltAgentInstance(slug),
       });
+      this.loadedPluginSkillSourceRevision =
+        this.pluginSkillSourceRevision ?? 0;
     });
   }
 
@@ -2725,6 +2785,11 @@ export class StationRuntime {
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
     this.stationEnvironmentId = identity.environmentId;
+    const packageProjections = await this.pluginInstallationHost.reconcile();
+    if (packageProjections.status === 'pending')
+      this.logger.warn('Plugin catalog projection remains pending', {
+        plugins: packageProjections.pending,
+      });
     await this.sshEnvironmentService.initialize();
     // Terminal sessions are process-global and have no durable tenant
     // binding. A hosted tenant-isolated runtime must not bind the separate
@@ -3274,6 +3339,7 @@ export class StationRuntime {
       orchestrationService: this.orchestrationService,
       resourcePosture: this.resourcePosture,
       orchestrationEventStore: this.orchestrationEventStore,
+      pluginInstallationHost: this.pluginInstallationHost,
       pluginOperationalEventSubscriptions:
         this.pluginOperationalEventSubscriptions,
       orchestrationStreamPresence: this.orchestrationStreamPresence,

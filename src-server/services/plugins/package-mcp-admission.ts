@@ -12,7 +12,17 @@ CREATE TABLE IF NOT EXISTS package_mcp_admission_journal (
   singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
   journal_id TEXT NOT NULL,
   state_json TEXT NOT NULL
-);`;
+);
+CREATE TABLE IF NOT EXISTS package_mcp_settled_effects (
+  journal_id TEXT NOT NULL, incarnation TEXT NOT NULL, claim_id TEXT NOT NULL,
+  claim_json TEXT NOT NULL, PRIMARY KEY(journal_id, claim_id)
+);
+CREATE TABLE IF NOT EXISTS package_mcp_generation_history (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT, journal_id TEXT NOT NULL,
+  plugin_id TEXT NOT NULL, incarnation TEXT NOT NULL, state_json TEXT NOT NULL,
+  UNIQUE(journal_id, incarnation)
+);
+CREATE INDEX IF NOT EXISTS package_mcp_generation_history_page ON package_mcp_generation_history(journal_id, plugin_id, sequence);`;
 const MAX_BYTES = 512 * 1024;
 const MAX_GENERATIONS = 256;
 const MAX_CLAIMS = 512;
@@ -32,6 +42,8 @@ export interface PackageMcpInstallation {
   readonly pluginId: string;
   readonly incarnation: string;
   readonly contentDigest: string;
+  readonly materialization?: string;
+  readonly dataScope?: string;
 }
 type RuntimeOwner = {
   id: string;
@@ -51,8 +63,11 @@ type Generation = {
   pluginId: string;
   incarnation: string;
   contentDigest: string;
+  materialization?: string;
+  dataScope?: string;
   current: boolean;
   claims: Claim[];
+  settledEffects?: number;
   retirement?: Retirement;
 };
 type Journal = { version: 1; generations: Generation[] };
@@ -81,10 +96,39 @@ export interface PackageMcpClaim {
 }
 export interface PackageMcpRetirement {
   inspect(): PackageMcpInspection;
+  /** Withdraws routing only; retained code/data and external claims remain. */
+  withdraw(): Transition;
+  replace(input: {
+    contentDigest: string;
+    materialization: string;
+    dataScope: string;
+  }):
+    | { state: 'recorded'; installation: PackageMcpInstallation }
+    | { state: 'stale' | 'unavailable' };
   /** Withdraws this request only; it neither drains nor deletes a claim/package. */
   cancel(): Transition;
 }
 export interface PackageMcpAdmissionJournal {
+  admissionOpen(installation: PackageMcpInstallation): boolean;
+  selectedInstallations():
+    | { state: 'observed'; installations: PackageMcpInstallation[] }
+    | { state: 'unavailable' };
+  history(
+    pluginId: string,
+    options?: { after?: number; limit?: number },
+  ):
+    | {
+        state: 'observed';
+        nextCursor?: number;
+        generations: Array<{
+          installation: PackageMcpInstallation;
+          selected: boolean;
+          possibleEffects: number;
+          reserved: number;
+          reclamation: 'not-proven';
+        }>;
+      }
+    | { state: 'unavailable' };
   /** Positive historical scope only. Unclassified is NOT proof of unrelatedness. */
   inspectMutationImpact(pluginId: string): {
     scope: 'recorded-package-history' | 'unclassified' | 'unavailable';
@@ -96,6 +140,8 @@ export interface PackageMcpAdmissionJournal {
     pluginId: string;
     contentDigest: string;
     previous: PackageMcpInstallation | null;
+    materialization?: string;
+    dataScope?: string;
   }):
     | { state: 'recorded'; installation: PackageMcpInstallation }
     | { state: 'stale' | 'blocked' | 'unavailable' };
@@ -165,8 +211,11 @@ function validJournal(value: unknown): value is Journal {
         'pluginId',
         'incarnation',
         'contentDigest',
+        'materialization',
+        'dataScope',
         'current',
         'claims',
+        'settledEffects',
         'retirement',
       ]) ||
       !isCanonicalPluginId(generation.pluginId) ||
@@ -175,8 +224,17 @@ function validJournal(value: unknown): value is Journal {
       generations.has(generation.incarnation) ||
       typeof generation.contentDigest !== 'string' ||
       !DIGEST.test(generation.contentDigest) ||
+      (generation.materialization !== undefined &&
+        (typeof generation.materialization !== 'string' ||
+          !UUID.test(generation.materialization))) ||
+      (generation.dataScope !== undefined &&
+        (typeof generation.dataScope !== 'string' ||
+          !UUID.test(generation.dataScope))) ||
       typeof generation.current !== 'boolean' ||
-      !Array.isArray(generation.claims)
+      !Array.isArray(generation.claims) ||
+      (generation.settledEffects !== undefined &&
+        (!Number.isSafeInteger(generation.settledEffects) ||
+          (generation.settledEffects as number) < 0))
     )
       return false;
     generations.add(generation.incarnation);
@@ -282,6 +340,43 @@ export function createPackageMcpAdmissionJournal(
       if (!loaded || !journalId || loaded.id !== journalId)
         throw new Error('Journal unavailable');
       const result = update(loaded.value);
+      for (const generation of loaded.value.generations) {
+        const settled = generation.claims.filter(
+          (claim) => claim.state === 'local-settled',
+        );
+        for (const claim of settled)
+          db.prepare(
+            'INSERT INTO package_mcp_settled_effects(journal_id, incarnation, claim_id, claim_json) VALUES (?, ?, ?, ?)',
+          ).run(
+            journalId,
+            generation.incarnation,
+            claim.id,
+            JSON.stringify(claim),
+          );
+        generation.settledEffects =
+          (generation.settledEffects ?? 0) + settled.length;
+        generation.claims = generation.claims.filter(
+          (claim) => claim.state !== 'local-settled',
+        );
+      }
+      const retired = loaded.value.generations.filter(
+        (generation) =>
+          !generation.current &&
+          !generation.retirement &&
+          generation.claims.length === 0,
+      );
+      for (const generation of retired)
+        db.prepare(
+          'INSERT INTO package_mcp_generation_history(journal_id, plugin_id, incarnation, state_json) VALUES (?, ?, ?, ?)',
+        ).run(
+          journalId,
+          generation.pluginId,
+          generation.incarnation,
+          JSON.stringify(generation),
+        );
+      loaded.value.generations = loaded.value.generations.filter(
+        (generation) => !retired.includes(generation),
+      );
       if (!validJournal(loaded.value))
         throw new Error('Journal transition invalid');
       const serialized = JSON.stringify(loaded.value);
@@ -321,7 +416,14 @@ export function createPackageMcpAdmissionJournal(
     ref: PackageMcpInstallation,
   ): Generation | undefined {
     if (
-      !record(ref, ['journalId', 'pluginId', 'incarnation', 'contentDigest']) ||
+      !record(ref, [
+        'journalId',
+        'pluginId',
+        'incarnation',
+        'contentDigest',
+        'materialization',
+        'dataScope',
+      ]) ||
       ref.journalId !== journalId
     )
       return;
@@ -329,7 +431,9 @@ export function createPackageMcpAdmissionJournal(
       (generation) =>
         generation.pluginId === ref.pluginId &&
         generation.incarnation === ref.incarnation &&
-        generation.contentDigest === ref.contentDigest,
+        generation.contentDigest === ref.contentDigest &&
+        generation.materialization === ref.materialization &&
+        generation.dataScope === ref.dataScope,
     );
   }
   function ref(generation: Generation): PackageMcpInstallation {
@@ -338,6 +442,10 @@ export function createPackageMcpAdmissionJournal(
       pluginId: generation.pluginId,
       incarnation: generation.incarnation,
       contentDigest: generation.contentDigest,
+      ...(generation.materialization
+        ? { materialization: generation.materialization }
+        : {}),
+      ...(generation.dataScope ? { dataScope: generation.dataScope } : {}),
     });
   }
   function fenced(state: Journal, pluginId: string) {
@@ -346,7 +454,38 @@ export function createPackageMcpAdmissionJournal(
         generation.pluginId === pluginId && generation.retirement !== undefined,
     );
   }
+  let observation = 0;
+  function observe<T>(readObservation: () => T, unavailable: T): T {
+    const name = `package_mcp_observation_${++observation}`;
+    let opened = false;
+    try {
+      db.exec(`SAVEPOINT ${name}`);
+      opened = true;
+      const result = readObservation();
+      db.exec(`RELEASE ${name}`);
+      opened = false;
+      return result;
+    } catch {
+      if (opened) {
+        try {
+          db.exec(`ROLLBACK TO ${name}`);
+          db.exec(`RELEASE ${name}`);
+        } catch {
+          /* unavailable */
+        }
+      }
+      return unavailable;
+    }
+  }
   function inspect(installation: PackageMcpInstallation): PackageMcpInspection {
+    return observe(() => inspectSnapshot(installation), {
+      state: 'unavailable',
+      mutationAllowed: false,
+    });
+  }
+  function inspectSnapshot(
+    installation: PackageMcpInstallation,
+  ): PackageMcpInspection {
     const loaded = read();
     if (!loaded || loaded.id !== journalId)
       return { state: 'unavailable', mutationAllowed: false };
@@ -359,9 +498,27 @@ export function createPackageMcpAdmissionJournal(
     const reserved = claims.filter(
       (claim) => claim.state === 'reserved',
     ).length;
-    const possibleEffects = claims.filter(
-      (claim) => claim.state !== 'reserved',
-    ).length;
+    let archived = 0;
+    try {
+      archived = Number(
+        (
+          db
+            .prepare(
+              "SELECT COALESCE(SUM(json_extract(state_json, '$.settledEffects')), 0) AS count FROM package_mcp_generation_history WHERE journal_id = ? AND plugin_id = ?",
+            )
+            .get(journalId!, installation.pluginId) as { count: unknown }
+        ).count,
+      );
+    } catch {
+      return { state: 'unavailable', mutationAllowed: false };
+    }
+    const settled = loaded.value.generations
+      .filter((item) => item.pluginId === installation.pluginId)
+      .reduce((sum, item) => sum + (item.settledEffects ?? 0), archived);
+    if (!Number.isSafeInteger(settled))
+      return { state: 'unavailable', mutationAllowed: false };
+    const possibleEffects =
+      settled + claims.filter((claim) => claim.state !== 'reserved').length;
     return {
       state: 'observed',
       mutationAllowed: false,
@@ -370,8 +527,9 @@ export function createPackageMcpAdmissionJournal(
         : 'open',
       reserved,
       possibleEffects,
-      localSettled: claims.filter((claim) => claim.state === 'local-settled')
-        .length,
+      localSettled:
+        settled +
+        claims.filter((claim) => claim.state === 'local-settled').length,
       reasons: [
         'compatibility-unproved',
         ...(claims.length ? ['claims-pending' as const] : []),
@@ -380,18 +538,125 @@ export function createPackageMcpAdmissionJournal(
     };
   }
   const journal: PackageMcpAdmissionJournal = {
-    inspectMutationImpact(pluginId) {
+    admissionOpen(installation) {
       const loaded = read();
-      if (!isCanonicalPluginId(pluginId) || !loaded || loaded.id !== journalId)
-        return { scope: 'unavailable', mutationAllowed: false };
-      return {
-        scope: loaded.value.generations.some(
-          (generation) => generation.pluginId === pluginId,
-        )
-          ? 'recorded-package-history'
-          : 'unclassified',
-        mutationAllowed: false,
-      };
+      return (
+        !!loaded &&
+        loaded.id === journalId &&
+        find(loaded.value, installation)?.current === true &&
+        !fenced(loaded.value, installation.pluginId)
+      );
+    },
+    selectedInstallations() {
+      const loaded = read();
+      return loaded && loaded.id === journalId
+        ? {
+            state: 'observed',
+            installations: loaded.value.generations
+              .filter((item) => item.current)
+              .map(ref),
+          }
+        : { state: 'unavailable' };
+    },
+    history(pluginId, options = {}) {
+      return observe<ReturnType<PackageMcpAdmissionJournal['history']>>(
+        () => {
+          const loaded = read();
+          const after = options.after ?? 0,
+            limit = options.limit ?? 50;
+          if (
+            !isCanonicalPluginId(pluginId) ||
+            !loaded ||
+            loaded.id !== journalId ||
+            !Number.isSafeInteger(after) ||
+            after < 0 ||
+            !Number.isSafeInteger(limit) ||
+            limit < 1 ||
+            limit > 100
+          )
+            return { state: 'unavailable' };
+          try {
+            const raw = db
+              .prepare(
+                `SELECT json_group_array(json_object('sequence', sequence, 'state', json(state_json))) AS body FROM (SELECT sequence, state_json FROM package_mcp_generation_history WHERE journal_id = ? AND plugin_id = ? AND sequence > ? ORDER BY sequence LIMIT ?)`,
+              )
+              .get(journalId!, pluginId, after, limit + 1) as { body: string };
+            const archived = JSON.parse(raw.body) as Array<{
+              sequence: number;
+              state: Generation;
+            }>;
+            if (
+              !Array.isArray(archived) ||
+              archived.some(
+                (row) =>
+                  !Number.isSafeInteger(row.sequence) ||
+                  !validJournal({ version: 1, generations: [row.state] }),
+              )
+            )
+              return { state: 'unavailable' };
+            const page = archived.slice(0, limit);
+            const generations = new Map<string, Generation>();
+            if (after === 0)
+              for (const item of loaded.value.generations.filter(
+                (item) => item.pluginId === pluginId,
+              ))
+                generations.set(item.incarnation, item);
+            for (const row of page)
+              generations.set(row.state.incarnation, row.state);
+            return {
+              state: 'observed',
+              ...(archived.length > limit
+                ? { nextCursor: page.at(-1)!.sequence }
+                : {}),
+              generations: [...generations.values()].map((item) => ({
+                installation: ref(item),
+                selected: item.current,
+                possibleEffects:
+                  (item.settledEffects ?? 0) +
+                  item.claims.filter((claim) => claim.state !== 'reserved')
+                    .length,
+                reserved: item.claims.filter(
+                  (claim) => claim.state === 'reserved',
+                ).length,
+                reclamation: 'not-proven',
+              })),
+            };
+          } catch {
+            return { state: 'unavailable' };
+          }
+        },
+        { state: 'unavailable' },
+      );
+    },
+    inspectMutationImpact(pluginId) {
+      return observe<
+        ReturnType<PackageMcpAdmissionJournal['inspectMutationImpact']>
+      >(
+        () => {
+          const loaded = read();
+          if (
+            !isCanonicalPluginId(pluginId) ||
+            !loaded ||
+            loaded.id !== journalId
+          )
+            return { scope: 'unavailable', mutationAllowed: false };
+          return {
+            scope:
+              loaded.value.generations.some(
+                (generation) => generation.pluginId === pluginId,
+              ) ||
+              db
+                .prepare(
+                  'SELECT 1 FROM package_mcp_generation_history WHERE journal_id = ? AND plugin_id = ? LIMIT 1',
+                )
+                .get(journalId!, pluginId)
+                ? 'recorded-package-history'
+                : 'unclassified',
+            mutationAllowed: false,
+          };
+        },
+        { scope: 'unavailable', mutationAllowed: false },
+      );
     },
     closeAdmission() {
       accepting = false;
@@ -411,8 +676,17 @@ export function createPackageMcpAdmissionJournal(
       if (
         !accepting ||
         !capturedOwner ||
-        !record(input, ['pluginId', 'contentDigest', 'previous']) ||
+        !record(input, [
+          'pluginId',
+          'contentDigest',
+          'previous',
+          'materialization',
+          'dataScope',
+        ]) ||
         !isCanonicalPluginId(input.pluginId) ||
+        (input.materialization !== undefined &&
+          !UUID.test(input.materialization)) ||
+        (input.dataScope !== undefined && !UUID.test(input.dataScope)) ||
         !DIGEST.test(input.contentDigest)
       )
         return { state: 'unavailable' as const };
@@ -433,6 +707,10 @@ export function createPackageMcpAdmissionJournal(
         const generation: Generation = {
           pluginId: input.pluginId,
           incarnation: randomUUID(),
+          ...(input.materialization
+            ? { materialization: input.materialization }
+            : {}),
+          ...(input.dataScope ? { dataScope: input.dataScope } : {}),
           contentDigest: input.contentDigest,
           current: true,
           claims: [],
@@ -552,6 +830,60 @@ export function createPackageMcpAdmissionJournal(
         state: 'fenced' as const,
         retirement: Object.freeze({
           inspect: () => inspect(captured),
+          replace(input: {
+            contentDigest: string;
+            materialization: string;
+            dataScope: string;
+          }) {
+            if (
+              !DIGEST.test(input.contentDigest) ||
+              !UUID.test(input.materialization) ||
+              !UUID.test(input.dataScope)
+            )
+              return { state: 'unavailable' as const };
+            const result = transaction((state) => {
+              const generation = find(state, captured);
+              if (
+                !generation?.current ||
+                generation.retirement?.id !== id ||
+                !sameOwner(generation.retirement.owner, capturedOwner)
+              )
+                return { state: 'stale' as const };
+              if (state.generations.length >= MAX_GENERATIONS)
+                return { state: 'unavailable' as const };
+              generation.current = false;
+              delete generation.retirement;
+              const next: Generation = {
+                pluginId: generation.pluginId,
+                incarnation: randomUUID(),
+                contentDigest: input.contentDigest,
+                materialization: input.materialization,
+                dataScope: input.dataScope,
+                current: true,
+                claims: [],
+              };
+              state.generations.push(next);
+              return { state: 'recorded' as const, installation: ref(next) };
+            });
+            return result.state === 'committed' ? result.result : result;
+          },
+          withdraw(): Transition {
+            const result = transaction((state) => {
+              const generation = find(state, captured);
+              if (
+                !generation?.current ||
+                generation.retirement?.id !== id ||
+                !sameOwner(generation.retirement.owner, capturedOwner)
+              )
+                return 'stale' as const;
+              generation.current = false;
+              delete generation.retirement;
+              return 'applied' as const;
+            });
+            return result.state === 'committed'
+              ? { state: result.result }
+              : result;
+          },
           cancel(): Transition {
             const result = transaction((state) => {
               const generation = find(state, captured);

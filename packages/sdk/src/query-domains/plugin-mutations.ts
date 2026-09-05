@@ -1,4 +1,7 @@
-import type { PluginInstallResult } from '@kontourai/station-contracts/plugin';
+import type {
+  PluginInstallationRevision,
+  PluginInstallResult,
+} from '@kontourai/station-contracts/plugin';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase, addProjectLayoutFromPlugin } from '../api';
 import type { MutationOptions } from '../query-core';
@@ -62,10 +65,14 @@ export function usePluginInstallMutation() {
       source,
       skip,
       consent,
+      dataPolicy,
+      expectedInstallation,
     }: {
       source: string;
       skip?: string[];
       consent: PluginInstallConsent;
+      dataPolicy?: 'preserve' | 'retain-and-reset';
+      expectedInstallation?: PluginInstallationRevision | null;
     }): Promise<PluginInstallResult> => {
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
@@ -73,7 +80,13 @@ export function usePluginInstallMutation() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source, skip, consent }),
+          body: JSON.stringify({
+            source,
+            skip,
+            consent,
+            dataPolicy,
+            expectedInstallation,
+          }),
         },
       );
       const result = await response.json();

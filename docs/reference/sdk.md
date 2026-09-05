@@ -1813,3 +1813,18 @@ inventory queries before exposing its result. In Station's host UI, **Open
 conversation** uses canonical resolution and hydration; **View result** stays
 anchored to the execution Session returned by this invocation. A removed Agent
 falls back to read-only evidence, never to another default Agent.
+
+## Package lifecycle results
+
+`listPlugins` includes optional `retainedOnRemoval` metadata for packages using
+retained code generations. Normal package updates keep their stable data
+scope. `usePluginInstallMutation` accepts optional `dataPolicy`: `preserve`
+is the default; an explicit `retain-and-reset` starts a new data scope while
+retaining the previous scope. The latter is a reset choice, not a claim of
+state-preserving update. The host preview exposes `existingDataScope` so the
+first-party confirmation can explain the choice before submitting it.
+
+Removal success means future contributions are withdrawn. A retained package
+returns lifecycle metadata with `reclamation: not-proven`; the UI must not say
+its bytes or external effects were deleted. See the
+[installation lifecycle](../design/plugin-installation-lifecycle.md).

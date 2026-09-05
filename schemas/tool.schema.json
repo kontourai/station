@@ -60,9 +60,26 @@
       },
       "description": "Command arguments"
     },
+    "cwd": {
+      "type": "string",
+      "description": "Resolved working directory for stdio process transport"
+    },
     "endpoint": {
       "type": "string",
       "description": "WebSocket/TCP endpoint (for ws/tcp transport)"
+    },
+    "headers": {
+      "type": "object",
+      "maxProperties": 128,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[^\\r\\n]*$"
+      },
+      "description": "Literal non-secret headers for HTTP MCP transports"
     },
     "env": {
       "type": "object",

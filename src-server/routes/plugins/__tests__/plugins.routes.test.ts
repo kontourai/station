@@ -210,9 +210,13 @@ vi.mock('node:fs', async (importOriginal) => {
       if (typeof p === 'string' && p.includes('dist/bundle')) return true;
       return false;
     }),
-    readdirSync: vi
-      .fn()
-      .mockReturnValue([{ name: 'test-plugin', isDirectory: () => true }]),
+    readdirSync: vi.fn().mockReturnValue([
+      {
+        name: 'test-plugin',
+        isDirectory: () => true,
+        isSymbolicLink: () => false,
+      },
+    ]),
     // Real JSON-schema reads (e.g. the domain validator's
     // `schemas/*.schema.json` singleton, transitively pulled in by
     // `config-loader-agents.js`'s `owningProjectExists` reuse — archive#1004
@@ -231,7 +235,11 @@ vi.mock('node:fs', async (importOriginal) => {
       }
       return JSON.stringify(mockManifest);
     }),
-    lstatSync: vi.fn(() => ({ isSymbolicLink: () => false })),
+    lstatSync: vi.fn((path: unknown) => ({
+      isSymbolicLink: () => false,
+      isDirectory: () => !String(path).endsWith('.json'),
+      isFile: () => String(path).endsWith('.json'),
+    })),
     realpathSync: vi.fn((p: string) => p),
     mkdirSync: vi.fn(),
     rmSync: vi.fn(),
@@ -244,9 +252,13 @@ vi.mock('node:fs', async (importOriginal) => {
 });
 
 vi.mock('node:fs/promises', () => ({
-  readdir: vi
-    .fn()
-    .mockResolvedValue([{ name: 'test-plugin', isDirectory: () => true }]),
+  readdir: vi.fn().mockResolvedValue([
+    {
+      name: 'test-plugin',
+      isDirectory: () => true,
+      isSymbolicLink: () => false,
+    },
+  ]),
   readFile: vi.fn().mockResolvedValue(JSON.stringify(mockManifest)),
 }));
 
@@ -363,9 +375,14 @@ describe('Plugin Routes', () => {
       if (typeof p === 'string' && p.includes('dist/bundle')) return true;
       return false;
     });
-    vi.mocked(lstatSync).mockReturnValue({
-      isSymbolicLink: () => false,
-    } as any);
+    vi.mocked(lstatSync).mockImplementation(
+      (path) =>
+        ({
+          isSymbolicLink: () => false,
+          isDirectory: () => !String(path).endsWith('.json'),
+          isFile: () => String(path).endsWith('.json'),
+        }) as any,
+    );
     vi.mocked(readFile).mockResolvedValue(JSON.stringify(mockManifest));
     for (const key of Object.keys(mockOverrides)) {
       delete mockOverrides[key];
@@ -395,8 +412,9 @@ describe('Plugin Routes', () => {
       .mockResolvedValueOnce(JSON.stringify(oldManifest))
       .mockResolvedValueOnce(JSON.stringify(renamedManifest));
     const beginMutation = vi.fn();
-    const applyConfigurationMutation = vi.fn(async (operation) =>
-      operation(beginMutation, { status: 'applied' }),
+    const applyConfigurationMutation = vi.fn(
+      async (operation, _options?: unknown) =>
+        operation(beginMutation, { status: 'applied' }),
     );
     const settleProviderAdapterRetirements = vi
       .fn()
@@ -415,6 +433,9 @@ describe('Plugin Routes', () => {
     expect(body).toMatchObject({
       success: false,
       error: expect.stringContaining('identity cannot change'),
+    });
+    expect(applyConfigurationMutation.mock.calls[0]?.[1]).toEqual({
+      rediscoverSkills: true,
     });
     expect(beginMutation).toHaveBeenCalledOnce();
     expect(loadPluginProviders).toHaveBeenCalledWith(
@@ -1221,8 +1242,9 @@ describe('Plugin Routes', () => {
 
   test('uninstall runs inside configuration activation and waits for adapter retirement', async () => {
     const beginMutation = vi.fn();
-    const applyConfigurationMutation = vi.fn(async (operation) =>
-      operation(beginMutation, { status: 'applied' }),
+    const applyConfigurationMutation = vi.fn(
+      async (operation, _options?: unknown) =>
+        operation(beginMutation, { status: 'applied' }),
     );
     const settleProviderAdapterRetirements = vi
       .fn()
@@ -1237,6 +1259,9 @@ describe('Plugin Routes', () => {
     await expect(json(response)).resolves.toEqual({ success: true });
     expect(response.status).toBe(200);
     expect(applyConfigurationMutation).toHaveBeenCalledOnce();
+    expect(applyConfigurationMutation.mock.calls[0]?.[1]).toEqual({
+      rediscoverSkills: true,
+    });
     expect(beginMutation).toHaveBeenCalledOnce();
     expect(replacePluginProvidersForSource).toHaveBeenCalledWith(
       'test-plugin',

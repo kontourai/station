@@ -517,6 +517,13 @@ export interface AgentConfigurationActivation {
 
 export interface AgentConfigurationMutationOptions<T> {
   /**
+   * The mutation changed installed plugin bytes, so the live Skill registry
+   * must be rediscovered before the rebuilt Agent generation is published.
+   * The runtime retains this obligation across failed or timed-out activation
+   * and its reconciliation rail retries it.
+   */
+  rediscoverSkills?: boolean;
+  /**
    * A persisted agent can be activated without rebuilding the unrelated
    * provider and connection graph. Connection/provider writes omit this and
    * continue through the full runtime reload path.

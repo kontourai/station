@@ -295,7 +295,10 @@ export function usePluginManagementViewModel() {
     );
   }
 
-  async function install(skipList?: string[]) {
+  async function install(
+    skipList?: string[],
+    dataPolicy: 'preserve' | 'retain-and-reset' = 'preserve',
+  ) {
     const source = installSource.trim();
     if (!source) return;
 
@@ -375,6 +378,8 @@ export function usePluginManagementViewModel() {
       {
         source,
         skip: skipList || Array.from(previewSkips),
+        dataPolicy,
+        expectedInstallation: basis.installationRevision,
         consent: {
           permissions: basis.permissions.required,
           contentDigest: basis.contentDigest,
@@ -530,8 +535,14 @@ export function usePluginManagementViewModel() {
   function remove(name: string) {
     setRemoveConfirm(null);
     removeMutation.mutate(name, {
-      onSuccess: async () => {
-        setMessage({ type: 'success', text: `Removed ${name}.` });
+      onSuccess: async (result) => {
+        setMessage({
+          type: 'success',
+          text:
+            result.lifecycle?.reclamation === 'not-proven'
+              ? `Removed ${name} from Station. Its stored data and code are retained.`
+              : `Removed ${name}.`,
+        });
         deselectPlugin();
         await reloadClientPluginRegistry();
       },

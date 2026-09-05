@@ -56,6 +56,27 @@ import {
 /** Bound on the names a probe records, so one chatty server cannot bloat its
  *  persisted config file (CI-R15). */
 const PROBE_TOOL_NAME_LIMIT = 200;
+const CONTRIBUTED_INTEGRATION_DEFINITION = Symbol(
+  'station.contributed-integration-definition',
+);
+
+type OwnershipTaggedToolDef = ToolDef & {
+  [CONTRIBUTED_INTEGRATION_DEFINITION]?: true;
+};
+
+function retainIntegrationDefinitionOwnership(
+  definition: ToolDef,
+  contributed: boolean,
+): ToolDef {
+  if (!contributed) return definition;
+  // Enumerable symbols survive object spread (the generic PUT merge) while
+  // remaining absent from JSON/HTTP and persisted configuration.
+  return Object.defineProperty(
+    { ...definition },
+    CONTRIBUTED_INTEGRATION_DEFINITION,
+    { value: true, enumerable: true },
+  );
+}
 
 export interface MCPConnectionStatus {
   connected: boolean;
@@ -196,6 +217,7 @@ export class MCPService {
     integrationId: string;
     bindings: Record<string, { bindingId: string; expectedRevision: number }>;
   }): Promise<{ outcome: 'migrated'; migratedEnvNames: string[] }> {
+    this.assertMutableIntegration(input.integrationId);
     let current = await this.getIntegration(input.integrationId);
     const names = Object.keys(input.bindings).sort();
     if (
@@ -324,7 +346,43 @@ export class MCPService {
     return this.configLoader.getToolAgentMap();
   }
 
+  private isLiveContributedIntegration(id: string): boolean {
+    return this.configLoader.isLiveContributedIntegration?.(id) === true;
+  }
+
+  private async loadIntegrationWithOwnership(id: string) {
+    const loader = this.configLoader as ConfigLoader & {
+      loadIntegrationWithOwnership?: ConfigLoader['loadIntegrationWithOwnership'];
+    };
+    if (typeof loader.loadIntegrationWithOwnership === 'function') {
+      return loader.loadIntegrationWithOwnership(id);
+    }
+    // Test/adapter compatibility only. Production ConfigLoader always exposes
+    // the atomic method above; legacy narrow adapters retain their old shape.
+    return {
+      definition: await loader.loadIntegration(id),
+      contributed: this.isLiveContributedIntegration(id),
+    };
+  }
+
+  private assertMutableIntegration(id: string): void {
+    if (this.isLiveContributedIntegration(id)) {
+      throw new Error(
+        'Package-supplied integration definitions are read-only; uninstall or update the owning package instead',
+      );
+    }
+  }
+
   async saveIntegration(def: ToolDef): Promise<void> {
+    if (
+      (def as OwnershipTaggedToolDef)[CONTRIBUTED_INTEGRATION_DEFINITION] ===
+      true
+    ) {
+      throw new Error(
+        'Package-supplied integration definitions are read-only; uninstall or update the owning package instead',
+      );
+    }
+    this.assertMutableIntegration(def.id);
     let existing: ToolDef | undefined;
     try {
       existing = await this.configLoader.loadIntegration(def.id);
@@ -377,10 +435,15 @@ export class MCPService {
   }
 
   async getIntegration(id: string): Promise<ToolDef> {
-    return this.configLoader.loadIntegration(id);
+    const loaded = await this.loadIntegrationWithOwnership(id);
+    return retainIntegrationDefinitionOwnership(
+      loaded.definition,
+      loaded.contributed,
+    );
   }
 
   async deleteIntegration(id: string): Promise<void> {
+    this.assertMutableIntegration(id);
     await this.mcpCustody.mutate(id, async () => {
       await this.configLoader.deleteIntegration(id);
       this.oauthFlows.delete(id);
@@ -389,7 +452,14 @@ export class MCPService {
   }
 
   async setEnabled(id: string, enabled: boolean): Promise<ToolDef> {
-    const existing = await this.getIntegration(id);
+    this.assertMutableIntegration(id);
+    const loaded = await this.loadIntegrationWithOwnership(id);
+    if (loaded.contributed) {
+      throw new Error(
+        'Package-supplied integration definitions are read-only; uninstall or update the owning package instead',
+      );
+    }
+    const existing = loaded.definition;
     const updated =
       !enabled && toolServerOAuthResourceIdentity(existing)
         ? withAuthorizationRequired(
@@ -411,6 +481,7 @@ export class MCPService {
     mode: 'local-browser-opened' | 'remote-manual-open';
     completionInstructions: string;
   }> {
+    this.assertMutableIntegration(id);
     const claim = this.mcpCustody.acquire(id, 'oauth');
     let retained = false;
     try {
@@ -495,6 +566,7 @@ export class MCPService {
   }
 
   async finishOAuth(id: string, callbackUrl: string): Promise<ToolDef> {
+    this.assertMutableIntegration(id);
     const flow = this.oauthFlows.get(id);
     if (!flow) {
       throw new Error('No OAuth consent flow is awaiting completion');
@@ -649,7 +721,14 @@ export class MCPService {
     id: string,
     disabledTools: string[],
   ): Promise<ToolDef> {
-    const existing = await this.getIntegration(id);
+    this.assertMutableIntegration(id);
+    const loaded = await this.loadIntegrationWithOwnership(id);
+    if (loaded.contributed) {
+      throw new Error(
+        'Package-supplied integration definitions are read-only; uninstall or update the owning package instead',
+      );
+    }
+    const existing = loaded.definition;
     const updated = { ...existing, disabledTools: [...new Set(disabledTools)] };
     await this.saveIntegration(updated);
     return updated;
@@ -687,7 +766,9 @@ export class MCPService {
     let retained = false;
     let failed = false;
     try {
-      const existing = await this.getIntegration(id);
+      const loaded = await this.loadIntegrationWithOwnership(id);
+      const existing = loaded.definition;
+      const liveContributed = loaded.contributed;
       const oauthProvider =
         existing.transport === 'sse' || existing.transport === 'streamable-http'
           ? this.createOAuthProvider(existing)
@@ -719,7 +800,7 @@ export class MCPService {
         // Probe state is an internal projection write. It must retain an
         // operator-authored binding reference without reopening the public
         // integration authoring boundary.
-        await this.configLoader.updateIntegration(id, (current) => {
+        if (!liveContributed) await this.configLoader.updateIntegration(id, (current) => {
           if (
             !claim.isCurrent() ||
             !sameMCPConnectionDefinition(existing, current)
@@ -733,6 +814,14 @@ export class MCPService {
       } catch (error) {
         captureToolServerOperationFailure(error, 'probe', id, this.logger);
         await this.requireCurrentDefinition(claim, existing);
+        if (liveContributed) {
+          const checkedAt = new Date().toISOString();
+          const message = formatToolServerFailure(
+            classifyToolServerProbeFailure(error, existing.transport),
+          );
+          toolServerProbes.add(1, { outcome: 'failure' });
+          return { ...existing, probe: { ok: false, error: message, toolCount: 0, checkedAt } };
+        }
         const authorizationUrl = oauthProvider?.takeAuthorizationUrl();
         if (
           oauthProvider &&
@@ -781,7 +870,7 @@ export class MCPService {
         );
         const probe = { ok: false, error: message, toolCount: 0, checkedAt };
         const updated = { ...existing, probe };
-        await this.configLoader.updateIntegration(id, (current) => {
+        if (!liveContributed) await this.configLoader.updateIntegration(id, (current) => {
           if (
             !claim.isCurrent() ||
             !sameMCPConnectionDefinition(existing, current)

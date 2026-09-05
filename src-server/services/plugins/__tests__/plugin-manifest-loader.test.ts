@@ -41,6 +41,35 @@ describe('plugin-manifest-loader', () => {
     );
   });
 
+  test('dispatches recognized Agent Plugins through the vendored loader while legacy remains explicit', async () => {
+    const manifestPath = join(dir, 'plugin.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'portable.example',
+        futureField: true,
+      }),
+    );
+    await expect(readPluginManifestFile(manifestPath)).resolves.toEqual({
+      name: 'portable.example',
+      version: '0.0.0-agent-plugin-unversioned',
+      description: undefined,
+    });
+
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'portable.example',
+        layout: {},
+      }),
+    );
+    await expect(readPluginManifestFile(manifestPath)).rejects.toThrow(
+      /Agent Plugin manifest is invalid: Plugin manifest uses retired Station root field 'layout'/,
+    );
+  });
+
   // archive#4307: `manifest.name` is a STORE KEY (plugin-overrides, grants,
   // the provider resolver, the installed-plugin registry) and the manifest's
   // own `name` wins over the directory it was installed into. It was
@@ -173,6 +202,23 @@ describe('plugin-manifest-loader', () => {
     writeFileSync(
       manifestPath,
       `{\n  "name": "unsafe-plugin",\n  "version": "1.0.0",\n  "description": "safe\u200Btext"\n}\n`,
+    );
+
+    await expect(readPluginManifestFile(manifestPath)).rejects.toBeInstanceOf(
+      ContextSafetyError,
+    );
+  });
+
+  test('applies hidden-content safety before Agent Plugin dispatch', async () => {
+    const manifestPath = join(dir, 'plugin.json');
+    writeFileSync(
+      manifestPath,
+      `{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "unsafe-portable",
+  "description": "safe​text"
+}
+`,
     );
 
     await expect(readPluginManifestFile(manifestPath)).rejects.toBeInstanceOf(

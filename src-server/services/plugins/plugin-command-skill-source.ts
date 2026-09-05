@@ -32,6 +32,7 @@ import {
   type ContextSafetyFinding,
   scanContextText,
 } from '../orchestration/context-safety.js';
+import { readPluginManifestFileSyncWithFormat } from './plugin-manifest-loader.js';
 
 /**
  * One `.md` file read out of a plugin's declared `prompts.source` directory.
@@ -281,6 +282,15 @@ export function scanPluginCommandSkills(
     const pluginDir = join(pluginsRoot, pluginName);
     let prompts: ReturnType<typeof scanPluginPromptGeneration>;
     try {
+      // Agent Plugins own their portable `skills/` vocabulary. Unknown root
+      // fields are ignored by that spec and must not silently reactivate the
+      // legacy Station `prompts` contribution path.
+      if (
+        readPluginManifestFileSyncWithFormat(join(pluginDir, 'plugin.json'))
+          .format === 'agent-plugin-1.0'
+      ) {
+        continue;
+      }
       prompts = scanPluginPromptGeneration(pluginDir, pluginName);
     } catch (error) {
       logger.warn(

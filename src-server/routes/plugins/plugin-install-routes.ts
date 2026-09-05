@@ -9,17 +9,22 @@ import {
   rejectedInstalledPluginRecord,
   scanInstalledPluginInventory,
 } from '../../services/plugins/installed-plugin-inventory.js';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import { scanPluginPromptFileSafety } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   findPluginContentLockCycleError,
   pluginContentLockCycleMessage,
 } from '../../services/plugins/plugin-content-integrity.js';
+import { resolveInstalledPluginRoot } from '../../services/plugins/plugin-incarnation.js';
 import {
   derivePluginConsentBasis,
   isPluginConsentRefusedError,
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
-import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
+import { localPluginInstallationState } from '../../services/plugins/plugin-installation-local.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
+import { readPluginManifestFileWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   getPermissionTier,
   PluginGrantsUnavailableError,
@@ -54,6 +59,8 @@ import {
 } from './plugin-source.js';
 
 interface PluginInstallRouteDeps {
+  installationHost?: PluginInstallationHost;
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: {
     emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
@@ -87,6 +94,18 @@ export function registerPluginInstallRoutes(
     quiesceEventSubscriptions,
   } = deps;
 
+  app.get('/:name/retained-generations', (c) => {
+    const history = deps.packageMcpJournal?.history(c.req.param('name'), {
+      after: c.req.query('cursor') ? Number(c.req.query('cursor')) : undefined,
+    });
+    if (!history || history.state === 'unavailable')
+      return c.json(
+        { error: 'Package installation history is unavailable' },
+        503,
+      );
+    return c.json(history);
+  });
+
   app.get('/', async (c) => {
     const plugins = [];
 
@@ -97,13 +116,10 @@ export function registerPluginInstallRoutes(
       }
       try {
         const manifest = entry.manifest;
-        const bundlePath = join(
-          pluginsDir,
-          entry.directoryName,
-          'dist',
-          'bundle.js',
-        );
-        const pluginDir = join(pluginsDir, entry.directoryName);
+        const pluginDir =
+          resolveInstalledPluginRoot(pluginsDir, entry.directoryName)
+            ?.packageRoot ?? join(pluginsDir, entry.directoryName);
+        const bundlePath = join(pluginDir, 'dist', 'bundle.js');
         const git = await getPluginGitInfo(pluginDir, logger);
         const declared = requiredPermissionsForManifest(manifest);
         // archive#4288: EFFECTIVE grants, plus the derived binding state and
@@ -125,6 +141,10 @@ export function registerPluginInstallRoutes(
           version: manifest.version,
           description: manifest.description,
           hasBundle: existsSync(bundlePath),
+          ...(resolveInstalledPluginRoot(pluginsDir, entry.directoryName)
+            ?.kind === 'incarnation'
+            ? { retainedOnRemoval: true }
+            : {}),
           hasSettings:
             Array.isArray(manifest.settings) && manifest.settings.length > 0,
           layout: manifest.layout,
@@ -221,7 +241,7 @@ export function registerPluginInstallRoutes(
 
       const { tempDir } = result;
       try {
-        const manifest = await readPluginManifestFile(
+        const { manifest, format } = await readPluginManifestFileWithFormat(
           join(tempDir, 'plugin.json'),
         );
         // Preview refuses exactly what install refuses, through the SAME scan
@@ -360,9 +380,23 @@ export function registerPluginInstallRoutes(
           );
         }
 
+        const installationRevision =
+          format !== 'agent-plugin-1.0'
+            ? undefined
+            : deps.installationHost
+              ? await (await deps.installationHost.service()).inspect(
+                  manifest.name,
+                )
+              : deps.packageMcpJournal
+                ? await localPluginInstallationState(
+                    deps.packageMcpJournal,
+                  ).current(manifest.name)
+                : undefined;
         return c.json({
           valid: true,
           manifest,
+          installationRevision,
+          existingDataScope: installationRevision != null,
           components,
           conflicts,
           dependencies,
@@ -416,7 +450,8 @@ export function registerPluginInstallRoutes(
 
   app.post('/install', validate(pluginInstallSchema), async (c) => {
     try {
-      const { source, skip, consent } = getBody(c);
+      const { source, skip, consent, dataPolicy, expectedInstallation } =
+        getBody(c);
       // archive#4288. Refused before the source is even staged: this route is
       // how an operator admits a plugin's code into the shell's own document,
       // and the permission derivation cannot see the contributions that run
@@ -452,6 +487,8 @@ export function registerPluginInstallRoutes(
             skip,
             {
               agentsDir,
+              packageMcpJournal: deps.packageMcpJournal,
+              installationHost: deps.installationHost,
               beginConfigurationMutation: beginMutation,
               buildPlugin: (pluginDir, name) =>
                 buildPlugin(pluginDir, name, logger),
@@ -463,10 +500,11 @@ export function registerPluginInstallRoutes(
               reconcileEngineConnections,
               quiesceEventSubscriptions,
             },
-            { consent: operatorDecision },
+            { consent: operatorDecision, dataPolicy, expectedInstallation },
           );
           return installed;
         },
+        { rediscoverSkills: true },
       );
       if (mutation.value.success) {
         try {
@@ -486,6 +524,20 @@ export function registerPluginInstallRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (error instanceof PluginInstallationPending)
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            lifecycle: {
+              status: 'pending',
+              selected: error.selected,
+              code: error.code,
+            },
+          },
+          202,
+        );
+
       if (isContextSafetyError(error)) {
         return c.json(
           {
