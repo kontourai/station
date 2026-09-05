@@ -470,7 +470,19 @@ describe('NewProjectModal starter layout picker', () => {
     expect(onCloseMock).toHaveBeenCalled();
   });
 
-  test('re-checks a manually typed path for nested repos at submit', async () => {
+  /**
+   * #1536 E4. This used to assert the opposite: a manually typed path
+   * re-ran repo discovery AT SUBMIT and applied Coding when it found a repo.
+   * Nothing on screen said so — the recommendation was never rendered, so
+   * "Start without a layout" was the option shown as pressed while the project
+   * was created with a Coding layout. Create applies the selection the picker
+   * shows and nothing else, so with no repo discovered there is no layout.
+   *
+   * `useReposQuery` is mocked in this file, so the `enabled` gate that decides
+   * WHETHER discovery runs is invisible here — that seam is covered against the
+   * real query in `hooks/__tests__/useNewProjectStarter.test.tsx`.
+   */
+  test('creates no layout for a typed path when no repository is discovered', async () => {
     reposQueryState.refetch.mockResolvedValue({
       data: {
         workspace: '/tmp/typed-workspace',
@@ -484,13 +496,54 @@ describe('NewProjectModal starter layout picker', () => {
     fireEvent.change(screen.getByLabelText('Working Directory'), {
       target: { value: '/tmp/typed-workspace' },
     });
+    // The state the user is looking at when they press Create.
+    expect(
+      screen
+        .getByRole('button', { name: /Start without a layout/ })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
-    await waitFor(() => expect(reposQueryState.refetch).toHaveBeenCalled());
-    expect(applyProjectLayoutMock).toHaveBeenCalledWith(
-      'http://localhost:3000',
-      'typed-workspace',
-      'builtin:coding',
+    await waitFor(() => expect(createProjectMock).toHaveBeenCalled());
+    expect(applyProjectLayoutMock).not.toHaveBeenCalled();
+    expect(reposQueryState.refetch).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The recommendation itself is not removed — it is only made visible before
+   * it can be applied. A detected Git directory still selects Coding, and the
+   * card that Create then applies is the one on screen. The typed path carries
+   * NO trailing slash on purpose: that is the shape #1536 E4 was reported
+   * against, and the twin of `tests/project-architecture.spec.ts`'s
+   * "a manually typed path shows the Git recommendation".
+   */
+  test('applies the recommended Coding starter for a typed path once it is the shown selection', async () => {
+    reposQueryState.data = {
+      workspace: '/tmp/repo',
+      workspaceIsRepo: true,
+      repos: [{ root: '/tmp/repo' }],
+    };
+    createProjectMock.mockResolvedValue({ slug: 'repo' });
+
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    fireEvent.change(screen.getByLabelText('Working Directory'), {
+      target: { value: '/tmp/repo' },
+    });
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: /Coding/ })
+          .getAttribute('aria-pressed'),
+      ).toBe('true'),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() =>
+      expect(applyProjectLayoutMock).toHaveBeenCalledWith(
+        'http://localhost:3000',
+        'repo',
+        'builtin:coding',
+      ),
     );
   });
 

@@ -645,13 +645,15 @@ function mergedExecutionLineage(
   right: HomeWorkItem,
 ): string[] {
   return [
-    ...(left.orchestrationThreadIds ?? []),
-    left.orchestrationThreadId,
-    ...(right.orchestrationThreadIds ?? []),
-    right.orchestrationThreadId,
-  ]
-    .filter((id): id is string => Boolean(id))
-    .filter((id, index, all) => all.indexOf(id) === index);
+    ...new Set(
+      [
+        ...(left.orchestrationThreadIds ?? []),
+        left.orchestrationThreadId,
+        ...(right.orchestrationThreadIds ?? []),
+        right.orchestrationThreadId,
+      ].filter((id): id is string => Boolean(id)),
+    ),
+  ];
 }
 
 function isLocalActionableLifecycle(item: HomeWorkItem): boolean {

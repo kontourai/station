@@ -23,6 +23,7 @@ import {
   pendingAttentionItems,
 } from '../utils/attention';
 import { errorText } from '../utils/errorText';
+import { notificationCategoryLabel } from '../utils/notificationLabels';
 import '../views/page-layout.css';
 import './NotificationsPage.css';
 import { Button } from '../components/Button';
@@ -33,7 +34,6 @@ import {
   isNotificationHistoryDateRangeValid,
   type NotificationHistoryFilters,
   notificationHistoryCategories,
-  notificationHistoryCategoryLabel,
   readNotificationHistoryFilters,
   writeNotificationHistoryFilters,
 } from './notificationHistoryFilters';
@@ -377,7 +377,7 @@ function NotificationHistoryFilterBar({
                     })
                   }
                 >
-                  {notificationHistoryCategoryLabel(category)}
+                  {notificationCategoryLabel(category)}
                 </button>
               );
             })}
