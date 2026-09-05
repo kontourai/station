@@ -267,6 +267,109 @@ export function querySessionOwner(
   return typeof row?.user_id === 'string' ? row.user_id : undefined;
 }
 
+/** Canonical event content, not the search index. Bound every selected field in SQLite. */
+export function queryTranscriptMessagePage(
+  db: TranscriptQueryDatabase,
+  options: {
+    threadId: string;
+    matchedEventId: string;
+    ownerUserId: string;
+    legacyOwnerUserId?: string;
+    tenantId?: string;
+    continuation?: string;
+  },
+) {
+  const content = `CASE WHEN json_valid(e.payload) THEN CASE e.method
+    WHEN 'turn.started' THEN CASE WHEN json_type(e.payload, '$.prompt') = 'text' THEN json_extract(e.payload, '$.prompt') END
+    WHEN 'turn.completed' THEN CASE WHEN json_type(e.payload, '$.outputText') = 'text' THEN json_extract(e.payload, '$.outputText') END END END`;
+  const bounded = (field: string, max: number) =>
+    `CASE WHEN length(CAST(${field} AS BLOB)) <= ${max} THEN ${field} END`;
+  const row = db
+    .prepare(`SELECT e.method,
+    ${bounded(content, 131072)} AS content,
+    ${bounded('h.agent_slug', 256)} AS agent_slug,
+    ${bounded('h.project_slug', 256)} AS project_slug,
+    (length(CAST(${content} AS BLOB)) > 131072 OR
+     coalesce(length(CAST(h.agent_slug AS BLOB)), 0) > 256 OR
+     coalesce(length(CAST(h.project_slug AS BLOB)), 0) > 256) AS oversized
+    FROM orchestration_events e
+    INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
+    WHERE e.thread_id = ? AND e.id = ? AND e.method IN ('turn.started', 'turn.completed')
+      AND h.owner_user_id IN (?, ?) AND (? IS NULL OR h.tenant_id = ?) LIMIT 1`)
+    .get(
+      options.threadId,
+      options.matchedEventId,
+      options.ownerUserId,
+      options.legacyOwnerUserId ?? null,
+      options.tenantId ?? null,
+      options.tenantId ?? null,
+    ) as
+    | {
+        method: string;
+        content: string | null;
+        agent_slug: string | null;
+        project_slug: string | null;
+        oversized: number;
+      }
+    | undefined;
+  if (!row) return null;
+  if (row.oversized || typeof row.content !== 'string')
+    throw new TranscriptReadLimitError('Canonical message is unavailable');
+  const role =
+    row.method === 'turn.started' ? ('user' as const) : ('assistant' as const);
+  const contentRevision = createHash('sha256')
+    .update(
+      JSON.stringify([
+        options.threadId,
+        options.matchedEventId,
+        role,
+        row.content,
+        row.agent_slug,
+        row.project_slug,
+      ]),
+    )
+    .digest('hex');
+  let offset = 0;
+  if (options.continuation !== undefined) {
+    const cursor = JSON.parse(
+      Buffer.from(options.continuation, 'base64url').toString('utf8'),
+    );
+    if (
+      !cursor ||
+      typeof cursor !== 'object' ||
+      Array.isArray(cursor) ||
+      Object.keys(cursor).length !== 2 ||
+      cursor.revision !== contentRevision ||
+      !Number.isSafeInteger(cursor.offset) ||
+      cursor.offset <= 0 ||
+      cursor.offset % 4096 !== 0
+    )
+      throw new TranscriptReadLimitError('Message continuation is unavailable');
+    offset = cursor.offset;
+  }
+  const characters = Array.from(row.content);
+  if (offset > 0 && offset >= characters.length)
+    throw new TranscriptReadLimitError('Message continuation is unavailable');
+  const nextOffset = offset + 4096;
+  return {
+    sessionId: options.threadId,
+    matchedEventId: options.matchedEventId,
+    role,
+    text: characters.slice(offset, nextOffset).join(''),
+    contentRevision,
+    offset,
+    ...(nextOffset < characters.length
+      ? {
+          nextContinuation: Buffer.from(
+            JSON.stringify({ revision: contentRevision, offset: nextOffset }),
+          ).toString('base64url'),
+        }
+      : {}),
+    ...(row.project_slug ? { projectId: row.project_slug } : {}),
+    ...(row.agent_slug ? { agentSlug: row.agent_slug } : {}),
+  };
+}
+
 /** Opaque FTS scope terms keep user/tenant postings disjoint from body terms. */
 function messageSearchScopeKey(
   kind: 'owner' | 'tenant',

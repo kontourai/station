@@ -76,6 +76,34 @@ export function createSearchRoutes(
     signal: request.signal,
   });
   app.post(
+    '/read-message',
+    validate(
+      z
+        .object({
+          sessionId: id,
+          matchedEventId: id,
+          continuation: z.string().min(1).max(256).optional(),
+        })
+        .strict(),
+      { maxBodyBytes: 12 * 1024 },
+    ),
+    async (c) => {
+      if (!search || !options.isRequestPrincipalCurrent(c.req.raw))
+        return c.json({ success: false, error: 'Search unavailable' }, 503);
+      const result = await search.readMessagePage(
+        getBody(c),
+        context(c.req.raw),
+      );
+      unifiedSearchReads.add(1, {
+        operation: 'read-message',
+        outcome: result.state,
+      });
+      if (!options.isRequestPrincipalCurrent(c.req.raw))
+        return c.json({ success: false, error: 'Search unavailable' }, 503);
+      return c.json({ success: true, data: result });
+    },
+  );
+  app.post(
     '/',
     validate(requestSchema, { maxBodyBytes: 12 * 1024 }),
     async (c) => {
