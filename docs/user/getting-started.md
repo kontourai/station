@@ -1,8 +1,22 @@
 # Getting Started
 
-Station is a local-first workspace for agent work. This guide covers a signed
-macOS/Linux install when its release ring is published, first launch, Provider
-setup, and routine lifecycle.
+Station is a local-first workspace for agent work. This guide covers the ways
+to run Station today, a signed macOS/Linux install when its release ring is
+published, first launch, Provider setup, and routine lifecycle.
+
+## Ways To Run Station Today
+
+Station is open source and under active development. Until a signed release
+ring is published, choose one of these paths:
+
+| Path | Platforms | Use it when |
+| --- | --- | --- |
+| Run from source | macOS, Linux | You want the current `main` branch and are comfortable with a Node.js checkout. Follow the [developer guide](https://github.com/kontourai/station/blob/main/docs/guides/development.md#local-runtime). |
+| Nightly desktop build | macOS (Apple silicon) | You want a native app for testing. Download the [Nightly desktop pre-release](https://github.com/kontourai/station/releases/tag/nightly-desktop). It installs alongside a stable Station and is not a stable release. |
+| Signed installer | macOS, Linux | A signed stable or beta ring has been published. Follow [Install Or Upgrade](#install-or-upgrade) below. |
+
+The remaining sections describe the signed install and the first-run flow that
+every path shares.
 
 ## Before You Install
 

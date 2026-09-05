@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Station | Agent work with receipts</title>
+    <title>Station | The agent workspace where work ships with receipts</title>
     <meta
       name="description"
-      content="Station is Kontour's local-first agent workspace for project work, visible evidence gates, readiness, and receipts."
+      content="Station is Kontour's open-source, local-first agent workspace. Bring your agents, projects, and devices together and keep gates, evidence, and receipts beside the work."
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -16,8 +16,9 @@
       <nav aria-label="Primary">
         <a href="#platform">Platform</a>
         <a href="#use-cases">Use cases</a>
+        <a href="#get-station">Get Station</a>
+        <a href="#developers">Developers</a>
         <a href="./docs/">Docs</a>
-        <a href="https://github.com/kontourai/station/blob/main/docs/README.md#developer-and-operator">Developers</a>
         <a href="https://github.com/kontourai/station">GitHub</a>
       </nav>
     </header>
@@ -25,26 +26,32 @@
     <main>
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Kontour's local-first agent workspace</p>
-          <h1>Do the work. See the gates. Keep the receipts.</h1>
+          <p class="eyebrow">Open source · local-first · by Kontour</p>
+          <h1>The agent workspace where work ships with receipts.</h1>
           <p class="lede">
-            Station keeps projects, Tasks, Sessions, evidence gates, readiness,
-            and receipts together while you work with the Providers and agents
-            you choose.
+            Bring your agents, projects, and devices together. Hand a Task to
+            the agent you choose, and keep the gates, evidence, and receipts
+            beside the work so "done" means proven rather than asserted.
           </p>
           <div class="hero-actions">
             <a class="button primary" href="./docs/user/getting-started.html">Get started</a>
             <a class="button secondary" href="https://github.com/kontourai/station">View source</a>
+            <a class="button secondary" href="https://station.kontourai.io">Product tour</a>
           </div>
+          <p class="status-line">
+            Active development under Apache-2.0. Run from source on macOS or
+            Linux, or try the macOS Nightly desktop build. Signed installers
+            ship with the first stable release.
+          </p>
         </div>
         <div class="hero-panel" aria-label="Platform capability summary">
           <div class="panel-row">
             <span>Agents</span>
-            <strong>Station + External</strong>
+            <strong>Station agents + External agents</strong>
           </div>
           <div class="panel-row">
-            <span>Providers</span>
-            <strong>Models + agent apps</strong>
+            <span>Connections</span>
+            <strong>Model connections + Engines</strong>
           </div>
           <div class="panel-row">
             <span>Work</span>
@@ -52,7 +59,7 @@
           </div>
           <div class="panel-row">
             <span>Trust</span>
-            <strong>Gates, readiness, receipts</strong>
+            <strong>Gates, evidence, receipts</strong>
           </div>
         </div>
       </section>
@@ -64,68 +71,174 @@
         </div>
         <div class="feature-grid">
           <article>
-            <h3>Choose how agents run</h3>
-            <p>Use Station agents and supported external engines without making connection protocols part of the workflow.</p>
-            <a href="./docs/user/concepts.html">Understand agents and Providers</a>
+            <h3>Any engine, one workspace</h3>
+            <p>Run Station agents on a local or hosted model, or connect the agent CLIs you already use as External agents. Each engine keeps its own behavior and tool loop; Station supplies the context, the gates, and the record.</p>
+            <a href="./docs/user/concepts.html">Understand agents and connections</a>
           </article>
           <article>
-            <h3>Keep work durable</h3>
-            <p>Projects, Tasks, Sessions, changed files, artifacts, and receipts remain connected instead of disappearing into a chat transcript.</p>
-            <a href="./docs/user/concepts.html">Understand work identities</a>
+            <h3>Work that outlives a chat</h3>
+            <p>Projects, Tasks, Sessions, changed files, artifacts, and receipts stay linked. Reopen a Task later with its workspace binding and evidence intact.</p>
+            <a href="./docs/user/concepts.html">Understand Projects, Tasks, and Sessions</a>
           </article>
           <article>
             <h3>See why work can advance</h3>
-            <p>Gate outcomes, missing evidence, route-backs, exceptions, and readiness stay visible beside the work they describe.</p>
-            <a href="./docs/user/concepts.html">Understand receipts</a>
+            <p>Gate outcomes, missing evidence, route-backs, exceptions, and readiness stay visible beside the work they describe. A confident answer is never mistaken for a verified outcome.</p>
+            <a href="./docs/user/concepts.html">Understand gates and receipts</a>
           </article>
           <article>
-            <h3>Start local</h3>
-            <p>Station data stays on your machine by default, with explicit Provider and observability connections when you need them.</p>
-            <a href="./docs/user/getting-started.html">Install Station</a>
+            <h3>Local-first ownership</h3>
+            <p>Runtime data lives on your machine by default. Data leaves only when you configure a hosted model connection, engine, or export endpoint and use it.</p>
+            <a href="./docs/user/getting-started.html">Get started</a>
           </article>
           <article>
-            <h3>Shape the workspace</h3>
-            <p>Plugins can add layouts, agents, tools, knowledge, Providers, registries, skills, settings, and purpose-built work surfaces.</p>
+            <h3>Your devices, your Station</h3>
+            <p>Pair a phone, tablet, or laptop to your Station with scoped, revocable access. Delegate work to another computer you own over SSH and let it run with that machine's own agents and credentials.</p>
+            <a href="https://github.com/kontourai/station/blob/main/docs/guides/machine-relationships.md">Read about computer relationships</a>
+          </article>
+          <article>
+            <h3>Built to extend</h3>
+            <p>Plugins add layouts, agents, tools, knowledge, connections, skills, and purpose-built work surfaces on the same SDK the core uses.</p>
             <a href="https://github.com/kontourai/station/blob/main/docs/guides/plugins.md">Read the plugin guide</a>
-          </article>
-          <article>
-            <h3>Use every device well</h3>
-            <p>Responsive web and native shells keep the same Projects and work identities available across desktop and mobile.</p>
-            <a href="./docs/guides/keyboard-shortcuts.html">Customize shortcuts</a>
           </article>
         </div>
       </section>
 
-      <section id="use-cases" class="section split">
+      <section id="use-cases" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Use cases</p>
+          <h2>What people use it for.</h2>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <h3>Ship a change you can stand behind</h3>
+            <p>Open the repository as a Project, create a Task, pick an agent, and keep the commands that ran, their results, and the review receipts with the change.</p>
+          </article>
+          <article>
+            <h3>Keep a long piece of work alive</h3>
+            <p>A Task spans as many Sessions as it needs. Follow it from a paired device and come back to the same context, files, and evidence.</p>
+          </article>
+          <article>
+            <h3>Use agents without a cloud account</h3>
+            <p>Point a Station agent at a local model server. Nothing leaves the machine until you add a hosted connection.</p>
+          </article>
+          <article>
+            <h3>Coordinate several agents</h3>
+            <p>Delegate bounded work from one agent to another, or run it on a remote computer over SSH with that machine's own agents, credentials, and workspace.</p>
+          </article>
+          <article>
+            <h3>Run it on a server you control</h3>
+            <p>Self-host with the shipped container setup behind your own authenticated ingress, and pair devices with scoped, revocable access.</p>
+          </article>
+          <article>
+            <h3>Build a purpose-built work surface</h3>
+            <p>Write a plugin: a review workbench, a release console, a domain-specific layout. Plugins get the same primitives as the core.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section split">
         <div>
           <p class="eyebrow">Who it is for</p>
-          <h2>From personal projects to governed agent work.</h2>
+          <h2>From a personal project to governed agent work.</h2>
         </div>
         <div class="use-case-list">
           <article>
             <h3>Individuals</h3>
-            <p>Keep preferred Providers, project context, reusable skills, and agent work in one local workspace.</p>
+            <p>Keep your preferred connections, project context, reusable skills, and agent work in one local workspace you own.</p>
           </article>
           <article>
             <h3>Teams</h3>
-            <p>Use shared projects, plugins, and verification workflows while keeping evidence attached to the work.</p>
+            <p>Run a Station on a machine the team controls, pair each person's devices with scoped access, and keep verification evidence attached to the work. Independent per-person membership is on the roadmap, not shipped.</p>
           </article>
           <article>
             <h3>Organizations</h3>
-            <p>Run on infrastructure you control and make readiness, policy depth, and audit trails visible.</p>
+            <p>Self-host on infrastructure you control, keep data local by default, and make readiness, policy depth, and audit trails visible. Hosted multi-tenant operation is a delivery target, not an available service.</p>
           </article>
         </div>
       </section>
 
+      <section id="get-station" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Get Station</p>
+          <h2>Three ways to run it today.</h2>
+          <p class="section-note">Station is open source and under active development. A signed stable release ring has not been published yet.</p>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <h3>Run from source</h3>
+            <p>macOS and Linux. Needs Node.js 24, npm 10 or newer, and git. Clone the repository, install dependencies with the managed lifecycle command, and start the app from the checkout.</p>
+            <a href="https://github.com/kontourai/station#run-from-source-macos-linux">Source instructions</a>
+          </article>
+          <article>
+            <h3>Nightly desktop build</h3>
+            <p>macOS on Apple silicon. A rolling pre-release published from the main branch for testers. It installs alongside a stable Station and updates through its own channel. Not a stable release.</p>
+            <a href="https://github.com/kontourai/station/releases/tag/nightly-desktop">Nightly desktop pre-release</a>
+          </article>
+          <article>
+            <h3>Signed installer</h3>
+            <p>Arrives with the first stable release. The installer verifies the release's build attestation and checksum before installing, and upgrades in place when run again.</p>
+            <a href="./docs/user/getting-started.html">Read the install guide</a>
+          </article>
+        </div>
+      </section>
+
+      <section id="developers" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Developers</p>
+          <h2>Build on it, script it, integrate it.</h2>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <h3>Plugins and the SDK</h3>
+            <p>Layouts, agents, tools, knowledge, and connections ship as plugins on a published SDK. Start from the scaffold, then use the full reference and runnable examples.</p>
+            <a href="https://github.com/kontourai/station/blob/main/docs/guides/build-your-first-plugin.md">Build your first plugin</a>
+          </article>
+          <article>
+            <h3>CLI</h3>
+            <p>A published client manages chats, agents, sessions, and remote Stations from a terminal, and a contributor entry point drives a checkout.</p>
+            <a href="https://github.com/kontourai/station/blob/main/docs/reference/cli.md">CLI reference</a>
+          </article>
+          <article>
+            <h3>HTTP API and contracts</h3>
+            <p>Authenticated routes and streaming events on one origin, with runtime, provider, and orchestration contracts published as packages.</p>
+            <a href="https://github.com/kontourai/station/blob/main/docs/reference/api.md">API reference</a>
+          </article>
+          <article>
+            <h3>Integrate Station</h3>
+            <p>Present agent work inside your application, add a tool to a workspace, or run a private environment. The integration guide names the public contracts and the evidence to retain.</p>
+            <a href="https://github.com/kontourai/station/blob/main/docs/guides/integrating-station.md">Integration guide</a>
+          </article>
+          <article>
+            <h3>Architecture</h3>
+            <p>A module map records each module's interface, seams, adapters, and test surface. Design records and ADRs carry decisions and their status.</p>
+            <a href="https://github.com/kontourai/station/blob/main/docs/architecture/module-map.md">Module map</a>
+          </article>
+          <article>
+            <h3>Contribute</h3>
+            <p>Issue-first, safe-direct, and discuss-first paths; a pull-request contract that asks for the outcome, the exact commands and receipts, and every unverified claim.</p>
+            <a href="./docs/guides/contributing.html">Contributing guide</a>
+          </article>
+        </div>
+        <p class="section-note">
+          Published packages: <code>@kontourai/station-sdk</code>,
+          <code>@kontourai/station-cli</code>,
+          <code>@kontourai/station-contracts</code>, and
+          <code>@kontourai/station-shared</code>. Station consumes Kontour's
+          primitives — Surface, Flow, Veritas, Survey, and Flow Agents —
+          through the same published contracts available to any consumer.
+        </p>
+      </section>
+
       <section class="section cta">
         <h2>Start with one connection and one project.</h2>
-        <p>When a signed stable release is available, install it, connect an engine or model, and keep the first Task's evidence with the work from the beginning.</p>
+        <p>Run Station, connect a model or an engine, open a project, and keep the first Task's evidence with the work from the beginning.</p>
         <a class="button primary" href="./docs/user/getting-started.html">Get started</a>
       </section>
     </main>
 
     <footer>
       <span>Station</span>
+      <a href="https://station.kontourai.io">Product site</a>
       <a href="./docs/">Documentation</a>
       <a href="https://kontourai.io/privacy/station/">Privacy</a>
       <a href="https://github.com/kontourai/station">GitHub</a>
