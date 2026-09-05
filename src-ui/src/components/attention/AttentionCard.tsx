@@ -41,6 +41,7 @@ import {
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
 import { LazyBoundary } from '../LazyBoundary';
+import { SkeletonList } from '../state';
 import './AttentionCard.css';
 import {
   ACKNOWLEDGE_ATTENTION_ACTION,
@@ -206,7 +207,9 @@ function ExactRequestAction({
             openHref,
             onClose: () => setSelected(null),
           }}
-          pending={<p role="status">Opening request inspection…</p>}
+          pending={
+            <SkeletonList count={1} label="Opening request inspection" />
+          }
         />
       ) : null}
     </>
