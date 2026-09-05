@@ -8,9 +8,12 @@ import {
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
 import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
+import {
+  type AgentPluginManifestReport,
+  parseAgentPluginManifest,
+} from '@kontourai/station-shared/agent-plugin-manifest';
 import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
-import { AgentPluginLoader } from './agent-plugin-loader.js';
 import { parseWorkspacePaneHostContribution } from './workspace-pane-host-contributions.js';
 
 const SUBSCRIPTION_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
@@ -127,21 +130,18 @@ function readAgentPluginManifest(
   const schema = (candidate as Record<string, unknown>).$schema as string;
   if (!schema.startsWith('https://agent-plugins.org/schemas/')) return null;
 
-  const pluginRoot = dirname(manifestPath);
-  const projectHomeDir = dirname(dirname(pluginRoot));
-  const outcome = new AgentPluginLoader({ projectHomeDir }).loadPackageResult(
-    pluginRoot,
-    { provisionData: false, manifestDocument: candidate },
+  const reports: AgentPluginManifestReport[] = [];
+  const loaded = parseAgentPluginManifest(candidate, (report) =>
+    reports.push(report),
   );
-  if (!outcome.ok) {
-    const reason = outcome.reports[0]?.message ?? 'unknown validation failure';
+  if (!loaded) {
+    const reason = reports[0]?.message ?? 'unknown validation failure';
     throw new Error(
       schema === AGENT_PLUGIN_MANIFEST_SCHEMA_1_0
         ? `Agent Plugin manifest is invalid: ${reason}`
         : `Unsupported Agent Plugins manifest schema '${schema}'`,
     );
   }
-  const loaded = outcome.plugin;
   const base: PluginManifest = {
     name: loaded.manifest.name,
     version: loaded.manifest.version ?? '0.0.0-agent-plugin-unversioned',
@@ -151,9 +151,7 @@ function readAgentPluginManifest(
   if (!extension)
     return {
       manifest: base,
-      ...(loaded.reports.some(
-        (report) => report.code === 'station-extension-invalid',
-      )
+      ...(reports.some((report) => report.code === 'station-extension-invalid')
         ? {
             stationExtension: {
               status: 'disabled' as const,

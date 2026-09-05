@@ -19,6 +19,7 @@ describe('static gate input detection', () => {
       'src-shared/monitoring-keys.ts',
       'tests/home.spec.ts',
       'examples/minimal-layout/src/index.ts',
+      'schemas/agent-plugins/1.0.0/plugin.schema.json',
     ]) {
       expect(isStaticGateInput(path), path).toBe(true);
     }
