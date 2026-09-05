@@ -75,7 +75,8 @@
     "./orchestration-store-quarantine": "./src/orchestration-store-quarantine.ts",
     "./setup-import-bounds": "./src/setup-import-bounds.ts",
     "./random-id": "./src/random-id.ts",
-    "./terminal-capability": "./src/terminal-capability.ts"
+    "./terminal-capability": "./src/terminal-capability.ts",
+    "./knowledge-root-identity": "./src/knowledge-root-identity.ts"
   },
   "publishConfig": {
     "access": "public"

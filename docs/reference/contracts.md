@@ -88,3 +88,13 @@ built-in scheduler now emits.
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.
+
+### Source-only learning inspection
+
+`LearningSourceObservation` on the `learning-review` subpath is a separate,
+source-only outcome. An observed record exposes its exact registered store and
+record IDs, source fields and provenance, plus a Station observation digest/time.
+It supplies no candidate kind, deployment scope, owner projection identity,
+promotion verdict, or effect result. Generic record `active` is not learning
+activation. All restricted/unavailable/refused outcomes omit source identity.
+The full `LearningReviewProjection` lifecycle contract is unchanged.

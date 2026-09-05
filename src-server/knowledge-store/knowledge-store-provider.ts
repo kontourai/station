@@ -215,7 +215,7 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   // ── Record access — thin delegation to the root's adapter instance ────
 
   /**
-   * Owner-only source observation. No runtime/HTTP/UI composition exists yet;
+   * Construction-free source observation with a captured production host policy;
    * absent host policy denies even localhost and registered-root requests.
    */
   observeExactRecord(
@@ -297,6 +297,7 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
         if (record.id !== recordId) return { state: 'corrupt' };
         outcome = {
           state: 'observed',
+          kind: 'source-only',
           source: {
             rootId,
             recordId,

@@ -839,6 +839,7 @@ export {
   useKnowledgeStatusQuery,
   useKnowledgeTreeQuery,
   useKnowledgeUpdateMutation,
+  useLearningSourceObservationQuery,
   useLinkKnowledgeRecordMutation,
   useLoadedOrchestrationSessionsQuery,
   useMaterializeEngineAgentMutation,

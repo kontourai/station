@@ -1,10 +1,10 @@
 # Owner-backed learning source observation — grounding proposal
 
-Status: approved bounded Station-owned observation implementation; HTTP/UI
-exposure and runtime authorization wiring are NOT approved yet. Station #1364
-remains open. The original foundation was `31f7eb37c3053b3e827b36685a74f0ff2d284cbb`;
-normal merge `08b675dba` incorporates main `67d72d45` before this owner slice.
-Verification receipts, not this plan, own the eventual test status.
+This design covers Station-owned source observation and its narrowly authorized
+personal-root HTTP/SDK/UI consumer. Station #1364 remains the owner of broader
+learning lifecycle work; verification receipts and GitHub own live delivery state.
+The initial owner-only slice is retained below as grounding, not as a prohibition
+on the separately authorized source-inspection journey.
 
 ## Verified publication boundary
 
@@ -122,3 +122,35 @@ Estimate: roughly 2–3 engineer-days for the bounded local owner capability plu
 adversarial tests and separately reviewed route/projection wiring. No effect,
 privacy-runtime, or end-to-end product claim follows from the owner-only slice
 or the current pure contract/view-model fixtures.
+
+## Source-inspection consumer
+
+The existing Developer/Memory canonical-record browser supplies the exact target
+through an optional SDK host action slot. A lazy source-only dialog reads the
+production observation endpoint with captured Station authority and the selected
+root registration identity. The shared root-identity helper preserves the SDK's
+existing compatibility export. Its bounded header is a mismatch refusal only;
+Request identity, middleware-bound home possession, fresh credential validity,
+route scope, current locality, exact route target, and registered personal built-in
+root policy still own admission. The provider rechecks before open and before
+return, and the route rechecks before publication. No project-root grant is inferred.
+
+The production policy is captured when `createRuntimeServiceBundle` constructs
+`KnowledgeStoreProvider`. Current request-principal verification is extracted to
+the security owner with a compatibility re-export from runtime routes, avoiding a
+bootstrap-to-routes dependency. Ordinary adapter `get`/read-repair is never a source
+inspection fallback. The source-only contract explicitly omits candidate scope,
+activation, decisions, and effects rather than populating the full lifecycle model.
+
+### Remaining rated-response contract gap
+
+The pinned published workflow-learning schema accepts opaque `source_refs`, but
+supplies no mapping from a Station rating to a Knowledge root/record registration.
+The published Knowledge proposal schema remains `status: proposed`; it does not
+supply active revision or effect receipts. Station's `MessageRating` currently has
+conversation/message identity, rating, reason, analysis text and timestamps, but
+no exact Knowledge owner reference. Existing feedback analysis summaries remain
+separate. No source text similarity, status, or source-ID guess creates that edge.
+A rated-response → candidate → owner decision → active revision → effect journey
+therefore remains explicitly open under #1364, pending those owner-backed records
+and response intents. This source inspection is usable without claiming that chain.

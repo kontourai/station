@@ -13,6 +13,7 @@ import {
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { createLocalKnowledgeSourceObservationPolicy } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import { MonitoringEmitter } from '../../monitoring/emitter.js';
 import {
@@ -79,7 +80,10 @@ interface RuntimeServiceBootstrapContext {
   orchestrationEventStore: EventStore;
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
-    'verifyCredential' | 'resolveGrantedScope'
+    | 'verifyCredential'
+    | 'resolveGrantedScope'
+    | 'authorizeCredential'
+    | 'credentialLocality'
   >;
   monitoringEvents: EventEmitter;
   memoryAdapters: Map<string, FileMemoryAdapter>;
@@ -305,7 +309,14 @@ export function createRuntimeServiceBundle(
   // calls this provider or `projectNamespacesToRoots`.
   const knowledgeStoreProvider =
     factories.createKnowledgeStoreProvider?.(storageAdapter) ??
-    new KnowledgeStoreProvider(storageAdapter);
+    new KnowledgeStoreProvider(
+      storageAdapter,
+      createLocalKnowledgeSourceObservationPolicy({
+        stationHome: context.configLoader.getProjectHomeDir(),
+        persistence: storageAdapter,
+        security: context.environmentSecurityService,
+      }),
+    );
 
   const fileTreeService =
     factories.createFileTreeService?.() ?? new FileTreeService();

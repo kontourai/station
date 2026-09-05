@@ -1775,3 +1775,33 @@ superseded host binding from being attributed to the current native connection.
 It is intentionally separate from `requestAuthority`: a valid authenticated
 recovery may advance credential generation while its host binding remains live.
 Ordinary unscoped SDK calls do not gain a host binding requirement.
+
+### Inspect a learning source
+
+`observeLearningSource(apiBase, reference, options?)` is available from
+`@kontourai/station-sdk/client`; `useLearningSourceObservationQuery(reference,
+requestScope, enabled?)` is available from the SDK root. The reference carries
+`rootId`, exact `recordId`, and `rootIdentity: knowledgeRootIncarnationKey(root)`.
+The existing root identity helper remains exported by the SDK. The client sends
+its URI-encoded value in the bounded `x-station-knowledge-root-identity` header;
+it is a replacement refusal precondition, never an authorization grant.
+
+The GET endpoint is `/api/knowledge/roots/:rootId/records/:id/source-observation`.
+It requires a currently authorized, middleware-bound home-possession credential,
+current route scope, and the exact registered personal `kit-default-store` root.
+Ordinary operator or paired remote credentials do not confer this capability.
+The constructor policy and route recheck authority before publishing the result.
+Other roots and credentials receive an identity-free restricted outcome.
+
+`LearningSourceObservation` (`station-contracts/learning-review`) distinguishes
+`observed` with `kind: 'source-only'` from identity-free failure states. Source
+status is generic record status, not learning activation. Content digest/time are
+Station observations; owner revision, freshness, and transaction state remain
+unknown, and the observation is non-atomic. The source read does not construct an
+adapter, repair records, or mutate the store. Ordinary recall reads retain their
+existing behavior.
+
+`KnowledgeRecallBrowser` and `KnowledgeRecordDetail` accept optional
+`renderRecordActions({ rootId, recordId })`. The slot is host-rendered and appears
+only for the exact selected loaded record. It introduces no Station UI dependency
+into the SDK. Station's Memory view uses it to open the source inspector.

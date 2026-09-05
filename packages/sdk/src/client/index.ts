@@ -65,6 +65,7 @@ export {
 } from './http';
 export * from './integrations';
 export * from './knowledge';
+export * from './learning-source';
 export * from './orchestration';
 export { getPluginHeaders } from './plugin-headers';
 export * from './plugins';

@@ -195,3 +195,21 @@ directory for manual review.
 - Read [Station concepts](concepts.md).
 - Customize [keyboard shortcuts](../guides/keyboard-shortcuts.md).
 - Review the [Station privacy policy](https://kontourai.io/privacy/station/).
+
+## Inspect a learning source
+
+Open **Developer → Memory** and select a record from a personal Default File
+Store, then choose **Inspect learning source**. If Developer is hidden, enable
+developer tools in Settings. The inspector requires local access to the Station
+that owns the store; remote pairing or an operator API credential alone is not
+enough.
+
+The inspector shows the source text, provenance, and observation time. **Refresh
+source** reads it again. If the store was replaced, access changed, or the source
+cannot be verified, the old content is withheld. Inspection does not repair or
+change the source.
+
+A record marked active is not evidence that a learning was activated. This view
+shows source records only; candidate decisions, active learning revisions, and
+observed effects require records from their respective owners. It offers no
+promotion or retirement action.

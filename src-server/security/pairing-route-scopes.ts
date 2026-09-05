@@ -1962,6 +1962,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/knowledge/roots' },
     { method: 'POST', path: '/api/knowledge/roots' },
     { method: 'DELETE', path: '/api/knowledge/roots/:id' },
+    {
+      method: 'GET',
+      path: '/api/knowledge/roots/:rootId/records/:id/source-observation',
+    },
     { method: 'GET', path: '/api/knowledge/roots/:rootId/graph' },
     { method: 'GET', path: '/api/knowledge/roots/:rootId/graph/neo4j' },
     { method: 'POST', path: '/api/knowledge/roots/:rootId/graph/neo4j-sync' },
