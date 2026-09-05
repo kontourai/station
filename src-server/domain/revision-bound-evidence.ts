@@ -1668,7 +1668,7 @@ export class RevisionEvidenceModule {
       let persisted: ReturnType<RevisionEvidencePersistence['persist']>;
       try {
         persisted = this.#persistence.persist({
-          records: records.map(clone),
+          records: records.map((record) => structuredClone(record)),
           bounds: this.#persistenceBounds(),
           expectedWitness,
         });

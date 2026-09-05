@@ -3394,7 +3394,7 @@ describe('Global Conversation Routes', () => {
       undefined,
       emptyHistoryReader(),
       undefined,
-      { get: vi.fn(), acknowledge: vi.fn() },
+      { getMany: vi.fn().mockReturnValue(new Map()), acknowledge: vi.fn() },
     );
 
     const response = await app.request('/thread-1/acknowledgement', {
