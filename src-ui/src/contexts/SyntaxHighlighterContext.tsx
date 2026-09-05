@@ -10,11 +10,9 @@
 import {
   createContext,
   type ReactNode,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import {
@@ -39,7 +37,6 @@ type ShikiHighlighter = Awaited<
   ReturnType<typeof import('shiki')['createHighlighter']>
 >;
 
-let shikiInstance: ShikiHighlighter | null = null;
 let shikiPromise: Promise<ShikiHighlighter> | null = null;
 
 /**
@@ -48,15 +45,10 @@ let shikiPromise: Promise<ShikiHighlighter> | null = null;
  * the provider.
  */
 export function initShiki(): Promise<ShikiHighlighter> {
-  if (shikiInstance) return Promise.resolve(shikiInstance);
   shikiPromise ??= import('shiki')
     .then(({ createHighlighter }) =>
       createHighlighter({ themes: [THEME], langs: [...PRELOAD_LANGS] }),
     )
-    .then((highlighter) => {
-      shikiInstance = highlighter;
-      return highlighter;
-    })
     .catch((error) => {
       shikiPromise = null;
       throw error;
@@ -111,17 +103,13 @@ export function langFromFilePath(path: string): string | undefined {
 
 class ShikiSyntaxHighlighter implements ISyntaxHighlighter {
   private cache = new HighlightCache();
-  private highlighter: ShikiHighlighter | null = null;
+  constructor(private readonly highlighter: ShikiHighlighter | null) {}
 
   get ready() {
     return this.highlighter !== null;
   }
   get loadedLanguages() {
     return this.highlighter?.getLoadedLanguages() ?? [];
-  }
-
-  setHighlighter(h: ShikiHighlighter) {
-    this.highlighter = h;
   }
 
   highlight(code: string, lang?: string): string {
@@ -154,8 +142,7 @@ class ShikiSyntaxHighlighter implements ISyntaxHighlighter {
 
 const SyntaxHighlighterContext = createContext<{
   highlighter: ISyntaxHighlighter;
-  request: () => void;
-  ready: boolean;
+  request: (requested: boolean) => void;
 } | null>(null);
 
 export function SyntaxHighlighterProvider({
@@ -163,34 +150,28 @@ export function SyntaxHighlighterProvider({
 }: {
   children: ReactNode;
 }) {
-  const [highlighter] = useState(() => {
-    const value = new ShikiSyntaxHighlighter();
-    if (shikiInstance) value.setHighlighter(shikiInstance);
-    return value;
-  });
-  const [ready, setReady] = useState(highlighter.ready);
-  const mounted = useRef(false);
+  const [highlighter, setHighlighter] = useState(
+    () => new ShikiSyntaxHighlighter(null),
+  );
+  const [requested, setRequested] = useState(false);
   useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-  const request = useCallback(() => {
-    if (highlighter.ready) return;
+    if (!requested || highlighter.ready) return;
+    let cancelled = false;
     void initShiki()
       .then((instance) => {
-        if (!mounted.current) return;
-        highlighter.setHighlighter(instance);
-        setReady(true);
+        if (!cancelled) setHighlighter(new ShikiSyntaxHighlighter(instance));
       })
       .catch(() => {
-        // Plain escaped code remains readable; another consumer can retry initialization.
+        // Keep escaped code and let a later consumer retry; never spin on failures.
+        if (!cancelled) setRequested(false);
       });
-  }, [highlighter]);
+    return () => {
+      cancelled = true;
+    };
+  }, [requested, highlighter]);
   const value = useMemo(
-    () => ({ highlighter, request, ready }),
-    [highlighter, request, ready],
+    () => ({ highlighter, request: setRequested }),
+    [highlighter],
   );
   return (
     <SyntaxHighlighterContext.Provider value={value}>
@@ -202,7 +183,7 @@ export function SyntaxHighlighterProvider({
 export function useSyntaxHighlighter(): ISyntaxHighlighter {
   const context = useContext(SyntaxHighlighterContext);
   useEffect(() => {
-    context?.request();
+    context?.request(true);
   }, [context?.request]);
   if (!context)
     throw new Error(

@@ -42,3 +42,14 @@ test('reports per-journey medians without converting timing into a verdict', () 
     ])['home-history'],
   ).toMatchObject({ samples: 3, elapsedMedianMs: 30, commitsMedian: 2 });
 });
+
+test('a clean profile run rejects a dirty per-journey receipt', () => {
+  expect(
+    validateJourneyProfile(
+      { ...profile, dirty: true },
+      'home-history',
+      'sha',
+      false,
+    ),
+  ).toContain('workspace changed during profiling');
+});

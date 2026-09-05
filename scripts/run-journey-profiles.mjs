@@ -16,8 +16,10 @@ export const JOURNEYS = [
     ids: ['home-history'],
   },
 ];
-export function validateJourneyProfile(profile, id, revision) {
+export function validateJourneyProfile(profile, id, revision, expectedDirty) {
   const errors = [];
+  if (expectedDirty !== undefined && profile.dirty !== expectedDirty)
+    errors.push('workspace changed during profiling');
   if (
     profile.id !== id ||
     profile.sourceRevision !== revision ||
@@ -139,12 +141,27 @@ export function main(argv = process.argv.slice(2)) {
         const profile = JSON.parse(
           readFileSync(join(directory, `${id}.json`), 'utf8'),
         );
-        const errors = validateJourneyProfile(profile, id, revision);
+        const errors = validateJourneyProfile(profile, id, revision, dirty);
         if (errors.length) throw new Error(`${id}: ${errors.join('; ')}`);
+        const rawCpu = JSON.parse(
+          readFileSync(join(directory, `${id}.cpuprofile`), 'utf8'),
+        );
+        const rawHeap = JSON.parse(
+          readFileSync(join(directory, `${id}.heapprofile`), 'utf8'),
+        );
+        if (
+          !rawCpu.nodes?.length ||
+          !rawCpu.samples?.length ||
+          !rawHeap.head ||
+          !Array.isArray(rawHeap.samples)
+        )
+          throw new Error(`${id}: raw profile artifacts are incomplete`);
         profiles.push(profile);
       }
     }
   }
+  if (!dirty && git(['status', '--porcelain']))
+    throw new Error('Workspace changed during profiling');
   if (git(['rev-parse', 'HEAD']) !== revision)
     throw new Error('Revision changed during profiling');
   const report = {

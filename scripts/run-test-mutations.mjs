@@ -66,7 +66,7 @@ export const MUTATIONS = [
           exactReplace(
             source,
             '  const value = useMemo(',
-            '  useEffect(() => { request(); }, [request]);\n  const value = useMemo(',
+            '  useEffect(() => { setRequested(true); }, []);\n  const value = useMemo(',
           ),
       },
     ],
