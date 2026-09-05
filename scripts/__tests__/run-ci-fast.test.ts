@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { checkChangesets } from '../check-changesets.mjs';
 import {
   CHANGESET_STATUS_FAST_COMMAND,
   CI_FAST_INFRASTRUCTURE_EXIT_CODE,
@@ -313,7 +314,7 @@ describe('bounded ci:fast runner', () => {
 describe('Changesets workspace validation through ci:fast', () => {
   it.each(['@fixture/published', '@fixture/root', 'empty'])(
     'checks native release planning for %s',
-    (target) => {
+    async (target) => {
       const dir = mkdtempSync(join(tmpdir(), 'station-changeset-gate-'));
       contentGateRepos.add(dir);
       mkdirSync(join(dir, 'packages', 'published'), { recursive: true });
@@ -369,11 +370,18 @@ describe('Changesets workspace validation through ci:fast', () => {
         CHANGESET_STATUS_FAST_COMMAND as readonly [string, readonly string[]],
       );
       if (target !== '@fixture/root') {
+        const plan = await checkChangesets(dir);
+        expect(plan.packages).toEqual(
+          target === 'empty' ? [] : ['@fixture/published'],
+        );
         expect(result.status, result.output).toBe(0);
         expect(result.output).toContain(
           target === 'empty' ? '(none)' : '@fixture/published',
         );
       } else {
+        await expect(checkChangesets(dir)).rejects.toThrow(
+          'package @fixture/root which is not in the workspace',
+        );
         expect(result.status).not.toBe(0);
         expect(result.output).toContain(
           'package @fixture/root which is not in the workspace',
