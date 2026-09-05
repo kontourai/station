@@ -622,7 +622,7 @@ export function useDockShellChrome({
     effectiveDockSlotPlacement,
     surfaceShortcutId:
       (shellOccupant
-        ? regionModel?.surfaces.get(shellOccupant)?.shortcut.id
+        ? regionModel?.surfaces.get(shellOccupant)?.shortcut?.id
         : undefined) ?? 'dock.toggle',
     canMaximize: shellOccupant === 'chat',
     applyDockSnap,

@@ -4,6 +4,7 @@ import {
   parseStationAnswerNarrativeRemoveInput,
 } from '@kontourai/station-contracts/answer-narrative-binding';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
+import { ATTENTION_REQUEST_ID_MAX_CHARS } from '@kontourai/station-contracts/attention';
 import {
   CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES,
   CHAT_ATTACHMENT_MAX_COUNT,
@@ -282,6 +283,11 @@ const respondToRequestCommandSchema = z.object({
   type: z.literal('respondToRequest'),
   threadId: z.string().min(1),
   requestId: z.string().min(1),
+  expectedRequestEventId: z
+    .string()
+    .min(1)
+    .max(ATTENTION_REQUEST_ID_MAX_CHARS)
+    .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
 });
 
@@ -990,6 +996,41 @@ export function createOrchestrationRoutes(
     value.length > 0 &&
     Buffer.byteLength(value) <=
       Math.min(MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES, 1_024);
+
+  app.get('/sessions/:threadId/requests/:requestId', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const parsed = z
+      .object({
+        threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+        requestId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+        requestEventId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+      })
+      .safeParse({
+        threadId: param(c, 'threadId'),
+        requestId: param(c, 'requestId'),
+        requestEventId: c.req.query('eventId'),
+      });
+    if (!parsed.success)
+      return c.json(
+        { success: false, error: 'Invalid request reference' },
+        400,
+      );
+    const authority = readAuthorityFor(c);
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json({ success: false, error: 'Request unavailable' }, 404);
+    const data = orchestrationService.inspectAttentionRequest(
+      parsed.data,
+      authority,
+    );
+    if (
+      deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+      !orchestrationService.canUserReadSession(parsed.data.threadId, authority)
+    )
+      return c.json({ success: false, error: 'Request unavailable' }, 404);
+    if (!data)
+      return c.json({ success: false, error: 'Request not found' }, 404);
+    return c.json({ success: true, data });
+  });
 
   app.get('/providers', async (c) => {
     const data = await orchestrationService.listProviders(readAuthorityFor(c));
@@ -2774,6 +2815,13 @@ export function createOrchestrationRoutes(
         });
         const result = await orchestrationService.dispatchWithReceipt(command, {
           userId: actorUserId,
+          ...(command.type === 'respondToRequest' &&
+          command.expectedRequestEventId !== undefined
+            ? {
+                requestCurrent: () =>
+                  deps.isRequestPrincipalCurrent?.(c.req.raw) === true,
+              }
+            : {}),
           // archive#4075 stage 2: this is the STEER path's attribution
           // seam — `dispatchWithReceipt`'s `steerTurn` case wraps
           // `adapter.steerTurn` in the same begin/settle propagation
@@ -2870,7 +2918,11 @@ export function createOrchestrationRoutes(
                 }
               : {}),
           },
-          error instanceof AdoptionContinuationInProgressError || indeterminate
+          error instanceof AdoptionContinuationInProgressError ||
+            indeterminate ||
+            (error instanceof OrchestrationCommandDispatchError &&
+              (error.code === 'request_event_changed' ||
+                error.code === 'request_verification_unavailable'))
             ? 409
             : 400,
         );

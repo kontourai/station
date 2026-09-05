@@ -16,6 +16,7 @@ import {
   mapTurnFinishReason,
 } from './codex-adapter-events.js';
 import type { CodexSessionRecord } from './codex-adapter-types.js';
+import { projectCodexToolOutput } from './codex-tool-output.js';
 
 interface CodexAdapterNotification {
   method: string;
@@ -159,6 +160,7 @@ export function handleCodexNotification(
         extractString(notification.params.delta) ??
         extractString(notification.params.message);
       if (!turnId || !itemId || !message) return;
+      const preview = projectCodexToolOutput(message);
       publish({
         eventId: crypto.randomUUID(),
         provider: 'codex',
@@ -168,7 +170,8 @@ export function handleCodexNotification(
         turnId,
         itemId,
         toolCallId: itemId,
-        message,
+        message: preview.value as string,
+        ...(preview.receipt ? { outputReceipt: preview.receipt } : {}),
       });
       return;
     }
@@ -374,6 +377,7 @@ function handleCodexItemCompleted(
   if (!turnId || !itemId) return;
   const toolName = record.toolNames.get(itemId);
   if (!toolName || !record.toolStarted.has(itemId)) return;
+  const preview = projectCodexToolOutput(deriveToolOutput(params.item));
   record.toolStarted.delete(itemId);
   publish({
     eventId: crypto.randomUUID(),
@@ -386,7 +390,8 @@ function handleCodexItemCompleted(
     toolCallId: itemId,
     toolName,
     status: mapToolCompletionStatus(extractToolStatus(params.item)),
-    output: deriveToolOutput(params.item),
+    output: preview.value,
+    ...(preview.receipt ? { outputReceipt: preview.receipt } : {}),
     error: extractToolError(params.item),
   });
 }

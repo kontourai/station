@@ -3,11 +3,7 @@ import {
   isCanonicalWorkspaceChatPaneInstance,
   WORKSPACE_CHAT_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-chat-pane';
-import {
-  isCanonicalWorkspaceHomePaneInstance,
-  WORKSPACE_HOME_PANE_DESCRIPTOR,
-  WORKSPACE_HOME_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-home-pane';
+import { WORKSPACE_HOME_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-home-pane';
 import {
   type WorkspacePaneDescriptor,
   type WorkspacePaneInstance,
@@ -23,6 +19,13 @@ import { shouldMaximizeOnOccupantChoice } from '../components/chat-dock/mobile-c
  * check its `renderPane` branch performs, and the canonical occurrence the
  * occupant picker offers. Everything else about admission IS derived — see
  * `ambientDockDescriptorFor`.
+ *
+ * Chat only, since #928 C2a: Home is a region surface (`REGION_SURFACE_REGISTRY`)
+ * whose only placement is `main`, so the legacy "docked Home" choice is gone
+ * from this table and the picker derived from it. A persisted Home occupant
+ * is refused on restore the same way a persisted Activity one is, and the
+ * dock falls back to Chat. The host's own Home render branch is legacy
+ * plumbing awaiting C2b.
  *
  * This module (not `AmbientChatDockPaneHost.tsx`) owns the table so the
  * occupant picker can consume the same derivation without a module cycle;
@@ -52,11 +55,6 @@ export const AMBIENT_DOCK_RENDERABLE_PANES: readonly {
     // throws: both inputs are code-owned constants, so a failure is a build
     // that shipped an invalid built-in, not a runtime condition.
     canonicalInstance: () => createWorkspaceChatPaneInstance()!,
-  },
-  {
-    descriptor: WORKSPACE_HOME_PANE_DESCRIPTOR,
-    isCanonicalInstance: isCanonicalWorkspaceHomePaneInstance,
-    canonicalInstance: () => WORKSPACE_HOME_PANE_INSTANCE,
   },
 ];
 

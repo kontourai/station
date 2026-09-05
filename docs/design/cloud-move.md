@@ -2,8 +2,9 @@
 
 > Status: staged implementation under [#495](https://github.com/kontourai/station/issues/495)
 > and [#580](https://github.com/kontourai/station/issues/580). The initial slice
-> implements a read-only setup preview and AWS template preparation. It does
-> not provision an account, copy setup, enroll credentials, move execution,
+> implements a read-only setup preview, AWS template preparation, and encrypted
+> [Git workspace copies](../guides/workspace-packages.md). It does
+> not provision an account, copy a complete setup, enroll credentials, move execution,
 > or provide a one-click UI. Those are required follow-through, not completed
 > features. The existing private-cloud design remains a single-host baseline.
 
@@ -81,6 +82,18 @@ Standard credits to avoid unbounded surplus-credit billing; sustained load can
 throttle. The 1-GiB `t3.micro` memory budget is not qualified for Station plus
 agent tools. Inspect bootstrap logs and actual container health before using
 the environment; template validation does not prove boot or runtime readiness.
+
+## Initial enrollment decision
+
+The first cloud release uses the existing owner-approved Station pairing flow.
+The operator approves a browser through Station; cloud IAM membership, matching
+email addresses, or a shared signing key do not create application membership.
+Company SSO is deferred to an explicit identity-provider integration. This choice
+does not authorize automatic operator-token injection into browsers or settle
+multi-human membership. The existing pairing lifecycle owns credential custody,
+expiry, replay refusal and revocation. Automatic bootstrap remains outside this
+initial path; [#1513](https://github.com/kontourai/station/issues/1513) tracks the
+remaining identity integration and browser acceptance requirements.
 
 ## Remaining implementation sequence
 

@@ -2172,3 +2172,49 @@
     min-width: 44px;
   }
 }
+
+/* Mobile transcripts spend their width on the words. Secondary controls open
+   a sheet from one separate touch target, outside the message bubble. */
+.message-row--compact {
+  gap: 8px;
+}
+.message-row--compact .message {
+  padding: 10px 14px;
+}
+.message-row--compact .message.assistant {
+  background: transparent;
+  border: 0;
+  padding: 10px 0;
+}
+.message-details__trigger {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-md);
+}
+.message-details__panel {
+  width: min(480px, 100%);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.message-details__body {
+  padding: 16px;
+  overflow-y: auto;
+}
+.message-details__body .turn-footer {
+  flex-direction: column;
+  align-items: stretch;
+}
+.message-details__body .turn-footer__actions {
+  flex-wrap: wrap;
+}
+
+.message-details__body > .message__copy-btn,
+.message-details__body > .message__rating,
+.message-details__body > .message__trace {
+  position: static;
+  opacity: 1;
+}

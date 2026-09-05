@@ -69,6 +69,7 @@ import {
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapter-registry.js';
+import { isLocalKnowledgeSourceRequestCurrent } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { monitoringSessionIdentity } from '../../monitoring/monitoring-session-identity.js';
@@ -129,6 +130,7 @@ import {
 } from '../../routes/knowledge/knowledge.js';
 import { createKnowledgeIndexRoutes } from '../../routes/knowledge/knowledge-index-routes.js';
 import { createKnowledgeRecordRoutes } from '../../routes/knowledge/knowledge-record-routes.js';
+import { createKnowledgeSourceRoutes } from '../../routes/knowledge/knowledge-source-routes.js';
 import { createKnowledgeStoreRoutes } from '../../routes/knowledge/knowledge-store-routes.js';
 import { createNeo4jGraphRoutes } from '../../routes/knowledge/neo4j-graph-routes.js';
 import {
@@ -205,7 +207,6 @@ import {
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
-  requiredExternalSurfaceCapability,
   requiredPairingScope,
 } from '../../security/pairing-route-scopes.js';
 import {
@@ -215,6 +216,7 @@ import {
   classifyRuntimePeer,
   getRuntimeAuthenticatedRequestPrincipal,
   isLoopbackAuthority,
+  isRuntimeRequestPrincipalCurrent,
   RUNTIME_CREDENTIAL_AUTHORITY_VAR,
   type RuntimeAuthenticatedRequestPrincipal,
   type RuntimeCallerRequest,
@@ -416,7 +418,6 @@ import { INTERNAL_CONTROL_CALLER_BINDING_HEADER } from '../../tools/station-cont
 import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
-  isTrustedInternalApiToken,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -432,6 +433,7 @@ import {
 } from '../bootstrap/runtime-http.js';
 import {
   createHostedTenantMiddleware,
+  createPersonalRuntimeRequestGuard,
   currentTenantExecutionContext,
   getTenantRequestContext,
   isHostedTenantExecutionRequired,
@@ -756,48 +758,10 @@ export function createPersonalTaskAnswerSupportModule(
  * scope can be narrowed without rotating the credential, so validity alone
  * is not sufficient at a later publication boundary.
  */
-export interface CurrentRuntimeRequestPrincipalSecurity {
-  authorizeCredential(
-    credential: string,
-    request: { method: string; path: string },
-  ): boolean;
-  resolveGrantedScope(credential: string): string | undefined;
-}
-
-export function isRuntimeRequestPrincipalCurrent(
-  request: Request,
-  security: CurrentRuntimeRequestPrincipalSecurity,
-): boolean {
-  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-  if (!principal) return false;
-  if (principal.kind === 'internal')
-    return isTrustedInternalApiToken(
-      request.headers.get(INTERNAL_API_TOKEN_HEADER) ?? undefined,
-    );
-  const path = new URL(request.url).pathname;
-  if (
-    !security.authorizeCredential(principal.credential, {
-      method: request.method,
-      path,
-    })
-  ) {
-    return false;
-  }
-  // Match ingress exactly: an unmapped capability or a no-longer-granted
-  // pairing scope both fail closed at the delayed publication boundary.
-  const capability = requiredExternalSurfaceCapability(
-    'http',
-    request.method,
-    path,
-  );
-  if (capability?.capability !== 'pairing-scope' || !capability.scope)
-    return false;
-  const grantedScope = security.resolveGrantedScope(principal.credential);
-  return (
-    grantedScope !== undefined &&
-    pairingScopeIncludes(grantedScope, capability.scope)
-  );
-}
+export {
+  type CurrentRuntimeRequestPrincipalSecurity,
+  isRuntimeRequestPrincipalCurrent,
+} from '../../security/runtime-request-security.js';
 
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
@@ -3328,6 +3292,17 @@ export function configureRuntimeRoutes(
     createKnowledgeRecordRoutes({
       store: context.knowledgeStoreProvider,
     }),
+  );
+  const personalSourceRequest = createPersonalRuntimeRequestGuard();
+  context.app.route(
+    '/api/knowledge',
+    createKnowledgeSourceRoutes(context.knowledgeStoreProvider, (request) =>
+      isLocalKnowledgeSourceRequestCurrent(
+        request,
+        context.environmentSecurityService,
+        personalSourceRequest,
+      ),
+    ),
   );
   // K5 Neo4j graph-view routes (`s203-knowledge-meeting-notes` Wave 1 Task 1) — same
   // `/api/knowledge` base, sub-paths of the file-based graph route

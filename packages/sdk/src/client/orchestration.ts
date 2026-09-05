@@ -92,6 +92,7 @@ export type ApprovalDecision =
 export interface RespondToRequestInput {
   threadId: string;
   requestId: string;
+  expectedRequestEventId?: string;
   decision: ApprovalDecision;
 }
 

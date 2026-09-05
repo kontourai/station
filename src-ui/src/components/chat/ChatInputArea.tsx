@@ -597,7 +597,6 @@ export function ChatInputArea({
               minHeight: 0,
             }}
           />
-
           {input && (
             <button
               type="button"

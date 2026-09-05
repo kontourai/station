@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppViewContent } from './app-shell/AppViewContent';
 import { HomeRoutePendingSkeleton } from './app-shell/HomeRoutePendingSkeleton';
 import { rendersChatWorkspaceLayout } from './app-shell/project-layout-kind';
-import { RegionShells } from './app-shell/RegionShells';
+import { MainRegionSurface, RegionShells } from './app-shell/RegionShells';
 import { resolveHomeSurface } from './app-shell/resolve-home-surface';
 import {
   getLegacyPathRedirect,
@@ -525,6 +525,43 @@ function App() {
   const contentViewRef = useRef<HTMLDivElement>(null);
   useScrollRestoration(contentViewRef, window.location.pathname);
 
+  // The routed view. Built once: it is what every route other than `/`
+  // renders, and what `/` renders once the home surface has resolved.
+  const routedView = (
+    <AppViewContent
+      currentView={displayCurrentView}
+      agents={agents}
+      apiBase={API_BASE}
+      availableModels={availableModels}
+      defaultModel={appConfig?.defaultModel}
+      onNavigate={navigateToView}
+      onNavigateHome={navigateHome}
+      onSettingsSaved={handleSettingsSaved}
+      projectsLoading={projectsLoading}
+      homeContinuation={
+        homeSurface.status === 'resolved' ? homeSurface.target : null
+      }
+    />
+  );
+  // The Home branches of the route outlet, byte-for-byte what `/` rendered
+  // before `main` became choosable (#928 C2a): rendered by the Home region
+  // shell through `MainRegionSurface`, which is where a null or `home`
+  // occupant lands.
+  const renderHomeRoute = () =>
+    homeSurface.status === 'pending' ? (
+      <HomeRoutePendingSkeleton />
+    ) : homeSurface.status === 'host-unavailable' ? (
+      <HomeRouteHostUnavailable
+        reason={homeSurface.reason}
+        host={activeConnectionName || API_BASE}
+        address={activeConnectionUrl || API_BASE}
+      />
+    ) : homeSurface.status === 'error' ? (
+      <HomeRouteError source={homeSurface.source} onRetry={retryHomeSurface} />
+    ) : (
+      routedView
+    );
+
   return (
     <ProjectsProvider>
       <WorkspacePaneDockContext.Provider value={ambientDockAction}>
@@ -609,41 +646,31 @@ function App() {
                 and the toolbar's `header`. `tabIndex={-1}` makes it a
                 programmatic focus target for the skip control without adding
                 a tab stop of its own. */}
-              <main className="main-content" id="station-main" tabIndex={-1}>
+              <main
+                className="main-content"
+                style={
+                  isAmbientMobileDockFullscreen
+                    ? { visibility: 'hidden' }
+                    : undefined
+                }
+                id="station-main"
+                tabIndex={-1}
+                inert={isAmbientMobileDockFullscreen || undefined}
+                aria-hidden={isAmbientMobileDockFullscreen || undefined}
+              >
                 <div className="content-view" ref={contentViewRef}>
-                  {window.location.pathname === '/' &&
-                  homeSurface.status === 'pending' ? (
-                    <HomeRoutePendingSkeleton />
-                  ) : window.location.pathname === '/' &&
-                    homeSurface.status === 'host-unavailable' ? (
-                    <HomeRouteHostUnavailable
-                      reason={homeSurface.reason}
-                      host={activeConnectionName || API_BASE}
-                      address={activeConnectionUrl || API_BASE}
-                    />
-                  ) : window.location.pathname === '/' &&
-                    homeSurface.status === 'error' ? (
-                    <HomeRouteError
-                      source={homeSurface.source}
-                      onRetry={retryHomeSurface}
+                  {window.location.pathname === '/' ? (
+                    // #928 C2a: `/` renders the `main` region's occupant.
+                    // Home (the default, and what a null occupant means) is
+                    // `renderHomeRoute` above; any other surface renders its
+                    // own shell in `main`. Other routes ignore the occupant
+                    // and render the routed view; the occupant is kept.
+                    <MainRegionSurface
+                      occupant={regionModel?.regions.main.occupant ?? null}
+                      renderHome={renderHomeRoute}
                     />
                   ) : (
-                    <AppViewContent
-                      currentView={displayCurrentView}
-                      agents={agents}
-                      apiBase={API_BASE}
-                      availableModels={availableModels}
-                      defaultModel={appConfig?.defaultModel}
-                      onNavigate={navigateToView}
-                      onNavigateHome={navigateHome}
-                      onSettingsSaved={handleSettingsSaved}
-                      projectsLoading={projectsLoading}
-                      homeContinuation={
-                        homeSurface.status === 'resolved'
-                          ? homeSurface.target
-                          : null
-                      }
-                    />
+                    routedView
                   )}
                 </div>
               </main>
