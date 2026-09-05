@@ -1795,6 +1795,51 @@ Do not store or log tickets, and never retry execution automatically. An
 conversation evidence to inspect it. An accepted result carries distinct
 conversation, execution-session, and provider-turn identities.
 
+For an external client, obtain the Station API credential through the deployment's
+existing authentication flow and pass it to all three calls. Keep `apiBase`,
+Project, and credential fixed for the operation. This function runs a named
+installed action using its authored default or fixed Agent; it does not select
+the first available Agent:
+
+```ts
+import {
+  getWorkspacePaneHostActions,
+  prepareWorkspacePaneHostAction,
+  executeWorkspacePaneHostAction,
+} from '@kontourai/station-sdk/client';
+
+export async function runPackageAction(
+  apiBase: string,
+  projectSlug: string,
+  credential: string,
+  pluginId: string,
+  actionId: string,
+) {
+  const options = { headers: { Authorization: `Bearer ${credential}` } };
+  const catalog = await getWorkspacePaneHostActions(apiBase, projectSlug, options);
+  const contribution = catalog.contributions.find(
+    ({ projection }) => projection.owner.pluginId === pluginId,
+  );
+  const action = contribution?.projection.actions.find(({ id }) => id === actionId);
+  if (!contribution || contribution.reason || action?.availability !== 'available') {
+    throw new Error('Review the installed package and its Project Agent configuration.');
+  }
+  const prepared = await prepareWorkspacePaneHostAction(apiBase, projectSlug, {
+    ...contribution.projection.owner,
+    actionKey: action.key,
+  }, options);
+  if (prepared.state === 'unavailable') return prepared;
+  return executeWorkspacePaneHostAction(apiBase, projectSlug, prepared.ticket, options);
+}
+```
+
+Render an `unavailable` reason for the user to resolve, and expose the returned
+Session/conversation identities for an `accepted` result. Treat a thrown catalog
+or preparation error as an unavailable operation; do not downgrade to an ordinary
+chat launch. For `indeterminate`, direct the user to Activity without calling
+this function again automatically. Catalog availability is a display snapshot;
+preparation and execution repeat authorization against the current installation.
+
 Host actions require the package's current `agents.invoke` permission. They use
 captured Project and Agent authority at provider invocation and cannot substitute
 an ambient Agent, override a fixed action, or revive a retired installation.
