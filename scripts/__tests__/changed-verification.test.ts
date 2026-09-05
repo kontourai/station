@@ -128,6 +128,15 @@ function reportedRun({ status = 0, report = passingReport, result = {} } = {}) {
 
 describe('changed verification selection', () => {
   test.each([
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    'patches/dependency.patch',
+  ])('does not silently narrow shared dependency changes: %s', (path) => {
+    expect(selectChangedVerification([path])).toMatchObject({
+      escalated: true,
+    });
+  });
+  test.each([
     [scenarios.sourceEdges.server, 'server boundary'],
     [scenarios.sourceEdges.ui, 'UI boundary'],
     [scenarios.sourceEdges.package, 'package boundary'],
@@ -1311,6 +1320,10 @@ describe('changed verification selection', () => {
         writeFileSync(
           join(fixtureRoot, 'package.json'),
           readFileSync(join(process.cwd(), 'package.json')),
+        );
+        writeFileSync(
+          join(fixtureRoot, 'pnpm-workspace.yaml'),
+          readFileSync(join(process.cwd(), 'pnpm-workspace.yaml')),
         );
         // Materialize every workspace the copied root manifest declares — a
         // hardcoded list here silently diverges when a package is added to

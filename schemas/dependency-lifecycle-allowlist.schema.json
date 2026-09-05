@@ -41,7 +41,8 @@
           "enum": [
             "package-lock.json",
             "packages/sdk/package-lock.json",
-            "packages/shared/package-lock.json"
+            "packages/shared/package-lock.json",
+            "pnpm-lock.yaml"
           ]
         },
         "path": { "type": "string", "pattern": "^node_modules/" },

@@ -9,14 +9,12 @@ WORKDIR /app
 RUN apt-get update \
   && apt-get install --no-install-recommends -y g++ make python3 \
   && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/sdk/package.json packages/sdk/
-COPY packages/sdk/package-lock.json packages/sdk/
 COPY packages/basis-pane/package.json packages/basis-pane/
 COPY packages/board-pane/package.json packages/board-pane/
 COPY packages/shared/package.json packages/shared/
-COPY packages/shared/package-lock.json packages/shared/
 COPY packages/cli/package.json packages/cli/
 COPY packages/connect/package.json packages/connect/
 COPY examples/builder-delivery-viewer/package.json examples/builder-delivery-viewer/
@@ -28,7 +26,7 @@ COPY patches ./patches
 # staging read this whether or not the manifest pins artifacts.
 COPY packaging/node-pty-prebuilds packaging/node-pty-prebuilds
 COPY scripts/node-runtime-contract.mjs scripts/dependency-lifecycle.mjs scripts/
-COPY scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/workspace-dependency-satisfaction.mjs scripts/lib/dependency-install-retirement.mjs scripts/lib/
+COPY scripts/lib/dependency-install-retirement.mjs scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/workspace-dependency-satisfaction.mjs scripts/lib/pnpm-lockfile.mjs scripts/lib/
 RUN npm run dependencies:ci
 
 FROM dependencies AS build
@@ -69,7 +67,7 @@ RUN apt-get update \
 # The build stage inherits it, but source changes invalidate that stage and
 # would otherwise force an expensive recursive copy into the runtime image.
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/package.json /app/package-lock.json /app/station /app/.station-release.json ./
+COPY --from=build --chown=node:node /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml /app/station /app/.station-release.json ./
 COPY --from=build --chown=node:node /app/scripts ./scripts
 COPY --from=build --chown=node:node /app/config ./config
 COPY --from=build --chown=node:node /app/packages ./packages

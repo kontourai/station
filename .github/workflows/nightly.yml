@@ -51,8 +51,12 @@ jobs:
           fi
           test "$source_sha" = "$GITHUB_SHA"
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - name: Lint
         run: npm run lint:check
@@ -142,8 +146,12 @@ jobs:
           ref: ${{ needs.test-gate.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - id: cli_source_decide
         name: Skip CLI publication when nightly already names this source
         env:

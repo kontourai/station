@@ -903,7 +903,11 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
 ]);
 
 export const ESCALATION_PATHS = Object.freeze([
+  'patches/',
+  '.npmrc',
   'package-lock.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
   'package.json',
   'tsconfig.json',
   'tsconfig.tests.json',

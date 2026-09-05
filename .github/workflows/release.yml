@@ -155,8 +155,12 @@ jobs:
         with:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: release-client-build-provenance
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           targets: ${{ matrix.target }}
@@ -274,8 +278,12 @@ jobs:
         with:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: release-client-build-provenance
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: x86_64-pc-windows-msvc }
       - run: npm run dependencies:ci
@@ -373,8 +381,12 @@ jobs:
         with:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: release-client-build-provenance
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: x86_64-unknown-linux-gnu }
       - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev rpm2cpio cpio
@@ -517,8 +529,12 @@ jobs:
         with:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: release-client-build-provenance
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - name: Install dependencies before resolving the native update feed
         run: npm run dependencies:ci
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
@@ -699,8 +715,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-apple-ios-sim }
       - run: brew install xcodegen libimobiledevice cocoapods
@@ -879,8 +899,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - run: npm run dependencies:ci
       - name: Install pinned Rust SBOM generator
@@ -903,11 +927,9 @@ jobs:
         run: |
           fragment_root="$RUNNER_TEMP/station-release-sbom-fragments"
           mkdir -p "$fragment_root"
-          # The checked-in workspace graph currently has an npm peer-layout
-          # diagnostic (flow-agents' historical conduit range).  CycloneDX 6.0.1
-          # still produces the lockfile graph; do not let that diagnostic turn
-          # a fresh producer run into an empty SBOM.
-          npx --no-install cyclonedx-npm --package-lock-only --omit dev --ignore-npm-errors --output-file "$fragment_root/npm.cyclonedx.json"
+          # Resolve the production graph from pnpm's authoritative lock, including
+          # workspace links and peer-qualified instances, without installed-layout inference.
+          node scripts/generate-pnpm-sbom.mjs --output-file "$fragment_root/npm.cyclonedx.json"
           (cd src-desktop && cargo cyclonedx --format json --spec-version 1.5 --target all --override-filename station.cdx)
           test -s src-desktop/station.cdx.json
           cp src-desktop/station.cdx.json "$fragment_root/rust.cyclonedx.json"

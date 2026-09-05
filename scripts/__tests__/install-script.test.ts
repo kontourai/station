@@ -56,7 +56,19 @@ function makeFixtureArchive(
   const fakeBin = join(root, 'fake-bin');
   const log = join(root, 'station.log');
   mkdirSync(source, { recursive: true });
-  writeFileSync(join(source, 'package-lock.json'), '{}\n');
+  writeFileSync(
+    join(source, 'package.json'),
+    JSON.stringify({
+      name: 'station-installer-fixture',
+      version: '0.1.0',
+      packageManager: 'pnpm@11.25.0',
+      scripts: {
+        'dependencies:ci': 'node scripts/dependency-lifecycle.mjs ci',
+      },
+    }),
+  );
+  writeFileSync(join(source, 'pnpm-lock.yaml'), '{}\n');
+  writeFileSync(join(source, 'pnpm-workspace.yaml'), 'packages: []\n');
   writeFileSync(
     join(source, '.station-release.json'),
     `${JSON.stringify({
@@ -350,6 +362,128 @@ function privateDownloadFixture(
 // multiple times. Give each case enough headroom for loaded local/CI runners;
 // product subprocesses still retain their own tighter failure boundaries.
 describe('one-line Station installer', { timeout: 15_000 }, () => {
+  it.each([
+    {
+      name: 'missing pnpm lock with an npm fallback',
+      remove: 'pnpm-lock.yaml',
+      npmLock: true,
+      error: 'missing pnpm-lock.yaml',
+    },
+    {
+      name: 'missing pnpm workspace',
+      remove: 'pnpm-workspace.yaml',
+      error: 'missing pnpm-workspace.yaml',
+    },
+    {
+      name: 'mixed dependency locks',
+      npmLock: true,
+      error: 'ambiguous dependency lockfiles',
+    },
+    {
+      name: 'unpinned pnpm',
+      manager: 'pnpm@11',
+      error: 'must pin supported pnpm 11',
+    },
+    {
+      name: 'unsupported pnpm major',
+      manager: 'pnpm@10.0.0',
+      error: 'must pin supported pnpm 11',
+    },
+    {
+      name: 'unsupported manager',
+      manager: 'yarn@4.0.0',
+      error: 'must pin supported pnpm 11',
+    },
+    {
+      name: 'undeclared pnpm configuration',
+      manager: null,
+      npmLock: true,
+      error: 'undeclared pnpm dependency configuration',
+    },
+    {
+      name: 'missing package metadata',
+      remove: 'package.json',
+      error: 'missing package.json',
+    },
+    {
+      name: 'missing managed runner',
+      missingRunner: true,
+      error: 'missing its managed dependencies:ci runner',
+    },
+    {
+      name: 'conflicting manager declarations',
+      conflictingManager: true,
+      error: 'conflicting package-manager declarations',
+    },
+  ])('refuses $name before dependency execution', (scenario) => {
+    const root = mkdtempSync(join(tmpdir(), 'station-installer-contract-'));
+    roots.push(root);
+    const fixture = makeFixtureArchive(root);
+    const source = join(root, 'source', 'station');
+    const manifestPath = join(source, 'package.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    if ('manager' in scenario) {
+      if (scenario.manager === null) delete manifest.packageManager;
+      else manifest.packageManager = scenario.manager;
+    }
+    if ('missingRunner' in scenario) manifest.scripts = {};
+    if ('conflictingManager' in scenario)
+      manifest.devEngines = {
+        packageManager: { name: 'npm', version: '11.0.0' },
+      };
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    if ('remove' in scenario && scenario.remove)
+      rmSync(join(source, scenario.remove));
+    if ('npmLock' in scenario)
+      writeFileSync(join(source, 'package-lock.json'), '{}\n');
+    execFileSync(
+      'tar',
+      ['-czf', fixture.archive, '-C', join(root, 'source'), 'station'],
+      { windowsHide: true },
+    );
+    refreshFixtureDigests(fixture);
+    const installed = runInstaller(root, fixture, [], {
+      STATION_TEST_NPM_FAIL: '1',
+    });
+    expect(installed.result.status).not.toBe(0);
+    expect(installed.result.status).not.toBe(95);
+    expect(installed.result.stderr).toContain(scenario.error);
+    expect(installed.result.stdout).not.toContain(
+      'Installing Station dependencies',
+    );
+    expect(existsSync(join(installed.installRoot, 'current'))).toBe(false);
+  });
+
+  it('delegates an explicitly npm-pinned legacy release to its archived managed runner', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-installer-npm-'));
+    roots.push(root);
+    const fixture = makeFixtureArchive(root);
+    const source = join(root, 'source', 'station');
+    const manifest = JSON.parse(
+      readFileSync(join(source, 'package.json'), 'utf8'),
+    );
+    manifest.packageManager = 'npm@11.10.0';
+    writeFileSync(join(source, 'package.json'), JSON.stringify(manifest));
+    rmSync(join(source, 'pnpm-lock.yaml'));
+    rmSync(join(source, 'pnpm-workspace.yaml'));
+    writeFileSync(join(source, 'package-lock.json'), '{}\n');
+    execFileSync(
+      'tar',
+      ['-czf', fixture.archive, '-C', join(root, 'source'), 'station'],
+      { windowsHide: true },
+    );
+    refreshFixtureDigests(fixture);
+    executable(
+      join(fixture.fakeBin, 'npm'),
+      '#!/bin/sh\n[ "$*" = "run dependencies:ci" ] || exit 96\n[ -f "$PWD/package-lock.json" ] || exit 97\ntouch "$PWD/.npm-ci-complete"\n',
+    );
+    const installed = runInstaller(root, fixture);
+    expect(installed.result.status, installed.result.stderr).toBe(0);
+    expect(
+      existsSync(join(installed.installRoot, 'current', '.npm-ci-complete')),
+    ).toBe(true);
+  });
+
   it('installs, starts, and reuses the same checksum-addressed release', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
     roots.push(root);
