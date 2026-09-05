@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
@@ -13,11 +14,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
-import { install } from '../dependency-lifecycle.mjs';
+import { install, pnpmCommand } from '../dependency-lifecycle.mjs';
 import {
   DEPENDENCY_INSTALL_GUARD,
   DEPENDENCY_INSTALL_RECORD_PREFIX,
-  prepareDependencyInstallDrivers,
   withDependencyInstallGuard,
 } from '../lib/dependency-install-retirement.mjs';
 
@@ -484,17 +484,26 @@ test('another real process cannot enter the active installer guard', () => {
 });
 
 function pipeline(f: ReturnType<typeof fixture>, failed?: string) {
-  const npmCliPath = join(f.root, 'tools', 'npm-cli.js');
-  seed(join(f.root, 'tools'), 'npm-cli.js');
+  const pnpmCliPath = join(f.root, 'tools', 'pnpm.cjs');
+  seed(join(f.root, 'tools'), 'pnpm.cjs');
   const calls: string[] = [];
+  const reuse =
+    existsSync(join(f.modules, '.modules.yaml')) &&
+    !existsSync(join(f.modules, '.package-lock.json'));
   const phase = (name: string) => {
     calls.push(name);
+    if (
+      ['pnpm', 'stage', 'hooks', 'owned', 'verify'].includes(name) ||
+      (name === 'policy' &&
+        calls.filter((call) => call === 'policy').length > 1)
+    )
+      expect(existsSync(f.guard)).toBe(true);
     if (name === failed) throw new Error(`${name} fault`);
   };
   const execution = {
     root: f.root,
     nodePath: process.execPath,
-    resolveNpmCli: () => npmCliPath,
+    pnpmInvocation: () => ({ command: process.execPath, args: [pnpmCliPath] }),
     command: vi.fn(() => {
       phase('node');
     }),
@@ -502,11 +511,13 @@ function pipeline(f: ReturnType<typeof fixture>, failed?: string) {
       phase('policy');
       return { entries: [] };
     }),
-    npmCommand: vi.fn(() => {
-      phase('npm');
-      expect(existsSync(f.modules)).toBe(false);
+    pnpmCommand: vi.fn(() => {
+      phase('pnpm');
+      expect(existsSync(f.modules)).toBe(reuse);
+      expect(existsSync(f.guard)).toBe(true);
       expect(existsSync(f.previous)).toBe(false);
       seed(f.modules, 'fresh');
+      writeFileSync(join(f.modules, '.modules.yaml'), 'pnpm metadata');
     }),
     stageLifecyclePrebuilds: vi.fn(() => {
       phase('stage');
@@ -522,7 +533,7 @@ function pipeline(f: ReturnType<typeof fixture>, failed?: string) {
       return { allowlist: {}, purls: [] };
     }),
   };
-  return { execution, npmCliPath, calls };
+  return { execution, pnpmCliPath, calls };
 }
 
 const installWithExecution = install as unknown as (
@@ -538,25 +549,77 @@ test('the production installer binds its selected driver and guards the actual p
   expect(p.calls).toEqual([
     'node',
     'policy',
-    'npm',
+    'pnpm',
     'policy',
     'stage',
     'hooks',
     'owned',
     'verify',
   ]);
-  expect(p.execution.npmCommand).toHaveBeenCalledWith(
-    ['ci', '--ignore-scripts'],
+  expect(p.execution.pnpmCommand).toHaveBeenCalledWith(
+    [
+      'install',
+      '--ignore-scripts',
+      '--config.node-linker=hoisted',
+      '--config.enable-global-virtual-store=false',
+      '--package-import-method=clone-or-copy',
+      '--frozen-lockfile',
+    ],
     f.root,
-    prepareDependencyInstallDrivers({
-      root: f.root,
-      nodePath: process.execPath,
-      npmCliPath: p.npmCliPath,
-      clean: true,
-    }),
+    {
+      command: realpathSync(process.execPath),
+      args: [realpathSync(p.pnpmCliPath)],
+    },
   );
+  expect(p.execution.check).toHaveBeenNthCalledWith(1, {
+    cwd: f.root,
+    bootstrap: true,
+  });
   expect(existsSync(f.guard)).toBe(false);
   expect(existsSync(join(f.modules, 'fresh'))).toBe(true);
+});
+
+test.each(['npm-only', 'hybrid', 'unidentified'])(
+  'the production installer retires a %s tree once and reuses its subsequent pnpm tree',
+  (kind) => {
+    const f = fixture();
+    seed(f.modules, 'old-extraneous-package');
+    if (kind !== 'unidentified')
+      writeFileSync(join(f.modules, '.package-lock.json'), '{}');
+    if (kind === 'hybrid')
+      writeFileSync(join(f.modules, '.modules.yaml'), 'old hybrid');
+    const first = pipeline(f);
+    installWithExecution({}, first.execution);
+    expect(existsSync(join(f.modules, 'old-extraneous-package'))).toBe(false);
+    expect(existsSync(join(f.modules, '.package-lock.json'))).toBe(false);
+    const installed = statSync(f.modules);
+    writeFileSync(join(f.modules, 'pnpm-preserved'), 'preserve this tree');
+    const second = pipeline(f);
+    installWithExecution({}, second.execution);
+    expect(statSync(f.modules).ino).toBe(installed.ino);
+    expect(readFileSync(join(f.modules, 'pnpm-preserved'), 'utf8')).toBe(
+      'preserve this tree',
+    );
+    expect(existsSync(f.guard)).toBe(false);
+  },
+);
+
+test('developer installs preserve established pnpm trees while allowing an intentional lock refresh', () => {
+  const f = fixture();
+  seed(f.modules, '.modules.yaml');
+  const before = statSync(f.modules);
+  const p = pipeline(f);
+  installWithExecution({ developer: true }, p.execution);
+  expect(p.execution.pnpmCommand).toHaveBeenCalledWith(
+    expect.arrayContaining([
+      'install',
+      '--ignore-scripts',
+      '--no-frozen-lockfile',
+    ]),
+    f.root,
+    expect.any(Object),
+  );
+  expect(statSync(f.modules).ino).toBe(before.ino);
 });
 
 test.each(['hooks', 'owned', 'verify'])(
@@ -568,7 +631,7 @@ test.each(['hooks', 'owned', 'verify'])(
     expect(() => installWithExecution({}, p.execution)).toThrow(
       /not verified/i,
     );
-    expect(p.execution.npmCommand).toHaveBeenCalledTimes(1);
+    expect(p.execution.pnpmCommand).toHaveBeenCalledTimes(1);
     expect(p.calls.at(-1)).toBe(failed);
     expect(existsSync(f.previous)).toBe(false);
     expect(readFileSync(join(f.modules, 'fresh'), 'utf8')).toBe('original');
@@ -578,59 +641,106 @@ test.each(['hooks', 'owned', 'verify'])(
   },
 );
 
-test.each(['node', 'npm'])(
-  'a clean install refuses a %s driver within the retirement tree before any guard or command',
+test.each(['node', 'pnpm script', 'pnpm executable'])(
+  'an install refuses a %s driver within node_modules before acquiring a guard or executing the manager',
   (kind) => {
     const f = fixture();
     seed(f.modules);
     const p = pipeline(f);
-    const inside = join(f.modules, kind === 'node' ? 'node' : 'npm-cli.js');
+    const inside = join(f.modules, kind === 'node' ? 'node' : 'pnpm.cjs');
     writeFileSync(inside, 'driver');
     if (kind === 'node') p.execution.nodePath = inside;
-    else p.execution.resolveNpmCli = () => inside;
+    else
+      p.execution.pnpmInvocation = () =>
+        kind === 'pnpm executable'
+          ? { command: inside, args: [] }
+          : { command: process.execPath, args: [inside] };
     expect(() => installWithExecution({}, p.execution)).toThrow(
       /outside root node_modules/,
     );
-    expect(p.execution.command).not.toHaveBeenCalled();
-    expect(p.execution.npmCommand).not.toHaveBeenCalled();
+    expect(p.execution.command).toHaveBeenCalledTimes(kind === 'node' ? 0 : 1);
+    expect(p.execution.pnpmCommand).not.toHaveBeenCalled();
     expect(existsSync(f.guard)).toBe(false);
     expect(existsSync(join(f.modules, '.DS_Store'))).toBe(true);
   },
 );
 
-test('an npm link inside the retired tree binds the external canonical driver before it moves', () => {
+test('a pnpm link inside node_modules binds the external canonical driver before incremental installation', () => {
   const f = fixture();
   seed(f.modules);
   const p = pipeline(f);
   symlinkSync(join(f.root, 'tools'), join(f.modules, 'npm'), 'junction');
-  p.execution.resolveNpmCli = () => join(f.modules, 'npm', 'npm-cli.js');
-  installWithExecution({}, p.execution);
-  const drivers = prepareDependencyInstallDrivers({
-    root: f.root,
-    nodePath: process.execPath,
-    npmCliPath: p.npmCliPath,
-    clean: true,
+  p.execution.pnpmInvocation = () => ({
+    command: process.execPath,
+    args: [join(f.modules, 'npm', 'pnpm.cjs')],
   });
-  expect(p.execution.npmCommand).toHaveBeenCalledWith(
-    ['ci', '--ignore-scripts'],
+  installWithExecution({}, p.execution);
+  expect(p.execution.pnpmCommand).toHaveBeenCalledWith(
+    expect.arrayContaining([
+      'install',
+      '--ignore-scripts',
+      '--frozen-lockfile',
+    ]),
     f.root,
-    drivers,
+    {
+      command: realpathSync(process.execPath),
+      args: [realpathSync(p.pnpmCliPath)],
+    },
   );
-  expect(existsSync(p.npmCliPath)).toBe(true);
+  expect(existsSync(p.pnpmCliPath)).toBe(true);
+  expect(existsSync(f.guard)).toBe(false);
+});
+
+test('the real command runner executes its bound external driver after the legacy tree containing its alias is gone', () => {
+  const f = fixture();
+  seed(f.modules, '.package-lock.json');
+  const p = pipeline(f);
+  const aliasDirectory = join(f.modules, 'manager');
+  symlinkSync(join(f.root, 'tools'), aliasDirectory, 'junction');
+  p.execution.pnpmInvocation = () => ({
+    command: process.execPath,
+    args: [join(aliasDirectory, 'pnpm.cjs')],
+  });
+  writeFileSync(
+    p.pnpmCliPath,
+    `const fs = require('node:fs');
+if (!fs.existsSync('.station-dependency-install')) throw new Error('guard missing during driver execution');
+if (fs.existsSync('node_modules')) throw new Error('legacy tree was not retired');
+fs.mkdirSync('node_modules');
+fs.writeFileSync('node_modules/.modules.yaml', 'pnpm metadata');
+fs.writeFileSync('driver-result.json', JSON.stringify({ driver: __filename, args: process.argv.slice(2) }));`,
+  );
+  const execution = { ...p.execution, pnpmCommand };
+  installWithExecution({}, execution as unknown as typeof p.execution);
+  const result = JSON.parse(
+    readFileSync(join(f.root, 'driver-result.json'), 'utf8'),
+  );
+  expect(result.driver).toBe(realpathSync(p.pnpmCliPath));
+  expect(result.args).toEqual([
+    'install',
+    '--ignore-scripts',
+    '--config.node-linker=hoisted',
+    '--config.enable-global-virtual-store=false',
+    '--package-import-method=clone-or-copy',
+    '--frozen-lockfile',
+  ]);
+  expect(existsSync(aliasDirectory)).toBe(false);
   expect(existsSync(f.guard)).toBe(false);
 });
 
 test('an external alias cannot hide a driver target inside the retirement tree', () => {
   const f = fixture();
-  seed(f.modules, 'npm-cli.js');
+  seed(f.modules, 'pnpm.cjs');
   const p = pipeline(f);
   symlinkSync(f.modules, join(f.root, 'tools', 'local'), 'junction');
-  p.execution.resolveNpmCli = () =>
-    join(f.root, 'tools', 'local', 'npm-cli.js');
+  p.execution.pnpmInvocation = () => ({
+    command: process.execPath,
+    args: [join(f.root, 'tools', 'local', 'pnpm.cjs')],
+  });
   expect(() => installWithExecution({}, p.execution)).toThrow(
     /outside root node_modules/,
   );
-  expect(p.execution.command).not.toHaveBeenCalled();
+  expect(p.execution.command).toHaveBeenCalledTimes(1);
   expect(existsSync(f.guard)).toBe(false);
 });
 

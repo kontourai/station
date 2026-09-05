@@ -1211,11 +1211,27 @@ function securityAnalysisTopologyFindings(file, jobs) {
   return findings;
 }
 
+// This bootstrap installs only the package manager pinned by package.json.
+// Keep install explicitly disabled: the action otherwise installs candidate dependencies
+// before the reviewed lifecycle entrypoint gets to apply its policy.
+function isPinnedPnpmSetup(step) {
+  return (
+    step?.uses === 'pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c' &&
+    step?.name === 'Setup pinned pnpm' &&
+    Object.keys(step).every(
+      (key) => key === 'name' || key === 'uses' || key === 'with',
+    ) &&
+    Object.keys(step.with ?? {}).join(',') === 'install' &&
+    step.with.install === false
+  );
+}
+
 function unapprovedActionFindings(file, jobId, job, allowedPrefixes) {
   return (job?.steps ?? [])
     .filter(
       (step) =>
         typeof step?.uses === 'string' &&
+        !isPinnedPnpmSetup(step) &&
         !allowedPrefixes.some((prefix) => step.uses.startsWith(prefix)),
     )
     .map(() => ({
@@ -1589,7 +1605,7 @@ function primaryCiRouterFindings(file, document) {
         },
         {
           name: 'Enforce candidate UI bundle budget',
-          run: 'npm run build:connect && npm run build:ui',
+          run: 'npm run build:ui',
         },
       ]),
     );
@@ -1773,6 +1789,7 @@ function baseControlledPrWorkflowFindings(file, document) {
         });
       if (
         typeof step?.uses === 'string' &&
+        !isPinnedPnpmSetup(step) &&
         ![
           'actions/checkout@',
           'actions/setup-node@',

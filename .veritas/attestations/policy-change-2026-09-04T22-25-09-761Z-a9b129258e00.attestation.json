@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-09-04T22-25-09-761Z-a9b129258e00",
+  "kind": "policy-change",
+  "actor": {
+    "id": "codex",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson@kontourai.io",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-09-04T22:25:09.761Z",
+  "repoStandardsHash": "sha256:626ff97d3f92697a8ce1de8ddc64a205ecfa7e0cee9ff95915bea0cc4b7123b1",
+  "repoMapHash": "sha256:eb1b06dc0af935b7b01aac450cafaa2c77da36fd003cb671ebbfa831280fbb09",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-08-30T19-18-40-052Z-f1dc45c14bd6",
+  "validUntilDays": 90,
+  "notes": "User directed the Station pnpm migration and workflow updates. This additive repo-map change includes pnpm-lock.yaml and pnpm-workspace.yaml in the existing protected root-manifests area; no existing rule, scope, or required evidence is removed. Executed by Codex under that task authorization.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-08-30T19-18-40-052Z-f1dc45c14bd6",
+    "approvalRef": "chat:01a06e62-6c48-77c3-93c2-50225c6ef290:user-pnpm-migration-and-workflows",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-09-04T22-25-09-761Z-a9b129258e00",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "f6d18290e1a4f2d0436fc32e579a2cef11298fbbee615a3344652ead6c5f8076",
+        "validUntil": "2026-12-03T22:25:09.761Z"
+      },
+      "createdAt": "2026-09-04T22:25:09.761Z",
+      "updatedAt": "2026-09-04T22:25:09.761Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-09-04T22-25-09-761Z-a9b129258e00",
+      "claimId": "veritas.attestation.policy-change-2026-09-04T22-25-09-761Z-a9b129258e00",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "User directed the Station pnpm migration and workflow updates. This additive repo-map change includes pnpm-lock.yaml and pnpm-workspace.yaml in the existing protected root-manifests area; no existing rule, scope, or required evidence is removed. Executed by Codex under that task authorization.",
+      "observedAt": "2026-09-04T22:25:09.761Z",
+      "collectedBy": "codex",
+      "integrityRef": "f6d18290e1a4f2d0436fc32e579a2cef11298fbbee615a3344652ead6c5f8076",
+      "metadata": {
+        "actor": {
+          "id": "codex",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-09-04T22:25:09.761Z",
+        "validUntil": "2026-12-03T22:25:09.761Z",
+        "contentHash": "f6d18290e1a4f2d0436fc32e579a2cef11298fbbee615a3344652ead6c5f8076"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-09-04T22-25-09-761Z-a9b129258e00.verified",
+      "claimId": "veritas.attestation.policy-change-2026-09-04T22-25-09-761Z-a9b129258e00",
+      "status": "verified",
+      "actor": "codex",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-09-04T22-25-09-761Z-a9b129258e00"
+      ],
+      "createdAt": "2026-09-04T22:25:09.761Z",
+      "verifiedAt": "2026-09-04T22:25:09.761Z"
+    }
+  }
+}

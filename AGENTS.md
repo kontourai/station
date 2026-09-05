@@ -2,15 +2,15 @@
 
 ## Start here
 
-- GitHub issues and pull requests own live work state. Before trusting a checkout, inspect `git status -sb` and its relationship to `origin/main`.
+- GitHub owns live work state. Check `git status -sb` and its relationship to `origin/main`.
 - Work only in a sibling worktree (`../station-worktrees/<lane>`), never the primary checkout or a nested worktree. Preserve intentional changes: never use `git stash`; after review begins, integrate upstream with `git merge origin/main`, not rebase.
 - Use an isolated Station home, instance name, and non-default ports. Ports 3141 and 3000 belong to the user.
 - Run `npm run dependencies:ci` to arm hooks. Before editing, use `npm run gate:for -- <paths...>`; it routes to focused evidence. Run selected tests with `npm run test:focused -- <file...>`, not ad-hoc `npx vitest`.
+- Managed installs use pinned pnpm; `npm run` is the script interface. Never run raw npm installs in this workspace.
 - Never `git push --no-verify`; no required CI check re-runs the pre-push gates. The transfer gate reads `STATION_TRANSFER_BASELINE_ROOT`; slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (see docs/guides/testing.md).
 - `npm run test:changed -- --base=origin/main --explain` selects a diagnostic lane; exit 3 is provisional/deferred, not completion. For ordinary pull requests, run focused evidence and `npm run ci:fast`; GitHub's merge queue verifies the synthesized latest-main candidate. Do not run `npm run full:regression` locally merely because `main` moved.
 - The reusable hosted full-regression workflow owns canonical completion receipts for Nightly and tagged preview/stable promotions. CI `workflow_dispatch` is the explicit diagnostic escape hatch. Builder `tests-evidence` uses that exact-SHA promotion receipt; focused test evidence remains diagnostic.
 - Diagnose the failure rather than rerun-to-green: a red lane is a signal to diagnose, not a request to rerun until green. For a redundant same-digest run, join or reuse the existing lease.
-- Diagnose locally with the narrowest named lane. If an explicit full-regression investigation is authorized, join or reuse an in-flight same-digest request rather than launching redundant work.
 - If an explicit submission handoff is active, freeze the worktree. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
 
 ## Landing a pull request
@@ -79,6 +79,7 @@ Codex loads this root file when launched here; it does not automatically load ne
 
 | Touched path | Read |
 | --- | --- |
+| Documentation | [docs/guides/documentation.md](docs/guides/documentation.md) |
 | `src-server/**` | [src-server/AGENTS.md](src-server/AGENTS.md) |
 | `src-ui/**` | [src-ui/AGENTS.md](src-ui/AGENTS.md) |
 | `scripts/**`, `.github/**`, root configuration, package scripts | [scripts/AGENTS.md](scripts/AGENTS.md) |

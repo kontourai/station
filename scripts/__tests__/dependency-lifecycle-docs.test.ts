@@ -19,7 +19,7 @@ describe('dependency lifecycle bootstrap guidance', () => {
       expect(guide).toContain('npm run dependencies:install');
     }
     expect(quality).toContain('npm run hooks:install');
-    expect(quality).toContain('explicit patch step');
+    expect(quality).toContain('explicit patch configuration');
     expect(quality).not.toContain('`npm ci` arms them');
     expect(testing).toContain('does not trust a\nroot `postinstall` hook');
     for (const stale of [

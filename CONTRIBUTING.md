@@ -34,6 +34,8 @@ copying commands from an issue or pull request:
 - [Testing guide](docs/guides/testing.md)
 - [Code-quality guide](docs/guides/code-quality.md)
 - [Module map](docs/architecture/module-map.md)
+- [Repository layout and naming](docs/guides/repository-layout.md)
+- [Maintaining documentation](docs/guides/documentation.md)
 
 The pull-request template is the handoff contract: state the user outcome,
 issue and closure condition, exact commands and receipts, manual inspection,
