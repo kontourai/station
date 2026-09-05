@@ -1807,3 +1807,49 @@ existing behavior.
 `renderRecordActions({ rootId, recordId })`. The slot is host-rendered and appears
 only for the exact selected loaded record. It introduces no Station UI dependency
 into the SDK. Station's Memory view uses it to open the source inspector.
+
+#### Public source-inspection integration behavior
+
+This surface is usable by any host built against the public Station packages; it
+does not require Station app internals or a particular company's filesystem
+layout. Obtain the selected root/record from the public Knowledge APIs. Use the
+[local Station launcher](cli.md#the-station-launcher) to redeem its one-time
+bootstrap link for the browser's home-possession session, or the documented
+[local grant flow](cli.md#scripted--non-interactive-use) for a local client. Do not
+substitute an operator API credential, a claimed locality field, or a loopback URL.
+A saved operator bearer takes precedence over a browser cookie; select the genuine
+local device-session connection when presenting the launch session.
+
+Hosts using Connect can capture credential evidence with its public
+`useConnections()` surface and derive the request scope with
+`requestAuthorityScopeFromCredentialEvidence`. Bind the SDK credential resolver
+to that same current evidence. The source hook accepts that public `ApiRequestScope`;
+there is no dependency on Station's private `ApiBaseContext`. The optional
+`renderRecordActions` slot lets the host supply its own source presentation.
+
+`apiBase` is the origin without `/api`. The reference must contain a selected root
+ID and exact record ID (at most 200 characters each); aliases are unsupported.
+Use the public root-key serializer, also available from
+`@kontourai/station-shared/knowledge-root-identity`. It serializes compact JSON in
+this order: root ID, scope kind, project slug or null, adapter ID, store root,
+display name, creation timestamp. Send its URI-encoded UTF-8 representation in
+`x-station-knowledge-root-identity` (at most 8,192 characters after encoding). This
+metadata comparison does not detect an identically restored registration or
+provide a revision/CAS contract.
+
+Unauthenticated ingress returns HTTP 401; missing route scope returns HTTP 403;
+invalid route references return HTTP 400. An admitted route returns the standard
+`{ success: true, data }` envelope: `observed` supplies only source fields, while
+`restricted`, `unsupported`, `missing`, `busy`, `corrupt`, `unavailable`,
+`invalid-input`, and `over-budget` contain no source identity. The reader bounds
+the complete source file to 256 KiB and refuses rather than truncating it.
+`busy` can be retried after the store operation settles. A stale registration must
+be reselected from fresh root data; retrying the old key cannot adopt its
+replacement. The SDK rejects malformed/mismatched observations and withholds
+cached source data during revalidation and failed reads.
+
+Hosted deployment and tenant-scoped execution are explicitly refused even for
+otherwise valid local credentials. Project/tenant record authorization and owner
+learning lifecycle intents are separate future contracts. Hosts should present
+these limits directly, without treating a source read as candidate approval,
+promotion, or effect evidence.
