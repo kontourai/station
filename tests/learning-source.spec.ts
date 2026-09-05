@@ -42,7 +42,7 @@ async function seed(
   storeRoot: string,
   title = TITLE,
 ): Promise<KnowledgeStoreRoot> {
-  const response = await request.post(`${API}/knowledge/roots`, {
+  const response = await request.post(`${API}/api/knowledge/roots`, {
     data: {
       scope: { kind: 'personal' },
       adapterId: 'kit-default-store',
@@ -54,7 +54,7 @@ async function seed(
   const root = (await response.json()).data as KnowledgeStoreRoot;
   try {
     const record = await request.post(
-      `${API}/knowledge/roots/${encodeURIComponent(root.id)}/records`,
+      `${API}/api/knowledge/roots/${encodeURIComponent(root.id)}/records`,
       {
         data: {
           id: RECORD_ID,
@@ -81,7 +81,7 @@ async function remove(
   root: KnowledgeStoreRoot,
 ) {
   const response = await request.delete(
-    `${API}/knowledge/roots/${encodeURIComponent(root.id)}`,
+    `${API}/api/knowledge/roots/${encodeURIComponent(root.id)}`,
   );
   expect(response.ok()).toBeTruthy();
 }
@@ -103,7 +103,7 @@ for (const viewport of [
       // The operator API credential is intentionally insufficient: only the
       // browser's actual home-possession mint may inspect personal source bytes.
       const denied = await authenticatedRequest.get(
-        `${API}/knowledge/roots/${encodeURIComponent(root.id)}/records/${RECORD_ID}/source-observation`,
+        `${API}/api/knowledge/roots/${encodeURIComponent(root.id)}/records/${RECORD_ID}/source-observation`,
         {
           headers: {
             [KNOWLEDGE_ROOT_IDENTITY_HEADER]: encodeURIComponent(
