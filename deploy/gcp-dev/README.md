@@ -143,3 +143,28 @@ that disk before any later removal. A replacement instance does not automaticall
 inherit execution authority. Use explicit recovery and source fencing rather
 than attaching the same writable home to competing runtimes. Remove only the
 network/firewall/budget/project resources owned by the completed experiment.
+
+
+## Recorded development qualification (2026-09-05)
+
+A fresh `e2-micro`/Debian 12 host in `us-central1-a` ran a locally built
+`linux/amd64` Station image from source revision
+`0be1dc4a172817e5ddf9b5047d27868f2c0cfe92`. The test used 30-GB standard storage,
+2-GiB swap, and a container memory limit of 768 MiB with a 1536-MiB combined
+memory/swap limit. This is one small-host observation, not a capacity guarantee.
+
+Image/archive identity, application health, authenticated browser API operations,
+Git/file access, and the real PTY handshake passed. The same credential and data
+passed after container recreation and VM stop/start; the disk identity and its
+no-auto-delete setting were retained. The corrected swap helper also initialized,
+reused, and removed a separate real-Linux probe swap file successfully. Interrupted
+preparation was tested through actual Bash control flow with inert utility stubs;
+that regression failed on the previous implementation and passed after correction.
+
+Initial image unpacking was slow and the running host used swap with limited
+memory headroom. Larger or concurrent agent work is unqualified. An offline
+baseline disk snapshot was created; restoration to a different host remains
+unverified. Normal browser pairing/enrollment remains separate from the
+operator-credential API test. [#1513](https://github.com/kontourai/station/issues/1513)
+tracks the owner decision for automatic cloud principal/bootstrap behavior.
+No local setup, provider credential, or active agent was migrated in this drill.

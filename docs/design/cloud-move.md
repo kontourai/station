@@ -97,7 +97,10 @@ the environment; template validation does not prove boot or runtime readiness.
    portable material through an authenticated encrypted mechanism; OS-keychain,
    device-bound, and unsupported engine credentials require sign-in. Never
    include credential payloads in ordinary export documents or templates.
-4. Add the UI to the same operation contract: preview, cost/compatibility review,
+4. Resolve [cloud principal/enrollment authority](https://github.com/kontourai/station/issues/1513)
+   before adding automatic bootstrap. Cloud IAM, host-admin access, and shared
+   signing material do not by themselves define a Station browser principal.
+   Add the UI to the same operation contract: preview, cost/compatibility review,
    target preparation, setup transfer, sign-in, verification, and continuation.
    The first authorized setup may need decisions; a repeat move can be simpler.
 5. Implement durable ownership transfer and supported session continuation.
