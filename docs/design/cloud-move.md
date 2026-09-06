@@ -97,6 +97,12 @@ remaining identity integration and browser acceptance requirements.
 
 ## Target identity checks
 
+`station cloud verify-target` uses the SDK's `verifyCloudMoveTarget` to
+observe an explicitly enrolled target through the existing credential owner.
+It requires stable boot identity across discovery, bounds response bodies,
+and refuses missing enrollment and redirects. Its observation is not an
+activation receipt; the coordinator still needs to bind it to a transfer.
+
 The existing [SSH worker probe](../../src-server/services/ssh/openssh-worker-probe.ts)
 reads discovery and boot identity from the selected remote loopback port through
 an authenticated SSH connection. Both requests reject HTTP redirects and share

@@ -1930,3 +1930,22 @@ Response commands preserve their existing receipts. An event mismatch or lost
 request authority is a refusal to act, requiring fresh inspection rather than a
 blind mutation retry. Requests without canonical approval/permission evidence
 keep their ordinary Session or notification fallback.
+
+## Cloud target observation
+
+`verifyCloudMoveTarget(apiBase, options?)` from
+`@kontourai/station-sdk/client` powers `station cloud verify-target`. Use an
+explicit Station origin and its enrolled credential resolver, or pass
+`credential` with its matching `credentialOrigin`. UI callers should also pass
+the connection's `requestScope` so an authority change invalidates the read.
+
+The function returns a `CloudMoveTargetObservation` only when discovery is
+bracketed by matching instance, boot and build identities. The observation
+contains no secrets and always reports `executionAuthorityTransferred: false`
+and `executionResumeAvailable: false`. It is process reachability evidence,
+not persistent home identity, a compatibility certification or a transfer grant.
+
+The shared GET transport supports opt-in `requireCredential`, `redirect: 'error'`
+and `maxResponseBytes` options. The probe requires SDK-owned matching bearer
+attachment, refuses redirects, limits each body to 4 KiB and uses a shared
+15-second deadline. Existing callers retain their current defaults.

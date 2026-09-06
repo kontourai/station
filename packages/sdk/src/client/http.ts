@@ -68,6 +68,12 @@ export interface ClientRequestOptions {
   /** Origin the credential belongs to. Credentials are never sent elsewhere. */
   credentialOrigin?: string;
   authentication?: 'required' | 'omit';
+  /** Refuse network access without a matching enrolled bearer credential. */
+  requireCredential?: boolean;
+  /** Identity probes must not follow a response to another listener. */
+  redirect?: 'error';
+  /** Optional byte ceiling for a GET response body. */
+  maxResponseBytes?: number;
   /**
    * Per-call request deadline in milliseconds. `null` (or `0`) opts the call
    * out of the host-configured default — use it for streams and long polls
@@ -597,6 +603,15 @@ function resolveRequestHeaders(
   opts?: ClientRequestOptions,
 ): Record<string, string> | undefined {
   const headers = withClientOriginHeaders(opts?.headers) ?? {};
+  if (
+    opts?.requireCredential &&
+    (opts.authentication === 'omit' ||
+      new Headers(headers).has('Authorization'))
+  ) {
+    throw new Error(
+      'Enrolled requests require SDK-owned credential attachment',
+    );
+  }
   if (opts?.authentication === 'omit') {
     return Object.keys(headers).length > 0 ? headers : undefined;
   }
@@ -620,6 +635,14 @@ function resolveRequestHeaders(
     throw new StationCredentialConflictError(url);
   }
   const source = explicit ?? configured;
+  if (
+    opts?.requireCredential &&
+    (!source?.credential || !sameOrigin(url, source.origin))
+  ) {
+    throw new Error(
+      'An enrolled Station credential for this target is required',
+    );
+  }
   if (
     source?.credential &&
     sameOrigin(url, source.origin) &&
@@ -931,7 +954,13 @@ export async function getJson(
   opts?: ClientRequestOptions,
 ): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
-  const init: RequestInit = { method: 'GET' };
+  const maximum = requestOptions?.maxResponseBytes;
+  if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum < 1))
+    throw new Error('Invalid response byte limit');
+  const init: RequestInit = {
+    method: 'GET',
+    ...(requestOptions?.redirect ? { redirect: requestOptions.redirect } : {}),
+  };
   if (requestOptions?.signal) init.signal = requestOptions.signal;
   const configured = await resolveRequestCredential(requestOptions);
   const assertAuthority = bindRequestAuthority(url, requestOptions, configured);
@@ -970,9 +999,55 @@ export async function getJson(
     requestOptions,
     assertAuthority,
   );
+  let result = response;
+  if (maximum !== undefined && response.body) {
+    const reader = response.body.getReader();
+    let bytes = 0;
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          assertAuthority();
+          const chunk = await reader.read();
+          assertAuthority();
+          if (chunk.done) {
+            controller.close();
+            return;
+          }
+          bytes += chunk.value.byteLength;
+          if (bytes > maximum)
+            throw new Error('Station response exceeded its byte limit');
+          controller.enqueue(chunk.value);
+        } catch (error) {
+          void reader.cancel().catch(() => {});
+          controller.error(error);
+        }
+      },
+      cancel(reason) {
+        return reader.cancel(reason);
+      },
+    });
+    const bounded = new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+    // Keep transport identity when wrapping only the response body.
+    result = new Proxy(bounded, {
+      get(target, property) {
+        if (
+          property === 'url' ||
+          property === 'redirected' ||
+          property === 'type'
+        )
+          return response[property];
+        const value = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  }
   return needsAuthorityGuard(url, requestOptions, configured)
-    ? guardResponseAuthority(response, assertAuthority)
-    : response;
+    ? guardResponseAuthority(result, assertAuthority)
+    : result;
 }
 
 /**
