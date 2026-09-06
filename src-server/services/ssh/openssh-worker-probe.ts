@@ -81,9 +81,11 @@ const main = async () => {
   let identity;
   try {
     const base = 'http://127.0.0.1:' + input.remotePort;
+    // Identity must come from the selected listener, never a redirect target.
+    const options = { redirect: 'error', signal: AbortSignal.timeout(10000) };
     const [handshakeResponse, identityResponse] = await Promise.all([
-      fetch(base + '/.well-known/station/v1'),
-      fetch(base + '/api/system/identity'),
+      fetch(base + '/.well-known/station/v1', options),
+      fetch(base + '/api/system/identity', options),
     ]);
     if (!handshakeResponse.ok || !identityResponse.ok) fail('station-unavailable');
     handshake = await handshakeResponse.json();
