@@ -3336,7 +3336,15 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
       },
       interrupt: vi.fn().mockResolvedValue(undefined),
       supportedModels: vi.fn().mockResolvedValue([]),
-      close: vi.fn(),
+      // The real SDK ends its iterator when the query closes — and it drains
+      // whatever it had already queued first. Modelling that is what makes
+      // the stopSession ordering below a real test rather than a mock's
+      // convenience (station#1558 fix round, M8).
+      close: vi.fn().mockImplementation(() => {
+        ended = true;
+        wake?.();
+        wake = null;
+      }),
       setModel: vi.fn().mockResolvedValue(undefined),
       setPermissionMode: vi.fn().mockResolvedValue(undefined),
       applyFlagSettings: vi.fn().mockResolvedValue(undefined),
@@ -3404,6 +3412,49 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
     // The exit event follows it, so a reader replaying the stream sees the
     // call settle while the session is still the subject.
     await nextOf(iterator, 'session.exited');
+  });
+
+  // station#1558 fix round (M8): closing the query does not discard messages
+  // the SDK already queued. Settling synchronously inside stopSession
+  // published `unresolved` for a call that DID report, and the replay guard
+  // then dropped the real result because its entry was gone.
+  test('a tool_result queued before the close still reports success, and no unresolved is published for it', async () => {
+    const query = createEndableMockQuery();
+    const { adapter, iterator, turnId } = await openCallOn(
+      'thread-unresolved-race',
+      query,
+    );
+
+    // Queued, not yet consumed, at the moment the stop lands.
+    query.push({
+      type: 'user',
+      parent_tool_use_id: null,
+      message: {
+        content: [
+          { type: 'tool_result', tool_use_id: 'toolu-open', content: 'ok' },
+        ],
+      },
+      uuid: 'user-1',
+      session_id: 'thread-unresolved-race',
+    });
+    await adapter.stopSession('thread-unresolved-race');
+
+    const settled = await nextOf(iterator, 'tool.completed');
+    expect(settled).toMatchObject({
+      toolCallId: 'toolu-open',
+      status: 'success',
+      turnId,
+    });
+    // …and only that one: the exit follows with no unresolved terminal
+    // between them.
+    const after: string[] = [];
+    for (let step = 0; step < 8; step += 1) {
+      const next = await iterator.next();
+      after.push(next.value.method);
+      if (next.value.method === 'session.exited') break;
+    }
+    expect(after).toContain('session.exited');
+    expect(after).not.toContain('tool.completed');
   });
 
   test('the SDK iterator ending (the process exiting) settles the open call too', async () => {

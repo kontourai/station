@@ -451,6 +451,44 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
       ).toHaveLength(0);
     });
 
+    // Fix round (M2): the historical scan must respect the turn the event
+    // names, or a reused call id settles the older row with the newer turn's
+    // result.
+    test("does not settle an earlier message's row when the result names another turn", () => {
+      seedTwoMessages('tool-1');
+      // Give the second message a turn identity so the event has somewhere
+      // honest to land.
+      const chat = activeChatsStore.getSnapshot()[threadId]!;
+      activeChatsStore.updateChat(threadId, {
+        messages: [
+          chat.messages![0],
+          { ...chat.messages![1], role: 'assistant', turnId: 'turn-b' },
+        ],
+      });
+
+      handleToolCompletedEvent(
+        toolCompleted({ turnId: 'turn-b', status: 'success', output: 'B' }),
+      );
+
+      // turn-a's open row is untouched…
+      const aTools = historyParts(0).filter(
+        (part) => part.type === 'tool-invocation',
+      );
+      expect(aTools).toHaveLength(1);
+      expect(aTools[0]).toMatchObject({ state: 'running' });
+      expect(aTools[0]?.result).toBeUndefined();
+      // …and the result went to the turn it names.
+      const bTools = historyParts(1).filter(
+        (part) => part.type === 'tool-invocation',
+      );
+      expect(bTools).toHaveLength(1);
+      expect(bTools[0]).toMatchObject({
+        toolCallId: 'tool-1',
+        state: 'completed',
+        result: 'B',
+      });
+    });
+
     test('a result for the streaming turn still lands on the streaming message', () => {
       seedTwoMessages('tool-1');
 

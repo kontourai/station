@@ -235,13 +235,23 @@ export function handleToolCompletedEvent(
   ) {
     const messages = chat.messages ?? [];
     let index = -1;
+    // Fix round (M2): matching the call id is not enough. When the event
+    // names a turn and a committed row belongs to a DIFFERENT one, settling
+    // there would put the newer turn's result on the older row — the same
+    // misattribution by another route, which a provider that reuses call ids
+    // across turns would hit. Such a row is skipped and the named-turn route
+    // below takes over. A row carrying no turn id of its own is not a
+    // mismatch: there is no competing claim, and rejecting it would strand
+    // every pre-turn-id row.
     for (let position = messages.length - 1; position >= 0; position -= 1) {
+      const candidate = messages[position];
+      const contradicts =
+        event.turnId !== undefined &&
+        candidate.turnId !== undefined &&
+        candidate.turnId !== event.turnId;
       if (
-        holdsToolCall(
-          messages[position].contentParts,
-          event.toolCallId,
-          event.eventId,
-        )
+        !contradicts &&
+        holdsToolCall(candidate.contentParts, event.toolCallId, event.eventId)
       ) {
         index = position;
         break;

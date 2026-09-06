@@ -309,6 +309,16 @@ export interface ClaudeAdapterOptions {
 const DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS = 5_000;
 
 /**
+ * station#1558 (fix round, M8): how long `stopSession` waits for
+ * `consumeMessages` to stop before settling still-open tool calls itself.
+ *
+ * The real SDK ends its iterator as soon as `query.close()` lands, so this
+ * elapses only when an engine misbehaves. It is a ceiling on teardown, not a
+ * delay anything normally pays.
+ */
+const CLAUDE_STREAM_STOP_GRACE_MS = 1_000;
+
+/**
  * Keep the raw SDK name for authentic grant provenance and any user-visible
  * receipt. Matching stages use the forms their owning policy understands:
  * `<server>_<tool>` for delegation and the MCP leaf for config protection.
@@ -1089,19 +1099,21 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       });
     }
     record.pendingRequests.clear();
-    // station#1558: the session is ending, so any `tool_use` still open can
-    // never receive a result. Settle each on its OWN issuing turn before the
-    // exit event, so the transcript carries a reported non-outcome instead
-    // of a row that stays "running" forever. `consumeMessages`' own settle
-    // (below, on the iterator ending) is the same call and finds an empty
-    // map, so nothing is published twice.
-    settleUnresolvedClaudeToolCalls({
-      provider: this.provider,
-      record: record as ClaudeMessageState,
-      publish: (event) => this.publish(event),
-    });
     record.promptQueue.close();
     record.query.close();
+    // station#1558: the session is ending, so any `tool_use` still open can
+    // never receive a result — but "still open" can only be read AFTER the
+    // consumer has stopped. Closing the query does not discard messages the
+    // SDK has already queued, so a real `tool_result` can still be waiting to
+    // drain; settling before that drained (the first cut of this change did)
+    // published `unresolved` for a call that DID report, and then the replay
+    // guard dropped the real result because its entry was gone. So wait for
+    // `consumeMessages` to stop — its own `finally` performs the settle — and
+    // only settle here if it never ran or does not stop promptly. Either way
+    // this happens before the exit event, because `session.exited` closes any
+    // still-running tool card client-side (`background-tasks-store.ts`), and a
+    // card closed as "Stopped" no longer accepts the honest terminal.
+    await this.settleAfterStreamStops(record);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -1615,6 +1627,38 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   ): PermissionMode {
     if (modelOptions?.permissionMode === 'plan') return 'plan';
     return resolveClaudePermissionMode(modelOptions) ?? 'default';
+  }
+
+  /**
+   * station#1558 (fix round, M8): give `consumeMessages` a bounded moment to
+   * drain and run its own settle, then settle whatever is left.
+   *
+   * Bounded rather than an open `await`: `stopSession` must not be able to
+   * hang on an engine whose iterator never ends after `close()`. The settle
+   * is idempotent (it clears the map before publishing), so running it here
+   * after the consumer already ran it publishes nothing.
+   */
+  private async settleAfterStreamStops(
+    record: ClaudeSessionRecord,
+  ): Promise<void> {
+    try {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        record.streamTask,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, CLAUDE_STREAM_STOP_GRACE_MS);
+        }),
+      ]);
+      if (timer) clearTimeout(timer);
+    } catch {
+      // `consumeMessages` handles its own failures; a rejection here must not
+      // turn a stop into a throw, and must not skip the settle below.
+    }
+    settleUnresolvedClaudeToolCalls({
+      provider: this.provider,
+      record: record as ClaudeMessageState,
+      publish: (event) => this.publish(event),
+    });
   }
 
   private async consumeMessages(record: ClaudeSessionRecord): Promise<void> {

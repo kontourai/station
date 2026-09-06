@@ -168,9 +168,13 @@ export function projectRuntimeEventsToMessages(
    *
    * The parts held here are the SAME objects already inside an emitted
    * message's `parts` array, so mutating one settles the row in place on its
-   * own turn.
+   * own turn. `turnKey` is the turn that row sits on, so a completion naming
+   * a DIFFERENT turn is never settled onto it (fix round, M2).
    */
-  const carriedToolsByCallId = new Map<string, MessagePart>();
+  const carriedToolsByCallId = new Map<
+    string,
+    { part: MessagePart; turnKey: string | undefined }
+  >();
   /**
    * station#1558: `turnKey` → index in `messages` of the assistant message
    * emitted for that turn, so a late completion with no matching start can
@@ -298,8 +302,9 @@ export function projectRuntimeEventsToMessages(
     // in-flight tool, a backgrounded Task). `toolsByCallId` only ever holds
     // calls with no terminal yet — the terminal branch deletes the slot — so
     // everything left here is still owed a result on THIS turn's row.
+    const carriedTurnKey = turnKey(turnSessionId, turnIdentity);
     for (const [callId, part] of toolsByCallId) {
-      carriedToolsByCallId.set(callId, part);
+      carriedToolsByCallId.set(callId, { part, turnKey: carriedTurnKey });
     }
     parts = [];
     textBuf = '';
@@ -464,12 +469,33 @@ export function projectRuntimeEventsToMessages(
         // `handleToolCompletedEvent` applies the identical rule).
         const policyDenied = ev.policyDenied === true;
         const completed = terminalToolsByEventId.get(ev.eventId);
+        const namedTurnKey =
+          ev.turnId === undefined ? undefined : turnKey(ev.threadId, ev.turnId);
         // station#1558: the carried map is consulted last, so a call still
         // open in the CURRENT turn always wins over a same-id call carried
         // from an earlier one.
-        const carried = toolsByCallId.has(ev.toolCallId)
+        const carriedEntry = toolsByCallId.has(ev.toolCallId)
           ? undefined
           : carriedToolsByCallId.get(ev.toolCallId);
+        // Fix round (M2): matching a call id is not enough. When the event
+        // names a turn and the carried row sits on a DIFFERENT one, settling
+        // it there would be the same confident misattribution this change
+        // exists to remove — a provider that reuses a call id across turns
+        // would settle the older row with the newer turn's result. Falling
+        // through leaves `existing` undefined, and the named-turn route below
+        // puts the row where the event says it belongs.
+        //
+        // A carried row whose own turn had no identity is NOT treated as a
+        // mismatch: there is no competing claim to honour, and rejecting it
+        // would strand every row projected from events that carry no turn id
+        // at all.
+        const carried =
+          carriedEntry &&
+          (namedTurnKey === undefined ||
+            carriedEntry.turnKey === undefined ||
+            carriedEntry.turnKey === namedTurnKey)
+            ? carriedEntry.part
+            : undefined;
         const existing =
           completed ?? toolsByCallId.get(ev.toolCallId) ?? carried;
         if (existing) {
@@ -492,8 +518,16 @@ export function projectRuntimeEventsToMessages(
           // same call id must become a distinct durable result, not overwrite
           // this sourceEventId.
           if (!completed) {
-            toolsByCallId.delete(ev.toolCallId);
-            carriedToolsByCallId.delete(ev.toolCallId);
+            // Fix round (M3/L12): retire only the slot this terminal actually
+            // settled. Clearing both used to evict an earlier turn's carried
+            // row whenever a LATER turn reused the same call id — that turn's
+            // own late completion then found nothing, appended a duplicate,
+            // and left the first row reading "running" forever.
+            if (existing === carried) {
+              carriedToolsByCallId.delete(ev.toolCallId);
+            } else {
+              toolsByCallId.delete(ev.toolCallId);
+            }
           }
         } else {
           // Completion without a captured start (replay gap) — still surface it.
@@ -502,11 +536,9 @@ export function projectRuntimeEventsToMessages(
           // turn this window never saw at all) reaches the live buffer, and
           // the fallback is documented at the push below.
           const namedTurnIndex =
-            ev.turnId === undefined
+            namedTurnKey === undefined
               ? undefined
-              : assistantMessageIndexByTurn.get(
-                  turnKey(ev.threadId, ev.turnId) ?? '',
-                );
+              : assistantMessageIndexByTurn.get(namedTurnKey);
           const part: MessagePart = {
             type: 'tool-invocation',
             toolCallId: ev.toolCallId,

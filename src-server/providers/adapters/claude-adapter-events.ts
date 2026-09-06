@@ -201,15 +201,26 @@ export interface ClaudeMessageState {
    */
   activeTasks?: Map<string, ClaudeActiveTask>;
   /**
-   * `toolCallId → { toolName, turnId }` for top-level assistant `tool_use`
-   * blocks whose `tool_result` has not arrived yet. Doubles as the replay
-   * guard: a `tool_result` for an untracked id (e.g. resume replay) is
-   * ignored. `turnId` is the dispatched turn the call belongs to, so a late
-   * result (a stopped turn's, or a backgrounded Task's) lands on the turn
-   * that issued the call rather than on whichever turn is active. Entries
-   * are only ever settled by their own result or by the SDK's deferral
-   * report above — never by a turn ending, which would falsely settle a
-   * backgrounded Task that legitimately outlives its turn.
+   * `toolCallId → { toolName, turnId, terminalPublished }` for top-level
+   * assistant `tool_use` blocks whose `tool_result` has not arrived yet.
+   * Doubles as the replay guard: a `tool_result` for an untracked id (e.g.
+   * resume replay) is ignored. `turnId` is the dispatched turn the call
+   * belongs to, so a late result (a stopped turn's, or a backgrounded
+   * Task's) lands on the turn that issued the call rather than on whichever
+   * turn is active.
+   *
+   * Entries are settled by their own `tool_result`, by the SDK's deferral
+   * report above, or — station#1558 — by the SESSION ending
+   * (`settleUnresolvedClaudeToolCalls`), which is the one moment a still-open
+   * call is provably never going to report. Never by a TURN ending, which
+   * would falsely settle a backgrounded Task that legitimately outlives its
+   * turn.
+   *
+   * A task settled through `settleClaudeTask` (its `task_updated` /
+   * `task_notification` terminal) keeps its entry — the real `tool_result`
+   * may still arrive and is still the authoritative output — but is marked
+   * `terminalPublished` so the session-end settle does not contradict the
+   * outcome the task already reported (station#1558 fix round, H1).
    */
   activeToolCalls?: Map<string, ClaudeActiveToolCall>;
   /**
@@ -905,6 +916,15 @@ export function mapClaudeSdkMessage({
 interface ClaudeActiveToolCall {
   toolName: string;
   turnId?: string;
+  /**
+   * station#1558 (fix round, H1): a terminal `tool.completed` has already
+   * been published for this call id by a path that does NOT remove the entry
+   * — today only `settleClaudeTask`, whose Task terminal arrives before (and
+   * independently of) the `tool_result` the entry is still waiting for.
+   * The session-end settle skips these: publishing `unresolved` for a call
+   * the engine already reported as succeeded would contradict it.
+   */
+  terminalPublished?: true;
 }
 
 /**
@@ -935,10 +955,10 @@ export const CLAUDE_UNRESOLVED_TOOL_OUTPUT =
  * Each entry is settled on the turn that ISSUED it (`tracked.turnId`), not
  * on whichever turn was active last — the same rule the real `tool_result`
  * path follows. The map is cleared before publishing, so a session that ends
- * through both paths (stopSession closes the query, which ends
- * `consumeMessages`) settles each call exactly once and never touches an
+ * through both paths settles each call exactly once and never touches an
  * entry that was already settled by its own result or by the SDK's deferral
- * report.
+ * report (both remove the entry) — nor one whose terminal a settled Task
+ * already published (`terminalPublished`, skipped below).
  */
 export function settleUnresolvedClaudeToolCalls({
   provider,
@@ -957,6 +977,11 @@ export function settleUnresolvedClaudeToolCalls({
   const entries = [...open];
   open.clear();
   for (const [toolCallId, tracked] of entries) {
+    // station#1558 (fix round, H1): a call whose terminal was already
+    // published (a settled backgrounded Task) is not unresolved — its outcome
+    // was reported, only its `tool_result` never came back. Publishing
+    // `unresolved` here would contradict that outcome with a second terminal.
+    if (tracked.terminalPublished) continue;
     publish({
       eventId: crypto.randomUUID(),
       provider,
@@ -1024,6 +1049,14 @@ function settleClaudeTask(params: {
   const { provider, record, publish, createdAt, task, status, summary } =
     params;
   record.activeTasks?.delete(task.taskId);
+  // station#1558 (fix round, H1): this publishes the call's terminal, but the
+  // `tool_use` entry stays — the real `tool_result` can still arrive and is
+  // still the authoritative output, and dropping the entry would make the
+  // replay guard swallow it. Marking it is what stops the session-end settle
+  // from publishing a second, contradicting `unresolved` terminal for a Task
+  // that reported success.
+  const trackedCall = record.activeToolCalls?.get(task.toolCallId);
+  if (trackedCall) trackedCall.terminalPublished = true;
   publish({
     eventId: crypto.randomUUID(),
     provider,

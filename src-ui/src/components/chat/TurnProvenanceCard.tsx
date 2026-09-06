@@ -271,7 +271,16 @@ function buildRows(envelope: TurnProvenanceEnvelope): ProvenanceRow[] {
       const named = tools.uses
         .map((use) => {
           const failures = use.failed + use.cancelled;
-          return failures > 0 ? `${use.name} (${failures} failed)` : use.name;
+          // station#1558 (fix round, L11): an unresolved call is annotated on
+          // its own terms. It must not join `failures` — that word names an
+          // outcome Station observed, and this one is the absence of any.
+          const unresolved = use.unresolved ?? 0;
+          const notes: string[] = [];
+          if (failures > 0) notes.push(`${failures} failed`);
+          if (unresolved > 0) notes.push(`${unresolved} unresolved`);
+          return notes.length > 0
+            ? `${use.name} (${notes.join(', ')})`
+            : use.name;
         })
         .join(', ');
       return tools.omittedNames > 0

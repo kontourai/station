@@ -398,6 +398,50 @@ describe('TurnProvenanceCard', () => {
     expect(valueFor('Tools')).toBe('read_file, bash (1 failed) — and 3 more');
   });
 
+  // station#1558 (fix round, L11): the per-tool line annotated failures and
+  // cancellations and said nothing about an unresolved call, so a tool whose
+  // only anomaly was "no outcome was ever observed" read as clean. It must
+  // also never join the "failed" count — that word names something Station
+  // saw happen.
+  it('annotates unresolved calls on the tool line, separately from failures', () => {
+    render(
+      <TurnProvenanceCard
+        provenance={envelope({
+          tools: {
+            state: 'observed',
+            value: {
+              uses: [
+                {
+                  name: 'read_file',
+                  started: 1,
+                  succeeded: 0,
+                  failed: 0,
+                  cancelled: 0,
+                  unresolved: 1,
+                },
+                {
+                  name: 'bash',
+                  started: 2,
+                  succeeded: 0,
+                  failed: 1,
+                  cancelled: 0,
+                  unresolved: 1,
+                },
+              ],
+              omittedNames: 0,
+            },
+            observedFrom: [{ eventId: 'e6', method: 'tool.completed' }],
+          },
+        })}
+      />,
+    );
+    expand();
+
+    expect(valueFor('Tools')).toBe(
+      'read_file (1 unresolved), bash (1 failed, 1 unresolved)',
+    );
+  });
+
   // drill-down into the existing trust surface, only when a reference exists.
   it('links to the referenced trust report, naming the exact bundle', () => {
     render(

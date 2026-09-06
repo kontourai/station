@@ -1959,6 +1959,87 @@ describe('settleUnresolvedClaudeToolCalls (station#1558)', () => {
     });
   });
 
+  // station#1558 fix round (H1, blocking): the Task's `tool_use` is registered
+  // in `activeToolCalls` and only its real `tool_result` removes it. A Task
+  // settled by `task_notification` whose result has not come back was still
+  // sitting there at session end, so the settle published a SECOND terminal
+  // — `unresolved` — contradicting the success the engine had already
+  // reported for the same call id.
+  test('a Task already settled by its own notification is not re-settled as unresolved', () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-a',
+      dispatchedTurnId: 'turn-a',
+    }) as ClaudeMessageState;
+    // The assistant's `tool_use` is what registers the call id — without it
+    // the entry the defect lives in never exists.
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-task', name: 'Task', input: {} },
+          ],
+        },
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-task',
+        description: 'Run audit',
+        subagent_type: 'Explore',
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'completed',
+        summary: 'audit clean',
+        uuid: 'u-3',
+        session_id: 's-1',
+      } as any,
+    });
+    // The Task reported success and its `tool_result` never came back, so the
+    // entry is still tracked — that is the point.
+    expect(record.activeToolCalls?.has('toolu-task')).toBe(true);
+
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+
+    const terminals = publish.mock.calls
+      .map(([event]) => event)
+      .filter(
+        (event) =>
+          event.method === 'tool.completed' &&
+          event.toolCallId === 'toolu-task',
+      );
+    expect(terminals).toHaveLength(1);
+    expect(terminals[0]).toMatchObject({ status: 'success' });
+    expect(
+      terminals.some(
+        (event: { status: string }) => event.status === 'unresolved',
+      ),
+    ).toBe(false);
+  });
+
   test('a second settle publishes nothing (both session-end paths can run)', () => {
     const publish = vi.fn();
     const record = recordWithOpenCalls();

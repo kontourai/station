@@ -1302,6 +1302,142 @@ describe('projectRuntimeEventsToMessages', () => {
       expect(toolPartsOf(turnB)).toHaveLength(0);
     });
 
+    // Fix round (M2): matching the call id is not enough — the event names
+    // the turn it belongs to, and a carried row on a DIFFERENT turn must not
+    // absorb it.
+    it('does not settle a carried row when the completion names another turn', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+        ev({
+          method: 'tool.started',
+          itemId: 'i1',
+          turnId: 'turn-a',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-a',
+          finishReason: 'stop',
+        }),
+        ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+        ev({ method: 'content.text-delta', itemId: 'i2', delta: 'B answers.' }),
+        // Names turn B, reuses A's call id. Settling A's row here would put
+        // B's result on A's turn and leave B with none.
+        ev({
+          method: 'tool.completed',
+          itemId: 'i1',
+          turnId: 'turn-b',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          status: 'success',
+          output: 'B result',
+          eventId: 'b-result',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-b',
+          finishReason: 'stop',
+        }),
+      ]);
+
+      const turnA = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-a',
+      )!;
+      const turnB = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-b',
+      )!;
+      const bTools = toolPartsOf(turnB);
+      expect(bTools).toHaveLength(1);
+      expect(bTools[0]).toMatchObject({
+        toolCallId: 'call-1',
+        result: 'B result',
+        sourceEventId: 'b-result',
+      });
+      // A's own row is untouched — still awaiting the result it was promised.
+      const aTools = toolPartsOf(turnA);
+      expect(aTools).toHaveLength(1);
+      expect(aTools[0]).toMatchObject({ toolCallId: 'call-1', state: 'call' });
+      expect(aTools[0]!.result).toBeUndefined();
+    });
+
+    // Fix round (M3): a reused call id must not evict the earlier turn's
+    // carried row, or that turn's own late result appends a duplicate and the
+    // original row reads "running" forever.
+    it('keeps an earlier turn settleable after a later turn reuses its call id', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+        ev({
+          method: 'tool.started',
+          itemId: 'i1',
+          turnId: 'turn-a',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+        }),
+        ev({ method: 'turn.aborted', turnId: 'turn-a', reason: 'stopped' }),
+        ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+        ev({
+          method: 'tool.started',
+          itemId: 'i2',
+          turnId: 'turn-b',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+        }),
+        ev({
+          method: 'tool.completed',
+          itemId: 'i2',
+          turnId: 'turn-b',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          status: 'success',
+          output: 'B result',
+          eventId: 'b-result',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-b',
+          finishReason: 'stop',
+        }),
+        ev({ method: 'turn.started', turnId: 'turn-c', prompt: 'third' }),
+        ev({ method: 'content.text-delta', itemId: 'i3', delta: 'C answers.' }),
+        // A's own delayed result, arriving two turns later.
+        ev({
+          method: 'tool.completed',
+          itemId: 'i1',
+          turnId: 'turn-a',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          status: 'success',
+          output: 'A result',
+          eventId: 'a-result',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-c',
+          finishReason: 'stop',
+        }),
+      ]);
+
+      const byTurn = (turnId: string) =>
+        messages.find(
+          (message) =>
+            message.role === 'assistant' && message.metadata?.turnId === turnId,
+        )!;
+      const aTools = toolPartsOf(byTurn('turn-a'));
+      expect(aTools).toHaveLength(1);
+      expect(aTools[0]).toMatchObject({
+        state: 'result',
+        result: 'A result',
+        sourceEventId: 'a-result',
+      });
+      const bTools = toolPartsOf(byTurn('turn-b'));
+      expect(bTools).toHaveLength(1);
+      expect(bTools[0]).toMatchObject({ state: 'result', result: 'B result' });
+      expect(toolPartsOf(byTurn('turn-c'))).toHaveLength(0);
+    });
+
     it('puts a start-less late completion on the turn its own turnId names, never on the open one', () => {
       const messages = projectRuntimeEventsToMessages([
         ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),

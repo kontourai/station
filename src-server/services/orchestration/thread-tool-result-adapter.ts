@@ -64,7 +64,12 @@ function inertText(value: unknown): string | undefined {
 
 /**
  * Exact mapping only. In particular, policy denial comes exclusively from
- * the explicit durable marker and status is never folded into another value.
+ * the explicit durable marker, and a status is never folded into another
+ * value that would MISSTATE it.
+ *
+ * The one translation is station#1558's `unresolved`, which Thread's own
+ * published vocabulary spells `unknown` — the same fact under the other
+ * schema's name, not a different claim. Every other status crosses verbatim.
  */
 export function projectToolCompletedEvent(
   event: Pick<
