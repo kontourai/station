@@ -159,6 +159,13 @@ function ToolbarMenuSurface({
     return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [onClose]);
 
+  // ONE dismissal closure for the three events that mean "the gesture ended
+  // on the backdrop", rather than three identical ones in the JSX.
+  const dismiss = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
+    onClose();
+  };
+
   return createPortal(
     <>
       <button
@@ -174,14 +181,39 @@ function ToolbarMenuSurface({
           inset: 0,
           zIndex: 'calc(var(--layer-navigation) - 1)',
         }}
+        // The press is swallowed so the menu keeps focus and its "Close …
+        // menu" button stays operable; the RELEASE is what dismisses.
         onPointerDown={(event) => {
           event.preventDefault();
           event.stopPropagation();
         }}
-        onClick={(event) => {
-          event.stopPropagation();
-          onClose();
-        }}
+        // `click` alone was the whole dismissal, and a touch on the backdrop
+        // that turns into a scroll never becomes one — it ends in
+        // `pointercancel`, and the menu stayed open until the next input
+        // (#1386). `pointercancel` is what fixes that case.
+        //
+        // `pointerup` is not a second fix for it: `click` targets the
+        // inclusive common ancestor of the press and the release, so a press
+        // AND release both on the backdrop always produced a click anyway.
+        // What it adds is dismissing at the release rather than at the click,
+        // which also covers a gesture that starts inside the menu and ends on
+        // the backdrop. A press released outside the window is still covered
+        // by neither; Escape and the next click remain the recovery there.
+        //
+        // `onClose` is idempotent by contract — the panel's owner sets its
+        // `menuOpen` state to false, and focus is returned once by
+        // `useMenuFocus`'s cleanup, not by this callback — so a normal click,
+        // whose `pointerup` closes the panel before `click` is dispatched, is
+        // not a double dismissal. `onClick` is kept because it is the only
+        // channel a caller without pointer events has. The backdrop is
+        // removed on `pointerup`, and in Chromium and Gecko the click that
+        // follows retargets to the nearest connected ancestor rather than to
+        // whatever sits underneath; that is expected rather than verified
+        // here, since jsdom cannot reproduce retargeting and no e2e drives
+        // this backdrop over a live control.
+        onPointerUp={dismiss}
+        onPointerCancel={dismiss}
+        onClick={dismiss}
       />
       {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: `role` is always set (its type is `'menu' | 'group'`), which the rule cannot see through a dynamic value; both roles support a name. */}
       <div

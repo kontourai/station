@@ -90,6 +90,15 @@ export interface DockShellChrome {
   availableDockSlotPlacements: readonly DockMode[];
   effectiveDockSlotPlacement: DockMode;
   surfaceShortcutId: string;
+  /**
+   * The registered title of the surface this shell holds, which is what its
+   * visibility control is named after: "Hide Chat", "Show Activity". Derived
+   * from the region's occupant exactly as `surfaceShortcutId` above is, so a
+   * shell never reads a registry to learn which surface it is — and so
+   * `ChatDock`, which IS Chat's registered renderer, can be named without
+   * importing the region model (`region-surface-boundary.test.ts`).
+   */
+  surfaceTitle: string;
   /** Any dock occupant may maximize its region (#928 slice iii). */
   canMaximize: boolean;
   /**
@@ -674,6 +683,20 @@ export function useDockShellChrome({
       (shellOccupant
         ? regionModel?.surfaces.get(shellOccupant)?.shortcut?.id
         : undefined) ?? 'dock.toggle',
+    // Three cases reach a fallback, and TWO of them are Chat's, because
+    // neither has an occupant to name: the model-less ambient dock (Chat's
+    // and nothing else's, the same mount `dock.toggle` above falls back for
+    // — `shellOccupant` is the literal `'chat'` there, NOT null, so the model
+    // is what this branches on) and an empty region. The third, an occupant
+    // the registry does not hold, takes the occupant's own id: a non-Chat
+    // shell reading "Hide Chat" would be #1386's defect relocated. That third
+    // case is unreachable today — `RegionShells` mounts a shell only for an
+    // occupant in `REGION_SURFACE_SHELLS`, whose keys
+    // `region-surface-boundary.test.ts` pins equal to the registry's.
+    surfaceTitle:
+      regionModel && shellOccupant
+        ? (regionModel.surfaces.get(shellOccupant)?.title ?? shellOccupant)
+        : 'Chat',
     canMaximize: shellOccupant !== null,
     ownsMaximizeShortcut: registersDockShortcuts,
     applyDockSnap,

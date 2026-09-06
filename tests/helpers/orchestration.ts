@@ -167,11 +167,17 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
     return false;
   }
 
+  // The folded rows name the dock since #1386 ("Hide Chat from the dock"),
+  // because the bare verb collided with the docked shell's own control.
   const menu = page.getByRole('menu', { name: 'Region surfaces' });
   if (await menu.isVisible().catch(() => false)) {
-    const hide = menu.getByRole('menuitemcheckbox', { name: 'Hide Chat' });
+    const hide = menu.getByRole('menuitemcheckbox', {
+      name: 'Hide Chat from the dock',
+    });
     if (!(await hide.isVisible().catch(() => false))) {
-      await menu.getByRole('menuitemcheckbox', { name: 'Show Chat' }).click();
+      await menu
+        .getByRole('menuitemcheckbox', { name: 'Show Chat in the dock' })
+        .click();
       const reopen = await regionControlTrigger(page);
       if (!reopen) {
         throw new Error('The region control disappeared after showing Chat.');
@@ -181,7 +187,7 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
     await expect(
       page
         .getByRole('menu', { name: 'Region surfaces' })
-        .getByRole('menuitemcheckbox', { name: 'Hide Chat' }),
+        .getByRole('menuitemcheckbox', { name: 'Hide Chat from the dock' }),
       'the folded region menu does not offer Hide Chat, so Chat is not shown',
     ).toBeVisible();
     await page.keyboard.press('Escape');

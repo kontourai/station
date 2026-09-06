@@ -395,6 +395,73 @@ describe('RegionToolbarControls', () => {
   });
 
   /**
+   * #1386. `click` was the backdrop's only dismissal, and a pointer sequence
+   * that never becomes a click left the menu open until the next input: a
+   * touch on the backdrop that turns into a scroll ends in `pointercancel`,
+   * and a press released where the browser cannot compute a click target ends
+   * in neither event. Both ends of the sequence dismiss now, and `pointerdown`
+   * still does not — it is swallowed so the panel keeps focus.
+   */
+  test('the backdrop dismisses on pointercancel and on pointerup, and a whole click closes it once', () => {
+    render(<RegionToolbarControls />);
+    const trigger = screen.getByRole('button', { name: 'Layout regions' });
+    const openBackdrop = () => {
+      trigger.focus();
+      fireEvent.click(trigger);
+      expect(
+        screen.getByRole('group', { name: 'Layout regions' }),
+      ).toBeTruthy();
+      return screen.getByRole('button', { name: 'Close layout menu' });
+    };
+
+    // A cancelled sequence: press, then the gesture becomes a scroll. No
+    // `click` is ever dispatched, which is what left the menu stuck.
+    let backdrop = openBackdrop();
+    fireEvent(backdrop, createEvent.pointerDown(backdrop));
+    expect(
+      screen.queryByRole('group', { name: 'Layout regions' }),
+    ).not.toBeNull();
+    fireEvent.pointerCancel(backdrop);
+    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    // The release itself dismisses, so a press whose click never arrives is
+    // still a dismissal.
+    backdrop = openBackdrop();
+    fireEvent(backdrop, createEvent.pointerDown(backdrop));
+    fireEvent.pointerUp(backdrop);
+    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    // The ordinary click, in browser order. Note what this does NOT prove: a
+    // second `onClose`. `pointerup` unmounts the portal, so the click that
+    // follows dispatches on a detached node whose path reaches neither the
+    // React root nor the portal container — `dismiss` runs once, and the focus
+    // count would read 1 whether or not a second call were inert. The
+    // detachment is the real mechanism, so it is asserted directly below.
+    // What the rest pins is the outcome: closed, focus back on the trigger
+    // exactly once, no model write, and still reopenable.
+    backdrop = openBackdrop();
+    const returnedFocus = vi.spyOn(trigger, 'focus');
+    fireEvent(backdrop, createEvent.pointerDown(backdrop));
+    fireEvent.pointerUp(backdrop);
+    expect(backdrop.isConnected).toBe(false);
+    fireEvent.click(backdrop);
+    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
+    expect(returnedFocus).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(trigger);
+    // Dismissal is not a placement: the backdrop must never reach the model.
+    expect(harness.placeSurface).not.toHaveBeenCalled();
+    expect(harness.toggleSurface).not.toHaveBeenCalled();
+    expect(harness.setRegion).not.toHaveBeenCalled();
+    returnedFocus.mockRestore();
+
+    // And the trigger still opens it again, so nothing was left half-closed.
+    fireEvent.click(trigger);
+    expect(screen.getByRole('group', { name: 'Layout regions' })).toBeTruthy();
+  });
+
+  /**
    * KEYBOARD OWNERSHIP, which is what the change of role in #1552 D2 buys.
    *
    * The picker is a stack of `radiogroup`s: the arrow keys move WITHIN one
@@ -572,12 +639,13 @@ describe('RegionToolbarControls', () => {
     const { menu } = openLayoutMenu();
 
     // Activity → Bottom evicts Chat. Chat cannot go back to the region Activity
-    // vacates (Activity is unplaced), so the model relocates it to the first
-    // free dock region — and `firstFreeDockRegion` searches
-    // `['bottom','right','left']`, so that is RIGHT, not Left. Written here as
-    // the derivation reports it: my first draft of this expectation said Left
-    // and the assertion caught me, which is the whole argument for computing the
-    // sentence from `placeSurface` rather than composing it by hand.
+    // vacates (Activity is unplaced) and its own default region IS the bottom
+    // Activity just took, so the model falls through to its search order for a
+    // surface leaving `bottom` — `['bottom','right','left']` — which is RIGHT,
+    // not Left. Written here as the derivation reports it: my first draft of
+    // this expectation said Left and the assertion caught me, which is the
+    // whole argument for computing the sentence from `placeSurface` rather
+    // than composing it by hand.
     expect(
       within(surfaceRow(menu, 'Activity'))
         .getByRole('radio', { name: 'Bottom' })
@@ -728,7 +796,7 @@ describe('RegionToolbarControls', () => {
       within(screen.getByRole('menu', { name: 'Region surfaces' }))
         .getAllByRole('menuitemcheckbox')
         .map((item) => item.textContent),
-    ).toEqual(['Hide Chat', 'Show Activity']);
+    ).toEqual(['Hide Chat from the dock', 'Show Activity in the dock']);
     // Flat, not grouped: the folded list is one Show/Hide per surface.
     expect(
       within(
@@ -756,12 +824,12 @@ describe('RegionToolbarControls', () => {
       within(menu)
         .getAllByRole('menuitemcheckbox')
         .map((item) => item.textContent),
-    ).toEqual(['Hide Chat']);
+    ).toEqual(['Hide Chat from the dock']);
     const move = within(menu).getByRole('menuitem', {
       name: 'Move Activity to the dock',
     });
     expect(move.hasAttribute('aria-checked')).toBe(false);
-    expect(within(menu).queryByText('Show Activity')).toBeNull();
+    expect(within(menu).queryByText('Show Activity in the dock')).toBeNull();
     fireEvent.click(move);
     expectOnlyToggle('activity');
     expect(screen.queryByRole('menu')).toBeNull();
@@ -774,7 +842,7 @@ describe('RegionToolbarControls', () => {
       within(screen.getByRole('menu', { name: 'Region surfaces' }))
         .getAllByRole('menuitemcheckbox')
         .map((item) => item.textContent),
-    ).toEqual(['Hide Chat', 'Show Activity']);
+    ).toEqual(['Hide Chat from the dock', 'Show Activity in the dock']);
     expect(screen.queryByRole('menuitem')).toBeNull();
   });
 
@@ -915,16 +983,16 @@ describe('RegionToolbarControls', () => {
     // assistive technology reads.
     expect(
       screen
-        .getByRole('menuitemcheckbox', { name: 'Hide Chat' })
+        .getByRole('menuitemcheckbox', { name: 'Hide Chat from the dock' })
         .getAttribute('aria-checked'),
     ).toBe('true');
     expect(
       screen
-        .getByRole('menuitemcheckbox', { name: 'Show Activity' })
+        .getByRole('menuitemcheckbox', { name: 'Show Activity in the dock' })
         .getAttribute('aria-checked'),
     ).toBe('false');
     fireEvent.click(
-      screen.getByRole('menuitemcheckbox', { name: 'Hide Chat' }),
+      screen.getByRole('menuitemcheckbox', { name: 'Hide Chat from the dock' }),
     );
     expectOnlyToggle('chat');
     expect(screen.queryByRole('menu')).toBeNull();
@@ -933,7 +1001,9 @@ describe('RegionToolbarControls', () => {
     rerender(<RegionToolbarControls />);
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
     fireEvent.click(
-      screen.getByRole('menuitemcheckbox', { name: 'Show Activity' }),
+      screen.getByRole('menuitemcheckbox', {
+        name: 'Show Activity in the dock',
+      }),
     );
     expectOnlyToggle('activity', 2);
 

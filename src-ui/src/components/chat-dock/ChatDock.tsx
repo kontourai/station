@@ -2192,6 +2192,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               onDockPlacementChange={commitDockPlacement}
               regionVisible={isDockOpen}
               shellMaximized={isDockMaximized}
+              // #1386: Chat's own header said "Hide dock region" while every
+              // other shell said "Hide <title>", because this was the one
+              // `ChatDockHeader` that passed no title. From the chrome, not
+              // from the registry: Chat's renderer is not allowed to read the
+              // region model (`region-surface-boundary.test.ts`), and the
+              // chrome already derives the shell's shortcut id the same way.
+              surfaceTitle={chrome.surfaceTitle}
               canMaximize={chrome.canMaximize}
               showMaximizeShortcut={chrome.ownsMaximizeShortcut}
               surfaceShortcutId={chrome.surfaceShortcutId}

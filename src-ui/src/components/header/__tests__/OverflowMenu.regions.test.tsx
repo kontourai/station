@@ -129,12 +129,12 @@ describe('OverflowMenu region section (#917)', () => {
     // an assistive technology reads, and it must agree with the model rather
     // than with the word in the label.
     const hideChat = screen.getByRole('button', {
-      name: 'Hide Chat',
+      name: 'Hide Chat from the dock',
     });
     expect(hideChat.getAttribute('aria-pressed')).toBe('true');
     expect(group.contains(hideChat)).toBe(true);
     const showActivity = screen.getByRole('button', {
-      name: 'Show Activity',
+      name: 'Show Activity in the dock',
     });
     expect(showActivity.getAttribute('aria-pressed')).toBe('false');
     expect(group.contains(showActivity)).toBe(true);
@@ -155,8 +155,8 @@ describe('OverflowMenu region section (#917)', () => {
       'Connections',
       'Profile',
       'Help',
-      'Hide Chat',
-      'Show Activity',
+      'Hide Chat from the dock',
+      'Show Activity in the dock',
     ]);
   });
 
@@ -210,7 +210,9 @@ describe('OverflowMenu region section (#917)', () => {
   test('selecting a visible surface issues the model toggle and closes the menu', () => {
     renderMenu();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Hide Chat' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Hide Chat from the dock' }),
+    );
 
     // Hiding the folded region is the model's decision (`toggleSurface` in
     // region-model.ts); the row issues the command.
@@ -221,7 +223,9 @@ describe('OverflowMenu region section (#917)', () => {
   test('selecting an unplaced surface issues the model toggle; the coarse fold rule is the model’s', () => {
     renderMenu();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Show Activity in the dock' }),
+    );
 
     // Placing it in its default region and closing every other region — a
     // coarse device shows exactly one dock surface at a time — is the model's
@@ -236,7 +240,7 @@ describe('OverflowMenu region section (#917)', () => {
     renderMenu();
 
     const showChat = screen.getByRole('button', {
-      name: 'Show Chat',
+      name: 'Show Chat in the dock',
     });
     expect(showChat.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(showChat);
@@ -253,7 +257,9 @@ describe('OverflowMenu region section (#917)', () => {
     harness.regions.main.occupant = 'activity';
     renderMenu();
 
-    expect(screen.queryByRole('button', { name: 'Show Activity' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Show Activity in the dock' }),
+    ).toBeNull();
     const move = screen.getByRole('button', {
       name: 'Move Activity to the dock',
     });

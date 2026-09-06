@@ -46,7 +46,10 @@ function renderHeader({
   chatIdentity,
   projectContext,
   workspaceControls,
-  surfaceTitle,
+  // Chat's own shell, which is what these fixtures are. #1386 made the title
+  // required: the fallback that named the region rather than the surface is
+  // gone, and Chat is the surface that used to get it.
+  surfaceTitle = 'Chat',
   restoreSnap,
 }: {
   fullscreen?: boolean;
@@ -101,7 +104,7 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
   test('collapsing a maximized dock clears the maximized flag', () => {
     renderHeader();
 
-    fireEvent.click(screen.getByLabelText('Hide dock region'));
+    fireEvent.click(screen.getByLabelText('Hide Chat'));
 
     expect(onDockSnap).toHaveBeenCalledWith('collapsed');
   });
@@ -112,7 +115,7 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
     window.localStorage.setItem('station.chatDock.snap', 'half');
     renderHeader();
 
-    fireEvent.click(screen.getByLabelText('Show dock region'));
+    fireEvent.click(screen.getByLabelText('Show Chat'));
 
     expect(onDockSnap).toHaveBeenCalledWith('half');
   });
@@ -126,7 +129,7 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
     window.localStorage.setItem('station.chatDock.snap', 'full');
     renderHeader();
 
-    fireEvent.click(screen.getByLabelText('Show dock region'));
+    fireEvent.click(screen.getByLabelText('Show Chat'));
 
     expect(onDockSnap).toHaveBeenCalledWith('full');
   });
@@ -205,7 +208,7 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     isDockOpen = false;
     renderHeader();
 
-    expect(screen.getByLabelText('Show dock region')).toBeTruthy();
+    expect(screen.getByLabelText('Show Chat')).toBeTruthy();
     // #1536 F: the unlabelled gear left the bar. The command did not — and with
     // no pane open Chat settings is the ONLY folded command, so it renders as
     // its own labelled button rather than behind a ⋯ that would open a list of
@@ -237,9 +240,7 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     ).toHaveLength(0);
     // And the chords moved rather than vanished — the tooltip is the channel,
     // with a real display string so this cannot pass on an empty one.
-    expect(screen.getByLabelText('Hide dock region').title).toBe(
-      'Hide dock region (⌘D)',
-    );
+    expect(screen.getByLabelText('Hide Chat').title).toBe('Hide Chat (⌘D)');
     // This describe's fixture opens maximized, so the extent control reads
     // Restore; the point is the same — its chord is in the tooltip.
     expect(screen.getByLabelText('Restore dock region size').title).toBe(
@@ -252,7 +253,7 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     isDockOpen = true;
     renderHeader();
 
-    const collapse = screen.getByLabelText('Hide dock region');
+    const collapse = screen.getByLabelText('Hide Chat');
     expect(collapse.querySelector('svg')?.classList).toContain('is-left-open');
   });
 
@@ -278,7 +279,7 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
       screen.queryByLabelText('Expand dock region to workspace'),
     ).toBeNull();
     expect(screen.queryByLabelText('Restore dock region size')).toBeNull();
-    expect(screen.queryByLabelText('Hide dock region')).toBeNull();
+    expect(screen.queryByLabelText('Hide Chat')).toBeNull();
   });
 
   test('names and depicts region extent separately from region visibility', () => {
@@ -287,7 +288,7 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     renderHeader();
 
     const extent = screen.getByLabelText('Expand dock region to workspace');
-    const visibility = screen.getByLabelText('Hide dock region');
+    const visibility = screen.getByLabelText('Hide Chat');
     expect(extent.getAttribute('aria-label')).not.toBe(
       visibility.getAttribute('aria-label'),
     );
@@ -371,7 +372,7 @@ describe('the dock header control set (#928 C2b)', () => {
       'Move the dock',
       'Chat settings',
       'Expand dock region to workspace',
-      'Hide dock region',
+      'Hide Chat',
     ]);
   });
 

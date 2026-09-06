@@ -126,7 +126,9 @@ export function ActivityRegionShell({ regionId }: { regionId: RegionId }) {
             showMaximizeShortcut={chrome.ownsMaximizeShortcut}
             restoreSnap={chrome.dockSnap}
             surfaceShortcutId={chrome.surfaceShortcutId}
-            surfaceTitle={REGION_SURFACE_REGISTRY.get('activity')?.title}
+            // From the chrome, which derives it from the region's occupant —
+            // one derivation for every shell's visibility name (#1386).
+            surfaceTitle={chrome.surfaceTitle}
             isDragging={chrome.isDragging}
             onDockSnap={chrome.applyDockSnap}
             availableDockSlotPlacements={chrome.availableDockSlotPlacements}
