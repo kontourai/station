@@ -22,8 +22,11 @@ import { describe, expect, test } from 'vitest';
  *
  * and the `.app__main` grid tracks agreed with the insets in every case.
  * This file is what keeps that true, and it is a SOURCE SCAN, not a render:
- * jsdom evaluates no `:has()` and lays nothing out, so `getComputedStyle`
- * here would prove nothing. What it therefore pins is the STRUCTURE that
+ * it runs in the node environment (vitest.config.ts's default; the DOM suites
+ * opt in with their own `@vitest-environment jsdom`), so there is no document
+ * to query at all — and even under jsdom, `:has()` goes unevaluated and
+ * nothing lays out, so a `getComputedStyle` assertion would prove nothing
+ * there either. What it therefore pins is the STRUCTURE that
  * makes the rules compose — each rule declares one side's inset and only
  * that side's, and keys on one side's presence and only that — plus the
  * lockstep with the dock grid that `BannerHost.css`'s own comment demands.
