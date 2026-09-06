@@ -130,6 +130,10 @@ supported turn boundaries, user messages, assistant text, public reasoning
 summaries, tool activity, cumulative token snapshots, and compaction markers.
 Only transcripts attributed to configured Projects enter the shared follower.
 Encrypted content and subagent sidechain traversal are outside this importer.
+Additional user input after observed assistant or tool activity keeps the same
+native turn identity and is marked as steering. When the rollout does not
+establish that phase, the text remains in a bounded diagnostic without a guessed
+initial-input or steering classification.
 A tool-output body alone does not establish success or failure; it is retained
 as observed progress without inventing a verdict. Discovery and parser limits
 are reported as incomplete observations. Cursor progress is saved after the

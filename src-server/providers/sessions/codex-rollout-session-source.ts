@@ -38,6 +38,7 @@ const EPOCH = '1970-01-01T00:00:00.000Z';
 
 interface CodexCursorState extends Record<string, unknown> {
   version: 1;
+  activityObserved?: true;
   pendingTurn?: { turnId: string; createdAt: string; lineOffset: number };
   openTools?: Array<{ callId: string; toolName: string; turnId: string }>;
   skipOversizedLine?: true;
@@ -501,6 +502,7 @@ function mapCodexRecord(
     if (!turnId) return { events: [], state };
     const events = flushPendingTurn(state, session, relativePath);
     state.turnId = turnId;
+    delete state.codex.activityObserved;
     state.codex.pendingTurn = { turnId, createdAt, lineOffset };
     return { events, state };
   }
@@ -508,20 +510,62 @@ function mapCodexRecord(
   if (envelopeType === 'event_msg' && payloadType === 'user_message') {
     const prompt = text(payload?.message);
     const pending = state.codex.pendingTurn;
-    if (!prompt || !pending || pending.turnId !== state.turnId) {
+    if (!prompt || !state.turnId) {
       return { events: [], state };
     }
-    delete state.codex.pendingTurn;
     const bounded = boundedPrompt(prompt);
+    if (pending && pending.turnId === state.turnId) {
+      delete state.codex.pendingTurn;
+      return {
+        events: [
+          turnStartedEvent(
+            pending,
+            session,
+            relativePath,
+            bounded.value,
+            bounded.metadata,
+          ),
+        ],
+        state,
+      };
+    }
+    if (state.codex.activityObserved) {
+      return {
+        events: [
+          {
+            ...base,
+            eventId: id(0, 'turn-steer'),
+            method: 'turn.started',
+            turnId: state.turnId,
+            inputKind: 'steer',
+            prompt: bounded.value,
+            metadata: {
+              source: 'codex-rollout',
+              inputPhase: 'after-activity',
+              ...bounded.metadata,
+            },
+          },
+        ],
+        state,
+      };
+    }
     return {
       events: [
-        turnStartedEvent(
-          pending,
-          session,
-          relativePath,
-          bounded.value,
-          bounded.metadata,
-        ),
+        {
+          ...base,
+          eventId: id(0, 'additional-input-phase-unknown'),
+          method: 'runtime.warning',
+          turnId: state.turnId,
+          severity: 'warning',
+          code: 'external_input_phase_unknown',
+          message:
+            'Codex rollout preserved additional user input without enough evidence to classify it as initial input or a steer.',
+          details: {
+            inputText: bounded.value,
+            source: 'codex-rollout',
+            ...bounded.metadata,
+          },
+        },
       ],
       state,
     };
@@ -553,7 +597,10 @@ function mapCodexRecord(
       turnId,
       finishReason: errorMessage ? 'other' : 'stop',
     });
-    if (state.turnId === turnId) delete state.turnId;
+    if (state.turnId === turnId) {
+      delete state.turnId;
+      delete state.codex.activityObserved;
+    }
     return { events, state };
   }
 
@@ -569,7 +616,10 @@ function mapCodexRecord(
       reason:
         diagnosticText(payload?.reason) ?? 'unknown provider abort reason',
     });
-    if (state.turnId === turnId) delete state.turnId;
+    if (state.turnId === turnId) {
+      delete state.turnId;
+      delete state.codex.activityObserved;
+    }
     return { events, state };
   }
 
@@ -619,6 +669,7 @@ function mapCodexRecord(
   if (payloadType === 'message') {
     if (payload?.role !== 'assistant') return { events: [], state };
     const events = flushPendingTurn(state, session, relativePath);
+    const eventCountBeforeContent = events.length;
     const content = Array.isArray(payload.content) ? payload.content : [];
     const turnId = state.turnId;
     if (!turnId) return { events, state };
@@ -646,11 +697,15 @@ function mapCodexRecord(
         });
       }
     }
+    if (events.length > eventCountBeforeContent) {
+      state.codex.activityObserved = true;
+    }
     return { events, state };
   }
 
   if (payloadType === 'reasoning') {
     const events = flushPendingTurn(state, session, relativePath);
+    const eventCountBeforeContent = events.length;
     const turnId = state.turnId;
     if (!turnId) return { events, state };
     const summary = Array.isArray(payload.summary) ? payload.summary : [];
@@ -680,6 +735,9 @@ function mapCodexRecord(
         });
       }
     }
+    if (events.length > eventCountBeforeContent) {
+      state.codex.activityObserved = true;
+    }
     return { events, state };
   }
 
@@ -694,6 +752,7 @@ function mapCodexRecord(
     const projectedArguments = projectCodexToolOutput(
       decodeJsonString(rawArguments),
     );
+    state.codex.activityObserved = true;
     events.push({
       ...base,
       eventId: id(events.length, 'tool-started'),
@@ -749,6 +808,7 @@ function mapCodexRecord(
     const turnId = open?.turnId ?? state.turnId;
     if (!toolName || !turnId) return { events: [], state };
     const sanitized = sanitizeEncryptedOutput(decodeJsonString(payload.output));
+    if (turnId === state.turnId) state.codex.activityObserved = true;
     const preview = projectCodexToolOutput(sanitized.value);
     return {
       events: [
@@ -923,6 +983,7 @@ function decodeCodexSourceState(
   if (
     !hasOnlyKeys(raw, [
       'version',
+      'activityObserved',
       'pendingTurn',
       'openTools',
       'skipOversizedLine',
@@ -931,6 +992,9 @@ function decodeCodexSourceState(
     return null;
   }
   if (raw.version !== 1) return null;
+  if (raw.activityObserved !== undefined && raw.activityObserved !== true) {
+    return null;
+  }
   if (raw.skipOversizedLine !== undefined && raw.skipOversizedLine !== true) {
     return null;
   }
@@ -989,6 +1053,7 @@ function decodeCodexSourceState(
   }
   return {
     version: 1,
+    ...(raw.activityObserved === true ? { activityObserved: true } : {}),
     ...(pendingTurn ? { pendingTurn } : {}),
     ...(openTools?.length ? { openTools } : {}),
     ...(raw.skipOversizedLine === true ? { skipOversizedLine: true } : {}),

@@ -309,6 +309,70 @@ describe('CodexRolloutSessionSource', () => {
     });
   });
 
+  test('preserves ambiguous initial input and classifies only post-activity input as a steer across restart', async () => {
+    const root = fixtureRoot();
+    const path = rolloutPath(root);
+    writeFileSync(
+      path,
+      [
+        meta('steer'),
+        envelope('event_msg', { type: 'task_started', turn_id: 't1' }),
+        envelope('event_msg', { type: 'user_message', message: 'first' }),
+        envelope('event_msg', {
+          type: 'user_message',
+          message: 'second initial input',
+        }),
+        envelope('response_item', {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'working' }],
+        }),
+      ]
+        .map(line)
+        .join(''),
+    );
+    const firstSource = new CodexRolloutSessionSource({ homeDir: root });
+    const firstSession = await discoverOne(firstSource);
+    const first = await firstSource.read(firstSession);
+
+    expect(first.events).toContainEqual(
+      expect.objectContaining({
+        method: 'runtime.warning',
+        turnId: 't1',
+        code: 'external_input_phase_unknown',
+        details: expect.objectContaining({ inputText: 'second initial input' }),
+      }),
+    );
+    expect(first.events).not.toContainEqual(
+      expect.objectContaining({ inputKind: 'steer' }),
+    );
+    expect(first.cursor).toMatchObject({
+      sourceState: { version: 1, activityObserved: true },
+    });
+
+    appendFileSync(
+      path,
+      line(
+        envelope('event_msg', {
+          type: 'user_message',
+          message: 'later steer',
+        }),
+      ),
+    );
+    const restarted = new CodexRolloutSessionSource({ homeDir: root });
+    const restartedSession = await discoverOne(restarted);
+    const second = await restarted.read(restartedSession, first.cursor);
+    expect(second.events).toEqual([
+      expect.objectContaining({
+        method: 'turn.started',
+        turnId: 't1',
+        inputKind: 'steer',
+        prompt: 'later steer',
+        metadata: expect.objectContaining({ inputPhase: 'after-activity' }),
+      }),
+    ]);
+  });
+
   test('bounds escaped open-tool cursor state and reports every attribution eviction', async () => {
     const root = fixtureRoot();
     const path = rolloutPath(root);
