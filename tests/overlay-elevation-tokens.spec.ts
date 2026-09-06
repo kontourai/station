@@ -1,60 +1,75 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * `--radius-overlay` and `--elevation-overlay` must resolve on the **default**
- * document — the one with no `data-theme` attribute at all.
+ * `--radius-overlay` and `--elevation-overlay` must resolve on the document
+ * the product actually serves.
  *
  * #1637: both were declared inside `[data-theme="light"]`, under a comment
- * that said "`--k-elevation-overlay` carries its own light/dark variants, so
- * no per-theme override is needed here". That sentence was true of the
- * *value* and false of the *placement*. Dark is the default and ships no
- * `data-theme`, so on the theme almost every user runs, both names were
- * undefined; `var()` with no fallback is invalid at computed-value time, so
- * the declarations that read them were dropped entirely. Measured live on a
- * `--temp-home` instance before the fix: `--radius-overlay` and
+ * saying "`--k-elevation-overlay` carries its own light/dark variants, so no
+ * per-theme override is needed here". That sentence was true of the *value*
+ * and false of the *placement*. `main.tsx` stamps `data-theme` on the root
+ * before first render and it is `dark` by default, so the light block matched
+ * nothing, no other block declared these names, and `var()` with no fallback
+ * is invalid at computed-value time — the declarations that read them were
+ * dropped entirely. Measured live on a `--temp-home` instance before the fix,
+ * on the real `data-theme="dark"` document: `--radius-overlay` and
  * `--elevation-overlay` both resolved to `""` while `--k-radius-overlay` sat
  * right there at `10px`, and the real command palette, the real
  * "Report a problem" `Dialog`, and the real ACP add dialog each computed
- * `border-radius: 0px` / `box-shadow: none`. In light they were 10px and a
- * three-layer shadow. Nobody noticed, because a square dialog with no lift
- * reads as a design choice.
+ * `border-radius: 0px` / `box-shadow: none`. Nobody noticed, because a square
+ * dialog with no lift reads as a design choice.
  *
- * Why the shape below can actually fail, rather than retiring the question it
- * names:
+ * What this pins, and why the shape can actually fail rather than retiring
+ * the question it names:
  *
- *  - It **removes** `data-theme` before measuring, and asserts it is absent.
- *    Setting `data-theme="dark"` instead would pass with the tokens back
- *    inside the light block only if a dark declaration existed — but the
- *    defect's whole point is the *unattributed* document, which is what the
- *    shell serves. Asserting the attribute is gone stops a future edit that
- *    stamps one from making this vacuous.
- *  - It compares `--radius-overlay` against `--k-radius-overlay` **as
- *    resolved in the same document**, so the kit is free to retune 10px
- *    without touching this spec, while an alias that resolves to nothing
- *    still fails. The `not 0px` / `not none` assertions stop the comparison
- *    from passing vacuously if the kit token itself ever went empty or zero
+ *  - **`data-theme="dark"` is the load-bearing case**, because that is the
+ *    attribute the shipped app sets. An earlier draft measured the
+ *    *unattributed* document instead, which is a state the product only
+ *    occupies for the frame before `main.tsx` runs — a real defect could hide
+ *    behind a `:root` declaration that the product never reaches. The
+ *    unattributed document is kept as secondary coverage of that frame, and
+ *    `light` is checked so the fix cannot have pinned one theme's value.
+ *  - Every read **sets the attribute and measures inside the same
+ *    `page.evaluate`**. Splitting them across round-trips lets a React commit
+ *    or the settings hydration re-stamp `data-theme` in between, which would
+ *    red intermittently while the product is fine — and would silently let a
+ *    probe measure a themed document under a name claiming otherwise.
+ *  - Each alias is compared against `--k-*` **as resolved in the same
+ *    document**, so Console Kit is free to retune 10px without touching this
+ *    spec, while an alias that resolves to nothing still fails. The
+ *    `not ''` / `not 0px` / `not none` assertions stop that comparison from
+ *    passing vacuously if the kit token itself ever went empty or zero
  *    (`.theme-console` sets `--k-radius-overlay: 0`).
  *  - It mounts the **real shipped rules** and reads their computed
- *    `border-radius` / `box-shadow`, so this fails on any route from
- *    declaration to paint — not just on the token name. Each probe carries an
+ *    `border-radius` / `box-shadow`, so it fails on any route from
+ *    declaration to paint, not just on the token name. Each probe carries an
  *    anti-inert guard: a renamed or deleted class leaves a transparent div,
  *    and a transparent div reports exactly the `0px` / `none` the defect did.
  *
- * Scope: the four consumers that live in the entry stylesheet.
+ * Scope: the three entry-stylesheet consumers with live surfaces.
  * `.command-palette` (`CommandPalette.css`) and `.acp-add-dialog`
  * (`ACPConnections.css`) read the same two tokens from their own chunk
  * sheets; the token assertions below are what covers them, since the failure
- * is in the custom property and not in any one rule.
+ * is in the custom property and not in any one rule. `index.css`'s `.toast`
+ * rule reads `--elevation-overlay` as well but is **not** probed: nothing
+ * renders `class="toast"` — the notification surface is `.toast-card`, which
+ * sets its own literal radius and shadow — so a probe of it would assert
+ * against a rule no user can reach.
  */
 
-/** Every rule in `index.css` that reads either token. */
+/** The entry-stylesheet rules that read either token AND have a live surface. */
 const ENTRY_SHEET_CONSUMERS = [
   { className: 'station-dialog', radius: true },
   { className: 'modal-dialog', radius: true },
   { className: 'agent-selector__menu', radius: true },
-  // `.toast` sets its own literal radius and takes only the elevation.
-  { className: 'toast', radius: false },
 ] as const;
+
+/**
+ * `dark` first and by itself in the primary test: it is what `main.tsx`
+ * stamps, so it is the state the defect actually shipped in. `null` means
+ * "remove the attribute" — the pre-script frame.
+ */
+const THEME_STATES = ['dark', 'light', null] as const;
 
 async function mockReady(page: import('@playwright/test').Page) {
   await page.route('**/events', (route) => route.abort());
@@ -91,35 +106,73 @@ async function mockReady(page: import('@playwright/test').Page) {
 }
 
 /**
- * Mount `className` inside a host that paints `--bg-primary` and sets no
- * radius or shadow of its own, so anything the probe reports came from the
- * rule under test.
+ * Apply `theme` and read the four tokens in ONE round-trip, so nothing can
+ * re-stamp `data-theme` between the write and the read.
  */
-async function mountProbe(
+async function resolveTokens(
+  page: import('@playwright/test').Page,
+  theme: 'dark' | 'light' | null,
+) {
+  return page.evaluate((value) => {
+    if (value === null) document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', value);
+    const style = getComputedStyle(document.documentElement);
+    return {
+      // Read back rather than assume: this is the document the numbers below
+      // were measured on, and the assertions name it.
+      dataTheme: document.documentElement.getAttribute('data-theme'),
+      radius: style.getPropertyValue('--radius-overlay').trim(),
+      kitRadius: style.getPropertyValue('--k-radius-overlay').trim(),
+      elevation: style.getPropertyValue('--elevation-overlay').trim(),
+      kitElevation: style.getPropertyValue('--k-elevation-overlay').trim(),
+    };
+  }, theme);
+}
+
+/**
+ * Mount `className` inside a host that paints `--bg-primary` and sets no
+ * radius or shadow of its own, apply `theme`, and measure — all in one
+ * round-trip, for the same reason as {@link resolveTokens}.
+ */
+async function measureConsumer(
   page: import('@playwright/test').Page,
   className: string,
+  theme: 'dark' | 'light' | null,
 ) {
-  await page.evaluate((cls) => {
-    document.getElementById('overlay-probe-host')?.remove();
-    const host = document.createElement('div');
-    host.id = 'overlay-probe-host';
-    host.style.cssText =
-      'position:fixed;top:0;left:0;z-index:2147483647;padding:24px;background:var(--bg-primary)';
-    host.innerHTML = '<div data-testid="overlay-probe-control">Control</div>';
-    const probe = document.createElement('div');
-    probe.setAttribute('data-testid', 'overlay-probe');
-    probe.className = cls;
-    // `position: static` so `.toast`'s own `position: fixed` cannot move the
-    // probe out of the host and change what it composites against.
-    probe.style.cssText = 'width:320px;min-height:120px;position:static';
-    probe.textContent = 'Overlay surface';
-    host.appendChild(probe);
-    document.body.appendChild(host);
-  }, className);
-  return {
-    probe: page.getByTestId('overlay-probe'),
-    control: page.getByTestId('overlay-probe-control'),
-  };
+  return page.evaluate(
+    ({ cls, value }) => {
+      if (value === null)
+        document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', value);
+
+      document.getElementById('overlay-probe-host')?.remove();
+      const host = document.createElement('div');
+      host.id = 'overlay-probe-host';
+      host.style.cssText =
+        'position:fixed;top:0;left:0;z-index:2147483647;padding:24px;background:var(--bg-primary)';
+      const control = document.createElement('div');
+      control.textContent = 'Control';
+      const probe = document.createElement('div');
+      probe.className = cls;
+      probe.style.cssText = 'width:320px;min-height:120px;position:static';
+      probe.textContent = 'Overlay surface';
+      host.append(control, probe);
+      document.body.appendChild(host);
+
+      const probeStyle = getComputedStyle(probe);
+      return {
+        dataTheme: document.documentElement.getAttribute('data-theme'),
+        radius: probeStyle.borderRadius,
+        shadow: probeStyle.boxShadow,
+        background: probeStyle.backgroundColor,
+        controlBackground: getComputedStyle(control).backgroundColor,
+        expectedRadius: getComputedStyle(document.documentElement)
+          .getPropertyValue('--k-radius-overlay')
+          .trim(),
+      };
+    },
+    { cls: className, value: theme },
+  );
 }
 
 test.describe('overlay elevation and radius tokens (#1637)', () => {
@@ -127,11 +180,6 @@ test.describe('overlay elevation and radius tokens (#1637)', () => {
     await mockReady(page);
     await page.goto('/');
     await expect(page.locator('#root')).toBeAttached();
-    await page.evaluate(() => {
-      // The default document, which is what the shell serves and what the
-      // light-scoped declaration left unstyled.
-      document.documentElement.removeAttribute('data-theme');
-    });
   });
 
   test.afterEach(async ({ page }) => {
@@ -140,26 +188,28 @@ test.describe('overlay elevation and radius tokens (#1637)', () => {
     );
   });
 
-  test('both aliases resolve to their kit token with no data-theme set', async ({
+  test('the shipped app stamps data-theme before first render', async ({
     page,
   }) => {
-    const resolved = await page.evaluate(() => {
-      const style = getComputedStyle(document.documentElement);
-      return {
-        dataTheme: document.documentElement.getAttribute('data-theme'),
-        radius: style.getPropertyValue('--radius-overlay').trim(),
-        kitRadius: style.getPropertyValue('--k-radius-overlay').trim(),
-        elevation: style.getPropertyValue('--elevation-overlay').trim(),
-        kitElevation: style.getPropertyValue('--k-elevation-overlay').trim(),
-      };
-    });
+    // The premise the rest of this file rests on, and the exact claim an
+    // earlier version of the fix's own comment got wrong: the product does not
+    // serve an unattributed document past its first frame. If this ever stops
+    // being true, the "dark is load-bearing" framing below needs revisiting
+    // rather than silently testing a state nobody occupies.
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          document.documentElement.getAttribute('data-theme'),
+        ),
+      )
+      .toBe('dark');
+  });
 
-    // Guards the premise of every assertion below: this must be the
-    // unattributed document, not a themed one.
-    expect(
-      resolved.dataTheme,
-      'this spec measures the document with no data-theme attribute — the default the shell serves',
-    ).toBeNull();
+  test('both aliases resolve on the real data-theme="dark" document', async ({
+    page,
+  }) => {
+    const resolved = await resolveTokens(page, 'dark');
+    expect(resolved.dataTheme).toBe('dark');
 
     // Not vacuous: if the kit token itself were empty or zero, comparing the
     // alias to it would pass while nothing rendered.
@@ -170,87 +220,64 @@ test.describe('overlay elevation and radius tokens (#1637)', () => {
 
     expect(
       resolved.radius,
-      '--radius-overlay resolved to nothing on the default theme, so every overlay that reads it renders square. It is declared inside a theme-scoped block again (#1637).',
+      '--radius-overlay resolved to nothing on the theme the app actually stamps, so every overlay that reads it renders square. It has been removed from the `:root, [data-theme="dark"]` block again (#1637).',
     ).toBe(resolved.kitRadius);
     expect(
       resolved.elevation,
-      '--elevation-overlay resolved to nothing on the default theme, so every overlay that reads it renders flat. It is declared inside a theme-scoped block again (#1637).',
+      '--elevation-overlay resolved to nothing on the theme the app actually stamps, so every overlay that reads it renders flat. It has been removed from the `:root, [data-theme="dark"]` block again (#1637).',
     ).toBe(resolved.kitElevation);
   });
 
-  test('the aliases still resolve under both explicit themes', async ({
+  test('both aliases resolve under light and on an unattributed document', async ({
     page,
   }) => {
-    for (const theme of ['dark', 'light'] as const) {
-      const resolved = await page.evaluate((value) => {
-        document.documentElement.setAttribute('data-theme', value);
-        const style = getComputedStyle(document.documentElement);
-        return {
-          radius: style.getPropertyValue('--radius-overlay').trim(),
-          kitRadius: style.getPropertyValue('--k-radius-overlay').trim(),
-          elevation: style.getPropertyValue('--elevation-overlay').trim(),
-          kitElevation: style.getPropertyValue('--k-elevation-overlay').trim(),
-        };
-      }, theme);
-      expect(resolved.kitElevation, `${theme}: kit elevation`).not.toBe('');
-      expect(resolved.radius, `--radius-overlay in ${theme}`).toBe(
+    for (const theme of THEME_STATES) {
+      const resolved = await resolveTokens(page, theme);
+      const label = theme ?? 'no data-theme attribute (pre-script frame)';
+      expect(resolved.dataTheme, `${label}: document state`).toBe(theme);
+      expect(resolved.kitElevation, `${label}: kit elevation`).not.toBe('');
+      expect(resolved.radius, `--radius-overlay under ${label}`).toBe(
         resolved.kitRadius,
       );
-      expect(resolved.elevation, `--elevation-overlay in ${theme}`).toBe(
+      expect(resolved.elevation, `--elevation-overlay under ${label}`).toBe(
         resolved.kitElevation,
       );
     }
-    // The light variant is a genuinely different shadow, so the one
-    // declaration really is resolving per theme rather than pinning one value.
-    const perTheme = await page.evaluate(() => {
-      const read = (value: string) => {
-        document.documentElement.setAttribute('data-theme', value);
-        return getComputedStyle(document.documentElement)
-          .getPropertyValue('--elevation-overlay')
-          .trim();
-      };
-      return { dark: read('dark'), light: read('light') };
-    });
-    expect(perTheme.dark).not.toBe(perTheme.light);
+
+    // The one declaration really is an indirection resolving per theme, not a
+    // single pinned value: Console Kit overrides --k-elevation-overlay under
+    // [data-theme="light"], and that override has to reach the alias.
+    const dark = await resolveTokens(page, 'dark');
+    const light = await resolveTokens(page, 'light');
+    expect(dark.elevation).not.toBe(light.elevation);
   });
 
   for (const consumer of ENTRY_SHEET_CONSUMERS) {
-    test(`.${consumer.className} is lifted and rounded on the default theme`, async ({
+    test(`.${consumer.className} is lifted and rounded on data-theme="dark"`, async ({
       page,
     }) => {
-      const { probe, control } = await mountProbe(page, consumer.className);
+      const measured = await measureConsumer(page, consumer.className, 'dark');
+
+      // Names what was measured, so this cannot pass while reporting on a
+      // document other than the one the title claims.
+      expect(measured.dataTheme).toBe('dark');
 
       // Anti-inert guard: the rule must still be painting this element. A
       // renamed class leaves a transparent div, which reports the same `0px`
       // and `none` the defect produced.
-      const [probeBackground, controlBackground] = await Promise.all([
-        probe.evaluate((el) => getComputedStyle(el).backgroundColor),
-        control.evaluate((el) => getComputedStyle(el).backgroundColor),
-      ]);
       expect(
-        probeBackground,
+        measured.background,
         `.${consumer.className} must paint its own surface — it is inheriting the host's, so the rule no longer matches and this probe proves nothing`,
-      ).not.toBe(controlBackground);
-
-      const measured = await probe.evaluate((el) => {
-        const style = getComputedStyle(el);
-        return {
-          radius: style.borderRadius,
-          shadow: style.boxShadow,
-          expectedRadius: getComputedStyle(document.documentElement)
-            .getPropertyValue('--k-radius-overlay')
-            .trim(),
-        };
-      });
+      ).not.toBe(measured.controlBackground);
 
       expect(
         measured.shadow,
-        `.${consumer.className} has no elevation on the default theme (#1637)`,
+        `.${consumer.className} has no elevation on data-theme="dark" (#1637)`,
       ).not.toBe('none');
       if (consumer.radius) {
         expect(
           measured.radius,
-          `.${consumer.className} renders square on the default theme (#1637)`,
+          `.${consumer.className} renders square on data-theme="dark" (#1637)`,
         ).toBe(measured.expectedRadius);
       }
     });

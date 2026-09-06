@@ -335,21 +335,39 @@
   --overlay-modal: rgba(0, 0, 0, 0.7);
   --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.5);
   /* Overlay elevation + radius come from the shared @kontourai/ui token layer
-     (--k-*), so every product tunes lift/roundness in one place. The local
+     (--k-*), so every product tunes lift/roundness in one place, and the local
      aliases keep Station's call sites (var(--elevation-overlay)) stable.
-     --k-elevation-overlay carries its own light/dark variants, so ONE
-     declaration is correct in both themes — the same reason --error-fill and
-     --accent-acp are declared once here rather than in each theme block.
-     THE `:root` HALF OF THIS SELECTOR IS LOAD-BEARING. These two lived inside
-     [data-theme="light"] until #1637, under a comment saying no per-theme
-     override was needed — which was true of the *value* and false of the
-     *placement*. Dark is the default and ships no `data-theme` attribute, so
-     both resolved to the empty string there and every .station-dialog, the
-     command palette, .modal-dialog, .agent-selector__menu, .toast and
-     .acp-add-dialog rendered square and flat. Moving either back inside a
-     theme-scoped block reproduces that exactly;
-     tests/overlay-elevation-tokens.spec.ts resolves them on a document with
-     no `data-theme` set and fails when it happens. */
+
+     They are declared ONCE, here, and that is not the same reason --error-fill
+     and --accent-acp are: those are literal values that happen to suit both
+     themes. These two are an INDIRECTION. `var(--k-elevation-overlay)` is not
+     resolved where it is written — it is resolved on the element that reads
+     it, against whichever --k-* declaration wins there. Console Kit ships
+     --k-elevation-overlay twice (`:root` and its own `[data-theme="light"]`
+     override), so one alias declaration yields the dark shadow on a dark root
+     and the light shadow on a light one. Duplicating it per theme would be
+     noise, not safety.
+
+     #1637: both lived inside [data-theme="light"] instead, under a comment
+     saying no per-theme override was needed. That was true of the value and
+     false of the placement. `main.tsx` stamps `data-theme` on the root before
+     first render (dark by default), and a `data-theme="dark"` root matches
+     neither `[data-theme="light"]` nor anything else that declared these — so
+     both names were undefined, `var()` with no fallback is invalid at
+     computed-value time, and every rule reading them was dropped: every
+     .station-dialog (i.e. every Dialog), .command-palette, .modal-dialog,
+     .agent-selector__menu and .acp-add-dialog rendered square and flat.
+     (`.toast` at :1029 reads --elevation-overlay too but has no live surface;
+     the notification card is `.toast-card`, which sets its own shadow.)
+
+     `[data-theme="dark"]` is the half of this selector that carries the fix.
+     `:root` is not redundant — it covers the frame before `main.tsx` runs, and
+     any document that never stamps the attribute — but deleting it would leave
+     both real product states correct, so do not read it as the guard. What
+     restores the defect is REMOVING these two lines from this block; re-adding
+     them to the light block on top of this one is harmless duplication.
+     tests/overlay-elevation-tokens.spec.ts fails on the removal, measuring the
+     real `data-theme="dark"` document first and the unattributed one after. */
   --elevation-overlay: var(--k-elevation-overlay);
   --radius-overlay: var(--k-radius-overlay);
   --accent-subtle: color-mix(in srgb, var(--k-brand) 6%, transparent);
@@ -483,11 +501,14 @@
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.2);
   --shadow-xl: 0 18px 40px rgba(0, 0, 0, 0.12);
   --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.3);
-  /* --elevation-overlay / --radius-overlay are deliberately absent here: the
-     --k-* tokens they alias carry their own light variants, so the single
-     declaration in the `:root` block above is already correct for this theme
-     (#1637). Re-adding them here would render identically and quietly restore
-     the shape that left the default theme unstyled. */
+  /* --elevation-overlay / --radius-overlay are deliberately absent here. They
+     alias --k-* tokens that resolve on the reading element, and Console Kit
+     already overrides --k-elevation-overlay under this same selector, so the
+     one declaration in the `:root, [data-theme="dark"]` block above resolves
+     to the light shadow on a light root. Re-adding them here would render
+     identically — it is duplication, not a fix. #1637 was the opposite shape:
+     they were declared ONLY here, so a `data-theme="dark"` root (what
+     `main.tsx` stamps by default) matched no declaration at all. */
 
   /* Semantic aliases */
   --color-bg: var(--bg-primary);
