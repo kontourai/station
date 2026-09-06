@@ -54,6 +54,7 @@
     "fallow": "fallow audit --summary",
     "fallow:dead-code": "fallow dead-code --summary --group-by package",
     "fallow:audit": "fallow audit --format json",
+    "audit:code-health": "node scripts/run-fallow-audit.mjs --whole-tree",
     "veritas:fallow:advisory": "node scripts/run-fallow-audit.mjs",
     "fallow:baseline": "node scripts/fallow-baseline.mjs",
     "veritas:readiness": "npm exec -- veritas readiness --working-tree",

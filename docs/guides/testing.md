@@ -1,5 +1,26 @@
 # Testing Guide
 
+## Repository-wide code health
+
+`npm run audit:code-health` runs the installed Fallow version's full dead-code,
+complexity, and duplication analyses. It also records a byte-hashed inventory
+of tracked and unignored code/configuration, including native files. The normal
+`npm run fallow:audit` command is a changed-file review, not a full-tree audit.
+
+Read `.kontourai/veritas/external/fallow-audit.json` and its linked raw reports.
+A missing metric or incomplete tool invocation is an error, never zero findings.
+The inventory does not follow symbolic links. Analyzer configuration, supported
+languages, public exports, and ignore patterns remain explicit limits; native
+code needs the native checks separately. Estimated coverage is not test execution.
+
+Triage candidates against callers before deletion. Worker entrypoints, build
+recipes, fixtures, generated browser bundles, and public package exports often
+have no ordinary import edge. Complexity alone does not justify extracting
+wrappers or splitting a cohesive validator. Keep a ledger of confirmed findings,
+false positives with caller evidence, fixes, measurements, and unverified areas.
+An exhaustive inventory must never be reported as exhaustive manual review or
+as proof that no improvements remain.
+
 ## Fixture fidelity and test effectiveness
 
 Blocking checks must name the failure they prevent. Documentation gates should

@@ -1,5 +1,5 @@
 import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
-import { _getApiBase, _getPluginName } from './api';
+import { _getApiBase, _getPluginName } from './api-core';
 
 interface TelemetryEvent {
   event: string;
@@ -11,6 +11,7 @@ interface TelemetryEvent {
 const buffer: TelemetryEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 const FLUSH_INTERVAL = 10_000;
+const MAX_BUFFERED_EVENTS = 1000;
 
 async function flush() {
   if (buffer.length === 0) return;
@@ -40,6 +41,7 @@ function scheduleFlush() {
 
 export const telemetry = {
   track(event: string, attributes: Record<string, string | number> = {}) {
+    if (buffer.length === MAX_BUFFERED_EVENTS) return;
     buffer.push({
       event,
       plugin: _getPluginName(),

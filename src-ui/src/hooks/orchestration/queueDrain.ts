@@ -1,13 +1,12 @@
-import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { contextRegistry } from '@kontourai/station-sdk';
 import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
+import { dispatchForeground } from '../../lib/foregroundMessageDispatch';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
-import { sendExecutionMessage } from '../useOrchestration';
 
 /**
  * Pending-queue drain for orchestration-driven sessions (Claude/Codex
@@ -142,32 +141,13 @@ export function drainQueuedMessageOnTurnCompleted(
       return;
     }
 
-    sendExecutionMessage({
+    dispatchForeground({
       apiBase,
-      target: {
-        ...(!current.projectSlug || continueUnbound
-          ? { environment: { kind: 'current' as const } }
-          : {}),
-        agent: agentId(current.agentSlug),
-        ...(current.model || Object.keys(current.providerOptions ?? {}).length
-          ? {
-              model: {
-                ...(current.model ? { override: current.model } : {}),
-                ...(current.providerOptions
-                  ? { options: current.providerOptions }
-                  : {}),
-              },
-            }
-          : {}),
-        ...(current.projectSlug && !continueUnbound
-          ? {
-              workspace: {
-                kind: 'project',
-                projectSlug: current.projectSlug,
-              },
-            }
-          : {}),
-      },
+      sessionId: threadId,
+      agentSlug: current.agentSlug,
+      projectSlug: continueUnbound ? undefined : current.projectSlug,
+      model: current.model,
+      providerOptions: current.providerOptions,
       message: nextMessage,
       conversationId: current.conversationId ?? threadId,
       // Queued sends recompute ambient context at drain time so the model

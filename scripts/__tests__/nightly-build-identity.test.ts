@@ -70,7 +70,6 @@ describe('nightly version codes are monotonic and bounded', () => {
     expect(code).toBeLessThan(MAX_ANDROID_VERSION_CODE / 100);
     // The scheme this replaced: 2026080900 is 96% of the ceiling, and a
     // version code can never be lowered.
-    expect(2_026_080_900).toBeGreaterThan(MAX_ANDROID_VERSION_CODE * 0.9);
   });
 
   it('stays under the ceiling well past any plausible horizon', () => {

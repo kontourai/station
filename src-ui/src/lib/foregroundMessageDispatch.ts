@@ -1,5 +1,5 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
-import { sendExecutionMessage } from '../hooks/useOrchestration';
+import { sendExecutionMessage } from '@kontourai/station-sdk/client';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import { resolveTurnModel } from './turnModel';
 
@@ -89,36 +89,38 @@ export async function dispatchForeground(input: {
       };
     }
   }
-  return sendExecutionMessage({
-    apiBase: input.apiBase,
-    target: {
-      ...(!input.projectSlug
-        ? { environment: { kind: 'current' as const } }
-        : {}),
-      agent: agentId(input.agentSlug),
-      ...(requestedModel || Object.keys(modelOptions ?? {}).length > 0
-        ? {
-            model: {
-              ...(requestedModel ? { override: requestedModel } : {}),
-              ...(modelOptions ? { options: modelOptions } : {}),
-            },
-          }
-        : {}),
-      ...(input.projectSlug
-        ? {
-            workspace: {
-              kind: 'project' as const,
-              projectSlug: input.projectSlug,
-            },
-          }
-        : {}),
+  return sendExecutionMessage(
+    input.apiBase,
+    {
+      target: {
+        ...(!input.projectSlug
+          ? { environment: { kind: 'current' as const } }
+          : {}),
+        agent: agentId(input.agentSlug),
+        ...(requestedModel || Object.keys(modelOptions ?? {}).length > 0
+          ? {
+              model: {
+                ...(requestedModel ? { override: requestedModel } : {}),
+                ...(modelOptions ? { options: modelOptions } : {}),
+              },
+            }
+          : {}),
+        ...(input.projectSlug
+          ? {
+              workspace: {
+                kind: 'project' as const,
+                projectSlug: input.projectSlug,
+              },
+            }
+          : {}),
+      },
+      message: input.message,
+      conversationId: input.conversationId ?? input.sessionId,
+      ...attachmentDispatch,
+      ambientContext: input.ambientContext,
+      clientTurnId: input.clientTurnId,
+      automaticBackground: input.automaticBackground,
     },
-    message: input.message,
-    conversationId: input.conversationId ?? input.sessionId,
-    ...attachmentDispatch,
-    ambientContext: input.ambientContext,
-    clientTurnId: input.clientTurnId,
-    automaticBackground: input.automaticBackground,
-    signal: input.signal,
-  });
+    { signal: input.signal },
+  );
 }

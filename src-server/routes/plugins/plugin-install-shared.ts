@@ -1,3 +1,7 @@
+import { assertPluginNameSegment } from '../../services/plugins/plugin-name.js';
+
+export { assertPluginNameSegment } from '../../services/plugins/plugin-name.js';
+
 import { execFile as execFileCb } from 'node:child_process';
 import {
   cpSync,
@@ -9,7 +13,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
@@ -1169,19 +1173,6 @@ export async function restorePluginDurableState(
             : {}),
         },
   );
-}
-
-export function assertPluginNameSegment(pluginName: string): void {
-  if (
-    !pluginName ||
-    pluginName === '.' ||
-    pluginName === '..' ||
-    isAbsolute(pluginName) ||
-    pluginName.includes('/') ||
-    pluginName.includes('\\')
-  ) {
-    throw new Error(`Invalid plugin name: ${pluginName || '(empty)'}`);
-  }
 }
 
 function assertPluginAgentOwned(agentDir: string, pluginName: string): void {

@@ -904,3 +904,22 @@ Monitoring's store owns chronological ordering and the retained window. The
 view preserves that order when filtering; native disclosures defer tool payload
 construction until expansion. The SDK window response retains truncation so the
 view discloses that local search covers loaded events only.
+
+## Transport and diagnostic leaf modules
+
+`packages/shared/src/mcp-connection.ts` owns transport construction and MCP
+negotiation. Local custody imports that leaf; `mcp.ts` keeps the published
+factory exports and connection collection manager. The factory no longer imports
+its own custody owner through a facade.
+
+Foreground and queued chat messages share `dispatchForeground` for target/model
+and attachment mapping. It calls the SDK client directly. Queue completion no
+longer imports a React hook that initializes the same SSE event graph.
+
+Release variant definitions live in `scripts/lib/release-variants.mjs`, shared
+by inventory and SBOM validation without an inventory/SBOM import cycle.
+
+The native login-shell PATH observation owns a process group, nonblocking output,
+a five-second deadline, and a 64 KiB output budget. Its framed PATH value excludes
+startup banners. Native sidecar error details retain at most 64 KiB and 16 lines,
+including after lossy UTF-8 decoding; an I/O error stops the reader.

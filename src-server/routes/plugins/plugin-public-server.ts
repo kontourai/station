@@ -11,12 +11,12 @@ import type {
 import type { Context, Hono as HonoType } from 'hono';
 import { ConfigLoader } from '../../domain/config-loader.js';
 import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
+import { assertPluginNameSegment } from '../../services/plugins/plugin-name.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   assertExistingPathInside,
   assertPathInside,
 } from '../../utils/path-containment.js';
-import { assertPluginNameSegment } from './plugin-install-shared.js';
 
 export interface PluginServerRequestContext {
   correlationId: string;

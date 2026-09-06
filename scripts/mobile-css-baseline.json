@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 102,
+  "pageLocalMediaQueryCeiling": 101,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -140,10 +140,6 @@
     "src-ui/src/components/usage-stats/UsageStatsPanel.css": {
       "count": 1,
       "reason": "Single-column stat cards and a viewport-bounded drill-down modal."
-    },
-    "src-ui/src/components/voice/GlobalVoiceButton.css": {
-      "count": 1,
-      "reason": "The floating voice button re-anchors to the opposite corner on mobile so it never lands on the dock's send control, clamped above the collapsed bar."
     },
     "src-ui/src/components/voice/VoiceOrb.css": {
       "count": 1,

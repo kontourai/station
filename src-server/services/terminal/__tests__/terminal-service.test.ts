@@ -451,13 +451,20 @@ describe('TerminalService', () => {
     }
   });
 
-  test('write is no-op for unknown session', () => {
+  test('unknown-session write and close leave the running terminal untouched', async () => {
+    await svc.open({
+      projectSlug: 'test',
+      terminalId: 't1',
+      cwd: '/tmp',
+      cols: 80,
+      rows: 24,
+    });
+    const process = await pty.spawn.mock.results[0].value;
     svc.write('unknown:t1', 'data');
-    // Should not throw
-  });
-
-  test('close is no-op for unknown session', async () => {
     await svc.close('unknown:t1');
-    // Should not throw
+    expect(process.write).not.toHaveBeenCalled();
+    expect(process.kill).not.toHaveBeenCalled();
+    svc.write('test:t1', 'still usable');
+    expect(process.write).toHaveBeenCalledWith('still usable');
   });
 });

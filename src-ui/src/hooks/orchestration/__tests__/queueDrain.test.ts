@@ -30,7 +30,10 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
       return { ...actual, activeChatsStore: store };
     });
 
-    vi.doMock('../../useOrchestration', () => ({
+    vi.doMock('@kontourai/station-sdk/client', async () => ({
+      ...(await vi.importActual<typeof import('@kontourai/station-sdk/client')>(
+        '@kontourai/station-sdk/client',
+      )),
       sendExecutionMessage: (...args: unknown[]) =>
         sendExecutionMessageMock(...args),
     }));
@@ -55,7 +58,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.doUnmock('../../../contexts/active-chats-store');
-    vi.doUnmock('../../useOrchestration');
+    vi.doUnmock('@kontourai/station-sdk/client');
     vi.doUnmock('@kontourai/station-sdk');
     vi.resetModules();
     vi.useRealTimers();
@@ -130,8 +133,8 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
     expect(sendExecutionMessageMock).toHaveBeenCalledWith(
+      'http://api.test',
       expect.objectContaining({
-        apiBase: 'http://api.test',
         target: {
           agent: 'claude',
           workspace: { kind: 'project', projectSlug: 'station' },
@@ -139,8 +142,9 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
         conversationId: threadId,
         message: 'first',
       }),
+      { signal: undefined },
     );
-    expect(sendExecutionMessageMock.mock.calls[0][0].target).not.toHaveProperty(
+    expect(sendExecutionMessageMock.mock.calls[0][1].target).not.toHaveProperty(
       'environment',
     );
     const state = activeChatsStore.getSnapshot()[threadId];
@@ -426,7 +430,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
 
-    const sent = sendExecutionMessageMock.mock.calls.at(-1)?.[0];
+    const sent = sendExecutionMessageMock.mock.calls.at(-1)?.[1];
     expect(sent.target.workspace).toBeUndefined();
     expect(sent.target.environment).toEqual({ kind: 'current' });
     //.and the user is told the follow-up did not go into the project.

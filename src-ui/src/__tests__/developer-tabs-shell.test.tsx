@@ -81,8 +81,8 @@ vi.mock('../views/KnowledgeConnectionView', () => ({
   KnowledgeConnectionView: () => <div data-testid="embedded-view" />,
   default: () => <div data-testid="embedded-view" />,
 }));
-vi.mock('../components/monitoring/MonitoringView', () => ({
-  MonitoringView: () => <div data-testid="embedded-view" />,
+vi.mock('../views/MonitoringView', () => ({
+  MonitoringViewWithBoundary: () => <div data-testid="embedded-view" />,
   default: () => <div data-testid="embedded-view" />,
 }));
 vi.mock('../views/settings/StationConfigSection', () => ({

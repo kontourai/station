@@ -1973,3 +1973,8 @@ the flag, a full limited window is conservatively marked truncated.
 `fetchMonitoringEvents(start, end, signal, filters)` retains its array return
 shape and no default limit for existing export callers. Both functions reject
 failed or malformed reads instead of reporting an empty history.
+
+API-base initialization wakes pending callers when configuration is published,
+with the existing 500 ms failure bound; later reads observe the latest configured
+base. Best-effort SDK telemetry retains at most 1,000 events per flush interval
+and drops additional events in that interval. It is not an accounting ledger.

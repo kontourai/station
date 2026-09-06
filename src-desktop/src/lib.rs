@@ -7,6 +7,8 @@ mod android_dns;
 #[cfg(not(mobile))]
 mod bundled_server_state;
 mod channel_ports_generated;
+#[cfg(all(not(mobile), unix))]
+mod login_shell;
 mod notification_watch;
 mod pairing_deep_link_channels_generated;
 mod service_state;
@@ -6715,14 +6717,6 @@ fn command_station_script_path(resource_dir: &Path) -> PathBuf {
     resource_dir.join("dist-server").join("command-station.js")
 }
 
-/// PATH is the user's executable policy. Unix callers recover a login-shell
-/// PATH before constructing the child command; this stays literal so we do
-/// not guess between mise, nvm, Volta, system, or vendor Node installs.
-#[cfg(not(mobile))]
-fn find_node() -> String {
-    "node".into()
-}
-
 /// Builds the registry bridge command with the same login-shell executable
 /// policy as the sidecar. Packaged desktop launches do not inherit an
 /// interactive terminal PATH, so invoking `node` before recovering it breaks
@@ -6733,7 +6727,7 @@ fn build_registry_bridge_command(
     operation: &str,
     shell_path: &str,
 ) -> Command {
-    let mut command = Command::new(find_node());
+    let mut command = Command::new("node");
     command
         .arg(registry_bridge_script_path(resource_dir))
         .arg(operation)
@@ -6753,17 +6747,7 @@ fn resolve_login_shell_path() -> String {
 #[cfg(all(not(mobile), unix))]
 fn resolve_login_shell_path() -> String {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    if let Ok(output) = Command::new(&shell)
-        .args(["-ilc", "echo $PATH"])
-        .stderr(Stdio::null())
-        .output()
-    {
-        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !path.is_empty() {
-            return path;
-        }
-    }
-    std::env::var("PATH").unwrap_or_default()
+    login_shell::resolve_path(&shell).unwrap_or_else(|| std::env::var("PATH").unwrap_or_default())
 }
 
 /// A base port reserves the server, terminal, voice, and consent four-port
@@ -6822,7 +6806,7 @@ fn build_sidecar_command(
     boot_id: &str,
     explicit_station_root: Option<std::ffi::OsString>,
 ) -> Command {
-    let mut command = Command::new(find_node());
+    let mut command = Command::new("node");
     command
         .arg(command_station_script_path(&context.resource_dir))
         .current_dir(&context.resource_dir)
@@ -8895,15 +8879,28 @@ fn spawn_sidecar_stderr_reader(
 }
 
 #[cfg(not(mobile))]
-fn capture_sidecar_stderr(stderr: std::process::ChildStderr) -> Option<String> {
-    let mut lines = Vec::new();
-    for line in BufReader::new(stderr).lines().flatten() {
-        lines.push(line);
-        if lines.len() > 16 {
-            lines.remove(0);
+fn capture_sidecar_stderr(mut stderr: impl Read) -> Option<String> {
+    const MAX_TAIL_BYTES: usize = 64 * 1024;
+    let mut tail = std::collections::VecDeque::with_capacity(MAX_TAIL_BYTES + 4096);
+    let mut chunk = [0_u8; 4096];
+    loop {
+        let count = match stderr.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(count) => count,
+        };
+        tail.extend(&chunk[..count]);
+        if tail.len() > MAX_TAIL_BYTES {
+            tail.drain(..tail.len() - MAX_TAIL_BYTES);
         }
     }
-    (!lines.is_empty()).then(|| lines.join("\n"))
+    let bytes: Vec<u8> = tail.into_iter().collect();
+    let text = String::from_utf8_lossy(&bytes);
+    // Invalid UTF-8 expands into replacement characters; bound the rendered
+    // tail as well as the retained raw bytes, without splitting a character.
+    let mut start = text.len().saturating_sub(MAX_TAIL_BYTES);
+    while !text.is_char_boundary(start) { start += 1; }
+    let lines: Vec<&str> = text[start..].lines().rev().take(16).collect();
+    (!lines.is_empty()).then(|| lines.into_iter().rev().collect::<Vec<_>>().join("\n"))
 }
 
 /// The direct child can exit while a descendant retains its stderr pipe. Keep
@@ -11152,6 +11149,35 @@ mod tests {
         );
     }
 
+    #[cfg(not(mobile))]
+    #[test]
+    fn sidecar_stderr_bounds_long_lines_and_retains_the_diagnostic_tail() {
+        let text = format!("{}\nlast diagnostic\n", "x".repeat(2 * 1024 * 1024));
+        let tail = capture_sidecar_stderr(text.as_bytes()).unwrap();
+        assert!(tail.len() <= 64 * 1024);
+        assert!(tail.ends_with("last diagnostic"));
+        let invalid = vec![0xff; 128 * 1024];
+        assert!(capture_sidecar_stderr(invalid.as_slice()).unwrap().len() <= 64 * 1024);
+        let lines = (0..30).map(|i| format!("line {i}\n")).collect::<String>();
+        let tail = capture_sidecar_stderr(lines.as_bytes()).unwrap();
+        assert_eq!(tail.lines().count(), 16);
+        assert!(tail.starts_with("line 14\n"));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn sidecar_stderr_stops_after_a_persistent_read_error() {
+        struct Broken(bool);
+        impl Read for Broken {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                assert!(!self.0, "an errored stderr reader must not be retried forever");
+                self.0 = true;
+                Err(std::io::Error::other("broken stderr"))
+            }
+        }
+        assert_eq!(capture_sidecar_stderr(Broken(false)), None);
+    }
+
     #[cfg(all(not(mobile), unix))]
     #[test]
     fn immediate_home_reset_stderr_is_drained_before_exit_is_classified() {
@@ -11752,8 +11778,7 @@ mod tests {
 
     #[cfg(not(mobile))]
     #[test]
-    fn node_resolution_stays_path_based_and_resource_simplification_is_stable() {
-        assert_eq!(find_node(), "node");
+    fn resource_normalization_preserves_regular_paths() {
         let resource_dir = Path::new("/bundle/resources");
         assert_eq!(simplified_sidecar_resource_dir(resource_dir), resource_dir);
     }

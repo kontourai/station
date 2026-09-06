@@ -4950,19 +4950,17 @@ export class EventStore {
       threadIds,
       EVENT_STORE_BATCH_CHUNK_SIZE,
     )) {
-      const placeholders = chunk.map(() => '?').join(', ');
+      const placeholders = chunk.map(() => '(?)').join(', ');
       const rows = this.db
         .prepare(
-          `WITH ranked AS (
-             SELECT rowid AS rid,
-               ROW_NUMBER() OVER (PARTITION BY thread_id ORDER BY sequence DESC) AS rn
-             FROM orchestration_events
-             WHERE thread_id IN (${placeholders})
-           )
+          `WITH requested(thread_id) AS (VALUES ${placeholders})
            SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.observed_at, event.sequence, event.global_sequence
-           FROM ranked
-           INNER JOIN orchestration_events AS event ON event.rowid = ranked.rid
-           WHERE ranked.rn = 1`,
+           FROM requested
+           JOIN orchestration_events AS event ON event.rowid = (
+             SELECT rowid FROM orchestration_events
+             WHERE thread_id = requested.thread_id
+             ORDER BY sequence DESC LIMIT 1
+           )`,
         )
         .all(...chunk) as any[];
       for (const row of rows) {

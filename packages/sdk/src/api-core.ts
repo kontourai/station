@@ -5,6 +5,7 @@ import {
 import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
 
 let _apiBase = '';
+const apiBaseWaiters = new Set<(base: string) => void>();
 
 export interface PluginApiIdentity {
   readonly pluginName: string;
@@ -13,6 +14,10 @@ export interface PluginApiIdentity {
 
 export function _setApiBase(apiBase: string) {
   _apiBase = apiBase;
+  if (apiBase) {
+    for (const resolve of apiBaseWaiters) resolve(apiBase);
+    apiBaseWaiters.clear();
+  }
 }
 
 export function _setLayoutContext(
@@ -35,16 +40,21 @@ export function _getPluginName(): string {
 }
 
 export async function _getApiBase(): Promise<string> {
-  let attempts = 0;
-  while (!_apiBase && attempts < 50) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    attempts++;
-  }
-
-  if (!_apiBase) {
-    throw new Error('API base not configured. Ensure SDKProvider is mounted.');
-  }
-  return _apiBase;
+  if (_apiBase) return _apiBase;
+  // Publication wakes every reader without independent 10ms polling loops.
+  return new Promise<string>((resolve, reject) => {
+    const receive = (base: string) => {
+      clearTimeout(timeout);
+      resolve(base);
+    };
+    const timeout = setTimeout(() => {
+      apiBaseWaiters.delete(receive);
+      reject(
+        new Error('API base not configured. Ensure SDKProvider is mounted.'),
+      );
+    }, 500);
+    apiBaseWaiters.add(receive);
+  });
 }
 
 export { apiErrorMessage } from './client/api-error-message';

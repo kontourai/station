@@ -4,7 +4,7 @@ import {
   type MCPManagerOptions,
   type MCPPreparedConnection,
   prepareMCPConnection,
-} from './mcp.js';
+} from './mcp-connection.js';
 import type { ToolDef } from './types.js';
 
 export type MCPLocalPurpose =
