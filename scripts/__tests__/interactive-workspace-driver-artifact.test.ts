@@ -43,19 +43,32 @@ test('persists closed driver rejection through a real Chromium binding and produ
     const commandPage = await browser.newPage();
     await commandPage.setContent(await page.content());
     let joinRefusal = 'rate_limited';
+    let refusedCommand = 'join';
+    const requests: string[] = [];
     let announceRequests = 0;
     await commandPage.route(
       'http://fixture.invalid/room/live',
       async (route) => {
-        if (route.request().postDataJSON().command === 'announce')
-          announceRequests += 1;
+        const command = route.request().postDataJSON().command;
+        requests.push(command);
+        if (command === 'announce') announceRequests += 1;
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
           headers: { 'access-control-allow-origin': '*' },
           body: JSON.stringify({
             success: true,
-            data: { kind: 'available', result: { outcome: joinRefusal } },
+            data: {
+              kind: 'available',
+              result: {
+                outcome:
+                  command === refusedCommand
+                    ? joinRefusal
+                    : command === 'join'
+                      ? 'joined'
+                      : 'updated',
+              },
+            },
           }),
         });
       },
@@ -136,8 +149,7 @@ test('persists closed driver rejection through a real Chromium binding and produ
         .querySelector('section')
         .setAttribute('data-viewer-actor-id', 'fixture-peer');
       for (const button of document.querySelectorAll('button')) {
-        const command =
-          button.textContent === 'Join room' ? 'join' : 'announce';
+        const command = button.textContent === 'Join room' ? 'join' : button.textContent === 'Leave room' ? 'depart' : 'announce';
         button.disabled = command !== 'join';
         button.addEventListener('click', () => {
           void fetch('http://fixture.invalid/room/live', {
@@ -172,6 +184,41 @@ test('persists closed driver rejection through a real Chromium binding and produ
         },
       });
       expect(announceRequests).toBe(0);
+    }
+    for (const [command, stage, label] of [
+      ['depart', 'leave', 'Leave room'],
+      ['announce', 'announce', 'Announce work'],
+    ]) {
+      refusedCommand = command!;
+      await commandPage.evaluate(
+        command === 'depart'
+          ? "document.querySelectorAll('button').forEach(button => { button.disabled = false; })"
+          : "document.querySelectorAll('button').forEach(button => { button.disabled = button.textContent === 'Leave room'; })",
+      );
+      expect(
+        await commandPage.getByRole('button', { name: label }).isEnabled(),
+      ).toBe(true);
+      for (const outcome of [
+        'invalid',
+        'forbidden',
+        'identity_changed',
+        'capacity_exceeded',
+        'rate_limited',
+        'degraded',
+        'unavailable',
+      ]) {
+        joinRefusal = outcome;
+        requests.length = 0;
+        persistRawBridgeEvidence(artifact, await measure());
+        expect(read().driverFailure).toMatchObject({
+          stage,
+          iteration: 14,
+          command: `Live command ${label} status 200 outcome ${outcome.toUpperCase()}`,
+        });
+        expect(requests).toEqual(
+          command === 'depart' ? ['depart'] : ['join', 'announce'],
+        );
+      }
     }
     rejection = 'wire';
     for (const stage of [

@@ -1365,14 +1365,16 @@ export async function clickLiveCommand(page, name) {
     clickWhenEnabled(page, name),
   );
   const body = await settled.json();
+  const accepted = {
+    join: ['JOINED', 'REFRESHED'],
+    announce: ['UPDATED'],
+    depart: ['DEPARTED', 'UPDATED'],
+  };
   if (
     settled.status() !== 200 ||
     body?.success !== true ||
     body?.data?.kind !== 'available' ||
-    (command === 'join' &&
-      !['JOINED', 'REFRESHED'].includes(
-        closedLiveOutcome(body?.data?.result?.outcome),
-      ))
+    !accepted[command].includes(closedLiveOutcome(body?.data?.result?.outcome))
   )
     throw new LiveCommandOutcomeError(
       name,

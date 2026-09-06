@@ -281,3 +281,23 @@ test.each(['updated', 'departed', 'unknown-private-value'])(
     );
   },
 );
+
+test.each([
+  ['Announce work', 'updated'],
+  ['Leave room', 'departed'],
+  ['Leave room', 'updated'],
+])('admits %s only with its own accepted outcome %s', async (name, outcome) => {
+  const page = liveCommandPage(
+    Promise.resolve({
+      status: () => 200,
+      json: async () => ({
+        success: true,
+        data: { kind: 'available', result: { outcome } },
+      }),
+    }),
+    async () => {},
+  );
+  await expect(clickLiveCommand(page, name)).resolves.toBe(
+    outcome.toUpperCase(),
+  );
+});
