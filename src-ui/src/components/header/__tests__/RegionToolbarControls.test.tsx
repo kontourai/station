@@ -790,7 +790,7 @@ describe('RegionToolbarControls', () => {
       within(screen.getByRole('menu', { name: 'Region surfaces' }))
         .getAllByRole('menuitemcheckbox')
         .map((item) => item.textContent),
-    ).toEqual(['Hide Chat', 'Show Activity']);
+    ).toEqual(['Hide Chat from the dock', 'Show Activity in the dock']);
     // Flat, not grouped: the folded list is one Show/Hide per surface.
     expect(
       within(
@@ -818,12 +818,12 @@ describe('RegionToolbarControls', () => {
       within(menu)
         .getAllByRole('menuitemcheckbox')
         .map((item) => item.textContent),
-    ).toEqual(['Hide Chat']);
+    ).toEqual(['Hide Chat from the dock']);
     const move = within(menu).getByRole('menuitem', {
       name: 'Move Activity to the dock',
     });
     expect(move.hasAttribute('aria-checked')).toBe(false);
-    expect(within(menu).queryByText('Show Activity')).toBeNull();
+    expect(within(menu).queryByText('Show Activity in the dock')).toBeNull();
     fireEvent.click(move);
     expectOnlyToggle('activity');
     expect(screen.queryByRole('menu')).toBeNull();
@@ -836,7 +836,7 @@ describe('RegionToolbarControls', () => {
       within(screen.getByRole('menu', { name: 'Region surfaces' }))
         .getAllByRole('menuitemcheckbox')
         .map((item) => item.textContent),
-    ).toEqual(['Hide Chat', 'Show Activity']);
+    ).toEqual(['Hide Chat from the dock', 'Show Activity in the dock']);
     expect(screen.queryByRole('menuitem')).toBeNull();
   });
 
@@ -977,16 +977,16 @@ describe('RegionToolbarControls', () => {
     // assistive technology reads.
     expect(
       screen
-        .getByRole('menuitemcheckbox', { name: 'Hide Chat' })
+        .getByRole('menuitemcheckbox', { name: 'Hide Chat from the dock' })
         .getAttribute('aria-checked'),
     ).toBe('true');
     expect(
       screen
-        .getByRole('menuitemcheckbox', { name: 'Show Activity' })
+        .getByRole('menuitemcheckbox', { name: 'Show Activity in the dock' })
         .getAttribute('aria-checked'),
     ).toBe('false');
     fireEvent.click(
-      screen.getByRole('menuitemcheckbox', { name: 'Hide Chat' }),
+      screen.getByRole('menuitemcheckbox', { name: 'Hide Chat from the dock' }),
     );
     expectOnlyToggle('chat');
     expect(screen.queryByRole('menu')).toBeNull();
@@ -995,7 +995,7 @@ describe('RegionToolbarControls', () => {
     rerender(<RegionToolbarControls />);
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
     fireEvent.click(
-      screen.getByRole('menuitemcheckbox', { name: 'Show Activity' }),
+      screen.getByRole('menuitemcheckbox', { name: 'Show Activity in the dock' }),
     );
     expectOnlyToggle('activity', 2);
 

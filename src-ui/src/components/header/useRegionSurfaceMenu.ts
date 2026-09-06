@@ -334,9 +334,22 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
           const shown = Boolean(
             occupied && occupied === foldedRegion && regions[occupied].visible,
           );
+          // "… the dock", like the `main`-occupant row above, and for the
+          // same reason it is honest here: these rows exist on coarse devices
+          // ONLY, where the fold gives the whole shell one dock slot.
+          //
+          // #1386: the bare `Hide Activity` was the accessible name of the
+          // SHELL HEADER's own visibility control at the same time — two
+          // buttons, one name, both on screen (pinned by
+          // `RegionShellParity.test.tsx`, and the reason
+          // `project-architecture.spec.ts` has to scope its query to the
+          // pane). The shell's control is the one a user points at, so the
+          // row is what says which shell it means.
           return {
             key: surface.id,
-            label: `${shown ? 'Hide' : 'Show'} ${surface.title}`,
+            label: shown
+              ? `Hide ${surface.title} from the dock`
+              : `Show ${surface.title} in the dock`,
             icon: surface.icon,
             checked: shown,
             onSelect: () => toggleSurface(surface),

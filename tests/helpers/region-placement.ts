@@ -110,10 +110,12 @@ export async function placeSurfaceThroughLayoutPicker(
  *
  * Asserting the row is absent before the menu opens is what keeps this a
  * drive of that route rather than of some other surface that happens to carry
- * the same label. That guard is also the reason this is only good for a SHOW
- * row: once a surface is docked, its own `ChatDockHeader` renders a
- * `Hide <surface>` button, so the hide label is legitimately ambiguous and
- * belongs to whichever control the journey means to press.
+ * the same label.
+ *
+ * The rows name the dock since #1386 — "Show Activity in the dock", "Hide
+ * Activity from the dock" — so they no longer collide with the docked shell's
+ * own `Hide <surface>` control, which is the name a journey that means the
+ * pane should ask for.
  */
 export async function showRegionThroughOverflowMenu(
   page: Page,
