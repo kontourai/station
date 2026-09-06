@@ -56,10 +56,12 @@ const INVENTORY = join(ROOT, 'docs/ui/accent-foreground-exceptions.json');
  * The scope split also decides the FALLBACK. A starter renders only inside the
  * shell, so it consumes `--text-on-accent` bare, which is what this gate
  * requires — a fallback on this pair is the same defect wherever the token is
- * absent. The demo apps outside this scope, and `ConnectionManagerDiscoverPanel`
- * inside it, keep `var(--text-on-accent, #fff)`: they may render with no
- * Station token layer at all, where their own literal fill is one white text
- * belongs on (review L3).
+ * absent. The demo apps outside this scope keep `var(--text-on-accent, #fff)`:
+ * they may render with no Station token layer at all, where their own literal
+ * fill is one white text belongs on. `ConnectionManagerDiscoverPanel` keeps
+ * `var(--text-on-accent, white)` for the same reason — and note that it is an
+ * INLINE JSX style, so this gate never reads that declaration either way
+ * (limitation 2 above): its root is in scope, the rule is not (review L3).
  */
 const SOURCE_ROOTS = [
   'src-ui/src',

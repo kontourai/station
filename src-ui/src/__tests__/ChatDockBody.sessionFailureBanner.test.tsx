@@ -227,6 +227,7 @@ function renderDock({
   read,
   onRetryOrchestrationSessions = vi.fn(),
   onNewChat,
+  onRetryConversationOpen,
 }: {
   orchestrationSession?: any;
   session?: ChatSession;
@@ -234,6 +235,7 @@ function renderDock({
   read?: 'pending' | 'error' | 'present' | 'absent';
   onRetryOrchestrationSessions?: () => void;
   onNewChat?: (input?: string) => void;
+  onRetryConversationOpen?: () => void;
 } = {}) {
   const resolvedRead = read ?? (orchestrationSession ? 'present' : 'absent');
   transcriptMock.events = events;
@@ -249,6 +251,7 @@ function renderDock({
         activeOrchestrationSessionRead={resolvedRead}
         onRetryOrchestrationSessions={onRetryOrchestrationSessions}
         onNewChat={onNewChat}
+        onRetryConversationOpen={onRetryConversationOpen}
         chatFontSize={14}
         dockHeight={400}
         showStatsPanel={false}
@@ -614,6 +617,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         messages: [],
       }),
       onNewChat,
+      // Supplied so the Retry assertion below is a real one: without a handler
+      // the notice omits Retry anyway, and the absence proved nothing.
+      onRetryConversationOpen: vi.fn(),
     });
 
     const startNew = await screen.findByRole('button', {
@@ -625,6 +631,37 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     // The composer stays refused — the way out is a NEW chat, not a write into
     // the one whose continuation is unproven.
     expect(chatInputPropsMock.current?.disabled).toBe(true);
+  });
+
+  // Delta-review L1. The two states are not exclusive: a reload whose
+  // point-read lands `unavailable` while the transcript's first read is still
+  // in flight is BOTH read-only and loading, and both surfaces carry their own
+  // "Start new chat".
+  test('#1582 E3 a failed open during a transcript read offers ONE way out', async () => {
+    transcriptMock.enabled = true;
+    transcriptMock.settled = false;
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenFailed: true,
+        orchestrationSessionStarted: true,
+        messages: [],
+      }),
+      onNewChat: vi.fn(),
+      onRetryConversationOpen: vi.fn(),
+    });
+
+    expect(
+      await screen.findAllByRole('button', { name: 'Start new chat' }),
+    ).toHaveLength(1);
+    // ...and it is the recovery notice's, which is the surface that also
+    // explains WHY, and offers the Retry this state can actually use.
+    expect(screen.getByText(/is read-only/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test('#1582 E3 a settled conversation carries no such control', async () => {

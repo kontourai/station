@@ -1555,8 +1555,12 @@ export class SkillService {
       variables: updates.variables ?? declared.variables,
       legacyIds: updates.legacyIds ?? readSkillLegacyIds(current.legacyIds),
       // Corrected on the way BACK to disk too, so a workspace package stops
-      // carrying a stale `user` the moment anything edits it. Still never
-      // invents one: an unrecorded origin stays unrecorded here.
+      // carrying a stale `user` the moment anything edits it. Nothing more is
+      // claimed here: `current.origin` is ALREADY the resolved value (`getSkill`
+      // folds `recorded ?? derived`), so a record with no origin of its own has
+      // long been written one on update — pre-existing, unchanged, and not
+      // something this line can be read as preventing. All it adds is
+      // `user` -> `project` (delta-review L2).
       origin:
         updates.origin ??
         this.recordedOriginAgainstPath(

@@ -1007,11 +1007,13 @@ describe('SkillService', () => {
   // the negative direction, on the machine root, because that is the direction
   // this harness can supply: `ConfigLoader.loadSkill` resolves
   // `<home>/skills/<name>` with NO project slug (`loadSkillConfig` ->
-  // `resolveSkillDirectory(projectHomeDir, name)`), so a project-scoped detail
-  // read cannot reach its own record at all and falls to
-  // `fromInstallRecordOnly`. That is pre-existing and outside this change; what
-  // is asserted here is that the correction runs at this fold and does not
-  // over-correct a genuinely machine-wide skill into a workspace one.
+  // `resolveSkillDirectory(projectHomeDir, name)`), so for a project-scoped
+  // skill `getSkill` THROWS `Skill '<name>' not found` — `loadSkillConfig`
+  // raises on the missing path and the call sits outside `getSkill`'s try, so
+  // it never reaches `fromInstallRecordOnly` either. Pre-existing and outside
+  // this change; filed as #1602. What is asserted here is that the correction
+  // runs at this fold and does not over-correct a genuinely machine-wide skill
+  // into a workspace one.
   test('the detail fold leaves a machine-wide user record alone', async () => {
     await service.createLocalSkill(
       { name: 'machine-wide', description: 'Mine', body: 'Body' },
@@ -1027,6 +1029,48 @@ describe('SkillService', () => {
       ).origin,
     ).toBe('user');
     expect((await service.getSkill('machine-wide')).origin).toBe('user');
+  });
+
+  // Delta-review L3. The write path corrects the record too. Reaching it needs
+  // the one shape that exists: a project-scoped package whose NAME also exists
+  // machine-wide, because `updateLocalSkill` opens with `getSkill(name)` and
+  // that read resolves without the slug (#1602) — without the machine copy it
+  // throws before any write. Disclosed: no route passes a slug today
+  // (`routes/agents/skills.ts:185` calls `updateLocalSkill(name, updates,
+  // getProjectHomeDir())`), so this heal is reachable from the service only.
+  test('updating a project-scoped skill heals a stale user record', async () => {
+    await service.createLocalSkill(
+      { name: 'dup', description: 'Machine copy', body: 'Body' },
+      testDir,
+    );
+    const projectDir = join(testDir, 'projects', 'demo', 'skills', 'dup');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, 'SKILL.md'),
+      '---\nname: dup\ndescription: Workspace copy\n---\nBody',
+    );
+    writeFileSync(
+      join(projectDir, 'skill.json'),
+      JSON.stringify({
+        name: 'dup',
+        source: 'local',
+        path: projectDir,
+        origin: 'user',
+      }),
+      'utf-8',
+    );
+
+    const result = await service.updateLocalSkill(
+      'dup',
+      { description: 'Workspace copy, edited' },
+      testDir,
+      'demo',
+    );
+
+    expect(result.success).toBe(true);
+    expect(
+      JSON.parse(readFileSync(join(projectDir, 'skill.json'), 'utf-8')).origin,
+    ).toBe('project');
   });
 
   test('a recorded origin that is not user still wins over the path', async () => {

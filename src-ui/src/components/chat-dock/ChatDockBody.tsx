@@ -1116,30 +1116,39 @@ export function ChatDockBody({
         seeds the pending phase on every reload of a chat with a conversation
         id, so this is the ordinary path (#1582 E3/B6).
 
-        The skeleton renders only when the transcript already has messages:
-        with an empty transcript the filler below carries the same wait, and
-        two skeletons for one wait is the multiplicity this change exists to
-        remove. The row itself renders for the whole window, because it also
-        carries the one way out of it.
+        It renders only when the transcript already has messages: with an empty
+        transcript the filler above carries the same wait, and two skeletons
+        for one wait is the multiplicity this change exists to remove.
 
-        `.session-history-controls` is this pane's existing control row
-        (archive#3386 already widened it past "buttons only"), reused rather
-        than given a class of its own — the entry stylesheet is at its budget
-        ceiling to the byte.
+        A SIBLING of the control row below, not a child of it. Inside
+        `.session-history-controls` (`display: flex; justify-content: center`)
+        the skeleton becomes a shrink-to-fit flex item, and `.skeleton--block`
+        is `width: 100%` OF that item — it measured 2px wide in Chrome against
+        600px here, and jsdom, which lays nothing out, called both green
+        (delta-review M1).
       */}
-      {conversationLoading ? (
+      {conversationLoading && transcript.messages.length > 0 ? (
+        <SkeletonBlock count={1} label="Loading conversation" />
+      ) : null}
+      {/*
+        The one way out of the wait. `.session-history-controls` is this pane's
+        existing control row (archive#3386 already widened it past "buttons
+        only"), reused rather than given a class of its own — the entry
+        stylesheet is at its budget ceiling to the byte.
+
+        `!readOnlyOpen` because the read-only recovery notice below carries its
+        own "Start new chat": a reload whose point-read lands `unavailable`
+        BEFORE the transcript's first read satisfies both conditions at once,
+        and rendered the control twice (delta-review L1).
+      */}
+      {conversationLoading && !readOnlyOpen ? (
         <div className="session-history-controls">
-          {transcript.messages.length > 0 ? (
-            <SkeletonBlock count={1} label="Loading conversation" />
-          ) : null}
           {onNewChat ? (
             <button
               type="button"
               className="button button--secondary"
               onClick={() =>
-                void Promise.resolve(onNewChat?.()).catch(
-                  surfaceRecoveryFailure,
-                )
+                void Promise.resolve(onNewChat()).catch(surfaceRecoveryFailure)
               }
             >
               Start new chat
