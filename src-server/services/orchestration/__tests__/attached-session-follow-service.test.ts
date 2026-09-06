@@ -1327,6 +1327,111 @@ describe('AttachedSessionFollowService', () => {
     );
   });
 
+  test('replays an interrupted import page after restart before advancing its cursor', async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi
+        .fn()
+        .mockResolvedValue({
+          outcome: 'ok',
+          events: [event('page-first'), event('page-second')],
+          cursor: 40,
+        }),
+    };
+    const options = {
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    };
+    const original = store.appendEventIfAbsent.bind(store);
+    const append = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation((value) => {
+        if (value.eventId === 'page-second')
+          throw new Error('interrupted page');
+        return original(value);
+      });
+    await expect(
+      new AttachedSessionFollowService(options).pollNow(),
+    ).rejects.toThrow('interrupted page');
+    expect(
+      store
+        .listEvents(session.threadId)
+        .filter((item) => item.id === 'page-first'),
+    ).toHaveLength(1);
+    expect(
+      store.readSessions().find((item) => item.threadId === session.threadId)
+        ?.resumeCursor,
+    ).toBeUndefined();
+    append.mockRestore();
+    await new AttachedSessionFollowService(options).pollNow();
+    expect(source.read).toHaveBeenNthCalledWith(2, session, undefined);
+    expect(
+      store
+        .listEvents(session.threadId)
+        .filter((item) => item.id === 'page-first'),
+    ).toHaveLength(1);
+    expect(
+      store
+        .listEvents(session.threadId)
+        .filter((item) => item.id === 'page-second'),
+    ).toHaveLength(1);
+    expect(
+      store.readSessions().find((item) => item.threadId === session.threadId)
+        ?.resumeCursor,
+    ).toMatchObject({ cursor: 40 });
+  });
+
+  test('restores bounded Codex parser state after a follower restart', async () => {
+    const descriptor = {
+      ...session,
+      provider: 'codex',
+      threadId: 'external:codex:fixture',
+    };
+    const cursor = {
+      offset: 40,
+      turnId: 'turn-1',
+      sourceState: {
+        version: 1 as const,
+        pendingTurn: {
+          turnId: 'turn-1',
+          createdAt: session.createdAt,
+          lineOffset: 10,
+        },
+        openTools: [
+          { callId: 'call-1', toolName: 'exec_command', turnId: 'turn-1' },
+        ],
+      },
+    };
+    const source: AttachedSessionSource = {
+      provider: 'codex',
+      kind: 'codex-rollout',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [descriptor] }),
+      read: vi.fn().mockResolvedValue({ outcome: 'ok', events: [], cursor }),
+    };
+    const options = {
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    };
+    await new AttachedSessionFollowService(options).pollNow();
+    await new AttachedSessionFollowService(options).pollNow();
+    expect(source.read).toHaveBeenNthCalledWith(1, descriptor, undefined);
+    expect(source.read).toHaveBeenNthCalledWith(2, descriptor, cursor);
+  });
+
   test('restores a legacy Claude cursor through persisted attached-source metadata', async () => {
     store.upsertSession({
       provider: 'claude',
@@ -1525,6 +1630,27 @@ describe('AttachedSessionFollowService', () => {
         offset: 40,
         turnId: 'turn-1',
         usage: { turnId: 'turn-1', promptTokens: 9_007_199_254_740_992 },
+      },
+    ],
+    ['non-object source state', { offset: 40, sourceState: [] }],
+    [
+      'oversized source state',
+      { offset: 40, sourceState: { data: 'x'.repeat(128 * 1024) } },
+    ],
+    [
+      'overdeep source state',
+      {
+        offset: 40,
+        sourceState: {
+          a: { a: { a: { a: { a: { a: { a: { a: { a: {} } } } } } } } },
+        },
+      },
+    ],
+    [
+      'too many source state entries',
+      {
+        offset: 40,
+        sourceState: { data: Array.from({ length: 1025 }, () => 0) },
       },
     ],
   ])('rejects a durable transcript cursor with %s', async (_reason, cursor) => {

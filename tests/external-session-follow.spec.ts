@@ -2,15 +2,17 @@ import {
   appendFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { claudeAttachedThreadId } from '../src-server/providers/sessions/claude-transcript-session-source.js';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
+import { test } from './helpers/fixture-audit';
 import {
   installMockOrchestrationSse,
   seedOrchestrationRoutes,
@@ -56,6 +58,127 @@ async function waitForAttachedSession(): Promise<void> {
     )
     .toBe('read-only-attached');
 }
+
+test('follows an external Codex rollout and explains unavailable independent continuation', async ({
+  page,
+}) => {
+  const codexHome = process.env.CODEX_HOME;
+  if (!codexHome || process.env.STATION_E2E_RUNNER !== '1') {
+    throw new Error(
+      'The managed E2E runner must supply an isolated CODEX_HOME.',
+    );
+  }
+  const workspace = mkdtempSync(join(tmpdir(), 'station-codex-follow-ui-'));
+  const slug = 'codex-session-follow-e2e';
+  const sourceDirectory = join(codexHome, 'sessions', '2026', '09', '06');
+  mkdirSync(sourceDirectory, { recursive: true });
+  const sourcePath = join(
+    sourceDirectory,
+    'rollout-station-codex-follow-e2e.jsonl',
+  );
+  const record = (type: string, payload: Record<string, unknown>) =>
+    jsonl({ timestamp: '2026-09-06T12:00:00.000Z', type, payload });
+  const recordsForTurn = (id: string, answer: string) =>
+    [
+      record('event_msg', { type: 'task_started', turn_id: id }),
+      record('event_msg', {
+        type: 'user_message',
+        message: `Inspect Codex workspace ${id}`,
+      }),
+      record('response_item', {
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: answer }],
+      }),
+      record('event_msg', { type: 'task_complete', turn_id: id }),
+    ].join('');
+  const created = await authenticatedE2EFetch(`${API}/api/projects`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Codex Session Follow E2E',
+      slug,
+      workingDirectory: workspace,
+    }),
+  });
+  try {
+    expect(created.ok).toBe(true);
+    const initial =
+      record('session_meta', { id: 'codex-ui-source', cwd: workspace }) +
+      recordsForTurn('first', 'Codex activity is visible.');
+    writeFileSync(sourcePath, initial);
+    let threadId = '';
+    await expect
+      .poll(
+        async () => {
+          const response = await authenticatedE2EFetch(
+            `${API}/api/orchestration/session-board/projects/${slug}`,
+          );
+          expect(response.ok).toBe(true);
+          const result = (await response.json()) as {
+            data?: Array<{ sessionId?: string; controlMode?: string }>;
+          };
+          const attached = result.data?.find((row) =>
+            row.sessionId?.startsWith('external:codex:'),
+          );
+          threadId = attached?.sessionId ?? '';
+          return attached?.controlMode;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe('read-only-attached');
+    await page.goto(
+      `/?surface=activity&session=${encodeURIComponent(threadId)}`,
+    );
+    const detail = page.getByTestId('session-detail');
+    await expect(detail).toContainText('Inspect Codex workspace first');
+    await expect(detail).toContainText('Codex activity is visible.');
+    await expect(
+      detail.getByRole('button', { name: 'Continue in Station' }),
+    ).toBeDisabled();
+    await expect(detail).toContainText(
+      'independent continuation is not available yet',
+    );
+
+    const appended = recordsForTurn(
+      'second',
+      'Appended Codex activity is visible.',
+    );
+    appendFileSync(sourcePath, appended);
+    await expect(detail).toContainText('Appended Codex activity is visible.', {
+      timeout: 15_000,
+    });
+    const rejected = await authenticatedE2EFetch(
+      `${API}/api/orchestration/commands`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'adoptSession',
+          sourceThreadId: threadId,
+        }),
+      },
+    );
+    expect(rejected.ok).toBe(false);
+    expect(JSON.stringify(await rejected.json())).toContain(
+      'independent continuation is not available yet',
+    );
+    expect(readFileSync(sourcePath, 'utf8')).toBe(initial + appended);
+    await page.setViewportSize({ width: 320, height: 720 });
+    await expect(
+      detail.getByRole('button', { name: 'Continue in Station' }),
+    ).toBeVisible();
+    await expect(
+      detail.getByRole('button', { name: 'Continue in Station' }),
+    ).toBeDisabled();
+  } finally {
+    await authenticatedE2EFetch(`${API}/api/projects/${slug}`, {
+      method: 'DELETE',
+    });
+    rmSync(sourcePath, { force: true });
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
 
 async function mockMobileAdoption(page: Page) {
   const source = {

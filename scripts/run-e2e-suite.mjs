@@ -1883,9 +1883,10 @@ async function main() {
   // Keep startup diagnostics in the instance-owned Playwright artifact root so
   // hosted CI is secure and failures remain uploadable.
   const serverLog = join(testResultsRoot, 'station.log');
-  // External-session coverage reads only this isolated Claude config root. It
+  // External-session coverage reads only isolated provider config roots. This
   // keeps every E2E instance away from a developer's real terminal history.
   const claudeConfigDir = mkdtempSync(join(tmpdir(), `${instance}-claude-`));
+  const codexConfigDir = mkdtempSync(join(tmpdir(), `${instance}-codex-`));
   const suitePorts = E2E_SUITE_PORTS[suite];
   // station#1177: de-herd concurrent sessions off the shared preferred block.
   const jitter = portBiasJitter();
@@ -1951,6 +1952,7 @@ async function main() {
                 ...process.env,
                 ...stationE2EEnv,
                 CLAUDE_CONFIG_DIR: claudeConfigDir,
+                CODEX_HOME: codexConfigDir,
               },
               onSpawn: (child) => {
                 const launcher = processIdentity(child.pid);
@@ -2040,6 +2042,7 @@ async function main() {
   }
   if (runFailure) {
     rmSync(claudeConfigDir, { recursive: true, force: true });
+    rmSync(codexConfigDir, { recursive: true, force: true });
     // The coordinator supplies a unique root only for the full coverage run.
     // Retain each failed bucket's screenshots, traces, and bounded logs before
     // its runner-local cleanup can reclaim the instance directory.
@@ -2154,6 +2157,7 @@ async function main() {
             ...stationE2EEnv,
             ...establishedUserPlaywrightEnv(suite),
             CLAUDE_CONFIG_DIR: claudeConfigDir,
+            CODEX_HOME: codexConfigDir,
             STATION_E2E_UI_DIR: join(process.cwd(), `dist-ui-${instance}`),
             STATION_CRITICAL_BROWSER_REPORT: criticalSmoke
               ? join(
@@ -2205,6 +2209,7 @@ async function main() {
       rmSync(serverLog, { force: true });
     }
     rmSync(claudeConfigDir, { recursive: true, force: true });
+    rmSync(codexConfigDir, { recursive: true, force: true });
     if (!runFailure && cleanup.errors.length === 0) {
       try {
         removeE2ETestResults(process.cwd(), instance);
