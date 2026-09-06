@@ -484,7 +484,14 @@ export async function emitMockOrchestrationEvent(
  */
 export async function openHeaderSettings(page: Page): Promise<void> {
   const avatar = page.getByRole('button', { name: 'Profile and settings' });
-  if (await avatar.isVisible().catch(() => false)) {
+  const gear = page.getByRole('button', { name: 'Open settings' });
+  // WAIT BEFORE BRANCHING. Asking `isVisible()` the instant after `goto` answers
+  // "has the toolbar rendered yet", not "which breakpoint is this" — a first
+  // draft branched on that answer, took the phone path on a desktop, and then
+  // waited ten seconds for a gear that is `display: none` there. Wait for
+  // whichever route this breakpoint renders, THEN choose.
+  await expect(avatar.or(gear).first()).toBeVisible({ timeout: 15_000 });
+  if (await avatar.isVisible()) {
     await avatar.click();
     await page
       .getByRole('menuitem', { name: 'Open settings' })
@@ -492,8 +499,6 @@ export async function openHeaderSettings(page: Page): Promise<void> {
     return;
   }
   // The phone toolbar keeps the gear (see `.app-toolbar__action--compact-only`).
-  const gear = page.getByRole('button', { name: 'Open settings' });
-  await gear.waitFor({ timeout: 10_000 });
   await gear.first().click();
 }
 
