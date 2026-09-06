@@ -123,6 +123,12 @@ const CLAUDE_CLI_COMMAND = 'claude';
 const CLAUDE_CLI_PREREQUISITE_ID = `${CLAUDE_CLI_COMMAND}-cli`;
 /** The one probe both readiness and the launch decision share (#1551). */
 const CLAUDE_VERSION_ARGS = ['--version'];
+/**
+ * A version at the START of a line — never mid-sentence, so prose such as
+ * "a newer version 2.1.300 is available" cannot be mistaken for the version
+ * the binary reports for itself.
+ */
+const CLAUDE_VERSION_LINE = /^\s*v?(\d+)\.(\d+)\.(\d+)\b/;
 
 /**
  * Windows npm launcher shims. The Agent SDK spawns
@@ -144,10 +150,12 @@ const WINDOWS_SHIM_TARGET_SUFFIXES = [
 
 /**
  * #1551: normalizes a resolver answer into something the Agent SDK can
- * actually spawn, or `null` for "omit the option and use the CLI bundled
- * with the SDK".
+ * actually spawn. A refused answer comes back as `executable: null` plus the
+ * `refusal` that produced it — the caller omits the option (the SDK then uses
+ * its bundled copy) and reports the specific refusal, never a generic one.
  *
- * Two refusals, both because the SDK spawns this path with no shell:
+ * Two refusals, both because the SDK spawns this path with no shell, and each
+ * reported distinctly so the readiness sentence can name the real one:
  * - a non-absolute answer is refused outright (a bare command name reaches
  *   the SDK as "native binary not found");
  * - on win32 an npm launcher shim (`claude.cmd`/`.bat`/`.ps1`) is followed to
@@ -159,34 +167,41 @@ const WINDOWS_SHIM_TARGET_SUFFIXES = [
  * tests on macOS and Linux — the branch is otherwise unreachable off Windows,
  * and an unexecuted refusal path is an unproven one.
  */
+export type SpawnableClaudeExecutable = {
+  /** The path to hand the SDK, or `null` when Station refuses this answer. */
+  executable: string | null;
+  /** Why it was refused. `null` whenever `executable` is set. */
+  refusal: 'not-absolute' | 'unfollowable-launcher' | null;
+};
+
 export function resolveSpawnableClaudeExecutable(
-  resolved: string | null | undefined,
+  resolved: string,
   options: {
     platform?: NodeJS.Platform;
     fileExists?: (candidate: string) => boolean;
   } = {},
-): string | null {
-  if (!resolved) return null;
+): SpawnableClaudeExecutable {
   const platform = options.platform ?? process.platform;
   const isWindows = platform === 'win32';
   // Use the matching path grammar rather than the host's, so a win32 case is
   // parsed as win32 even when the test runs on macOS.
   const pathApi = isWindows ? nodePath.win32 : nodePath.posix;
-  if (!pathApi.isAbsolute(resolved)) return null;
-  if (!isWindows) return resolved;
+  if (!pathApi.isAbsolute(resolved))
+    return { executable: null, refusal: 'not-absolute' };
+  if (!isWindows) return { executable: resolved, refusal: null };
   if (
     !WINDOWS_LAUNCHER_SHIM_EXTENSIONS.has(
       pathApi.extname(resolved).toLowerCase(),
     )
   )
-    return resolved;
+    return { executable: resolved, refusal: null };
   const fileExists = options.fileExists ?? existsSync;
   const shimDir = pathApi.dirname(resolved);
   for (const suffix of WINDOWS_SHIM_TARGET_SUFFIXES) {
     const candidate = pathApi.join(shimDir, ...suffix);
-    if (fileExists(candidate)) return candidate;
+    if (fileExists(candidate)) return { executable: candidate, refusal: null };
   }
-  return null;
+  return { executable: null, refusal: 'unfollowable-launcher' };
 }
 
 /**
@@ -255,7 +270,16 @@ export function parseClaudeCodeVersion(
   text: string | null | undefined,
 ): string | null {
   if (typeof text !== 'string') return null;
-  const match = /(\d+)\.(\d+)\.(\d+)/.exec(text);
+  const lines = text.split(/\r?\n/);
+  const matching = lines.filter((line) => CLAUDE_VERSION_LINE.test(line));
+  // Prefer the line the CLI brands as its own. `claude --version` prints
+  // `2.1.261 (Claude Code)`, and an update notice on another line ("2.1.300
+  // is available") would otherwise be read as the INSTALLED version -- in the
+  // unsafe direction, since a too-high reading defeats the not-older guard.
+  const line =
+    matching.find((candidate) => candidate.includes('Claude Code')) ??
+    matching[0];
+  const match = line ? CLAUDE_VERSION_LINE.exec(line) : null;
   return match ? `${match[1]}.${match[2]}.${match[3]}` : null;
 }
 
@@ -279,6 +303,18 @@ function compareClaudeCodeVersions(left: string, right: string): number {
 type ClaudeLaunchTarget = 'installed' | 'bundled';
 
 /**
+ * What one `<claude> --version` probe actually observed. Three outcomes, not
+ * two: a probe that never completed cleanly (`unreadable`) is a different fact
+ * from one that ran and printed nothing version-shaped
+ * (`ran-without-version`), and #1551's review found them merged — which had
+ * Station handing the SDK a binary its own probe had just failed to run.
+ */
+type InstalledVersionObservation =
+  | { kind: 'version'; version: string }
+  | { kind: 'ran-without-version' }
+  | { kind: 'unreadable' };
+
+/**
  * Why {@link ClaudeExecutableResolution.launch} came out the way it did. Every
  * readiness sentence is written from this, so the text cannot describe a
  * decision the spawn did not make.
@@ -286,16 +322,35 @@ type ClaudeLaunchTarget = 'installed' | 'bundled';
 type ClaudeLaunchReason =
   /** Installed CLI is the same version as the bundle or newer. */
   | 'installed-not-older'
-  /** One of the two versions could not be read; today's behavior wins. */
-  | 'comparison-unavailable'
   /** Installed CLI predates the bundle, so the SDK's own copy is safer. */
   | 'installed-older'
+  /**
+   * The `--version` probe produced no completed, zero-exit result — it failed
+   * to run, exited non-zero, or timed out. The SDK spawns the executable with
+   * the SAME no-shell mechanics this probe uses, so a zero exit is the only
+   * evidence Station has that the binary is spawnable at all: an unreadable
+   * probe means the bundled copy is launched, not the binary that just failed.
+   */
+  | 'installed-version-unreadable'
+  /**
+   * The probe RAN cleanly but printed nothing version-shaped. Spawnability is
+   * proven; only the comparison is missing, so the installed CLI still wins.
+   */
+  | 'installed-version-unparsed'
+  /**
+   * The SDK's own bundled version could not be read, so there is nothing to
+   * compare against. The installed CLI wins — an unreadable manifest must not
+   * silently become a downgrade.
+   */
+  | 'bundled-unknown'
   /** Nothing resolved on PATH. */
   | 'no-installed'
   /** Resolution itself failed, so nothing about the installed CLI is known. */
   | 'resolution-failed'
   /** Resolved, but the SDK cannot spawn it (Windows launcher shim). */
-  | 'unspawnable-launcher';
+  | 'unspawnable-launcher'
+  /** Resolved to something that is not an absolute path. */
+  | 'not-absolute';
 
 /**
  * What one resolution produced: the resolver's own answer (`resolved`), the
@@ -342,10 +397,16 @@ function claudeExecutableSentence(
   switch (resolution.reason) {
     case 'installed-not-older':
       return `Station launches the installed Claude Code ${resolution.installedVersion} at ${resolution.spawnable} (the Agent SDK bundles ${resolution.bundledVersion}).`;
-    case 'comparison-unavailable':
-      return `Station launches the installed executable at ${resolution.spawnable}; its version could not be compared with the bundled Claude Code (installed ${resolution.installedVersion ?? 'unknown'}, bundled ${resolution.bundledVersion ?? 'unknown'}).`;
     case 'installed-older':
       return `Station launches the ${bundled}; the installed \`claude\` at ${resolution.spawnable} is ${resolution.installedVersion}, older than the bundle.`;
+    case 'installed-version-unreadable':
+      return `Station launches the ${bundled}; the installed \`claude\` at ${resolution.spawnable} did not report a version, so Station cannot confirm it runs or that it is not older than the bundle.`;
+    case 'installed-version-unparsed':
+      return `Station launches the installed executable at ${resolution.spawnable}; it ran but reported no version, so it was not compared with the ${bundled}.`;
+    case 'bundled-unknown':
+      return `Station launches the installed executable at ${resolution.spawnable}; the Claude Code version bundled with the Agent SDK could not be read, so no comparison was made (installed ${resolution.installedVersion ?? 'unknown'}).`;
+    case 'not-absolute':
+      return `Station launches the ${bundled}: the \`claude\` at ${resolution.resolved} is not an absolute path, and the Agent SDK spawns the executable without PATH resolution.`;
     case 'unspawnable-launcher':
       // The distinction matters: `claude` IS installed, Station just cannot
       // hand this particular entry to the SDK (a Windows launcher shim with no
@@ -1493,10 +1554,19 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       versionArgs: CLAUDE_VERSION_ARGS,
       // Older Claude CLIs parse `claude auth status` as a chat prompt.
       authArgs: [],
-      // The SAME memoized probe the launch decision above already awaited, so
-      // readiness reuses that observation instead of spawning the user's
-      // launcher a second time.
-      runCommand: (command, args) => this.versionProbe(command, args),
+      // The SAME memoized probe the launch decision above already awaited.
+      // Redirected onto `spawnable` when it differs from `resolved` (win32:
+      // `claude.cmd` resolved, `claude.exe` launched): probing the shim would
+      // be a SECOND spawn, of a launcher the SDK never runs, whose failure
+      // would then be reported as this prerequisite's status. Readiness
+      // measures what Station launches.
+      runCommand: (command, args) =>
+        this.versionProbe(
+          command === executable.resolved && executable.spawnable
+            ? executable.spawnable
+            : command,
+          args,
+        ),
       // The resolver's own answer, so install status keeps meaning "a
       // `claude` is on PATH" exactly as before; the sentence below reports
       // separately whether Station can hand THAT entry to the SDK.
@@ -2107,14 +2177,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         (await (this.options.findBinary ?? findCliBinaryAsync)(
           CLAUDE_CLI_COMMAND,
         )) ?? null;
-      const spawnable = resolveSpawnableClaudeExecutable(resolved, {
-        ...(this.options.executablePlatform
-          ? { platform: this.options.executablePlatform }
-          : {}),
-        ...(this.options.executableFileExists
-          ? { fileExists: this.options.executableFileExists }
-          : {}),
-      });
       if (!resolved) {
         return {
           resolved: null,
@@ -2125,7 +2187,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           reason: 'no-installed',
         };
       }
-      if (!spawnable) {
+      const spawnable = resolveSpawnableClaudeExecutable(resolved, {
+        ...(this.options.executablePlatform
+          ? { platform: this.options.executablePlatform }
+          : {}),
+        ...(this.options.executableFileExists
+          ? { fileExists: this.options.executableFileExists }
+          : {}),
+      });
+      if (!spawnable.executable) {
         // Deliberately no version probe: Station has already refused to run
         // this entry, and spawning the launcher it refused to spawn would be
         // measuring something it will never launch.
@@ -2135,35 +2205,55 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           installedVersion: null,
           bundledVersion,
           launch: 'bundled',
-          reason: 'unspawnable-launcher',
+          reason:
+            spawnable.refusal === 'not-absolute'
+              ? 'not-absolute'
+              : 'unspawnable-launcher',
         };
       }
-      const installedVersion = await this.installedClaudeVersion(spawnable);
-      // #1551 risk 1: before this change every user ran the bundled CLI, so
-      // adopting an installed CLI OLDER than the bundle would be a
-      // regression introduced by the fix -- the SDK's control protocol is
-      // versioned with the CLI. Newer or equal wins; older loses; and when
-      // either version cannot be read the installed CLI still wins, because
-      // "I could not look" must not silently become a downgrade.
-      const comparable = installedVersion !== null && bundledVersion !== null;
-      // Narrowed inline rather than through `comparable`: `bundledVersion` is
-      // a `let` (the catch below reports it too), which TypeScript will not
-      // narrow through an intermediate boolean.
-      const installedIsOlder =
-        installedVersion !== null &&
-        bundledVersion !== null &&
-        compareClaudeCodeVersions(installedVersion, bundledVersion) < 0;
-      return {
+      const executable = spawnable.executable;
+      const observed = await this.installedClaudeVersion(executable);
+      const base = {
         resolved,
-        spawnable,
-        installedVersion,
+        spawnable: executable,
+        installedVersion: observed.kind === 'version' ? observed.version : null,
         bundledVersion,
+      };
+      // #1551 risk 1: before this change every user ran the bundled CLI, so
+      // adopting an installed CLI OLDER than the bundle would be a regression
+      // introduced by the fix -- the SDK's control protocol is versioned with
+      // the CLI. Newer or equal wins; older loses.
+      //
+      // The two "cannot compare" cases are NOT the same observation and do not
+      // resolve the same way. A probe that never completed cleanly is also the
+      // only spawnability signal Station has (the SDK spawns with the same
+      // no-shell mechanics), so it falls back to the bundled copy. A missing
+      // BUNDLED version, or a clean probe that simply printed no version,
+      // leaves the installed CLI in place -- "I could not look" must not
+      // silently become a downgrade.
+      if (observed.kind === 'unreadable') {
+        return {
+          ...base,
+          launch: 'bundled',
+          reason: 'installed-version-unreadable',
+        };
+      }
+      if (bundledVersion === null) {
+        return { ...base, launch: 'installed', reason: 'bundled-unknown' };
+      }
+      if (observed.kind !== 'version') {
+        return {
+          ...base,
+          launch: 'installed',
+          reason: 'installed-version-unparsed',
+        };
+      }
+      const installedIsOlder =
+        compareClaudeCodeVersions(observed.version, bundledVersion) < 0;
+      return {
+        ...base,
         launch: installedIsOlder ? 'bundled' : 'installed',
-        reason: installedIsOlder
-          ? 'installed-older'
-          : comparable
-            ? 'installed-not-older'
-            : 'comparison-unavailable',
+        reason: installedIsOlder ? 'installed-older' : 'installed-not-older',
       };
     } catch (error) {
       (this.options.logger ?? console).warn?.(
@@ -2186,27 +2276,42 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * The installed CLI's version, parsed from ONE memoized `--version` probe
-   * per executable per process. `getPrerequisites` routes
-   * `buildCliRuntimePrerequisites`'s own version probe through the same memo
-   * (see `versionProbe`), so readiness and the launch decision together spawn
-   * the user's launcher once, not twice.
+   * What ONE memoized `<executable> --version` probe observed.
+   * `getPrerequisites` routes `buildCliRuntimePrerequisites`'s own version
+   * probe through the same memo, keyed on the same executable (see
+   * `versionProbe`), so readiness and the launch decision spawn the user's
+   * launcher once rather than twice.
+   *
+   * A non-zero exit or a missing result is `unreadable`, NOT "version
+   * unknown": the probe is also the only evidence that the binary the SDK
+   * will spawn (with the same no-shell mechanics) can run at all.
    */
   private async installedClaudeVersion(
     executable: string,
-  ): Promise<string | null> {
+  ): Promise<InstalledVersionObservation> {
     const result = await this.versionProbe(executable, CLAUDE_VERSION_ARGS);
-    if (!result || result.code !== 0) return null;
-    return parseClaudeCodeVersion(`${result.stdout}\n${result.stderr}`);
+    if (!result || result.code !== 0) return { kind: 'unreadable' };
+    const version = parseClaudeCodeVersion(
+      `${result.stdout}\n${result.stderr}`,
+    );
+    return version
+      ? { kind: 'version', version }
+      : { kind: 'ran-without-version' };
   }
 
   /**
-   * One in-flight/completed probe per `command + args`. A rejection is not
-   * cached, so a transient failure does not pin "unknown" for the life of the
-   * process. The caller's `AbortSignal` is deliberately NOT forwarded: the
-   * probe is shared, already bounded by `runCliCommand`'s timeout, and one
-   * caller abandoning readiness must not abort the observation another caller
-   * is awaiting.
+   * One in-flight probe per `command + args`, and only a COMPLETED, zero-exit
+   * result is retained. The default `runCliCommand` never rejects — it catches
+   * everything and answers with `{ code }` or `null` — so caching by promise
+   * identity alone would pin a transient failure (a busy launcher, a cold mise
+   * shim hitting the 10s timeout) for the life of the process. Dropping every
+   * non-zero answer means the next caller re-probes; only success is durable.
+   *
+   * The caller's `AbortSignal` is deliberately NOT forwarded: the probe is
+   * shared, so one caller abandoning readiness must not abort the observation
+   * another caller is awaiting. The cost is that an aborted inspection leaves
+   * the probe child running until `runCliCommand`'s own timeout (10s) retires
+   * it — bounded, but not immediate.
    */
   private versionProbe(
     command: string,
@@ -2218,10 +2323,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const probe = (this.options.runCommand ?? runCliCommand)(
       command,
       args,
-    ).catch((error) => {
-      this.versionProbes.delete(key);
-      throw error;
-    });
+    ).then(
+      (result) => {
+        if (!result || result.code !== 0) this.versionProbes.delete(key);
+        return result;
+      },
+      (error) => {
+        this.versionProbes.delete(key);
+        throw error;
+      },
+    );
     this.versionProbes.set(key, probe);
     return probe;
   }

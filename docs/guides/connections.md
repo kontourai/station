@@ -84,10 +84,18 @@ The first-run Engines chapter shows the detected, not-yet-connected local Engine
 one there explicitly connects the Engine and creates its External agent together; detection itself
 remains read-only until that action.
 
-For the built-in Claude Code Engine, Station runs the `claude` executable it finds installed on
-your machine, as long as that executable is not older than the Claude Code bundled with the Claude
-Agent SDK; otherwise it runs the bundled copy. The Engine's readiness detail names both versions
-and which of the two Station will launch.
+For the built-in Claude Code Engine, Station chooses between the `claude` executable it finds
+installed on your machine and the Claude Code bundled with the Claude Agent SDK:
+
+- The installed executable runs when it reports a version that is not older than the bundled one.
+- The bundled copy runs when the installed executable is older.
+- The bundled copy also runs when the installed executable does not report a version — Station
+  cannot confirm that such a copy runs at all, let alone that it is current.
+- The installed executable runs when Station cannot read the bundled version, so an unreadable
+  Agent SDK never silently downgrades a working installation.
+
+The Engine's readiness detail names the executable Station will launch and whichever versions it
+was able to read.
 
 ---
 

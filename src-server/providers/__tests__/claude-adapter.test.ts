@@ -1,6 +1,13 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 
@@ -3359,6 +3366,15 @@ describe('ClaudeAdapter', () => {
       return { stdout: `${version} (Claude Code)\n`, stderr: '', code: 0 };
     }
 
+    beforeEach(() => {
+      // Most cases here are about the executable REACHING `query()`, not about
+      // the version rule (which has its own block below and injects both
+      // versions). Give them an installed CLI that reports cleanly and that no
+      // bundle will outrank, so an SDK bump in node_modules cannot silently
+      // flip them -- and so none of them depends on this machine's `claude`.
+      mockRunCliCommand.mockResolvedValue(versionResult('9999.0.0'));
+    });
+
     test('passes the resolved executable to the session spawn', async () => {
       mockFindCliBinaryAsync.mockResolvedValue(INSTALLED);
       mockQuery.mockReturnValue(createMockQuery([]));
@@ -3696,42 +3712,52 @@ describe('ClaudeAdapter', () => {
         });
 
         // Older than the SDK that is actually installed here -- yet still
-        // launched, because "I could not look" must not silently become a
-        // downgrade.
+        // launched, because an unreadable MANIFEST must not silently become a
+        // downgrade of a CLI that demonstrably runs.
         expect(await startAndReadOptions(adapter)).toMatchObject({
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed executable at ${INSTALLED}; its version could not be compared with the bundled Claude Code (installed 2.1.100, bundled unknown).`,
+          `Required to launch the Claude runtime. Station launches the installed executable at ${INSTALLED}; the Claude Code version bundled with the Agent SDK could not be read, so no comparison was made (installed 2.1.100).`,
         );
       });
 
-      test('keeps the installed CLI when its own version is unparseable', async () => {
+      test('keeps the installed CLI when it runs cleanly but reports no version', async () => {
         const { adapter } = adapterWith({
           installedVersionOutput: 'claude: command output with no version\n',
           bundled: '2.1.224',
         });
 
+        // Exit 0 proves the binary the SDK will spawn can be spawned; only the
+        // comparison is missing.
         expect(await startAndReadOptions(adapter)).toMatchObject({
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed executable at ${INSTALLED}; its version could not be compared with the bundled Claude Code (installed unknown, bundled 2.1.224).`,
+          `Required to launch the Claude runtime. Station launches the installed executable at ${INSTALLED}; it ran but reported no version, so it was not compared with the Claude Code 2.1.224 bundled with the Agent SDK.`,
         );
       });
 
-      test('keeps the installed CLI when the version probe produces nothing', async () => {
+      // #1551 review H1: an unreadable PROBE is not an unreadable version --
+      // the SDK spawns the executable with the same no-shell mechanics the
+      // probe uses, so a probe that never completed cleanly is the only
+      // evidence Station has that the binary cannot be run. Handing it to the
+      // SDK anyway would launch a binary Station just watched fail.
+      test('falls back to the bundled CLI when the version probe produces nothing', async () => {
         const { adapter } = adapterWith({
           installedVersionOutput: null,
           bundled: '2.1.224',
         });
 
-        expect(await startAndReadOptions(adapter)).toMatchObject({
-          pathToClaudeCodeExecutable: INSTALLED,
-        });
+        expect(await startAndReadOptions(adapter)).not.toHaveProperty(
+          'pathToClaudeCodeExecutable',
+        );
+        expect(await readCliDescription(adapter)).toBe(
+          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} did not report a version, so Station cannot confirm it runs or that it is not older than the bundle.`,
+        );
       });
 
-      test('ignores a version probe that exited non-zero', async () => {
+      test('falls back to the bundled CLI when the version probe exits non-zero', async () => {
         const runCommand = vi
           .fn()
           .mockResolvedValue({ stdout: '9.9.9', stderr: '', code: 1 });
@@ -3742,10 +3768,46 @@ describe('ClaudeAdapter', () => {
         });
 
         // A non-zero exit is not an observation of the version, even when the
-        // output happens to contain a version-shaped string.
-        expect(await readCliDescription(adapter)).toContain(
-          'installed unknown, bundled 2.1.224',
+        // output happens to contain a version-shaped string -- and it is a
+        // positive observation that the binary did not run cleanly.
+        expect(await startAndReadOptions(adapter)).not.toHaveProperty(
+          'pathToClaudeCodeExecutable',
         );
+        expect(await readCliDescription(adapter)).toContain(
+          'did not report a version',
+        );
+      });
+
+      // #1551 review M1: `runCliCommand` never rejects -- it catches
+      // everything and answers `{ code }` or `null` -- so memoizing by promise
+      // identity alone pins a transient failure for the life of the process.
+      test('re-probes after a failed probe instead of caching the failure', async () => {
+        const runCommand = vi
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValue({
+            stdout: '2.1.261 (Claude Code)\n',
+            stderr: '',
+            code: 0,
+          });
+        const adapter = new ClaudeAdapter({
+          findBinary: async () => INSTALLED,
+          runCommand,
+          readBundledVersion: () => '2.1.224',
+        });
+
+        // First inspection: the probe failed, so the bundled copy wins.
+        expect(await readCliDescription(adapter)).toContain(
+          'did not report a version',
+        );
+        // Second inspection re-probes rather than inheriting that failure.
+        expect(await readCliDescription(adapter)).toBe(
+          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+        );
+        expect(runCommand).toHaveBeenCalledTimes(2);
+        // ...and the successful observation IS durable.
+        await readCliDescription(adapter);
+        expect(runCommand).toHaveBeenCalledTimes(2);
       });
 
       test('probes the launcher once per process and shares it with readiness', async () => {
@@ -3790,7 +3852,16 @@ describe('ClaudeAdapter', () => {
             resolveManifestPath: () => '/sdk/manifest.json',
             readFile: (path) =>
               path === '/sdk/manifest.json'
-                ? JSON.stringify({ version: '2.1.224', harnessSchema: 1 })
+                ? JSON.stringify({
+                    version: '2.1.224',
+                    commit: '8a2a469b68f918917492973f3b16bd1682b9f82c',
+                    buildDate: '2026-08-06T01:47:12Z',
+                    platforms: { 'darwin-arm64': { binary: 'claude' } },
+                    sdkCompat: {
+                      testedWrapperVersions: ['0.3.224'],
+                      harnessSchema: 1,
+                    },
+                  })
                 : (() => {
                     throw new Error(`unexpected read: ${path}`);
                   })(),
@@ -3831,11 +3902,26 @@ describe('ClaudeAdapter', () => {
         ).toBeNull();
       });
 
-      test('the default reader answers from the real SDK without throwing', () => {
-        // Deliberately NOT pinned to a number: this asserts the resolution
-        // strategy still reaches a manifest, not which SDK is installed.
-        const version = readBundledClaudeCodeVersion();
-        expect(version === null || /^\d+\.\d+\.\d+$/.test(version)).toBe(true);
+      test('the default reader answers from the real SDK manifest', () => {
+        // #1551 review M3: the previous assertion (`null` OR version-shaped)
+        // was true for every possible return value, so a broken manifest read
+        // -- which routes every user to installed-always-wins -- would have
+        // passed it. Compare against an independent read of the same file
+        // instead: not pinned to a number, but it cannot pass on `null`.
+        const manifestPath = join(
+          dirname(
+            createRequire(import.meta.url).resolve(
+              '@anthropic-ai/claude-agent-sdk',
+            ),
+          ),
+          'manifest.json',
+        );
+        const declared = JSON.parse(
+          readFileSync(manifestPath, 'utf-8'),
+        ).version;
+
+        expect(declared).toMatch(/^\d+\.\d+\.\d+$/);
+        expect(readBundledClaudeCodeVersion()).toBe(declared);
       });
     });
 
@@ -3846,6 +3932,39 @@ describe('ClaudeAdapter', () => {
         ['v2.1.224-beta.3', '2.1.224'],
       ])('parses %j', (input, expected) => {
         expect(parseClaudeCodeVersion(input)).toBe(expected);
+      });
+
+      // #1551 review L1: an update notice must never be read as the version
+      // the binary reports for ITSELF -- that error runs in the unsafe
+      // direction, since a too-high reading defeats the not-older guard.
+      test('ignores an update notice that follows the version line', () => {
+        expect(
+          parseClaudeCodeVersion(
+            '2.1.261 (Claude Code)\nA newer version 2.1.300 is available\n',
+          ),
+        ).toBe('2.1.261');
+      });
+
+      test('ignores an update notice that precedes the version line', () => {
+        expect(
+          parseClaudeCodeVersion(
+            'Update available: 2.1.300\n2.1.261 (Claude Code)\n',
+          ),
+        ).toBe('2.1.261');
+      });
+
+      test('prefers the Claude Code line over another line-leading version', () => {
+        expect(
+          parseClaudeCodeVersion(
+            '2.1.300 is available\n2.1.261 (Claude Code)\n',
+          ),
+        ).toBe('2.1.261');
+      });
+
+      test('does not read a version out of the middle of a line', () => {
+        expect(
+          parseClaudeCodeVersion('a newer version 2.1.300 is available\n'),
+        ).toBeNull();
       });
 
       test.each([[''], ['Claude Code'], ['2.1'], [null], [undefined]])(
@@ -3873,7 +3992,7 @@ describe('ClaudeAdapter', () => {
             platform: 'win32',
             fileExists: (candidate) => candidate === NATIVE,
           }),
-        ).toBe(NATIVE);
+        ).toEqual({ executable: NATIVE, refusal: null });
       });
 
       test('follows a .cmd shim to cli.js when no native entry exists', () => {
@@ -3882,7 +4001,7 @@ describe('ClaudeAdapter', () => {
             platform: 'win32',
             fileExists: (candidate) => candidate === CLI_JS,
           }),
-        ).toBe(CLI_JS);
+        ).toEqual({ executable: CLI_JS, refusal: null });
       });
 
       test.each(['.cmd', '.bat', '.ps1', '.CMD'])(
@@ -3893,7 +4012,7 @@ describe('ClaudeAdapter', () => {
               `C:\\Users\\example\\AppData\\Roaming\\npm\\claude${extension}`,
               { platform: 'win32', fileExists: () => false },
             ),
-          ).toBeNull();
+          ).toEqual({ executable: null, refusal: 'unfollowable-launcher' });
         },
       );
 
@@ -3904,19 +4023,46 @@ describe('ClaudeAdapter', () => {
             platform: 'win32',
             fileExists: () => false,
           }),
-        ).toBe(exe);
+        ).toEqual({ executable: exe, refusal: null });
       });
 
-      test('refuses a bare command name on every platform', () => {
+      // #1551 review L2: a bare command name and an unfollowable shim are
+      // different refusals and must not share a sentence.
+      test('refuses a bare command name on every platform, as not-absolute', () => {
         expect(
           resolveSpawnableClaudeExecutable('claude', {
             platform: 'win32',
             fileExists: () => true,
           }),
-        ).toBeNull();
+        ).toEqual({ executable: null, refusal: 'not-absolute' });
         expect(
           resolveSpawnableClaudeExecutable('claude', { platform: 'darwin' }),
-        ).toBeNull();
+        ).toEqual({ executable: null, refusal: 'not-absolute' });
+      });
+
+      test('readiness names a non-absolute answer as such, not as a launcher', async () => {
+        mockBuildCliRuntimePrerequisites.mockResolvedValue([
+          {
+            id: 'claude-cli',
+            name: 'Claude CLI',
+            description: 'Required to launch the Claude runtime.',
+            status: 'installed',
+            category: 'required',
+          },
+        ]);
+        const runCommand = vi.fn().mockResolvedValue(null);
+        const adapter = new ClaudeAdapter({
+          findBinary: async () => 'claude',
+          runCommand,
+          readBundledVersion: () => '2.1.224',
+        });
+
+        const prerequisites = await adapter.getPrerequisites?.();
+
+        expect(prerequisites?.[0]?.description).toBe(
+          'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK: the `claude` at claude is not an absolute path, and the Agent SDK spawns the executable without PATH resolution.',
+        );
+        expect(runCommand).not.toHaveBeenCalled();
       });
 
       test('leaves posix paths alone, shim-looking extension or not', () => {
@@ -3925,7 +4071,7 @@ describe('ClaudeAdapter', () => {
             platform: 'darwin',
             fileExists: () => false,
           }),
-        ).toBe('/usr/local/bin/claude.cmd');
+        ).toEqual({ executable: '/usr/local/bin/claude.cmd', refusal: null });
       });
 
       test('the session spawn omits the option for an unfollowable shim', async () => {
@@ -3966,6 +4112,48 @@ describe('ClaudeAdapter', () => {
         expect(mockQuery.mock.calls[0][0].options).toMatchObject({
           pathToClaudeCodeExecutable: NATIVE,
         });
+      });
+
+      // #1551 review M2: readiness used to probe `resolved` (the .cmd shim)
+      // while the decision probed `spawnable` (the followed .exe) -- two
+      // spawns, and the shim's failure was then reported as this
+      // prerequisite's status while the .exe was what Station launched.
+      test('readiness probes the followed entry, not the shim, and shares the memo', async () => {
+        const runCommand = vi.fn().mockResolvedValue({
+          stdout: '2.1.261 (Claude Code)\n',
+          stderr: '',
+          code: 0,
+        });
+        mockBuildCliRuntimePrerequisites.mockResolvedValue([
+          {
+            id: 'claude-cli',
+            name: 'Claude CLI',
+            description: 'Required to launch the Claude runtime.',
+            status: 'installed',
+            category: 'required',
+          },
+        ]);
+        const adapter = new ClaudeAdapter({
+          findBinary: async () => SHIM,
+          executablePlatform: 'win32',
+          executableFileExists: (candidate) => candidate === NATIVE,
+          runCommand,
+          readBundledVersion: () => '2.1.224',
+        });
+
+        const prerequisites = await adapter.getPrerequisites?.();
+        // The shared builder hands its probe the RESOLVED command (the shim);
+        // the adapter must redirect it onto the executable it will launch.
+        const sharedProbe =
+          mockBuildCliRuntimePrerequisites.mock.calls[0][0].runCommand;
+        await sharedProbe(SHIM, ['--version']);
+
+        expect(runCommand).toHaveBeenCalledTimes(1);
+        expect(runCommand).toHaveBeenCalledWith(NATIVE, ['--version']);
+        expect(runCommand).not.toHaveBeenCalledWith(SHIM, ['--version']);
+        expect(prerequisites?.[0]?.description).toBe(
+          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${NATIVE} (the Agent SDK bundles 2.1.224).`,
+        );
       });
 
       test('readiness distinguishes an unfollowable shim from nothing installed', async () => {
