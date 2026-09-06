@@ -94,13 +94,10 @@
   min-width: 0;
 }
 
-@media (max-width: 640px) {
-  .page-callout {
-    align-items: stretch;
-  }
-  .page-callout__action,
-  .page-callout__action > .button {
-    width: 100%;
-    min-height: 44px;
-  }
-}
+/*
+ * No page-local breakpoint. The row already wraps (`flex-wrap`), so a narrow
+ * viewport puts the action on its own line, and the 44px floor is the shared
+ * `Button` primitive's under `--bp-mobile` — the three cards this replaces
+ * carried one bespoke media query between them, which is exactly the drift
+ * `scripts/mobile-css-ratchet.mjs` exists to stop.
+ */
