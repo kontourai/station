@@ -480,7 +480,8 @@ export function ConversationStatsModal({
                           <div>Turns: {modelStat.turns}</div>
                           <div>Tool Calls: {modelStat.toolCalls}</div>
                           <div style={{ marginTop: '4px' }}>
-                            Cost: {formatMeasuredCostUsd(modelStat.estimatedCost)}
+                            Cost:{' '}
+                            {formatMeasuredCostUsd(modelStat.estimatedCost)}
                           </div>
                         </div>
                       </div>
