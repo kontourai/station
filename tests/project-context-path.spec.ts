@@ -168,6 +168,21 @@ async function mockShell(page: Page) {
       return route.fulfill(
         json({ success: true, data: { items: [], pendingCount: 0 } }),
       );
+    if (
+      route.request().method() === 'GET' &&
+      PROJECTS.some(
+        (project) => path === `/api/projects/${project.slug}/layouts`,
+      )
+    )
+      return route.fulfill(json({ success: true, data: [] }));
+    if (route.request().method() === 'GET' && path === '/api/coding/git/status')
+      return route.fulfill({
+        status: 503,
+        json: {
+          success: false,
+          error: 'Git status is outside this path-display fixture',
+        },
+      });
     if (await fulfillStationShellRead(route)) return;
     return rejectUnexpectedFixtureRequest(route);
   });

@@ -3,6 +3,7 @@ import { agentConnectionFixture } from './helpers/connection-fixtures';
 import {
   E2E_STATION_CAPABILITIES,
   E2E_STATION_COMPATIBILITY,
+  installE2EWorkspacePaneCatalog,
 } from './helpers/current-station-contract';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
@@ -223,7 +224,10 @@ async function mockTaskFirstHome(
       );
       return;
     }
-    if (path === '/api/orchestration/sessions/task-first-home/flow-run') {
+    if (
+      path === '/api/orchestration/sessions/task-first-home/flow-run' ||
+      path === '/api/orchestration/sessions/task-first-home/builder-run'
+    ) {
       await route.fulfill({
         status: 404,
         contentType: 'application/json',
@@ -367,8 +371,68 @@ async function mockTaskFirstHome(
       );
       return;
     }
+    if (
+      route.request().method() === 'GET' &&
+      /^\/api\/orchestration\/(?:sessions|conversations)\/codex-agent%3A\d+\/(?:checkpoints|event-window)$/.test(
+        path,
+      )
+    ) {
+      await route.fulfill({
+        status: 404,
+        json: {
+          success: false,
+          error: 'This draft has not started an execution Session',
+        },
+      });
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/projects/station/layouts/coding'
+    ) {
+      await route.fulfill(
+        json({
+          id: 'l1',
+          slug: 'coding',
+          name: 'Coding',
+          type: 'coding',
+          config: {},
+        }),
+      );
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/projects/station/conversations'
+    ) {
+      await route.fulfill(json([]));
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      [
+        '/api/coding/git/log',
+        '/api/projects/station/knowledge',
+        '/api/projects/station/knowledge/namespaces',
+        '/api/projects/station/knowledge/status',
+      ].includes(path)
+    ) {
+      await route.fulfill({
+        status: 503,
+        json: {
+          success: false,
+          error: 'Optional project source unavailable in this Home fixture',
+        },
+      });
+      return;
+    }
     if (await fulfillStationShellRead(route)) return;
     await rejectUnexpectedFixtureRequest(route);
+  });
+  await installE2EWorkspacePaneCatalog(page, {
+    projectId: project.id,
+    projectSlug: project.slug,
+    layoutSlug: 'coding',
   });
   await page.route('**/api/coding/git/status**', (route) => {
     expect(new URL(route.request().url()).searchParams.get('path')).toBe(
@@ -672,7 +736,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       page.locator('.chat-dock__active-identity').getByText('New chat'),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Collapse chat dock' }),
+      page.getByRole('button', { name: 'Hide dock region' }),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Close chat' }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe('/');
@@ -1064,7 +1128,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await mockTaskFirstHome(page);
     await page.goto('/?surface=activity');
 
-    await page.getByRole('button', { name: /task first home/i }).click();
+    await page
+      .getByRole('button', { name: /^Worker task · task first home/ })
+      .click();
     await expect(page.getByTestId('session-detail')).toBeVisible();
 
     const delegate = page
@@ -1336,7 +1402,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
       expect(geometry.overflows).toBe(false);
 
       await composer.fill('Continue from my phone');
-      const continueButton = page.getByRole('button', { name: 'Continue' });
+      const continueButton = page
+        .getByTestId('session-detail')
+        .getByRole('button', { name: 'Continue', exact: true });
       const approveButton = request.getByRole('button', { name: 'Approve' });
       const declineButton = request.getByRole('button', { name: 'Decline' });
       for (const control of [continueButton, approveButton, declineButton]) {

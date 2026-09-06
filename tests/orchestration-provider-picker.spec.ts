@@ -40,23 +40,10 @@ test.describe('Orchestration Execution Settings', () => {
 
     await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
 
-    /*
-     * ONE click. The retry that used to wrap this clicked the gear again on
-     * every attempt, and the gear is a TOGGLE — a retry landing while the
-     * panel was mid-open closed it, so the workaround could produce the
-     * failure it was covering.
-     *
-     * archive#3770 read this as a swallowed click. It is not: the chunk and
-     * every module it pulls finish ~120ms after the click, the `.chat-dock`
-     * node is never replaced, and no pushState/popstate/back occurs. The
-     * panel nevertheless committed between 0.25s and 9.3s later, because a
-     * sustained render storm on this route (archive#3781) starved React's
-     * Suspense retry lane until it expired. That loop is fixed, and
-     * tests/project-layout-render-storm.spec.ts keeps it fixed, so this wait
-     * is bounded by the chunk fetch again rather than by the storm's worst
-     * observed case.
-     */
-    await page.getByTitle('Chat settings').click();
+    await page.getByRole('button', { name: 'More dock actions' }).click();
+    await page
+      .getByRole('menuitem', { name: 'Chat settings', exact: true })
+      .click();
     await expect(
       page.getByRole('heading', { name: 'Chat Settings' }),
     ).toBeVisible();

@@ -417,15 +417,9 @@ async function openComposer(
   projectScoped = false,
   agentSlug = 'claude',
 ) {
-  await page.goto('/?dock=open');
+  await page.goto('/');
   await dismissSetupLauncher(page);
-  await openNewChat(page);
-  // With exactly one chat-ready runtime, the visible New button intentionally
-  // takes the one-click default path. Open the selection surface explicitly so
-  // this helper can bind a runtime and optional project deterministically.
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event('station:open-new-chat')),
-  );
+  await page.getByRole('button', { name: /^Start direct chat/ }).click();
   const modal = page.getByRole('dialog', { name: 'New Chat' });
   await expect(modal).toBeVisible({ timeout: 15_000 });
   const runtimeRow = modal.locator(`[data-agent-slug="${agentSlug}"]`).first();
@@ -935,21 +929,6 @@ async function expandMobileDock(page: Page) {
     .getByRole('menu', { name: 'Chat actions' })
     .getByRole('menuitem', { name: /^Expand chat/ })
     .click();
-}
-
-async function openNewChat(page: Page) {
-  const tabBarNew = page
-    .locator('.chat-dock__tab-actions .chat-dock__new')
-    .last();
-  if (await tabBarNew.isVisible().catch(() => false)) {
-    await expect(tabBarNew).toBeVisible({ timeout: 15_000 });
-    return;
-  }
-  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
-  await expect(
-    page.getByRole('menuitem', { name: 'New chat', exact: true }),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Close actions menu' }).click();
 }
 
 test('keeps mobile attachment selection reviewable without moving the draft', async ({
@@ -2690,24 +2669,6 @@ test('preserves desktop dock geometry', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockChatShell(page);
   await openComposer(page);
-  // archive#1064 removed the "Chat Dock" label — the dock is the only thing this
-  // chrome can belong to, and the row now carries the active chat's project
-  // context instead. Assert the row still identifies the surface (its toggle
-  // shortcut) rather than re-pinning a label that was deliberately dropped.
-  await expect(page.locator('.chat-dock__title')).not.toContainText(
-    'Chat Dock',
-  );
-  await expect(page.locator('.chat-dock__counter')).toHaveText('1 session');
-  await expect(
-    page.locator('.chat-dock__header').getByTitle('Chat settings'),
-  ).toBeVisible();
-  await expect(
-    page.locator('summary[aria-label="More chat actions"]'),
-  ).toHaveCount(0);
-  const desktopActions = page.locator('.chat-dock__tab-actions button');
-  await expect(desktopActions).toHaveCount(2);
-  await expect(desktopActions.nth(0)).toContainText('Open');
-  await expect(desktopActions.nth(1)).toContainText('New');
   // archive#1048 retired the overlay bottom dock: the dock is always inline in the
   // content column, spanning from the sidebar's right edge to the viewport
   // edge (previously it overlaid the full 1280px viewport width).
