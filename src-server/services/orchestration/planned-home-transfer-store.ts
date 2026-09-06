@@ -313,6 +313,7 @@ function createSqliteStore(db: Database, authorize?: () => boolean) {
   ): TransferStoreResult<T> {
     let began = false;
     try {
+      checkAuthorization();
       db.exec('BEGIN IMMEDIATE');
       began = true;
       requireDurableDatabase(db);

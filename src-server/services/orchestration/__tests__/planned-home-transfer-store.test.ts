@@ -355,16 +355,17 @@ test('a denied caller cannot inspect or mutate transfer decisions', () => {
     decision,
   );
 });
-test.each(['revoked', 'unavailable', 'async'] as const)(
+test.each(['revoked', 'unavailable', 'async', 'resolved-async'] as const)(
   'authorization %s before commit rolls the whole transition back',
   (mode) => {
     const { db, store } = fixture();
     const decision = ready(store);
     let checks = 0;
     const guarded = createAuthorizedSqlitePlannedHomeTransferStore(db, (() => {
-      if (++checks === 1) return true;
+      if (++checks <= 2) return true;
       if (mode === 'unavailable')
         throw new Error('Private authority backend detail');
+      if (mode === 'resolved-async') return Promise.resolve(true);
       if (mode === 'async')
         return Promise.reject(new Error('Asynchronous guard is unsupported'));
       return false;
@@ -372,7 +373,7 @@ test.each(['revoked', 'unavailable', 'async'] as const)(
     expect(guarded.commit(owner.tenantId, intent.operationId).kind).toBe(
       mode === 'unavailable' ? 'unavailable' : 'denied',
     );
-    expect(checks).toBe(2);
+    expect(checks).toBe(3);
     expect(stored(store.inspect(owner.tenantId, owner.channelId))).toEqual(
       owner,
     );
@@ -402,3 +403,42 @@ test.each([undefined, null, false])(
     ).toThrow('guard is required');
   },
 );
+
+test('denied operations do not acquire the database transaction lock', () => {
+  const { db } = fixture();
+  const sql: string[] = [];
+  const guarded = createAuthorizedSqlitePlannedHomeTransferStore(
+    {
+      exec(statement) {
+        sql.push(statement);
+        db.exec(statement);
+      },
+      prepare: (statement) => db.prepare(statement),
+    },
+    () => false,
+  );
+  sql.length = 0;
+  expect(guarded.inspect(owner.tenantId, owner.channelId).kind).toBe('denied');
+  expect(sql).toEqual([]);
+});
+test('rejected asynchronous guards do not emit unhandled rejections', async () => {
+  const { db } = fixture();
+  const leaks: unknown[] = [];
+  const record = (reason: unknown) => {
+    leaks.push(reason);
+  };
+  process.on('unhandledRejection', record);
+  try {
+    const guarded = createAuthorizedSqlitePlannedHomeTransferStore(db, (() =>
+      Promise.reject(
+        new Error('unsupported asynchronous authorization'),
+      )) as unknown as () => boolean);
+    expect(guarded.inspect(owner.tenantId, owner.channelId).kind).toBe(
+      'denied',
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(leaks).toEqual([]);
+  } finally {
+    process.removeListener('unhandledRejection', record);
+  }
+});
