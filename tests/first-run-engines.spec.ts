@@ -1100,7 +1100,11 @@ for (const viewport of [
       ),
     ).toBeVisible();
     if (await page.getByTestId('engine-picker').isVisible()) {
-      await page.getByRole('button', { name: 'Dismiss engine picker' }).click();
+      // #1582 A5: the role screen is a STEP of the chapter now, so it has no
+      // dismiss of its own — the chapter header's "Close setup" is the run's
+      // exit and would DEFER it. "Decide later" is the step's own way past
+      // the question, and the one that goes on to the next screen.
+      await page.getByRole('button', { name: 'Decide later' }).click();
     }
     const questions = page.getByTestId('first-run-about-you');
     await expect(questions).toBeVisible();
