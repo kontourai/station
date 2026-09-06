@@ -132,6 +132,80 @@ describe('AttachedSessionFollowService', () => {
     expect(resolveAttachedSessionPollInterval('120000')).toBe(60_000);
   });
 
+  test('rejects duplicate registered source implementations', () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi.fn(),
+      read: vi.fn(),
+    };
+
+    expect(
+      () =>
+        new AttachedSessionFollowService({
+          sources: [source, { ...source }],
+          eventStore: store,
+          eventBus,
+          listProjects: () => [],
+        }),
+    ).toThrow(
+      'Duplicate attached session source implementation: claude/claude-transcript',
+    );
+
+    expect(
+      () =>
+        new AttachedSessionFollowService({
+          sources: [
+            { ...source, kind: 'transcript\u0000fixture' },
+            {
+              ...source,
+              provider: 'claude\u0000transcript',
+              kind: 'fixture',
+            },
+          ],
+          eventStore: store,
+          eventBus,
+          listProjects: () => [],
+        }),
+    ).not.toThrow();
+  });
+
+  test('rejects descriptors whose provider does not match their registered source', async () => {
+    const mismatched = {
+      ...session,
+      provider: 'unregistered-provider',
+      threadId: 'external:unregistered:session-1',
+    };
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [mismatched] }),
+      read: vi.fn(),
+    };
+    const emitted = vi.fn();
+    eventBus.subscribe(emitted);
+
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    }).pollNow();
+
+    expect(source.read).not.toHaveBeenCalled();
+    expect(store.readSessions()).toEqual([]);
+    expect(store.listEvents(mismatched.threadId)).toEqual([]);
+    expect(emitted).not.toHaveBeenCalled();
+    expect(metrics.attachedSessionDiscovery.add).toHaveBeenCalledWith(1, {
+      source: 'claude-transcript',
+      outcome: 'rejected_candidate',
+    });
+  });
+
   test('resolves symlinked nested cwd to the canonical configured root and rejects stale roots', () => {
     const root = join(dir, 'canonical-project');
     const nested = join(root, 'packages', 'app');
@@ -228,6 +302,7 @@ describe('AttachedSessionFollowService', () => {
   test('matches the longest canonical project root and publishes each canonical event once', async () => {
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -270,6 +345,135 @@ describe('AttachedSessionFollowService', () => {
     });
   });
 
+  test('persists and replays a registered source-owned kind without granting unknown or adopted sources extra authority', async () => {
+    const synthetic = {
+      ...session,
+      provider: 'fixture-provider',
+      sessionId: 'fixture-session-1',
+      threadId: 'external:fixture:session-1',
+      sourceHandle: 'fixture-handle-1',
+    };
+    const source: AttachedSessionSource = {
+      provider: 'fixture-provider',
+      kind: 'fixture-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValueOnce({ outcome: 'ok', sessions: [synthetic] })
+        .mockResolvedValueOnce({ outcome: 'ok', sessions: [synthetic] }),
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          events: [
+            {
+              ...event('fixture-event-1'),
+              provider: 'fixture-provider',
+              threadId: synthetic.threadId,
+            },
+          ],
+          cursor: 24,
+        })
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          events: [],
+          cursor: 24,
+        }),
+    };
+    const options = {
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    };
+
+    await new AttachedSessionFollowService(options).pollNow();
+    const persisted = store
+      .readSessions()
+      .find((item) => item.threadId === synthetic.threadId);
+    expect(persisted).toEqual(
+      expect.objectContaining({
+        controlMode: 'read-only-attached',
+        attachedSource: {
+          kind: 'fixture-transcript',
+          externalSessionId: synthetic.sessionId,
+        },
+      }),
+    );
+
+    await new AttachedSessionFollowService(options).pollNow();
+    expect(source.read).toHaveBeenNthCalledWith(2, synthetic, 24);
+    expect(metrics.attachedSessionDiscovery.add).toHaveBeenCalledWith(1, {
+      source: 'fixture-transcript',
+      outcome: 'ok',
+    });
+
+    const adopted = {
+      ...synthetic,
+      sessionId: 'fixture-session-adopted',
+      threadId: 'external:fixture:adopted',
+    };
+    store.upsertSession({
+      provider: adopted.provider,
+      threadId: 'station-owned-fixture-child',
+      status: 'ready',
+      cwd: adopted.cwd,
+      resumeCursor: adopted.sessionId,
+      controlMode: 'station-owned',
+      createdAt: adopted.createdAt,
+      updatedAt: adopted.createdAt,
+    });
+    const refusedSource: AttachedSessionSource = {
+      ...source,
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [adopted] }),
+      read: vi.fn(),
+    };
+    await new AttachedSessionFollowService({
+      ...options,
+      sources: [refusedSource],
+    }).pollNow();
+    expect(refusedSource.read).not.toHaveBeenCalled();
+    expect(
+      store.readSessions().some((item) => item.threadId === adopted.threadId),
+    ).toBe(false);
+
+    const unavailable = {
+      ...synthetic,
+      sessionId: 'fixture-session-unavailable',
+      threadId: 'external:fixture:unavailable',
+    };
+    const unavailableSource: AttachedSessionSource = {
+      ...source,
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [unavailable] }),
+      read: vi.fn().mockRejectedValue(new Error('unavailable')),
+    };
+    await new AttachedSessionFollowService({
+      ...options,
+      sources: [unavailableSource],
+    }).pollNow();
+    expect(metrics.attachedSessionDiscovery.add).toHaveBeenCalledWith(1, {
+      source: 'fixture-transcript',
+      outcome: 'unknown_source',
+    });
+    expect(
+      store
+        .readSessions()
+        .find((item) => item.threadId === unavailable.threadId),
+    ).toEqual(
+      expect.objectContaining({
+        attachedSource: {
+          kind: 'fixture-transcript',
+          externalSessionId: unavailable.sessionId,
+        },
+      }),
+    );
+  });
+
   // archive#1399 fix round 2, B1 (independent review) — this service is a
   // SECOND writer, independent of `OrchestrationService#publishCanonicalEvent`:
   // it imports source events straight off an attached transcript (in
@@ -306,6 +510,7 @@ describe('AttachedSessionFollowService', () => {
     };
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -362,6 +567,7 @@ describe('AttachedSessionFollowService', () => {
   test('follows an ambiguous workspace without stamping a project slug', async () => {
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -426,6 +632,7 @@ describe('AttachedSessionFollowService', () => {
         sources: [
           {
             provider: 'claude',
+            kind: 'claude-transcript',
             discover: vi
               .fn()
               .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -575,6 +782,7 @@ describe('AttachedSessionFollowService', () => {
           sources: [
             {
               provider: 'claude',
+              kind: 'claude-transcript',
               discover: vi
                 .fn()
                 .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -959,6 +1167,7 @@ describe('AttachedSessionFollowService', () => {
   test('deduplicates a replay after restart and follows appended events without a reload', async () => {
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -1013,9 +1222,240 @@ describe('AttachedSessionFollowService', () => {
     ]);
   });
 
+  test('does not reuse a cursor when a source changes kind under one provider and handle', async () => {
+    const fixture = {
+      ...session,
+      provider: 'fixture-provider',
+      threadId: 'external:fixture:kind-change',
+    };
+    const oldSource: AttachedSessionSource = {
+      provider: fixture.provider,
+      kind: 'fixture-transcript-v1',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [fixture] }),
+      read: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', events: [], cursor: 40 }),
+    };
+    const options = {
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    };
+    await new AttachedSessionFollowService({
+      ...options,
+      sources: [oldSource],
+    }).pollNow();
+
+    const replacementSource: AttachedSessionSource = {
+      ...oldSource,
+      kind: 'fixture-transcript-v2',
+      read: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', events: [], cursor: 80 }),
+    };
+    await new AttachedSessionFollowService({
+      ...options,
+      sources: [replacementSource],
+    }).pollNow();
+
+    expect(replacementSource.read).toHaveBeenCalledWith(fixture, undefined);
+    expect(
+      store.readSessions().find((item) => item.threadId === fixture.threadId),
+    ).toEqual(
+      expect.objectContaining({
+        attachedSource: {
+          kind: 'fixture-transcript-v2',
+          externalSessionId: fixture.sessionId,
+        },
+      }),
+    );
+  });
+
+  test('does not preserve an old cursor when a changed source fails to read', async () => {
+    const oldFixture = {
+      ...session,
+      provider: 'fixture-provider',
+      threadId: 'external:fixture:failed-kind-change',
+      sourceHandle: 'fixture-handle-v1',
+    };
+    const changedFixture = {
+      ...oldFixture,
+      sourceHandle: 'fixture-handle-v2',
+    };
+    const source = {
+      provider: oldFixture.provider,
+      kind: 'fixture-transcript-v1',
+      discover: vi
+        .fn()
+        .mockResolvedValueOnce({ outcome: 'ok', sessions: [oldFixture] })
+        .mockResolvedValueOnce({ outcome: 'ok', sessions: [changedFixture] }),
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({ outcome: 'ok', events: [], cursor: 40 })
+        .mockRejectedValueOnce(new Error('source replaced')),
+    } satisfies AttachedSessionSource;
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+
+    await service.pollNow();
+    source.kind = 'fixture-transcript-v2';
+    await service.pollNow();
+
+    expect(source.read).toHaveBeenNthCalledWith(2, changedFixture, undefined);
+    expect(
+      store
+        .readSessions()
+        .find((item) => item.threadId === changedFixture.threadId),
+    ).toEqual(
+      expect.objectContaining({
+        attachedSource: {
+          kind: 'fixture-transcript-v2',
+          externalSessionId: changedFixture.sessionId,
+        },
+        resumeCursor: undefined,
+      }),
+    );
+  });
+
+  test('restores a legacy Claude cursor through persisted attached-source metadata', async () => {
+    store.upsertSession({
+      provider: 'claude',
+      threadId: session.threadId,
+      status: 'ready',
+      cwd: session.cwd,
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: session.sessionId,
+      },
+      resumeCursor: {
+        kind: 'station.attached-session-cursor/v1',
+        provider: 'claude',
+        sourceHandle: session.sourceHandle,
+        cursor: 40,
+      },
+      createdAt: session.createdAt,
+      updatedAt: session.createdAt,
+    });
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', events: [], cursor: 80 }),
+    };
+
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    }).pollNow();
+
+    expect(source.read).toHaveBeenCalledWith(session, 40);
+  });
+
+  test.each([
+    ['provider mismatch', { provider: 'unregistered-provider' }],
+    ['thread mismatch', { threadId: 'external:claude:wrong-thread' }],
+  ])(
+    'rejects a malformed read batch with a %s without advancing its cursor',
+    async (_reason, malformedFields) => {
+      store.upsertSession({
+        provider: 'claude',
+        threadId: session.threadId,
+        status: 'ready',
+        cwd: session.cwd,
+        controlMode: 'read-only-attached',
+        attachedSource: {
+          kind: 'claude-transcript',
+          externalSessionId: session.sessionId,
+        },
+        resumeCursor: {
+          kind: 'station.attached-session-cursor/v1',
+          provider: 'claude',
+          sourceHandle: session.sourceHandle,
+          cursor: 10,
+        },
+        createdAt: session.createdAt,
+        updatedAt: session.createdAt,
+      });
+      const source: AttachedSessionSource = {
+        provider: 'claude',
+        kind: 'claude-transcript',
+        discover: vi
+          .fn()
+          .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+        read: vi
+          .fn()
+          .mockResolvedValueOnce({
+            outcome: 'ok',
+            events: [{ ...event('malformed-event'), ...malformedFields }],
+            cursor: 20,
+          })
+          .mockResolvedValueOnce({
+            outcome: 'ok',
+            events: [event('valid-event')],
+            cursor: 20,
+          }),
+      };
+      const service = new AttachedSessionFollowService({
+        sources: [source],
+        eventStore: store,
+        eventBus,
+        listProjects: () => [
+          { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+        ],
+      });
+
+      await service.pollNow();
+
+      expect(source.read).toHaveBeenNthCalledWith(1, session, 10);
+      expect(
+        store.listEvents(session.threadId).map((item) => item.id),
+      ).not.toContain('malformed-event');
+      expect(
+        store.readSessions().find((item) => item.threadId === session.threadId)
+          ?.resumeCursor,
+      ).toEqual(
+        expect.objectContaining({
+          sourceHandle: session.sourceHandle,
+          cursor: 10,
+        }),
+      );
+
+      await service.pollNow();
+
+      expect(source.read).toHaveBeenNthCalledWith(2, session, 10);
+      expect(
+        store.listEvents(session.threadId).map((item) => item.id),
+      ).toContain('valid-event');
+      expect(
+        store.readSessions().find((item) => item.threadId === session.threadId)
+          ?.resumeCursor,
+      ).toEqual(expect.objectContaining({ cursor: 20 }));
+    },
+  );
+
   test('rejects a durable transcript cursor when the opaque source handle changes', async () => {
     const firstSource: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -1040,6 +1480,7 @@ describe('AttachedSessionFollowService', () => {
     const moved = { ...session, sourceHandle: 'replacement-source-handle' };
     const replacementSource: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi.fn().mockResolvedValue({ outcome: 'ok', sessions: [moved] }),
       read: vi.fn().mockResolvedValue({ outcome: 'ok', events: [], cursor: 8 }),
     };
@@ -1108,6 +1549,7 @@ describe('AttachedSessionFollowService', () => {
     });
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -1133,6 +1575,7 @@ describe('AttachedSessionFollowService', () => {
   test('does not call listEvents on cold start or steady-state polls', async () => {
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -1183,6 +1626,7 @@ describe('AttachedSessionFollowService', () => {
     }));
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi.fn().mockResolvedValue({ outcome: 'ok', sessions }),
       // An immediately fulfilled source promise is the dangerous shape: each
       // continuation runs as a microtask and calls synchronous SQLite through
@@ -1217,6 +1661,7 @@ describe('AttachedSessionFollowService', () => {
     }
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -1246,6 +1691,7 @@ describe('AttachedSessionFollowService', () => {
     const secondSession = { ...session, sourceHandle: 'source-two' };
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValueOnce({ outcome: 'ok', sessions: [firstSession] })
@@ -1282,6 +1728,7 @@ describe('AttachedSessionFollowService', () => {
     });
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -1321,6 +1768,7 @@ describe('AttachedSessionFollowService', () => {
     });
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -1349,6 +1797,7 @@ describe('AttachedSessionFollowService', () => {
   test('tombstones an attached alias when a Station fork wins after the follower cached it', async () => {
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -1409,6 +1858,7 @@ describe('AttachedSessionFollowService', () => {
     }
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -1457,6 +1907,7 @@ describe('AttachedSessionFollowService', () => {
     });
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -1482,6 +1933,7 @@ describe('AttachedSessionFollowService', () => {
   test('does not import an unmatched transcript and preserves prior transcript state when a source disappears', async () => {
     const source: AttachedSessionSource = {
       provider: 'claude',
+      kind: 'claude-transcript',
       discover: vi
         .fn()
         .mockResolvedValueOnce({ outcome: 'ok', sessions: [session] })
@@ -1529,6 +1981,7 @@ describe('AttachedSessionFollowService', () => {
     function pollingSource(): AttachedSessionSource {
       return {
         provider: 'claude',
+        kind: 'claude-transcript',
         discover: vi
           .fn()
           .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
@@ -1590,6 +2043,7 @@ describe('AttachedSessionFollowService', () => {
         sources: [
           {
             provider: 'claude',
+            kind: 'claude-transcript',
             discover: vi.fn().mockResolvedValue({
               outcome: 'ok',
               sessions: [session, second],

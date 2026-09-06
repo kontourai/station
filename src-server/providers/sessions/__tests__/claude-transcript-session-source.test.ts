@@ -30,6 +30,15 @@ afterEach(() => {
 });
 
 describe('ClaudeTranscriptSessionSource', () => {
+  test('exposes its stable source-owned kind', () => {
+    const source = new ClaudeTranscriptSessionSource({
+      configDir: fixtureDir(),
+    });
+
+    expect(source.provider).toBe('claude');
+    expect(source.kind).toBe('claude-transcript');
+  });
+
   test('emits byte-real Claude per-message usage, cache split, service tier, and request ID', async () => {
     const root = fixtureDir();
     const directory = join(root, 'projects', 'encoded-project');
