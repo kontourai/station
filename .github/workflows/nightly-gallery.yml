@@ -110,6 +110,20 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends build-essential
 
+      # `actions/checkout` adds the workspace to `safe.directory` in a
+      # TEMPORARY global git config (it overrides HOME, writes, then reverts),
+      # so by the time a later step runs, git refuses the workspace for
+      # dubious ownership — the container is root while the workspace is the
+      # runner's. Measured in run 34064951580: `dependencies:ci` died on
+      # `install-git-hooks.mjs`, whose `git rev-parse --show-toplevel` throw is
+      # reported as the much more alarming "not a git checkout". Re-declare it
+      # for the shell the remaining steps actually use.
+      - name: Trust the workspace checkout inside the container
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git rev-parse --show-toplevel
+
       - name: Install dependencies
         run: |
           set -euo pipefail
