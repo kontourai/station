@@ -118,11 +118,9 @@ function renderHeaderMarkup(): string {
               projectSlug="demo"
               projectName="Demo Project"
               workingDirectory="/Users/brian/dev/github/kontourai/demo-project"
-              codingLayoutSlug={null}
               gitStatus={gitStatus}
               projects={[]}
               onSelectProject={() => {}}
-              onOpenLayout={() => {}}
               onSwitchProject={() => {}}
             />
           </div>

@@ -325,6 +325,7 @@ describe.skipIf(!chromiumAvailable)(
       expect(Math.round(collapsed)).toBeLessThanOrEqual(56);
       expect(Math.round(collapsed)).toBeGreaterThanOrEqual(44);
       expect(collapsed).toBeLessThan(widest - 80);
+    });
 
     /**
      * #1536 C3: the chip read "<state> · Default" with the middle dot detached

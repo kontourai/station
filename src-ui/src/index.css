@@ -2021,12 +2021,6 @@ button:hover {
    row of muted status text. The click affordance survives as an underline on
    hover/focus, same as any other text trigger in this bar. */
 .chat-dock__project-badge {
-  /* A <button> wraps its label by default, so a squeezed header printed
-     "Demo Project" on two lines inside a one-line row. The project name is
-     the row's subject: it stays on one line and the path beside it — which
-     already ellipsises from the start — is what yields. */
-  flex-shrink: 0;
-  white-space: nowrap;
   border: none;
   border-radius: 3px;
   padding: 0 2px;
@@ -3248,16 +3242,8 @@ button:hover {
      element, and a `0 1 auto` wrapper would never hand it the spare width. */
   flex: 1 1 auto;
   min-width: 0;
-  flex: 1 1 auto;
   align-items: center;
   gap: var(--space-2);
-  /* With a project bound this row shares the header with the project context,
-     so the box it gets can be narrower than its contents. `flex-shrink: 0` on
-     the agent name and model meant they refused to yield and, with no clip
-     here, painted OUTSIDE this box — over the session title beside them. The
-     clip is the floor; the shrink weights below are what keeps every part
-     readable rather than merely contained. */
-  overflow: hidden;
 }
 
 /* archive#3309: agent-first. The avatar and the agent's name hold their size.
@@ -3290,9 +3276,6 @@ button:hover {
 .chat-dock__active-identity-title {
   flex: 1 1 auto;
   min-width: 0;
-  /* Yields several times faster than the agent/model beside it, so the
-     priority above is expressed in the layout rather than only in prose. */
-  flex-shrink: 4;
   overflow: hidden;
   padding-left: var(--space-2);
   border-left: 1px solid var(--border-primary);
