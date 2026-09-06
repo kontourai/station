@@ -335,6 +335,55 @@ describe('changed verification selection', () => {
       ]),
     );
   });
+  test('selects portable client source scans and accepted-turn CLI consumers', () => {
+    for (const path of [
+      'packages/sdk/src/client/http.ts',
+      'packages/sdk/src/client/bounded-response.ts',
+      'packages/sdk/src/client/future-client.ts',
+    ]) {
+      expect(
+        selectChangedVerification([path]).tests.map((entry) => entry.path),
+      ).toContain(
+        'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+      );
+      expect(selectChangedVerification([path]).relatedPaths).toContain(path);
+    }
+    expect(
+      selectChangedVerification([
+        'packages/cli/src/commands/session-client.ts',
+      ]).tests.map((entry) => entry.path),
+    ).toEqual(
+      expect.arrayContaining([
+        'packages/cli/src/__tests__/core.test.ts',
+        'packages/cli/src/__tests__/core-http.test.ts',
+      ]),
+    );
+    expect(
+      selectChangedVerification(['packages/cli/src/commands/session-client.ts'])
+        .relatedPaths,
+    ).toContain('packages/cli/src/commands/session-client.ts');
+  });
+  test.each([
+    [
+      'src-server/runtime/frameworks/strands-message-sync.ts',
+      'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
+    ],
+    [
+      'scripts/proof-repo-guardrails.mjs',
+      'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
+    ],
+    [
+      'src-ui/src/index.css',
+      'src-ui/src/__tests__/ChatDockActiveIdentity.overflow.test.tsx',
+    ],
+  ])(
+    'supplements graph coverage for the source-reading check of %s',
+    (path, testPath) => {
+      const selection = selectChangedVerification([path]);
+      expect(selection.tests.map((entry) => entry.path)).toContain(testPath);
+      expect(selection.relatedPaths).toContain(path);
+    },
+  );
   test('uses focused tests for the project-bound file preview contract', () => {
     const selection = selectChangedVerification([
       'packages/contracts/src/workspace-file-preview.ts',
