@@ -474,7 +474,7 @@ export const e2eManifest = [
   },
   {
     path: 'tests/chat-multi-turn-context.spec.ts',
-    bucket: 'quarantine',
+    bucket: 'smoke-live',
     surface: 'Chat / Orchestration',
     tierTarget: 'full',
     primary: true,
