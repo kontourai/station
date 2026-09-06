@@ -1198,6 +1198,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
+    if (record.session.status === 'error' || record.session.status === 'dead') {
+      throw new ProviderTurnEndedError();
+    }
     const turnId = crypto.randomUUID();
     record.activeTurnId = turnId;
     // archive#1182: a fresh turn has not reported anything yet — clear the
@@ -1343,7 +1346,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       }
     }
 
-    record.promptQueue.push({
+    const enqueued = record.promptQueue.push({
       type: 'user',
       message: {
         role: 'user',
@@ -1354,6 +1357,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       uuid: turnId,
       timestamp: new Date().toISOString(),
     });
+    if (!enqueued) throw new ProviderTurnEndedError();
     // An allocated ID is not enough to attribute an inbound SDK result: a
     // resume/init handshake can arrive while async setup above is in flight.
     // Arm completion provenance only after this turn's prompt is queued.
@@ -2278,12 +2282,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   ): Promise<void> {
     try {
       for await (const message of record.query) {
-        // `interruptedResultObserved` suppresses only the iterator rejection
+        // Result markers suppress only the iterator rejection
         // immediately following the consumed result. If the iterator yields
         // another message instead, that proves there was no wrapper to
         // suppress and the marker must not leak into a later failure.
         record.interruptedResultObserved = false;
+        record.terminalResultObserved = undefined;
         this.mapMessage(record, message);
+        if (record.terminalResultObserved) record.promptQueue.close();
       }
       record.interruptedResultObserved = false;
     } catch (error) {
@@ -2326,6 +2332,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         message,
       });
       record.session.status = 'error';
+      record.promptQueue.close();
     }
   }
 

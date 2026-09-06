@@ -1838,6 +1838,17 @@ describe('ClaudeAdapter', () => {
       await vi.waitFor(async () =>
         expect((await adapter.listSessions())[0]?.status).toBe('error'),
       );
+      await expect(
+        adapter.sendTurn({
+          threadId: 'refused-turn',
+          input: 'must not be silently accepted',
+        }),
+      ).rejects.toThrow(
+        'The provider turn ended before the input could be enqueued.',
+      );
+      expect(events.some((event) => event.method === 'turn.started')).toBe(
+        false,
+      );
       await adapter.stopAll();
       await drain;
       const failures = events.filter(
@@ -1857,6 +1868,102 @@ describe('ClaudeAdapter', () => {
       ).toBe(false);
     },
   );
+
+  test('a query failure during asynchronous turn setup refuses enqueue without publishing a started turn', async () => {
+    let failQuery!: () => void;
+    const failureReady = new Promise<void>((resolve) => {
+      failQuery = resolve;
+    });
+    const adapter = new ClaudeAdapter();
+    mockQuery.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        await failureReady;
+        yield {
+          type: 'result',
+          is_error: true,
+          result: 'Query failed during control setup',
+          usage: { input_tokens: 0, output_tokens: 0 },
+          uuid: 'setup-failure',
+          session_id: 'native-setup',
+        };
+      },
+      setPermissionMode: vi.fn(async () => {
+        failQuery();
+        await vi.waitFor(async () =>
+          expect((await adapter.listSessions())[0]?.status).toBe('error'),
+        );
+      }),
+      close: vi.fn(),
+    });
+    const events: any[] = [];
+    const drain = (async () => {
+      for await (const event of adapter.streamEvents()) events.push(event);
+    })();
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'setup-failure',
+      modelOptions: { approvalMode: 'ask' },
+    });
+    await expect(
+      adapter.sendTurn({
+        threadId: 'setup-failure',
+        input: 'no silent enqueue',
+        modelOptions: { approvalMode: 'auto' },
+      }),
+    ).rejects.toThrow('The provider turn ended');
+    await adapter.stopAll();
+    await drain;
+    expect(
+      events.filter((event) => event.method === 'runtime.error'),
+    ).toHaveLength(1);
+    expect(events.some((event) => event.method === 'turn.started')).toBe(false);
+  });
+
+  test('a later SDK message ends wrapper suppression so a distinct query failure remains visible', async () => {
+    mockQuery.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'result',
+          is_error: true,
+          result: 'Provider refusal',
+          usage: { input_tokens: 0, output_tokens: 0 },
+          uuid: 'first-failure',
+          session_id: 'native-refused',
+        };
+        yield { type: 'system', subtype: 'status', status: null };
+        throw new Error('Distinct later transport failure');
+      },
+      close: vi.fn(),
+    });
+    const adapter = new ClaudeAdapter();
+    const events: any[] = [];
+    const drain = (async () => {
+      for await (const event of adapter.streamEvents()) events.push(event);
+    })();
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'later-failure',
+    });
+    await vi.waitFor(() =>
+      expect(
+        events.filter((event) => event.method === 'runtime.error'),
+      ).toHaveLength(2),
+    );
+    await expect(
+      adapter.sendTurn({
+        threadId: 'later-failure',
+        input: 'no silent enqueue',
+      }),
+    ).rejects.toThrow('The provider turn ended');
+    await adapter.stopAll();
+    await drain;
+    expect(
+      events
+        .filter((event) => event.method === 'runtime.error')
+        .map((event) => event.message),
+    ).toEqual(['Provider refusal', 'Distinct later transport failure']);
+    expect(events.some((event) => event.method === 'turn.started')).toBe(false);
+  });
 
   /**
    * archive#1827. Reproduces the ticket's exact live shape: the SDK
