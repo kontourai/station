@@ -4,7 +4,6 @@ import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
-import { dispatchForeground } from '../../lib/foregroundMessageDispatch';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
 
@@ -107,7 +106,26 @@ export function drainQueuedMessageOnTurnCompleted(
     queuedMessageFailure: undefined,
   });
 
-  setTimeout(() => {
+  setTimeout(async () => {
+    let dispatchForeground: typeof import('../../lib/foregroundMessageDispatch').dispatchForeground;
+    try {
+      ({ dispatchForeground } = await import(
+        '../../lib/foregroundMessageDispatch'
+      ));
+    } catch (error) {
+      const failed = activeChatsStore.getSnapshot()[threadId];
+      if (failed) {
+        activeChatsStore.updateChat(threadId, {
+          queuedMessages: [nextMessage, ...(failed.queuedMessages ?? [])],
+          queuedMessageFailure: {
+            message: error instanceof Error ? error.message : String(error),
+            at: Date.now(),
+          },
+        });
+      }
+      return;
+    }
+    // Loading the send chunk can yield; re-read authority before mutating.
     const current = activeChatsStore.getSnapshot()[threadId];
     if (!current) {
       return;
