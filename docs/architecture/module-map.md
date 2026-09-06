@@ -858,10 +858,23 @@ Turn deduplication, adoption, recovery, and private credential application are c
 ## Cloud move preparation
 
 The private [planned home transfer store](../../src-server/services/orchestration/planned-home-transfer-store.ts)
-owns conditional decision persistence for a future centrally served authority.
-It does not authenticate homes, issue leases or activate execution; the
-[channel home authority design](../design/channel-home-authority.md) owns those
-remaining integration requirements.
+owns conditional ownership decisions. The
+[paired authority](../../src-server/services/orchestration/paired-home-transfer-authority.ts)
+binds those decisions to current authenticated participants, while
+[remote room bindings](../../src-server/services/orchestration/home-transfer-room-binding.ts)
+bind checkpoint observations to enrolled endpoints.
+
+The [admission journal](../../src-server/services/orchestration/planned-home-admission-store.ts)
+blocks transfer commits while effects remain unresolved.
+[Control sessions](../../src-server/services/orchestration/planned-home-control-session-authority.ts)
+own private session exclusivity and explicit control-grant checks;
+[operator reconciliation](../../src-server/services/orchestration/planned-home-admission-reconciliation.ts)
+settles existing admissions only through a trusted durable-receipt verifier.
+The [controller guide](../guides/home-transfer-controller.md) owns setup,
+private integration contracts, recovery limits, and reproducible checks.
+Production control-session transport, provider admission, and target activation
+remain integration requirements under the
+[channel home authority design](../design/channel-home-authority.md).
 
 `@kontourai/station-contracts/cloud-move` owns the public preview shape.
 `@kontourai/station-shared/cloud-move` owns bounded read-only setup inventory and

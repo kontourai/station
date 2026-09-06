@@ -11,6 +11,7 @@ import {
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_GRANT_PATHS,
+  PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
@@ -211,7 +212,7 @@ describe('handshake capability flags (station#1095, AC1: two-way fixture decode)
 });
 
 describe('scoped pairing (station#1098)', () => {
-  test('defines exactly the eight-token vocabulary, including explicit home transfer authority', () => {
+  test('defines the exact vocabulary, including distinct home transfer and control authorities', () => {
     expect(PAIRING_SCOPES).toEqual([
       'orchestration:read',
       'orchestration:operate',
@@ -221,6 +222,7 @@ describe('scoped pairing (station#1098)', () => {
       'access:approve',
       'consent:decide',
       'home:transfer',
+      'home:control',
     ]);
   });
 
@@ -308,14 +310,15 @@ describe('scoped pairing (station#1098)', () => {
     // this constant must never be again.
     expect(DEFAULT_GRANT_PAIRING_SCOPE).not.toBe(PAIRING_SCOPES.join(' '));
     // station#1887 grew this to six, station#3677 to seven, and home transfer
-    // to eight. The default
+    // to eight and home control to nine. The default
     // grant is unchanged and still four tokens — which is the whole point of
     // the decoupling: a vocabulary addition must not reach a single live
     // credential.
-    expect(PAIRING_SCOPES).toHaveLength(8);
+    expect(PAIRING_SCOPES).toHaveLength(9);
     expect(granted).not.toContain(PAIRING_SCOPE_ACCESS_APPROVE);
     expect(granted).not.toContain(PAIRING_SCOPE_CONSENT_DECIDE);
     expect(granted).not.toContain(PAIRING_SCOPE_HOME_TRANSFER);
+    expect(granted).not.toContain(PAIRING_SCOPE_HOME_CONTROL);
   });
 
   // station#1883: the trip-wire for the defect that produced `access:manage`'s
@@ -440,6 +443,18 @@ describe('scoped pairing (station#1098)', () => {
           withheld,
         ),
       ).toBe(false);
+    }
+  });
+
+  test('home control requires fresh operator promotion and belongs to no preset or default grant', () => {
+    expect(PAIRING_SCOPE_GRANT_PATHS[PAIRING_SCOPE_HOME_CONTROL]).toEqual([
+      'operator-promotion',
+    ]);
+    expect(parsePairingScope(DEFAULT_GRANT_PAIRING_SCOPE)).not.toContain(
+      PAIRING_SCOPE_HOME_CONTROL,
+    );
+    for (const scopes of Object.values(PAIRING_SCOPE_PRESETS)) {
+      expect(scopes).not.toContain(PAIRING_SCOPE_HOME_CONTROL);
     }
   });
 

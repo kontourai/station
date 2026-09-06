@@ -197,12 +197,83 @@ integrity, including routing columns, before checking the channel. Corruption
 or excess records fails closed. Production retention and runtime admission
 integration remain prerequisites for enabling sustained Agent execution.
 
+## Private control sessions
+
+The private control-session authority adds a separate `home:control` pairing
+permission. An operator must add it to an already-paired home. It is absent
+from the default grant and every pairing preset, including `home-transfer`.
+Transfer participation cannot open or bind a control session, and a control
+session does not authorize room access or Agent execution.
+
+The controller stores one session record per paired home, bounded to 4,096
+records in the external authority database. The record stores capability and replay secrets only as SHA-256 digests,
+alongside their identity and generation metadata. The fresh
+256-bit capability and 256-bit replay secret remain in runtime memory and must
+never be written to a Station home, Project, peer record, log or portable
+archive. A new open or same-process retry supplies the open ID and replay
+secret. Knowing the inspectable open ID or copying the pairing credential is
+insufficient to recover the cached capability. After restart, a caller may
+instead present the exact retained capability. If the controller loses its
+replay cache and the runtime has no retained capability, the result is
+`recovery-required`, even if the runtime still knows the replay secret. A different open cannot replace an active
+session. There is no timeout, process-ID expiry or automatic deletion path.
+
+Operator retirement names the exact paired device and expected session
+generation. It refuses while any admission for that home remains unresolved.
+The private operator inspection returns only the home reference, open ID,
+generation, state and unresolved-admission count; it omits capability material.
+Retirement and admission use the same durable SQLite transaction and current
+authorization checks, so either the admission wins and blocks retirement or
+retirement wins and later admission fails. A retired session can be followed
+only by an explicit new open at the next generation; stale capabilities cannot
+bind, and a stale retirement generation cannot retire the successor.
+
+Operator scope grant/removal advances a private persisted control-grant
+revision. A session must match that revision, so removing and regranting
+`home:control` cannot revive an old capability. Missing grant provenance denies
+control. Owner revisions govern room ownership, session generations distinguish
+runtime sessions, and grant revisions fence changed permissions. Room history
+keeps its existing epoch and hash chain.
+
+Binding also fixes the admission kind and requires the exact current owner
+channel/revision plus a separate caller-owned synchronous local-authority guard.
+Historical finished admission replay returns `settled`, never permission to
+repeat an effect. The caller must verify a durable local effect receipt before
+finishing; a stored receipt digest
+does not independently verify it. This is private foundation only: no HTTP
+route, bootstrap composition, room writer or Agent launch path uses it yet.
+
+## Private operator receipt reconciliation
+
+A grant may be revoked after an effect commits but before its admission is
+finished. The separate `createPlannedHomeAdmissionReconciliation` service allows
+an operator to reconcile an existing admission by paired device and admission
+ID. Its required, trusted receipt-verifier adapter must read and verify the
+actual durable effect receipt. The operation accepts no caller-supplied receipt
+digest. Verified proof must match every immutable admission identity field;
+settlement rechecks current operator authority and the exact owner revision.
+
+Receipt lookup has a five-second maximum deadline. Missing, corrupt, conflicting
+or late evidence leaves the admission unresolved. A completed admission can be
+read again without contacting the receipt owner. Reconciliation does not restore
+the revoked session or grant permission for another effect. An operator can
+retire that session once all its admissions are settled, then explicitly open
+its replacement with fresh control permission.
+
+This service has no production receipt-verifier or HTTP composition yet. A
+missing effect is not proof of completion or cancellation: this path cannot
+clear an unresolved attempt by inferring that nothing happened. The fixture
+checks a real retained room receipt and its verified history record; provider
+execution reconciliation remains a separate owner-adapter requirement.
+
 ## Reproduce the integration checks
 
 From an isolated repository worktree with managed dependencies installed:
 
 ```bash
 npm run test:focused -- \
+  src-server/services/orchestration/__tests__/planned-home-control-session-authority.test.ts \
+  src-server/services/orchestration/__tests__/planned-home-admission-reconciliation.test.ts \
   src-server/services/orchestration/__tests__/planned-home-admission-store.test.ts \
   src-server/services/orchestration/__tests__/planned-home-transfer-store.test.ts \
   src-server/services/orchestration/__tests__/home-transfer-room-binding.test.ts \

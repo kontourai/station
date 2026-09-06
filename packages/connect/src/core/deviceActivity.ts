@@ -19,6 +19,7 @@
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   DEVICE_PAIRING_SCOPE,
+  PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_PRESETS,
   PAIRING_SCOPES,
@@ -92,6 +93,7 @@ export function describeDeviceScope(scope: string): string {
   if (scopeSetsMatch(scope, PAIRING_SCOPE_PRESETS['home-transfer'])) {
     return 'Home transfer';
   }
+  if (scope === PAIRING_SCOPE_HOME_CONTROL) return 'Home control';
   return parsePairingScope(scope) !== null ? 'Custom access' : scope;
 }
 

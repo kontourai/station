@@ -216,17 +216,16 @@ describe('describeDeviceScope', () => {
   it('station#1398 slice 2: "Full access" is reserved for a scope that genuinely carries every token', () => {
     // "Every token" is the whole current vocabulary. access:approve joined
     // PAIRING_SCOPES in #1887 slice 1 and consent:decide in #3677, so the
-    // home:transfer later brought the set to eight tokens, so the prior
-    // seven-token set is Custom rather than Full.
+    // home:transfer and home:control later brought the set to nine tokens.
     expect(
       describeDeviceScope(
-        'orchestration:read orchestration:operate terminal:operate access:manage inference:invoke access:approve consent:decide home:transfer',
+        'orchestration:read orchestration:operate terminal:operate access:manage inference:invoke access:approve consent:decide home:transfer home:control',
       ),
     ).toBe('Full access');
     // Order-independent, like every other preset match.
     expect(
       describeDeviceScope(
-        'home:transfer consent:decide access:approve inference:invoke access:manage terminal:operate orchestration:operate orchestration:read',
+        'home:control home:transfer consent:decide access:approve inference:invoke access:manage terminal:operate orchestration:operate orchestration:read',
       ),
     ).toBe('Full access');
     // A scope missing any single token (here consent:decide) is not Full.
@@ -243,6 +242,10 @@ describe('describeDeviceScope', () => {
 
   it('labels the dedicated home-transfer preset', () => {
     expect(describeDeviceScope('home:transfer')).toBe('Home transfer');
+  });
+
+  it('labels the operator-promoted home-control scope', () => {
+    expect(describeDeviceScope('home:control')).toBe('Home control');
   });
 
   it('labels the read-only preset', () => {

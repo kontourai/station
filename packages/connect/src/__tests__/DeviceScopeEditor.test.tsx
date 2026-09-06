@@ -112,6 +112,23 @@ test('a home-transfer scope survives an unrelated orchestration edit', () => {
   );
 });
 
+test('an operator-promoted home-control scope survives an unrelated edit', () => {
+  const onApply = openEditor('orchestration:read home:control');
+  expect(
+    (
+      screen.getByRole('checkbox', {
+        name: /Home control/,
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  fireEvent.click(screen.getByRole('radio', { name: /Delegation/ }));
+  apply();
+  expect(onApply).toHaveBeenCalledWith(
+    ['orchestration:read', 'orchestration:operate', 'home:control'],
+    'orchestration:read home:control',
+  );
+});
+
 test('a pure fleet-inference device holds no orchestration access, and keeps it that way', () => {
   const onApply = openEditor('inference:invoke');
   expect(

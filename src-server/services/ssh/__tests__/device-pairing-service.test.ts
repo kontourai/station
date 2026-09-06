@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   DEVICE_PAIRING_SCOPE,
+  PAIRING_SCOPE_HOME_CONTROL,
   pairingScopeIncludes,
   pairingScopePresetString,
 } from '@kontourai/station-contracts';
@@ -631,6 +632,37 @@ describe('DevicePairingService', () => {
     expect(promoted.scope).toBe(
       'orchestration:read orchestration:operate consent:decide',
     );
+  });
+
+  test('home control cannot be granted at pairing time and requires operator promotion', () => {
+    const { service } = harness();
+    expect(() =>
+      service.createOffer({
+        endpoint: 'https://station.example.test',
+        scope: PAIRING_SCOPE_HOME_CONTROL,
+      }),
+    ).toThrowError(new DevicePairingError('invalid_request'));
+    const paired = pair(service, 'Home').result;
+    const promoted = service.setDeviceScope(
+      paired.device.id,
+      ['orchestration:read', PAIRING_SCOPE_HOME_CONTROL],
+      OPERATOR_APPROVAL,
+    );
+    expect(promoted.scope).toBe('orchestration:read home:control');
+    expect(promoted).not.toHaveProperty('homeControlGrantRevision');
+    expect(service.homeControlGrantRevision(paired.device.id)).toBe(1);
+    service.setDeviceScope(
+      paired.device.id,
+      ['orchestration:read'],
+      OPERATOR_APPROVAL,
+    );
+    expect(service.homeControlGrantRevision(paired.device.id)).toBeUndefined();
+    service.setDeviceScope(
+      paired.device.id,
+      ['orchestration:read', PAIRING_SCOPE_HOME_CONTROL],
+      OPERATOR_APPROVAL,
+    );
+    expect(service.homeControlGrantRevision(paired.device.id)).toBe(3);
   });
 
   test('station#3816: a token with no legitimate promotion path is refused', () => {

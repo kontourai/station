@@ -6,6 +6,10 @@ import {
 import type { RuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
 import {
+  pairedHomeRef,
+  personalControllerTenantId,
+} from './personal-home-authority-identity.js';
+import {
   createPlannedHomeTransferCoordinator,
   type PlannedHomeTransferCoordinatorResult,
   type PlannedHomeTransferOwners,
@@ -77,7 +81,6 @@ export interface PairedHomeTransferAuthorityOptions {
   readonly controllerEnvironmentId: string;
 }
 
-const PRIVATE_TENANT_PREFIX = 'personal-controller:';
 const HOME_REF_PREFIX = 'paired:';
 
 function capturedPrincipal(
@@ -90,10 +93,6 @@ function capturedPrincipal(
       ? {}
       : { deviceId: principal.deviceId }),
   });
-}
-
-function homeRef(deviceId: string): string {
-  return `${HOME_REF_PREFIX}${deviceId}`;
 }
 
 /**
@@ -117,7 +116,7 @@ export function createPairedHomeTransferAuthority(
   ) {
     throw new Error('A bounded controller environment identity is required');
   }
-  const tenantId = `${PRIVATE_TENANT_PREFIX}${controllerEnvironmentId}`;
+  const tenantId = personalControllerTenantId(controllerEnvironmentId);
 
   function controllerIsCurrent(): boolean {
     return security.devicePairing.environmentId() === controllerEnvironmentId;
@@ -196,7 +195,7 @@ export function createPairedHomeTransferAuthority(
           return (
             controllerIsCurrent() &&
             caller !== undefined &&
-            homeRef(caller.id) === intent.sourceHomeRef &&
+            pairedHomeRef(caller.id) === intent.sourceHomeRef &&
             activeTransferDevice(
               intent.targetHomeRef.slice(HOME_REF_PREFIX.length),
             ) !== undefined
@@ -230,7 +229,7 @@ export function createPairedHomeTransferAuthority(
         const result = guardedStore(authorize).initialize({
           tenantId,
           channelId: enrollment.channelId,
-          homeRef: homeRef(enrollment.sourceDeviceId),
+          homeRef: pairedHomeRef(enrollment.sourceDeviceId),
           policyRevision: enrollment.policyRevision,
           revision: 0,
         });
@@ -255,7 +254,7 @@ export function createPairedHomeTransferAuthority(
         if (result.kind !== 'stored') return result;
         const current = currentTransferDevice(actor);
         return current &&
-          result.value.homeRef === homeRef(current.id) &&
+          result.value.homeRef === pairedHomeRef(current.id) &&
           authorize()
           ? result
           : { kind: 'denied' };
@@ -289,7 +288,7 @@ export function createPairedHomeTransferAuthority(
         const source = currentTransferDevice(actor);
         if (
           !source ||
-          owner.value.homeRef !== homeRef(source.id) ||
+          owner.value.homeRef !== pairedHomeRef(source.id) ||
           !authorize()
         )
           return { kind: 'denied' };
@@ -297,8 +296,8 @@ export function createPairedHomeTransferAuthority(
           tenantId,
           channelId: preparation.channelId,
           operationId: preparation.operationId,
-          sourceHomeRef: homeRef(source.id),
-          targetHomeRef: homeRef(preparation.targetDeviceId),
+          sourceHomeRef: pairedHomeRef(source.id),
+          targetHomeRef: pairedHomeRef(preparation.targetDeviceId),
           policyRevision: preparation.policyRevision,
           expectedRevision: preparation.expectedRevision,
         });
@@ -328,7 +327,7 @@ export function createPairedHomeTransferAuthority(
           ![
             first.value.intent.sourceHomeRef,
             first.value.intent.targetHomeRef,
-          ].includes(homeRef(current.id))
+          ].includes(pairedHomeRef(current.id))
         )
           return { kind: 'denied' };
         const participantsAuthorized = () =>
