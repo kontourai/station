@@ -125,11 +125,15 @@ describe('re-showing a hidden Chat region keeps lastDockMaximized (#1563)', () =
   });
 
   test('a maximize param that lingers past a close is re-seeded on the show, so Chat opens at Full', () => {
-    // `updateParams` does no normalization, so a `?maximize=true` link
-    // without `dock=open` (or a dead-chat pointer clear, #1613) leaves the
-    // param beside a closed dock. The show forwards nothing, the param
-    // stays, and the inbound effect re-seeds the region from it.
-    navigationStore.navigate('/', { dock: null, maximize: 'true' });
+    // A hand-typed or shared `?maximize=true` link with no `dock=open`:
+    // `parseUrl` reads the param independently of `dock`, so the state
+    // arrives already formed rather than through a write. #1613 closed the
+    // write routes into it (a `dock: null` write through `updateParams` or
+    // `navigate` now deletes `maximize`), which is why this sets the URL
+    // directly. The show forwards nothing, the param stays, and the inbound
+    // effect re-seeds the region from it.
+    window.history.replaceState({}, '', '/?maximize=true');
+    navigationStore.navigate('/', {});
     expect(snapshot().isDockOpen).toBe(false);
     expect(snapshot().isDockMaximized).toBe(true);
     const { result } = mount();
