@@ -175,7 +175,7 @@ vi.mock('../../EnginePicker', () => ({
         {enginePickerTitleOverride ? (
           <button
             type="button"
-            onClick={() => onTitleChange?.(enginePickerTitleOverride)}
+            onClick={() => onTitleChange?.(enginePickerTitleOverride ?? '')}
           >
             Report a different title
           </button>
