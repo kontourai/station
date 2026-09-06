@@ -43,6 +43,7 @@ import {
   listAgentWorkflowMetadata,
   loadAgentConfig,
   mutateAgentConfig,
+  readAgentCatalog,
   readAgentWorkflow,
   resolveAgentConfigSlug,
   saveAgentConfig,
@@ -563,6 +564,11 @@ export class ConfigLoader {
   /**
    * List all agents
    */
+  async readAgentCatalog() {
+    await this.ensureHomeSchema();
+    return readAgentCatalog(this.projectHomeDir);
+  }
+
   async listAgents() {
     await this.ensureHomeSchema();
     return listAgentConfigs(this.projectHomeDir);

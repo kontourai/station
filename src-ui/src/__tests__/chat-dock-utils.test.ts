@@ -9,7 +9,6 @@ import {
   effectiveChatModelId,
   inboxPanelMounts,
   markDockFirstRunSeen,
-  mobileTaskSwitcherMounts,
   projectDisplayName,
   resolveDirectNewChatProjectSlug,
   resolveDockBadgeProjectName,
@@ -66,47 +65,7 @@ describe('first-run dock nudge', () => {
   });
 });
 
-/**
- * archive#3314: the sidebar's "N more" and its "Open
- * chats" heading promised the dock inbox from every chrome. The panel mounts
- * only on desktop, and there only in bottom mode or a fullscreen placement, so
- * on mobile the drawer closed and the dock snapped to half showing the CURRENT
- * chat — the overflow chats were nowhere — and an edge placement showed
- * nothing at all.
- *
- * The old test asserted the MECHANISM (openCollection was called, the setting
- * was written) and so stayed green for a button that led nowhere. These assert
- * the DESTINATION: for every chrome, the route lands on a surface that mounts.
- */
 describe('routeToOpenChatsCollection (#3314 SF-1)', () => {
-  const CHROMES: DockChrome[] = [
-    { isMobile: true, dockMode: 'bottom', isFullscreenPlacement: false },
-    { isMobile: true, dockMode: 'right', isFullscreenPlacement: false },
-    { isMobile: true, dockMode: 'bottom', isFullscreenPlacement: true },
-    { isMobile: false, dockMode: 'bottom', isFullscreenPlacement: false },
-    { isMobile: false, dockMode: 'right', isFullscreenPlacement: false },
-    { isMobile: false, dockMode: 'left', isFullscreenPlacement: false },
-    { isMobile: false, dockMode: 'right', isFullscreenPlacement: true },
-  ];
-
-  test.each(CHROMES)(
-    'every chrome reaches a destination that mounts (%o)',
-    (chrome) => {
-      const route = routeToOpenChatsCollection(chrome);
-      if (route.surface === 'task-switcher-sheet') {
-        // Derived, not asserted in prose: the sheet must actually mount here.
-        expect(mobileTaskSwitcherMounts(chrome)).toBe(true);
-        return;
-      }
-      // Applying the route's own mode change must make the panel mountable —
-      // otherwise this is a button promising a surface that never appears.
-      const afterRoute: DockChrome = route.switchToBottomMode
-        ? { ...chrome, dockMode: 'bottom' }
-        : chrome;
-      expect(inboxPanelMounts(afterRoute)).toBe(true);
-    },
-  );
-
   test('mobile routes to the task switcher sheet, never the desktop panel', () => {
     expect(
       routeToOpenChatsCollection({

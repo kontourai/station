@@ -589,6 +589,14 @@ export async function deleteAgentConfig(
 export async function listAgentConfigs(
   projectHomeDir: string,
 ): Promise<AgentMetadata[]> {
+  return (await readAgentCatalog(projectHomeDir)).map(
+    (entry) => entry.metadata,
+  );
+}
+
+export async function readAgentCatalog(
+  projectHomeDir: string,
+): Promise<Array<{ metadata: AgentMetadata; spec: AgentSpec }>> {
   const agentsDir = join(projectHomeDir, 'agents');
 
   if (!existsSync(agentsDir)) {
@@ -596,7 +604,7 @@ export async function listAgentConfigs(
   }
 
   const entries = await readdir(agentsDir, { withFileTypes: true });
-  const agents: AgentMetadata[] = [];
+  const agents: Array<{ metadata: AgentMetadata; spec: AgentSpec }> = [];
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
@@ -626,18 +634,21 @@ export async function listAgentConfigs(
       }
 
       agents.push({
-        slug: agentId(entry.name),
-        name: spec.name,
-        model: spec.model,
-        updatedAt: stats.mtime.toISOString(),
-        description: spec.description,
-        prompt: spec.prompt,
-        plugin: pluginName,
-        ui: spec.ui,
-        workflowWarnings:
-          workflowWarnings.length > 0 ? workflowWarnings : undefined,
-        execution: spec.execution,
-        project: spec.project,
+        spec,
+        metadata: {
+          slug: agentId(entry.name),
+          name: spec.name,
+          model: spec.model,
+          updatedAt: stats.mtime.toISOString(),
+          description: spec.description,
+          prompt: spec.prompt,
+          plugin: pluginName,
+          ui: spec.ui,
+          workflowWarnings:
+            workflowWarnings.length > 0 ? workflowWarnings : undefined,
+          execution: spec.execution,
+          project: spec.project,
+        },
       });
     } catch (error: any) {
       logger.error('Failed to load agent', {
@@ -650,7 +661,9 @@ export async function listAgentConfigs(
     }
   }
 
-  return agents.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return agents.sort((a, b) =>
+    b.metadata.updatedAt.localeCompare(a.metadata.updatedAt),
+  );
 }
 
 export async function listAgentWorkflowMetadata(

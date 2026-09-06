@@ -482,6 +482,7 @@ export {
   fetchLoadedOrchestrationSessions,
   fetchMessageSearch,
   fetchMonitoringEvents,
+  fetchMonitoringEventWindow,
   fetchMonitoringMetrics,
   fetchMonitoringStats,
   fetchNotifications,

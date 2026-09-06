@@ -1238,8 +1238,49 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
  * dismissal regression beside it (archive#3771), so two tests about one sheet
  * cannot drift into describing two different products.
  */
-async function seedMobileTaskSwitcher(page: Page) {
+async function seedMobileTaskSwitcher(page: Page, overflow = false) {
   await mockChatShell(page);
+  if (overflow) {
+    await page.route(/\/agents\/station\/conversations(?:\?.*)?$/, (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: [
+            'conv-running',
+            'conv-review',
+            ...Array.from(
+              { length: 4 },
+              (_, index) => `conv-overflow-${index}`,
+            ),
+          ].map((id) => ({
+            id,
+            title: id,
+            agentSlug: 'station',
+            updatedAt: '2026-07-19T10:05:00Z',
+          })),
+        }),
+      ),
+    );
+    for (let index = 0; index < 4; index++) {
+      const id = `conv-overflow-${index}`;
+      const turns = buildLongSessionTurns({
+        threadId: id,
+        provider: 'codex',
+        turnCount: 1,
+        replyText: () => `Overflow conversation ${index}`,
+      });
+      await mockRuntimeConversation(page, {
+        id,
+        agentSlug: 'station',
+        title: `Overflow conversation ${index}`,
+        provider: 'codex',
+        model: 'model-selected',
+        projectSlug: 'default',
+        canContinue: true,
+        turns: () => turns,
+      });
+    }
+  }
   for (const id of ['chat-running', 'chat-review'])
     await page.route(
       new RegExp(`/api/orchestration/sessions/${id}/checkpoints(?:\\?.*)?$`),
@@ -1276,6 +1317,24 @@ async function seedMobileTaskSwitcher(page: Page) {
         },
       ],
     },
+    ...(overflow
+      ? Array.from({ length: 4 }, (_, index) => ({
+          sessionId: `chat-overflow-${index}`,
+          conversationId: `conv-overflow-${index}`,
+          title: `Overflow conversation ${index}`,
+          agentSlug: 'station',
+          projectSlug: 'default',
+          projectName: 'Default',
+          model: 'model-selected',
+          ephemeralMessages: [
+            {
+              role: 'assistant' as const,
+              content: `Overflow conversation ${index}`,
+              timestamp: Date.parse('2026-07-19T09:00:00Z') + index,
+            },
+          ],
+        }))
+      : []),
   ]);
 
   // archive#3300 (`contexts/active-chats-state.ts:626-640`) deliberately drops a
@@ -3368,3 +3427,26 @@ for (const width of [320, 390, 1280]) {
     });
   }
 }
+
+test('sidebar overflow opens the real mobile chat collection', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedMobileTaskSwitcher(page, true);
+  await page.goto('/?chat=conv-running');
+  await dismissSetupLauncher(page);
+  await page.getByRole('button', { name: 'Toggle menu', exact: true }).click();
+  const navigation = page.getByRole('navigation', {
+    name: 'Mobile navigation',
+  });
+  await expect(navigation).toBeVisible();
+  await navigation.getByRole('button', { name: /^\d+ more$/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Switch task' });
+  await expect(sheet).toBeVisible();
+  await expect(navigation).not.toBeVisible();
+  await expect(
+    sheet.getByText('Overflow conversation 0', { exact: true }),
+  ).toBeVisible();
+  await sheet.getByRole('button', { name: 'Close task switcher' }).click();
+  await expect(sheet).not.toBeVisible();
+});

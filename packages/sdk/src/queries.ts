@@ -572,6 +572,7 @@ export {
   fetchFleetRoutingReceiptsForStation,
   fetchFleetServeReceiptsForStation,
   fetchMonitoringEvents,
+  fetchMonitoringEventWindow,
   fetchMonitoringMetrics,
   fetchMonitoringStats,
   fetchServerCapabilities,

@@ -1961,3 +1961,15 @@ execution authority or proves a witnessed channel transfer. Do not reuse a
 cached recovery notice across API-base changes; refresh the selected Station
 before projecting it as current. The record exposes no filesystem path or
 backup manifest contents.
+
+## Monitoring event windows
+
+`fetchMonitoringEventWindow(start, end, signal, { limit: 1000 })` returns
+`{ events, truncated }` from the historical monitoring route. Bounded viewers
+must disclose truncation and that local filters apply only to loaded rows.
+Narrow the time interval to inspect older activity. For older peers that omit
+the flag, a full limited window is conservatively marked truncated.
+
+`fetchMonitoringEvents(start, end, signal, filters)` retains its array return
+shape and no default limit for existing export callers. Both functions reject
+failed or malformed reads instead of reporting an empty history.

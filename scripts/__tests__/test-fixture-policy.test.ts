@@ -85,3 +85,30 @@ test('removing a disabled guard in browser evaluation is an interaction bypass',
     ).map((entry) => entry.rule),
   ).toEqual(['removes-interaction-guard']);
 });
+
+test('catches assertions skipped when a browser storage observation is absent', () => {
+  expect(
+    inspect(`const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('settings')));
+    if (stored) { expect(stored).toHaveProperty('enabled'); }`).map(
+      (entry) => entry.rule,
+    ),
+  ).toEqual(['optional-storage-assertions']);
+});
+
+test('allows unconditional storage assertions and explicit absent-state expectations', () => {
+  expect(
+    inspect(`const stored = await page.evaluate(() => localStorage.getItem('settings'));
+    expect(stored).not.toBeNull();
+    if (stored) { await use(stored); }
+    if (stored) { expect(stored).toBe('value'); } else { expect(emptyState).toBeVisible(); }
+    const prose = "if (stored) expect(stored)";`),
+  ).toEqual([]);
+});
+
+test('does not confuse a shadowed local name with a storage observation', () => {
+  expect(
+    inspect(`const stored = localStorage.getItem('x');
+    function verify(stored) { if (stored) { expect(stored).toBe(true); } }
+    function another() { const stored = options.enabled; if (stored) { expect(stored).toBe(true); } }`),
+  ).toEqual([]);
+});

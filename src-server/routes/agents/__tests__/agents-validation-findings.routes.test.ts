@@ -9,7 +9,7 @@ const { createAgentRoutes } = await import('../agents.js');
 
 function setup(getRuntimeConnections?: any, getProjectSlugs?: any) {
   const agentService = {
-    getEnrichedAgents: vi.fn().mockResolvedValue([]),
+    getAgentCatalog: vi.fn().mockResolvedValue([]),
     listAgents: vi.fn().mockResolvedValue([]),
     loadAgentSpec: vi.fn().mockResolvedValue({ name: 'Default' }),
     createAgent: vi

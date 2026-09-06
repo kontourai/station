@@ -80,10 +80,7 @@ import {
   registerPullRequestProvider,
 } from '../../providers/registries/registry.js';
 import { createAgentToolRoutes } from '../../routes/agents/agent-tools.js';
-import {
-  createAgentRoutes,
-  deriveAgentCatalog,
-} from '../../routes/agents/agents.js';
+import { createAgentRoutes } from '../../routes/agents/agents.js';
 import {
   agentCatalogReadSeam,
   createEnrichedAgentRoutes,
@@ -3366,14 +3363,10 @@ export function configureRuntimeRoutes(
         ).json(),
       branding: async () => (await createBrandingRoutes().request('/')).json(),
       agents: async () => {
-        const enrichedAgents = await context.agentService.getEnrichedAgents(
-          await context.getVoltAgent()!.getAgents(),
-        );
         return {
           success: true,
-          data: await deriveAgentCatalog(
-            context.agentService,
-            enrichedAgents,
+          data: await context.agentService.getAgentCatalog(
+            await context.getVoltAgent()!.getAgents(),
             // This site also omitted `gatedConnectionIds` entirely, so
             // `/api/boot`'s catalog reported an agent bound to a faulted
             // connection as runnable.

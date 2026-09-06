@@ -545,33 +545,3 @@ test.describe('Voice Providers — VoiceOrb in chat input', () => {
     });
   });
 });
-
-test.describe('Voice Providers — useMobileSettings cleanup', () => {
-  test('removed feature flags are absent from localStorage shape', async ({
-    page,
-  }) => {
-    await page.addInitScript(SEED_STORAGE);
-    await page.route('**/api/**', (r) =>
-      r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
-    );
-
-    await page.goto('/');
-    await expect(page.locator('body')).toBeVisible();
-
-    const stored = await page.evaluate(() => {
-      const raw = localStorage.getItem('station-feature-settings');
-      return raw ? JSON.parse(raw) : null;
-    });
-
-    if (stored) {
-      // Old flags must be gone
-      expect(stored).not.toHaveProperty('voiceModeEnabled');
-      expect(stored).not.toHaveProperty('meetingTranscriptionEnabled');
-      expect(stored).not.toHaveProperty('locationContextEnabled');
-      expect(stored).not.toHaveProperty('offlineQueueEnabled');
-      // Remaining flags must be present
-      expect(stored).toHaveProperty('pushNotificationsEnabled');
-    }
-    // If stored is null, settings haven't been written yet (first visit) — that's fine
-  });
-});

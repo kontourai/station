@@ -9,6 +9,21 @@ For shared behavior changes, inspect dependent callers and tests, and exercise
 the production integration point rather than a retired helper or mock seam.
 Keep a known-bad catch case and a harmless-change control when repairing a gate.
 
+For read-cost regressions, assert file reads or payload construction through the
+real request/component owner, then change the backing data and re-read. A cache
+that is fast only because it returns stale or cross-user data is a regression.
+Time-window pruning must use observed event timestamps, not ingest filenames.
+Collapsed payloads should construct their bodies only after expansion. Browser
+geometry requires the real component, styles, and normal user actions; CSS-text
+checks cannot prove that a target is visible or clickable. Helpers used only by
+tests cannot establish that their intended caller still exists.
+
+The fixture guard rejects the narrow `if (stored) { expect(...) }` pattern when
+`stored` is a localStorage observation and there is no alternative assertion.
+It is a syntax check, not a general assertion-strength proof. Seed legacy values
+and inspect the current store's persisted envelope when testing migrations.
+
+
 Changed-test diagnostics retain up to 32 explicit test targets even when broader
 verification is deferred. Their failures block fast feedback; their passes remain
 provisional and do not satisfy the deferred obligations. Broad import expansion
@@ -44,7 +59,7 @@ Per-journey files describe the measured phase; only a completed wrapper summary 
 
 ### Mutation safety and interpretation
 
-`test:mutation:smoke` runs five curated defects: eager unused highlighting, missing empty-state rendering, repeated acknowledgement reads, property-order-dependent scope identity, and missing fixture engine identity. Select one with `--case=<id>`. New cases belong in the runner's registry and must name both the source mutation and the exact failing assertion.
+`test:mutation:smoke` runs curated defects: eager unused highlighting, missing empty-state rendering, repeated acknowledgement reads, property-order-dependent scope identity, missing fixture engine identity, repeated monitoring file reads, repeated Agent catalog reads, eager collapsed payload rendering, and retired settings retained during migration. Select one with `--case=<id>`. New cases belong in the runner's registry and must name both the source mutation and the exact failing assertion.
 
 The runner requires a clean linked worktree, takes an exclusive lock, owns the test process tree, and retains baseline/injected/restored logs and recovery bytes under `.kontourai/test-mutations/`. An import error, missing test, wrong root, timeout, truncated output, or unrelated failure is not catch evidence. Restoration only replaces the exact injected bytes; intervening edits are preserved. After an abnormal interruption, inspect the record and run `npm run test:mutation:smoke -- --recover=<path/to/recovery.json>` on the same revision. Recovery refuses a live owner and verifies original bytes against git. Run the case again after recovery.
 

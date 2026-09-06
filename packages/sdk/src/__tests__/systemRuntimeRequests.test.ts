@@ -24,6 +24,71 @@ describe('systemRuntimeRequests', () => {
     vi.stubGlobal('fetch', vi.fn());
   });
 
+  it('preserves a bounded history window and its truncation disclosure', async () => {
+    const { fetchMonitoringEventWindow } = await import(
+      '../query-domains/systemRuntimeRequests'
+    );
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: [{ id: 'recent' }],
+        truncated: true,
+      }),
+    } as Response);
+    const result = await fetchMonitoringEventWindow(
+      new Date(0),
+      new Date(1000),
+      undefined,
+      { limit: 1000 },
+    );
+    expect(result).toEqual({ events: [{ id: 'recent' }], truncated: true });
+    expect(
+      String(
+        vi.mocked(fetch).mock.calls[
+          vi.mocked(fetch).mock.calls.length - 1
+        ]?.[0],
+      ),
+    ).toContain('limit=1000');
+  });
+
+  it('requests all history as JSON rather than accidentally opening the live SSE stream', async () => {
+    const { fetchMonitoringEventWindow } = await import(
+      '../query-domains/systemRuntimeRequests'
+    );
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: [], truncated: false }),
+    } as Response);
+    await expect(fetchMonitoringEventWindow()).resolves.toEqual({
+      events: [],
+      truncated: false,
+    });
+    const requested = new URL(
+      String(
+        vi.mocked(fetch).mock.calls[
+          vi.mocked(fetch).mock.calls.length - 1
+        ]?.[0],
+      ),
+    );
+    expect(
+      Number.isFinite(Date.parse(requested.searchParams.get('end')!)),
+    ).toBe(true);
+  });
+
+  it('rejects success without an event array', async () => {
+    const { fetchMonitoringEventWindow } = await import(
+      '../query-domains/systemRuntimeRequests'
+    );
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    } as Response);
+    await expect(fetchMonitoringEventWindow(new Date(0))).rejects.toThrow(
+      'no event array',
+    );
+  });
+
   it('uses the configured API base and normalizes branding defaults', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,

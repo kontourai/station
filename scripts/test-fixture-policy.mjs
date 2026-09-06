@@ -57,6 +57,36 @@ export function inspectBrowserFixture(source, file) {
     }
     return false;
   };
+  const isStorageObservation = (node, name) => {
+    for (let scope = node.parent; scope; scope = scope.parent) {
+      if (ts.isBlock(scope) || ts.isSourceFile(scope)) {
+        for (const statement of scope.statements) {
+          if (!ts.isVariableStatement(statement)) continue;
+          const declaration = statement.declarationList.declarations.find(
+            (entry) => ts.isIdentifier(entry.name) && entry.name.text === name,
+          );
+          if (declaration)
+            return (
+              !!declaration.initializer &&
+              /localStorage\.getItem\s*\(/.test(
+                declaration.initializer.getText(ast),
+              )
+            );
+        }
+      }
+      if (
+        (ts.isArrowFunction(scope) ||
+          ts.isFunctionExpression(scope) ||
+          ts.isFunctionDeclaration(scope)) &&
+        scope.parameters.some(
+          (parameter) =>
+            ts.isIdentifier(parameter.name) && parameter.name.text === name,
+        )
+      )
+        return false;
+    }
+    return false;
+  };
   const visit = (node) => {
     if (ts.isCallExpression(node)) {
       const method = nameOf(node.expression);
@@ -139,6 +169,25 @@ export function inspectBrowserFixture(source, file) {
         !body[0].expression
       )
         report(node, 'visibility-short-circuit');
+    }
+    if (
+      ts.isIfStatement(node) &&
+      !node.elseStatement &&
+      ts.isIdentifier(node.expression) &&
+      isStorageObservation(node, node.expression.text)
+    ) {
+      let asserts = false;
+      const checkAssertion = (child) => {
+        if (
+          ts.isCallExpression(child) &&
+          ts.isIdentifier(child.expression) &&
+          child.expression.text === 'expect'
+        )
+          asserts = true;
+        ts.forEachChild(child, checkAssertion);
+      };
+      checkAssertion(node.thenStatement);
+      if (asserts) report(node, 'optional-storage-assertions');
     }
     ts.forEachChild(node, visit);
   };

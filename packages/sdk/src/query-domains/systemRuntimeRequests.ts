@@ -267,6 +267,15 @@ export async function fetchMonitoringEvents(
   signal?: AbortSignal,
   filters: MonitoringEventFilters = {},
 ): Promise<unknown[]> {
+  return (await fetchMonitoringEventWindow(start, end, signal, filters)).events;
+}
+
+export async function fetchMonitoringEventWindow(
+  start?: Date,
+  end?: Date,
+  signal?: AbortSignal,
+  filters: MonitoringEventFilters = {},
+): Promise<{ events: unknown[]; truncated: boolean }> {
   const apiBase = await resolveApiBase();
   const params = new URLSearchParams();
   if (start) {
@@ -275,6 +284,8 @@ export async function fetchMonitoringEvents(
   if (end) {
     params.set('end', end.toISOString());
   }
+  // No bounds means all history, not the route's unbounded live SSE branch.
+  if (!start && !end) params.set('end', new Date().toISOString());
   if (filters.agent) params.set('agent', filters.agent);
   if (filters.tool) params.set('tool', filters.tool);
   if (filters.engine) params.set('engine', filters.engine);
@@ -288,13 +299,19 @@ export async function fetchMonitoringEvents(
   // Read the body before branching on status so a route-authored error
   // sentence survives — same order as the fleet fetchers above.
   let result:
-    | { success: boolean; data?: unknown[]; error?: string }
+    | {
+        success: boolean;
+        data?: unknown[];
+        truncated?: boolean;
+        error?: string;
+      }
     | undefined;
   let parseFailure: unknown;
   try {
     result = (await response.json()) as {
       success: boolean;
       data?: unknown[];
+      truncated?: boolean;
       error?: string;
     };
   } catch (error) {
@@ -336,7 +353,19 @@ export async function fetchMonitoringEvents(
       ),
     );
   }
-  return result.data ?? [];
+  if (!Array.isArray(result.data)) {
+    throw new Error('The monitoring events response has no event array.');
+  }
+  // Older peers may omit the flag. At a requested cap, disclose possible
+  // truncation rather than claiming the result is complete.
+  return {
+    events: result.data,
+    truncated:
+      result.truncated === true ||
+      (result.truncated === undefined &&
+        filters.limit !== undefined &&
+        result.data.length >= filters.limit),
+  };
 }
 
 export async function fetchBranding(): Promise<BrandingData> {
