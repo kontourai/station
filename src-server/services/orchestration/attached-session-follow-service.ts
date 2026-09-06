@@ -234,6 +234,7 @@ export class AttachedSessionFollowService {
   private readonly adoptionLedger: AdoptionLedger;
 
   constructor(private readonly options: AttachedSessionFollowServiceOptions) {
+    assertUniqueAttachedSessionSourceKinds(options.sources);
     this.adoptionLedger =
       options.adoptionLedger ?? options.eventStore.createAdoptionLedger();
     this.pollIntervalMs = boundedPollInterval(
@@ -312,6 +313,13 @@ export class AttachedSessionFollowService {
       });
       let followedSessions = 0;
       for (const session of discovered.sessions) {
+        if (session.provider !== source.provider) {
+          attachedSessionDiscovery.add(1, {
+            source: sourceLabel(source),
+            outcome: 'rejected_candidate',
+          });
+          continue;
+        }
         const attribution = resolveAttachedProjectRoot(
           session.cwd,
           projectRoots,
@@ -634,7 +642,22 @@ function restoredAttachedSessionCursors(
 }
 
 function sourceCursorKey(source: AttachedSessionSource): string {
-  return `${source.provider}\u0000${source.kind}`;
+  return JSON.stringify([source.provider, source.kind]);
+}
+
+function assertUniqueAttachedSessionSourceKinds(
+  sources: readonly AttachedSessionSource[],
+): void {
+  const seen = new Set<string>();
+  for (const source of sources) {
+    const key = JSON.stringify([source.provider, source.kind]);
+    if (seen.has(key)) {
+      throw new Error(
+        `Duplicate attached session source implementation: ${source.provider}/${source.kind}`,
+      );
+    }
+    seen.add(key);
+  }
 }
 
 function cursorMatchesSource(

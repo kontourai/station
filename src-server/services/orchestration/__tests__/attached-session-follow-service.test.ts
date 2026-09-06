@@ -132,6 +132,80 @@ describe('AttachedSessionFollowService', () => {
     expect(resolveAttachedSessionPollInterval('120000')).toBe(60_000);
   });
 
+  test('rejects duplicate registered source implementations', () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi.fn(),
+      read: vi.fn(),
+    };
+
+    expect(
+      () =>
+        new AttachedSessionFollowService({
+          sources: [source, { ...source }],
+          eventStore: store,
+          eventBus,
+          listProjects: () => [],
+        }),
+    ).toThrow(
+      'Duplicate attached session source implementation: claude/claude-transcript',
+    );
+
+    expect(
+      () =>
+        new AttachedSessionFollowService({
+          sources: [
+            { ...source, kind: 'transcript\u0000fixture' },
+            {
+              ...source,
+              provider: 'claude\u0000transcript',
+              kind: 'fixture',
+            },
+          ],
+          eventStore: store,
+          eventBus,
+          listProjects: () => [],
+        }),
+    ).not.toThrow();
+  });
+
+  test('rejects descriptors whose provider does not match their registered source', async () => {
+    const mismatched = {
+      ...session,
+      provider: 'unregistered-provider',
+      threadId: 'external:unregistered:session-1',
+    };
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [mismatched] }),
+      read: vi.fn(),
+    };
+    const emitted = vi.fn();
+    eventBus.subscribe(emitted);
+
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    }).pollNow();
+
+    expect(source.read).not.toHaveBeenCalled();
+    expect(store.readSessions()).toEqual([]);
+    expect(store.listEvents(mismatched.threadId)).toEqual([]);
+    expect(emitted).not.toHaveBeenCalled();
+    expect(metrics.attachedSessionDiscovery.add).toHaveBeenCalledWith(1, {
+      source: 'claude-transcript',
+      outcome: 'rejected_candidate',
+    });
+  });
+
   test('resolves symlinked nested cwd to the canonical configured root and rejects stale roots', () => {
     const root = join(dir, 'canonical-project');
     const nested = join(root, 'packages', 'app');
