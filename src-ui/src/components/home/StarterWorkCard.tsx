@@ -39,12 +39,7 @@ export function StarterWorkCard() {
     return <StarterWorkUnavailable onRetry={() => void starter.refetch()} />;
   if (starter.isLoading || !status)
     return (
-      <PageCallout
-        calloutId={STARTER_CALLOUT_ID}
-        ariaLabel="Starter work"
-        className="page-callout--busy"
-        busy
-      >
+      <PageCallout calloutId={STARTER_CALLOUT_ID} ariaLabel="Starter work" busy>
         <SkeletonBlock count={1} label="Checking starter work" />
       </PageCallout>
     );
@@ -56,7 +51,6 @@ export function StarterWorkCard() {
         <PageCallout
           calloutId={STARTER_CALLOUT_ID}
           ariaLabel="Starter work"
-          className="page-callout--busy"
           busy
         >
           <SkeletonBlock count={1} label="Resolving your starter task" />

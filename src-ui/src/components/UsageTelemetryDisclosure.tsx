@@ -1,5 +1,6 @@
 import {
   authenticatedFetch,
+  useConfigQuery,
   useUpdateConfigMutation,
 } from '@kontourai/station-sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -35,6 +36,12 @@ type Disclosure = {
    * environment has already turned off.
    */
   telemetryEnabled?: boolean;
+  /**
+   * Which link of that chain won. `'env'` is the one that matters: the value
+   * is in force but nothing durable records it, so keeping it has to write it
+   * down or the choice evaporates when the variable does.
+   */
+  enabledSource?: 'config' | 'env' | 'default';
 };
 
 /**
@@ -380,6 +387,15 @@ export function UsageTelemetryDisclosureStep({
 }) {
   const { data, settled } = useUsageTelemetryDisclosureState();
   const acknowledge = useAcknowledgeDisclosure(onAdvance);
+  // The SAME `['config']` query the Settings row reads and this step's own
+  // write invalidates. The disclosure query is NOT invalidated by a config
+  // write and carries a five-minute `staleTime`, so reading the setting from
+  // it alone made this screen answer with whatever was true when the chapter
+  // first asked: defer the run, change the toggle in Settings, come back, and
+  // the step offered to "keep" a state that had already moved. The disclosure
+  // stays the fallback because it is the only thing that can see the
+  // environment.
+  const { data: config } = useConfigQuery();
   const updateConfig = useUpdateConfigMutation();
   const [settingError, setSettingError] = useState(false);
 
@@ -391,18 +407,30 @@ export function UsageTelemetryDisclosureStep({
     );
   }
 
-  // The server's own fold (`config ?? STATION_TELEMETRY_ENABLED ?? true`).
-  // The `?? true` here is the same last link of that chain, for a peer too
-  // old to report the field at all.
-  const enabled = data.telemetryEnabled ?? true;
+  // The server's own precedence (`config ?? STATION_TELEMETRY_ENABLED ??
+  // true`), rebuilt over the FRESHER read of its first link. The `?? true` is
+  // the same last link of that chain, for a peer too old to report the field.
+  const configEnabled = (config as { telemetryEnabled?: boolean } | undefined)
+    ?.telemetryEnabled;
+  const enabled = configEnabled ?? data.telemetryEnabled ?? true;
   const labels = usageTelemetryDecisionLabels(enabled);
   const busy = updateConfig.isPending || acknowledge.isPending;
+  // Keeping a state usually writes nothing — it is already the case. The
+  // exception is a state the ENVIRONMENT is holding with nothing durable
+  // behind it: "Keep usage telemetry off" on a host whose only reason for
+  // being off is `STATION_TELEMETRY_ENABLED` would be a decision that
+  // disappears the day that variable does. Read from the config query's own
+  // answer first, so a value recorded since the disclosure was fetched is
+  // never re-written.
+  const keepMustRecord =
+    configEnabled === undefined && data.enabledSource === 'env';
 
   const decide = (next: boolean) => {
     if (busy) return;
     setSettingError(false);
-    if (next === enabled) {
-      // Nothing to write: the choice is the state the host is already in.
+    if (next === enabled && !keepMustRecord) {
+      // Nothing to write: the choice is the state the host is already in, and
+      // something durable already says so.
       acknowledge.mutate();
       return;
     }

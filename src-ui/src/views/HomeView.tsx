@@ -151,13 +151,16 @@ export function HomeView({
             first-run decision as the chapter; a cached/default browser flag
             cannot make a real Task offer appear before setup is complete. */}
         {config?.firstRun?.status === 'completed' ? <StarterWorkCard /> : null}
+        {/* The developer starters are the same family — same offer shape, same
+            primitive — so they share the stack's rhythm rather than each
+            carrying spacing of their own. */}
+        {config?.firstRun?.status === 'completed' && developerToolsEnabled ? (
+          <>
+            <StarterInspectionCards />
+            <StarterScheduledCheckCard />
+          </>
+        ) : null}
       </PageCalloutStack>
-      {config?.firstRun?.status === 'completed' && developerToolsEnabled && (
-        <>
-          <StarterInspectionCards />
-          <StarterScheduledCheckCard />
-        </>
-      )}
       {status?.state === 'granted' ? (
         <Suspense fallback={<SkeletonList count={1} label="Loading Home" />}>
           <HomeRolePane

@@ -851,6 +851,30 @@ describe('the disclosure is the first step of the run, not a modal over it', () 
     expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
   });
 
+  test('#1582 L2: advancing a step keeps focus inside the dialog', async () => {
+    // The surface focuses its panel on MOUNT and only then, and the panel
+    // stays mounted across steps — so the control that advances the run
+    // unmounts under the user's own focus and drops it to <body>, outside
+    // the dialog, with the next screen unannounced.
+    disclosureState.outstanding = true;
+    render(<FirstRunHomeChapter />);
+    const panel = document.querySelector('.first-run-chapter');
+    expect(panel).toBeTruthy();
+
+    const advance = screen.getByRole('button', {
+      name: 'Keep usage telemetry on',
+    });
+    await act(async () => {
+      advance.click();
+    });
+
+    expect(screen.getByTestId('first-run-engines')).toBeTruthy();
+    expect(
+      document.activeElement && panel?.contains(document.activeElement),
+      'advancing dropped focus out of the dialog',
+    ).toBe(true);
+  });
+
   test('an already-acknowledged home runs two steps and says so', () => {
     // The count is derived from the run the chapter actually opened with, so
     // "Step 1 of 3" is never printed over a run that has two steps.

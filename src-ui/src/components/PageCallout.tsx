@@ -52,6 +52,13 @@ export interface PageCalloutProps {
   /** Names the region. Required, because a callout is a landmark with no heading. */
   ariaLabel: string;
   role?: 'status';
+  /**
+   * The callout is waiting on something and renders a skeleton in place of
+   * its copy. ONE prop: it sets `aria-busy` AND the `--busy` modifier the
+   * skeleton's flex sizing hangs off, so a caller can never announce a busy
+   * state without the layout that makes it legible (or the reverse). It was
+   * briefly both this prop and a hand-passed class name.
+   */
   busy?: boolean;
   className?: string;
   'data-testid'?: string;
@@ -75,7 +82,11 @@ export function PageCallout({
     // order. `aria-label` gives the region its name without inventing a
     // level. (Carried over from `first-run-home-card`, which learned it.)
     <section
-      className={[`page-callout page-callout--${tone}`, className]
+      className={[
+        `page-callout page-callout--${tone}`,
+        busy && 'page-callout--busy',
+        className,
+      ]
         .filter(Boolean)
         .join(' ')}
       data-callout-id={calloutId}

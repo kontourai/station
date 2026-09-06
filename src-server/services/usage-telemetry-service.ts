@@ -44,11 +44,41 @@ function parseBoolean(value: string | undefined): boolean | undefined {
     return true;
   return undefined;
 }
+/**
+ * WHERE the effective `telemetryEnabled` came from. The precedence is
+ * `appConfig` over `STATION_TELEMETRY_ENABLED` over the default, and a client
+ * cannot see the last two — so a first-run screen offering to keep telemetry
+ * as it is cannot tell "recorded" from "the environment is deciding, for now"
+ * without being told. #1582 A3/L1: the distinction is what decides whether
+ * keeping the current state has to WRITE it down.
+ */
+export type UsageTelemetryEnabledSource = 'config' | 'env' | 'default';
+
+/**
+ * The one precedence chain, resolved once and reported with its provenance so
+ * `enabled` and `enabledSource` can never disagree about which link won.
+ */
+function resolveEnabled(
+  appConfig: AppConfig,
+  env: NodeJS.ProcessEnv,
+): { enabled: boolean; source: UsageTelemetryEnabledSource } {
+  if (appConfig.telemetryEnabled !== undefined)
+    return { enabled: appConfig.telemetryEnabled, source: 'config' };
+  // Only a value this parses counts as the environment deciding: an
+  // unrecognised `STATION_TELEMETRY_ENABLED` falls through to the default,
+  // and reporting it as `env` would invite a client to write a value the
+  // environment never actually set.
+  const fromEnv = parseBoolean(env.STATION_TELEMETRY_ENABLED);
+  if (fromEnv !== undefined) return { enabled: fromEnv, source: 'env' };
+  return { enabled: true, source: 'default' };
+}
+
 /** Server-only, dependency-free product telemetry. It never reads vendor homes. */
 export class UsageTelemetryService {
   private readonly endpoint: string | undefined;
   private readonly apiKey: string | undefined;
   private enabled: boolean;
+  private enabledSource: UsageTelemetryEnabledSource;
   private readonly fetchImpl: typeof fetch;
   private readonly setIntervalImpl: typeof setInterval;
   private readonly clearIntervalImpl: typeof clearInterval;
@@ -61,10 +91,9 @@ export class UsageTelemetryService {
   private readonly tracking = new Set<Promise<void>>();
   constructor(private readonly options: UsageTelemetryServiceOptions) {
     const env = options.env ?? process.env;
-    this.enabled =
-      options.appConfig.telemetryEnabled ??
-      parseBoolean(env.STATION_TELEMETRY_ENABLED) ??
-      true;
+    const resolved = resolveEnabled(options.appConfig, env);
+    this.enabled = resolved.enabled;
+    this.enabledSource = resolved.source;
     this.endpoint = env.STATION_TELEMETRY_ENDPOINT?.trim() || undefined;
     this.apiKey = env.STATION_USAGE_TELEMETRY_KEY?.trim() || undefined;
     this.fetchImpl = options.fetch ?? globalThis.fetch;
@@ -140,6 +169,7 @@ export class UsageTelemetryService {
     events: typeof USAGE_TELEMETRY_EVENTS;
     endpointConfigured: boolean;
     telemetryEnabled: boolean;
+    enabledSource: UsageTelemetryEnabledSource;
   }> {
     return {
       acknowledged: await this.loadDisclosureReceipt(),
@@ -152,6 +182,7 @@ export class UsageTelemetryService {
       // the environment has switched off, and offer to turn off something
       // that is already off.
       telemetryEnabled: this.enabled,
+      enabledSource: this.enabledSource,
     };
   }
   get bufferedCount(): number {
@@ -159,10 +190,12 @@ export class UsageTelemetryService {
   }
   reconfigure(appConfig: AppConfig): void {
     const env = this.options.env ?? process.env;
-    this.enabled =
-      appConfig.telemetryEnabled ??
-      parseBoolean(env.STATION_TELEMETRY_ENABLED) ??
-      true;
+    // Both halves, together: `options.appConfig` is the snapshot this service
+    // was CONSTRUCTED with and is never updated, so a source derived from it
+    // later would report where the value came from at boot rather than now.
+    const resolved = resolveEnabled(appConfig, env);
+    this.enabled = resolved.enabled;
+    this.enabledSource = resolved.source;
     if (!this.enabled) {
       // Disabling withdraws consent for data still in memory, so discard it rather than flushing it.
       if (this.timer) this.clearIntervalImpl(this.timer);

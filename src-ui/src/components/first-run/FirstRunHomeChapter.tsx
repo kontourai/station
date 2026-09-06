@@ -200,6 +200,7 @@ export function FirstRunHomeChapter() {
    * answer. The picker reports the title it actually rendered.
    */
   const [roleTitle, setRoleTitle] = useState<string | undefined>(undefined);
+  const stepRegionRef = useRef<HTMLDivElement>(null);
   const [steps, setSteps] = useState<ChapterStep[]>(() =>
     planFirstRunChapterSteps({
       disclosureOutstanding: false,
@@ -316,6 +317,24 @@ export function FirstRunHomeChapter() {
   useEffect(() => {
     firstRunChapterPresence.set(open);
   }, [open]);
+
+  // #1582 L2. The FIRST step is deliberately not refocused here: the surface's
+  // own mount focus already lands on the panel, and racing it would move focus
+  // twice on the first screen a person ever sees. Only a CHANGE of step, which
+  // is exactly when the control that had focus stops existing.
+  const focusedStep = useRef<ChapterStep | null>(null);
+  useEffect(() => {
+    if (!open) {
+      focusedStep.current = null;
+      return;
+    }
+    if (focusedStep.current === null || focusedStep.current === step) {
+      focusedStep.current = step;
+      return;
+    }
+    focusedStep.current = step;
+    stepRegionRef.current?.focus();
+  }, [open, step]);
   useEffect(() => () => firstRunChapterPresence.set(false), []);
 
   const writeStatus = useCallback(
@@ -478,86 +497,100 @@ export function FirstRunHomeChapter() {
             closeLabel="Close setup"
             onClose={defer}
           />
-          {step === 'disclosure' ? (
-            <UsageTelemetryDisclosureStep
-              onAdvance={() => {
-                firstRunStore.enterChapter('engines');
-                setStep('engines');
-              }}
-            />
-          ) : step === 'engines' ? (
-            <FirstRunEnginesChapter
-              options={options}
-              // The chapter is already on screen; this only says whether the
-              // LIST can be trusted yet (a flapping status probe changes
-              // the list's contents, never the chapter's presence).
-              loading={!settled}
-              onDone={() => {
-                continueAfterEngineSetup();
-              }}
-              onDefer={defer}
-              onGiveUp={giveUp}
-            />
-          ) : step === 'engine-role' ? (
-            <LazyBoundary
-              load={loadFirstRunEnginePicker}
-              componentProps={{
-                variant: 'step' as const,
-                // The step's title, or the picker resolves its own default
-                // ("Choose what powers your default assistant") and reports
-                // THAT up — the shared header then prints a name for this
-                // step that the run's own table does not have. Caught in the
-                // live screenshot of the rebuilt tree.
-                title: STEP_TITLES['engine-role'],
-                description:
-                  'Choose the engine that runs the Station agent. Station Control and Station Docs stay attached to the role.',
-                onChosen: continueToAboutYou,
-                onDismiss: continueToAboutYou,
-                // The picker answers a different question when nothing on
-                // this host can run the assistant, and the header must not
-                // keep asking the one it cannot answer.
-                onTitleChange: setRoleTitle,
-              }}
-              pending={
-                <SkeletonBlock count={1} label="Loading engine options" />
-              }
-            />
-          ) : (
-            <AboutYouStep
-              initial={config?.userProfile}
-              saving={saving}
-              error={saveError}
-              onComplete={async (
-                profile: UserProfileSettings | undefined,
-                destination: 'chat' | 'tour',
-              ) => {
-                // Both exits save intentional answers before navigation. The
-                // ref also guards two activations before React disables them.
-                if (completionInFlight.current) return;
-                completionInFlight.current = true;
-                const generation = ++completionGeneration.current;
-                setSaving(true);
-                setSaveError(null);
-                try {
-                  if (profile) await updateConfig({ userProfile: profile });
-                  // A close, Back, or route unmount during the write cancels
-                  // navigation, even when those answers are successfully saved.
-                  if (generation !== completionGeneration.current) return;
-                  complete(destination);
-                } catch (error) {
-                  if (generation !== completionGeneration.current) return;
-                  setSaveError(
-                    error instanceof Error
-                      ? `Station could not save your answers: ${error.message}`
-                      : 'Station could not save your answers.',
-                  );
-                } finally {
-                  completionInFlight.current = false;
-                  setSaving(false);
+          {/* #1582 L2: focus, when a step swaps.
+              `ResponsiveDialogSurface` focuses its panel on MOUNT and only
+              then; the panel stays mounted across steps, so activating the
+              control that advances the run unmounts the element that had
+              focus and drops it to `<body>` — a keyboard or screen-reader
+              user lands outside the dialog with the next screen unannounced.
+              This region takes it instead, which is where the surface would
+              have put it. */}
+          <div
+            className="first-run-chapter__step"
+            ref={stepRegionRef}
+            tabIndex={-1}
+          >
+            {step === 'disclosure' ? (
+              <UsageTelemetryDisclosureStep
+                onAdvance={() => {
+                  firstRunStore.enterChapter('engines');
+                  setStep('engines');
+                }}
+              />
+            ) : step === 'engines' ? (
+              <FirstRunEnginesChapter
+                options={options}
+                // The chapter is already on screen; this only says whether the
+                // LIST can be trusted yet (a flapping status probe changes
+                // the list's contents, never the chapter's presence).
+                loading={!settled}
+                onDone={() => {
+                  continueAfterEngineSetup();
+                }}
+                onDefer={defer}
+                onGiveUp={giveUp}
+              />
+            ) : step === 'engine-role' ? (
+              <LazyBoundary
+                load={loadFirstRunEnginePicker}
+                componentProps={{
+                  variant: 'step' as const,
+                  // The step's title, or the picker resolves its own default
+                  // ("Choose what powers your default assistant") and reports
+                  // THAT up — the shared header then prints a name for this
+                  // step that the run's own table does not have. Caught in the
+                  // live screenshot of the rebuilt tree.
+                  title: STEP_TITLES['engine-role'],
+                  description:
+                    'Choose the engine that runs the Station agent. Station Control and Station Docs stay attached to the role.',
+                  onChosen: continueToAboutYou,
+                  onDismiss: continueToAboutYou,
+                  // The picker answers a different question when nothing on
+                  // this host can run the assistant, and the header must not
+                  // keep asking the one it cannot answer.
+                  onTitleChange: setRoleTitle,
+                }}
+                pending={
+                  <SkeletonBlock count={1} label="Loading engine options" />
                 }
-              }}
-            />
-          )}
+              />
+            ) : (
+              <AboutYouStep
+                initial={config?.userProfile}
+                saving={saving}
+                error={saveError}
+                onComplete={async (
+                  profile: UserProfileSettings | undefined,
+                  destination: 'chat' | 'tour',
+                ) => {
+                  // Both exits save intentional answers before navigation. The
+                  // ref also guards two activations before React disables them.
+                  if (completionInFlight.current) return;
+                  completionInFlight.current = true;
+                  const generation = ++completionGeneration.current;
+                  setSaving(true);
+                  setSaveError(null);
+                  try {
+                    if (profile) await updateConfig({ userProfile: profile });
+                    // A close, Back, or route unmount during the write cancels
+                    // navigation, even when those answers are successfully saved.
+                    if (generation !== completionGeneration.current) return;
+                    complete(destination);
+                  } catch (error) {
+                    if (generation !== completionGeneration.current) return;
+                    setSaveError(
+                      error instanceof Error
+                        ? `Station could not save your answers: ${error.message}`
+                        : 'Station could not save your answers.',
+                    );
+                  } finally {
+                    completionInFlight.current = false;
+                    setSaving(false);
+                  }
+                }}
+              />
+            )}
+          </div>
         </ResponsiveDialogSurface>
       ) : null}
     </>

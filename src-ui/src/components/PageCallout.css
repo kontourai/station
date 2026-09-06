@@ -80,6 +80,14 @@
 }
 
 /*
+ * A line the callout adds to its own body when something it tried did not
+ * confirm. Subordinate to the body sentence above it, never a second title.
+ */
+.page-callout__notice {
+  margin: var(--space-1, 4px) 0 0;
+}
+
+/*
  * A SkeletonBlock's children are percentage-width blocks. As an auto-sized
  * flex child they resolve against a collapsed intrinsic width, leaving only
  * the callout's outline visible on a pending page (carried over from

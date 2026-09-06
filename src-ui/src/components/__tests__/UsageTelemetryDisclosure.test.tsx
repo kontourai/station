@@ -9,9 +9,13 @@ import {
 } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 
-const { authenticatedFetch, updateConfig } = vi.hoisted(() => ({
+const { authenticatedFetch, updateConfig, appConfig } = vi.hoisted(() => ({
   authenticatedFetch: vi.fn(),
   updateConfig: vi.fn(),
+  /** The `['config']` snapshot the step reads its first precedence link from. */
+  appConfig: {
+    current: undefined as { telemetryEnabled?: boolean } | undefined,
+  },
 }));
 /**
  * The SAME write path the Settings row uses: `useUpdateConfigMutation` is
@@ -21,6 +25,7 @@ const { authenticatedFetch, updateConfig } = vi.hoisted(() => ({
  */
 vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch,
+  useConfigQuery: () => ({ data: appConfig.current }),
   useUpdateConfigMutation: () => ({
     isPending: false,
     mutate: (
@@ -231,7 +236,11 @@ test('a persistently failing acknowledgement does not trap the user behind the f
 /** The inventory the first-run step renders, answered from the server. */
 function inventoryResponse(
   acknowledged: boolean,
-  derived: { endpointConfigured?: boolean; telemetryEnabled?: boolean } = {},
+  derived: {
+    endpointConfigured?: boolean;
+    telemetryEnabled?: boolean;
+    enabledSource?: 'config' | 'env' | 'default';
+  } = {},
 ) {
   return new Response(
     JSON.stringify({
@@ -240,6 +249,7 @@ function inventoryResponse(
         inventoryRevision: 'rev',
         endpointConfigured: derived.endpointConfigured ?? false,
         telemetryEnabled: derived.telemetryEnabled ?? true,
+        enabledSource: derived.enabledSource ?? 'default',
         events: {
           station_started: {
             description: 'Station completed startup.',
@@ -258,7 +268,12 @@ function inventoryResponse(
  */
 function renderStep(
   advance: () => void,
-  derived: { endpointConfigured?: boolean; telemetryEnabled?: boolean } = {},
+  derived: {
+    endpointConfigured?: boolean;
+    telemetryEnabled?: boolean;
+    enabledSource?: 'config' | 'env' | 'default';
+  } = {},
+  config?: { telemetryEnabled?: boolean },
 ) {
   authenticatedFetch.mockReset();
   authenticatedFetch.mockImplementation(async (url: string) =>
@@ -267,6 +282,7 @@ function renderStep(
       : inventoryResponse(false, derived),
   );
   updateConfig.mockReset();
+  appConfig.current = config;
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <UsageTelemetryDisclosureStep onAdvance={advance} />
@@ -408,6 +424,84 @@ test('#1582 A3: an already-off host is offered the decision it can actually make
   fireEvent.click(screen.getByRole('button', { name: 'Turn it on' }));
   expect(updateConfig.mock.calls[0][0]).toEqual({ telemetryEnabled: true });
   resetUsageTelemetryDisclosureDismissal();
+});
+
+test('#1582 A3 (M1): the label follows the config the Settings row writes, not a stale disclosure', async () => {
+  // The scenario, end to end: the environment has telemetry OFF, the user
+  // defers the run, turns it ON in Settings, and comes back. `['config']` is
+  // invalidated by that write; `['usage-telemetry-disclosure']` is NOT, and
+  // carries a five-minute staleTime with the chapter holding the observer —
+  // so a step reading only the disclosure offered "Keep usage telemetry off"
+  // over a host that was on, and "keeping" it wrote nothing while the receipt
+  // went in.
+  resetUsageTelemetryDisclosureDismissal();
+  const advance = vi.fn();
+  renderStep(
+    advance,
+    { telemetryEnabled: false, enabledSource: 'env' },
+    { telemetryEnabled: true },
+  );
+
+  expect(
+    await screen.findByRole('button', { name: 'Keep usage telemetry on' }),
+    'the step named the stale disclosure state, not the recorded setting',
+  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Turn it off' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Turn it on' })).toBeNull();
+  resetUsageTelemetryDisclosureDismissal();
+});
+
+test('#1582 A3 (L1): keeping an ENV-held state writes it down; keeping a recorded one does not', async () => {
+  // A value in force with nothing durable behind it is a decision that
+  // evaporates the day the variable does. Keeping it is the moment to record
+  // it — and only then: re-writing a value config or the default already
+  // carries would put a stored field on every home that ever ran first run.
+  for (const [label, derived, config, expected] of [
+    [
+      'env-held off, nothing recorded',
+      { telemetryEnabled: false, enabledSource: 'env' as const },
+      undefined,
+      [{ telemetryEnabled: false }],
+    ],
+    [
+      'env-held on, nothing recorded',
+      { telemetryEnabled: true, enabledSource: 'env' as const },
+      undefined,
+      [{ telemetryEnabled: true }],
+    ],
+    [
+      'the default',
+      { telemetryEnabled: true, enabledSource: 'default' as const },
+      undefined,
+      [],
+    ],
+    [
+      'already recorded in config',
+      { telemetryEnabled: true, enabledSource: 'config' as const },
+      { telemetryEnabled: true },
+      [],
+    ],
+    [
+      'recorded since the disclosure was fetched',
+      { telemetryEnabled: true, enabledSource: 'env' as const },
+      { telemetryEnabled: true },
+      [],
+    ],
+  ] as const) {
+    resetUsageTelemetryDisclosureDismissal();
+    const advance = vi.fn();
+    const view = renderStep(advance, derived, config);
+    const keep = await screen.findByRole('button', {
+      name: /^Keep usage telemetry (on|off)$/,
+    });
+    fireEvent.click(keep);
+    expect(
+      updateConfig.mock.calls.map((call) => call[0]),
+      `keeping ${label} wrote the wrong thing`,
+    ).toEqual(expected);
+    view.unmount();
+    resetUsageTelemetryDisclosureDismissal();
+  }
 });
 
 test('#1582 A3: a REFUSED setting write neither acknowledges nor advances', async () => {
