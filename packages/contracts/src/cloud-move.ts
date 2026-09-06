@@ -80,3 +80,13 @@ export interface CloudMoveTargetObservation {
   executionAuthorityTransferred: false;
   executionResumeAvailable: false;
 }
+
+/** Controller-local enrollment observation, never a lease or physical-home proof. */
+export interface PairedHomeIdentityObservation {
+  schemaVersion: 'station.paired-home-identity/v1';
+  controllerEnvironmentId: string;
+  pairedDeviceId: string;
+  scope: 'personal';
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+}

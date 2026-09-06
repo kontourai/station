@@ -94,6 +94,16 @@ built-in scheduler now emits.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.
 
+### Conversation measurements
+
+Per-model rows in `ConversationStatsResponse.modelStats` use optional token,
+context, and cost measurements, matching the conversation-level response.
+`turns` and `toolCalls` remain required counts. Clients that previously required
+every model measurement must handle absence as unreported, distinct from a
+measured zero. The server projects the stored null cost marker to an omitted
+wire field; supplied null, negative, or non-finite wire measurements remain
+invalid under `parseConversationStatsResponse` in the `runtime` subpath.
+
 ### Source-only learning inspection
 
 `LearningSourceObservation` on the `learning-review` subpath is a separate,

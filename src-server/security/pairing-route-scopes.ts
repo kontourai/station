@@ -58,6 +58,7 @@ import type { PairingScope } from '@kontourai/station-contracts';
 import {
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
+  PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
@@ -235,6 +236,17 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  // Home-authority preparation and transfer participation is a separate,
+  // explicitly granted capability. Every present and future method beneath
+  // this family stays on that one tier; it does not inherit ordinary
+  // orchestration read/operate authority or pairing-management authority.
+  {
+    id: '/api/home-authority:home-transfer',
+    method: '*',
+    prefix: '/api/home-authority',
+    scope: PAIRING_SCOPE_HOME_TRANSFER,
+    origin: 'explicit',
+  },
   // Body-shaped reads, including fresh open resolution, have no navigation or mutation effect.
   ...[
     '/api/search',

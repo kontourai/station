@@ -59,6 +59,61 @@ describe('StarterScheduledCheckCard', () => {
     expect(navigate).toHaveBeenCalledWith('/schedule', { run: 'exact-run' });
   });
 
+  test('#1582 C4: it is the shared page callout, with its copy unchanged', () => {
+    // It rendered `.starter-work-card` — a class HomeView.css no longer
+    // carries, because C4 replaced the card that owned it. Migrated, not
+    // re-styled: the same three sentences, the same actions.
+    render(<StarterScheduledCheckCard />);
+
+    const callout = screen.getByLabelText('Run a scheduled readiness check');
+    expect(callout.getAttribute('data-callout-id')).toBe(
+      'starter-scheduled-check',
+    );
+    expect(callout.className).toBe('page-callout page-callout--info');
+    expect(callout.querySelector('.page-callout__title')?.textContent).toBe(
+      'Run a scheduled readiness check',
+    );
+    expect(callout.querySelector('.page-callout__body')?.textContent).toBe(
+      'Create a disabled daily check and run it once through the real Scheduler.',
+    );
+    expect(
+      callout.querySelector('.page-callout__action .button--primary')
+        ?.textContent,
+    ).toBe('Run check');
+  });
+
+  test('#1582 C4: a pending read is busy through the primitive, not a hand-passed class', () => {
+    // The skeleton's flex sizing hangs off `--busy`; passing `aria-busy` and
+    // the class separately is how a caller announces one without the other.
+    statusQuery.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    render(<StarterScheduledCheckCard />);
+
+    const callout = screen.getByLabelText('Run a scheduled readiness check');
+    expect(callout.className).toContain('page-callout--busy');
+    expect(callout.getAttribute('aria-busy')).toBe('true');
+  });
+
+  test('#1582 C4: an unreachable receipt owner reads as a warning', () => {
+    statusQuery.mockReturnValue({
+      data: { state: 'unavailable' },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    render(<StarterScheduledCheckCard />);
+
+    const callout = screen.getByLabelText('Run a scheduled readiness check');
+    expect(callout.className).toContain('page-callout--warning');
+    expect(callout.querySelector('.page-callout__body')?.textContent).toBe(
+      'The Scheduler receipt owner is unavailable.',
+    );
+  });
+
   test.each(['failed', 'indeterminate'] as const)(
     'opens the exact %s receipt without launching a substitute',
     (completion) => {

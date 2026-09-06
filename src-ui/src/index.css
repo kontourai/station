@@ -85,6 +85,32 @@
   outline-offset: 2px !important;
 }
 
+/*
+ * The tone scale, in ONE place (#1582 C4).
+ *
+ * `BannerHost.css` and `PageCallout.css` both resolve their borders through
+ * these, so a banner and a page callout cannot end up disagreeing about what
+ * "warning" looks like. Declared against the theme-scoped colour variables
+ * rather than literals, so `color-mix` resolves per theme at use.
+ */
+:root {
+  --tone-border-info: color-mix(
+    in srgb,
+    var(--accent-primary, #3b82f6) 45%,
+    transparent
+  );
+  --tone-border-warning: color-mix(
+    in srgb,
+    var(--warning-text, #fbbf24) 45%,
+    transparent
+  );
+  --tone-border-error: color-mix(
+    in srgb,
+    var(--error-text, #f87171) 55%,
+    transparent
+  );
+}
+
 :root {
   --chat-dock-header-height: 38px;
   --app-toolbar-height: 46px;
