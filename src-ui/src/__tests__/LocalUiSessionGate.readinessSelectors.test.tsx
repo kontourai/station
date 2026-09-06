@@ -3,11 +3,11 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
-  ACCESS_REQUIRED_SELECTOR,
+  ACCESS_REQUIRED_REGION_NAME,
   AUTHENTICATED_SHELL_SELECTOR,
   DEGRADED_ACCESS_ALERT,
   HOST_RECOVERY_RELOAD_CONTROL,
@@ -23,24 +23,73 @@ import { PlatformBootstrap } from '../platform/PlatformProfileContext';
 /**
  * The first-run journey's readiness wait
  * (`tests/helpers/local-ui-access-readiness.ts`) decides what to do from which
- * of these selectors matches, and that decision is only as good as the mapping.
- * A Playwright helper cannot prove the mapping — it can only fail to find
- * something, 20 s later, for any reason at all. station#1617 was exactly that:
- * a gate screen the wait did not name, reported as "neither of two other things
- * appeared".
+ * of these screens it can see, and that decision is only as good as the
+ * mapping. A Playwright helper cannot prove the mapping — it can only fail to
+ * find something, 20 s later, for any reason at all. station#1617 was exactly
+ * that: a gate screen the wait did not name, reported as "neither of two other
+ * things appeared".
  *
  * So drive the REAL component through every resolution it has and require the
  * set to be exhaustive (each resolution matches one) and mutually exclusive
- * (never two, and never one while the gate is still working). A copy change, an
- * `aria-label` change or a dropped class reds here instead of becoming a 20 s
- * browser timeout.
+ * (never two, and never one while the gate is still working). Each probe below
+ * reads through the SAME channel the adapter resolves on — a CSS selector where
+ * it uses `page.locator`, an accessible role and name where it uses
+ * `getByRole` — so a change that stops the wait matching cannot leave this
+ * green.
+ *
+ * WHAT THIS DOES NOT COVER, deliberately:
+ *  - The adapter itself. `classifySettled`'s priority order, the `.or()` union,
+ *    `APP_ROOT_CHILD_SELECTOR`, the platform-loader classification and the
+ *    missing-control throw are verified by reading and by the live first-run
+ *    suite; nothing here executes them. A Page-shaped fake would close that if
+ *    it is ever worth the cost.
+ *  - The shell selector's element. The pin below reads App's source, so it
+ *    covers the TAG and its id, not that the element is on screen.
+ *  - Visibility. These are presence checks; the adapter asks Playwright for
+ *    visibility. No caller reaches a dock-owned view where that could differ
+ *    (`isAmbientMobileDockFullscreen` is structurally false for the `layout`
+ *    view type the one call site uses).
+ *  - `section[aria-label="Station sample workspace"]`, the gate's fifth screen
+ *    and `access-required`'s second: it is reachable only by clicking "Explore
+ *    a sample", so no wait can arrive at it. The helper reports it as
+ *    `unmodelled`, which is the right answer if one ever does.
  */
 
-const SETTLED_SELECTORS = [
-  AUTHENTICATED_SHELL_SELECTOR,
-  ACCESS_REQUIRED_SELECTOR,
-  HOST_RECOVERY_SCREEN_SELECTOR,
+type ScreenProbe = { readonly label: string; readonly present: () => boolean };
+
+const AUTHENTICATED_SHELL: ScreenProbe = {
+  label: 'authenticated shell',
+  present: () =>
+    document.querySelectorAll(AUTHENTICATED_SHELL_SELECTOR).length > 0,
+};
+const ACCESS_REQUIRED: ScreenProbe = {
+  label: 'access-required region',
+  // Through the role and accessible name, as the adapter does: a `role` or
+  // `aria-label` change that stops the wait matching must red here too.
+  present: () =>
+    screen.queryAllByRole('region', { name: ACCESS_REQUIRED_REGION_NAME })
+      .length > 0,
+};
+const HOST_RECOVERY: ScreenProbe = {
+  label: 'host-recovery screen',
+  present: () =>
+    document.querySelectorAll(HOST_RECOVERY_SCREEN_SELECTOR).length > 0,
+};
+const PENDING_ACCESS_CHECK: ScreenProbe = {
+  label: 'pending access check',
+  present: () =>
+    document.querySelectorAll(PENDING_ACCESS_CHECK_SELECTOR).length > 0,
+};
+
+const SETTLED_PROBES = [
+  AUTHENTICATED_SHELL,
+  ACCESS_REQUIRED,
+  HOST_RECOVERY,
 ] as const;
+
+function present(probes: readonly ScreenProbe[]): string[] {
+  return probes.filter((probe) => probe.present()).map((probe) => probe.label);
+}
 
 /**
  * Stands in for the protected application tree, whose real `<main>` carries
@@ -68,49 +117,41 @@ function renderGate() {
   );
 }
 
-function matching(selectors: readonly string[]): string[] {
-  return selectors.filter(
-    (selector) => document.querySelectorAll(selector).length > 0,
-  );
-}
-
 afterEach(() => {
   resetLocalUiBootstrapForTests();
   window.history.replaceState(null, '', '/');
   vi.restoreAllMocks();
 });
 
-describe('local UI access readiness selectors map to the gate one-to-one', () => {
+describe('local UI access readiness screens map to the gate one-to-one', () => {
   test.each([
     [
       'authenticated',
       () => new Response('{}', { status: 200 }),
-      AUTHENTICATED_SHELL_SELECTOR,
+      AUTHENTICATED_SHELL.label,
     ],
     [
       'access-required',
       () => new Response('{}', { status: 401 }),
-      ACCESS_REQUIRED_SELECTOR,
+      ACCESS_REQUIRED.label,
     ],
     [
       'host-unavailable',
       () =>
         Response.json({ ready: false, status: 'unavailable' }, { status: 503 }),
-      HOST_RECOVERY_SCREEN_SELECTOR,
+      HOST_RECOVERY.label,
     ],
   ])(
-    'a %s resolution matches exactly one settled selector',
+    'a %s resolution matches exactly one settled screen',
     async (_resolution, answer, expected) => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(answer()));
 
       renderGate();
-      await waitFor(() =>
-        expect(matching(SETTLED_SELECTORS)).toEqual([expected]),
-      );
+      await waitFor(() => expect(present(SETTLED_PROBES)).toEqual([expected]));
 
       // The gate's pending output is gone once it has an answer, so the wait
       // can never read a settled screen as "still working".
-      expect(matching([PENDING_ACCESS_CHECK_SELECTOR])).toEqual([]);
+      expect(present([PENDING_ACCESS_CHECK])).toEqual([]);
     },
   );
 
@@ -128,19 +169,19 @@ describe('local UI access readiness selectors map to the gate one-to-one', () =>
     );
 
     renderGate();
-    await waitFor(() =>
-      expect(
-        document.querySelector(HOST_RECOVERY_SCREEN_SELECTOR),
-      ).not.toBeNull(),
-    );
+    await waitFor(() => expect(HOST_RECOVERY.present()).toBe(true));
 
+    // Scoped inside the recovery screen and read by accessible name, which is
+    // how the adapter finds it — not by `textContent`, which an added
+    // `aria-label` would leave intact while the wait stopped matching.
     const recovery = document.querySelector(HOST_RECOVERY_SCREEN_SELECTOR);
-    expect(recovery?.querySelector('button')?.textContent).toBe(
-      HOST_RECOVERY_RELOAD_CONTROL,
-    );
+    expect(recovery).not.toBeNull();
+    expect(
+      screen.getByRole('button', { name: HOST_RECOVERY_RELOAD_CONTROL }),
+    ).toBe(recovery?.querySelector('button'));
   });
 
-  test('a pending gate, degraded or not, matches no settled selector', async () => {
+  test('a pending gate, degraded or not, matches no settled screen', async () => {
     vi.useFakeTimers();
     try {
       // A request that never settles: the case the degraded window exists for.
@@ -151,9 +192,9 @@ describe('local UI access readiness selectors map to the gate one-to-one', () =>
 
       renderGate();
 
-      expect(matching(SETTLED_SELECTORS)).toEqual([]);
-      expect(matching([PENDING_ACCESS_CHECK_SELECTOR])).toEqual([
-        PENDING_ACCESS_CHECK_SELECTOR,
+      expect(present(SETTLED_PROBES)).toEqual([]);
+      expect(present([PENDING_ACCESS_CHECK])).toEqual([
+        PENDING_ACCESS_CHECK.label,
       ]);
       expect(document.body.textContent ?? '').not.toMatch(
         DEGRADED_ACCESS_ALERT,
@@ -164,11 +205,11 @@ describe('local UI access readiness selectors map to the gate one-to-one', () =>
       });
 
       // The degraded alert is up. It is the state the old wait FAILED on, and
-      // it must still read as pending: no settled selector may match it.
+      // it must still read as pending: no settled screen may match it.
       expect(document.body.textContent ?? '').toMatch(DEGRADED_ACCESS_ALERT);
-      expect(matching(SETTLED_SELECTORS)).toEqual([]);
-      expect(matching([PENDING_ACCESS_CHECK_SELECTOR])).toEqual([
-        PENDING_ACCESS_CHECK_SELECTOR,
+      expect(present(SETTLED_PROBES)).toEqual([]);
+      expect(present([PENDING_ACCESS_CHECK])).toEqual([
+        PENDING_ACCESS_CHECK.label,
       ]);
     } finally {
       vi.useRealTimers();
@@ -176,7 +217,7 @@ describe('local UI access readiness selectors map to the gate one-to-one', () =>
   });
 
   test('the protected shell selector names the element App actually renders', () => {
-    // The one selector above whose subject is not the gate. Rendering the whole
+    // The one screen above whose subject is not the gate. Rendering the whole
     // app to assert it would cost more than it proves, so pin the source: a
     // rename here would otherwise surface only as a 20 s browser timeout.
     const app = readFileSync(

@@ -181,7 +181,7 @@ describe('local UI access readiness wait', () => {
     const { observation: port } = observation(['unmodelled']);
 
     await expect(waitForLocalUiAccessReadinessThrough(port)).rejects.toThrow(
-      'the access gate settled into a screen this helper does not model',
+      'the page rendered a screen this wait does not model',
     );
   });
 

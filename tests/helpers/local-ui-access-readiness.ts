@@ -37,7 +37,6 @@ export const MAX_HOST_RECOVERY_RELOADS = 2;
 export const AUTHENTICATED_SHELL_SELECTOR = 'main#station-main';
 export const HOST_RECOVERY_SCREEN_SELECTOR = 'main.local-ui-session-recovery';
 export const ACCESS_REQUIRED_REGION_NAME = 'Station access required';
-export const ACCESS_REQUIRED_SELECTOR = `section[aria-label="${ACCESS_REQUIRED_REGION_NAME}"]`;
 /**
  * The gate's own pending output, in both its forms: the loading sentence and
  * the degraded alert that replaces it. `:not()` keeps it disjoint from the
@@ -47,7 +46,18 @@ export const PENDING_ACCESS_CHECK_SELECTOR =
   'main[aria-live="polite"]:not(.local-ui-session-recovery)';
 export const DEGRADED_ACCESS_ALERT = /taking longer than expected/i;
 export const HOST_RECOVERY_RELOAD_CONTROL = 'Try again';
-/** Where the app mounts: a visible child means the gate rendered something. */
+/**
+ * `PlatformBootstrap` sits ABOVE this gate (`src-ui/src/main.tsx`) and holds
+ * this full-screen loader while it has no platform profile — and keeps it, with
+ * "Station couldn't finish starting", if that bootstrap failed. It is a `div`
+ * with neither `main` nor `aria-live`, so it matches none of the selectors
+ * above while the gate is not even mounted yet. Unqualified rather than rooted
+ * at `#root`: position in that provider stack is not this wait's business, and
+ * the settled screens are checked first, so a loader inside a mounted shell
+ * cannot be mistaken for this one.
+ */
+export const PLATFORM_BOOTSTRAP_LOADER_SELECTOR = '.fs-screen';
+/** Where the app mounts: a visible child means the page rendered something. */
 const APP_ROOT_CHILD_SELECTOR = '#root > *';
 
 /**
@@ -76,9 +86,14 @@ export type SettledLocalUiAccessScreen =
   /** The budget ran out with nothing settled. */
   | 'timeout'
   /**
-   * The gate rendered something that is neither its pending output nor a
-   * screen named above — a fourth settled screen this helper has not been
-   * taught. Reported rather than waited out.
+   * The page rendered something that is neither a screen named above nor any
+   * of the pre-shell waits — so a screen this wait has not been taught.
+   * Reported rather than waited out.
+   *
+   * `access-required` has a SECOND screen, `section[aria-label="Station sample
+   * workspace"]`, which this set deliberately omits: it is reachable only by
+   * clicking "Explore a sample", so no wait can arrive at it, and reporting it
+   * here is the right answer if one ever does.
    */
   | 'unmodelled';
 
@@ -166,7 +181,7 @@ export async function waitForLocalUiAccessReadinessThrough(
     }
 
     throw new Error(
-      `Local UI access readiness failed after ${elapsedMilliseconds(startedAt, observation.now())}: the access gate settled into a screen this helper does not model. On screen: ${await observation.pendingScreenDetail()}.`,
+      `Local UI access readiness failed after ${elapsedMilliseconds(startedAt, observation.now())}: the page rendered a screen this wait does not model. On screen: ${await observation.pendingScreenDetail()}.`,
     );
   }
 }
@@ -175,11 +190,13 @@ export async function waitForLocalUiAccessReadinessThrough(
  * Browser adapter binding the gate's screens to their real locators.
  *
  * MAY NAVIGATE: when the gate reports its host away, this follows the recovery
- * screen's own instruction and reloads. That is safe for a caller that reached
- * the page by URL, and unsafe for one that entered on a one-shot
- * `#station-ui-bootstrap` fragment, which `captureLocalUiBootstrapToken`
- * consumes and strips from the address before this wait ever runs. No caller
- * does that today.
+ * screen's own instruction and reloads — which would be unsafe for a caller
+ * that entered on a one-shot `#station-ui-bootstrap` fragment. It cannot
+ * happen: `host-unavailable` is reachable only after `bootstrapLocalUiSession`
+ * returned false, which it does only when no such token was in the address. A
+ * token that is present and accepted resolves `authenticated` before the
+ * identity request is made, and one that is refused throws to
+ * `access-required`. Either way this reload is unreachable.
  */
 export async function waitForLocalUiAccessReadiness(
   page: Page,
@@ -194,6 +211,9 @@ export async function waitForLocalUiAccessReadiness(
     name: HOST_RECOVERY_RELOAD_CONTROL,
   });
   const pendingAccessCheck = page.locator(PENDING_ACCESS_CHECK_SELECTOR);
+  const platformBootstrapLoader = page.locator(
+    PLATFORM_BOOTSTRAP_LOADER_SELECTOR,
+  );
   const degradedAccessAlert = page
     .getByRole('alert')
     .filter({ hasText: DEGRADED_ACCESS_ALERT });
@@ -218,14 +238,17 @@ export async function waitForLocalUiAccessReadiness(
             .waitFor({ state: 'visible', timeout: budgetMs });
         } catch {
           // The union cannot see a screen it does not name, so a timeout is
-          // ambiguous on its own. The gate's pending output is the only other
-          // thing it renders: if that is absent while the app root has
-          // rendered SOMETHING, a fourth settled screen is up, and reporting
-          // it beats spending the rest of the budget on a screen that will
-          // never change.
+          // ambiguous on its own. Enumerate everything the PAGE legitimately
+          // shows before the shell — the gate's loading sentence, its degraded
+          // alert, and `PlatformBootstrap`'s loader above it — and only if none
+          // of those is up while the app root has rendered SOMETHING is a
+          // screen this wait has not been taught on display. The budget is
+          // already gone here, so the pre-shell cases report as the timeout
+          // they are.
           const settled = await classifySettled();
           if (settled !== 'pending') return settled;
           if (await pendingAccessCheck.isVisible()) return 'timeout';
+          if (await platformBootstrapLoader.isVisible()) return 'timeout';
           if (
             !(await page.locator(APP_ROOT_CHILD_SELECTOR).first().isVisible())
           )
@@ -283,7 +306,9 @@ export async function waitForLocalUiAccessReadiness(
 
   if (result.hostRecoveryReloads > 0) {
     // A green run that reloaded mid-journey navigated behind the caller's
-    // back. Say so where it happened rather than only in a failure message.
+    // back. A log line rather than a `test.info().annotations` entry, which
+    // would also work from here: this wants to be visible in the run output
+    // beside the step it happened at, not filed in the report.
     console.log(
       `[local-ui-access-readiness] followed the gate's host-recovery reload ${result.hostRecoveryReloads} time(s) before the shell mounted`,
     );
