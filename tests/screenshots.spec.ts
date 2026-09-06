@@ -1745,22 +1745,38 @@ const SCREENS: Screen[] = [
   // deterministic trigger (never the transient home-route redirect race —
   // see `newProjectOverlay`'s doc comment) so its shot is reproducible.
   {
-    name: 'overlay-dock-picker',
-    title: 'Overlay — Dock occupant picker menu',
+    // Renamed from `overlay-dock-picker` (#1541): the overlay it captured —
+    // the dock's own occupant picker — was deleted with the rest of the
+    // surface-owned docking path in #928 C2b, so the screen could not
+    // capture at all. Its successor is the header's Layout picker, which is
+    // where placement is chosen now; the baseline entry was renamed with it
+    // rather than left pointing at a shot nothing can reproduce.
+    name: 'overlay-layout-picker',
+    title: 'Overlay — Layout regions placement picker',
     path: '/?dock=open',
     viewport: DESKTOP,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      // DockOccupantPicker's trigger names the current occupant
-      // ("Docked pane: Chat") — archive#4484 made DockShell own the chrome
-      // for every occupant, so this is present whenever the dock is open
-      // and not placed fullscreen (`?dock=open` is neither).
-      const trigger = page.getByRole('button', { name: /^Docked pane:/ });
+      // #1552 D2: one folded control in the toolbar opens a `role="group"`
+      // panel of per-surface `radiogroup` rows — a segmented choice over the
+      // regions each surface declares plus `Hidden` — replacing the list of
+      // placement VERBS the dock header used to carry.
+      const trigger = page.getByRole('button', {
+        name: 'Layout regions',
+        exact: true,
+      });
       await trigger.waitFor({ timeout: 10_000 });
       await trigger.click();
-      await expect(page.locator('.dock-occupant-menu')).toBeVisible({
-        timeout: 10_000,
-      });
+      const picker = page.getByRole('group', { name: 'Layout regions' });
+      await expect(picker).toBeVisible({ timeout: 10_000 });
+      // Rows, not just the panel: an empty panel would still be "visible"
+      // and would capture a shot of nothing.
+      await expect(
+        picker.getByRole('radiogroup', { name: 'Chat placement' }),
+      ).toBeVisible();
+      await expect(
+        picker.getByRole('radiogroup', { name: 'Activity placement' }),
+      ).toBeVisible();
     },
   },
   {
