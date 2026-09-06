@@ -442,6 +442,13 @@ async function openComposer(
       'Selected Test Model',
     );
   }
+  // Home opens the collapsed dock. Geometry assertions begin after its
+  // actual height transition, rather than comparing boxes from different frames.
+  await page.locator('.chat-dock').evaluate(async (element) => {
+    await Promise.allSettled(
+      element.getAnimations().map((animation) => animation.finished),
+    );
+  });
   return textarea;
 }
 

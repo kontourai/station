@@ -415,6 +415,13 @@ async function mockTaskFirstHome(
         '/api/projects/station/knowledge',
         '/api/projects/station/knowledge/namespaces',
         '/api/projects/station/knowledge/status',
+        '/api/projects/station/operating-state/availability',
+        '/api/projects/station/work-items',
+        '/api/projects/station/flow/definitions',
+        '/api/projects/station/readiness',
+        '/api/projects/station/trust-bundles',
+        '/api/tasks/task%3Atask-first-home/room',
+        '/api/tasks/task%3Atask-first-home/room/events',
       ].includes(path)
     ) {
       await route.fulfill({
@@ -738,6 +745,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(
       page.getByRole('button', { name: 'Hide dock region' }),
     ).toBeVisible();
+    await page.locator('.chat-dock__header').hover();
     await page.getByRole('button', { name: 'Close chat' }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe('/');
     await expect
@@ -1129,7 +1137,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await page.goto('/?surface=activity');
 
     await page
-      .getByRole('button', { name: /^Worker task · task first home/ })
+      .getByRole('button', {
+        name: /^Worker task · task first home Delegated worker/,
+      })
       .click();
     await expect(page.getByTestId('session-detail')).toBeVisible();
 

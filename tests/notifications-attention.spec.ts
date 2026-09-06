@@ -1,3 +1,7 @@
+import {
+  type AttentionItem,
+  isStandingAttentionKind,
+} from '@kontourai/station-contracts/attention';
 import type { Page } from '@playwright/test';
 import {
   type AuthenticatedE2ERequest,
@@ -34,7 +38,7 @@ const ACTIVITY_TITLE = 'D9 activity item';
 const SEED_SOURCE = 'playwright-d9-attention';
 
 interface AttentionSnapshot {
-  items: Array<{ id: string; acknowledgedAt?: string }>;
+  items: AttentionItem[];
   pendingCount: number;
 }
 
@@ -47,38 +51,41 @@ async function readAttention(
 }
 
 /**
- * A deterministic starting inbox on a SHARED instance.
- *
- * The product bucket runs every spec against one Station, and several of them
- * leave notifications and live sessions behind. A bell that reads "3" because
- * a sibling spec started a session is not evidence about this page, so the
- * inbox is emptied through the product's own two dismissal paths — the
- * notification store is cleared, and every attention fact that survives that
- * (session- and gate-derived items, which no `DELETE /notifications` can
- * reach) is acknowledged — and the reset is then PROVEN by reading
- * `pendingCount` back rather than assumed.
+ * Clear prior per-event attention through its real dismissal routes. Standing
+ * setup notices remain true until configuration changes and are deliberately
+ * not acknowledgeable. Later assertions compare the seeded delta with that
+ * server-owned baseline and verify that bulk dismissal preserves it.
  */
 async function resetInbox(request: AuthenticatedE2ERequest): Promise<void> {
   const cleared = await request.delete(`${API}/notifications`);
   expect(cleared.status(), 'DELETE /notifications').toBe(200);
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const snapshot = await readAttention(request);
-    if (snapshot.pendingCount === 0) return;
+    if (
+      snapshot.items.every(
+        (item) => item.acknowledgedAt || isStandingAttentionKind(item.kind),
+      )
+    )
+      return;
     for (const item of snapshot.items) {
-      if (item.acknowledgedAt) continue;
-      await request.post(
+      if (item.acknowledgedAt || isStandingAttentionKind(item.kind)) continue;
+      const acknowledgement = await request.post(
         `${API}/api/attention/${encodeURIComponent(item.id)}/ack`,
       );
+      expect(acknowledgement.status(), `acknowledging ${item.kind}`).toBe(200);
     }
   }
   expect(
-    (await readAttention(request)).pendingCount,
-    'the inbox could not be brought to a known-empty baseline',
-  ).toBe(0);
+    (await readAttention(request)).items.filter(
+      (item) => !item.acknowledgedAt && !isStandingAttentionKind(item.kind),
+    ),
+    'the inbox still contains dismissible attention from an earlier test',
+  ).toEqual([]);
 }
 
 /** One item the projection must promote, one it must not. */
 async function seedOneOfEach(request: AuthenticatedE2ERequest): Promise<void> {
+  const before = await readAttention(request);
   const approval = await request.post(`${API}/notifications`, {
     data: {
       source: SEED_SOURCE,
@@ -104,7 +111,7 @@ async function seedOneOfEach(request: AuthenticatedE2ERequest): Promise<void> {
   expect(
     (await readAttention(request)).pendingCount,
     'exactly one of the two seeded notifications is an attention item',
-  ).toBe(1);
+  ).toBe(before.pendingCount + 1);
 }
 
 function attentionRegion(page: Page) {
@@ -145,11 +152,17 @@ test.describe('Notifications: attention queue and activity log', () => {
     page,
     authenticatedRequest,
   }) => {
+    const initial = await readAttention(authenticatedRequest);
+    const standingCount = initial.items.filter(
+      (item) => !item.acknowledgedAt && isStandingAttentionKind(item.kind),
+    ).length;
     await page.goto('/notifications');
 
     // Two regions, one item each, each in the region the SERVER put it in.
     await expect(
-      page.getByRole('heading', { name: 'Needs attention (1)' }),
+      page.getByRole('heading', {
+        name: `Needs attention (${initial.pendingCount})`,
+      }),
     ).toBeVisible();
     await expect(attentionRegion(page).getByText(APPROVAL_TITLE)).toBeVisible();
     await expect(activityRegion(page).getByText(ACTIVITY_TITLE)).toBeVisible();
@@ -161,13 +174,16 @@ test.describe('Notifications: attention queue and activity log', () => {
     // One label map (`utils/notificationLabels.ts`) — 6-OPS-29's
     // "Approval" / "Approval Request" flip came from two label sources.
     await expect(
-      attentionRegion(page).locator('.attention-item__type'),
+      attentionRegion(page)
+        .locator('.attention-item')
+        .filter({ hasText: APPROVAL_TITLE })
+        .locator('.attention-item__type'),
     ).toHaveText('Approval request');
 
     // The bell badge is this count and only this count.
     await expect(bell(page)).toHaveAttribute(
       'aria-label',
-      'Notifications (1 need attention)',
+      `Notifications (${initial.pendingCount} need attention)`,
     );
 
     // The page's own activity receipt, read BEFORE the bulk action so the
@@ -195,28 +211,30 @@ test.describe('Notifications: attention queue and activity log', () => {
     // for region 1 to empty is what proves the mutation landed; only then does
     // "activity is still there" mean anything.
 
-    // Region 1 is empty and says so in D9's words.
-    await expect(
-      attentionRegion(page).getByText('Nothing needs you right now'),
-    ).toBeVisible();
     await expect(attentionRegion(page).getByText(APPROVAL_TITLE)).toHaveCount(
       0,
     );
-    // The bell loses its badge entirely — the whole accessible name is the
-    // assertion, because a badge that merely went stale would still match a
-    // prefix, and the badge element itself must be gone rather than zeroed.
-    await expect(bell(page)).toHaveAttribute('aria-label', 'Notifications');
-    await expect(
-      bell(page).locator('.app-toolbar__notification-badge'),
-    ).toHaveCount(0);
+    await expect(bell(page)).toHaveAttribute(
+      'aria-label',
+      standingCount === 0
+        ? 'Notifications'
+        : `Notifications (${standingCount} need attention)`,
+    );
+    for (const item of initial.items.filter((entry) =>
+      isStandingAttentionKind(entry.kind),
+    )) {
+      await expect(
+        attentionRegion(page).getByText(item.title, { exact: true }),
+      ).toBeVisible();
+    }
     // 6-OPS-29, the whole point: activity is untouched, in the DOM and in
     // the store the page is rendering.
     await expect(activityRegion(page).getByText(ACTIVITY_TITLE)).toBeVisible();
     await expect(activityReceipt).toHaveText('Showing 1 of 1 activity items');
     expect(
       (await readAttention(authenticatedRequest)).pendingCount,
-      'the server agrees the attention queue is empty',
-    ).toBe(0);
+      'the server retains exactly the standing notices after dismissal',
+    ).toBe(standingCount);
     const remaining = (
       await (await authenticatedRequest.get(`${API}/notifications`)).json()
     ).data as Array<{ title: string }>;
@@ -281,14 +299,18 @@ test.describe('Notifications: attention queue and activity log', () => {
     await expect(row.getByRole('button', { name: 'Dismiss' })).toHaveCount(0);
   });
 
-  test('the bulk action is disabled while nothing needs attention', async ({
+  test('the bulk action is disabled when no dismissible attention remains', async ({
     page,
     authenticatedRequest,
   }) => {
     await resetInbox(authenticatedRequest);
     await page.goto('/notifications');
 
-    await expect(page.getByText('All caught up')).toBeVisible();
+    expect(
+      (await readAttention(authenticatedRequest)).items.filter(
+        (item) => !item.acknowledgedAt && !isStandingAttentionKind(item.kind),
+      ),
+    ).toEqual([]);
     await expect(bulkDismiss(page)).toBeDisabled();
   });
 });
@@ -311,11 +333,15 @@ test.describe('Notifications at 390x844', () => {
 
   test('the regions stack and both the row action and the bulk action stay 44px targets', async ({
     page,
+    authenticatedRequest,
   }) => {
+    const initial = await readAttention(authenticatedRequest);
     await page.goto('/notifications');
 
     await expect(
-      page.getByRole('heading', { name: 'Needs attention (1)' }),
+      page.getByRole('heading', {
+        name: `Needs attention (${initial.pendingCount})`,
+      }),
     ).toBeVisible();
     await expect(activityRegion(page).getByText(ACTIVITY_TITLE)).toBeVisible();
 
