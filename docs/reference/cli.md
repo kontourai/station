@@ -1991,8 +1991,9 @@ receipt includes `recovery` with a new recovery ID, snapshot/recovery times,
 the validated manifest digest, and `authorityTransferred: false`. Restore
 publishes `station-home-recovery.json` atomically with the home, replacing any
 prior recovery disclosure from that copy. This metadata grants no execution
-authority and does not claim witnessed failover. Browser recovery banners and
-channel-specific divergence presentation require separate integration.
+authority and does not claim witnessed failover. Connected browsers show the same recovery-from-copy notice after refreshing
+system status. This home-level disclosure does not establish a channel-specific
+divergence checkpoint or witnessed transfer.
 
 ```
 station home restore --from=<backup-directory> --confirm [--home=<dir>] [--base=<dir>] [--json]
