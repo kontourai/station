@@ -608,12 +608,6 @@ button:hover {
    browsers and non-mac shells. The two-column desktop layout is covered by
    the sidebar's own is-desktop-mac rules (ProjectSidebar.css), which inset
    the corner the sidebar occupies instead. */
-.header-divider {
-  width: 1px;
-  height: 16px;
-  background: var(--border-primary);
-}
-
 /* ── Mobile shared utilities ──
    Reusable primitives for the global mobile responsive foundation. Desktop is
    unaffected: .tap-target's min size is below typical desktop control sizes and
@@ -1551,16 +1545,6 @@ button:hover {
 .chat-dock__resize-handle:hover::after,
 .chat-dock__resize-handle:focus-visible::after {
   background: var(--text-inverted);
-}
-
-.chat-dock__resize-handle--horizontal {
-  top: 0;
-  bottom: 0;
-  left: 0;
-  right: auto;
-  width: 6px;
-  height: auto;
-  cursor: ew-resize;
 }
 
 /* Rotated grip for the side-panel (width) handle. */

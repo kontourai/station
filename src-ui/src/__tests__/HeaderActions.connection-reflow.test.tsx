@@ -524,6 +524,80 @@ describe.skipIf(!chromiumAvailable)(
       expect(chip.stateAfter).toBe('none');
     });
 
+    /**
+     * #1132. The companion to the test below: that one pins the chip inside the
+     * budget a 390px row can spare, this one pins what happens BELOW the width
+     * at which the row's last control keeps its own centre.
+     *
+     * Derived, not chosen: `.app-toolbar__actions` is `flex-shrink: 0` and the
+     * brand has bottomed out, so the row's content width is
+     * viewport-independent and the left side ends at x=126. The widest the
+     * cluster reaches is 126 + 116 (this chip at its 85px label ceiling plus
+     * 31px of furniture) + 4 + 56 (notifications with a badge) + 4 + 44 + 4 + 44
+     * = 398px, putting `Open settings`'s centre at 376. Measured live on a
+     * running app in the `error` state: at 360px that centre is x=370 and
+     * `document.elementFromPoint` returns null; at 375px and above it resolves
+     * to the control itself. So 376 is the last width at which the control is
+     * unreachable, and the label goes at 376 and below.
+     *
+     * WHAT THIS FIXTURE CAN SEE: the chip's own box and the button's accessible
+     * name, in a real Chromium page with the real stylesheets. It cannot see
+     * the row's absolute geometry — `HeaderActions` mounts alone here, so every
+     * control is "inside the viewport" whatever the chip does (the note on the
+     * test below). The reachability claim itself is browser-measured in
+     * `tests/connect-reconnect-banner.spec.ts` against the whole app.
+     */
+    test('the connection chip drops its label below the width the row can hold, keeping its accessible name (#1132)', async () => {
+      const measure = async (width: number) => {
+        const page = await browser.newPage({ viewport: { width, height: 200 } });
+        try {
+          await page.setContent(
+            buildFixtureHtml(await renderMarkupForState('error')),
+          );
+          return await page.evaluate(() => {
+            const button = document.querySelector<HTMLElement>(
+              '[data-testid="app-toolbar-connection"]',
+            );
+            const label = document.querySelector<HTMLElement>(
+              '.app-toolbar__conn-state',
+            );
+            if (!button || !label) throw new Error('connection chip not found');
+            return {
+              chipWidth: Math.round(button.getBoundingClientRect().width),
+              labelWidth: Math.round(label.getBoundingClientRect().width),
+              labelText: label.textContent,
+              accessibleName: button.getAttribute('aria-label'),
+            };
+          });
+        } finally {
+          await page.close();
+        }
+      };
+
+      // 377px: the first width at which the last control keeps its centre, so
+      // the label stays — #1401's release is what makes this the live state.
+      const held = await measure(377);
+      expect(held.labelWidth).toBeGreaterThan(0);
+      expect(held.labelText).toBe("Can't connect");
+
+      // 376px: the last width at which it does not, so the label goes.
+      const dropped = await measure(376);
+      expect(
+        dropped.labelWidth,
+        'the state label must not lay out below the breakpoint',
+      ).toBe(0);
+      // The 44px touch floor, not the ~110px the labelled chip measures: the
+      // 66px this reclaims is what puts `Open settings` back on screen.
+      expect(dropped.chipWidth).toBeLessThanOrEqual(44);
+      expect(dropped.chipWidth).toBeLessThan(held.chipWidth);
+
+      // The whole point of hiding it VISUALLY: a screen reader reads the same
+      // sentence at both widths, because the name is the button's `aria-label`
+      // and never this span's text.
+      expect(dropped.accessibleName).toBe(held.accessibleName);
+      expect(dropped.accessibleName).toContain("Can't connect");
+    });
+
     test('the connection chip fits the width a phone row can spare', async () => {
       // #1401. NOT a position assertion: this fixture mounts `HeaderActions`
       // alone, so the cluster starts at x=0 and the Settings control is

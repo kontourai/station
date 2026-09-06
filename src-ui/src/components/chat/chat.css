@@ -2246,6 +2246,52 @@
   }
 }
 
+/* #1132 defect 2: below this width the toolbar's action cluster no longer fits,
+   and the connection chip's label is what it can give up.
+
+   MEASURED, on a running app in the `error` state ("Can't connect"), which is
+   the state that makes it worst — and the state in which reaching Settings
+   matters most. `.app-toolbar__actions` is `flex-shrink: 0` and
+   `.app-toolbar__brand` has already bottomed out, so the row's left side ends
+   at x=126 at every width up to 402 and the cluster's own width is
+   viewport-independent: 266px, putting `Open settings` at x=348..392 whatever
+   the viewport is. #1401 released this chip's 116px `min-width` reservation and
+   that is what keeps 375, 390, 402 and 412 reachable today; what it left behind
+   is the arithmetic below.
+
+   The widest the cluster can get: 126 (left side at its floor) + 116 (this
+   chip — an 85px `max-width` label plus 31px of measured furniture: button
+   padding, the 7px dot, its gap) + 4 + 56 (notifications carrying a badge) + 4
+   + 44 (More actions) + 4 + 44 (Open settings) = 398px, of which the last
+   control's own CENTRE sits at 376. At 376px and below that centre is outside
+   the viewport and `document.elementFromPoint` returns null — unreachable
+   rather than merely clipped, which is the defect. Measured live: at 360px the
+   Open settings centre is x=370 and resolves to `null`; at 375px and above it
+   resolves to itself.
+
+   Dropping the label reclaims 66px (the chip falls to its 44px touch floor) and
+   puts Open settings at x=282..326 — inside every viewport down to 326px. The
+   dot still carries the state by SHAPE (archive#3297, which is the channel
+   transient reachability was deliberately given when it stopped bannering), and
+   the accessible name is untouched: `connAccessibleName` is the BUTTON's
+   `aria-label` (HeaderActions.tsx), not this span's text, so a screen reader
+   still reads the full "Manage Stations — Can't connect · Dev Server".
+   `flex-shrink: 0` stays — archive#3766's cluster that clipped ITSELF away
+   while staying in the accessibility tree is not coming back.
+
+   Between 377 and 397px the row is still clipped at its right edge while every
+   control keeps its centre: the over-subscription #1401 describes, which needs
+   a control to leave the row rather than a width tweak. Two classes, not one:
+   this block cascades after the breakpoint above and would win a tie on order
+   alone, and a tie decided by order is how the last owner of this cluster's
+   flex behaviour was lost (archive#3766). */
+@media (max-width: 376px) {
+  .app-toolbar__conn .app-toolbar__conn-state {
+    display: none;
+  }
+}
+
+
 /* Mobile transcripts spend their width on the words. Secondary controls open
    a sheet from one separate touch target, outside the message bubble. */
 .message-row--compact {
