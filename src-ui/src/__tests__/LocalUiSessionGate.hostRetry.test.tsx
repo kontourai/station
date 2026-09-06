@@ -309,12 +309,15 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
       name: 'Complete pairing',
     });
     expect(requestedUrls(fetchMock)).toEqual([UI_BOOTSTRAP_URL]);
-    expect(window.location.hash).toBe('');
 
     // Pairing succeeds, so the gate discards the cached refusal and resolves
     // again — this time reaching the identity read, with the token already gone.
     fireEvent.click(pair);
 
+    // The load-bearing wait, and deliberately asserted before the fragment
+    // below: a resolution that re-POSTed the spent token would be refused again
+    // and land back on the access screen, so THIS is what reds when the exchange
+    // stops being one-shot — naming the behaviour rather than a stale URL.
     await screen.findByRole(
       'heading',
       { name: 'Reconnecting to this Station' },
@@ -327,6 +330,9 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
         () => IDENTITY_URL,
       ),
     ]);
+    // The other half of one-shot: the fragment left the address bar when the
+    // token was spent. Last, so it cannot pre-empt the wait above.
+    expect(window.location.hash).toBe('');
   });
 
   test('a resolution superseded mid-backoff abandons its remaining attempts', async () => {
