@@ -91,8 +91,8 @@ const RETIRED_NAMES: readonly RetiredName[] = [
    * side", which stopped being a thing that exists the moment a surface
    * could occupy `left` while another occupies `right`. The reducer
    * withheld it there rather than guess, which left every side reader on a
-   * shared literal, and in the window where only one side had reported it
-   * published that side's width as the OTHER side's fallback. Side widths
+   * shared literal, and while it existed it made one side's width the
+   * DECLARED fallback for the other. Side widths
    * are `--region-left-size` and `--region-right-size`; the bottom-edge
    * alias `--dock-slot-size` survives, because the space the dock takes
    * along the bottom edge IS one number.

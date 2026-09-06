@@ -19,10 +19,14 @@ type ClearanceVariable = `--region-${DockRegionId}-size` | '--dock-slot-size';
  *
  * Its side-width counterpart is retired (#1374; the spelling lives
  * once, in `placement-vocabulary.test.ts`, which keeps it from coming
- * back): one name cannot carry two side widths, and while it existed, a
- * moment where only ONE side had reported published that side's width as
- * the OTHER side's fallback — measured in a real engine as a left grid
- * track and a left banner inset of 260px, the RIGHT dock's width. Side
+ * back): one name cannot carry two side widths, and while it existed it
+ * made one side's width the DECLARED fallback for the other. A probe over
+ * these stylesheets shows what that renders — a left grid track and a left
+ * banner inset of 260px, the right dock's width — though reaching it needs
+ * a `[data-region]` in the DOM while its per-region variable is unwritten,
+ * and the writer's layout effect runs in the same commit as the mutation,
+ * so no mount is known to have rendered it. A wrong-side fallback is worth
+ * removing whether or not anything reached it. Side
  * widths are `--region-left-size` and `--region-right-size`, and a reader
  * that means "the side width" reads the side it means.
  */

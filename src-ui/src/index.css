@@ -7687,10 +7687,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   /* Each side track reads its OWN width. A single-side width alias used to
-     sit in this fallback chain naming one width for both sides, so in the
-     window where only one side had reported, the other side's track took
-     that side's number; it is retired (#1374). The literal is the
-     `chatDockWidth` device-setting default. */
+     sit in this fallback chain naming one width for both sides, so it
+     DECLARED one side's number as the other side's fallback; it is retired
+     (#1374). The literal is the `chatDockWidth` device-setting default. */
   .app__main:has(> [data-region="left"]) {
     --region-left-track: var(--region-left-size, 400px);
   }

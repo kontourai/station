@@ -27,12 +27,25 @@ import { describe, expect, test } from 'vitest';
  * makes the rules compose — each rule declares one side's inset and only
  * that side's, and keys on one side's presence and only that — plus the
  * lockstep with the dock grid that `BannerHost.css`'s own comment demands.
- * It does not claim a pixel; the browser proof is the probe above and
- * `tests/connect-reconnect-banner.spec.ts`.
+ * It does not claim a pixel, and nothing committed does: the probe above was
+ * run by hand and `tests/connect-reconnect-banner.spec.ts` places ONE dock at
+ * a time, so it never exercises two side occupants.
  *
  * `mobile-chrome-safety.test.ts` already pins that the four rules exist and
  * inset SOMETHING; this pins that they inset the right thing, one side each.
+ *
+ * The two stylesheet imports below are the SCHEDULING MECHANISM, not a
+ * dependency: this file reads both sheets off disk, so nothing in the import
+ * graph would reach it and `vitest related` — which is what a CSS-only change
+ * selects with — would not run it on the very change class it guards. A
+ * manifest entry cannot fix that: an explicit `tests` list sets
+ * `hasExplicitBoundary` in `run-changed-verification.mjs` and REPLACES the
+ * related selection for the path, dropping every suite the graph would have
+ * chosen. `chatMessageLayout.contract.test.ts` imports `index.css` the same
+ * way and for the same reason.
  */
+import '../index.css';
+import '../components/notifications/BannerHost.css';
 
 const UI_SRC = join(__dirname, '..');
 const bannerCss = readFileSync(
@@ -106,7 +119,11 @@ describe('the banner steps aside from both side regions at once (#1374)', () => 
   test('the side inset rules are exactly the four expected, and no other', () => {
     // A fifth rule keying on a side would be a second answer to "how far in
     // does the overlay start" — the shape that made these insets one branch
-    // or the other before the per-region variables existed.
+    // or the other before the per-region variables existed. Scoped to
+    // `data-region`-keyed rules: the base `.banner-host { left: 0; right: 0 }`
+    // and the maximize reset (`:has(> .chat-dock.is-maximized)`, (0,4,0),
+    // deliberately spanning full width under a maximized dock) also set these
+    // properties and are out of this filter's scope by design.
     const sideRules = bannerRules.filter(
       (rule) =>
         rule.selector.includes('.banner-host') &&

@@ -206,8 +206,9 @@ export function useDockShellChrome({
    * single-shell mount (`regionId` unset, no `RegionModelProvider` above —
    * `RegionShells.tsx`'s no-model branch). That mount knows which region it
    * renders, and reporting it is what let the single-side width alias be
-   * retired: that alias existed only because this call used to discard the
-   * placement, leaving the reducer nothing to name but "the side" (#1374).
+   * retired: that pre-#928 alias SURVIVED only because this call used to
+   * discard the placement, leaving the reducer nothing to name but "the
+   * side" (#1374).
    */
   onRenderedRegionGeometryChange?: (
     regionId: DockMode,
