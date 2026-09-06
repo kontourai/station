@@ -6,7 +6,7 @@
  *
  * Uses page.route to mock API responses for isolation from backend state.
  */
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
   CODING_STARTER_CATALOG,
   ORGANIZATION_LAYOUT_CATALOG,
@@ -259,17 +259,99 @@ async function openCustomizationNavigation(page: Page) {
 }
 
 /**
- * station#4460 consolidated the old per-occupant `.dock-slot` /
- * `.dock-slot__header` markup into one shared `#chat-dock` shell
- * (`aria-label="Dock"`) — `.dock-slot` no longer renders anywhere (see
- * `DockShell.tsx` and `dock-bottom-clearance.test.ts`). The occupant is
- * identified by the header's occupant-picker trigger, whose accessible name
- * is `Docked pane: <name>` (#1046, matching dock-occupant-picker.spec.ts).
+ * A dock region's shell, identified by the surface occupying it (#928): one
+ * `DockShell` mounts per occupied dock region and takes its accessible name
+ * from its occupant — "Dock" for Chat, the registered surface title for
+ * anything else — while `chat-dock--<region>` on the same element names the
+ * region it renders in. Chat's shell also carries `id="chat-dock"`.
+ *
+ * These two facts together are how a test reads the live arrangement out of
+ * the DOM instead of out of the model: which surface holds which region, and
+ * how many dock shells exist at all.
  */
-function dockOccupantTrigger(page: Page, name: string) {
-  return page
-    .locator('#chat-dock')
-    .getByRole('button', { name: `Docked pane: ${name}` });
+function chatDockShell(page: Page) {
+  return page.locator('#chat-dock');
+}
+
+function surfaceDockShell(page: Page, title: string) {
+  return page.locator(`.chat-dock[aria-label="${title}"]`);
+}
+
+/**
+ * Places a surface through the header's Layout picker — the shell's public
+ * placement route on a fine pointer since #1552 D2 (`RegionToolbarControls`,
+ * `useRegionSurfaceMenu`): one `role="group"` panel of per-surface
+ * `radiogroup` rows, each row a segmented choice over the regions that
+ * surface declares plus `Hidden`.
+ *
+ * The post-condition is read after REOPENING the panel, because choosing a
+ * segment closes it: the assertion then sees a segment whose pressed state
+ * was freshly derived from the arrangement, not the DOM it just clicked. A
+ * segment's accessible name is just the region label — the displacement note
+ * beside it is a `hidden` span reached through `aria-describedby`, which the
+ * name computation excludes — so `exact` matching is safe.
+ */
+async function placeSurfaceThroughLayoutPicker(
+  page: Page,
+  surfaceTitle: string,
+  regionLabel: string,
+) {
+  const openPicker = async () => {
+    await page
+      .getByRole('button', { name: 'Layout regions', exact: true })
+      .click();
+    const picker = page.getByRole('group', { name: 'Layout regions' });
+    await expect(picker).toBeVisible();
+    return picker;
+  };
+  const segment = (picker: Locator) =>
+    picker
+      .getByRole('radiogroup', { name: `${surfaceTitle} placement` })
+      .getByRole('radio', { name: regionLabel, exact: true });
+
+  await segment(await openPicker()).click();
+  const reopened = await openPicker();
+  await expect(
+    segment(reopened),
+    `${surfaceTitle}'s ${regionLabel} segment is not pressed after choosing it, so the shell did not place it there`,
+  ).toHaveAttribute('aria-checked', 'true');
+  // Leave the shell as it was found: the panel is portalled over the app and
+  // its dismiss backdrop covers the viewport.
+  await page.keyboard.press('Escape');
+  await expect(reopened).toBeHidden();
+}
+
+/**
+ * The phone's region route (#917): a coarse pointer narrow enough to be
+ * mobile renders no region control in the toolbar row at all — the width
+ * budget could not hold one — so the Show/Hide rows live in the `⋯` overflow
+ * menu, and `useRegionSurfaceMenu` decides that, not the toolbar.
+ *
+ * Asserting the row is absent before the menu opens is what keeps this a
+ * drive of that route rather than of some other surface that happens to carry
+ * the same label. That guard is also the reason this is only good for a SHOW
+ * row: once a surface is docked, its own `ChatDockHeader` renders a
+ * `Hide <surface>` button, so the hide label is legitimately ambiguous and
+ * belongs to whichever control the journey means to press.
+ */
+async function showRegionThroughOverflowMenu(page: Page, row: string) {
+  const control = page.getByRole('button', { name: row, exact: true });
+  await expect(
+    control,
+    `"${row}" is reachable without opening the ⋯ menu, so this is not the phone's region route`,
+  ).toHaveCount(0);
+  const overflow = page.getByRole('button', { name: 'More actions' });
+  await expect(overflow).toBeVisible();
+  await overflow.click();
+  await expect(control).toBeVisible();
+  await control.click();
+}
+
+/** Whether the document fits its own viewport widthwise. */
+function documentFitsViewportWidth(page: Page) {
+  return page.evaluate(
+    () => document.documentElement.scrollWidth <= window.innerWidth,
+  );
 }
 
 test.describe('Project Sidebar', () => {
@@ -935,44 +1017,67 @@ test.describe('ChatDock', () => {
     ).toMatch(/app__main/);
   });
 
-  // Removed in archive#3929 (the affordance had nowhere to appear and the
-  // spec timed out); back with archive#4090 / epic archive#4142 M2: `/` is
-  // the standalone placement of the Home pane occurrence, so
-  // `#station-main` now carries a real 'Dock this pane'.
-  test('docks Home through the ambient document and returns the same dock slot to Chat', async ({
+  /**
+   * #1541. This replaces "docks Home through the ambient document and returns
+   * the same dock slot to Chat", whose premise is gone: Home is not a dock
+   * occupant any more. #928 C2a made Home the `main` region's surface, which
+   * declares `main` and nothing else (`REGION_SURFACE_REGISTRY`), and C2b
+   * deleted the whole surface-owned docking path — `WorkspacePaneDockAction`,
+   * its "Dock this pane" button and the `Docked pane:` occupant picker are
+   * scanned out of the UI tree by `region-surface-boundary.test.ts`, so no
+   * page can grow one back.
+   *
+   * What the retired journey actually guarded survives, and is what this
+   * drives: a non-Chat surface takes the dock region Chat holds, the choice is
+   * device state that outlives a reload, and putting Chat back returns that
+   * same region to Chat. The route is the model's own `placeSurface` through
+   * the header's Layout picker, and every assertion reads the rendered dock —
+   * which surface occupies which region — rather than the model that decided
+   * it.
+   */
+  test('places Activity in the dock region Chat holds and returns that region to Chat', async ({
     page,
   }) => {
-    await page
-      .locator('#station-main')
-      .getByRole('button', { name: 'Dock this pane' })
-      .click();
-    await expect(dockOccupantTrigger(page, 'Home')).toBeVisible();
-    await expect
-      .poll(() =>
-        page.evaluate(() =>
-          window.localStorage.getItem(
-            'station:workspace-pane-host:v2:ambient:chat-dock',
-          ),
-        ),
-      )
-      .toContain('pane:builtin:home');
+    // One dock shell, Chat's, in the bottom region. `is-collapsed` is
+    // expected here (a fresh device shows the dock's header only) and is
+    // beside the point: the region is Chat's either way.
+    await expect(page.locator('.chat-dock')).toHaveCount(1);
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
+
+    await placeSurfaceThroughLayoutPicker(page, 'Activity', 'Bottom');
+
+    // The region changed hands, and Chat is not homeless: `placeSurface`
+    // relocates the displaced surface into the first free dock region, which
+    // is `right`. Both halves are asserted, because "Activity is at the
+    // bottom" would also be true of a model that simply dropped Chat.
+    await expect(surfaceDockShell(page, 'Activity')).toHaveClass(
+      /chat-dock--bottom/,
+    );
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--right/);
+
+    // The arrangement is device state (#928 D), so a reload must render the
+    // same two regions. Read through the DOM rather than through the
+    // `regionArrangement` device setting: the record is the mechanism, and a
+    // reload is the only thing that proves the mechanism ran.
     await page.reload();
-    await expect(dockOccupantTrigger(page, 'Home')).toBeVisible();
-    // M5: the fixed header "return to Chat" action is gone — the header's
-    // occupant picker replaces the occupant, Chat as one entry of the list.
-    await dockOccupantTrigger(page, 'Home').click();
-    await page
-      .getByRole('menu', { name: 'Docked pane' })
-      .getByRole('menuitemradio', { name: 'Chat' })
-      .click();
-    await expect(page.locator('.chat-dock')).toBeVisible();
+    await expect(surfaceDockShell(page, 'Activity')).toHaveClass(
+      /chat-dock--bottom/,
+    );
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--right/);
+
+    await placeSurfaceThroughLayoutPicker(page, 'Chat', 'Bottom');
+
     await expect(
-      dockOccupantTrigger(page, 'Chat'),
-      'returning to Chat must restore the ambient slot to the Chat occupant',
-    ).toBeVisible();
+      chatDockShell(page),
+      'returning Chat to the bottom region must give it that region back',
+    ).toHaveClass(/chat-dock--bottom/);
+    await expect(
+      surfaceDockShell(page, 'Activity'),
+      'the surface Chat displaced must take the region Chat vacated, not vanish',
+    ).toHaveClass(/chat-dock--right/);
     expect(
       await page.evaluate(
-        () => document.querySelector('.chat-dock')?.parentElement?.className,
+        () => document.querySelector('#chat-dock')?.parentElement?.className,
       ),
       'returning to Chat must keep it a direct shell child',
     ).toMatch(/app__main/);
@@ -1014,38 +1119,69 @@ test.describe('Ambient chat dock host at 390x844', () => {
     ).toBeGreaterThanOrEqual(44);
   });
 
-  // The phone half of the same journey — removed in archive#3929, back with
-  // archive#4090 / epic archive#4142 M2 for the same reason as the desktop
-  // half above.
-  //
-  // `#station-main`'s "Dock this pane" button (`WorkspacePaneDockAction`,
-  // `.home-view__top-actions`) is hidden by `HomeView.css` at
-  // `max-width: 1024px` by design — "Docking is desktop composition. At
-  // phone/tablet widths the ambient dock already owns the mobile pane
-  // picker/maximize contract" — so at 390x844 it never appears, at any load
-  // (proven 6/6 at 10s and 20s timeouts in dock-occupant-picker.spec.ts,
-  // #1046/#1060). Dock Home through that mobile contract instead: the Chat
-  // mobile header's "⋯" overflow sheet (station#520/#524).
-  test('keeps a docked Home pane within the phone viewport', async ({
+  /**
+   * #1541, the phone half. Same replacement as the desktop journey above: the
+   * retired test docked Home through the Chat overflow sheet's "Switch to
+   * Home" row, and neither Home-as-a-dock-occupant nor that row exists since
+   * #928 C2a/C2b.
+   *
+   * The phone's own version of the guarded behaviour is sharper than the
+   * desktop's, because a coarse pointer folds every dock edge to the bottom
+   * and `RegionShells` mounts only the folded region: there is exactly ONE
+   * dock slot, so a placed surface does not sit beside Chat, it takes the
+   * slot. Hiding it returns that slot to Chat — `foldedDockRegion` falls back
+   * to Chat's region when no dock region is visible — and the pane must stay
+   * inside the phone viewport the whole way.
+   */
+  test('gives the one phone dock slot to a placed pane and returns it to Chat when hidden', async ({
     page,
   }) => {
-    const overflowTrigger = page.getByRole('button', { name: 'Chat actions' });
-    await expect(overflowTrigger).toBeVisible({ timeout: 15_000 });
-    await overflowTrigger.click();
-    await page.getByRole('menuitem', { name: 'Switch to Home' }).click();
-    await expect(dockOccupantTrigger(page, 'Home')).toBeVisible();
+    const viewport = page.viewportSize();
+    await expect(page.locator('.chat-dock')).toHaveCount(1);
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
+
+    await showRegionThroughOverflowMenu(page, 'Show Activity');
+
+    // One slot still, and Activity holds it: Chat's shell is not rendered at
+    // all, which is the phone fold rather than a hidden Chat.
+    await expect(page.locator('.chat-dock')).toHaveCount(1);
+    await expect(surfaceDockShell(page, 'Activity')).toHaveClass(
+      /chat-dock--bottom/,
+    );
+    await expect(chatDockShell(page)).toHaveCount(0);
     expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
-      ),
+      await documentFitsViewportWidth(page),
       'a docked non-chat pane must not push the phone document sideways',
     ).toBe(true);
-    // M5: the header affordance is the occupant picker now.
-    const action = dockOccupantTrigger(page, 'Home');
-    const bounds = await action.boundingBox();
+    const bounds = await surfaceDockShell(page, 'Activity').boundingBox();
+    expect(bounds, 'the docked pane must have a rendered box').not.toBeNull();
     expect(
-      bounds?.height,
-      'the occupant picker trigger must be a 44px tap target',
-    ).toBeGreaterThanOrEqual(44);
+      [bounds?.x, (bounds?.x ?? 0) + (bounds?.width ?? 0)],
+      'the docked pane must sit within the phone viewport horizontally',
+    ).toEqual([0, viewport?.width]);
+    expect(
+      (bounds?.y ?? 0) + (bounds?.height ?? 0),
+      'the docked pane must end within the phone viewport vertically',
+    ).toBeLessThanOrEqual(viewport?.height ?? 0);
+
+    // Hidden through the docked pane's OWN header control, which is what a
+    // phone user reaches for and which writes the region's visibility
+    // (`useDockShellChrome`'s `applyDockSnap('collapsed')` →
+    // `setRegion({ visible: false })`). Scoped to the pane, because the ⋯
+    // menu carries a row of the same name.
+    await surfaceDockShell(page, 'Activity')
+      .getByRole('button', { name: 'Hide Activity', exact: true })
+      .click();
+
+    await expect(page.locator('.chat-dock')).toHaveCount(1);
+    await expect(
+      chatDockShell(page),
+      'hiding the placed pane must return the one phone dock slot to Chat',
+    ).toHaveClass(/chat-dock--bottom/);
+    await expect(surfaceDockShell(page, 'Activity')).toHaveCount(0);
+    expect(
+      await documentFitsViewportWidth(page),
+      'returning the slot to Chat must not push the phone document sideways',
+    ).toBe(true);
   });
 });
