@@ -12,9 +12,14 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { parseAgentPluginManifest } from '@kontourai/station-shared/agent-plugin-manifest';
-import { expect, test } from '@playwright/test';
-import { authenticatedE2EFetch } from './helpers/authenticated-request';
+import { expect } from '@playwright/test';
+import { waitForSeededAgent } from './helpers/agents-journey';
+import {
+  authenticatedE2EFetch,
+  createAuthenticatedE2ERequest,
+} from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
+import { test } from './helpers/fixture-audit';
 import { installPluginWithConsent } from './helpers/install-plugin';
 import {
   closeFixtureServer,
@@ -275,6 +280,15 @@ test('coding example preserves both Panes and its authored native Agent in a rea
       name: 'Review current diff',
       exact: true,
     });
+    // Configuration reconciliation may invalidate an earlier ready projection.
+    // Observe the server's stable catalog, then use the real refresh control.
+    await waitForSeededAgent(
+      createAuthenticatedE2ERequest(page.request),
+      agent,
+    );
+    await bar
+      .getByRole('button', { name: 'Refresh actions', exact: true })
+      .click();
     await expect(action).toBeEnabled();
     const [response] = await Promise.all([
       page.waitForResponse(
