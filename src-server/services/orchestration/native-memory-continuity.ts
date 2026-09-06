@@ -54,6 +54,8 @@ export interface NativeMemoryContinuityBinding {
     | 'identity-change'
     | 'native-history-unavailable';
   isCurrent(): Promise<boolean>;
+  /** Re-authorize one certified segment without rescanning every other segment. */
+  isSessionCurrent(sessionId: string): Promise<boolean>;
 }
 
 const issuedBindings = new WeakSet<object>();
@@ -281,6 +283,7 @@ export async function captureNativeMemoryContinuity(
         .slice(0, nativeStart)
         .map((row) => row.sessionId),
       cutReason,
+      identities,
       fingerprint: JSON.stringify({
         lineage,
         identities,
@@ -292,6 +295,12 @@ export async function captureNativeMemoryContinuity(
   try {
     const snapshot = await observe();
     if ((await observe()).fingerprint !== snapshot.fingerprint) fail();
+    const identityBySession = new Map(
+      snapshot.identities.map((identity) => [
+        identity.sessionId,
+        JSON.stringify(identity),
+      ]),
+    );
     const binding = Object.freeze({
       conversationId: snapshot.conversationId,
       currentSessionId,
@@ -301,6 +310,20 @@ export async function captureNativeMemoryContinuity(
         snapshot.canonicalPrefixSessionIds,
       ),
       cutReason: snapshot.cutReason,
+      async isSessionCurrent(sessionId: string) {
+        try {
+          const expected = identityBySession.get(sessionId);
+          if (!expected || !(await owner.isAuthorityCurrent())) return false;
+          const current = await owner.readSession(sessionId);
+          return (
+            current !== null &&
+            JSON.stringify(identitySnapshot(current, sessionId)) === expected &&
+            (await owner.isAuthorityCurrent())
+          );
+        } catch {
+          return false;
+        }
+      },
       async isCurrent() {
         try {
           return (await observe()).fingerprint === snapshot.fingerprint;

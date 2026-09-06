@@ -904,7 +904,7 @@ export class VoltAgentFramework {
     // the raw, unwrapped adapter, so the marker still renders on
     // reload. See `memory-adapter-prompt-view.ts` for the full trace.
     const memory = new Memory({
-      storage: createPromptOnlyMemoryView(opts.memoryAdapter),
+      storage: createPromptOnlyMemoryView(opts.memoryAdapter, slug),
     });
 
     // Load tools
@@ -1032,6 +1032,7 @@ export class VoltAgentFramework {
   }
 
   async createTempAgent(opts: {
+    agentId?: string;
     name: string;
     instructions: string | (() => string);
     model: any;
@@ -1069,7 +1070,10 @@ export class VoltAgentFramework {
       ...(opts.memoryAdapter
         ? {
             memory: new Memory({
-              storage: createPromptOnlyMemoryView(opts.memoryAdapter),
+              storage: createPromptOnlyMemoryView(
+                opts.memoryAdapter,
+                opts.agentId,
+              ),
             }),
           }
         : {}),

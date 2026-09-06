@@ -3670,6 +3670,8 @@ export async function executeExecutionTargetMessage(
         sessionId: started.session.threadId,
       };
     },
+    nativeMemoryOwnsTranscript:
+      orchestrationService.supportsNativeMemoryContinuity?.() === true,
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
       const command = { type: 'sendTurn' as const, input: turnInput };
       const dispatchContext = dispatchContextForAuthority(
@@ -3681,11 +3683,15 @@ export async function executeExecutionTargetMessage(
         ? await orchestrationService.dispatchWithReceipt(
             command,
             dispatchContext,
-            { foregroundInvocationAdmission: admission },
+            {
+              foregroundInvocationAdmission: admission,
+              nativeMemoryReadAuthority: readAuthority,
+            },
           )
         : await orchestrationService.dispatchWithReceipt(
             command,
             dispatchContext,
+            { nativeMemoryReadAuthority: readAuthority },
           );
       if (!dispatched.result || !('turnId' in dispatched.result)) {
         throw new ForegroundMessageTurnIdentityUnavailableError(

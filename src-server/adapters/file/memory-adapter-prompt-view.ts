@@ -28,6 +28,7 @@
  */
 import type { StorageAdapter } from '@voltagent/core';
 import type { UIMessage } from 'ai';
+import { currentNativeMemoryHistory } from '../../runtime/conversation/authorized-turn-correlation.js';
 
 /** Must match the literal prefix `chat-lifecycle.ts` persists. */
 export const CHAT_ERROR_MARKER = '[SYSTEM_EVENT] [CHAT_ERROR]';
@@ -75,12 +76,21 @@ export function createPromptOnlyMemoryView(
   // concrete class bought nothing and blocked any other conversation store
   // (sqlite, sql) from being wired through the same seam (archive#914).
   adapter: StorageAdapter,
+  ownerAgentKey?: string,
 ): StorageAdapter {
   return new Proxy(adapter, {
     get(target, prop, _receiver) {
       if (prop === 'getMessages') {
         return async (...args: Parameters<StorageAdapter['getMessages']>) => {
-          const messages = await (target as any).getMessages(...args);
+          const nativeMemory = currentNativeMemoryHistory();
+          if (
+            nativeMemory &&
+            ownerAgentKey &&
+            nativeMemory.ownsRuntimeAgentKey(ownerAgentKey) &&
+            nativeMemory.currentSessionId === args[1]
+          )
+            return nativeMemory.read(target, ...args);
+          const messages = await target.getMessages(...args);
           return excludeChatErrorMarkers(messages);
         };
       }
