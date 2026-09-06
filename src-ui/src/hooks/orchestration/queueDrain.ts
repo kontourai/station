@@ -169,16 +169,6 @@ export function drainQueuedMessageOnTurnCompleted(
         error:
           'This chat has no agent to send to. Your message is still queued.',
         queuedMessages: [nextMessage, ...(current.queuedMessages ?? [])],
-        ...(changedBinding
-          ? {
-              queuedMessageFailure: {
-                reviewReason: 'execution-binding-changed' as const,
-                message:
-                  'This conversation changed Agent or Session. Review queued messages before retrying.',
-                at: Date.now(),
-              },
-            }
-          : {}),
       });
       return;
     }
