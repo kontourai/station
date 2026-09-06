@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { homedir } from 'node:os';
 import nodePath from 'node:path';
 import {
   deleteSession,
@@ -23,6 +24,7 @@ import {
 import type {
   CapabilityDeliveryChannelReport,
   CapabilityUndelivered,
+  ProviderSessionSourceAffinity,
   ResolvedAgentDefinition,
 } from '@kontourai/station-contracts/provider';
 import {
@@ -59,6 +61,7 @@ import type {
   ProviderAdapterShape,
   ProviderAdoptionHooks,
   ProviderDiscardSessionRecovery,
+  ProviderNativeSessionIdentity,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
@@ -79,6 +82,8 @@ import {
   decodeChatAttachments,
   decodeUtf8Attachment,
 } from '../sessions/chat-attachments.js';
+import { snapshotSessionSourceAffinity } from '../sessions/session-source-affinity.js';
+import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
 import {
   type ClaudeMessageState,
@@ -99,6 +104,10 @@ import {
   resolveClaudeMcpServers,
 } from './claude-mcp-passthrough.js';
 import { CLAUDE_DEFAULT_MODEL, CLAUDE_KNOWN_MODELS } from './claude-models.js';
+import {
+  claudeResumeSessionId,
+  claudeSourceResumeCursor,
+} from './claude-resume-cursor.js';
 import {
   cleanupMaterializedSkills,
   defaultClaudeGlobalConfigDirs,
@@ -574,6 +583,9 @@ function adoptionTitle(threadId: string): string {
 type ClaudeAdapterLogger = any;
 
 export interface ClaudeAdapterOptions {
+  resolveSourceHome?: (
+    affinity: ProviderSessionSourceAffinity,
+  ) => string | null;
   /**
    * #1551: resolves the absolute path of the installed `claude` executable,
    * or `null` when none is on PATH. Injected so both the spawn assertions and
@@ -853,6 +865,7 @@ async function evaluateClaudePreToolPolicy(
 
 export class ClaudeAdapter implements ProviderAdapterShape {
   readonly provider = 'claude' as const;
+  readonly adoptionLifecycle = 'reported' as const;
   readonly metadata = {
     displayName: 'Claude Code',
     description: 'Claude Code integration with approvals and reasoning events.',
@@ -890,6 +903,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     },
   } as const;
 
+  nativeSessionIdentity(
+    resumeCursor: unknown,
+  ): ProviderNativeSessionIdentity | undefined {
+    const sessionId = claudeResumeSessionId(resumeCursor);
+    if (!sessionId) return undefined;
+    const sourceCursor = claudeSourceResumeCursor(resumeCursor);
+    return {
+      sessionId,
+      ...(sourceCursor ? { affinity: sourceCursor.sourceAffinity } : {}),
+    };
+  }
+
   private readonly events = new AsyncEventQueue();
   private readonly sessions = new Map<string, ClaudeSessionRecord>();
   /** #1551: memoized `<claude> --version` probes, keyed by command + args. */
@@ -903,6 +928,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    const sourceCursor = claudeSourceResumeCursor(input.resumeCursor);
+    if (sourceCursor) {
+      this.requireSourceHome(sourceCursor.sourceAffinity);
+      input = { ...input, resumeCursor: sourceCursor };
+    }
     const { report: skillsReport, overlayDir } =
       await this.prepareSkillsMaterialization(
         input.cwd,
@@ -910,7 +940,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         input.threadId,
         input.agent,
       );
-    const appHomeEnv = await this.resolveAppHomeEnv(input.credentialProfileRef);
+    const appHomeEnv = sourceCursor
+      ? undefined
+      : await this.resolveAppHomeEnv(input.credentialProfileRef);
     const augmentedEnv = await this.resolveAugmentedSpawnEnv();
     const preToolPolicy = await this.resolvePreToolPolicy(input);
     const claudeExecutable = launchedClaudeExecutable(
@@ -940,6 +972,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (this.sessions.has(input.threadId)) {
       throw new Error(`Claude session already exists: ${input.threadId}`);
     }
+    if (input.sourceBoundary)
+      throw new Error('Claude does not support a completed-turn fork cutoff.');
+    if (input.sourceAffinity || this.options.resolveSourceHome) {
+      this.requireSourceHome(input.sourceAffinity);
+      input = {
+        ...input,
+        sourceAffinity: snapshotSessionSourceAffinity(input.sourceAffinity!),
+      };
+    }
+    await hooks?.onProviderChildCreationStarted?.();
     const fork = await forkSession(input.sourceSessionId, {
       dir: input.cwd,
       title: adoptionTitle(input.threadId),
@@ -950,7 +992,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       );
     }
     try {
-      await hooks?.onProviderChildCreated(fork.sessionId);
+      const resumeCursor = input.sourceAffinity
+        ? {
+            claudeSessionId: fork.sessionId,
+            sourceAffinity: input.sourceAffinity,
+          }
+        : fork.sessionId;
+      await hooks?.onProviderChildCreated(resumeCursor);
       const { report: skillsReport, overlayDir } =
         await this.prepareSkillsMaterialization(
           input.cwd,
@@ -973,7 +1021,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         await this.resolveClaudeExecutable(),
       );
       return this.startTrackedSession(
-        { ...input, resumeCursor: fork.sessionId, persistSession: true },
+        { ...input, resumeCursor, persistSession: true },
         true,
         skillsReport,
         undefined,
@@ -983,9 +1031,29 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         claudeExecutable,
       );
     } catch (error) {
-      await deleteSession(fork.sessionId, { dir: input.cwd }).catch(() => {});
+      // With lifecycle reporting, the durable owner has the child cursor (or
+      // the reservation marker) and owns cleanup. Deleting here too would
+      // make its subsequent SDK deletion fail as "session not found".
+      if (!hooks)
+        await deleteSession(fork.sessionId, { dir: input.cwd }).catch(() => {});
       throw error;
     }
+  }
+
+  private requireSourceHome(
+    affinity: ProviderSessionSourceAffinity | undefined,
+  ): string {
+    const registered = affinity
+      ? this.options.resolveSourceHome?.(affinity)
+      : null;
+    const sdkHome = resolveConfigHomeAffinity(
+      'claude-config-home',
+      process.env.CLAUDE_CONFIG_DIR ?? nodePath.join(homedir(), '.claude'),
+      affinity,
+    );
+    if (!registered || registered !== sdkHome)
+      throw new Error('Claude source-home affinity is unavailable.');
+    return registered;
   }
 
   async discardSession(
@@ -993,7 +1061,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     recovery?: ProviderDiscardSessionRecovery,
   ): Promise<void> {
     const record = this.sessions.get(threadId);
-    let cursor = record?.session.resumeCursor ?? recovery?.resumeCursor;
+    if (recovery?.adoptionKey && this.options.resolveSourceHome)
+      this.requireSourceHome(recovery.sourceAffinity);
+    const resumeCursor = record?.session.resumeCursor ?? recovery?.resumeCursor;
+    const sourceCursor = claudeSourceResumeCursor(resumeCursor);
+    if (sourceCursor) this.requireSourceHome(sourceCursor.sourceAffinity);
+    let cursor = claudeResumeSessionId(resumeCursor);
     const cwd = record?.session.cwd ?? recovery?.cwd;
     await this.stopSession(threadId);
     if (
@@ -1003,14 +1076,30 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       recovery.createdAt
     ) {
       const earliest = Date.parse(recovery.createdAt);
-      const recovered = (await listSessions({ dir: cwd })).find(
+      const candidates = (await listSessions({ dir: cwd })).filter(
         (session) =>
           session.customTitle === adoptionTitle(recovery.adoptionKey!) &&
           session.lastModified >= earliest - 1_000,
       );
-      cursor = recovered?.sessionId;
+      if (candidates.length !== 1)
+        throw new Error(
+          'Claude child cleanup could not establish a unique continuation.',
+        );
+      cursor = candidates[0]!.sessionId;
+    }
+    if (
+      recovery?.adoptionKey &&
+      (typeof cursor !== 'string' || cursor === recovery.sourceSessionId)
+    ) {
+      throw new Error(
+        'Claude child cleanup identity is unavailable or identifies the source.',
+      );
     }
     if (typeof cursor === 'string') {
+      if (recovery?.adoptionKey) {
+        await deleteSession(cursor, { dir: cwd });
+        return;
+      }
       // Best-effort: a session that ran under an app-home profile may have
       // its transcript under a different config root than the server-env
       // `deleteSession` call resolves (archive#896, decision 5) — Station owns the
@@ -1084,8 +1173,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
     const record: ClaudeSessionRecord = {
       session,
-      attemptedResumeCursor:
-        typeof input.resumeCursor === 'string' ? input.resumeCursor : undefined,
+      attemptedResumeCursor: claudeResumeSessionId(input.resumeCursor),
       promptQueue,
       query: sdkQuery,
       pendingRequests: new Map(),
@@ -1946,8 +2034,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ...(claudeExecutable
         ? { pathToClaudeCodeExecutable: claudeExecutable }
         : {}),
-      resume:
-        typeof input.resumeCursor === 'string' ? input.resumeCursor : undefined,
+      resume: claudeResumeSessionId(input.resumeCursor),
       includePartialMessages: true,
       persistSession,
       // archive#1174: a cwd-less session materializes its skills into a

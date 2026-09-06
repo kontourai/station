@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, test } from 'vitest';
 import { EventStore } from '../event-store.js';
 
@@ -34,6 +35,133 @@ describe('AdoptionLedger', () => {
       updatedAt: '2026-07-22T00:00:00.000Z',
     };
   }
+
+  test('upgrades an existing adoption table without dropping an unresolved legacy reservation', () => {
+    const first = open();
+    const claim = first.ledger.reserve(input());
+    if (claim.kind !== 'owner') throw new Error('expected owner');
+    claim.adoption.markForking();
+    first.store.close();
+    const databasePath = join(first.directory, 'orchestration.sqlite');
+    const legacy = new DatabaseSync(databasePath);
+    legacy.exec(
+      'ALTER TABLE provider_session_adoptions DROP COLUMN source_affinity',
+    );
+    legacy.exec(
+      'ALTER TABLE provider_session_adoptions DROP COLUMN source_boundary',
+    );
+    legacy.close();
+    const reopened = new EventStore(databasePath);
+    try {
+      const ledger = reopened.createAdoptionLedger();
+      expect(ledger.reservations()).toEqual([
+        expect.objectContaining({
+          sourceThreadId: input().sourceThreadId,
+          status: 'forking',
+        }),
+      ]);
+      expect(ledger.reservations()[0]?.sourceAffinity).toBeUndefined();
+      expect(
+        ledger.reserve({
+          ...input('new-source'),
+          targetThreadId: 'new-child',
+          sourceAffinity: { kind: 'remote-source', ref: 'opaque-account' },
+        }).kind,
+      ).toBe('owner');
+      expect(
+        ledger.reservations().find((row) => row.sourceThreadId === 'new-source')
+          ?.sourceAffinity,
+      ).toEqual({ kind: 'remote-source', ref: 'opaque-account' });
+    } finally {
+      reopened.close();
+    }
+  });
+
+  test('persists admitted source affinity and boundary before creation and restores immutable recovery context', () => {
+    const first = open();
+    const sourceAffinity = { kind: 'remote-source', ref: 'opaque-account' };
+    const sourceBoundary = {
+      kind: 'completed-turn' as const,
+      providerTurnId: 'turn/native:one',
+      observedEventId: 'observed-completion',
+    };
+    const reserved = first.ledger.reserve({
+      ...input(),
+      sourceAffinity,
+      sourceBoundary,
+    });
+    if (reserved.kind !== 'owner') throw new Error('expected owner');
+    sourceAffinity.ref = 'caller-mutated';
+    sourceBoundary.providerTurnId = 'caller-mutated';
+    expect(reserved.adoption.reservation).toMatchObject({
+      status: 'pending',
+      sourceAffinity: { kind: 'remote-source', ref: 'opaque-account' },
+      sourceBoundary: { providerTurnId: 'turn/native:one' },
+    });
+    expect(Object.isFrozen(reserved.adoption.reservation.sourceAffinity)).toBe(
+      true,
+    );
+    reserved.adoption.markForking();
+    first.store.close();
+    const reopened = new EventStore(
+      join(first.directory, 'orchestration.sqlite'),
+    );
+    try {
+      const ledger = reopened.createAdoptionLedger();
+      const persisted = ledger.reservations()[0]!;
+      expect(persisted).toMatchObject({
+        status: 'forking',
+        sourceAffinity: { kind: 'remote-source', ref: 'opaque-account' },
+        sourceBoundary: {
+          kind: 'completed-turn',
+          providerTurnId: 'turn/native:one',
+          observedEventId: 'observed-completion',
+        },
+      });
+      const reclaimed = ledger.reclaim({
+        reservation: persisted,
+        ownerId: 'recovery-owner',
+        ownerPid: 303,
+      });
+      expect(reclaimed.kind).toBe('owner');
+      if (reclaimed.kind !== 'owner')
+        throw new Error('expected recovery owner');
+      expect(reclaimed.adoption.reservation.sourceAffinity).toEqual({
+        kind: 'remote-source',
+        ref: 'opaque-account',
+      });
+      expect(
+        reclaimed.adoption.reservation.sourceBoundary?.providerTurnId,
+      ).toBe('turn/native:one');
+    } finally {
+      reopened.close();
+    }
+  });
+
+  test('rejects malformed source context before reserving an adoption', () => {
+    const { store, ledger } = open();
+    try {
+      expect(() =>
+        ledger.reserve({
+          ...input(),
+          sourceAffinity: { kind: 'source', ref: '' },
+        }),
+      ).toThrow('source affinity');
+      expect(() =>
+        ledger.reserve({
+          ...input(),
+          sourceBoundary: {
+            kind: 'completed-turn',
+            providerTurnId: 'turn',
+            observedEventId: 'event',
+          },
+        }),
+      ).toThrow('source boundary');
+      expect(ledger.reservations()).toEqual([]);
+    } finally {
+      store.close();
+    }
+  });
 
   test('gives only the winner an owner capability and advances legal facts durably', () => {
     const { store, ledger } = open();

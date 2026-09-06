@@ -5,6 +5,7 @@ import {
   engineId as toEngineId,
 } from './agent-identity.js';
 import { engineDisplayLabel } from './engine-display.js';
+import type { AttachedSessionSourceMetadata } from './provider.js';
 
 /**
  * The honest, single-source capability
@@ -333,7 +334,12 @@ export interface EngineCapabilityMatrix {
   engineId: EngineId;
   /** Independent native child from an external transcript, never control of its original process. */
   externalSessionContinuation?:
-    | { state: 'native'; basis: 'declared' }
+    | {
+        state: 'native';
+        basis: 'declared';
+        boundary?: 'completed-turn';
+        requiresSourceAffinity?: boolean;
+      }
     | { state: 'unsupported'; reason: string };
   systemPrompt: CapabilityDelivery;
   /**
@@ -585,7 +591,11 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   claude: {
     engineId: toEngineId('claude'),
-    externalSessionContinuation: { state: 'native', basis: 'declared' },
+    externalSessionContinuation: {
+      state: 'native',
+      basis: 'declared',
+      requiresSourceAffinity: true,
+    },
     // systemPrompt deliverable via a per-session flag.
     systemPrompt: { state: 'session', channel: 'flag' },
     // The native flag channel above already delivers the authored prompt;
@@ -652,9 +662,10 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   codex: {
     engineId: toEngineId('codex'),
     externalSessionContinuation: {
-      state: 'unsupported',
-      reason:
-        'Station can read this Codex transcript, but independent continuation is not available yet.',
+      state: 'native',
+      basis: 'declared',
+      requiresSourceAffinity: true,
+      boundary: 'completed-turn',
     },
     // Evidence gate (docs/design/agent-engine-unification.md
     // §4.1/§6.1): `codex app-server generate-json-schema` against the
@@ -1256,10 +1267,13 @@ export function resolveBuiltinAgentEngineBinding(input: {
 }
 
 /** A declaration is product support, not permission or proof of current source readiness. */
-export function externalSessionContinuationSupport(
-  provider: string,
-):
-  | { state: 'native'; basis: 'declared' }
+export function externalSessionContinuationSupport(provider: string):
+  | {
+      state: 'native';
+      basis: 'declared';
+      boundary?: 'completed-turn';
+      requiresSourceAffinity?: boolean;
+    }
   | { state: 'unsupported' | 'unknown'; reason: string } {
   return (
     ENGINE_CAPABILITY_MATRICES[provider]?.externalSessionContinuation ?? {
@@ -1268,4 +1282,33 @@ export function externalSessionContinuationSupport(
         'Station has not established independent continuation support for this engine.',
     }
   );
+}
+
+/** Product availability only; the command owner revalidates source authority. */
+export function externalSessionContinuationAvailability(
+  provider: string,
+  source?: AttachedSessionSourceMetadata,
+): { enabled: boolean; reason?: string } {
+  const support = externalSessionContinuationSupport(provider);
+  if (support.state !== 'native')
+    return { enabled: false, reason: support.reason };
+  if (
+    support.requiresSourceAffinity &&
+    (!source?.affinity?.kind || !source.affinity.ref)
+  ) {
+    return {
+      enabled: false,
+      reason: 'Waiting for the source configuration to be verified.',
+    };
+  }
+  if (
+    support.boundary === 'completed-turn' &&
+    source?.completedBoundary?.kind !== 'completed-turn'
+  ) {
+    return {
+      enabled: false,
+      reason: 'No completed source turn is available for continuation.',
+    };
+  }
+  return { enabled: true };
 }

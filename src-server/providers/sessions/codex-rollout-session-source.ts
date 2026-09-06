@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative, sep } from 'node:path';
+import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { projectCodexToolOutput } from '../adapters/codex-tool-output.js';
 import type {
@@ -12,7 +13,12 @@ import type {
   AttachedSessionSource,
   AttachedSessionSourceOutcome,
 } from './attached-session-source.js';
-import { readLeadingLine, readWindow } from './transcript-file-io.js';
+import {
+  deriveConfigHomeAffinity,
+  readLeadingLine,
+  readWindow,
+  resolveConfigHomeAffinity,
+} from './transcript-file-io.js';
 
 const DEFAULT_MAX_CANDIDATES = 128;
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
@@ -35,6 +41,7 @@ const MAX_PROMPT_BYTES = 32 * 1024;
 const MAX_TEXT_CHUNK_BYTES = 16 * 1024;
 const MAX_DIAGNOSTIC_TEXT_BYTES = 4096;
 const EPOCH = '1970-01-01T00:00:00.000Z';
+const SOURCE_HOME_NAMESPACE = 'codex-config-home';
 
 interface CodexCursorState extends Record<string, unknown> {
   version: 1;
@@ -83,6 +90,8 @@ export interface CodexRolloutSessionSourceOptions {
 export class CodexRolloutSessionSource implements AttachedSessionSource {
   readonly provider = 'codex';
   readonly kind = 'codex-rollout';
+  readonly continuationBoundary = 'completed-turn';
+  private readonly homeDir: string;
   private readonly sessionsDir: string;
   private readonly maxCandidates: number;
   private readonly maxBytes: number;
@@ -95,9 +104,9 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
   private readonly handles = new Map<string, SourceRegistration>();
 
   constructor(options: CodexRolloutSessionSourceOptions = {}) {
-    const homeDir =
+    this.homeDir =
       options.homeDir ?? process.env.CODEX_HOME ?? join(homedir(), '.codex');
-    this.sessionsDir = join(homeDir, 'sessions');
+    this.sessionsDir = join(this.homeDir, 'sessions');
     this.maxCandidates = boundedInteger(
       'maxCandidates',
       options.maxCandidates ?? DEFAULT_MAX_CANDIDATES,
@@ -143,7 +152,12 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
   }
 
   async discover(): Promise<AttachedSessionDiscoveryResult> {
-    const root = this.canonicalSessionsRoot();
+    const sourceHome = deriveConfigHomeAffinity(
+      SOURCE_HOME_NAMESPACE,
+      this.homeDir,
+    );
+    if (!sourceHome) return { outcome: 'missing_root', sessions: [] };
+    const root = this.canonicalSessionsRoot(sourceHome.canonicalRoot);
     if (!root) return { outcome: 'missing_root', sessions: [] };
     this.handles.clear();
 
@@ -218,7 +232,12 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
           ? 'rejected_candidate'
           : 'ok';
     for (const candidate of candidates.sort(compareCandidates)) {
-      const result = this.discoverFile(root, sourceIdentity, candidate.path);
+      const result = this.discoverFile(
+        root,
+        sourceIdentity,
+        candidate.path,
+        sourceHome.affinity,
+      );
       if (!result.registration) {
         outcome = mergeOutcome(outcome, result.outcome);
         continue;
@@ -240,7 +259,16 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
     if (!registration || !sameDescriptor(registration.descriptor, session)) {
       return { outcome: 'unknown_source', events: [], cursor: 0 };
     }
-    const root = this.canonicalSessionsRoot();
+    const affinity = session.affinity;
+    const sourceHome = this.resolveSourceHome(affinity);
+    if (!sourceHome || !affinity) {
+      return {
+        outcome: 'rejected_candidate',
+        events: [],
+        cursor: previousCursor,
+      };
+    }
+    const root = this.canonicalSessionsRoot(sourceHome);
     const canonical = root
       ? canonicalRegularFile(root, registration.path)
       : null;
@@ -255,6 +283,7 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
       root!,
       filesystemIdentity(root!),
       canonical,
+      affinity,
     );
     if (
       !refreshed.registration ||
@@ -415,12 +444,23 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
     };
   }
 
-  private canonicalSessionsRoot(): string | null {
+  resolveSourceHome(
+    affinity: ProviderSessionSourceAffinity | undefined,
+  ): string | null {
+    return resolveConfigHomeAffinity(
+      SOURCE_HOME_NAMESPACE,
+      this.homeDir,
+      affinity,
+    );
+  }
+
+  private canonicalSessionsRoot(configRoot: string): string | null {
     try {
       if (!existsSync(this.sessionsDir)) return null;
       const stat = lstatSync(this.sessionsDir);
       if (!stat.isDirectory() || stat.isSymbolicLink()) return null;
-      return realpathSync(this.sessionsDir);
+      const canonical = realpathSync(this.sessionsDir);
+      return canonical.startsWith(`${configRoot}${sep}`) ? canonical : null;
     } catch {
       return null;
     }
@@ -430,6 +470,7 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
     root: string,
     sourceIdentity: string,
     file: string,
+    affinity: ProviderSessionSourceAffinity,
   ): {
     outcome: AttachedSessionSourceOutcome;
     registration?: SourceRegistration;
@@ -465,6 +506,7 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
           relativePath,
           sessionId,
         ]),
+        affinity,
       };
       return {
         outcome: 'ok',
@@ -1253,7 +1295,9 @@ function sameDescriptor(
     actual.threadId === expected.threadId &&
     actual.cwd === expected.cwd &&
     actual.createdAt === expected.createdAt &&
-    actual.sourceHandle === expected.sourceHandle
+    actual.sourceHandle === expected.sourceHandle &&
+    actual.affinity?.kind === expected.affinity?.kind &&
+    actual.affinity?.ref === expected.affinity?.ref
   );
 }
 

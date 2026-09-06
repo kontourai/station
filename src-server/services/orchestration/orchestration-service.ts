@@ -100,6 +100,10 @@ import type {
 import { ProviderTurnEndedError } from '../../providers/adapter-shape.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
+import {
+  nativeSessionIdentityMatchesSource,
+  providerNativeSessionIdentity,
+} from '../../providers/provider-session-identity.js';
 import { publicAgentIdFromRuntimeKey } from '../../routes/agents/runtime-agent-identity.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import {
@@ -6973,17 +6977,31 @@ export class OrchestrationService {
     const eventStore = this.options.eventStore;
     if (!eventStore) return;
     const persisted = eventStore.readSessions();
-    const ownedCursors = new Set(
-      persisted
-        .filter((session) => session.controlMode !== 'read-only-attached')
-        .map(
-          (session) => `${session.provider}:${String(session.resumeCursor)}`,
-        ),
-    );
+    const ownedIdentities = new Map<
+      string,
+      NonNullable<ReturnType<typeof providerNativeSessionIdentity>>[]
+    >();
+    const rememberOwnedCursor = (provider: EngineId, resumeCursor: unknown) => {
+      const identity = providerNativeSessionIdentity(
+        this.options.adapterRegistry.get(provider),
+        resumeCursor,
+      );
+      if (!identity) return;
+      const key = JSON.stringify([provider, identity.sessionId]);
+      const identities = ownedIdentities.get(key) ?? [];
+      identities.push(identity);
+      ownedIdentities.set(key, identities);
+    };
+    for (const session of persisted) {
+      if (session.controlMode !== 'read-only-attached') {
+        rememberOwnedCursor(session.provider, session.resumeCursor);
+      }
+    }
     for (const reservation of this.adoptionLedger?.reservations() ?? []) {
       if (reservation.providerResumeCursor !== undefined) {
-        ownedCursors.add(
-          `${reservation.provider}:${String(reservation.providerResumeCursor)}`,
+        rememberOwnedCursor(
+          reservation.provider,
+          reservation.providerResumeCursor,
         );
       }
     }
@@ -6994,7 +7012,19 @@ export class OrchestrationService {
     );
     for (const alias of aliases.values()) {
       const externalId = alias.attachedSource?.externalSessionId;
-      if (!externalId || !ownedCursors.has(`${alias.provider}:${externalId}`)) {
+      const candidates = externalId
+        ? ownedIdentities.get(JSON.stringify([alias.provider, externalId]))
+        : undefined;
+      if (
+        !externalId ||
+        !candidates?.some((identity) =>
+          nativeSessionIdentityMatchesSource(
+            identity,
+            externalId,
+            alias.attachedSource?.affinity,
+          ),
+        )
+      ) {
         continue;
       }
       this.forgetThreadState(alias.threadId, { ownerCache: true });

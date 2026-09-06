@@ -7,10 +7,11 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { expect, type Page } from '@playwright/test';
 import { claudeAttachedThreadId } from '../src-server/providers/sessions/claude-transcript-session-source.js';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
+import { buildCodexRolloutFixture } from './helpers/codex-rollout-fixture';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { test } from './helpers/fixture-audit';
 import {
@@ -59,7 +60,7 @@ async function waitForAttachedSession(): Promise<void> {
     .toBe('read-only-attached');
 }
 
-test('follows an external Codex rollout and explains unavailable independent continuation', async ({
+test('enables external Codex continuation only after a completed source turn is observed', async ({
   page,
 }) => {
   const codexHome = process.env.CODEX_HOME;
@@ -70,28 +71,35 @@ test('follows an external Codex rollout and explains unavailable independent con
   }
   const workspace = mkdtempSync(join(tmpdir(), 'station-codex-follow-ui-'));
   const slug = 'codex-session-follow-e2e';
-  const sourceDirectory = join(codexHome, 'sessions', '2026', '09', '06');
-  mkdirSync(sourceDirectory, { recursive: true });
-  const sourcePath = join(
-    sourceDirectory,
-    'rollout-station-codex-follow-e2e.jsonl',
-  );
-  const record = (type: string, payload: Record<string, unknown>) =>
-    jsonl({ timestamp: '2026-09-06T12:00:00.000Z', type, payload });
-  const recordsForTurn = (id: string, answer: string) =>
-    [
-      record('event_msg', { type: 'task_started', turn_id: id }),
-      record('event_msg', {
-        type: 'user_message',
-        message: `Inspect Codex workspace ${id}`,
-      }),
-      record('response_item', {
-        type: 'message',
-        role: 'assistant',
-        content: [{ type: 'output_text', text: answer }],
-      }),
-      record('event_msg', { type: 'task_complete', turn_id: id }),
-    ].join('');
+  const fixtureInput = {
+    nativeSessionId: '0199a001-0000-7000-8000-000000000004',
+    cwd: workspace,
+    createdAt: '2026-09-06T12:00:00.000Z',
+    model: 'gpt-5.6-sol',
+  };
+  const firstTurn = {
+    turnId: 'first',
+    prompt: 'Inspect Codex workspace first',
+    assistantText: 'Codex activity is visible.',
+  };
+  const initialFixture = buildCodexRolloutFixture({
+    ...fixtureInput,
+    turns: [{ ...firstTurn, status: 'in-progress' }],
+  });
+  const completedFixture = buildCodexRolloutFixture({
+    ...fixtureInput,
+    turns: [
+      { ...firstTurn, status: 'completed' },
+      {
+        turnId: 'second',
+        prompt: 'Inspect Codex workspace second',
+        assistantText: 'Appended Codex activity is visible.',
+        status: 'completed',
+      },
+    ],
+  });
+  const sourcePath = join(codexHome, initialFixture.relativePath);
+  mkdirSync(dirname(sourcePath), { recursive: true });
   const created = await authenticatedE2EFetch(`${API}/api/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -103,9 +111,7 @@ test('follows an external Codex rollout and explains unavailable independent con
   });
   try {
     expect(created.ok).toBe(true);
-    const initial =
-      record('session_meta', { id: 'codex-ui-source', cwd: workspace }) +
-      recordsForTurn('first', 'Codex activity is visible.');
+    const initial = initialFixture.content;
     writeFileSync(sourcePath, initial);
     let threadId = '';
     await expect
@@ -142,17 +148,9 @@ test('follows an external Codex rollout and explains unavailable independent con
       detail.getByRole('button', { name: 'Continue in Station' }),
     ).toBeDisabled();
     await expect(detail).toContainText(
-      'independent continuation is not available yet',
+      'No completed source turn is available for continuation.',
     );
 
-    const appended = recordsForTurn(
-      'second',
-      'Appended Codex activity is visible.',
-    );
-    appendFileSync(sourcePath, appended);
-    await expect(detail).toContainText('Appended Codex activity is visible.', {
-      timeout: 15_000,
-    });
     const rejected = await authenticatedE2EFetch(
       `${API}/api/orchestration/commands`,
       {
@@ -166,8 +164,17 @@ test('follows an external Codex rollout and explains unavailable independent con
     );
     expect(rejected.ok).toBe(false);
     expect(JSON.stringify(await rejected.json())).toContain(
-      'independent continuation is not available yet',
+      'completed turn are required for this continuation',
     );
+    expect(completedFixture.content.startsWith(initial)).toBe(true);
+    const appended = completedFixture.content.slice(initial.length);
+    appendFileSync(sourcePath, appended);
+    await expect(detail).toContainText('Appended Codex activity is visible.', {
+      timeout: 15_000,
+    });
+    await expect(
+      detail.getByRole('button', { name: 'Continue in Station' }),
+    ).toBeEnabled();
     expect(readFileSync(sourcePath, 'utf8')).toBe(initial + appended);
     await page.setViewportSize({ width: 320, height: 720 });
     const mobileContinue = detail.getByRole('button', {
@@ -180,7 +187,7 @@ test('follows an external Codex rollout and explains unavailable independent con
     ).toBeVisible();
     await expect(
       detail.getByRole('button', { name: 'Continue in Station' }),
-    ).toBeDisabled();
+    ).toBeEnabled();
   } finally {
     await authenticatedE2EFetch(`${API}/api/projects/${slug}`, {
       method: 'DELETE',
@@ -194,6 +201,11 @@ async function mockMobileAdoption(page: Page) {
   const source = {
     threadId: ATTACHED_MOBILE_THREAD_ID,
     provider: 'claude',
+    attachedSource: {
+      kind: 'claude-transcript',
+      externalSessionId: 'mobile-source',
+      affinity: { kind: 'fixture-home', ref: 'verified-mobile-home' },
+    },
     controlMode: 'read-only-attached',
     status: 'ready',
     lifecycleState: 'needs_input',

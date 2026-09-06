@@ -86,13 +86,13 @@ const receipt = () =>
 describe('AttachedSessionAdoption', () => {
   it('rejects unsupported external continuation before resolving or invoking an adapter', async () => {
     const source: ProviderSession = {
-      provider: 'codex',
-      threadId: 'external:codex:fixture',
+      provider: 'bedrock',
+      threadId: 'external:bedrock:fixture',
       status: 'ready',
       cwd: '/fixture/project',
       controlMode: 'read-only-attached',
       attachedSource: {
-        kind: 'codex-rollout',
+        kind: 'fixture-source',
         externalSessionId: 'native-source',
       },
       createdAt: '2026-09-06T00:00:00Z',
@@ -111,7 +111,9 @@ describe('AttachedSessionAdoption', () => {
     });
     await expect(
       new AttachedSessionAdoption(deps).adopt(source.threadId, receipt()),
-    ).rejects.toThrow('independent continuation is not available yet');
+    ).rejects.toThrow(
+      'Station has not established independent continuation support for this engine.',
+    );
     expect(adapterRequests).toBe(0);
   });
 

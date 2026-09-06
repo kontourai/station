@@ -49,8 +49,7 @@ import {
   registerProviderAdapters,
   registerSkillRegistryProvider,
 } from '../../providers/registries/registry.js';
-import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
-import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
+import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import { publicIdentityAgentSetView } from '../../routes/agents/runtime-agent-identity.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
 import { getCachedUser } from '../../routes/system/auth.js';
@@ -154,6 +153,7 @@ import { isManagedChatOrchestrationFeatureEnabled } from './station-features.js'
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 
 export interface InitializeRuntimeDeps {
+  attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
   logger: Logger;
@@ -627,10 +627,8 @@ export async function initializeRuntime(
     homeDir: configLoader.getProjectHomeDir(),
   });
   const attachedSessionFollowService = new AttachedSessionFollowService({
-    sources: [
-      new ClaudeTranscriptSessionSource(),
-      new CodexRolloutSessionSource(),
-    ],
+    sources: deps.attachedSessionSources ?? [],
+    adapterRegistry: publicAdapterRegistry,
     eventStore: orchestrationEventStore,
     adoptionLedger,
     eventBus,

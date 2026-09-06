@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
+import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type {
   AttachedSessionCursor,
@@ -13,7 +14,12 @@ import type {
   AttachedSessionUsageAccumulator,
 } from './attached-session-source.js';
 
-import { readLeadingLine, readWindow } from './transcript-file-io.js';
+import {
+  deriveConfigHomeAffinity,
+  readLeadingLine,
+  readWindow,
+  resolveConfigHomeAffinity,
+} from './transcript-file-io.js';
 
 const DEFAULT_MAX_CANDIDATES = 128;
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
@@ -30,6 +36,7 @@ const DEFAULT_MAX_EVENTS = 512;
  */
 const DEFAULT_READ_YIELD_EVERY_LINES = 256;
 const EPOCH = '1970-01-01T00:00:00.000Z';
+const SOURCE_HOME_NAMESPACE = 'claude-config-home';
 
 export interface ClaudeTranscriptSessionSourceOptions {
   /** Claude config directory, not its projects child. */
@@ -54,6 +61,7 @@ export interface ClaudeTranscriptSessionSourceOptions {
 export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
   readonly provider = 'claude';
   readonly kind = 'claude-transcript';
+  private readonly configDir: string;
   private readonly projectsDir: string;
   private readonly maxCandidates: number;
   private readonly maxBytes: number;
@@ -66,11 +74,11 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
   private readonly yieldFn: () => Promise<void>;
 
   constructor(options: ClaudeTranscriptSessionSourceOptions = {}) {
-    const configDir =
+    this.configDir =
       options.configDir ??
       process.env.CLAUDE_CONFIG_DIR ??
       join(homedir(), '.claude');
-    this.projectsDir = join(configDir, 'projects');
+    this.projectsDir = join(this.configDir, 'projects');
     this.maxCandidates = options.maxCandidates ?? DEFAULT_MAX_CANDIDATES;
     this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
     this.maxLineBytes = options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES;
@@ -89,7 +97,12 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
   }
 
   async discover(): Promise<AttachedSessionDiscoveryResult> {
-    const root = this.canonicalProjectsRoot();
+    const sourceHome = deriveConfigHomeAffinity(
+      SOURCE_HOME_NAMESPACE,
+      this.configDir,
+    );
+    if (!sourceHome) return { outcome: 'missing_root', sessions: [] };
+    const root = this.canonicalProjectsRoot(sourceHome.canonicalRoot);
     if (!root) return { outcome: 'missing_root', sessions: [] };
 
     // Handles are capabilities for the current bounded discovery snapshot,
@@ -177,7 +190,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         ? 'rejected_candidate'
         : 'ok';
     for (const file of files) {
-      const descriptor = this.discoverFile(file);
+      const descriptor = this.discoverFile(file, sourceHome.affinity);
       if (!descriptor.session) {
         if (descriptor.outcome !== 'ok') outcome = descriptor.outcome;
         continue;
@@ -196,7 +209,15 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     if (!file || session.provider !== this.provider) {
       return { outcome: 'unknown_source', events: [], cursor: 0 };
     }
-    const root = this.canonicalProjectsRoot();
+    const sourceHome = this.resolveSourceHome(session.affinity);
+    if (!sourceHome) {
+      return {
+        outcome: 'rejected_candidate',
+        events: [],
+        cursor: previousCursor,
+      };
+    }
+    const root = this.canonicalProjectsRoot(sourceHome);
     const canonical = root ? this.canonicalRegularFile(root, file) : null;
     if (!canonical) {
       return { outcome: 'rejected_candidate', events: [], cursor: 0 };
@@ -375,12 +396,23 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     };
   }
 
-  private canonicalProjectsRoot(): string | null {
+  resolveSourceHome(
+    affinity: ProviderSessionSourceAffinity | undefined,
+  ): string | null {
+    return resolveConfigHomeAffinity(
+      SOURCE_HOME_NAMESPACE,
+      this.configDir,
+      affinity,
+    );
+  }
+
+  private canonicalProjectsRoot(configRoot: string): string | null {
     try {
       if (!existsSync(this.projectsDir)) return null;
       const stat = lstatSync(this.projectsDir);
       if (!stat.isDirectory() || stat.isSymbolicLink()) return null;
-      return realpathSync(this.projectsDir);
+      const canonical = realpathSync(this.projectsDir);
+      return isInside(configRoot, canonical) ? canonical : null;
     } catch {
       return null;
     }
@@ -405,7 +437,10 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     }
   }
 
-  private discoverFile(file: string): {
+  private discoverFile(
+    file: string,
+    affinity: ProviderSessionSourceAffinity,
+  ): {
     outcome: AttachedSessionSourceOutcome;
     session?: AttachedSessionDescriptor;
   } {
@@ -432,6 +467,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
           cwd,
           createdAt: timestamp(record.timestamp),
           sourceHandle,
+          affinity,
         },
       };
     } catch {

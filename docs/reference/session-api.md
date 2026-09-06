@@ -138,7 +138,30 @@ A tool-output body alone does not establish success or failure; it is retained
 as observed progress without inventing a verdict. Discovery and parser limits
 are reported as incomplete observations. Cursor progress is saved after the
 page's events, so an interrupted import replays through durable event-id
-deduplication. This observation path does not enable Codex native continuation.
+deduplication.
+
+Claude and Codex continuation require a verified source configuration identity.
+The local sources expose an opaque reference to the configured home; the native
+adapter resolves that reference again before use. A replaced or mismatched home
+refuses continuation instead of falling back to another account. Source identity
+is a provider-neutral contract: remote sources can supply their own connection
+identity without exposing a filesystem path.
+
+Codex continuation forks an independent native thread at a completed turn
+observed in Station's durable history. The original terminal session remains
+read-only in Station and can keep running independently. Until a completed
+boundary exists, **Continue in Station** stays disabled with a reason. Claude
+uses its SDK's independent session snapshot; it does not claim the same native
+turn-cutoff semantics. Both paths retain the source binding in the adoption
+ledger before native child creation and retain unresolved cleanup for recovery
+rather than blindly retrying an ambiguous fork.
+
+Codex continuation requires an available, authenticated local Codex adapter;
+native fork conformance is verified against Codex CLI 0.146.1. Forked Codex
+sessions can replay inherited cumulative usage. Station marks continuation
+usage unavailable until it can establish a durable child-only baseline, rather
+than reporting inherited tokens as new spending. This limitation does not
+prevent transcript observation or continuation.
 
 ### The receipt envelope
 

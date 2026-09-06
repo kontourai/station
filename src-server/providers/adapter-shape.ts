@@ -13,6 +13,7 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
+  ProviderSessionSourceAffinity,
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '@kontourai/station-contracts/provider';
@@ -104,10 +105,21 @@ export interface ProviderAdapterModelCatalog {
 }
 
 export interface ProviderAdoptionHooks {
+  /** Persist the creation boundary immediately before an external child may be created. */
+  onProviderChildCreationStarted?(): void | Promise<void>;
   onProviderChildCreated(resumeCursor: unknown): void | Promise<void>;
 }
 
+/** Provider-owned native identity projected from an opaque resume cursor. */
+export interface ProviderNativeSessionIdentity {
+  sessionId: string;
+  affinity?: ProviderSessionSourceAffinity;
+}
+
 export interface ProviderDiscardSessionRecovery {
+  sourceAffinity?: ProviderSessionSourceAffinity;
+  sourceSessionId?: string;
+  sourceKind?: string;
   adoptionKey?: string;
   createdAt?: string;
   cwd?: string;
@@ -152,8 +164,15 @@ export function isProviderInterruptTurnResult(
 }
 
 export interface ProviderAdapterShape {
+  /** Positive declaration that adoption calls the creation-start hook before its first child effect. */
+  readonly adoptionLifecycle?: 'reported';
   readonly provider: EngineId;
   readonly metadata: ProviderAdapterMetadata;
+
+  /** Read-only projection used to suppress duplicate attached-session aliases. */
+  nativeSessionIdentity?(
+    resumeCursor: unknown,
+  ): ProviderNativeSessionIdentity | undefined;
 
   startSession(input: ProviderSessionStartInput): Promise<ProviderSession>;
   /** Optional independent-continuation capability for attached sessions. */

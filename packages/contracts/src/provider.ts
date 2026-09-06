@@ -596,8 +596,23 @@ export type SessionControlMode = 'station-owned' | 'read-only-attached';
  * Provider-specific discovery details remain outside the orchestration
  * contract so a source cannot leak local filesystem paths through APIs.
  */
+/** An opaque source-owned configuration identity; it is not a path or credential. */
+export interface ProviderSessionSourceAffinity {
+  kind: string;
+  ref: string;
+}
+
+/** A provider position backed by a completed-turn observation. */
+export interface ProviderSessionContinuationBoundary {
+  kind: 'completed-turn';
+  providerTurnId: string;
+  observedEventId: string;
+}
+
 export interface AttachedSessionSourceMetadata {
   kind: string;
+  affinity?: ProviderSessionSourceAffinity;
+  completedBoundary?: ProviderSessionContinuationBoundary;
   externalSessionId: string;
   revision?: string;
 }
@@ -830,6 +845,8 @@ export interface ProviderSessionAdoptInput
   /** Provider cursor of the read-only source. Never returned in adoption responses. */
   sourceSessionId: string;
   sourceKind: string;
+  sourceAffinity?: ProviderSessionSourceAffinity;
+  sourceBoundary?: ProviderSessionContinuationBoundary;
 }
 
 export interface ProviderSendTurnInput {
