@@ -83,6 +83,55 @@ describe('skill-service-install', () => {
     expect(rediscover).toHaveBeenCalledOnce();
   });
 
+  it('installs a scoped skill with its record beside its body', async () => {
+    // Review M3 / #1619 finding (b): the install was the last production write
+    // resolving its record by NAME, so a scoped install put the package in the
+    // project root and its record in `<home>/skills/<name>` — one package in
+    // two roots. Unscoped, the two directories are the same and prove nothing,
+    // which is why this case passes a slug.
+    const projectDir = join(
+      tempDir,
+      'projects',
+      'demo',
+      'skills',
+      'scoped-install',
+    );
+    const saveSkillIn = vi.fn().mockResolvedValue(undefined);
+    const provider = {
+      install: vi
+        .fn()
+        .mockImplementation(async (_name: string, targetDir: string) => {
+          mkdirSync(join(targetDir, 'scoped-install'), { recursive: true });
+          writeFileSync(
+            join(targetDir, 'scoped-install', 'SKILL.md'),
+            '# Scoped',
+          );
+          return { success: true, message: 'ok' };
+        }),
+      listAvailable: vi.fn().mockResolvedValue([]),
+    };
+
+    const result = await installSkillFromRegistry({
+      name: 'scoped-install',
+      projectHomeDir: tempDir,
+      projectSlug: 'demo',
+      configLoader: { saveSkillIn },
+      providers: [{ provider }] as any,
+      rediscover: vi.fn().mockResolvedValue(undefined),
+    });
+
+    expect(result.success).toBe(true);
+    expect(existsSync(join(projectDir, 'SKILL.md'))).toBe(true);
+    expect(
+      saveSkillIn,
+      'the record was written somewhere other than the package',
+    ).toHaveBeenCalledWith(
+      projectDir,
+      expect.objectContaining({ path: projectDir }),
+    );
+    expect(existsSync(join(tempDir, 'skills', 'scoped-install'))).toBe(false);
+  });
+
   it('removes an installed skill directory and rediscoveries skills', async () => {
     const skillDir = join(tempDir, 'skills', 'deep-research');
     mkdirSync(skillDir, { recursive: true });
