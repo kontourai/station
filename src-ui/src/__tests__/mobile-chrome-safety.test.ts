@@ -98,9 +98,42 @@ describe('the connection banner slot bounds without reserving', () => {
       '.app__main:has(> .chat-dock.is-maximized) > .banner-host.banner-host--critical-chrome :is(.banner-host__item--critical-chrome, .banner-host__cap--critical-chrome)',
     );
     expect(criticalCard).toBeDefined();
-    expect(criticalCard).toMatch(
-      /z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/,
+    expect(criticalCard).toMatch(/z-index:\s*var\(--banner-dock-supersede\)/);
+    // #1638: through the named value, never a literal — a literal here does
+    // not yield to an open modal surface, and #920's critical card would go
+    // back to painting over a dialog mounted inside the dock.
+    expect(criticalCard).not.toMatch(/calc\(var\(--layer-dock\)/);
+  });
+
+  it('names the dock-superseding raise once, and makes it yield to an open modal surface (#1638)', () => {
+    // `.chat-dock` is `position: fixed; z-index: var(--layer-dock)`, so it is
+    // a stacking context and a dialog mounted inside it (ChatDockModalStack)
+    // paints at 9200 no matter what `--layer-dialog` it declares. A raise to
+    // `--layer-dock + 1` therefore outranks the dock's dialogs, not just its
+    // chrome, and the notice's own controls steal their clicks.
+    //
+    // This guards deletion of the indirection and of the yield. The browser
+    // proof — `document.elementFromPoint` inside a dialog control under the
+    // banner — is `BannerHost.dialog-stacking.test.tsx`.
+    const css = read(BANNER_CSS);
+    const [host] = ruleBodiesFor(css, '.banner-host');
+    expect(host).toMatch(
+      /--banner-dock-supersede:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/,
     );
+    const [yielded] = ruleBodiesFor(
+      css,
+      '.app__main:has(.responsive-surface-overlay) > .banner-host',
+    );
+    expect(
+      yielded,
+      'the raise must yield while a modal surface is open',
+    ).toBeDefined();
+    expect(yielded).toMatch(/--banner-dock-supersede:\s*var\(--layer-notice\)/);
+    // Nothing may re-declare the raise as a literal: that is the shape the
+    // yield cannot reach.
+    expect(
+      css.match(/z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/g),
+    ).toBeNull();
   });
 
   it('gives a maximized bottom dock one full remaining viewport row', () => {
@@ -134,7 +167,8 @@ describe('the connection banner slot bounds without reserving', () => {
     ]) {
       const [body] = ruleBodies(css, rule);
       expect(body, `missing rule: ${rule}`).toBeDefined();
-      expect(body).toMatch(/z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/);
+      // #1638: the raise is named so it can yield to an open modal surface.
+      expect(body).toMatch(/z-index:\s*var\(--banner-dock-supersede\)/);
     }
     // The escalation must stay paired with a size cap, or "outranks the dock"
     // becomes "owns the screen". archive#3432: the bound lives on the inner

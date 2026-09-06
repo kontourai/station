@@ -641,6 +641,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // disclosure toggle vs. the message text's own line rects) at a phone
   // viewport.
   'src-ui/src/components/notifications/__tests__/BannerHost.disclosure-overlap.test.tsx',
+  // station#1638: same shape again — launches a real Chromium via
+  // `@playwright/test` to hit-test the banner host against an open modal
+  // surface trapped inside the dock's stacking context.
+  'src-ui/src/components/notifications/__tests__/BannerHost.dialog-stacking.test.tsx',
   // station#4474: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).
