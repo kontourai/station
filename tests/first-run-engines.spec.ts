@@ -373,8 +373,18 @@ function engineRow(page: Page, engineId: string) {
  * exit and would defer it, which is why this never reaches for that.
  */
 async function passEngineRoleStep(page: Page) {
+  // Settle first: `isVisible()` does not wait, and the role step arrives one
+  // render after the batch it follows — asking too early reads "no picker"
+  // and walks into an About-you assertion the run has not reached.
+  await expect(
+    page
+      .locator(
+        '[data-testid="first-run-about-you"], [data-testid="engine-picker"]',
+      )
+      .first(),
+  ).toBeVisible();
   const picker = page.getByTestId('engine-picker');
-  if (!(await picker.isVisible().catch(() => false))) return;
+  if (!(await picker.isVisible())) return;
   await picker
     .getByRole('button', { name: /^(Decide later|Got it)$/ })
     .first()
