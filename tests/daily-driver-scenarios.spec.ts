@@ -991,9 +991,11 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
           method: 'content.text-delta',
           extra: { itemId: scrolledTurnId, delta: `${scrolledText} ` },
         });
-      await expect
-        .poll(() => loadedTranscriptRows(page))
-        .toBeGreaterThan(loadedRows);
+      // Live content has its own renderer until the turn settles; it is not
+      // counted in the historical virtualizer's retained-row total yet.
+      await expect(
+        transcript.getByText(scrolledText, { exact: false }),
+      ).toBeVisible();
       const readerDrift = () =>
         transcript.evaluate((element, saved) => {
           const row = [
