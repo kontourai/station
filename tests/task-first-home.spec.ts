@@ -556,14 +556,26 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeVisible();
     await newChat.press('Escape');
 
-    await page.getByRole('button', { name: 'Maximize chat dock' }).click();
+    // "Maximize chat dock" / "Restore chat dock" left the UI in 6ff89e600
+    // (#928 step 2, PR #992) — `git log -S` puts that well before this lane, and
+    // both names are absent at its base — so this timed out ten lines before the
+    // help-menu line #1552 D1 had to retarget, and that retarget could not be
+    // verified until this was current. The control is the same one; only its
+    // name moved to the region vocabulary.
+    const maximize = page.getByRole('button', {
+      name: 'Expand dock region to workspace',
+    });
+    const restore = page.getByRole('button', {
+      name: 'Restore dock region size',
+    });
+    await maximize.click();
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     expect(new URL(page.url()).searchParams.get('maximize')).toBe('true');
-    await page.getByRole('button', { name: 'Restore chat dock' }).click();
+    await restore.click();
     await expect(page.locator('.chat-dock')).not.toHaveClass(/is-maximized/);
-    await page.getByRole('button', { name: 'Maximize chat dock' }).click();
+    await maximize.click();
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
-    await page.getByRole('button', { name: 'Restore chat dock' }).click();
+    await restore.click();
 
     await page.goto('/projects/station');
     // #1552 D1: "Ask Station for help" is a row of the avatar's menu now, not a
