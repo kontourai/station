@@ -52,6 +52,7 @@ describe('allocateLiveStation', () => {
     expect(fs.realpathSync).not.toHaveBeenCalled();
     expect(fs.mkdirSync).toHaveBeenCalledExactlyOnceWith(expectedHome, {
       recursive: true,
+      mode: 0o700,
     });
     expect(live.home).toBe(expectedHome);
     expect(stationRootForLiveHome(live.home)).toBe(canonicalHome);

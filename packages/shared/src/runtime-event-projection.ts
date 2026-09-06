@@ -151,6 +151,37 @@ export function projectRuntimeEventsToMessages(
   // A result id is globally owner-issued. It distinguishes two terminal
   // results which legitimately reuse a provider's toolCallId.
   let terminalToolsByEventId = new Map<string, MessagePart>();
+  /**
+   * station#1558: tool calls whose `tool.started` was folded into a turn this
+   * projection has ALREADY emitted, and whose `tool.completed` has not
+   * arrived yet.
+   *
+   * `toolsByCallId` is per-turn and reset by `emitAssistantTurn`, so before
+   * this map a completion that arrived after the next turn opened could not
+   * find its own call. It landed in whatever turn happened to be open — as a
+   * settled row on the wrong turn, or (with no start there either) as a
+   * standalone result-only part on it. The event names its turn
+   * (`turnId`, PR #1560); reading the stream position instead is exactly the
+   * confident wrong attribution the provenance fold
+   * (`turn-provenance-fold.ts`, which groups by `turnId` and was already
+   * right) avoids.
+   *
+   * The parts held here are the SAME objects already inside an emitted
+   * message's `parts` array, so mutating one settles the row in place on its
+   * own turn. `turnKey` is the turn that row sits on, so a completion naming
+   * a DIFFERENT turn is never settled onto it (fix round, M2).
+   */
+  const carriedToolsByCallId = new Map<
+    string,
+    { part: MessagePart; turnKey: string | undefined }
+  >();
+  /**
+   * station#1558: `turnKey` → index in `messages` of the assistant message
+   * emitted for that turn, so a late completion with no matching start can
+   * still be appended to the turn its own `turnId` names rather than to the
+   * open one.
+   */
+  const assistantMessageIndexByTurn = new Map<string, number>();
   let turnOpen = false;
   let turnTimestamp: number | undefined;
   let turnModel: string | undefined;
@@ -240,6 +271,14 @@ export function projectRuntimeEventsToMessages(
       parts: p,
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     });
+    // station#1558: only an assistant row carries a turn's activity, and only
+    // the FIRST row emitted for a turn identity owns it — a re-emission would
+    // otherwise redirect a late result away from the row that shows the call.
+    const emittedKey =
+      role === 'assistant' ? turnKey(turnSessionId, turnIdentity) : undefined;
+    if (emittedKey && !assistantMessageIndexByTurn.has(emittedKey)) {
+      assistantMessageIndexByTurn.set(emittedKey, messages.length - 1);
+    }
   };
 
   const flushText = () => {
@@ -259,6 +298,14 @@ export function projectRuntimeEventsToMessages(
     flushReasoning();
     flushText();
     if (parts.length > 0) pushMessage('assistant', parts);
+    // station#1558: an unsettled call outlives its turn (a stopped turn's
+    // in-flight tool, a backgrounded Task). `toolsByCallId` only ever holds
+    // calls with no terminal yet — the terminal branch deletes the slot — so
+    // everything left here is still owed a result on THIS turn's row.
+    const carriedTurnKey = turnKey(turnSessionId, turnIdentity);
+    for (const [callId, part] of toolsByCallId) {
+      carriedToolsByCallId.set(callId, { part, turnKey: carriedTurnKey });
+    }
     parts = [];
     textBuf = '';
     reasoningBuf = '';
@@ -402,18 +449,55 @@ export function projectRuntimeEventsToMessages(
         // cancellations.
         const isError = ev.status === 'error';
         const isCancelled = ev.status === 'cancelled';
+        // station#1558: `unresolved` is its own part state for the same
+        // reason `cancelled` is one — it is neither a failure (nothing
+        // observed the tool fail) nor a stop anyone asked for. The session
+        // ended with the call open, so no result can ever arrive. Folding it
+        // into `result` would render the "no result" sentence as the tool's
+        // output; folding it into `error` would blame the tool.
+        const isUnresolved = ev.status === 'unresolved';
         const derivedState = isError
           ? 'error'
           : isCancelled
             ? 'cancelled'
-            : 'result';
+            : isUnresolved
+              ? 'unresolved'
+              : 'result';
         // station#3117: derived ONLY from the event's own marker — never
         // inferred from `isError` alone, so a rehydrated transcript shows
         // the same distinct state a live one does (`streamHandlers.ts`'s
         // `handleToolCompletedEvent` applies the identical rule).
         const policyDenied = ev.policyDenied === true;
         const completed = terminalToolsByEventId.get(ev.eventId);
-        const existing = completed ?? toolsByCallId.get(ev.toolCallId);
+        const namedTurnKey =
+          ev.turnId === undefined ? undefined : turnKey(ev.threadId, ev.turnId);
+        // station#1558: the carried map is consulted last, so a call still
+        // open in the CURRENT turn always wins over a same-id call carried
+        // from an earlier one.
+        const carriedEntry = toolsByCallId.has(ev.toolCallId)
+          ? undefined
+          : carriedToolsByCallId.get(ev.toolCallId);
+        // Fix round (M2): matching a call id is not enough. When the event
+        // names a turn and the carried row sits on a DIFFERENT one, settling
+        // it there would be the same confident misattribution this change
+        // exists to remove — a provider that reuses a call id across turns
+        // would settle the older row with the newer turn's result. Falling
+        // through leaves `existing` undefined, and the named-turn route below
+        // puts the row where the event says it belongs.
+        //
+        // A carried row whose own turn had no identity is NOT treated as a
+        // mismatch: there is no competing claim to honour, and rejecting it
+        // would strand every row projected from events that carry no turn id
+        // at all.
+        const carried =
+          carriedEntry &&
+          (namedTurnKey === undefined ||
+            carriedEntry.turnKey === undefined ||
+            carriedEntry.turnKey === namedTurnKey)
+            ? carriedEntry.part
+            : undefined;
+        const existing =
+          completed ?? toolsByCallId.get(ev.toolCallId) ?? carried;
         if (existing) {
           if (ev.toolName !== undefined) existing.toolName = ev.toolName;
           existing.state = derivedState;
@@ -433,12 +517,28 @@ export function projectRuntimeEventsToMessages(
           // A terminal settles this call slot. A later terminal reusing the
           // same call id must become a distinct durable result, not overwrite
           // this sourceEventId.
-          if (!completed) toolsByCallId.delete(ev.toolCallId);
+          if (!completed) {
+            // Fix round (M3/L12): retire only the slot this terminal actually
+            // settled. Clearing both used to evict an earlier turn's carried
+            // row whenever a LATER turn reused the same call id — that turn's
+            // own late completion then found nothing, appended a duplicate,
+            // and left the first row reading "running" forever.
+            if (existing === carried) {
+              carriedToolsByCallId.delete(ev.toolCallId);
+            } else {
+              toolsByCallId.delete(ev.toolCallId);
+            }
+          }
         } else {
           // Completion without a captured start (replay gap) — still surface it.
-          turnOpen = true;
-          flushText();
-          flushReasoning();
+          // station#1558: on the turn the event NAMES. An already-emitted turn
+          // takes the row; only a completion for the open turn (or one whose
+          // turn this window never saw at all) reaches the live buffer, and
+          // the fallback is documented at the push below.
+          const namedTurnIndex =
+            namedTurnKey === undefined
+              ? undefined
+              : assistantMessageIndexByTurn.get(namedTurnKey);
           const part: MessagePart = {
             type: 'tool-invocation',
             toolCallId: ev.toolCallId,
@@ -456,7 +556,18 @@ export function projectRuntimeEventsToMessages(
             ...(text !== undefined ? { result: text } : {}),
           };
           terminalToolsByEventId.set(ev.eventId, part);
-          parts.push(part);
+          if (namedTurnIndex !== undefined) {
+            messages[namedTurnIndex]!.parts.push(part);
+          } else {
+            // Either the event names the turn currently being folded, or it
+            // names one whose `turn.started` fell outside this bounded window
+            // and which therefore has no row to attach to. The open turn is
+            // the only surface left; the part carries its own identity.
+            turnOpen = true;
+            flushText();
+            flushReasoning();
+            parts.push(part);
+          }
         }
         break;
       }

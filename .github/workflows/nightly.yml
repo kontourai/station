@@ -83,6 +83,7 @@ jobs:
         timeout-minutes: 10
         env:
           PW_REPORTER: line,html
+          STATION_REQUIRED_SOURCE_SHA: ${{ github.sha }}
         run: npm run test:e2e:pr-smoke
       - name: Upload test-gate diagnostics
         if: always()
@@ -91,6 +92,7 @@ jobs:
         with:
           name: nightly-test-gate-${{ github.run_id }}
           path: |
+            .kontourai/browser-evidence/
             playwright-report/
             test-results/
           if-no-files-found: ignore

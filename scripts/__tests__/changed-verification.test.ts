@@ -92,6 +92,10 @@ const EXPECTED_GOVERNED_READERS = {
     'scripts/__tests__/trust-reconcile-manifest.test.ts',
     'scripts/__tests__/verification-lanes.test.ts',
   ],
+  '.github/workflows/publish-release.yml': [
+    'scripts/__tests__/release-availability-driver.test.ts',
+    'scripts/__tests__/release-availability.test.ts',
+  ],
   '.veritas/**': [
     'scripts/__tests__/evidence-check-execution-gate.test.ts',
     'scripts/__tests__/proof-family-lane-governance.test.ts',
@@ -185,6 +189,17 @@ describe('changed verification selection', () => {
     );
     expect(selection.tests.map(({ path }) => path)).toContain(
       'scripts/__tests__/ci-workflow-contract.test.ts',
+    );
+  });
+  test('selects the release-availability readers when their workflow changes', () => {
+    const selected = selectChangedVerification([
+      '.github/workflows/publish-release.yml',
+    ]).tests.map((entry) => entry.path);
+    expect(selected).toContain(
+      'scripts/__tests__/release-availability-driver.test.ts',
+    );
+    expect(selected).toContain(
+      'scripts/__tests__/release-availability.test.ts',
     );
   });
   test('manifest covers the independently inventoried direct governed-data readers', () => {

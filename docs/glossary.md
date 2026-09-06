@@ -240,9 +240,11 @@ retired names.
   not a layout. The legacy plugin `layout.json` `tabs` array maps onto a pane
   host whose root is one tab group.
 - **Arrangement** — the user's placement choices: which surface occupies
-  which region, each region's size and visibility, and each pane host's tree
-  (`RegionArrangement` for the region half). It is persisted per device: a
-  property of the screen you are sitting at, never of a project or a layout.
+  which region, each region's size and visibility, which region (at most one,
+  never `main`) is maximized, and each pane host's tree
+  (`RegionArrangement` for the region half). It is persisted per device (the
+  `regionArrangement` device setting): a property of the screen you are
+  sitting at, never of a project or a layout.
 - **Panel** — a bounded visual grouping of controls or information within a
   page or pane, such as a Trust panel or inspector panel. A Panel is not
   persisted and is not a synonym for a pane.

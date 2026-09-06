@@ -2421,8 +2421,12 @@ export function createGlobalConversationRoutes(
       const provenanceById = eventStore?.readConversationForkProvenanceBatch?.(
         combined.map((item) => item.id),
       );
+      const acknowledgements = acknowledgementStore?.getMany(
+        userId,
+        combined.map((item) => item.id),
+      );
       const data = combined.map((item) => {
-        const acknowledgedAt = acknowledgementStore?.get(userId, item.id);
+        const acknowledgedAt = acknowledgements?.get(item.id);
         const forkProvenance =
           provenanceById?.get(item.id) ??
           eventStore?.readConversationForkProvenance(item.id);

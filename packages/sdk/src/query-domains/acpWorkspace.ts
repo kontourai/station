@@ -264,6 +264,61 @@ export async function installACPConnectionRegistryEntry(
   return result.data;
 }
 
+/** The registry install's additive Agent receipt, when this is a local home. */
+export interface ACPRegistryInstallAgentReceipt {
+  data: unknown;
+  created: boolean;
+  warnings?: string[];
+}
+
+function acpRegistryInstallErrorMessage(error: unknown): string {
+  if (typeof error === 'string' && error.trim()) return error;
+  if (error && typeof error === 'object') {
+    const { code, correlationId } = error as {
+      code?: unknown;
+      correlationId?: unknown;
+    };
+    if (typeof code === 'string' && code.trim()) {
+      return typeof correlationId === 'string' && correlationId.trim()
+        ? `Failed to connect engine (${code}; correlation ID: ${correlationId}).`
+        : `Failed to connect engine (${code}).`;
+    }
+  }
+  return 'Failed to connect engine';
+}
+
+export async function connectAndMaterializeACPRegistryEngine(
+  id: string,
+): Promise<ACPRegistryInstallAgentReceipt> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/acp/registry/${encodeURIComponent(id)}/install`,
+    { method: 'POST' },
+  );
+  const result = (await response.json()) as {
+    success?: boolean;
+    error?: unknown;
+    agent?: {
+      data?: unknown;
+      created?: boolean;
+      warnings?: string[];
+    };
+  };
+  if (!response.ok || !result.success) {
+    throw new Error(acpRegistryInstallErrorMessage(result.error));
+  }
+  if (!result.agent) {
+    throw new Error(
+      'Engine connection was saved, but no Agent receipt was returned.',
+    );
+  }
+  return {
+    data: result.agent.data,
+    created: result.agent.created === true,
+    ...(result.agent.warnings ? { warnings: result.agent.warnings } : {}),
+  };
+}
+
 export function useTemplatesQuery<T = any>(
   type?: string,
   config?: QueryConfig<T[]>,

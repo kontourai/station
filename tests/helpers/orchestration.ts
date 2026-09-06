@@ -1,8 +1,10 @@
+import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { expect, type Page } from '@playwright/test';
 import {
   E2E_STATION_COMPATIBILITY,
   installE2EWorkspacePaneCatalog,
 } from './current-station-contract';
+import { rejectUnexpectedFixtureRequest } from './fixture-audit';
 
 const E2E_ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
 const emittedOrchestrationEvents = new WeakMap<
@@ -89,6 +91,64 @@ export async function openChatRegion(page: Page): Promise<void> {
       ).toBeVisible();
       return;
     }
+  }
+
+  // Since #1552 the desktop toolbar carries one "Layout regions" menu instead
+  // of per-region Show/Hide/Place buttons: rows are grouped by region (the
+  // group's accessible name is the region label) and Chat's row in its own
+  // region is a Show/Hide checkbox, or "Place Chat here" while another surface
+  // holds the region. The complementary Hide row is the post-condition here
+  // too; the menu is reopened to read it because selecting a row closes it.
+  const layout = page.getByRole('button', {
+    name: 'Layout regions',
+    exact: true,
+  });
+  if (await layout.isVisible().catch(() => false)) {
+    const openLayoutMenu = async () => {
+      await layout.click();
+      const menu = page.getByRole('menu', { name: 'Layout regions' });
+      await expect(menu).toBeVisible();
+      return menu;
+    };
+    const expectHideRow = async () => {
+      const menu = await openLayoutMenu();
+      await expect(
+        menu.getByRole('menuitemcheckbox', { name: 'Hide Chat', exact: true }),
+      ).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+    };
+
+    const menu = await openLayoutMenu();
+    const hide = menu.getByRole('menuitemcheckbox', {
+      name: 'Hide Chat',
+      exact: true,
+    });
+    if (await hide.isVisible().catch(() => false)) {
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      return;
+    }
+    const show = menu.getByRole('menuitemcheckbox', {
+      name: 'Show Chat',
+      exact: true,
+    });
+    if (await show.isVisible().catch(() => false)) {
+      await show.click();
+      await expectHideRow();
+      return;
+    }
+    if (activeRegion) {
+      const place = menu
+        .getByRole('group', { name: activeRegion, exact: true })
+        .getByRole('menuitem', { name: 'Place Chat here', exact: true });
+      if (await place.isVisible().catch(() => false)) {
+        await place.click();
+        await expectHideRow();
+        return;
+      }
+    }
+    await page.keyboard.press('Escape');
   }
 
   const expand = page.getByRole('button', {
@@ -515,6 +575,19 @@ export async function seedOrchestrationRoutes(
     projectSlug: 'dev',
     projectId: DEV_CONFIG.id,
     layoutSlug: CODING_LAYOUT.slug,
+  });
+  // This fixture Project has only built-in Panes and no installed package
+  // actions. Its identity exists in mocked Project routes, not the live server.
+  const paneActions: WorkspacePaneHostActionCatalog = {
+    projectSlug: 'dev',
+    support: 'supported',
+    complete: true,
+    contributions: [],
+  };
+  await page.route('**/api/orchestration/pane-host/dev/catalog', (route) => {
+    if (route.request().method() !== 'GET')
+      return rejectUnexpectedFixtureRequest(route);
+    return route.fulfill({ json: { success: true, data: paneActions } });
   });
   await page.addInitScript(() => {
     if (localStorage.getItem('station-connect-connections-active')) return;

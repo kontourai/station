@@ -15,31 +15,29 @@ export function ProjectLayoutsSection({
   error,
   onRetry,
   setLayout,
-  onOpenAddLayout,
-  embedded = false,
 }: {
   slug: string;
   layouts: LayoutMetadata[];
   /**
    * True while the layouts query is still in flight. Without it an unresolved
    * fetch is indistinguishable from a project that genuinely has no layouts,
-   * and the section states "No layouts yet" for a project that has some
+   * and the section states its empty case for a project that has some
    * (archive#801).
    */
   loading?: boolean;
   /**
    * True when the layouts query failed. A failure is not emptiness — react
    * query clears `isLoading` on error, so without this the section would state
-   * "No layouts yet" for a project whose layouts merely could not be fetched
+   * its empty case for a project whose layouts merely could not be fetched
    * (archive#801).
    */
   error?: boolean;
   onRetry?: () => void;
   setLayout: (projectSlug: string, layoutSlug: string) => void;
-  onOpenAddLayout: () => void;
-  embedded?: boolean;
 }) {
-  const contents = (
+  // The Open section owns the header, the explainer, and both add
+  // affordances (`views/ProjectPage.tsx`); this renders the cards inside it.
+  return (
     <div className="project-page__cards">
       {loading && layouts.length === 0 ? (
         <SkeletonList count={2} />
@@ -76,36 +74,16 @@ export function ProjectLayoutsSection({
           </button>
         ))
       ) : (
+        // #1536 E4: no action of its own. The section header carries both
+        // "+ Add layout" and "+ Add pane" a few pixels above this card, so a
+        // button here is the same affordance twice, and the sentence is the
+        // part that was missing.
         <Empty
           variant="prominent"
-          label="No layouts yet"
-          action={
-            <button
-              type="button"
-              className="button button--primary"
-              onClick={onOpenAddLayout}
-            >
-              Add layout
-            </button>
-          }
+          label="Nothing here yet"
+          description="Add a layout or a pane to open one in this project."
         />
       )}
-    </div>
-  );
-  if (embedded) return contents;
-  return (
-    <div className="project-page__layouts">
-      <div className="project-page__section-header">
-        <span className="project-page__section-label">Open</span>
-        <button
-          type="button"
-          className="project-page__add-btn"
-          onClick={onOpenAddLayout}
-        >
-          + Add layout
-        </button>
-      </div>
-      {contents}
     </div>
   );
 }

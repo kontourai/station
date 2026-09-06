@@ -61,6 +61,9 @@ const mocks = vi.hoisted(() => ({
   selectPlugin: vi.fn(),
   deselectPlugin: vi.fn(),
   previewOnSuccess: null as ((data: unknown) => void) | null,
+  projects: [] as Array<{ slug: string; name: string }>,
+  addLayoutFromPlugin: vi.fn(),
+  setLayout: vi.fn(),
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -72,11 +75,11 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ setLayout: vi.fn() }),
+  useNavigation: () => ({ setLayout: mocks.setLayout }),
 }));
 
 vi.mock('../contexts/ProjectsContext', () => ({
-  useProjects: () => ({ projects: [] }),
+  useProjects: () => ({ projects: mocks.projects }),
 }));
 
 vi.mock('../core/PermissionManager', () => ({
@@ -99,7 +102,9 @@ vi.mock('../hooks/useUrlSelection', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useAddProjectLayoutFromPluginMutation: () => ({ mutateAsync: vi.fn() }),
+  useAddProjectLayoutFromPluginMutation: () => ({
+    mutateAsync: mocks.addLayoutFromPlugin,
+  }),
   useCreateProjectMutation: () => ({ mutateAsync: vi.fn() }),
   usePluginChangelogQuery: () => ({ data: null }),
   usePluginInstallMutation: () => ({
@@ -163,6 +168,159 @@ describe('usePluginManagementViewModel', () => {
     mocks.refetchPlugins.mockReset().mockResolvedValue({
       isError: false,
       error: null,
+    });
+    mocks.projects = [];
+    mocks.addLayoutFromPlugin
+      .mockReset()
+      .mockResolvedValue({ slug: 'getting-started' });
+    mocks.setLayout.mockReset();
+  });
+
+  /**
+   * #1536 G2. Installing a starter opened the Add Layout picker once, in the
+   * seconds after the install, and the detail page offered nothing afterwards
+   * — so a layout the operator skipped, or installed from Registry, had no
+   * route into a project at all. `addPluginLayout` is that route.
+   */
+  describe('addPluginLayout', () => {
+    const starter = {
+      name: 'getting-started-starter',
+      displayName: 'Getting Started Starter',
+      layout: { slug: 'getting-started' },
+    };
+
+    test('adds straight to the only project and opens it, without asking', async () => {
+      mocks.projects = [{ slug: 'demo', name: 'Demo' }];
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+
+      expect(mocks.addLayoutFromPlugin).toHaveBeenCalledWith({
+        projectSlug: 'demo',
+        plugin: 'getting-started-starter',
+      });
+      expect(mocks.setLayout).toHaveBeenCalledWith('demo', 'getting-started');
+      expect(result.current.layoutAssignment).toBeNull();
+    });
+
+    test('opens the newly created copy when adding the same layout again', async () => {
+      mocks.projects = [{ slug: 'demo', name: 'Demo' }];
+      mocks.addLayoutFromPlugin
+        .mockResolvedValueOnce({ slug: 'getting-started' })
+        .mockResolvedValueOnce({ slug: 'getting-started-2' });
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+      expect(mocks.setLayout).toHaveBeenNthCalledWith(
+        1,
+        'demo',
+        'getting-started',
+      );
+      expect(mocks.setLayout).toHaveBeenNthCalledWith(
+        2,
+        'demo',
+        'getting-started-2',
+      );
+    });
+
+    test('opens the first project actual created copy after a multi-project add', async () => {
+      mocks.projects = [
+        { slug: 'demo', name: 'Demo' },
+        { slug: 'other', name: 'Other' },
+      ];
+      mocks.addLayoutFromPlugin
+        .mockResolvedValueOnce({ slug: 'getting-started-2' })
+        .mockResolvedValueOnce({ slug: 'getting-started-5' });
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+      act(() => {
+        result.current.toggleProjectSelection('demo', true);
+        result.current.toggleProjectSelection('other', true);
+      });
+      await act(async () => {
+        await result.current.addLayoutToProjects();
+      });
+      expect(mocks.addLayoutFromPlugin).toHaveBeenNthCalledWith(1, {
+        projectSlug: 'demo',
+        plugin: starter.name,
+      });
+      expect(mocks.addLayoutFromPlugin).toHaveBeenNthCalledWith(2, {
+        projectSlug: 'other',
+        plugin: starter.name,
+      });
+      expect(mocks.setLayout).toHaveBeenCalledExactlyOnceWith(
+        'demo',
+        'getting-started-2',
+      );
+    });
+
+    test('asks which project when there is more than one, and adds nothing yet', async () => {
+      mocks.projects = [
+        { slug: 'demo', name: 'Demo' },
+        { slug: 'other', name: 'Other' },
+      ];
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+
+      expect(mocks.addLayoutFromPlugin).not.toHaveBeenCalled();
+      expect(result.current.layoutAssignment).toEqual({
+        pluginName: 'getting-started-starter',
+        displayName: 'Getting Started Starter',
+        layoutSlug: 'getting-started',
+      });
+    });
+
+    test('opens the picker with no projects, so the create-a-project path is reachable', async () => {
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+
+      expect(mocks.addLayoutFromPlugin).not.toHaveBeenCalled();
+      expect(result.current.layoutAssignment).not.toBeNull();
+      expect(result.current.quickProjectName).toBe('Getting Started Starter');
+    });
+
+    test('reports the failure against the named project rather than silently doing nothing', async () => {
+      mocks.projects = [{ slug: 'demo', name: 'Demo' }];
+      mocks.addLayoutFromPlugin.mockRejectedValue(new Error('nope'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+
+      expect(result.current.message).toEqual({
+        type: 'error',
+        text: 'Failed to add the Getting Started Starter layout to Demo.',
+      });
+      expect(mocks.setLayout).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    test('does nothing for a plugin that contributes no layout', async () => {
+      mocks.projects = [{ slug: 'demo', name: 'Demo' }];
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      await act(async () => {
+        await result.current.addPluginLayout({ name: 'smart-routing' });
+      });
+
+      expect(mocks.addLayoutFromPlugin).not.toHaveBeenCalled();
+      expect(result.current.layoutAssignment).toBeNull();
     });
   });
 
@@ -667,6 +825,8 @@ describe('usePluginManagementViewModel', () => {
     expect(mocks.installMutate.mock.calls[0][0]).toEqual({
       source: '/tmp/network-kit',
       skip: [],
+      dataPolicy: 'preserve',
+      expectedInstallation: undefined,
       consent: {
         permissions: ['navigation.dock', 'network.fetch'],
         contentDigest: 'sha256:reviewed',

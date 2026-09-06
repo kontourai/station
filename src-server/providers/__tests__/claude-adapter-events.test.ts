@@ -1,4 +1,7 @@
-import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
+import type {
+  PermissionUpdate,
+  SDKMessage,
+} from '@anthropic-ai/claude-agent-sdk';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { describe, expect, test, vi } from 'vitest';
 import { getConversationStats } from '../../runtime/conversation/conversation-manager.js';
@@ -7,14 +10,24 @@ import { buildAgentRunSummary } from '../../services/orchestration/orchestration
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import {
   CLAUDE_EXTENSION_NAMESPACE,
+  CLAUDE_UNRESOLVED_TOOL_OUTPUT,
   type ClaudeMessageState,
   claudeToolResultOutputReceipt,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
   mapClaudeSessionState,
   mapClaudeTaskStatus,
+  settleUnresolvedClaudeToolCalls,
   summarizeClaudeToolResult,
 } from '../adapters/claude-adapter-events.js';
+import {
+  CLAUDE_BASH_DEFERRED_RESULT,
+  CLAUDE_BASH_END_TURN_RESULT,
+  CLAUDE_BASH_FINAL_TEXT_ASSISTANT,
+  CLAUDE_BASH_TEXT_ASSISTANT,
+  CLAUDE_BASH_TOOL_RESULT_USER,
+  CLAUDE_BASH_TOOL_USE_ASSISTANT,
+} from './claude-adapter-tool-cycle-fixtures.js';
 
 const ANSWERABILITY: SessionAnswerabilityObservation = {
   threadAttachment: 'detached',
@@ -965,6 +978,155 @@ describe('claude-adapter-events — thinking/status notifications', () => {
 });
 
 describe('claude-adapter-events — top-level tool_use / tool_result mapping', () => {
+  // Turn-scoped tracking: a tool call belongs to the turn that issued it.
+  test("a stopped turn's open tool call is left tracked and its late result lands on the stopped turn", () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-a',
+      dispatchedTurnId: 'turn-a',
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-a', name: 'Bash', input: {} },
+          ],
+        },
+        uuid: 'u-a-1',
+        session_id: 's-1',
+      } as any,
+    });
+    // Stop arrives, then a newer turn dispatches before A's delayed error
+    // result lands (the #921 sequence).
+    record.interruptingTurnId = 'turn-a';
+    record.activeTurnId = 'turn-b';
+    record.dispatchedTurnId = 'turn-b';
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        result: 'interrupted',
+        num_turns: 1,
+        stop_reason: null,
+        usage: { input_tokens: 1, output_tokens: 0 },
+        uuid: 'u-a-2',
+        session_id: 's-1',
+      } as any,
+    });
+    // No synthetic completion: a backgrounded Task on the stopped turn may
+    // legitimately still finish, and the fold has no honest status for an
+    // outcome Station did not observe (station#1558).
+    expect(publish.mock.calls.map(([e]) => e.method)).toEqual([
+      'tool.started',
+      'token-usage.updated',
+    ]);
+    expect(record.activeToolCalls?.size).toBe(1);
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-a', content: 'late' },
+          ],
+        },
+        uuid: 'u-a-3',
+        session_id: 's-1',
+      } as any,
+    });
+    expect(publish.mock.calls[2][0]).toMatchObject({
+      method: 'tool.completed',
+      turnId: 'turn-a',
+      toolCallId: 'toolu-a',
+      status: 'success',
+    });
+    expect(record.activeToolCalls?.size).toBe(0);
+  });
+
+  test("an older turn's delayed real tool_result lands on the turn that issued the call", () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-old',
+      dispatchedTurnId: 'turn-old',
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-old', name: 'Read', input: {} },
+          ],
+        },
+        uuid: 'u-o-1',
+        session_id: 's-1',
+      } as any,
+    });
+    record.activeTurnId = 'turn-next';
+    record.dispatchedTurnId = 'turn-next';
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        num_turns: 1,
+        stop_reason: 'end_turn',
+        result: 'done',
+        usage: { input_tokens: 1, output_tokens: 1 },
+        uuid: 'u-o-2',
+        session_id: 's-1',
+      } as any,
+    });
+    // The next turn's completion leaves the older call alone.
+    expect(publish.mock.calls.map(([e]) => e.method)).toEqual([
+      'tool.started',
+      'token-usage.updated',
+      'turn.completed',
+    ]);
+    expect(record.activeToolCalls?.size).toBe(1);
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-old', content: 'late' },
+          ],
+        },
+        uuid: 'u-o-3',
+        session_id: 's-1',
+      } as any,
+    });
+    expect(publish.mock.calls[3][0]).toMatchObject({
+      method: 'tool.completed',
+      turnId: 'turn-old',
+      toolCallId: 'toolu-old',
+      status: 'success',
+    });
+    expect(record.activeToolCalls?.size).toBe(0);
+  });
+
   test('assistant tool_use blocks map to tool.started; matching tool_result maps to tool.completed', () => {
     const publish = vi.fn();
     const record = makeRecord();
@@ -1551,4 +1713,351 @@ describe('claude token-usage.updated — provider-reported cost and cache (stati
       ).resolves.toMatchObject({ outputTokens: 5, totalTokens: 5 });
     },
   );
+});
+
+describe('a real Claude Bash tool cycle, replayed (#1536 finding B1)', () => {
+  // These replay CAPTURED SDK messages (claude-adapter-tool-cycle-fixtures.ts),
+  // not hand-written ones, because the defect this covers was invisible to
+  // hand-written coverage: the mapper mapped `tool.completed` correctly all
+  // along, and the engine simply never sent the `tool_result` it maps from.
+  function replay(messages: SDKMessage[]) {
+    const publish = vi.fn();
+    const record = makeRecord() as ClaudeMessageState;
+    for (const message of messages) {
+      mapClaudeSdkMessage({ provider: 'claude', record, publish, message });
+    }
+    return {
+      record,
+      events: publish.mock.calls.map(([event]) => event),
+    };
+  }
+
+  const TOOL_CALL_ID = 'toolu_01QuzhUwwwRumEUn3peJnLpw';
+
+  test('the resolved cycle maps to tool.started then tool.completed with the output', () => {
+    const { events } = replay([
+      CLAUDE_BASH_TEXT_ASSISTANT,
+      CLAUDE_BASH_TOOL_USE_ASSISTANT,
+      CLAUDE_BASH_TOOL_RESULT_USER,
+      CLAUDE_BASH_FINAL_TEXT_ASSISTANT,
+      CLAUDE_BASH_END_TURN_RESULT,
+    ]);
+
+    const toolEvents = events.filter((event) =>
+      String(event.method).startsWith('tool.'),
+    );
+    expect(toolEvents).toMatchObject([
+      {
+        method: 'tool.started',
+        toolCallId: TOOL_CALL_ID,
+        toolName: 'Bash',
+        arguments: { command: 'pwd' },
+      },
+      {
+        method: 'tool.completed',
+        toolCallId: TOOL_CALL_ID,
+        toolName: 'Bash',
+        status: 'success',
+        // The tool's real stdout, which is the thing the audited transcript
+        // never showed the user.
+        output: '/workspace/example',
+      },
+    ]);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'turn.completed',
+          finishReason: 'stop',
+          outputText: 'The directory is `/workspace/example`.',
+        }),
+      ]),
+    );
+  });
+
+  test('a deferred turn settles the call as an error and does NOT report a clean stop', () => {
+    // The engine ends this turn with the call unexecuted on
+    // `deferred_tool_use` and no `tool_result` — the exact shape #1536 B1
+    // rendered as "No result recorded · 1 tool call unresolved" beside a
+    // completed turn.
+    const { events, record } = replay([
+      CLAUDE_BASH_TEXT_ASSISTANT,
+      CLAUDE_BASH_TOOL_USE_ASSISTANT,
+      CLAUDE_BASH_DEFERRED_RESULT,
+    ]);
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'tool.completed',
+          toolCallId: TOOL_CALL_ID,
+          toolName: 'Bash',
+          status: 'error',
+          error: expect.stringContaining('The tool did not run.'),
+        }),
+      ]),
+    );
+    const completed = events.find(
+      (event) => event.method === 'turn.completed',
+    ) as { finishReason?: string } | undefined;
+    // `'other'` deliberately, not `'stop'` (the bug) and not `'tool-calls'`:
+    // `PROVIDER_PROVEN_FINISH_REASONS` grants neither clear authority to
+    // `'other'` nor the claim that the turn reached its own outcome.
+    expect(completed?.finishReason).toBe('other');
+    // Settled, so a later replayed `tool_result` cannot double-report it.
+    expect(record.activeToolCalls?.has(TOOL_CALL_ID)).toBe(false);
+  });
+
+  test('terminal_reason tool_deferred_unavailable is recognised by name, without a deferred stop_reason', () => {
+    // The second deferral terminal reason in the SDK's `TerminalReason` union.
+    // Nothing guarantees it also sets `stop_reason: 'tool_deferred'`, so
+    // reading only that string would let this one report a clean stop.
+    const { events } = replay([
+      CLAUDE_BASH_TEXT_ASSISTANT,
+      CLAUDE_BASH_TOOL_USE_ASSISTANT,
+      {
+        ...(CLAUDE_BASH_DEFERRED_RESULT as unknown as Record<string, unknown>),
+        stop_reason: 'end_turn',
+        terminal_reason: 'tool_deferred_unavailable',
+        deferred_tool_use: undefined,
+      } as unknown as SDKMessage,
+    ]);
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'turn.completed',
+          finishReason: 'other',
+        }),
+      ]),
+    );
+  });
+
+  test('a deferral the engine describes without a name still refuses a clean stop', () => {
+    // Version skew: `deferred_tool_use` present but nameless AND untracked.
+    // `tool.completed` requires a `toolName`, and inventing one would be a
+    // worse record than the completion's absence — so the honest signal has
+    // to survive on `finishReason` alone.
+    const { events } = replay([
+      {
+        ...(CLAUDE_BASH_DEFERRED_RESULT as unknown as Record<string, unknown>),
+        deferred_tool_use: { id: 'toolu_unknown' },
+      } as unknown as SDKMessage,
+    ]);
+
+    expect(
+      events.filter((event) => event.method === 'tool.completed'),
+    ).toHaveLength(0);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'turn.completed',
+          finishReason: 'other',
+        }),
+      ]),
+    );
+  });
+});
+
+// station#1558: the session-end settle. `activeToolCalls` deliberately
+// outlives its turn, so this is the ONLY moment at which a still-open
+// `tool_use` is provably never going to report.
+describe('settleUnresolvedClaudeToolCalls (station#1558)', () => {
+  function recordWithOpenCalls() {
+    const record = makeRecord({
+      activeTurnId: 'turn-c',
+      dispatchedTurnId: 'turn-c',
+    }) as ClaudeMessageState;
+    record.activeToolCalls = new Map([
+      ['toolu-a', { toolName: 'Bash', turnId: 'turn-a' }],
+      ['toolu-b', { toolName: 'Read', turnId: 'turn-b' }],
+    ]);
+    return record;
+  }
+
+  test('settles every open call on the turn that ISSUED it, not the active one', () => {
+    const publish = vi.fn();
+    const record = recordWithOpenCalls();
+
+    settleUnresolvedClaudeToolCalls({
+      provider: 'claude',
+      record,
+      publish,
+      createdAt: '2026-09-05T00:00:00.000Z',
+    });
+
+    expect(publish.mock.calls.map(([event]) => event)).toEqual([
+      expect.objectContaining({
+        method: 'tool.completed',
+        turnId: 'turn-a',
+        toolCallId: 'toolu-a',
+        toolName: 'Bash',
+        status: 'unresolved',
+        output: CLAUDE_UNRESOLVED_TOOL_OUTPUT,
+      }),
+      expect.objectContaining({
+        method: 'tool.completed',
+        turnId: 'turn-b',
+        toolCallId: 'toolu-b',
+        toolName: 'Read',
+        status: 'unresolved',
+      }),
+    ]);
+    // Never the turn that happened to be active when the session ended.
+    expect(
+      publish.mock.calls.some(([event]) => event.turnId === 'turn-c'),
+    ).toBe(false);
+    expect(record.activeToolCalls?.size).toBe(0);
+  });
+
+  test('never republishes a call its own tool_result already settled', () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-a',
+      dispatchedTurnId: 'turn-a',
+    }) as ClaudeMessageState;
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-done', name: 'Read', input: {} },
+            { type: 'tool_use', id: 'toolu-open', name: 'Bash', input: {} },
+          ],
+        },
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-done', content: 'ok' },
+          ],
+        },
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+    publish.mockClear();
+
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish.mock.calls[0][0]).toMatchObject({
+      toolCallId: 'toolu-open',
+      status: 'unresolved',
+    });
+  });
+
+  // station#1558 fix round (H1, blocking): the Task's `tool_use` is registered
+  // in `activeToolCalls` and only its real `tool_result` removes it. A Task
+  // settled by `task_notification` whose result has not come back was still
+  // sitting there at session end, so the settle published a SECOND terminal
+  // — `unresolved` — contradicting the success the engine had already
+  // reported for the same call id.
+  test('a Task already settled by its own notification is not re-settled as unresolved', () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-a',
+      dispatchedTurnId: 'turn-a',
+    }) as ClaudeMessageState;
+    // The assistant's `tool_use` is what registers the call id — without it
+    // the entry the defect lives in never exists.
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-task', name: 'Task', input: {} },
+          ],
+        },
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-task',
+        description: 'Run audit',
+        subagent_type: 'Explore',
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'completed',
+        summary: 'audit clean',
+        uuid: 'u-3',
+        session_id: 's-1',
+      } as any,
+    });
+    // The Task reported success and its `tool_result` never came back, so the
+    // entry is still tracked — that is the point.
+    expect(record.activeToolCalls?.has('toolu-task')).toBe(true);
+
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+
+    const terminals = publish.mock.calls
+      .map(([event]) => event)
+      .filter(
+        (event) =>
+          event.method === 'tool.completed' &&
+          event.toolCallId === 'toolu-task',
+      );
+    expect(terminals).toHaveLength(1);
+    expect(terminals[0]).toMatchObject({ status: 'success' });
+    expect(
+      terminals.some(
+        (event: { status: string }) => event.status === 'unresolved',
+      ),
+    ).toBe(false);
+  });
+
+  test('a second settle publishes nothing (both session-end paths can run)', () => {
+    const publish = vi.fn();
+    const record = recordWithOpenCalls();
+
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+    const afterFirst = publish.mock.calls.length;
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+
+    expect(afterFirst).toBe(2);
+    expect(publish.mock.calls.length).toBe(2);
+  });
+
+  test('a session that ends with nothing open publishes nothing', () => {
+    const publish = vi.fn();
+    const record = makeRecord() as ClaudeMessageState;
+
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+
+    expect(publish).not.toHaveBeenCalled();
+  });
 });

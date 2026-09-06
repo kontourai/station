@@ -21,6 +21,15 @@ type ToolDenialReason =
   | 'no_approval_channel'
   | 'policy_evaluation_failed';
 
+/**
+ * `defer` means "Station's policy is not deciding this call; the engine's own
+ * permission flow owns it". An engine adapter must NEVER translate it into
+ * Claude's `PreToolUse` `permissionDecision: 'defer'`, which is a different
+ * contract entirely — that value asks the engine to hand the call back to the
+ * SDK host to execute, and the engine ends the turn unresolved when nobody
+ * does (#1536 finding B1). Translate it to whatever the engine's own flow is,
+ * or to no opinion at all.
+ */
 export type PreToolPolicyDecision =
   | { behavior: 'allow' }
   | { behavior: 'deny'; denial: ToolCallDenial }
@@ -295,6 +304,31 @@ export function createStagedPreToolPolicyEvaluator(
 
     // The Claude SDK's canUseTool remains its interactive authority. Defer so
     // it asks exactly once rather than creating a second Station request here.
+    // `defer` is Station declining to decide — see `PreToolPolicyDecision`: it
+    // is never Claude's `permissionDecision: 'defer'`.
+    //
+    // KNOWN GAP (#1536 follow-up): this returns before the unattended stages
+    // below, so an external session with nobody to ask waits on an approval
+    // request instead of taking their fail-fast denial.
+    //
+    // What blocks a straight reorder is not that the signal is unavailable —
+    // it exists and has three writers (`strands-adapter.ts`,
+    // `voltagent-adapter.ts` via `currentScheduledPrincipal()`, and
+    // `voice-session.ts`'s `kind: 'voice'`), and the scheduler establishes it
+    // at the route boundary through `runWithScheduledPrincipal`'s
+    // AsyncLocalStorage (`scheduled-principal-context.ts`;
+    // `runtime-route-support.ts`). The blocker is WHERE the external hook
+    // runs: the Claude `PreToolUse` hook fires from the SDK message loop, on a
+    // long-lived stream task outside any request scope, so an ALS read there
+    // finds nothing. The principal has to be CAPTURED into the session record
+    // at `startSession`/`sendTurn` — while the request scope still exists —
+    // and threaded into this `InvocationContext`.
+    //
+    // Until it is, reordering is unsafe rather than merely incomplete:
+    // `resolveUnattendedGrant` returns `false` whenever
+    // `invocation.unattendedPrincipal` is absent, so moving the stages up
+    // would take every ATTENDED external call down the
+    // `unattended_grant_denied` path.
     if (options.interaction === 'external') return { behavior: 'defer' };
     if (options.hasInteractiveApproval) return { behavior: 'ask' };
 

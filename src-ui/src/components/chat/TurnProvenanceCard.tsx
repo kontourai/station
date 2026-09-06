@@ -116,6 +116,32 @@ interface ProvenanceRow {
   trustReportRef?: TurnProvenanceTrustReportRef;
 }
 
+/**
+ * The backlog block as ONE sentence (#1536 B3).
+ *
+ * It used to be a row per slot — "Routing receipt: Not captured by Station
+ * yet", "Sources: Not captured by Station yet", "Trust report: Not captured by
+ * Station yet" — three rows repeating one fact, under a heading that had
+ * already said it. Every field is still NAMED, which is what the module's
+ * no-omission rule requires; what is gone is saying the same thing about each
+ * of them separately.
+ *
+ * The names come from the rows, so a slot added to the envelope reaches this
+ * sentence with no change here. Every row in this block carries
+ * `not-captured-by-station` by construction (the filter that builds it), so
+ * one shared predicate is accurate for all of them.
+ */
+function notYetCapturedSentence(labels: readonly string[]): string {
+  const names = labels.map((label, index) =>
+    index === 0 ? label : label.toLowerCase(),
+  );
+  const listed =
+    names.length > 1
+      ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+      : names[0];
+  return `${listed} ${names.length > 1 ? 'are' : 'is'} not captured by Station yet.`;
+}
+
 function slotRow<TValue>(
   label: string,
   slot: TurnProvenanceSlot<TValue>,
@@ -271,7 +297,16 @@ function buildRows(envelope: TurnProvenanceEnvelope): ProvenanceRow[] {
       const named = tools.uses
         .map((use) => {
           const failures = use.failed + use.cancelled;
-          return failures > 0 ? `${use.name} (${failures} failed)` : use.name;
+          // station#1558 (fix round, L11): an unresolved call is annotated on
+          // its own terms. It must not join `failures` — that word names an
+          // outcome Station observed, and this one is the absence of any.
+          const unresolved = use.unresolved ?? 0;
+          const notes: string[] = [];
+          if (failures > 0) notes.push(`${failures} failed`);
+          if (unresolved > 0) notes.push(`${unresolved} unresolved`);
+          return notes.length > 0
+            ? `${use.name} (${notes.join(', ')})`
+            : use.name;
         })
         .join(', ');
       return tools.omittedNames > 0
@@ -433,7 +468,15 @@ function turnFindings(envelope: TurnProvenanceEnvelope): string[] {
       // finding (archive#1802): a genuine per-answer anomaly (this turn's
       // own tool call never resolved), distinct from `failed`/`cancelled`,
       // which both name an event Station DID observe.
-      const resolved = use.succeeded + use.failed + use.cancelled;
+      // station#1558: a call the session ended on now settles with its own
+      // `tool.completed` (`status: 'unresolved'`), so it counts as observed
+      // here — otherwise it would be counted twice, once as an observed
+      // unresolved outcome and again as a start with no terminal at all.
+      // Both roads lead to the same honest finding below.
+      const observedUnresolved = use.unresolved ?? 0;
+      unresolved += observedUnresolved;
+      const resolved =
+        use.succeeded + use.failed + use.cancelled + observedUnresolved;
       if (use.started > resolved) unresolved += use.started - resolved;
     }
     if (failed > 0) {
@@ -631,25 +674,15 @@ export function TurnProvenanceCard({
           )}
 
           {backlogRows.length > 0 && (
-            <>
-              {/* archive#1802: kept (not deleted — see the module docblock's
-                  no-omission rule) but visually demoted into its own block,
-                  out of the checkable facts and out of the badge. This is
-                  Station's roadmap, not a finding about this answer. */}
-              <p className="turn-provenance__section-label">
-                Not yet captured by Station
-              </p>
-              <dl className="turn-provenance__facts turn-provenance__facts--backlog">
-                {backlogRows.map((row) => (
-                  <div className="turn-provenance__row" key={row.label}>
-                    <dt className="turn-provenance__label">{row.label}</dt>
-                    <dd className="turn-provenance__value turn-provenance__value--not-captured">
-                      {unavailableText(row.gap ?? 'not-captured-by-station')}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </>
+            /* archive#1802: kept (not deleted — see the module docblock's
+               no-omission rule) but visually demoted, out of the checkable
+               facts and out of the badge. This is Station's roadmap, not a
+               finding about this answer.
+               #1536 B3: and one sentence rather than a row per slot, each
+               repeating the heading's own words. */
+            <p className="turn-provenance__not-captured">
+              {notYetCapturedSentence(backlogRows.map((row) => row.label))}
+            </p>
           )}
 
           <p className="turn-provenance__section-label">Metadata</p>
