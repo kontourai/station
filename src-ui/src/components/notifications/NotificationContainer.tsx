@@ -131,6 +131,18 @@ function ToastCard({
             </time>
           </div>
           <div className="toast-card__message">{notification.message}</div>
+          {/*
+            #1545: which command, or which file, the call will touch — so the
+            operator is deciding about that rather than about the word "Bash".
+            Already bounded, single-line and redacted by `toolRequestPreview`
+            — render it as text, never re-truncate or re-format it here, and
+            never present it as the complete tool input.
+          */}
+          {notification.toolPreview ? (
+            <div className="toast-card__detail toast-card__detail--tool">
+              {notification.toolPreview}
+            </div>
+          ) : null}
           {notification.metadata?.detail ? (
             <div className="toast-card__detail">
               {String(notification.metadata.detail)}

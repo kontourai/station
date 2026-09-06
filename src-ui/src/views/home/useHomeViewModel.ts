@@ -16,7 +16,7 @@ import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import type { NavigationView } from '../../types';
 import { runtimeCatalogVisibleModels } from '../../utils/execution';
-import { modelDisplayLabel } from '../../utils/modelCapabilities';
+import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
 import {
   focusChatEventDetailForAction,
@@ -85,7 +85,7 @@ function useHomeWorkData(): HomeWorkData {
       ...(pickerCatalog?.modelConnections ?? []),
     ].flatMap((connection) => runtimeCatalogVisibleModels(connection));
     return (modelId: string | null | undefined) =>
-      modelDisplayLabel(modelId, catalog);
+      modelIdentityLabel(modelId, catalog);
   }, [pickerCatalog?.agentConnections, pickerCatalog?.modelConnections]);
   const openChatItems = useOpenChats(
     agents,

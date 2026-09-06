@@ -37,6 +37,14 @@ export type BackgroundTaskState =
   | 'running'
   | 'completed'
   | 'stopped'
+  /**
+   * station#1558: the session ended with this call still open, so no result
+   * can ever arrive. Distinct from `stopped` (which names a stop someone
+   * asked for — a turn abort, a session exit, the orphan safety net below)
+   * and from `failed`: Station observed no failure, only the absence of any
+   * outcome.
+   */
+  | 'unresolved'
   | 'failed';
 
 export interface BackgroundTaskEntry {
@@ -158,7 +166,9 @@ function foldToolCompleted(
       ? 'completed'
       : event.status === 'cancelled'
         ? 'stopped'
-        : 'failed';
+        : event.status === 'unresolved'
+          ? 'unresolved'
+          : 'failed';
   const endedAt = parseTime(event.createdAt, Date.now());
   const entries = {
     ...state.entries,

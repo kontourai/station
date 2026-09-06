@@ -384,7 +384,13 @@ export type SessionInventoryEventDescriptor =
       turnId: string;
       toolCallId: string;
       name: string;
-      terminalStatus: 'succeeded' | 'failed' | 'cancelled';
+      /**
+       * station#1558: `'unresolved'` exists on THIS internal descriptor and
+       * deliberately not on the published `ThreadToolResultRow`. The
+       * inventory projection drops such a completion rather than emit a row
+       * — see `session-inventory-module.ts` and the note on that contract.
+       */
+      terminalStatus: 'succeeded' | 'failed' | 'cancelled' | 'unresolved';
     }
   | {
       id: string;
@@ -2161,7 +2167,9 @@ export class EventStore {
               ? 'succeeded'
               : row.status === 'error'
                 ? 'failed'
-                : 'cancelled',
+                : row.status === 'unresolved'
+                  ? 'unresolved'
+                  : 'cancelled',
         };
       case 'request.resolved':
         return {

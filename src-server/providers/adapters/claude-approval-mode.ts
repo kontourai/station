@@ -15,6 +15,14 @@ const CLAUDE_APPROVAL_MODE_MAP: Record<
   // that: `preToolPolicyHookOutput` (claude-adapter.ts) states no permission
   // opinion for a call Station's own policy did not decide, and the engine's
   // consent path reaches Station through `canUseTool`.
+  //
+  // Accepted gap (#1545), not an oversight: narrowing the cascade would cost
+  // that repository's own `CLAUDE.md` and `.mcp.json` servers, and the
+  // project/local tiers only apply to a workspace the operator has trusted in
+  // Claude Code — a same-user threat model. What Station guarantees instead is
+  // that a call which IS prompted arrives naming its command or file
+  // (`toolRequestPreview`), never a bare tool name. See the `settingSources`
+  // comment in claude-adapter.ts and docs/conformance/tool-policy-delivery.md.
   ask: 'default',
   // Auto-accept file edits within the workspace; still ask before
   // anything riskier (e.g. shell commands outside that boundary). The hook

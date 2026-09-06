@@ -1,7 +1,13 @@
 export interface InsightsUsageData {
   toolUsage: Record<
     string,
-    { calls: number; errors: number; outcomeUnknown?: number }
+    {
+      calls: number;
+      errors: number;
+      outcomeUnknown?: number;
+      /** station#1558; absent from a Station older than that change. */
+      unresolved?: number;
+    }
   >;
   hourlyActivity: number[];
   agentUsage: Record<string, { chats: number; tokens: number }>;
