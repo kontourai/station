@@ -2353,3 +2353,24 @@ describe('System Routes', () => {
     expect(await json(aliasResponse)).toEqual(await json(canonicalResponse));
   });
 });
+
+test('system status includes host recovery disclosure and preserves unavailable evidence', async () => {
+  for (const homeRecovery of [
+    { kind: 'not-restored' },
+    { kind: 'unavailable' },
+    {
+      kind: 'recovered-from-copy',
+      recoveryId: 'recovery-test',
+      snapshotCreatedAt: '2026-09-05T00:00:00.000Z',
+      authorityTransferred: false,
+    },
+  ]) {
+    const app = createSystemRoutes(
+      { ...createMockDeps(), getHomeRecovery: () => homeRecovery } as any,
+      mockLogger,
+    );
+    const response = await app.request('/status');
+    expect(response.status).toBe(200);
+    expect((await json(response)).homeRecovery).toEqual(homeRecovery);
+  }
+});

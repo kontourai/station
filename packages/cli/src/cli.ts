@@ -1187,12 +1187,17 @@ function buildProgram(
             homeDir: result.homeDir,
             previousHome: result.previousHome,
             restoredFrom: backupDir,
+            recovery: result.recovery,
             fileCount: result.manifest.files.length,
             totalBytes: result.manifest.totalBytes,
           }),
         );
       else {
         console.log(`✓ Restored Station home from ${backupDir}`);
+        console.log(
+          `  Recovered from a copy captured at ${result.recovery.snapshotCreatedAt}. Work after that snapshot may be missing.`,
+        );
+        console.log('  This restore did not transfer execution authority.');
         if (result.previousHome)
           console.log(`  Previous home retained at ${result.previousHome}`);
       }

@@ -1985,6 +1985,16 @@ Validate every manifest entry and content hash, then atomically restore a
 Station home while retaining the replaced home as a timestamped sibling.
 Restore never runs while a matching Station instance is live.
 
+The CLI identifies the result as **recovered from a copy**, prints the backup's
+snapshot time, and notes that work after that snapshot may be missing. Its JSON
+receipt includes `recovery` with a new recovery ID, snapshot/recovery times,
+the validated manifest digest, and `authorityTransferred: false`. Restore
+publishes `station-home-recovery.json` atomically with the home, replacing any
+prior recovery disclosure from that copy. This metadata grants no execution
+authority and does not claim witnessed failover. Connected browsers show the same recovery-from-copy notice after refreshing
+system status. This home-level disclosure does not establish a channel-specific
+divergence checkpoint or witnessed transfer.
+
 ```
 station home restore --from=<backup-directory> --confirm [--home=<dir>] [--base=<dir>] [--json]
 ```
