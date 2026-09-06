@@ -351,6 +351,24 @@ test('interrupted dependency graphs recover from retained bytes in dependency or
       const selected = journal.currentInstallation(id);
       if (selected.state !== 'observed') throw new Error(`Lost ${id}`);
       expect(journal.admissionOpen(selected.installation)).toBe(true);
+      const parentId =
+        id === 'leaf' ? 'child' : id === 'child' ? 'recoverable' : null;
+      if (parentId) {
+        const parent = journal.currentInstallation(parentId);
+        if (parent.state !== 'observed') throw new Error(`Lost ${parentId}`);
+        expect(journal.activationState(parent.installation)).toBe('pending');
+        expect(journal.activationPlan(selected.installation)?.parent).toEqual({
+          installation: parentId,
+          generation: parent.installation.incarnation,
+        });
+        expect(
+          journal.activationPlan(parent.installation)?.ownedDependencies,
+        ).toContainEqual({
+          id,
+          contentDigest: selected.installation.contentDigest,
+          generation: selected.installation.incarnation,
+        });
+      }
       const old = roots[ids.indexOf(id)]!;
       expect(selected.installation.dataScope).toBe(old.dataScope);
       expect(readFileSync(join(old.dataRoot!, 'state.txt'), 'utf8')).toBe(id);
