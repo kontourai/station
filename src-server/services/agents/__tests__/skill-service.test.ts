@@ -36,22 +36,6 @@ const mockConfigLoader = {
   // Writes the real `skill.json` the loader would, so tests that read the
   // install record back (origin, legacyIds) exercise the same bytes production
   // does rather than a stub that records a call and persists nothing.
-  // `<home>/skills/<name>`, ALWAYS — what the real `saveSkillConfig` does, which
-  // resolves by name with no slug. This stub used to write to `config.path`
-  // instead, so a scoped write appeared to put its record beside its body here
-  // while production split the package across two roots (#1582 D6 wrote it that
-  // way because the split was the only way to reach the project root at all;
-  // #1619 made the production path directory-addressed, so the stub can stop
-  // compensating and the split becomes visible to every test in this file).
-  saveSkill: vi.fn(async (name: string, config: unknown) => {
-    const dir = join(testDir, 'skills', name);
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, 'skill.json'),
-      JSON.stringify(config, null, 2),
-      'utf-8',
-    );
-  }),
   // The directory-addressed pair the write path uses (#1619). These call the
   // REAL storage functions rather than imitating them, so the containment they
   // assert is asserted here too — a stub that only wrote a file would let a
@@ -62,7 +46,6 @@ const mockConfigLoader = {
   deleteSkillAt: vi.fn(async (name: string, directory: string) =>
     deleteSkillPackageAt(testDir, name, directory),
   ),
-  deleteSkill: vi.fn(),
   listSkills: vi.fn().mockResolvedValue([]),
   skillExists: vi.fn().mockResolvedValue(false),
 };
@@ -90,7 +73,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockConfigLoader.loadSkill.mockReset();
   // Reads the real `skill.json` when one exists, so the install-record
-  // fallback path is exercised against the same bytes `saveSkill` wrote rather
+  // fallback path is exercised against the same bytes the writers wrote rather
   // than an invented shape — and REFUSES when one does not, which is what
   // production does: `loadSkillConfig` throws `Skill '<name>' not found` for a
   // missing `<home>/skills/<name>/skill.json`. It used to answer a fabricated
@@ -146,6 +129,49 @@ describe('SkillService', () => {
       identity: { name, origin: 'migrated-playbook' as const, legacyId },
     };
   }
+
+  // Delta review. An interrupted package has no `SKILL.md` — that is what makes
+  // it interrupted — so discovery never registers it, and resolving this seam
+  // through the registry hands back whatever OTHER package owns the name. The
+  // repair then reads a directory it did not write and reports "identity or
+  // contents are unavailable", leaving the half-written package permanently
+  // unrepairable. Reproduced scoped: unscoped repaired, scoped failed.
+  test('repairs an interrupted package even when another package owns its name', async () => {
+    const seeded = seedInterruptedPackage(
+      'contested',
+      '33333333-3333-4333-8333-333333333333',
+    );
+    // A discovered package of the same name in the OTHER root, which owns the
+    // registry key because the interrupted one has no body to be found by.
+    const rival = join(testDir, 'projects', 'demo', 'skills', 'contested');
+    mkdirSync(rival, { recursive: true });
+    writeFileSync(
+      join(rival, 'SKILL.md'),
+      '---\nname: contested\ndescription: Rival\n---\nRival body',
+      'utf-8',
+    );
+    await service.discoverSkills(testDir, 'demo');
+
+    // The production call: no slug, exactly as `station doctor` makes it. What
+    // must not happen is the seam resolving through the REGISTRY, which holds
+    // the rival.
+    const result = await service.completeInterruptedLocalSkillPackage(
+      seeded.input,
+      seeded.identity,
+      testDir,
+    );
+
+    // The half-written package is finished where it was written…
+    expect(existsSync(seeded.skillPath)).toBe(true);
+    expect(readFileSync(seeded.skillPath, 'utf8')).toBe(
+      seeded.publication.skillMarkdown,
+    );
+    // …and the rival package is untouched.
+    expect(readFileSync(join(rival, 'SKILL.md'), 'utf-8')).toContain(
+      'Rival body',
+    );
+    expect(result).toMatchObject({ success: true, repaired: true });
+  });
 
   test('completes two identity-bound interrupted originals without rewriting either install record', async () => {
     const first = seedInterruptedPackage(
@@ -785,7 +811,7 @@ describe('SkillService', () => {
     const malformed =
       '---\nname: author-skill\ndescription: [unterminated\n---\n\nBody text';
     writeFileSync(skillPath, malformed);
-    mockConfigLoader.saveSkill.mockClear();
+    mockConfigLoader.saveSkillIn.mockClear();
 
     await expect(
       service.updateLocalSkill(
@@ -795,7 +821,11 @@ describe('SkillService', () => {
       ),
     ).rejects.toThrow(/frontmatter parse failed/i);
     expect(readFileSync(skillPath, 'utf-8')).toBe(malformed);
-    expect(mockConfigLoader.saveSkill).not.toHaveBeenCalled();
+    // The record half, through the writer the service actually calls: asserted
+    // on `saveSkill` this could never fail, because nothing calls it any more
+    // (#1619 deleted it) — the only coverage of "without writing" for the
+    // record was inert (delta review).
+    expect(mockConfigLoader.saveSkillIn).not.toHaveBeenCalled();
   });
 
   test('createLocalSkill writes command and variables as block frontmatter', async () => {
@@ -1510,6 +1540,18 @@ describe('SkillService', () => {
     await service.discoverSkills(testDir, 'demo');
 
     const revision = await service.localSkillRevision('shared', testDir);
+    // WHICH package the revision describes, asserted before anything is
+    // deleted. Without this the case passes under the two-resolution split it
+    // exists to refuse: base digests the name-derived directory and deletes the
+    // registry's, and because base's `localSkillRevision` digests that SAME
+    // name-derived directory the comparison is self-consistent — identical
+    // filesystem outcome, identical return value, only the tree that was
+    // VERIFIED differs, and nothing observed it (delta review, replayed).
+    expect(
+      revision,
+      'the revision reported for this name is not the package it resolves',
+    ).toBe(await localSkillRevisionFromDirectory(projectDir));
+
     const result = await service.removeSkillIfRevision(
       'shared',
       revision,
@@ -2042,7 +2084,7 @@ describe('SkillService', () => {
       ).rejects.toThrow(/Invalid skill name/);
       expect(existsSync(join(testDir, 'skills', name))).toBe(false);
     }
-    expect(mockConfigLoader.saveSkill).not.toHaveBeenCalled();
+    expect(mockConfigLoader.saveSkillIn).not.toHaveBeenCalled();
   });
 
   test('createLocalSkill refuses a name that escapes the skills directory', async () => {

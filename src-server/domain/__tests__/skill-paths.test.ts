@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
@@ -180,6 +181,55 @@ describe('assertSkillPackageDirectory', () => {
   // is a symlink redirecting elsewhere INSIDE the home satisfies both while
   // every write lands outside the roots. `resolveSkillDirectory` refuses this
   // exact shape (above), and moving the derivation must not drop the guarantee.
+  // Delta review, executed: with the ROOT itself symlinked, the lexical parent
+  // still read `skills` and resolving both sides put the comparison in
+  // redirected space — so a write landed in the plugin's root and a delete
+  // emptied it. The shape is read off the physical paths now.
+  test('refuses a skills root symlinked elsewhere inside the home', () => {
+    const foreign = join(home, 'plugins', 'acme', 'skills');
+    mkdirSync(foreign, { recursive: true });
+    writeFileSync(join(foreign, 'canary.txt'), 'untouched', 'utf-8');
+    symlinkSync(foreign, join(home, 'skills'), 'dir');
+
+    expect(() =>
+      assertSkillPackageDirectory(home, 'alpha', join(home, 'skills', 'alpha')),
+    ).toThrow(/does not sit in a skills root Station writes/);
+    expect(existsSync(join(foreign, 'canary.txt'))).toBe(true);
+  });
+
+  test('refuses a skills root symlinked outside the home', () => {
+    symlinkSync(outside, join(home, 'skills'), 'dir');
+
+    expect(() =>
+      assertSkillPackageDirectory(home, 'alpha', join(home, 'skills', 'alpha')),
+    ).toThrow(/resolves outside/);
+  });
+
+  // The other direction: an ordinary root, unredirected, still resolves — the
+  // refusals above must not be a blanket one.
+  test('accepts a package under a root that is not redirected at all', () => {
+    mkdirSync(join(home, 'skills', 'alpha'), { recursive: true });
+    mkdirSync(join(home, 'projects', 'demo', 'skills', 'beta'), {
+      recursive: true,
+    });
+
+    expect(() =>
+      assertSkillPackageDirectory(home, 'alpha', join(home, 'skills', 'alpha')),
+    ).not.toThrow();
+    expect(() =>
+      assertSkillPackageDirectory(
+        home,
+        'beta',
+        join(home, 'projects', 'demo', 'skills', 'beta'),
+      ),
+    ).not.toThrow();
+    // …including a package directory that does not exist yet, which is every
+    // package a create is about to make.
+    expect(() =>
+      assertSkillPackageDirectory(home, 'gamma', join(home, 'skills', 'gamma')),
+    ).not.toThrow();
+  });
+
   test('refuses a package directory symlinked elsewhere inside the home', () => {
     const elsewhere = join(home, 'not-a-skills-root');
     mkdirSync(elsewhere, { recursive: true });

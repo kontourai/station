@@ -229,6 +229,18 @@ export interface SkillListing {
 }
 
 /**
+ * What a remove answers, with WHY it refused where the reason changes how a
+ * caller must respond. `not-owned` is a package Station does not own — the
+ * skill exists and the request is understood, which is a different answer from
+ * a name nothing knows.
+ */
+export interface SkillRemovalResult {
+  success: boolean;
+  message: string;
+  reason?: 'not-owned';
+}
+
+/**
  * `getSkill`'s answer: the install record, plus what the declarations on disk
  * actually DO and — when they could not be read at all — why.
  *
@@ -746,10 +758,12 @@ export class SkillService {
   private deriveOrigin(
     location: string | undefined,
     source: string | undefined,
+    /** The home to read the roots off; the ambient one when a caller has none. */
+    projectHomeDir?: string,
   ): SkillOrigin | undefined {
     if (location && this.canonicalSourceFor(location)) return 'package';
     if (location) {
-      const home = this.projectHomeDir();
+      const home = projectHomeDir ?? this.projectHomeDir();
       const pluginsRoot = join(home, 'plugins');
       if (location.startsWith(pluginsRoot)) return 'plugin';
       // `discoverSkills` scans exactly one project-scoped root,
@@ -1346,6 +1360,7 @@ export class SkillService {
   } {
     return this.projectLocalSkillPublicationAt(
       input,
+      projectHomeDir,
       this.resolveSkillDir(projectHomeDir, input.name, projectSlug),
     );
   }
@@ -1363,6 +1378,13 @@ export class SkillService {
    */
   projectLocalSkillPublicationAt(
     input: EditableSkillInput,
+    /**
+     * The home `skillDir` belongs to. Passed rather than read off the loader:
+     * every caller agrees with the ambient home today, and a projection that
+     * depends on ambient state instead of its own argument is the defect one
+     * refactor away (delta review).
+     */
+    projectHomeDir: string,
     skillDir: string,
   ): {
     input: EditableSkillInput;
@@ -1394,7 +1416,11 @@ export class SkillService {
       // only thing that decides whether it is a workspace package.
       origin:
         stableInput.origin ??
-        this.deriveOrigin(join(skillDir, 'SKILL.md'), 'local') ??
+        this.deriveOrigin(
+          join(skillDir, 'SKILL.md'),
+          'local',
+          projectHomeDir,
+        ) ??
         'user',
     };
     const skillMarkdown = serializeSkillMarkdown(stableInput);
@@ -1432,9 +1458,17 @@ export class SkillService {
     projectSlug?: string,
     options: InterruptedLocalSkillPackageRepairOptions = {},
   ): Promise<InterruptedLocalSkillPackageCompletion> {
-    const directory = this.packageDirectoryFor(
-      expectedIdentity.name,
+    // NAME-DERIVED, deliberately, and this is the one seam where that is the
+    // right answer. An interrupted package has no `SKILL.md` — that is what
+    // makes it interrupted — so discovery never registers it, and resolving
+    // through the registry hands back whatever OTHER package owns the name:
+    // the repair then reads a directory it did not write, reports "identity or
+    // contents are unavailable", and the half-written package is permanently
+    // unrepairable (delta review, reproduced). The package was created at a
+    // name-derived path, so the repair resolves the same way it was written.
+    const directory = this.resolveSkillDir(
       projectHomeDir,
+      expectedIdentity.name,
       projectSlug,
     );
     return this.withLocalSkillMutation([directory], () =>
@@ -1491,7 +1525,11 @@ export class SkillService {
     }
     // The projection describes the package at `skillDir`, so it is given that
     // directory rather than a slug it would re-derive one from.
-    const publication = this.projectLocalSkillPublicationAt(input, skillDir);
+    const publication = this.projectLocalSkillPublicationAt(
+      input,
+      projectHomeDir,
+      skillDir,
+    );
     try {
       const initial = await enumerateBoundDirectory({
         directory: skillDir,
@@ -1902,7 +1940,7 @@ export class SkillService {
     name: string,
     projectHomeDir: string,
     projectSlug?: string,
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<SkillRemovalResult> {
     const directory = this.packageDirectoryFor(
       name,
       projectHomeDir,
@@ -1919,7 +1957,7 @@ export class SkillService {
     /** Resolved and LOCKED by the caller — never re-derived here (review H1). */
     directory: string,
     projectSlug?: string,
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<SkillRemovalResult> {
     skillOps.add(1, { operation: 'remove' });
     // A remove deletes a package TREE, so a package Station does not own must
     // not be one of them. `packageDirectoryFor` already guarantees that — it
@@ -1933,10 +1971,25 @@ export class SkillService {
     // they may never have heard of. Discovery's precedence is left exactly as
     // it is — which body activates is a different question with its own rules
     // — and the remove simply looks at whether a package of ours is there.
+    //
+    // The two callers deliberately differ on this existence check: an EDIT
+    // refuses whenever the package Station found is not one it owns, while a
+    // remove additionally asks whether a package of ours is sitting at the
+    // name-derived path. The measured consequence is a case-differing
+    // directory: on a case-insensitive volume `<home>/skills/Alpha` makes
+    // `existsSync` true for `alpha`, so an edit refuses it and a remove
+    // deletes it; on a case-sensitive volume both refuse. That asymmetry is
+    // the price of not blocking a user from deleting their own package, and it
+    // is recorded rather than papered over.
     const refusal = this.packageOwnershipRefusal(name, projectHomeDir);
     if (refusal && !existsSync(directory)) {
       return {
         success: false,
+        // STRUCTURED, not a message a caller has to parse: the route maps this
+        // to 409, and deriving that from the prose meant any rewording
+        // silently reverted every ownership refusal to a false 404 (delta
+        // review).
+        reason: 'not-owned',
         message: `Cannot remove '${name}': ${refusal}.`,
       };
     }

@@ -123,6 +123,28 @@ function nearestExistingAncestor(target: string): string {
 }
 
 /**
+ * `target` as it PHYSICALLY is: the deepest existing ancestor resolved through
+ * symlinks, with the not-yet-created remainder appended.
+ *
+ * `realpathSync` alone cannot answer for a directory that does not exist yet,
+ * which is every package a create is about to make, and comparing an
+ * unresolved path against a resolved one is how a redirect hides (see
+ * `assertSkillPackageDirectory`).
+ */
+function physicalPath(target: string): string {
+  const resolved = resolve(target);
+  const existing = nearestExistingAncestor(resolved);
+  let real: string;
+  try {
+    real = realpathSync(existing);
+  } catch {
+    return resolved;
+  }
+  const remainder = relative(existing, resolved);
+  return remainder ? join(real, remainder) : real;
+}
+
+/**
  * Is `candidate` PHYSICALLY inside `root` — after following symlinks?
  *
  * `isDirectoryWithin` compares strings, which `<home>/skills/alpha ->
@@ -166,16 +188,6 @@ export function isDirectoryPhysicallyWithin(
 }
 
 /**
- * THE one place a skill name becomes a directory.
- *
- * Every writer resolves through this — local create, rename, and registry
- * install — so a name can never reach a filesystem join without having been
- * refused first. Review delta-2 finding (a): `installSkill` forwarded an
- * unchecked registry id into `cp(join(root, id), join(targetDir, id))`, so
- * `../candidate` selected a directory beside the registry root and copied
- * outside `<home>/skills`.
- */
-/**
  * Re-assert, for a package directory that did NOT come from
  * `resolveSkillDirectory`, everything that resolver guarantees.
  *
@@ -216,8 +228,20 @@ export function assertSkillPackageDirectory(
   // parent happens to be called skills" is not the same statement and admits
   // `<home>/plugins/<ns>/skills/<name>` — a root Station serves from and must
   // never write to.
+  //
+  // THE SHAPE IS READ OFF THE PHYSICAL PATHS, root resolved FIRST. Reading it
+  // off the unresolved path let the ROOT ITSELF be the redirect: with
+  // `<home>/skills` symlinked to `<home>/plugins/<ns>/skills`, the lexical
+  // parent still reads `skills` while every write lands in the plugin's root —
+  // and the containment check below could not see it either, because resolving
+  // both sides put the whole comparison in redirected space (delta review,
+  // executed: a write landed there and a delete emptied it). Refusal now
+  // extends to any redirect that stays inside the home, which is every
+  // read-only root Station serves.
   const root = dirname(resolved);
-  const parent = relative(resolve(projectHomeDir), root).split(sep).join('/');
+  const parent = relative(physicalPath(projectHomeDir), physicalPath(root))
+    .split(sep)
+    .join('/');
   const inWritableRoot =
     parent === 'skills' || /^projects\/[^/]+\/skills$/.test(parent);
   if (!inWritableRoot) {
@@ -225,14 +249,13 @@ export function assertSkillPackageDirectory(
       `Skill directory ${JSON.stringify(directory)} does not sit in a skills root Station writes (${projectHomeDir}/skills or ${projectHomeDir}/projects/<project>/skills)`,
     );
   }
-  // …and PHYSICALLY inside that root, which the two checks above do not
-  // compose into. Containment against the HOME plus a lexical shape accepts a
-  // package directory that is a symlink redirecting elsewhere inside the home
-  // — `<home>/skills/<name>` pointing at `<home>/somewhere-else` satisfies
-  // both while every write lands outside the roots. `resolveSkillDirectory`
-  // made exactly this call against `skillsRootDir(...)` and refused it
-  // (`skill-paths.test.ts` pins that refusal); moving the derivation must not
-  // drop the guarantee that came with it (review H2).
+  // …and PHYSICALLY inside that root, which the checks above do not compose
+  // into: a package directory that is a symlink redirecting elsewhere inside
+  // the home — `<home>/skills/<name>` pointing at `<home>/somewhere-else` —
+  // satisfies both while every write lands outside the roots.
+  // `resolveSkillDirectory` made exactly this call against `skillsRootDir(...)`
+  // and refused it (`skill-paths.test.ts` pins that refusal); moving the
+  // derivation must not drop the guarantee that came with it (review H2).
   if (!isDirectoryPhysicallyWithin(root, resolved)) {
     throw new Error(
       `Skill directory ${JSON.stringify(directory)} resolves outside ${root}`,

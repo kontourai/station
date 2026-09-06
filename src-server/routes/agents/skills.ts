@@ -315,13 +315,21 @@ export function createSkillRoutes(
       const name = param(c, 'name');
       const result = await skillService.removeSkill(name, getProjectHomeDir());
       if (!result.success) {
-        // A package Station does not own is a 409, exactly as the same refusal
-        // is on PUT above — the request is understood and the skill exists;
-        // what is refused is Station's authority over it. 404 said the skill
-        // was not there, which is a different and false answer.
+        // A package Station does not own is a 409: the request is understood
+        // and the skill exists; what is refused is Station's authority over
+        // it. 404 said the skill was not there, which is a different and false
+        // answer. Read from the service's own `reason` — deriving it by
+        // matching the human message meant any rewording silently reverted
+        // every ownership refusal to that false 404.
+        //
+        // PUT answers 400 for the same refusal (its 409 covers a different
+        // condition, a command declaration on a read-only package). The two
+        // verbs disagreeing is a real inconsistency, filed as #1662 rather
+        // than changed here: a client-visible status change on PUT does not
+        // belong in a fix round.
         return c.json(
           { success: false, error: result.message },
-          result.message.startsWith(`Cannot remove '${name}':`) ? 409 : 404,
+          result.reason === 'not-owned' ? 409 : 404,
         );
       }
       skillOps.add(1, { operation: 'delete' });
