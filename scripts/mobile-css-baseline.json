@@ -187,7 +187,7 @@
     },
     "src-ui/src/views/ProjectPage.css": {
       "count": 3,
-      "reason": "Three blocks at three breakpoints: task grids single-column at 760px, the live-work row's touch floor at 768px, and the touch floors, card grid, git-commit rows and namespace config bar of the page's own content. The narrow gutters this reason used to name moved to project-page-frame.css with the frame itself (#1636); this file no longer declares them."
+      "reason": "Three blocks at two breakpoints: task grids single-column at 760px, then two that both open at 768px \u2014 the live-work row's touch floor, and the touch floors, card grid, git-commit rows and namespace config bar of the page's own content. The narrow gutters this reason used to name moved to project-page-frame.css with the frame itself (#1636); this file no longer declares them."
     },
     "src-ui/src/views/project-page-frame.css": {
       "count": 1,

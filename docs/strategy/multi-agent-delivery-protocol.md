@@ -67,9 +67,10 @@ model always (review found what verification could not, on every branch).
 
 ### A red proves nothing until you read it — and neither does a green
 
-An uncaught injection is one failure mode. A *caught* one has five, and a sixth
-turns the same mechanism into a false green. Every one of them satisfies a
-sentinel. All six were observed live:
+An uncaught injection is one failure mode. A *caught* one has five, and two
+more turn the same mechanism into a false green — one where the subject never
+ran, one where it was never in the corpus. Every one of them satisfies a
+sentinel. All seven were observed live:
 
 1. **The patch never applied.** The transform error surfaces as a failure and
    reads as a catch. Confirm the injection is in the file (`grep`) before

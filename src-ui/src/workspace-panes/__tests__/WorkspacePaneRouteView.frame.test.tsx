@@ -59,6 +59,7 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   test,
@@ -89,20 +90,50 @@ const CONTENT_COLUMN = { width: 1200, height: 762 };
 const harness = vi.hoisted(() => ({ builtinRendererPresent: true }));
 
 /**
- * The one catalog entry every branch below reshapes. `availability` and
- * `selectedRenderer` are annotated rather than inferred: the inferred literal
- * type has no `selectedRenderer` at all (the baseline is the builtin branch,
- * which carries none), so `typecheck:ui` — which, unlike a bare
- * `tsc -p tsconfig.json`, compiles test files — rejects every branch that
- * declares one.
+ * The one catalog entry every branch below reshapes.
+ *
+ * Annotated rather than inferred, because the inferred literal type has no
+ * `selectedRenderer` at all — the baseline is the builtin branch, which
+ * carries none — so every branch that declares one is a type error. Only
+ * `typecheck:ui` (`tsc -p src-ui/tsconfig.json`) sees it: the ROOT
+ * `tsconfig.json` has an `include` of `src-server` and `src-shared` and
+ * nothing else, so no `src-ui` file of ANY kind reaches it — source as much
+ * as test. (Its `exclude` does list test files, but that is not what is
+ * operative here; the include never reaches this directory at all.)
+ *
+ * The field types are the real unions rather than `string`, copied from
+ * `WorkspacePaneAvailabilityState`, `WorkspacePaneRendererCandidate['source']`
+ * and the `kind`s of `WorkspacePaneRendererRef`. Widening them to `string`
+ * lets a typo'd fixture compile and silently reroute to a different branch;
+ * the occupant assertion would still catch it, but a compile error names the
+ * mistake instead of a test failure describing its symptom. (Restating them
+ * here rather than importing the contracts keeps the fixture loose about the
+ * fields these branches do not exercise — `contributorProvenance`,
+ * `requiredCapabilities` — which the real types require.)
  */
 type CatalogEntryFixture = {
   descriptor: { id: string; name: string; description: string };
   instance: { instanceId: string; boundContext: { projectId: string } };
-  availability: { state: string; reason: { code: string; source: string } };
+  availability: {
+    state:
+      | 'available'
+      | 'coming-soon'
+      | 'not-configured'
+      | 'unsupported'
+      | 'permission-required'
+      | 'temporarily-unavailable';
+    reason: { code: string; source: string };
+  };
   selectedRenderer?: {
-    source: string;
-    renderer: { kind: string; ref?: string };
+    source: 'primary' | 'alternative';
+    renderer: {
+      kind:
+        | 'standard-data'
+        | 'builtin-component'
+        | 'plugin-component'
+        | 'mcp-tool-ui';
+      ref?: string;
+    };
   };
   clientRendererPresence: string;
 };
@@ -262,7 +293,7 @@ const FRAMED_BRANCHES = [
         reason: { code: 'ready', source: 'resolver' },
       };
       catalogMock.entries[0].selectedRenderer = {
-        source: 'declared',
+        source: 'primary',
         renderer: { kind: 'standard-data' },
       };
       harness.builtinRendererPresent = true;
@@ -281,6 +312,10 @@ const FRAMED_BRANCHES = [
     },
   },
   {
+    // `mcp-tool-ui` is one satisfying value, not the pinned one: this branch
+    // takes any kind that is neither `standard-data` nor an untrusted
+    // `plugin-component`, so what it proves is "a contributed renderer keeps
+    // the frame", not anything specific to MCP.
     name: 'contributed renderer',
     occupant: 'contributed-pane',
     apply() {
@@ -289,7 +324,7 @@ const FRAMED_BRANCHES = [
         reason: { code: 'ready', source: 'resolver' },
       };
       catalogMock.entries[0].selectedRenderer = {
-        source: 'declared',
+        source: 'primary',
         renderer: { kind: 'mcp-tool-ui', ref: 'ui://pane/flow' },
       };
       harness.builtinRendererPresent = false;
@@ -405,6 +440,11 @@ describe.skipIf(!chromiumAvailable)(
     afterAll(async () => {
       await browser?.close();
     });
+    // Stated, not inherited: the sibling describe's `afterEach` happens to
+    // leave this branch selected, but geometry evidence that depends on
+    // another block's teardown ordering is evidence about the file, not about
+    // the route.
+    beforeEach(() => selectBranch('builtin pane'));
     afterEach(() => cleanup());
 
     async function measure() {
