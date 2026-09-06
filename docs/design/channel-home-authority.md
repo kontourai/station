@@ -58,7 +58,9 @@ Backend choice does not replace the write-path integration below.
 ## Planned-transfer decision storage
 
 The private [planned transfer store](../../src-server/services/orchestration/planned-home-transfer-store.ts)
-provides a SQLite implementation of `PlannedHomeTransferStore`. A composing
+provides a SQLite implementation of `PlannedHomeTransferStore`. Consumers await
+its operations; asynchronous database or remote-service adapters can implement
+the same interface. A composing
 service supplies a centrally owned database outside portable home archives.
 The adapter itself performs no home authentication, membership authorization,
 lease issuance, renewal or target activation. No runtime write path currently

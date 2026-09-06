@@ -435,6 +435,50 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
   };
 }
 
-export type PlannedHomeTransferStore = ReturnType<
-  typeof createSqlitePlannedHomeTransferStore
->;
+/** Consumers await operations so a remote or asynchronous database adapter can
+ * implement the same boundary without changing the coordinator. */
+export interface PlannedHomeTransferStore {
+  initialize(
+    owner: PlannedHomeOwner,
+  ):
+    | TransferStoreResult<PlannedHomeOwner>
+    | Promise<TransferStoreResult<PlannedHomeOwner>>;
+  inspect(
+    tenant: string,
+    channel: string,
+  ):
+    | TransferStoreResult<PlannedHomeOwner>
+    | Promise<TransferStoreResult<PlannedHomeOwner>>;
+  resolve(
+    tenant: string,
+    operation: string,
+  ):
+    | TransferStoreResult<PlannedHomeTransfer>
+    | Promise<TransferStoreResult<PlannedHomeTransfer>>;
+  prepare(
+    intent: PlannedHomeTransferIntent,
+  ):
+    | TransferStoreResult<PlannedHomeTransfer>
+    | Promise<TransferStoreResult<PlannedHomeTransfer>>;
+  recordClosure(
+    tenant: string,
+    operation: string,
+    closure: ProjectTaskRoomSourceSeal,
+  ):
+    | TransferStoreResult<PlannedHomeTransfer>
+    | Promise<TransferStoreResult<PlannedHomeTransfer>>;
+  recordReady(
+    tenant: string,
+    operation: string,
+    targetHomeRef: string,
+    closureDigest: string,
+  ):
+    | TransferStoreResult<PlannedHomeTransfer>
+    | Promise<TransferStoreResult<PlannedHomeTransfer>>;
+  commit(
+    tenant: string,
+    operation: string,
+  ):
+    | TransferStoreResult<PlannedHomeTransfer>
+    | Promise<TransferStoreResult<PlannedHomeTransfer>>;
+}
