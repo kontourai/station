@@ -597,17 +597,13 @@ describe('workflow wiring', () => {
    * that was restated in two test files and diverged.
    */
 
-  test('the gallery gate keeps a stalled run visible and pins its renderer by digest', async () => {
-    const { readFileSync } = await import('node:fs');
-    const gallery = readFileSync(
-      '.github/workflows/nightly-gallery.yml',
-      'utf8',
-    );
-    expect(gallery).toContain('cancel-in-progress: false');
-    expect(gallery).toMatch(
-      /image: mcr\.microsoft\.com\/playwright:v[\d.]+-\w+@sha256:[0-9a-f]{64}/,
-    );
-    expect(runnerLines(gallery)).toEqual(['runs-on: ubuntu-22.04']);
-    expect(gallery).not.toContain('physical-host-capacity@');
-  });
+  /**
+   * `nightly-gallery.yml` itself — `cancel-in-progress`, the digest-pinned
+   * container, its runner and the absence of a capacity lease — is asserted by
+   * `ci-workflow-contract.test.ts`, structurally, off the parsed document. A
+   * substring version lived here and was measurably weaker: commenting the
+   * `cancel-in-progress` key out left this file green while the structural
+   * assertion failed, because the text a comment contains is indistinguishable
+   * from a key to `toContain`. Deliberately not restated.
+   */
 });
