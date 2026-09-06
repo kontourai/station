@@ -237,6 +237,28 @@ describe('app-shell routing', () => {
     });
     expect(getParentView({ type: 'settings' })).toEqual({ type: 'home' });
   });
+  // #1582 H3: the fallback used to hand every unlisted view `{type:'home'}`,
+  // which armed `app.escapeUp` on pages that are not below anything — Escape
+  // on Schedule navigated to Home. A parent is declared, not assumed, so the
+  // whole top-level class reports none. Enumerated rather than spot-checked:
+  // fixing only the view the audit named would leave the same bug in its
+  // siblings.
+  test.each([
+    ['agents'],
+    ['connections'],
+    ['guidance'],
+    ['plugins'],
+    ['review-queue'],
+    ['developer'],
+    ['schedule'],
+    ['notifications'],
+    ['profile'],
+    ['registry'],
+  ])('getParentView reports no parent for the top-level view %s', (type) => {
+    expect(
+      getParentView({ type } as unknown as Parameters<typeof getParentView>[0]),
+    ).toBeNull();
+  });
   test('resolveViewFromPath maps agent, connection, and project routes', () => {
     expect(resolveViewFromPath('/agents/new')).toEqual({ type: 'agent-new' });
     expect(resolveViewFromPath('/connections/models/demo')).toEqual({
