@@ -8,7 +8,9 @@ import {
 } from '../components/chat-dock/conversationOpenController';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { conversationCanMutate } from '../contexts/conversation-open-policy';
+import { drainQueuedMessageOnTurnCompleted } from '../hooks/orchestration/queueDrain';
 import {
+  handleRuntimeErrorEvent,
   handleTurnAbortedEvent,
   handleTurnCompletedEvent,
 } from '../hooks/orchestration/turnHandlers';
@@ -377,7 +379,7 @@ test('current child live shell survives its authoritative identity refresh', () 
   expect(next.orchestrationTurnOpen).toBe(true);
 });
 
-test.each(['completed', 'aborted'] as const)(
+test.each(['completed', 'aborted', 'error'] as const)(
   'current %s terminal refreshes a busy open snapshot once',
   (terminal) => {
     const id = `refresh-${terminal}`;
@@ -413,6 +415,13 @@ test.each(['completed', 'aborted'] as const)(
         ...base,
         method: 'turn.completed',
       });
+    } else if (terminal === 'error') {
+      handleRuntimeErrorEvent({
+        ...base,
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'Provider refused',
+      });
     } else {
       handleTurnAbortedEvent({
         ...base,
@@ -438,3 +447,44 @@ test.each(['completed', 'aborted'] as const)(
     activeChatsStore.removeChat(id);
   },
 );
+
+test('binding-change queue review blocks automatic and delayed dispatch', () => {
+  vi.useFakeTimers();
+  const id = 'reviewed-queue';
+  activeChatsStore.initChat(id, {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Queue',
+  });
+  activeChatsStore.updateChat(id, {
+    messages: [],
+    queuedMessages: ['keep this exact prompt'],
+    queuedMessageFailure: {
+      reviewReason: 'execution-binding-changed',
+      message: 'Review changed binding',
+      at: 1,
+    },
+  });
+  const scheduledBeforeDrain = vi.getTimerCount();
+  drainQueuedMessageOnTurnCompleted('http://station.test', id);
+  expect(activeChatsStore.getSnapshot()[id].queuedMessages).toEqual([
+    'keep this exact prompt',
+  ]);
+  expect(vi.getTimerCount()).toBe(scheduledBeforeDrain);
+  drainQueuedMessageOnTurnCompleted('http://station.test', id, true);
+  expect(activeChatsStore.getSnapshot()[id].queuedMessages).toEqual([]);
+  activeChatsStore.updateChat(id, {
+    queuedMessageFailure: {
+      reviewReason: 'execution-binding-changed',
+      message: 'Another binding change',
+      at: 2,
+    },
+  });
+  vi.runAllTimers();
+  expect(activeChatsStore.getSnapshot()[id].queuedMessages).toEqual([
+    'keep this exact prompt',
+  ]);
+  expect(activeChatsStore.getSnapshot()[id].messages).toEqual([]);
+  activeChatsStore.removeChat(id);
+  vi.useRealTimers();
+});

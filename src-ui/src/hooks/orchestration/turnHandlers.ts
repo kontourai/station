@@ -403,6 +403,15 @@ export function handleRuntimeErrorEvent(
           },
         ];
   activeChatsStore.updateChat(event.threadId, {
+    ...(chat?.conversationId &&
+    chat.currentSessionId === event.threadId &&
+    (!chat.openTurnId ||
+      !terminalTurnId ||
+      chat.openTurnId === terminalTurnId) &&
+    chat.conversationOpenState?.status === 'resolved' &&
+    !chat.conversationOpenState.canContinue
+      ? { conversationOpenPending: true, conversationOpenFailed: false }
+      : {}),
     status: 'error',
     error: event.message,
     orchestrationStatus: 'errored',

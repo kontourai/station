@@ -100,7 +100,12 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // subsequent Stop/approval/live-event routing; no route-local workspace
     // reconstruction is involved.
     const currentSessionId = window.currentSessionId;
-    if (currentSessionId && session.currentSessionId !== currentSessionId) {
+    const latest = activeChatsStore.getSnapshot()[session.id];
+    if (
+      currentSessionId &&
+      session.currentSessionId !== currentSessionId &&
+      latest?.currentSessionId === session.currentSessionId
+    ) {
       activeChatsStore.updateChat(session.id, {
         currentSessionId,
         ...(session.conversationId

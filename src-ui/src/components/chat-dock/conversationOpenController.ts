@@ -193,6 +193,7 @@ export function conversationOpenPatch(
               ...(previous?.queuedMessages?.length
                 ? {
                     queuedMessageFailure: {
+                      reviewReason: 'execution-binding-changed',
                       message:
                         'This conversation changed Agent or Session elsewhere. Review queued messages before retrying.',
                       at: Date.now(),

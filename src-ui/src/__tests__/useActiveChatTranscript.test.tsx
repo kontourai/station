@@ -106,6 +106,45 @@ describe('useActiveChatTranscript', () => {
     activeChatsStore.removeChat(id);
   });
 
+  test('stale hook props cannot clear an already-adopted child stream', async () => {
+    const id = 'already-adopted-child';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'claude',
+      agentName: 'Claude',
+      title: 'Live',
+    });
+    activeChatsStore.updateChat(id, {
+      conversationId: id,
+      currentSessionId: 'new-child',
+      orchestrationTurnOpen: true,
+      openTurnId: 'new-turn',
+      streamingMessage: { role: 'assistant', content: 'new live answer' },
+    });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [],
+      currentSessionId: 'new-child',
+    });
+    const { unmount } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', {
+        ...baseSession,
+        id,
+        conversationId: id,
+        currentSessionId: 'old-child',
+      }),
+    );
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalled());
+    expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+      currentSessionId: 'new-child',
+      openTurnId: 'new-turn',
+      streamingMessage: { content: 'new live answer' },
+    });
+    unmount();
+    activeChatsStore.removeChat(id);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     recoveryBudget.clear();

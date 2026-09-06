@@ -88,11 +88,14 @@ function isDefinitiveClientRejection(error: unknown): boolean {
 export function drainQueuedMessageOnTurnCompleted(
   apiBase: string,
   threadId: string,
+  reviewed = false,
 ) {
   const chat = activeChatsStore.getSnapshot()[threadId];
   if (
     !chat?.queuedMessages?.length ||
     chat.isEditingQueue ||
+    (chat.queuedMessageFailure?.reviewReason === 'execution-binding-changed' &&
+      !reviewed) ||
     !conversationCanMutate(chat)
   ) {
     return;
@@ -116,7 +119,10 @@ export function drainQueuedMessageOnTurnCompleted(
     // The terminal event and the resolver can race across the settle delay.
     // Requeue the exact head before any optimistic row or provider effect if
     // the current authoritative state ceased to admit continuation.
-    if (!conversationCanMutate(current)) {
+    if (
+      !conversationCanMutate(current) ||
+      current.queuedMessageFailure?.reviewReason === 'execution-binding-changed'
+    ) {
       activeChatsStore.updateChat(threadId, {
         queuedMessages: [nextMessage, ...(current.queuedMessages ?? [])],
       });
