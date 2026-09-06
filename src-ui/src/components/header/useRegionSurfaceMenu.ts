@@ -6,11 +6,14 @@ import {
   useIsMobile,
 } from '../../hooks/useIsMobile';
 import {
+  DOCK_REGION_IDS,
   foldedDockRegion,
   isDockRegion,
   occupiedDockRegion,
   occupiedRegion,
+  type RegionId,
   type RegisteredSurface,
+  regionLabel,
 } from '../../regions/region-model';
 import type { DockMode } from '../../types';
 
@@ -26,6 +29,27 @@ export interface RegionSurfaceMenuItem {
    */
   checked?: boolean;
   onSelect: () => void;
+}
+
+/**
+ * One row of the fine-pointer Layout menu. `checked` is present only for the
+ * show/hide toggle a region with an occupant has; a placement/swap row is a
+ * one-shot command and carries none, exactly as the per-region popovers this
+ * menu replaced distinguished them.
+ */
+export interface RegionLayoutMenuItem {
+  key: string;
+  label: string;
+  checked?: boolean;
+  onSelect: () => void;
+}
+
+/** One region's block of the fine-pointer Layout menu. */
+export interface RegionLayoutMenuGroup {
+  region: RegionId;
+  /** `regionLabel(region)` — "Main", "Left", "Right", "Bottom". */
+  label: string;
+  items: RegionLayoutMenuItem[];
 }
 
 export interface RegionSurfaceMenu {
@@ -56,6 +80,18 @@ export interface RegionSurfaceMenu {
   toggleSurface: (surface: RegisteredSurface) => void;
   /** The folded device's rows; empty on a fine pointer, which has buttons. */
   menuItems: RegionSurfaceMenuItem[];
+  /**
+   * The fine pointer's Layout menu, grouped per region — the same commands the
+   * five per-region toolbar buttons exposed (#1536 F): a Show/Hide row for a
+   * region that has an occupant, and a Place/Swap row per other surface that
+   * declares the region. Empty on a folded device, which has `menuItems`.
+   *
+   * Grouped here rather than in the toolbar because the placement guard (a
+   * region this device cannot use, a surface the registry does not hold) and
+   * the show/hide derivation are the same rules `toggleSurface` above owns;
+   * a second copy in the toolbar is what drifted twice in #1420.
+   */
+  layoutGroups: RegionLayoutMenuGroup[];
 }
 
 /**
@@ -98,6 +134,57 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
   );
   const foldedRegion = foldedDockRegion(regions, lastShownRegion);
 
+  // Every registered surface, not `surfaceList`: `main` offers Home, which
+  // occupies no dock region and is therefore not a dock toggle.
+  const allSurfaces = [...surfaces.values()];
+  const surfacesFor = (id: RegionId) =>
+    allSurfaces.filter((surface) => surface.regions.includes(id));
+  // A null `main` occupant IS Home on screen (`MainRegionSurface`), so Home is
+  // never offered while it is already showing.
+  const occupantOf = (id: RegionId) =>
+    id === 'main' ? (regions.main.occupant ?? 'home') : regions[id].occupant;
+  const placeSurface = (surfaceId: string, id: RegionId) => {
+    if (id !== 'main' && !(available as readonly RegionId[]).includes(id))
+      return;
+    if (!surfaces.has(surfaceId)) return;
+    model.placeSurface(surfaceId, id);
+  };
+  const layoutGroup = (id: RegionId): RegionLayoutMenuGroup => {
+    const occupant = occupantOf(id);
+    const surface = occupant ? surfaces.get(occupant) : undefined;
+    // `main` is always visible, so it has no show/hide row — only placements.
+    const toggleRow: RegionLayoutMenuItem[] =
+      surface && id !== 'main'
+        ? [
+            {
+              key: `${id}:visibility`,
+              label: `${regions[id].visible ? 'Hide' : 'Show'} ${surface.title}`,
+              checked: regions[id].visible,
+              onSelect: () => toggleSurface(surface),
+            },
+          ]
+        : [];
+    return {
+      region: id,
+      label: regionLabel(id),
+      items: [
+        ...toggleRow,
+        ...surfacesFor(id)
+          .filter((candidate) => candidate.id !== occupant)
+          .map((candidate) => ({
+            key: `${id}:${candidate.id}`,
+            // `main` always has an occupant (a null one is Home), so its rows
+            // are always a placement, never a swap.
+            label:
+              occupant && id !== 'main'
+                ? `Swap in ${candidate.title}`
+                : `Place ${candidate.title} here`,
+            onSelect: () => placeSurface(candidate.id, id),
+          })),
+      ],
+    };
+  };
+
   return {
     available,
     bottomOnly,
@@ -132,5 +219,20 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
           };
         })
       : [],
+    layoutGroups: bottomOnly
+      ? []
+      : [
+          'main' as RegionId,
+          ...DOCK_REGION_IDS.filter((id) =>
+            (available as readonly RegionId[]).includes(id),
+          ),
+        ]
+          .map(layoutGroup)
+          // Defensive, and deliberately untested: today's registry always
+          // leaves at least one row per region (a dock region offers Chat and
+          // Activity; `main` offers whichever of Home/Activity is not in it),
+          // so this filter has no reachable case to assert. It is here so a
+          // future registry cannot print a heading with nothing under it.
+          .filter((group) => group.items.length > 0),
   };
 }
