@@ -39,12 +39,51 @@ export function ProjectTaskRoomPresence({ taskId }: { taskId: string }) {
     value: Parameters<NonNullable<typeof room>['command']>[0],
   ) {
     if (!room) return;
-    setError(undefined);
     try {
       const result = await room.command(value);
       if (result.kind !== 'available') {
         setError('Live collaboration is unavailable.');
         return;
+      }
+      const receipt = result.snapshot.result;
+      if (!receipt) {
+        setError('Station could not confirm this live collaboration action.');
+        return;
+      }
+      switch (receipt.outcome) {
+        case 'joined':
+        case 'refreshed':
+        case 'updated':
+        case 'cleared':
+        case 'departed':
+        case 'paused':
+          setError(undefined);
+          break;
+        case 'rate_limited':
+          setError('Live collaboration is busy. Wait before trying again.');
+          break;
+        case 'capacity_exceeded':
+          setError('The live room has reached its capacity.');
+          break;
+        case 'forbidden':
+        case 'identity_changed':
+          setError(
+            'Your access to this live room changed. Refresh before trying again.',
+          );
+          break;
+        case 'invalid':
+          setError('This live collaboration action could not be accepted.');
+          break;
+        case 'unavailable':
+          setError('Live collaboration is unavailable.');
+          break;
+        case 'degraded':
+          setError(
+            receipt.state === 'indeterminate'
+              ? 'Station could not confirm this live collaboration action.'
+              : 'This live collaboration action was not accepted.',
+          );
+          break;
       }
     } catch {
       setError('Live collaboration could not be updated.');

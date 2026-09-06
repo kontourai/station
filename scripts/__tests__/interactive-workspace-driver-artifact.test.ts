@@ -131,9 +131,9 @@ test('persists closed driver rejection through a real Chromium binding and produ
       /private-token|private\.invalid|task-fixture/,
     );
     rejection = 'join';
-    await commandPage.evaluate(() => {
+    await commandPage.evaluate(`(() => {
       document
-        .querySelector('section')!
+        .querySelector('section')
         .setAttribute('data-viewer-actor-id', 'fixture-peer');
       for (const button of document.querySelectorAll('button')) {
         const command =
@@ -146,7 +146,8 @@ test('persists closed driver rejection through a real Chromium binding and produ
           });
         });
       }
-    });
+    })()`);
+
     for (const outcome of [
       'invalid',
       'forbidden',
