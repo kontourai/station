@@ -600,14 +600,6 @@ button:hover {
   border-bottom: 1px solid var(--border-primary);
 }
 
-/* macOS overlay title bar (archive#3316): in the single-column layout the
-   toolbar spans the window's full width, so its first control (the
-   hamburger) sat under the native traffic lights. --titlebar-inset-left is
-   stamped on the root by PlatformBootstrap (80px on the macOS desktop
-   shell, unset everywhere else); max() keeps the normal 14px gutter for
-   browsers and non-mac shells. The two-column desktop layout is covered by
-   the sidebar's own is-desktop-mac rules (ProjectSidebar.css), which inset
-   the corner the sidebar occupies instead. */
 /* ── Mobile shared utilities ──
    Reusable primitives for the global mobile responsive foundation. Desktop is
    unaffected: .tap-target's min size is below typical desktop control sizes and
@@ -6453,6 +6445,14 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     flex-direction: column;
   }
 
+  /* macOS overlay title bar (archive#3316): in the single-column layout the
+     toolbar spans the window's full width, so its first control (the
+     hamburger) sat under the native traffic lights. --titlebar-inset-left is
+     stamped on the root by PlatformBootstrap (80px on the macOS desktop
+     shell, unset everywhere else); max() keeps the normal 14px gutter for
+     browsers and non-mac shells. The two-column desktop layout is covered by
+     the sidebar's own is-desktop-mac rules (ProjectSidebar.css), which inset
+     the corner the sidebar occupies instead. */
   .app-toolbar {
     padding-left: max(14px, var(--titlebar-inset-left, 0px));
   }

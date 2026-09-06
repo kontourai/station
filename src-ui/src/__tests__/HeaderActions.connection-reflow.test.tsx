@@ -122,8 +122,18 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   }),
 }));
 
+/**
+ * #1132: drivable, because the notification badge is an in-flow flex child of
+ * the same `flex-shrink: 0` cluster the connection chip sits in, so its width
+ * is row width — and `min-width: 18px; padding: 0 5px` is a floor, not a
+ * ceiling. A fixture pinned at zero cannot see that at all.
+ */
+let attentionPendingCount = 0;
+
 vi.mock('@kontourai/station-sdk', () => ({
-  useAttentionQuery: () => ({ data: { items: [], pendingCount: 0 } }),
+  useAttentionQuery: () => ({
+    data: { items: [], pendingCount: attentionPendingCount },
+  }),
 }));
 
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -247,6 +257,7 @@ describe.skipIf(!chromiumAvailable)(
 
     afterEach(() => {
       cleanup();
+      attentionPendingCount = 0;
     });
 
     /**
@@ -529,23 +540,31 @@ describe.skipIf(!chromiumAvailable)(
      * budget a 390px row can spare, this one pins what happens BELOW the width
      * at which the row's last control keeps its own centre.
      *
-     * Derived, not chosen: `.app-toolbar__actions` is `flex-shrink: 0` and the
-     * brand has bottomed out, so the row's content width is
-     * viewport-independent and the left side ends at x=126. The widest the
-     * cluster reaches is 126 + 116 (this chip at its 85px label ceiling plus
-     * 31px of furniture) + 4 + 56 (notifications with a badge) + 4 + 44 + 4 + 44
-     * = 398px, putting `Open settings`'s centre at 376. Measured live on a
-     * running app in the `error` state: at 360px that centre is x=370 and
-     * `document.elementFromPoint` returns null; at 375px and above it resolves
-     * to the control itself. So 376 is the last width at which the control is
-     * unreachable, and the label goes at 376 and below.
+     * Derived, not chosen, and ARITHMETIC rather than swept:
+     * `.app-toolbar__actions` is `flex-shrink: 0` and the brand has bottomed
+     * out, so the row's content width is viewport-independent and the left side
+     * ends at x=126. The widest the cluster can reach is 126 + 116 (this chip
+     * at its 85px label ceiling plus 31px of furniture) + 4 + 62 (notifications
+     * at their widest badge — 38px of button plus the 23.91px two-character
+     * ceiling `HeaderActions.tsx`'s "9+" cap creates) + 4 + 44 + 4 + 44 = 404,
+     * putting `Open settings`'s centre at 382. The live sweep is narrower,
+     * because the state it drove renders a 79px label beside a one-digit badge:
+     * at 360px that centre is x=370 and `document.elementFromPoint` returns
+     * null; at 375px and above, in that state, it resolves to the control
+     * itself. 382 is where the WORST case lands, so the label goes at 382 and
+     * below.
      *
-     * WHAT THIS FIXTURE CAN SEE: the chip's own box and the button's accessible
-     * name, in a real Chromium page with the real stylesheets. It cannot see
-     * the row's absolute geometry — `HeaderActions` mounts alone here, so every
-     * control is "inside the viewport" whatever the chip does (the note on the
-     * test below). The reachability claim itself is browser-measured in
-     * `tests/connect-reconnect-banner.spec.ts` against the whole app.
+     * WHAT THIS FIXTURE CAN SEE: the chip's own box, the badge's box, and the
+     * button's accessible name, in a real Chromium page with the real
+     * stylesheets. It cannot see the row's absolute geometry — `HeaderActions`
+     * mounts alone here, so every control is "inside the viewport" whatever the
+     * chip does (the note on the test below). The reachability claim itself is
+     * browser-measured against the whole app in
+     * `tests/toolbar-reachability.spec.ts`, whose 360px case is the one that
+     * exercises this breakpoint. NOT in
+     * `tests/connect-reconnect-banner.spec.ts`: every mobile case there runs at
+     * 390px, which is above this breakpoint, so those runs never evaluate this
+     * rule at all.
      */
     test('the connection chip drops its label below the width the row can hold, keeping its accessible name (#1132)', async () => {
       const measure = async (width: number) => {
@@ -576,14 +595,15 @@ describe.skipIf(!chromiumAvailable)(
         }
       };
 
-      // 377px: the first width at which the last control keeps its centre, so
-      // the label stays — #1401's release is what makes this the live state.
-      const held = await measure(377);
+      // 383px: the first width at which the last control keeps its centre in
+      // the worst case, so the label stays — #1401's release is what makes this
+      // the live state.
+      const held = await measure(383);
       expect(held.labelWidth).toBeGreaterThan(0);
       expect(held.labelText).toBe("Can't connect");
 
-      // 376px: the last width at which it does not, so the label goes.
-      const dropped = await measure(376);
+      // 382px: the last width at which it does not, so the label goes.
+      const dropped = await measure(382);
       expect(
         dropped.labelWidth,
         'the state label must not lay out below the breakpoint',
@@ -598,6 +618,71 @@ describe.skipIf(!chromiumAvailable)(
       // and never this span's text.
       expect(dropped.accessibleName).toBe(held.accessibleName);
       expect(dropped.accessibleName).toContain("Can't connect");
+    });
+
+    /**
+     * #1132. The breakpoint above is a BOUND only if every member of the row is
+     * bounded, and one was not: the notification badge is an in-flow flex child
+     * of the same `flex-shrink: 0` cluster, and `chat.css`'s
+     * `min-width: 18px; padding: 0 5px` is a floor. Measured in this fixture
+     * before the cap: 18.00px at one digit, 21.80px at "12", 23.91px at "99",
+     * 28.59px at "123", 35.58px at "1234" — so a person with a hundred pending
+     * items moved `Open settings`'s centre ~10px right and reopened
+     * unreachability in a band the breakpoint had just closed.
+     *
+     * Both halves, because either alone is satisfiable while the row is still
+     * unbounded: the GLYPH is capped at two characters, and the resulting BOX
+     * is no wider than the 23.91px the arithmetic in `chat.css` budgets for it.
+     * A cap that rendered "9999+" would pass the first and fail the second.
+     */
+    test('the notification badge is bounded, so the row arithmetic is a bound (#1132)', async () => {
+      const measureBadge = async (pendingCount: number) => {
+        attentionPendingCount = pendingCount;
+        const page = await browser.newPage({
+          viewport: { width: 390, height: 200 },
+        });
+        try {
+          await page.setContent(
+            buildFixtureHtml(await renderMarkupForState('error')),
+          );
+          return await page.evaluate(() => {
+            const badge = document.querySelector<HTMLElement>(
+              '.app-toolbar__notification-badge',
+            );
+            const bell = badge?.closest('button');
+            if (!badge || !bell) throw new Error('no notification badge');
+            return {
+              text: badge.textContent,
+              width: badge.getBoundingClientRect().width,
+              accessibleName: bell.getAttribute('aria-label'),
+            };
+          });
+        } finally {
+          await page.close();
+        }
+      };
+
+      // The budget `chat.css` reserves for this member, and the two-character
+      // worst case that has to fit inside it.
+      const BADGE_CEILING_PX = 23.91;
+
+      const single = await measureBadge(3);
+      expect(single.text).toBe('3');
+      expect(single.width).toBeLessThanOrEqual(BADGE_CEILING_PX);
+
+      const many = await measureBadge(123);
+      expect(
+        many.text,
+        'a three-digit count must not reach this badge, or the row is unbounded',
+      ).toBe('9+');
+      expect(
+        many.width,
+        `the capped badge must fit the ${BADGE_CEILING_PX}px the breakpoint arithmetic budgets`,
+      ).toBeLessThanOrEqual(BADGE_CEILING_PX);
+
+      // The exact count is what the cap gives up on screen, so it must survive
+      // in the accessible name — that is the trade this cap is allowed to make.
+      expect(many.accessibleName).toContain('123 need attention');
     });
 
     test('the connection chip fits the width a phone row can spare', async () => {

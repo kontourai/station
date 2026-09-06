@@ -669,19 +669,30 @@
  * surface, so the whole surface crosses — the per-card exception cannot cover
  * an expanded stack, whose ordinary cards would otherwise render visible and
  * inert over the dock (worse than #919's "kept alive underneath", because they
- * are on screen rather than deliberately deferred). #919's contract holds where
- * it matters: expansion is reachable only from the cap, only in a host that
- * already carries critical chrome, and Escape, an outside tap or the cap itself
- * undoes it. The dock's own header and search stay clickable throughout — the
- * host is `pointer-events: none` and `.banner-host__stack` takes them only
- * while genuinely scrollable, so what crosses is paint plus the literal control
- * rectangles.
+ * are on screen rather than deliberately deferred).
  *
- * ORDER-DEPENDENT, deliberately: the cap selector here and the rule below
- * carry the same specificity (0,6,0), so a cap that ALSO carries
- * `--critical-chrome` takes the higher tier from the LATER rule. Do not
- * reorder them and do not lengthen this selector — either would silently
- * demote a stand-in cap under the ordinary card it is standing in for. */
+ * Expansion is always user-initiated — only the cap's onClick sets it. It is
+ * NOT true that it can only happen in a host already carrying critical chrome:
+ * the cap renders whenever the stack has something hidden, critical or not, and
+ * `banner-host--critical-chrome` is derived live from the banner set
+ * (`BannerHost.tsx`). So a reader who expanded an ORDINARY stack and then has a
+ * connection failure arrive gets the whole expanded stack across the dock with
+ * no fresh action of their own. That is intended, not incidental: it is the
+ * same outcome as expanding one moment later, and the alternative — collapsing
+ * on the transition — would bury a blocking notice at the instant it appeared,
+ * which is the defect #1132 exists to close, and would add a state write driven
+ * by a derived value changing underneath it.
+ *
+ * What #919 is owed survives either way: a COLLAPSED host still puts only the
+ * critical card and its cap over the dock, and the dock's own header and search
+ * stay clickable throughout — the host is `pointer-events: none` and
+ * `.banner-host__stack` takes pointer events only while genuinely scrollable,
+ * so what crosses is paint plus the literal control rectangles.
+ *
+ * The two selectors here are (0,6,0) for the expanded host and (0,5,0) for the
+ * cap, and the rule below is (0,5,0) on a DIFFERENT element (an item, which no
+ * cap carries), so nothing here turns on source order. What the contract rests
+ * on is the two TIERS — see the rule below. */
 .app__main:has(> .chat-dock.is-maximized)
 > .banner-host.banner-host--critical-chrome.banner-host--expanded,
 .app__main:has(> .chat-dock.is-maximized)

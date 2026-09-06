@@ -2250,24 +2250,32 @@
    and the connection chip's label is what it can give up.
 
    MEASURED, on a running app in the `error` state ("Can't connect"), which is
-   the state that makes it worst — and the state in which reaching Settings
-   matters most. `.app-toolbar__actions` is `flex-shrink: 0` and
-   `.app-toolbar__brand` has already bottomed out, so the row's left side ends
-   at x=126 at every width up to 402 and the cluster's own width is
-   viewport-independent: 266px, putting `Open settings` at x=348..392 whatever
-   the viewport is. #1401 released this chip's 116px `min-width` reservation and
-   that is what keeps 375, 390, 402 and 412 reachable today; what it left behind
-   is the arithmetic below.
+   the state in which reaching Settings matters most. `.app-toolbar__actions` is
+   `flex-shrink: 0` and `.app-toolbar__brand` bottoms out, so the row's left
+   side ends at x=126 and the cluster's own width is viewport-independent: with
+   this chip labelled it measures 266px, putting `Open settings` at x=348..392
+   at EVERY viewport up to 402. #1401 released this chip's 116px `min-width`
+   reservation, and that is what keeps 390, 402 and 412 reachable today; what it
+   left behind is the arithmetic below.
 
-   The widest the cluster can get: 126 (left side at its floor) + 116 (this
-   chip — an 85px `max-width` label plus 31px of measured furniture: button
-   padding, the 7px dot, its gap) + 4 + 56 (notifications carrying a badge) + 4
-   + 44 (More actions) + 4 + 44 (Open settings) = 398px, of which the last
-   control's own CENTRE sits at 376. At 376px and below that centre is outside
-   the viewport and `document.elementFromPoint` returns null — unreachable
-   rather than merely clipped, which is the defect. Measured live: at 360px the
-   Open settings centre is x=370 and resolves to `null`; at 375px and above it
-   resolves to itself.
+   THE BOUND. The widest the cluster can get: 126 (left side at its floor) +
+   116 (this chip — an 85px `max-width` label plus 31px of measured furniture:
+   button padding, the 7px dot, its gap) + 4 + 62 (notifications carrying its
+   widest badge: 38px of button plus a 23.91px badge, the two-character worst
+   case that HeaderActions.tsx's "9+" cap creates — uncapped this member is
+   unbounded and so is this paragraph) + 4 + 44 (More actions) + 4 + 44 (Open
+   settings) = 404px, of which the last control's own CENTRE sits at 382. At
+   382px and below that centre is outside the viewport and
+   `document.elementFromPoint` returns null — unreachable rather than merely
+   clipped, which is the defect.
+
+   382 is ARITHMETIC, not a swept width: it is where the worst case lands, and
+   the worst case is a label at the 85px ceiling beside a two-character badge.
+   What was swept live, in the `error` state whose label is 79px and whose
+   badge was one digit, is narrower: at 360px the `Open settings` centre is
+   x=370 and resolves to `null`; at 375px and above, in that state, it resolves
+   to itself. So this breakpoint engages a little above where the swept state
+   alone would need it, which is what a bound is for.
 
    Dropping the label reclaims 66px (the chip falls to its 44px touch floor) and
    puts Open settings at x=282..326 — inside every viewport down to 326px. The
@@ -2279,13 +2287,13 @@
    `flex-shrink: 0` stays — archive#3766's cluster that clipped ITSELF away
    while staying in the accessibility tree is not coming back.
 
-   Between 377 and 397px the row is still clipped at its right edge while every
+   Between 383 and 403px the row is still clipped at its right edge while every
    control keeps its centre: the over-subscription #1401 describes, which needs
    a control to leave the row rather than a width tweak. Two classes, not one:
    this block cascades after the breakpoint above and would win a tie on order
    alone, and a tie decided by order is how the last owner of this cluster's
    flex behaviour was lost (archive#3766). */
-@media (max-width: 376px) {
+@media (max-width: 382px) {
   .app-toolbar__conn .app-toolbar__conn-state {
     display: none;
   }

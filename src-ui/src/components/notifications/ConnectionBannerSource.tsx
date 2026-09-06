@@ -219,24 +219,31 @@ export function ConnectionBannerSource() {
       tone: blocked ? 'blocked' : 'warning',
       badge: blocked ? 'Credential required' : undefined,
       /**
-       * #1132: this source's banners are critical chrome, so a maximized
-       * region does not bury them (`BannerHost.css`). Unconditional, not
-       * `blocked ? …`: the `blocked` half already qualified through the
-       * `connectionBlocking` priority band (`requiresCriticalChrome`), and it
-       * is the OTHER half — an unreachable or mismatched host at
-       * `connectionTransient` — that the measurement in #1132 found buried
-       * under a maximized dock.
+       * #1132: this banner is critical chrome, so a maximized region does not
+       * bury it (`BannerHost.css`). Unconditional, not `blocked ? …`: the
+       * `blocked` half already qualified through the `connectionBlocking`
+       * priority band (`requiresCriticalChrome`), and it is the OTHER half —
+       * an unreachable or mismatched host at `connectionTransient` — that the
+       * measurement in #1132 found buried under a maximized dock.
        *
-       * The claim is about THIS source, not about the band: `showDecision`
-       * above admits a banner only when there is a decision to make
-       * (archive#3297 narrowed ordinary transient reachability out of this
-       * strip entirely), and every decision it does admit has its remedy in
-       * the banner's own actions — "Pair again", "Try now", "Remove". A
-       * notice whose only route to recovery is a control the user cannot
-       * reach is the worst of the outcomes #1132 lists. Ordinary notices
-       * (an available update, a redirect explanation) carry no such route
-       * and deliberately stay below the dock, keeping the maximized
-       * occupant's own header and search reachable (#919).
+       * Scoped to THIS banner, not to this component: the compatibility strip
+       * below (`BANNER_IDS.compat`) is published by the same source and is
+       * deliberately not marked — it carries no action at all, so there is
+       * nothing under the dock for a reader to fail to reach.
+       *
+       * What makes this one critical is the state, not the actions. Only
+       * `authentication-failed` and `identity-mismatch` are given real
+       * remedies here; the rest fall to a single "Try now", and the loopback
+       * case's actual remedy is a sentence in `detail`. But `showDecision`
+       * above admits this banner only when the connection is DOWN and a person
+       * has to decide something about it (archive#3297 narrowed ordinary
+       * transient reachability out of this strip entirely), and a notice like
+       * that — dismissible or not, however thin its CTA — is the one the reader
+       * has to be able to read and dismiss to get on with anything. Buried
+       * under a maximized dock it is the worst of the three outcomes #1132
+       * lists. Ordinary notices (an available update, a redirect explanation)
+       * stay below the dock, keeping the maximized occupant's own header and
+       * search reachable (#919).
        */
       criticalChrome: true,
       message: copy.summary,

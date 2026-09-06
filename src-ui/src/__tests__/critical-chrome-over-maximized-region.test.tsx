@@ -74,19 +74,17 @@ test('an expanded critical stack crosses the dock whole', () => {
   ).toBeDefined();
   expect(expanded).toMatch(/z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/);
   // The expanded escalation must outrank the `z-index: auto` the same host
-  // carries while collapsed, which it does on specificity (0,6,0 vs 0,5,0) —
-  // asserted as the presence of the extra class, since jsdom will not
-  // cascade a `:has()` rule to tell us.
+  // carries while collapsed, which it does on specificity (0,6,0 vs 0,5,0).
+  // jsdom will not cascade a `:has()` rule to tell us, so what is asserted is
+  // that the collapsed rule still says `auto` — if it stopped, the escalation
+  // would be arbitrating against a different value than this reasoning
+  // assumes. (The startsWith check that used to sit here compared two local
+  // literals and could not fail from any source change.)
   const [collapsedHost] = ruleBodiesFor(
     BANNER_CSS,
     `${MAXIMIZED} > .banner-host.banner-host--critical-chrome`,
   );
   expect(collapsedHost).toMatch(/z-index:\s*auto/);
-  expect(
-    EXPANDED_HOST_RULE.startsWith(
-      `${MAXIMIZED} > .banner-host.banner-host--critical-chrome`,
-    ),
-  ).toBe(true);
 });
 
 vi.mock('../views/SessionsView', () => ({
