@@ -433,7 +433,7 @@ a legacy npm tree, a hybrid tree with npm's hidden lock, or an unidentified
 tree is retired and cleared before pnpm installs. This one-time conversion
 prevents obsolete npm contents remaining beside the new graph without holding
 two complete trees. Redirected or non-directory roots refuse before inspection.
-`dependencies:ci` requires the frozen lock; `dependencies:install` permits
+`npm run dependencies:ci` requires the frozen lock; `npm run dependencies:install` permits
 intentional resolution changes. pnpm clones or copies package contents from its
 shared store, while the worktree keeps its own writable installation. The
 cooperative guard spans installation, exact-hook checks, approved hooks, and
