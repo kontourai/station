@@ -2,6 +2,19 @@
 
 ## Fixture fidelity and test effectiveness
 
+Blocking checks must name the failure they prevent. Documentation gates should
+verify runnable commands, links, schemas, generated references, and disclosure
+boundaries; prose wording and line wrapping are editorial, not release criteria.
+For shared behavior changes, inspect dependent callers and tests, and exercise
+the production integration point rather than a retired helper or mock seam.
+Keep a known-bad catch case and a harmless-change control when repairing a gate.
+
+Changed-test diagnostics retain up to 32 explicit test targets even when broader
+verification is deferred. Their failures block fast feedback; their passes remain
+provisional and do not satisfy the deferred obligations. Broad import expansion
+and larger selections stay deferred within the existing feedback budget.
+
+
 Use this route for weak-test cleanup, fixture repairs, and performance work. The owning modules are in the [module map](../architecture/module-map.md#browser-test-evidence). Run `npm run gate:for -- <paths>` before editing; it prints the current fixture policy command when the change touches this surface.
 
 | Work | Owner / command | What it establishes |
