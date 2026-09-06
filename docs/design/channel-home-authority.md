@@ -66,6 +66,14 @@ The adapter requires a file-backed SQLite database with durable journaling and
 `synchronous=FULL` or `EXTRA`, checked at initialization and in every transaction.
 A later durability downgrade makes operations unavailable. These settings do
 not certify the underlying filesystem or storage hardware.
+A composing authority service uses `createAuthorizedSqlitePlannedHomeTransferStore`
+with a required caller-bound synchronous authorization predicate. The adapter checks it under the transaction lock before access and
+again before commit. Revocation rolls back the entire decision change and
+returns `denied`; a failed authority lookup returns `unavailable`. Promise-valued
+guards are refused, never treated as truthy grants. The callback must be owned
+by the service, not supplied by a request body. The guarded entry rejects an absent guard. The separate unguarded constructor
+retains the private storage-only API; it is not safe to expose directly.
+
 The adapter itself performs no home authentication, membership authorization,
 lease issuance, renewal or target activation. No runtime write path currently
 uses its decisions as execution authority.

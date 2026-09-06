@@ -31,7 +31,7 @@ export interface PlannedHomeTransfer {
 }
 export type TransferStoreResult<T> =
   | { kind: 'stored'; value: T }
-  | { kind: 'conflict' | 'not-found' | 'unavailable' };
+  | { kind: 'conflict' | 'not-found' | 'unavailable' | 'denied' };
 interface Database {
   exec(sql: string): void;
   prepare(sql: string): {
@@ -212,7 +212,34 @@ function requireDurableDatabase(db: Database): void {
     );
 }
 
+class TransferAuthorizationDenied extends Error {}
+
 export function createSqlitePlannedHomeTransferStore(db: Database) {
+  return createSqliteStore(db);
+}
+
+/** The authority service must use this entry, with its caller-bound guard. */
+export function createAuthorizedSqlitePlannedHomeTransferStore(
+  db: Database,
+  authorize: () => boolean,
+) {
+  if (typeof authorize !== 'function')
+    throw new Error('Transfer authorization guard is required');
+  return createSqliteStore(db, authorize);
+}
+
+function createSqliteStore(db: Database, authorize?: () => boolean) {
+  // The captured guard revalidates authority synchronously while this DB is locked.
+  function checkAuthorization(): void {
+    if (!authorize) return;
+    const allowed = authorize();
+    if (allowed !== true) {
+      // A JS caller may violate the synchronous contract. Never treat its
+      // Promise as truthy authority, or leave a rejected Promise unhandled.
+      void Promise.resolve(allowed).catch(() => {});
+      throw new TransferAuthorizationDenied();
+    }
+  }
   requireDurableDatabase(db);
   db.exec(`CREATE TABLE IF NOT EXISTS planned_home_owners (
     tenant_id TEXT NOT NULL, channel_id TEXT NOT NULL, record_json TEXT NOT NULL,
@@ -289,17 +316,24 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
       db.exec('BEGIN IMMEDIATE');
       began = true;
       requireDurableDatabase(db);
+      checkAuthorization();
       const result = run();
+      checkAuthorization();
       db.exec('COMMIT');
       began = false;
       return result;
-    } catch {
+    } catch (error) {
       if (began) {
         try {
           db.exec('ROLLBACK');
         } catch {}
       }
-      return { kind: 'unavailable' };
+      return {
+        kind:
+          error instanceof TransferAuthorizationDenied
+            ? 'denied'
+            : 'unavailable',
+      };
     }
   }
   function matches(
