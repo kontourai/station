@@ -115,6 +115,10 @@ invocation, after resource and launch-policy checks. Confirmed startup clears
 the claim; an ambiguous adapter failure retains possible-effect truth and
 reports an indeterminate, non-retryable outcome. The resulting diagnostic
 `runtime.error` does not clear that record, either live or during replay.
+The existing interrupted-turn banner consumer also excludes session-start and
+dispatch records. Displaying a notice is not evidence that those effects ended;
+its final storage deletion refuses those record kinds even if given a stale
+or misrouted acknowledgement. Their unresolved admission survives another boot.
 
 Task dispatch supplies its exact persisted Project/Task scope through the
 server-only start options. Startup binds that scope before invoking an adapter,

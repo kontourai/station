@@ -8527,7 +8527,14 @@ export class EventStore {
   takeInterruptedTurnBoundaries(): SessionTurnBoundaryRecord[] {
     const drained = this.pendingInterruptedTurnBoundaries;
     this.pendingInterruptedTurnBoundaries = [];
-    return drained;
+    // Banner acknowledgement owns ordinary turn recovery only. Start IDs are
+    // minted by the boundary owner, never inferred from caller metadata.
+    // Other unresolved records remain durable for their effect-specific owner.
+    return drained.filter(
+      (record) =>
+        record.purpose !== 'task-dispatch' &&
+        !record.boundaryId.startsWith('session-start-boundary:'),
+    );
   }
 
   /**
@@ -8551,7 +8558,9 @@ export class EventStore {
     this.db
       .prepare(
         `DELETE FROM orchestration_turn_boundaries
-          WHERE boundary_id = ? AND owner_id = ? AND state = ?`,
+          WHERE boundary_id = ? AND owner_id = ? AND state = ?
+            AND purpose != 'task-dispatch'
+            AND boundary_id NOT GLOB 'session-start-boundary:*'`,
       )
       .run(record.boundaryId, record.ownerId, record.state);
   }
