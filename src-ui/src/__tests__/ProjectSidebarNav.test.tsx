@@ -250,7 +250,9 @@ describe('ProjectSidebarNav', () => {
     );
 
     expect(
-      screen.getByRole('button', { name: 'Activity' }).getAttribute('aria-pressed'),
+      screen
+        .getByRole('button', { name: 'Activity' })
+        .getAttribute('aria-pressed'),
     ).toBe('true');
   });
 

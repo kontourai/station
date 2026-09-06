@@ -129,7 +129,9 @@ describe('a reload carrying a chat pointer nothing can resolve', () => {
     );
     // The pointer clears, which is the observable end of the resolution.
     await waitFor(() =>
-      expect(new URLSearchParams(window.location.search).get('chat')).toBeNull(),
+      expect(
+        new URLSearchParams(window.location.search).get('chat'),
+      ).toBeNull(),
     );
 
     expect(model?.regions.right).toMatchObject({

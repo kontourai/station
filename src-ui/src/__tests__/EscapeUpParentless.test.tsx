@@ -18,9 +18,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { getParentView } from '../app-shell/routing';
 import { Dialog } from '../components/Dialog';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
-import { getParentView } from '../app-shell/routing';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import type { NavigationView } from '../types';
 
@@ -46,7 +46,11 @@ function Page({ view }: { view: NavigationView }) {
         Add job
       </button>
       {addJobOpen ? (
-        <Dialog title="Add Job" onClose={() => setAddJobOpen(false)}>
+        <Dialog
+          title="Add Job"
+          closeLabel="Close Add Job"
+          onClose={() => setAddJobOpen(false)}
+        >
           <input aria-label="Job name" />
         </Dialog>
       ) : null}

@@ -18,4 +18,14 @@ export interface RegistryRowComponentProps {
   value: unknown;
   provenance?: SettingProvenanceEntry;
   onChange: (value: unknown) => void;
+  /**
+   * #1582 D9: a default this HOST reports, for a field whose default cannot be
+   * written down in the registry because it is host-dependent (`terminalShell`
+   * is `SHELL`, or a platform fallback, or neither). The registry's static
+   * `placeholder`/`defaultValue` remain the answer for every other field; this
+   * is supplied by a section that holds the runtime config, and only where the
+   * server actually reports one — absent stays absent rather than becoming a
+   * guess.
+   */
+  runtimeDefault?: string;
 }

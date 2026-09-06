@@ -948,24 +948,24 @@ describe('App home route resolution', () => {
     ['/schedule', false],
     ['/agents', false],
     ['/settings', true],
-  ])('arms app.escapeUp on %s only when the view has a parent', async (
-    path,
-    expectedEnabled,
-  ) => {
-    window.history.replaceState({}, '', path);
-    hooks.projects = { data: [], isLoading: false, isError: false };
+  ])(
+    'arms app.escapeUp on %s only when the view has a parent',
+    async (path, expectedEnabled) => {
+      window.history.replaceState({}, '', path);
+      hooks.projects = { data: [], isLoading: false, isError: false };
 
-    render(<App />);
-    await act(async () => undefined);
+      render(<App />);
+      await act(async () => undefined);
 
-    const registration = vi
-      .mocked(useKeyboardShortcut)
-      .mock.calls.filter(([id]) => id === 'app.escapeUp')
-      .at(-1);
-    if (!registration) throw new Error('app.escapeUp was never registered');
-    expect(registration[1]).toBe('Escape');
-    expect(registration[5]).toBe(expectedEnabled);
-  });
+      const registration = vi
+        .mocked(useKeyboardShortcut)
+        .mock.calls.filter(([id]) => id === 'app.escapeUp')
+        .at(-1);
+      if (!registration) throw new Error('app.escapeUp was never registered');
+      expect(registration[1]).toBe('Escape');
+      expect(registration[5]).toBe(expectedEnabled);
+    },
+  );
 
   test('registers no region surface host for a full-screen chat layout', async () => {
     window.history.replaceState({}, '', '/projects/demo/layouts/chat');
