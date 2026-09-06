@@ -363,6 +363,24 @@ function engineRow(page: Page, engineId: string) {
  * at the route, exactly like the engine mix, the agent catalog and the
  * first-run record above.
  */
+/**
+ * Past the engine-ROLE step, which #1575 put between the engines step and
+ * About you: the run asks which engine powers Station whenever the home has
+ * recorded no answer, which every fixture here leaves unset. #1582 A5 made it
+ * a step of the same dialog, so its two ways past are its own named controls
+ * — "Decide later" when there is something to choose, "Got it" on the panel
+ * that explains there is not. The chapter header's "Close setup" is the RUN's
+ * exit and would defer it, which is why this never reaches for that.
+ */
+async function passEngineRoleStep(page: Page) {
+  const picker = page.getByTestId('engine-picker');
+  if (!(await picker.isVisible().catch(() => false))) return;
+  await picker
+    .getByRole('button', { name: /^(Decide later|Got it)$/ })
+    .first()
+    .click();
+}
+
 function disclosureInventory(acknowledged: boolean, telemetryEnabled = true) {
   return {
     acknowledged,
@@ -662,6 +680,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
     await expect(page.getByTestId('first-run-engines-report')).toBeVisible();
     await page.getByTestId('first-run-engines-retry').click();
 
+    await passEngineRoleStep(page);
     await expect(page.getByTestId('first-run-about-you')).toBeVisible();
     await startFirstChat(page);
     await expect
@@ -697,6 +716,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
     // Nothing to acknowledge: the run moves on by itself.
     await expect(chapter).toHaveCount(0);
     await expect(page.getByTestId('first-run-engines-report')).toHaveCount(0);
+    await passEngineRoleStep(page);
     await expect(page.getByTestId('first-run-about-you')).toBeVisible();
     expect(posted.map((body) => body.engineId)).toEqual(['claude']);
 
@@ -884,6 +904,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
     // run moves on rather than stalling on a step with no action.
     await chapter.getByRole('button', { name: 'Continue' }).click();
     await expect(chapter).toHaveCount(0);
+    await passEngineRoleStep(page);
     await expect(page.getByTestId('first-run-about-you')).toBeVisible();
     expect(posted).toEqual([]);
   });
@@ -1161,18 +1182,7 @@ for (const viewport of [
         '[data-testid="first-run-about-you"], [data-testid="engine-picker"]',
       ),
     ).toBeVisible();
-    if (await page.getByTestId('engine-picker').isVisible()) {
-      // #1582 A5: the role screen is a STEP of the chapter now, so it has no
-      // dismiss of its own — the chapter header's "Close setup" is the run's
-      // exit and would DEFER it. Its own way past the question is "Decide
-      // later", or "Got it" on the panel this fixture actually renders: with
-      // no engine connected there is nothing to choose, so the step explains
-      // instead of asking, and acknowledging IS moving on.
-      const past = page.getByRole('button', {
-        name: /^(Decide later|Got it)$/,
-      });
-      await past.first().click();
-    }
+    await passEngineRoleStep(page);
     const questions = page.getByTestId('first-run-about-you');
     await expect(questions).toBeVisible();
     await questions
