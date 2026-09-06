@@ -62,6 +62,7 @@ import {
   ensureCredentialApplicationCommitPendingIndex,
   ensureNativeInvocationRunColumns,
   ensureOrchestrationAdoptionColumns,
+  ensureOrchestrationBoundaryPurpose,
   ensureOrchestrationEventStoreColumns,
   ensureOrchestrationRecoverySettlementColumns,
   ensureOrchestrationSessionStateColumns,
@@ -189,6 +190,11 @@ import {
   type ProjectTaskRoomLinkAuthority,
 } from './project-task-room-history.js';
 import {
+  bindProjectTaskRoomExecution,
+  initializeProjectTaskRoomSourceSeals,
+  isProjectTaskRoomExecutionSealed,
+} from './project-task-room-source-seal.js';
+import {
   createProjectTaskRoomWorkingState,
   type ProjectTaskRoomWorkingState,
 } from './project-task-room-working-state.js';
@@ -208,6 +214,7 @@ import type {
 import {
   createSessionTurnBoundaryAuthority,
   releaseSessionTurnBoundaryOwner,
+  SESSION_START_INDETERMINATE_CODE,
   SESSION_TURN_ACCEPTED_CAPACITY,
   type SessionTurnBoundaryAuthority,
   type SessionTurnBoundaryCoordinator,
@@ -1656,6 +1663,7 @@ export class EventStore {
       this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
       this.db.exec(OPERATIONAL_EVENT_OUTBOX_MIGRATION);
       this.db.exec(PROJECT_TASK_ROOM_RUNTIME_MIGRATION);
+      initializeProjectTaskRoomSourceSeals(this.db);
       this.db.exec(REVISION_EVIDENCE_RECEIPTS_MIGRATION);
       this.db.exec(PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION);
       ensureProjectTaskRoomRevisionAttributionColumn(this.db);
@@ -1699,6 +1707,7 @@ export class EventStore {
       // `value` is NULL while the claiming request's `adapter.sendTurn` call is
       // still in flight, and set once it resolves.
       ensureOrchestrationTurnDedupColumns(this.db);
+      ensureOrchestrationBoundaryPurpose(this.db);
       this.turnIdempotence = new TurnIdempotencyStore(
         new SqliteTurnIdempotencyPersistence(this.db, this.turnDedupMaxEntries),
         turnProcessIdentity,
@@ -2250,6 +2259,15 @@ export class EventStore {
     });
     this.projectTaskRoomHistories.add(history);
     return history;
+  }
+
+  /** Immutable server-owned scope for provider admission; never inferred from metadata. */
+  bindProjectTaskRoomExecution(input: {
+    projectId: string;
+    taskId: string;
+    sessionId: string;
+  }): { kind: 'bound' | 'conflict' | 'unavailable' } {
+    return bindProjectTaskRoomExecution(this.db, input);
   }
 
   /** Private working-state worker over this exact orchestration SQLite file. */
@@ -8186,6 +8204,14 @@ export class EventStore {
       create: (record) => {
         try {
           this.db.exec('BEGIN IMMEDIATE');
+          if (
+            record.state !== 'lifecycle' &&
+            isProjectTaskRoomExecutionSealed(this.db, record.threadId)
+          ) {
+            this.db.exec('ROLLBACK');
+            return { kind: 'unavailable' };
+          }
+
           const occupied = this.db
             .prepare(
               record.state === 'lifecycle'
@@ -8217,8 +8243,8 @@ export class EventStore {
             .prepare(
               `INSERT INTO orchestration_turn_boundaries
                 (boundary_id, thread_id, state, provider_turn_id, owner_id,
-                 owner_pid, owner_birth, owner_identity_kind, created_at, updated_at)
-               VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
+                 owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose)
+               VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .run(
               record.boundaryId,
@@ -8230,6 +8256,7 @@ export class EventStore {
               record.ownerIdentityKind,
               record.createdAt,
               record.updatedAt,
+              record.purpose ?? 'turn',
             );
           this.db.exec('COMMIT');
           return { kind: 'applied' };
@@ -8402,7 +8429,7 @@ export class EventStore {
             this.db
               .prepare(
                 `DELETE FROM orchestration_turn_boundaries
-                  WHERE thread_id = ? AND state != 'lifecycle'
+                  WHERE thread_id = ? AND state != 'lifecycle' AND purpose != 'task-dispatch'
                     AND created_at <= ?`,
               )
               .run(input.threadId, input.terminalCreatedAt);
@@ -8410,7 +8437,7 @@ export class EventStore {
             this.db
               .prepare(
                 `DELETE FROM orchestration_turn_boundaries
-                  WHERE thread_id = ? AND state = 'accepted'
+                  WHERE thread_id = ? AND state = 'accepted' AND purpose != 'task-dispatch'
                     AND provider_turn_id = ? AND created_at <= ?`,
               )
               .run(
@@ -8440,13 +8467,16 @@ export class EventStore {
           this.db
             .prepare(
               `SELECT boundary_id, thread_id, state, provider_turn_id, owner_id,
-                      owner_pid, owner_birth, owner_identity_kind, created_at, updated_at
+                      owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose
                  FROM orchestration_turn_boundaries`,
             )
             .all() as Array<Record<string, unknown>>
         ).map(
           (row): SessionTurnBoundaryRecord => ({
             boundaryId: row.boundary_id as string,
+            ...(row.purpose === 'task-dispatch'
+              ? { purpose: 'task-dispatch' as const }
+              : {}),
             threadId: row.thread_id as string,
             state: row.state as SessionTurnBoundaryRecord['state'],
             ...(row.provider_turn_id
@@ -8505,7 +8535,14 @@ export class EventStore {
   takeInterruptedTurnBoundaries(): SessionTurnBoundaryRecord[] {
     const drained = this.pendingInterruptedTurnBoundaries;
     this.pendingInterruptedTurnBoundaries = [];
-    return drained;
+    // Banner acknowledgement owns ordinary turn recovery only. Start IDs are
+    // minted by the boundary owner, never inferred from caller metadata.
+    // Other unresolved records remain durable for their effect-specific owner.
+    return drained.filter(
+      (record) =>
+        record.purpose !== 'task-dispatch' &&
+        !record.boundaryId.startsWith('session-start-boundary:'),
+    );
   }
 
   /**
@@ -8529,7 +8566,9 @@ export class EventStore {
     this.db
       .prepare(
         `DELETE FROM orchestration_turn_boundaries
-          WHERE boundary_id = ? AND owner_id = ? AND state = ?`,
+          WHERE boundary_id = ? AND owner_id = ? AND state = ?
+            AND purpose != 'task-dispatch'
+            AND boundary_id NOT GLOB 'session-start-boundary:*'`,
       )
       .run(record.boundaryId, record.ownerId, record.state);
   }
@@ -8561,7 +8600,7 @@ export class EventStore {
     this.db
       .prepare(
         `DELETE FROM orchestration_turn_boundaries
-          WHERE state != 'lifecycle'
+          WHERE state != 'lifecycle' AND purpose != 'task-dispatch'
             AND (? IS NULL OR thread_id = ?)
             AND EXISTS (
               SELECT 1 FROM orchestration_events AS event
@@ -8569,7 +8608,8 @@ export class EventStore {
                  AND event.created_at >= orchestration_turn_boundaries.created_at
                  AND (
                    event.method = 'session.exited'
-                   OR (event.method = 'runtime.error' AND event.turn_id IS NULL)
+                   OR (event.method = 'runtime.error' AND event.turn_id IS NULL
+                       AND COALESCE(json_extract(event.payload, '$.code'), '') != ?)
                    OR (
                      orchestration_turn_boundaries.state = 'accepted'
                      AND event.turn_id = orchestration_turn_boundaries.provider_turn_id
@@ -8578,7 +8618,11 @@ export class EventStore {
                  )
             )`,
       )
-      .run(threadId ?? null, threadId ?? null);
+      .run(
+        threadId ?? null,
+        threadId ?? null,
+        SESSION_START_INDETERMINATE_CODE,
+      );
   }
 
   /** Deliberate composition seam; SQLite coordination stays private. */

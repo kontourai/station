@@ -21,6 +21,7 @@ import {
 import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestration';
 import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import type { ProjectTaskRoomGrant } from '@kontourai/station-contracts/project-task-room';
 import { SESSION_CAPABILITY_DELIVERY_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
@@ -89,6 +90,8 @@ import {
 } from '../../infra/server-log-store.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import type { CwdShadowSample } from '../../projects/project-resource-shadow.js';
+import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
+import { TaskGraphService } from '../../projects/task-graph-service.js';
 import type { AdoptionLedger } from '../adoption-ledger.js';
 import { canResolveConversationContinuation } from '../conversation-lineage.js';
 import { EventBus } from '../event-bus.js';
@@ -113,7 +116,8 @@ import {
   wireTurnCompletionNotifications,
 } from '../turn-completion-notifications.js';
 
-vi.mock('../../../telemetry/metrics.js', () => ({
+vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../telemetry/metrics.js')>()),
   agentCapabilityUndelivered: { add: vi.fn() },
   attachedSessionMutationRejected: { add: vi.fn() },
   adapterReadiness: { add: vi.fn() },
@@ -767,6 +771,232 @@ describe('OrchestrationService', () => {
     receiptBus.resetForTest();
   });
 
+  test('public session metadata cannot mint a room execution binding', async () => {
+    const threadId = 'public-metadata-binding';
+    const result = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId,
+          provider: 'claude',
+          metadata: {
+            roomExecutionBinding: {
+              projectId: 'spoofed-project',
+              taskId: 'spoofed-task',
+            },
+          },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    expect(result.status).toBe('accepted');
+    // A metadata-derived binding would make this exact server association conflict.
+    expect(
+      eventStore.bindProjectTaskRoomExecution({
+        projectId: 'real-project',
+        taskId: 'real-task',
+        sessionId: threadId,
+      }),
+    ).toEqual({ kind: 'bound' });
+  });
+
+  test('source closure waits through real Task claim, provider creation and dispatch finalization', async () => {
+    mkdirSync(join(tmp, 'transfer-task-graph'), { recursive: true });
+    const graph = new TaskGraphService(join(tmp, 'transfer-task-graph'), {
+      projectService: {
+        getProject: (slug) => ({
+          id: slug,
+          slug,
+          name: slug,
+          workingDirectory: tmp,
+          createdAt: '2026-09-05T00:00:00.000Z',
+          updatedAt: '2026-09-05T00:00:00.000Z',
+        }),
+      },
+    });
+    const task = await graph.createTask({
+      projectId: 'transfer-project',
+      title: 'Bound execution',
+      workItemRef: 'github:example/transfer#1',
+    });
+    const releaseClaim = deferred<void>();
+    const releasePublication = deferred<void>();
+    let claimEntered = false;
+    let publicationEntered = false;
+    const dispatcher = composeTaskDispatcher(
+      graph,
+      {
+        orchestrationService: service,
+        resolveProjectWorkspace: () => tmp,
+        assignmentClaimService: {
+          claim: vi.fn(async () => {
+            claimEntered = true;
+            await releaseClaim.promise;
+            return {
+              outcome: 'claimed',
+              record: { claimed_at: '2026-09-05T00:00:00.000Z' },
+            } as never;
+          }),
+          release: vi.fn(),
+          status: vi.fn(),
+        },
+      },
+      {
+        prepareAgentStarted: async () => {
+          publicationEntered = true;
+          await releasePublication.promise;
+        },
+        publishAgentStarted: async () => {},
+      },
+    );
+    const release = deferred<void>();
+    let entered = false;
+    const original = claude.startSession.getMockImplementation()!;
+    claude.startSession.mockImplementationOnce(async (input) => {
+      entered = true;
+      await release.promise;
+      return original(input);
+    });
+    const dispatched = dispatcher.dispatch(task.id, {
+      runtimeConfig: { provider: 'claude', cwd: tmp },
+    });
+    const scope = {
+      projectId: task.projectId,
+      projectSlug: task.projectId,
+      taskId: task.id,
+    };
+    const grant = <K extends 'discover' | 'home-transfer'>(capability: K) =>
+      Object.freeze({
+        schemaVersion: 'station.project-task-room-grant/v1',
+        capability,
+        opaqueToken: 'transfer-test',
+      }) as ProjectTaskRoomGrant<K>;
+    const room = eventStore.createProjectTaskRoomHistory({
+      capabilities: {
+        resolve: async ({ required }) => ({
+          kind: 'granted',
+          receipt: {
+            receiptId: `transfer-test-${required}`,
+            capability: required,
+            scope,
+            principal: {
+              kind: 'operator',
+              operatorId: 'operator',
+              deviceId: 'device',
+            },
+            policyRevision: 'transfer-test-policy',
+          },
+        }),
+      },
+    });
+    const intent = {
+      grant: grant('home-transfer'),
+      operationId: 'transfer-test-operation',
+      sourceHomeRef: 'source',
+      targetHomeRef: 'target',
+    };
+    try {
+      await waitFor(
+        () => claimEntered,
+        (value) => value,
+        5000,
+      );
+      expect(entered).toBe(false);
+      await room.open({ grant: grant('discover') });
+      expect(await room.sealSource(intent)).toEqual({
+        kind: 'execution-pending',
+      });
+      releaseClaim.resolve();
+      await waitFor(
+        () => entered,
+        (value) => value,
+        5000,
+      );
+      expect(await room.sealSource(intent)).toEqual({
+        kind: 'execution-pending',
+      });
+      release.resolve();
+      await waitFor(
+        () => publicationEntered,
+        (value) => value,
+        5000,
+      );
+      expect(await room.sealSource(intent)).toEqual({
+        kind: 'execution-pending',
+      });
+      releasePublication.resolve();
+      const result = await dispatched;
+      expect(result.kind).toBe('dispatched');
+      if (result.kind !== 'dispatched')
+        throw new Error('Expected real Task dispatch');
+      expect(await room.sealSource(intent)).toMatchObject({ kind: 'sealed' });
+      const restarted = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: result.result.dispatch.sessionId,
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        {},
+        {
+          roomExecutionBinding: { projectId: task.projectId, taskId: task.id },
+        },
+      );
+      expect(restarted.status).toBe('failed');
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      await expect(
+        service.dispatch({
+          type: 'sendTurn',
+          input: {
+            threadId: result.result.dispatch.sessionId,
+            input: 'after source closure',
+          },
+        }),
+      ).rejects.toThrow('coordination is temporarily unavailable');
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+    } finally {
+      releaseClaim.resolve();
+      releasePublication.resolve();
+      release.resolve();
+      await dispatched;
+      await room.close();
+    }
+  });
+
+  test('retains a possibly completed adapter start and refuses a duplicate provider call', async () => {
+    claude.startSession.mockRejectedValueOnce(
+      new Error('response lost after provider invocation'),
+    );
+    const command = {
+      type: 'start-session' as const,
+      input: {
+        threadId: 'uncertain-provider-start',
+        provider: 'claude' as const,
+      },
+    };
+    const result = await service.sessionCommands.execute(command, {
+      userId: 'owner-user',
+    });
+    expect(result).toMatchObject({
+      status: 'indeterminate',
+      receiptStatus: 'unavailable',
+    });
+    expect(
+      eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect(command.input.threadId),
+    ).toEqual({ kind: 'available', active: true });
+    expect(eventStore.readCommandReceipt(result.receipt.commandId)).toBeNull();
+    expect(claude.startSession).toHaveBeenCalledTimes(1);
+    const retry = await service.sessionCommands.execute(command, {
+      userId: 'owner-user',
+    });
+    expect(retry.status).not.toBe('accepted');
+    expect(claude.startSession).toHaveBeenCalledTimes(1);
+  });
+
   test('starts a session through the closed SessionCommandModule with its durable receipt', async () => {
     const outcome = await service.sessionCommands.execute(
       {
@@ -785,6 +1015,11 @@ describe('OrchestrationService', () => {
     expect(eventStore.readCommandReceipt(outcome.receipt.commandId)).toEqual(
       outcome.receipt,
     );
+    expect(
+      eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect('module-start'),
+    ).toEqual({ kind: 'available', active: false });
   });
 
   /**
@@ -18503,10 +18738,15 @@ describe('OrchestrationService', () => {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]).toMatchObject({
       severity: 'error',
-      code: 'session_recovery_failed',
-      retriable: true,
-      message: 'This conversation could not be reopened: resume failed',
+      code: 'SESSION_START_INDETERMINATE',
+      retriable: false,
+      message: expect.stringContaining('resume failed'),
     });
+    expect(
+      eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect('thread-closed'),
+    ).toEqual({ kind: 'available', active: true });
   });
 
   test('recovery re-settles a project-bound session that was persisted without a cwd (#1011)', async () => {

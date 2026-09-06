@@ -79,7 +79,11 @@
  */
 .app-toolbar__actions {
   display: flex;
-  gap: 8px;
+  /* One gap token for the row (#1552 D1). It was a bare `8px` here, `2px` in the
+     480px block below and `4px` in the mobile block — three literals for one
+     seam. The two narrow overrides stay (a phone's row really is tighter), but
+     they are token values now. */
+  gap: var(--space-4);
   align-items: center;
   flex-shrink: 0;
   margin-left: auto;
@@ -154,51 +158,95 @@
   white-space: nowrap;
 }
 
-/* One region's block of the Layout menu. A `fieldset` because its implicit
-   role is `group`, and its `legend` is both the group's accessible name and
-   the visible heading — so the rows say "Hide Chat" instead of repeating the
-   region in every label. `min-inline-size: 0` because a fieldset's default is
-   `min-content`, which would let a long surface title widen the menu. */
-.app-toolbar__region-menu-group {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-inline-size: 0;
+/* #1552 D2 retired the Layout menu's per-region groups of VERB rows ("Place
+ * Activity here" / "Swap in Activity" / "Hide Chat") along with the hairline
+ * that separated them and the scoped override that stopped the flat menu's own
+ * hairline from ruling every row inside them. The menu is a placement PICKER
+ * now: one row per surface, a segmented control of the regions it declares. See
+ * `.region-placement` below.
+ */
+
+/* One surface's row of the Layout picker: its label, then the segments for the
+   regions it may occupy plus Hidden. A `radiogroup`, not a `menu` row — the
+   arrangement is a choice per surface, and Tab moves between surfaces while the
+   arrow keys move within one (#1552 D2). */
+.region-placement {
+  min-width: 15rem;
 }
 
-.app-toolbar__region-menu-group + .app-toolbar__region-menu-group {
-  border-top: 1px solid var(--border-primary);
+.region-placement__row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  /* The same 12px inset every `.menu-row` uses, so the surface labels line up
+     with the rows of every other menu in the shell. */
+  padding: var(--space-2) var(--space-6);
 }
 
-/* One divider per GROUP, not one per row. `.app-toolbar__overflow-menu button +
-   button` (below) draws a hairline between every row, which is right for the
-   header's flat ⋯ menu but turns a grouped arrangement into a ruled table where
-   the group boundary — the only division that means anything here — reads
-   exactly like the six that do not. The legends and the group border carry the
-   structure.
-
-   TWO classes, both on the same element: at one class each these selectors tie
-   on specificity and SOURCE ORDER decides, and the flat rule is ~90 lines
-   further down — so the single-class form parsed, read correct, and was
-   overridden, with the hairlines still drawn inside every group. archive#3341's
-   lesson in a second place. The guard for this is a measurement in Chromium for
-   the same reason: a text scan sees the declaration, not the cascade. */
-.app-toolbar__overflow-menu.app-toolbar__region-menu button + button {
-  border-top: 0;
+.region-placement__surface {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  white-space: nowrap;
 }
 
-.app-toolbar__region-menu-group > legend {
-  padding: 8px 14px 4px;
+/* The 16px glyph slot `.menu-row__glyph` reserves, so a surface label starts
+   where a menu row's label starts. */
+.region-placement__glyph {
+  display: inline-flex;
+  width: var(--space-8);
+  height: var(--space-8);
+  flex: 0 0 var(--space-8);
+  align-items: center;
+  justify-content: center;
   color: var(--text-tertiary);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+}
+
+.region-placement__segments {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  padding: 2px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+
+.region-placement__segment {
+  min-height: 24px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-base);
+  white-space: nowrap;
+}
+
+.region-placement__segment:hover {
+  color: var(--text-primary);
+}
+
+/* The pressed segment is painted from `aria-checked`, which the component
+   derives from the region model — so the paint cannot disagree with what an
+   assistive technology is told, and there is no second "is this the active
+   one" flag to drift. */
+.region-placement__segment[aria-checked="true"] {
+  background: var(--bg-selected);
+  color: var(--accent-primary);
+  font-weight: var(--weight-semibold);
 }
 
 @media (max-width: 480px) {
   .app-toolbar__actions {
-    gap: 2px;
+    gap: var(--space-1);
   }
   .app-toolbar__icon-btn {
     padding: 4px 6px;
@@ -222,6 +270,39 @@
 /* Mobile: overflow menu for secondary actions */
 .app-toolbar__overflow-btn.app-toolbar__overflow-btn {
   display: none;
+}
+
+/* The help menu (#1552 D4 gave it a class; its geometry was inline before). Same
+   anchor as the avatar menu below it, and the same literal `zIndex: 209/210`
+   pair it carried inline is now the shared `--layer-navigation` tier its two
+   siblings use — the retired literals were one below and one above nothing in
+   particular. */
+.app-toolbar__help-menu {
+  position: fixed;
+  top: calc(
+    var(--chat-visual-viewport-top, 0px) +
+    var(--app-toolbar-total-height)
+  );
+  right: var(--space-4);
+  z-index: var(--layer-navigation);
+  margin-top: var(--space-3);
+  width: min(280px, calc(100vw - 32px));
+}
+
+/* The avatar's menu (#1552 D1). Same anchor as the `⋯` overflow menu below and
+   the help menu beside it — fixed to the toolbar's occupied height at the row's
+   right edge — because all three belong to controls at that edge. Its visual
+   spec comes from `.menu-surface`. */
+.app-toolbar__profile-menu {
+  position: fixed;
+  top: calc(
+    var(--chat-visual-viewport-top, 0px) +
+    var(--app-toolbar-total-height)
+  );
+  right: var(--space-4);
+  z-index: var(--layer-navigation);
+  margin-top: var(--space-3);
+  min-width: 200px;
 }
 
 .app-toolbar__overflow-menu {
@@ -248,54 +329,25 @@
      the app's navigation overflow. `OverflowMenu.tsx` derives its dismiss
      backdrop from the same token so the two cannot drift apart. */
   z-index: var(--layer-navigation);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
   min-width: 160px;
 }
 
-.app-toolbar__overflow-menu button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 14px;
-  min-height: 44px;
-  box-sizing: border-box;
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: var(--text-md);
-  font-family: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.app-toolbar__overflow-menu button:hover {
-  background: var(--bg-tertiary);
-}
-
-.app-toolbar__overflow-menu button + button {
-  border-top: 1px solid var(--border-primary);
-}
+/* Radius, padding, row height, the 12px label inset and the 16px glyph slot all
+   come from `.menu-surface`/`.menu-row` in index.css (#1552 D4). What used to be
+   here was this menu's own spec: an 8px radius over 44px rows with `padding:
+   10px 14px` and a hairline between EVERY row, none of which matched the dock's
+   menus, the Layout menu, or the help menu it sat beside.
+ *
+ * The per-row hairline is gone rather than moved. It made the ONE division that
+ * carries meaning here — the seam before the region section — read exactly like
+ * the five that do not; the section is a `.menu-group` with a gap now.
+ */
 
 /* The coarse-device region rows (#917) sit in their own fieldset, the ancestor
-   `menuitemcheckbox` requires. `min-inline-size` because a fieldset's default
-   is `min-content`, which would let a long surface title widen the menu. */
+   `menuitemcheckbox` requires. It also wears `.menu-group`, which owns the gap
+   that replaced its leading hairline. */
 .app-toolbar__overflow-regions {
-  margin: 0;
-  padding: 0;
-  border: 0;
   min-inline-size: 0;
-}
-
-/* The fieldset breaks the `button + button` adjacency above, so the section
-   draws its own leading separator. It is only ever rendered after the menu's
-   plain rows, never first. */
-.app-toolbar__overflow-regions > button:first-of-type {
-  border-top: 1px solid var(--border-primary);
 }
 
 /* ── Header Buttons ── */
@@ -332,11 +384,17 @@
   font-family: var(--font-sans);
   font-size: var(--text-lg);
   font-weight: 600;
-  padding: 6px 10px;
+  /* #1552 D1: one button size for the four controls this row now holds. 32px is
+     the hit target inside the 46px row (`--app-toolbar-height`); the mobile
+     block below still lifts every one of them to the 44px touch floor, and does
+     so LATER in this sheet, so it wins the specificity tie. */
+  min-width: 32px;
+  min-height: 32px;
+  padding: var(--space-3) var(--space-4);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--space-3);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -350,6 +408,23 @@
 .app-toolbar__icon-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+/* The inverse of `.app-toolbar__action--secondary`: a control the MOBILE toolbar
+ * keeps and the fine-pointer row does not.
+ *
+ * #1552 D1 moves "Open settings" and "Ask Station for help" into the avatar
+ * menu, leaving four controls on the right. It cannot do the same on a phone:
+ * the avatar itself is `--secondary` there (archive#3311 demoted it into the `⋯`
+ * menu to free the slot the connection chip took), so an avatar menu is not a
+ * route a phone has — and `tests/toolbar-reachability.spec.ts` requires "Open
+ * settings" in the phone toolbar's measured inventory, because on that surface
+ * the gear IS the route. Help already lives in the `⋯` menu; Settings does not,
+ * and putting it there as well would give a phone two routes to the same view
+ * while removing none.
+ */
+.app-toolbar__action--compact-only {
+  display: none;
 }
 
 .app-toolbar__icon-btn.is-active {
@@ -428,8 +503,12 @@
    pointer, not only touch: this is the smallest control in the row and the one
    most often aimed at in a hurry. */
 .app-toolbar__conn--compact {
-  min-width: 44px;
-  min-height: 44px;
+  /* #1552 D1: the same 32px as its three siblings. It was 44px on every pointer,
+     which made the smallest-content control the LARGEST box in the row — the one
+     inconsistency a reader notices first. The 44px floor still applies where it
+     is a WCAG 2.5.5 obligation: the mobile block below sizes every
+     `.app-toolbar__icon-btn`, this one included, and it is what that floor is
+     for. */
   justify-content: center;
 }
 
@@ -451,6 +530,18 @@
 .app-toolbar__conn-name::before,
 .app-toolbar__conn-note::before {
   content: "· ";
+}
+
+/* Inside a `.menu-row__glyph` the chip takes the family's 16px slot rather than
+   its own 22px: the slot is what puts every label on one x, and a chip that
+   overflows it is the misalignment #1552 D4 removes. */
+.menu-row__glyph .app-toolbar__overflow-initials {
+  width: 100%;
+  height: 100%;
+  /* 10px, the size the 22px chip in the ⋯ menu has always used — not the 9px
+     `--text-2xs` a first pass reached for, which is the badge-counter size and
+     too small for two letters anyone is meant to read (#1552 review L5). */
+  font-size: var(--text-xs);
 }
 
 /* The profile entry's initials chip inside the ⋯ overflow menu. */
@@ -1126,14 +1217,15 @@
   }
 }
 
-/* #1536 F: the dock header's folded commands (Chat settings, the chat list,
-   Background tasks, Session inventory, Copy thread ID, Copy project path) are
-   rows of the `.dock-placement-menu` family, whose 32px row is a fine-pointer
-   height. A coarse device too wide to render the mobile dock header — a tablet
-   in landscape — reaches them with a finger, and station#923 sized one of those
-   commands (Copy ID) at 44px back when it was a button in the bar. The blast
-   radius is the pre-existing dock placement menu, which owed a finger the same
-   floor.
+/* #1552 D4: `.menu-row` is now EVERY menu's row — the dock's placement and More
+   menus, the header's overflow, help and profile menus, the Layout picker and
+   the breadcrumb's layout switcher — and its 32px height is a fine-pointer
+   height. A coarse device too
+   wide to render the mobile dock header (a tablet in landscape) reaches all of
+   them with a finger, and station#923 sized one of those commands (Copy ID) at
+   44px back when it was a button in the bar. Before D4 this floor reached one
+   member of the family; it now reaches all of them, which is the point of
+   having one row class.
    HERE rather than in index.css: `useIsMobile.test.tsx` requires every coarse
    query in the ENTRY sheet to spell `MOBILE_MEDIA_QUERY` byte-for-byte, so
    component behaviour and stylesheet cannot disagree about the breakpoint — and
@@ -1143,7 +1235,18 @@
    The class is DOUBLED so this beats index.css's single-class base rule on
    specificity rather than on which sheet the bundler emitted last. */
 @media (max-width: 768px), (pointer: coarse) {
-  .dock-placement-menu__item.dock-placement-menu__item {
+  .menu-row.menu-row {
+    min-height: 44px;
+  }
+
+  /* Moved here from index.css, unchanged. It was added to the entry sheet on
+     this lane's base branch, where `useIsMobile.test.tsx` forbids any `@media`
+     condition that is not `MOBILE_MEDIA_QUERY` byte-for-byte — so the base
+     branch reds that test on its own tip (verified against 8ae038646: the same
+     single offending condition, and no other). Same query, same rule, a sheet
+     that is allowed to ask the `(pointer: coarse)` question. */
+  .choice-trigger {
+    min-width: 44px;
     min-height: 44px;
   }
 }
@@ -1797,6 +1900,11 @@
   .app-toolbar__action--secondary.app-toolbar__action--secondary {
     display: none;
   }
+  /* Doubled for the same reason as the rule above it: a single class ties with
+     the base rule and source order would decide. */
+  .app-toolbar__action--compact-only.app-toolbar__action--compact-only {
+    display: flex;
+  }
   .app-toolbar__overflow-btn.app-toolbar__overflow-btn {
     display: flex;
   }
@@ -1905,11 +2013,7 @@
   }
 
   .app-toolbar__actions {
-    gap: 4px;
-  }
-
-  .app-toolbar__icon-btn--help {
-    display: none;
+    gap: var(--space-2);
   }
 
   .app-toolbar__conn-name,
