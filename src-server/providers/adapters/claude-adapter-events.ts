@@ -220,7 +220,11 @@ export interface ClaudeMessageState {
    * `task_notification` terminal) keeps its entry — the real `tool_result`
    * may still arrive and is still the authoritative output — but is marked
    * `terminalPublished` so the session-end settle does not contradict the
-   * outcome the task already reported (station#1558 fix round, H1).
+   * outcome the task already reported (station#1558 fix round, H1). The
+   * deferral path is the asymmetric case: it DELETES the entry, so a later
+   * `tool_result` for a deferred id is swallowed by the replay guard — by
+   * design, since the engine handed that call back and Station's terminal
+   * already says it did not run.
    */
   activeToolCalls?: Map<string, ClaudeActiveToolCall>;
   /**

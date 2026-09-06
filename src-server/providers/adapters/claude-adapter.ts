@@ -312,9 +312,14 @@ const DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS = 5_000;
  * station#1558 (fix round, M8): how long `stopSession` waits for
  * `consumeMessages` to stop before settling still-open tool calls itself.
  *
- * The real SDK ends its iterator as soon as `query.close()` lands, so this
- * elapses only when an engine misbehaves. It is a ceiling on teardown, not a
- * delay anything normally pays.
+ * The SDK is expected to end its iterator once `query.close()` lands (the
+ * adapter tests model that; nothing here verifies it against a live engine),
+ * so this should elapse only when an engine misbehaves. It is a ceiling on
+ * teardown, not a delay anything normally pays. Residual: if the grace does
+ * elapse, the settle publishes `unresolved` and clears tracking, and a
+ * `tool_result` that still arrives afterwards is dropped by the replay guard
+ * — the original station#1558 M8 window, narrowed to this 1 s rather than
+ * removed. The grace-elapsed branch has no test yet (station follow-up).
  */
 const CLAUDE_STREAM_STOP_GRACE_MS = 1_000;
 
