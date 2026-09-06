@@ -219,7 +219,7 @@ class ToastStore {
     agentName: string;
     conversationTitle?: string;
     detail?: string;
-    status: 'completed' | 'cancelled' | 'error';
+    status: 'completed' | 'cancelled' | 'error' | 'unresolved';
     onNavigate?: () => void;
     duration?: number;
   }) {
@@ -229,7 +229,13 @@ class ToastStore {
         ? 'failed'
         : options.status === 'cancelled'
           ? 'cancelled'
-          : 'finished';
+          : // station#1558: the session ended with this call still open, so
+            // there is no outcome to name. "reported no result for" says
+            // exactly what happened — it does not claim the tool failed, and
+            // it does not claim it finished.
+            options.status === 'unresolved'
+            ? 'reported no result for'
+            : 'finished';
 
     const toast: Toast = {
       id,
@@ -244,7 +250,7 @@ class ToastStore {
         options.duration ??
         (options.status === 'error'
           ? 9000
-          : options.status === 'cancelled'
+          : options.status === 'cancelled' || options.status === 'unresolved'
             ? 7000
             : 6000),
       metadata: options.detail ? { detail: options.detail } : undefined,
@@ -341,7 +347,7 @@ const ToastContext = createContext<{
     agentName: string;
     conversationTitle?: string;
     detail?: string;
-    status: 'completed' | 'cancelled' | 'error';
+    status: 'completed' | 'cancelled' | 'error' | 'unresolved';
     onNavigate?: () => void;
     duration?: number;
   }) => string;
@@ -395,7 +401,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       agentName: string;
       conversationTitle?: string;
       detail?: string;
-      status: 'completed' | 'cancelled' | 'error';
+      status: 'completed' | 'cancelled' | 'error' | 'unresolved';
       onNavigate?: () => void;
       duration?: number;
     }) => {

@@ -355,6 +355,41 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
     expect(screen.queryByText('Failed')).toBe(null);
   });
 
+  // station#1558: the session ended with the call still open, and the adapter
+  // said so explicitly. The row must say that — not "Cancelled" (nobody asked
+  // it to stop), not "Failed" (nothing observed a failure), and above all not
+  // "Success", which is what the sentence riding in `result` would otherwise
+  // have produced through the `result !== undefined` arm.
+  test('an unresolved call reports that no result arrived, not success, failure or cancellation', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 't-unresolved',
+          toolName: 'shell_exec',
+          args: { command: 'npm test' },
+          state: 'unresolved',
+          result:
+            'No result was reported before the session ended; whether the tool ran is unknown.',
+        }}
+      />,
+    );
+
+    expect(screen.getByText('No result was reported')).toBeTruthy();
+    expect(screen.queryByText('Failed')).toBe(null);
+    expect(screen.queryByText('Cancelled')).toBe(null);
+    // The inferred badge for a start with no terminal at all must not also
+    // fire — this call HAS a terminal event.
+    expect(screen.queryByText('No result recorded')).toBe(null);
+    // Past tense would claim work that may never have happened.
+    expect(document.querySelector('.tool-call__label')?.textContent).toBe(
+      'Run npm test',
+    );
+
+    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    expect(screen.queryByText('Success')).toBe(null);
+  });
+
   test('a call awaiting approval is labelled as PROPOSED work, with its approval buttons inline', () => {
     const onApprove = vi.fn();
     render(

@@ -601,6 +601,40 @@ describe('TurnProvenanceCard', () => {
     expect(badge?.textContent).toBe('1 tool call unresolved');
   });
 
+  // station#1558: the same finding, reached from the OTHER direction — the
+  // call now settles with an explicit `unresolved` terminal, so `started`
+  // and the observed outcomes balance and the derived gap is zero. Counting
+  // only the derived gap would silently drop the finding the moment the
+  // adapter started reporting it.
+  it('badges a turn whose tool call settled as unresolved, without double counting it', () => {
+    const { container } = render(
+      <TurnProvenanceCard
+        provenance={envelope({
+          tools: {
+            state: 'observed',
+            value: {
+              uses: [
+                {
+                  name: 'bash',
+                  started: 1,
+                  succeeded: 0,
+                  failed: 0,
+                  cancelled: 0,
+                  unresolved: 1,
+                },
+              ],
+              omittedNames: 0,
+            },
+            observedFrom: [{ eventId: 'e9', method: 'tool.completed' }],
+          },
+        })}
+      />,
+    );
+    const badge = container.querySelector('.turn-provenance__badge');
+    expect(badge?.textContent).toBe('1 tool call unresolved');
+    expect(badge?.textContent).not.toMatch(/tool issue/);
+  });
+
   // --- archive#1802: the four row kinds must be checkably distinct ---
 
   it('renders an engine-didn’t-report row and a Station-hasn’t-built-it row with different classes and in different sections', () => {

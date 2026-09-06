@@ -907,6 +907,72 @@ interface ClaudeActiveToolCall {
   turnId?: string;
 }
 
+/**
+ * station#1558: what a reader is told about a `tool_use` that was still open
+ * when its SESSION ended.
+ *
+ * The two honest facts are that no result was reported and that Station
+ * cannot tell whether the tool ran — the engine process is gone, and a
+ * `tool_result` it may or may not have produced went with it. Anything more
+ * specific ("the tool failed", "the call was cancelled") would be a claim
+ * nothing observed.
+ */
+export const CLAUDE_UNRESOLVED_TOOL_OUTPUT =
+  'No result was reported before the session ended; whether the tool ran is unknown.';
+
+/**
+ * Settle every `tool_use` still tracked in `record.activeToolCalls` as
+ * `status: 'unresolved'` (station#1558).
+ *
+ * Called ONLY when the SESSION ends — `stopSession`, and the end of
+ * `consumeMessages` (the SDK iterator finishing or throwing, i.e. the
+ * `claude` process exiting). Never on a turn ending: `activeToolCalls`
+ * deliberately outlives its turn so a backgrounded `Task`'s legitimately
+ * late `tool_result` still settles the real call (see that field's
+ * docblock), and settling at a turn boundary would fabricate a non-outcome
+ * for a call that is still perfectly capable of producing a real one.
+ *
+ * Each entry is settled on the turn that ISSUED it (`tracked.turnId`), not
+ * on whichever turn was active last — the same rule the real `tool_result`
+ * path follows. The map is cleared before publishing, so a session that ends
+ * through both paths (stopSession closes the query, which ends
+ * `consumeMessages`) settles each call exactly once and never touches an
+ * entry that was already settled by its own result or by the SDK's deferral
+ * report.
+ */
+export function settleUnresolvedClaudeToolCalls({
+  provider,
+  record,
+  publish,
+  createdAt,
+}: {
+  provider: ProviderSession['provider'];
+  record: ClaudeMessageState;
+  publish: (event: CanonicalRuntimeEvent) => void;
+  createdAt?: string;
+}): void {
+  const open = record.activeToolCalls;
+  if (!open || open.size === 0) return;
+  const settledAt = createdAt ?? new Date().toISOString();
+  const entries = [...open];
+  open.clear();
+  for (const [toolCallId, tracked] of entries) {
+    publish({
+      eventId: crypto.randomUUID(),
+      provider,
+      threadId: record.session.threadId,
+      createdAt: settledAt,
+      ...(tracked.turnId !== undefined ? { turnId: tracked.turnId } : {}),
+      itemId: toolCallId,
+      method: 'tool.completed',
+      toolCallId,
+      toolName: tracked.toolName,
+      status: 'unresolved',
+      output: CLAUDE_UNRESOLVED_TOOL_OUTPUT,
+    });
+  }
+}
+
 function clearClaudeDispatchedTurn(record: ClaudeMessageState): void {
   record.activeTurnId = undefined;
   record.dispatchedTurnId = undefined;

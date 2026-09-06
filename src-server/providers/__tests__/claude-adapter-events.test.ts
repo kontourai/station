@@ -10,12 +10,14 @@ import { buildAgentRunSummary } from '../../services/orchestration/orchestration
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import {
   CLAUDE_EXTENSION_NAMESPACE,
+  CLAUDE_UNRESOLVED_TOOL_OUTPUT,
   type ClaudeMessageState,
   claudeToolResultOutputReceipt,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
   mapClaudeSessionState,
   mapClaudeTaskStatus,
+  settleUnresolvedClaudeToolCalls,
   summarizeClaudeToolResult,
 } from '../adapters/claude-adapter-events.js';
 import {
@@ -1853,5 +1855,128 @@ describe('a real Claude Bash tool cycle, replayed (#1536 finding B1)', () => {
         }),
       ]),
     );
+  });
+});
+
+// station#1558: the session-end settle. `activeToolCalls` deliberately
+// outlives its turn, so this is the ONLY moment at which a still-open
+// `tool_use` is provably never going to report.
+describe('settleUnresolvedClaudeToolCalls (station#1558)', () => {
+  function recordWithOpenCalls() {
+    const record = makeRecord({
+      activeTurnId: 'turn-c',
+      dispatchedTurnId: 'turn-c',
+    }) as ClaudeMessageState;
+    record.activeToolCalls = new Map([
+      ['toolu-a', { toolName: 'Bash', turnId: 'turn-a' }],
+      ['toolu-b', { toolName: 'Read', turnId: 'turn-b' }],
+    ]);
+    return record;
+  }
+
+  test('settles every open call on the turn that ISSUED it, not the active one', () => {
+    const publish = vi.fn();
+    const record = recordWithOpenCalls();
+
+    settleUnresolvedClaudeToolCalls({
+      provider: 'claude',
+      record,
+      publish,
+      createdAt: '2026-09-05T00:00:00.000Z',
+    });
+
+    expect(publish.mock.calls.map(([event]) => event)).toEqual([
+      expect.objectContaining({
+        method: 'tool.completed',
+        turnId: 'turn-a',
+        toolCallId: 'toolu-a',
+        toolName: 'Bash',
+        status: 'unresolved',
+        output: CLAUDE_UNRESOLVED_TOOL_OUTPUT,
+      }),
+      expect.objectContaining({
+        method: 'tool.completed',
+        turnId: 'turn-b',
+        toolCallId: 'toolu-b',
+        toolName: 'Read',
+        status: 'unresolved',
+      }),
+    ]);
+    // Never the turn that happened to be active when the session ended.
+    expect(
+      publish.mock.calls.some(([event]) => event.turnId === 'turn-c'),
+    ).toBe(false);
+    expect(record.activeToolCalls?.size).toBe(0);
+  });
+
+  test('never republishes a call its own tool_result already settled', () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-a',
+      dispatchedTurnId: 'turn-a',
+    }) as ClaudeMessageState;
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-done', name: 'Read', input: {} },
+            { type: 'tool_use', id: 'toolu-open', name: 'Bash', input: {} },
+          ],
+        },
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-done', content: 'ok' },
+          ],
+        },
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+    publish.mockClear();
+
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish.mock.calls[0][0]).toMatchObject({
+      toolCallId: 'toolu-open',
+      status: 'unresolved',
+    });
+  });
+
+  test('a second settle publishes nothing (both session-end paths can run)', () => {
+    const publish = vi.fn();
+    const record = recordWithOpenCalls();
+
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+    const afterFirst = publish.mock.calls.length;
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+
+    expect(afterFirst).toBe(2);
+    expect(publish.mock.calls.length).toBe(2);
+  });
+
+  test('a session that ends with nothing open publishes nothing', () => {
+    const publish = vi.fn();
+    const record = makeRecord() as ClaudeMessageState;
+
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+
+    expect(publish).not.toHaveBeenCalled();
   });
 });

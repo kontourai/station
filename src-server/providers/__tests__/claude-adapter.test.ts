@@ -3294,3 +3294,170 @@ describe('ClaudeAdapter', () => {
     });
   });
 });
+
+/**
+ * station#1558: a `tool_use` still open when the SESSION ends can never
+ * receive a result. Both session-end paths must settle it, on the turn that
+ * issued it, and neither may settle at a mere turn boundary (a backgrounded
+ * `Task` legitimately outlives its turn).
+ */
+describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)', () => {
+  afterEach(() => {
+    mockQuery.mockReset();
+  });
+
+  /** A push-driven query whose iterator can also FINISH, modelling the
+   * `claude` process exiting on its own. */
+  function createEndableMockQuery() {
+    const pending: any[] = [];
+    let wake: (() => void) | null = null;
+    let ended = false;
+    return {
+      push(message: any) {
+        pending.push(message);
+        wake?.();
+        wake = null;
+      },
+      end() {
+        ended = true;
+        wake?.();
+        wake = null;
+      },
+      async *[Symbol.asyncIterator]() {
+        for (;;) {
+          while (pending.length === 0) {
+            if (ended) return;
+            await new Promise<void>((resolve) => {
+              wake = resolve;
+            });
+          }
+          yield pending.shift();
+        }
+      },
+      interrupt: vi.fn().mockResolvedValue(undefined),
+      supportedModels: vi.fn().mockResolvedValue([]),
+      close: vi.fn(),
+      setModel: vi.fn().mockResolvedValue(undefined),
+      setPermissionMode: vi.fn().mockResolvedValue(undefined),
+      applyFlagSettings: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  /** Drains the stream until `method` arrives, so a test never has to encode
+   * the exact number of lifecycle events between two facts. */
+  async function nextOf(
+    iterator: AsyncIterator<any>,
+    method: string,
+    limit = 12,
+  ) {
+    for (let step = 0; step < limit; step += 1) {
+      const next = await iterator.next();
+      if (next.done) throw new Error(`stream ended before ${method}`);
+      if (next.value.method === method) return next.value;
+    }
+    throw new Error(`no ${method} within ${limit} events`);
+  }
+
+  async function openCallOn(
+    threadId: string,
+    query: ReturnType<typeof createEndableMockQuery>,
+  ) {
+    mockQuery.mockReturnValue(query);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({ provider: 'claude', threadId });
+    const turn = await adapter.sendTurn({ threadId, input: 'work' });
+    await nextOf(iterator, 'turn.started');
+    query.push({
+      type: 'assistant',
+      parent_tool_use_id: null,
+      message: {
+        content: [
+          { type: 'tool_use', id: 'toolu-open', name: 'Bash', input: {} },
+        ],
+      },
+      uuid: 'assistant-1',
+      session_id: threadId,
+    });
+    await nextOf(iterator, 'tool.started');
+    return { adapter, iterator, turnId: turn.turnId };
+  }
+
+  test('stopSession settles the open call as unresolved, on its own turn, before session.exited', async () => {
+    const query = createEndableMockQuery();
+    const { adapter, iterator, turnId } = await openCallOn(
+      'thread-unresolved-stop',
+      query,
+    );
+
+    await adapter.stopSession('thread-unresolved-stop');
+
+    const settled = await nextOf(iterator, 'tool.completed');
+    expect(settled).toMatchObject({
+      toolCallId: 'toolu-open',
+      toolName: 'Bash',
+      status: 'unresolved',
+      turnId,
+      output:
+        'No result was reported before the session ended; whether the tool ran is unknown.',
+    });
+    // The exit event follows it, so a reader replaying the stream sees the
+    // call settle while the session is still the subject.
+    await nextOf(iterator, 'session.exited');
+  });
+
+  test('the SDK iterator ending (the process exiting) settles the open call too', async () => {
+    const query = createEndableMockQuery();
+    const { iterator, turnId } = await openCallOn(
+      'thread-unresolved-exit',
+      query,
+    );
+
+    // Nobody called stopSession: the engine process simply went away.
+    query.end();
+
+    const settled = await nextOf(iterator, 'tool.completed');
+    expect(settled).toMatchObject({
+      toolCallId: 'toolu-open',
+      status: 'unresolved',
+      turnId,
+    });
+  });
+
+  test('a completed TURN leaves the open call alone — only the session settles it', async () => {
+    const query = createEndableMockQuery();
+    const { iterator } = await openCallOn('thread-unresolved-turn', query);
+
+    query.push({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      num_turns: 1,
+      stop_reason: 'end_turn',
+      result: 'done',
+      usage: { input_tokens: 1, output_tokens: 1 },
+      uuid: 'result-1',
+      session_id: 'thread-unresolved-turn',
+    });
+
+    // A backgrounded Task's result legitimately arrives after its turn ends,
+    // so the turn boundary must publish no terminal for the call. Collected
+    // rather than scanned-past: a settle emitted BEFORE `turn.completed`
+    // would be invisible to a search that only looks for the terminal.
+    const seen: string[] = [];
+    for (let step = 0; step < 12; step += 1) {
+      const next = await iterator.next();
+      seen.push(next.value.method);
+      if (next.value.method === 'turn.completed') break;
+    }
+    expect(seen).toContain('turn.completed');
+    expect(seen).not.toContain('tool.completed');
+    const NOTHING = Symbol('nothing-else');
+    expect(
+      await Promise.race([
+        iterator.next().then((result) => result.value),
+        new Promise((resolve) => setTimeout(() => resolve(NOTHING), 50)),
+      ]),
+    ).toBe(NOTHING);
+  });
+});

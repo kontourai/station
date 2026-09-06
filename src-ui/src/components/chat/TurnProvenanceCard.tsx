@@ -433,7 +433,15 @@ function turnFindings(envelope: TurnProvenanceEnvelope): string[] {
       // finding (archive#1802): a genuine per-answer anomaly (this turn's
       // own tool call never resolved), distinct from `failed`/`cancelled`,
       // which both name an event Station DID observe.
-      const resolved = use.succeeded + use.failed + use.cancelled;
+      // station#1558: a call the session ended on now settles with its own
+      // `tool.completed` (`status: 'unresolved'`), so it counts as observed
+      // here — otherwise it would be counted twice, once as an observed
+      // unresolved outcome and again as a start with no terminal at all.
+      // Both roads lead to the same honest finding below.
+      const observedUnresolved = use.unresolved ?? 0;
+      unresolved += observedUnresolved;
+      const resolved =
+        use.succeeded + use.failed + use.cancelled + observedUnresolved;
       if (use.started > resolved) unresolved += use.started - resolved;
     }
     if (failed > 0) {

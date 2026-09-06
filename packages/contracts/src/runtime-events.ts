@@ -496,7 +496,38 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   itemId: string;
   toolCallId: string;
   toolName: string;
-  status: 'success' | 'error' | 'cancelled';
+  /**
+   * The observed outcome of the call.
+   *
+   * Three of these assert what happened: `success` and `error` are the
+   * engine's own verdict, and `cancelled` is a stop Station or the user
+   * asked for. `unresolved` (station#1558) asserts the opposite — that no
+   * verdict will ever arrive. It is published for a `tool_use` still open
+   * when its SESSION ended, where the call's fate is genuinely unknown:
+   * Station never saw a result, and cannot tell whether the tool ran. It is
+   * NOT a failure (nothing observed the tool fail) and NOT a cancellation
+   * (nobody asked for it to stop); folding it into either would be a claim
+   * Station cannot support. Without it, the row simply stayed "running"
+   * forever.
+   *
+   * **Compatibility.** A client built before this member sees an
+   * unrecognised string, and the two folds degrade differently — neither
+   * silently, because the event's `output` carries the explicit prose
+   * "No result was reported before the session ended; whether the tool ran
+   * is unknown.":
+   * - the durable projection (`runtime-event-projection.ts`) tested
+   *   `status === 'error'` / `=== 'cancelled'` and fell through to
+   *   `state: 'result'`, so an older transcript renders the call as an
+   *   ordinary completed one carrying that sentence as its result;
+   * - the live handler (`streamHandlers.ts`) mapped anything that was
+   *   neither `success` nor `cancelled` to `state: 'error'`, so an older
+   *   live client renders it as a failure with that sentence.
+   *
+   * Both are wrong about the outcome and right about the text, which is why
+   * the sentence — not the enum — is what a reader is left with. Publishers
+   * must not use this status for any other situation.
+   */
+  status: 'success' | 'error' | 'cancelled' | 'unresolved';
   output?: unknown;
   error?: string;
   /** See {@link ToolProgressEvent.outputReceipt}. */

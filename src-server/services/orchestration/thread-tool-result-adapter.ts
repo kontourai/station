@@ -89,7 +89,11 @@ export function projectToolCompletedEvent(
   return projectToolResult(
     createToolResult({
       resultId: event.eventId,
-      terminalStatus: event.status,
+      // station#1558: Thread's own vocabulary already has the slot for a
+      // call whose outcome was never observed. `unresolved` is exactly that,
+      // so it projects as `unknown` rather than being folded into `cancelled`
+      // (nobody asked it to stop) or `error` (nothing observed it fail).
+      terminalStatus: event.status === 'unresolved' ? 'unknown' : event.status,
       toolCallId: event.toolCallId,
       name: event.toolName,
       content: text === undefined ? [] : [{ type: 'text', text }],
@@ -127,7 +131,8 @@ export function projectToolCompletedDescriptor(
     !boundedText(event.toolName, MAX_PROJECTED_TOOL_RESULT_LABEL_BYTES) ||
     (event.status !== 'success' &&
       event.status !== 'error' &&
-      event.status !== 'cancelled') ||
+      event.status !== 'cancelled' &&
+      event.status !== 'unresolved') ||
     (event.error !== undefined &&
       (typeof event.error !== 'string' ||
         !boundedText(event.error, MAX_TOOL_RESULT_DESCRIPTOR_OUTPUT_BYTES))) ||

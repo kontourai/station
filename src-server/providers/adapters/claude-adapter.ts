@@ -78,6 +78,7 @@ import {
   type ClaudeMessageState,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
+  settleUnresolvedClaudeToolCalls,
 } from './claude-adapter-events.js';
 import {
   AsyncEventQueue,
@@ -1088,6 +1089,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       });
     }
     record.pendingRequests.clear();
+    // station#1558: the session is ending, so any `tool_use` still open can
+    // never receive a result. Settle each on its OWN issuing turn before the
+    // exit event, so the transcript carries a reported non-outcome instead
+    // of a row that stays "running" forever. `consumeMessages`' own settle
+    // (below, on the iterator ending) is the same call and finds an empty
+    // map, so nothing is published twice.
+    settleUnresolvedClaudeToolCalls({
+      provider: this.provider,
+      record: record as ClaudeMessageState,
+      publish: (event) => this.publish(event),
+    });
     record.promptQueue.close();
     record.query.close();
     this.publish({
@@ -1606,6 +1618,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
 
   private async consumeMessages(record: ClaudeSessionRecord): Promise<void> {
+    try {
+      await this.consumeMessagesInner(record);
+    } finally {
+      // station#1558: the SDK iterator finishing or throwing means the
+      // `claude` process is gone — every path out of it is a SESSION end, and
+      // a `tool_use` still open at that point can never receive a result.
+      // This is the one settle site that covers a process exit nobody asked
+      // for; `stopSession` covers the deliberate stop. Whichever runs first
+      // empties the map, so the other publishes nothing.
+      settleUnresolvedClaudeToolCalls({
+        provider: this.provider,
+        record: record as ClaudeMessageState,
+        publish: (event) => this.publish(event),
+      });
+    }
+  }
+
+  private async consumeMessagesInner(
+    record: ClaudeSessionRecord,
+  ): Promise<void> {
     try {
       for await (const message of record.query) {
         // `interruptedResultObserved` suppresses only the iterator rejection

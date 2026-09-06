@@ -336,6 +336,66 @@ describe('projectRuntimeEventsToMessages', () => {
   // the parity between the live and rehydrated paths is pinned in both
   // directions rather than just the live side. Cancelling is a correct
   // user-initiated outcome, not a failure — `isError` must stay false.
+  // station#1558: the third terminal shape. `success`/`error`/`cancelled` all
+  // assert what happened; `unresolved` asserts that nothing ever will.
+  it('marks an unresolved tool call as unresolved — neither error nor cancelled', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'r-unresolved', prompt: 'run it' }),
+      ev({
+        method: 'tool.started',
+        itemId: 'i1',
+        toolCallId: 'c-unresolved',
+        toolName: 'Bash',
+      }),
+      ev({
+        method: 'tool.completed',
+        itemId: 'i1',
+        toolCallId: 'c-unresolved',
+        toolName: 'Bash',
+        status: 'unresolved',
+        output:
+          'No result was reported before the session ended; whether the tool ran is unknown.',
+      }),
+      ev({
+        method: 'turn.completed',
+        turnId: 'r-unresolved',
+        finishReason: 'stop',
+      }),
+    ]);
+
+    const tool = messages[1]!.parts.find(
+      (part) => part.type === 'tool-invocation',
+    )!;
+    expect(tool.state).toBe('unresolved');
+    expect(tool.isError).toBe(false);
+    expect(tool.cancelled).toBe(false);
+    expect(tool.result).toBe(
+      'No result was reported before the session ended; whether the tool ran is unknown.',
+    );
+  });
+
+  it('marks an unresolved tool call through the no-captured-start replay-gap branch too', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'r-gap', prompt: 'run it' }),
+      ev({
+        method: 'tool.completed',
+        itemId: 'i1',
+        toolCallId: 'c-gap',
+        toolName: 'Bash',
+        status: 'unresolved',
+        output: 'No result was reported before the session ended.',
+      }),
+      ev({ method: 'turn.completed', turnId: 'r-gap', finishReason: 'stop' }),
+    ]);
+
+    const tool = messages[1]!.parts.find(
+      (part) => part.type === 'tool-invocation',
+    )!;
+    expect(tool.state).toBe('unresolved');
+    expect(tool.isError).toBe(false);
+    expect(tool.cancelled).toBe(false);
+  });
+
   it('marks a cancelled tool as cancelled, not error, and keeps isError false', () => {
     const messages = projectRuntimeEventsToMessages([
       ev({ method: 'turn.started', turnId: 'r1' }),
@@ -1152,6 +1212,138 @@ describe('projectRuntimeEventsToMessages', () => {
       ]);
 
       expect(messages).toHaveLength(0);
+    });
+  });
+  // station#1558 Part A: a `tool.completed` names the turn that issued the
+  // call (`turnId`, PR #1560). The fold must honour that name instead of the
+  // stream position it happens to arrive at.
+  describe('late tool results fold onto the turn that issued the call (station#1558)', () => {
+    const lateResultStream = (terminal: 'turn.aborted' | 'turn.completed') => [
+      ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+      ev({
+        method: 'tool.started',
+        itemId: 'i1',
+        turnId: 'turn-a',
+        toolCallId: 'call-1',
+        toolName: 'Bash',
+        arguments: { command: 'sleep 5' },
+      }),
+      ev(
+        terminal === 'turn.aborted'
+          ? { method: 'turn.aborted', turnId: 'turn-a', reason: 'stopped' }
+          : {
+              method: 'turn.completed',
+              turnId: 'turn-a',
+              finishReason: 'stop',
+            },
+      ),
+      ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+      ev({ method: 'content.text-delta', itemId: 'i2', delta: 'B answers.' }),
+      ev({
+        method: 'tool.completed',
+        itemId: 'i1',
+        turnId: 'turn-a',
+        toolCallId: 'call-1',
+        toolName: 'Bash',
+        status: 'success',
+        output: 'late output',
+        eventId: 'late-result',
+      }),
+      ev({ method: 'turn.completed', turnId: 'turn-b', finishReason: 'stop' }),
+    ];
+
+    const toolPartsOf = (message: { parts: Array<{ type: string }> }) =>
+      message.parts.filter((part) => part.type === 'tool-invocation');
+
+    it("resolves a stopped turn's call on that turn, leaving the next turn without a tool row", () => {
+      const messages = projectRuntimeEventsToMessages(
+        lateResultStream('turn.aborted'),
+      );
+
+      const turnA = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-a',
+      )!;
+      const turnB = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-b',
+      )!;
+      const aTools = toolPartsOf(turnA);
+      expect(aTools).toHaveLength(1);
+      expect(aTools[0]).toMatchObject({
+        toolCallId: 'call-1',
+        state: 'result',
+        result: 'late output',
+        sourceEventId: 'late-result',
+      });
+      expect(toolPartsOf(turnB)).toHaveLength(0);
+    });
+
+    it("resolves a completed turn's call on that turn, leaving the next turn without a tool row", () => {
+      const messages = projectRuntimeEventsToMessages(
+        lateResultStream('turn.completed'),
+      );
+
+      const turnA = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-a',
+      )!;
+      const turnB = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-b',
+      )!;
+      const aTools = toolPartsOf(turnA);
+      expect(aTools).toHaveLength(1);
+      expect(aTools[0]).toMatchObject({
+        toolCallId: 'call-1',
+        state: 'result',
+        result: 'late output',
+      });
+      expect(toolPartsOf(turnB)).toHaveLength(0);
+    });
+
+    it('puts a start-less late completion on the turn its own turnId names, never on the open one', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+        ev({ method: 'content.text-delta', itemId: 'i0', delta: 'A answers.' }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-a',
+          finishReason: 'stop',
+        }),
+        ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+        ev({ method: 'content.text-delta', itemId: 'i2', delta: 'B answers.' }),
+        ev({
+          method: 'tool.completed',
+          itemId: 'i9',
+          turnId: 'turn-a',
+          toolCallId: 'orphan-call',
+          toolName: 'Bash',
+          status: 'success',
+          output: 'orphan output',
+          eventId: 'orphan-result',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-b',
+          finishReason: 'stop',
+        }),
+      ]);
+
+      const turnA = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-a',
+      )!;
+      const turnB = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-b',
+      )!;
+      expect(toolPartsOf(turnA)).toHaveLength(1);
+      expect(toolPartsOf(turnA)[0]).toMatchObject({
+        toolCallId: 'orphan-call',
+        sourceEventId: 'orphan-result',
+      });
+      expect(toolPartsOf(turnB)).toHaveLength(0);
     });
   });
 });
