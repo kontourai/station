@@ -9,7 +9,10 @@ import type {
 } from '@kontourai/station-contracts/project-task-room';
 import { afterEach, expect, test } from 'vitest';
 import { EventStore } from '../event-store.js';
-import { createPlannedHomeTransferCoordinator } from '../planned-home-transfer-coordinator.js';
+import {
+  createLocalProjectTaskRoomTransferOwners,
+  createPlannedHomeTransferCoordinator,
+} from '../planned-home-transfer-coordinator.js';
 import {
   createSqlitePlannedHomeTransferStore,
   type PlannedHomeTransferStore,
@@ -128,8 +131,10 @@ function coordinator(
   return createPlannedHomeTransferCoordinator({
     store,
     tenantId,
-    source: { history: source, grant: grant('home-transfer') },
-    target: { history: target, grant: grant('history-read') },
+    ...createLocalProjectTaskRoomTransferOwners({
+      source: { history: source, grant: grant('home-transfer') },
+      target: { history: target, grant: grant('history-read') },
+    }),
   });
 }
 
@@ -333,12 +338,12 @@ test.each(['publication-pending', 'execution-pending'] as const)(
       store,
       tenantId,
       source: {
-        history: { sealSource: async () => ({ kind: reason }) },
-        grant: grant('home-transfer'),
+        ownerIdentity: {},
+        ensureClosed: async () => ({ kind: reason }),
       },
       target: {
-        history: { readSourceSeal: async () => ({ kind: 'unsealed' }) },
-        grant: grant('history-read'),
+        ownerIdentity: {},
+        readSeal: async () => ({ kind: 'unsealed' }),
       },
     }).advance(operationId);
     expect(result).toMatchObject({
@@ -355,6 +360,49 @@ test.each(['publication-pending', 'execution-pending'] as const)(
   },
 );
 
+test('keeps a read-only unsealed source prepared without recording closure', async () => {
+  const root = rootPath();
+  const durable = decisionStore(root);
+  let closureWrites = 0;
+  let observedIntent: unknown;
+  const store: PlannedHomeTransferStore = {
+    ...durable,
+    async recordClosure(...args) {
+      closureWrites += 1;
+      return durable.recordClosure(...args);
+    },
+  };
+  const result = await createPlannedHomeTransferCoordinator({
+    store,
+    tenantId,
+    source: {
+      ownerIdentity: {},
+      ensureClosed: async (persistedIntent) => {
+        observedIntent = persistedIntent;
+        return { kind: 'unsealed' };
+      },
+    },
+    target: {
+      ownerIdentity: {},
+      readSeal: async () => ({ kind: 'unavailable' }),
+    },
+  }).advance(operationId);
+  expect(observedIntent).toEqual(intent);
+  expect(Object.isFrozen(observedIntent)).toBe(true);
+  expect(closureWrites).toBe(0);
+  expect(result).toMatchObject({
+    kind: 'pending',
+    reason: 'source-not-closed',
+    decision: { phase: 'prepared' },
+    executionAuthorityTransferred: false,
+    executionResumeAvailable: false,
+  });
+  expect(await durable.resolve(tenantId, operationId)).toMatchObject({
+    kind: 'stored',
+    value: { phase: 'prepared' },
+  });
+});
+
 test('returns denied when captured source authority is revoked', async () => {
   const root = rootPath();
   const store = decisionStore(root);
@@ -369,11 +417,13 @@ test('returns denied when captured source authority is revoked', async () => {
     await createPlannedHomeTransferCoordinator({
       store,
       tenantId,
-      source: { history: source.history, grant: grant('home-transfer') },
-      target: {
-        history: { readSourceSeal: async () => ({ kind: 'unsealed' }) },
-        grant: grant('history-read'),
-      },
+      ...createLocalProjectTaskRoomTransferOwners({
+        source: { history: source.history, grant: grant('home-transfer') },
+        target: {
+          history: { readSourceSeal: async () => ({ kind: 'unsealed' }) },
+          grant: grant('history-read'),
+        },
+      }),
     }).advance(operationId),
   ).toMatchObject({
     kind: 'denied',

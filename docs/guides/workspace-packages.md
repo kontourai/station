@@ -13,6 +13,8 @@ The [cloud move design](../design/cloud-move.md) tracks those separate steps.
 Integrations preparing separate transfer participants can use the
 [explicit pairing prerequisite](../design/channel-home-authority.md#explicit-participant-pairing);
 its identity observation does not authorize execution or make a package transfer live.
+The [personal controller guide](home-transfer-controller.md) documents remote room
+enrollment and its current operating limits.
 
 ## Prepare the source
 
