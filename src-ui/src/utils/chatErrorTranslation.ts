@@ -1,5 +1,8 @@
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
-import { ENGINE_SESSION_BINDING_DEAD_CODE } from '@kontourai/station-contracts/provider';
+import {
+  ENGINE_SESSION_BINDING_DEAD_CODE,
+  ENGINE_TURN_FAILED_CODE,
+} from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 
 /**
@@ -306,6 +309,15 @@ export function translateChatError(
     };
   }
 
+  if (code === ENGINE_TURN_FAILED_CODE) {
+    return {
+      title: 'This turn did not complete',
+      body: 'The engine reported an error for this turn.',
+      hint: 'Review the engine message below.',
+      disclosureRaw: true,
+    };
+  }
+
   if (
     code === ENGINE_SESSION_BINDING_DEAD_CODE ||
     (code === undefined && TERMINAL_SESSION_PATTERN.test(text))
@@ -477,7 +489,11 @@ export function translateProjectedRuntimeError(
   text: string,
   code: string,
 ): string | null {
-  if (code !== ENGINE_SESSION_BINDING_DEAD_CODE) return null;
+  if (
+    code !== ENGINE_SESSION_BINDING_DEAD_CODE &&
+    code !== ENGINE_TURN_FAILED_CODE
+  )
+    return null;
   const match = /^⚠️ ([\s\S]*?)( \(repeated \d+×\))?$/.exec(text);
   const raw = match?.[1] ?? text;
   const repeatSuffix = match?.[2] ?? '';

@@ -177,6 +177,7 @@ const VERBS: Record<string, VerbSpec> = {
     summary: 'Prepare cloud environments and copy encrypted Git workspaces',
     actions: [
       'preview',
+      'verify-target',
       'template',
       'keygen',
       'pack-workspace',
@@ -187,6 +188,7 @@ const VERBS: Record<string, VerbSpec> = {
     ],
     usage: [
       'station cloud preview --home=<path> --provider=<aws-ec2|gcp-compute> --region=<region> --instance-type=<type> [--json]',
+      'station cloud verify-target --station=<enrolled-target> [--json]',
       'station cloud template --provider=aws-ec2 --region=<region> --instance-type=<type> --image=<digest-pinned-image> --output=<new-file>',
       'station cloud keygen --output=<new-key-file>',
       'station cloud pack-workspace --workspace=<checkout-root> --key-file=<key> --output=<new-package> --source-paused',
