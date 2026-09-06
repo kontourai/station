@@ -223,6 +223,18 @@ describe('Vitest resource manifest', () => {
     expect(groups.sharedOutput).not.toContain(file);
   }, 70_000);
 
+  it('classifies the multi-worker remote-home bootstrap exactly once as process exclusive', () => {
+    const file =
+      'src-server/routes/environments/__tests__/remote-home-transfer-decision.test.ts';
+    const groups = repositoryDiscovery.groups;
+    expect(groups.processExclusive.filter((entry) => entry === file)).toEqual([
+      file,
+    ]);
+    expect(groups.ordinary).not.toContain(file);
+    expect(groups.processHeavy).not.toContain(file);
+    expect(groups.sharedOutput).not.toContain(file);
+  }, 70_000);
+
   it('classifies the credential DDL proof exactly once in its exclusive phase', () => {
     const file =
       'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts';
