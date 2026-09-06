@@ -105,7 +105,9 @@ function ownerValid(value: PlannedHomeOwner): boolean {
     revision(value.revision)
   );
 }
-function digest(closure: ProjectTaskRoomSourceSeal): string {
+export function plannedHomeTransferClosureDigest(
+  closure: ProjectTaskRoomSourceSeal,
+): string {
   // Canonical field order: insertion order of a caller's object is not identity.
   const c = closure.checkpoint;
   return createHash('sha256')
@@ -163,7 +165,7 @@ function transferValid(value: PlannedHomeTransfer): boolean {
     !['source-closed', 'target-ready', 'committed'].includes(value.phase) ||
     !value.closure ||
     !closureValid(value.closure, value.intent) ||
-    digest(value.closure) !== value.closureDigest
+    plannedHomeTransferClosureDigest(value.closure) !== value.closureDigest
   )
     return false;
   return value.phase === 'committed'
@@ -429,13 +431,14 @@ function createSqliteStore(db: Database, authorize?: () => boolean) {
         if (!value) return { kind: 'not-found' };
         if (!closureValid(closure, value.intent)) return { kind: 'conflict' };
         if (value.closure)
-          return value.closureDigest === digest(closure)
+          return value.closureDigest ===
+            plannedHomeTransferClosureDigest(closure)
             ? { kind: 'stored', value }
             : { kind: 'conflict' };
         if (!matches(readOwner(tenant, value.intent.channelId), value.intent))
           return { kind: 'conflict' };
         value.closure = structuredClone(closure);
-        value.closureDigest = digest(closure);
+        value.closureDigest = plannedHomeTransferClosureDigest(closure);
         value.phase = 'source-closed';
         saveTransfer(value);
         return { kind: 'stored', value };
