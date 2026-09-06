@@ -363,6 +363,27 @@ describe('changed verification selection', () => {
         .relatedPaths,
     ).toContain('packages/cli/src/commands/session-client.ts');
   });
+  test.each([
+    [
+      'src-server/runtime/frameworks/strands-message-sync.ts',
+      'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
+    ],
+    [
+      'scripts/proof-repo-guardrails.mjs',
+      'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
+    ],
+    [
+      'src-ui/src/index.css',
+      'src-ui/src/__tests__/ChatDockActiveIdentity.overflow.test.tsx',
+    ],
+  ])(
+    'supplements graph coverage for the source-reading check of %s',
+    (path, testPath) => {
+      const selection = selectChangedVerification([path]);
+      expect(selection.tests.map((entry) => entry.path)).toContain(testPath);
+      expect(selection.relatedPaths).toContain(path);
+    },
+  );
   test('uses focused tests for the project-bound file preview contract', () => {
     const selection = selectChangedVerification([
       'packages/contracts/src/workspace-file-preview.ts',

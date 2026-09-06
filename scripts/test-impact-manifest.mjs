@@ -46,6 +46,31 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
 /** Repository data read directly by tests, invisible to import analysis. */
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   {
+    pattern: 'src-server/runtime/frameworks/strands-message-sync.ts',
+    related: true,
+    tests: [
+      'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
+      'src-server/runtime/frameworks/__tests__/strands-message-sync.test.ts',
+      'src-server/runtime/frameworks/__tests__/strands-native-history.test.ts',
+    ],
+    reason:
+      'source-reading helper boundary plus actual native history persistence',
+  },
+  {
+    pattern: 'scripts/proof-repo-guardrails.mjs',
+    related: true,
+    tests: ['scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts'],
+    reason:
+      'the proof runner is executed as a child, outside Vitest import analysis',
+  },
+  {
+    pattern: 'src-ui/src/index.css',
+    related: true,
+    tests: ['src-ui/src/__tests__/ChatDockActiveIdentity.overflow.test.tsx'],
+    reason:
+      'the identity browser fixture reads the complete stylesheet as data',
+  },
+  {
     pattern: 'packages/sdk/src/client/**',
     related: true,
     tests: ['packages/sdk/src/__tests__/client-entry-portability.test.ts'],
