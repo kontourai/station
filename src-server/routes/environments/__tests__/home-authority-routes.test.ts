@@ -5,10 +5,15 @@ import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { createPersonalHomeAuthorityDatabase } from '../../../runtime/bootstrap/personal-home-authority-database.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { isRuntimeRequestPrincipalCurrent } from '../../../security/runtime-request-security.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import { probeHomeTransferRoom } from '../../../services/orchestration/home-transfer-room-probe.js';
+import { PeerCredentialStore } from '../../../services/peers/peer-credential-store.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { createLogger } from '../../../utils/logger.js';
 import { createHomeAuthorityRoutes } from '../home-authority-routes.js';
+import { createHomeTransferRoomRoutes } from '../home-transfer-room-routes.js';
+import { createPeerCredentialRoutes } from '../peer-credential-routes.js';
 
 const homes: string[] = [];
 afterEach(() => {
@@ -45,6 +50,10 @@ async function fixture() {
   const createApp = (
     getPublicHandshake = () => security.getPublicHandshake(),
     openDatabase?: ReturnType<typeof createPersonalHomeAuthorityDatabase>,
+    roomRuntime?: Parameters<
+      typeof createHomeTransferRoomRoutes
+    >[0]['roomRuntime'],
+    roomBindings?: Parameters<typeof createHomeAuthorityRoutes>[2],
   ) => {
     const app = new Hono();
     configureRuntimeHttp({
@@ -52,7 +61,9 @@ async function fixture() {
       logger: createLogger({ name: 'home-authority-test', level: 'error' }),
       eventBus: { emit() {} } as unknown as EventBus,
       security: {
-        verifyCredential: (candidate) => security.verifyCredential(candidate),
+        verifyCredential: (candidate, request) =>
+          request !== undefined &&
+          security.authorizeCredential(candidate, request),
         resolveGrantedScope: (candidate) =>
           security.resolveGrantedScope(candidate),
         resolveCredentialAuthority: (candidate) =>
@@ -65,6 +76,14 @@ async function fixture() {
       },
     });
     app.route(
+      '/api/environments/peers',
+      createPeerCredentialRoutes(
+        new PeerCredentialStore(homeDir),
+        undefined,
+        (request) => isRuntimeRequestPrincipalCurrent(request, security),
+      ),
+    );
+    app.route(
       '/api/home-authority',
       createHomeAuthorityRoutes(
         {
@@ -75,7 +94,12 @@ async function fixture() {
           getPublicHandshake,
         },
         openDatabase,
+        roomBindings,
       ),
+    );
+    app.route(
+      '/api/home-authority/rooms',
+      createHomeTransferRoomRoutes({ security, roomRuntime }),
     );
     return app;
   };
@@ -268,4 +292,247 @@ test('decision routes refuse absent configuration and oversized input', async ()
     body: JSON.stringify({ channelId: 'x'.repeat(4096) }),
   });
   expect(oversized.status).toBe(413);
+});
+
+test('room probes require real transfer pairing and return only the bound identity and nonce', async () => {
+  const f = await fixture();
+  const paired = f.pair('home:transfer');
+  const probe = vi.fn(async ({ request }: { request: Request }) => {
+    expect(request.headers.get('authorization')).toBe(
+      `Bearer ${paired.credential}`,
+    );
+    return {
+      kind: 'available' as const,
+      taskId: 'task-1',
+      channelId: 'channel-1',
+    };
+  });
+  const app = f.createApp(undefined, undefined, { inspectTransferRoom: probe });
+  const post = (credential: string, body: unknown) =>
+    app.request('/api/home-authority/rooms/task-1/identity', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${credential}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  const input = { channelId: 'channel-1', nonce: 'fresh-probe-1' };
+  expect((await post(f.pair().credential, input)).status).toBe(403);
+  expect(probe).not.toHaveBeenCalled();
+  expect(
+    (await post(paired.credential, { ...input, tenantId: 'forged' })).status,
+  ).toBe(400);
+  for (const nonce of [
+    'bad\nnonce',
+    String.fromCharCode(0),
+    String.fromCharCode(127),
+  ]) {
+    expect((await post(paired.credential, { ...input, nonce })).status).toBe(
+      400,
+    );
+  }
+  expect(probe).not.toHaveBeenCalled();
+  const response = await post(paired.credential, input);
+  expect(response.status).toBe(200);
+  expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(await response.json()).toEqual({
+    schemaVersion: 'station.home-transfer-room-identity/v1',
+    environmentId: f.record.environmentId,
+    pairedDeviceId: paired.device.id,
+    taskId: 'task-1',
+    channelId: 'channel-1',
+    nonce: input.nonce,
+    executionAuthorityTransferred: false,
+    executionResumeAvailable: false,
+  });
+  expect(
+    (await post(paired.credential, { ...input, channelId: 'wrong-channel' }))
+      .status,
+  ).toBe(409);
+  f.security.devicePairing.revokeDevice(
+    paired.device.id,
+    'operator-credential',
+  );
+  expect((await post(paired.credential, input)).status).toBe(401);
+});
+
+test('room probe delivery rechecks actual pairing after the runtime lookup', async () => {
+  const f = await fixture();
+  const paired = f.pair('home:transfer');
+  const app = f.createApp(undefined, undefined, {
+    inspectTransferRoom: async () => {
+      f.security.devicePairing.revokeDevice(
+        paired.device.id,
+        'operator-credential',
+      );
+      return { kind: 'available', taskId: 'task-1', channelId: 'channel-1' };
+    },
+  });
+  const response = await app.request(
+    '/api/home-authority/rooms/task-1/identity',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${paired.credential}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ channelId: 'channel-1', nonce: 'nonce' }),
+    },
+  );
+  expect(response.status).toBe(403);
+});
+
+test.skipIf(process.platform === 'win32')(
+  'controller binding enrollment verifies real paired remote HTTP and rechecks both directions',
+  async () => {
+    const controller = await fixture();
+    const remote = await fixture();
+    const participant = controller.pair('home:transfer access:manage');
+    const outbound = remote.pair('home:transfer');
+    const peers = new PeerCredentialStore(controller.homeDir);
+    await peers.upsert({
+      environmentId: remote.record.environmentId,
+      apiBase: 'https://remote.example.test',
+      scope: 'home:transfer',
+      credential: outbound.credential,
+    });
+    const remoteApp = remote.createApp(undefined, undefined, {
+      inspectTransferRoom: async ({ taskId }) => ({
+        kind: 'available',
+        taskId,
+        channelId: 'bound-channel',
+      }),
+    });
+    const fetchRemote: typeof fetch = async (input, init) => {
+      const request = new Request(input, init);
+      expect(new URL(request.url).origin).toBe('https://remote.example.test');
+      return remoteApp.fetch(request);
+    };
+    const directory = mkdtempSync(join(tmpdir(), 'station-bound-controller-'));
+    homes.push(directory);
+    const open = createPersonalHomeAuthorityDatabase(
+      controller.homeDir,
+      join(directory, 'authority.sqlite'),
+    );
+    const app = controller.createApp(undefined, open, undefined, {
+      peers,
+      probe: (peer, input) => probeHomeTransferRoom(peer, input, fetchRemote),
+    });
+    const enroll = (credential: string, body: unknown) =>
+      app.request('/api/home-authority/channels/bound-channel/bindings', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${credential}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+    const input = {
+      controllerDeviceId: participant.device.id,
+      remoteEnvironmentId: remote.record.environmentId,
+      remoteTaskId: 'remote-task',
+    };
+    expect((await enroll(participant.credential, input)).status).toBe(403);
+    expect(
+      (
+        await enroll(controller.record.credential, {
+          ...input,
+          apiBase: 'https://forged.example.test',
+        })
+      ).status,
+    ).toBe(400);
+    const enrolled = await enroll(controller.record.credential, input);
+    expect(enrolled.status).toBe(200);
+    expect(await enrolled.json()).toEqual({
+      kind: 'stored',
+      value: {
+        schemaVersion: 'station.home-transfer-room-binding/v1',
+        channelId: 'bound-channel',
+        controllerEnvironmentId: controller.record.environmentId,
+        controllerDeviceId: participant.device.id,
+        remoteEnvironmentId: remote.record.environmentId,
+        remoteTaskId: 'remote-task',
+        remotePairedDeviceId: outbound.device.id,
+        executionAuthorityTransferred: false,
+        executionResumeAvailable: false,
+      },
+    });
+    const read = () =>
+      app.request('/api/home-authority/channels/bound-channel/binding', {
+        headers: { Authorization: `Bearer ${participant.credential}` },
+      });
+    expect((await read()).status).toBe(200);
+    const participantInspect = await app.request(
+      `/api/home-authority/channels/bound-channel/bindings/${participant.device.id}/inspect`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${participant.credential}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      },
+    );
+    expect(participantInspect.status).toBe(403);
+
+    const alias = controller.pair('home:transfer');
+    expect(
+      (
+        await enroll(controller.record.credential, {
+          ...input,
+          controllerDeviceId: alias.device.id,
+        })
+      ).status,
+    ).toBe(409);
+    remote.security.devicePairing.revokeDevice(
+      outbound.device.id,
+      'operator-credential',
+    );
+    expect((await read()).status).toBe(503);
+    controller.security.devicePairing.revokeDevice(
+      participant.device.id,
+      'operator-credential',
+    );
+    const inspected = await app.request(
+      `/api/home-authority/channels/bound-channel/bindings/${participant.device.id}/inspect`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${controller.record.credential}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      },
+    );
+    expect(inspected.status).toBe(403);
+  },
+);
+
+test('real ingress permits scoped peer metadata reads but only operator-controlled peer writes', async () => {
+  const f = await fixture();
+  const ordinary = f.pair();
+  const app = f.createApp();
+  const payload = {
+    environmentId: 'peer-environment',
+    apiBase: 'https://peer.example.test',
+    scope: 'home:transfer',
+    credential: 'synthetic-private-peer-credential',
+  };
+  const post = (credential: string) =>
+    app.request('/api/environments/peers', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${credential}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+  expect((await post(ordinary.credential)).status).toBe(401);
+  expect((await post(f.record.credential)).status).toBe(201);
+  const listed = await app.request('/api/environments/peers', {
+    headers: { Authorization: `Bearer ${ordinary.credential}` },
+  });
+  expect(listed.status).toBe(200);
+  expect(await listed.text()).not.toContain(payload.credential);
 });

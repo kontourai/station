@@ -203,12 +203,8 @@ describe.skipIf(!chromiumAvailable)(
       }
     }
 
-    // Measured, not chosen: with this fixture nothing clips at 800 and wider,
-    // the token alone clips from ~780 down, and the title joins it at ~700.
-    // Re-measured for #1552 D3, which took the title from 11px to 14px and the
-    // engine token from 10px to 12px — the same content needs more room, so every
-    // threshold moved out. What did not move is the ORDER, which is the contract:
-    // the token gives way first and the title last.
+    // Pixel containment is independent of the host's font metrics. The separate
+    // first-clipping test measures its threshold using the rendered font.
     test.each([700, 600, 420, 260])(
       'nothing overprints at %ipx: the row is ordered left to right and stays inside its host',
       async (width) => {
@@ -230,23 +226,71 @@ describe.skipIf(!chromiumAvailable)(
       expect(engine.clipped).toBe(false);
     });
 
-    test('the engine/model token is the first thing to give way', async () => {
-      // 750: inside the band where the token has started truncating and the title
-      // has not. That band is 780→720 with the #1552 D3 type sizes; it was
-      // 700→~520 before them.
-      const { title, engine } = await measure(750);
-
-      expect(
-        engine.clipped,
-        'the engine token should be the one truncating first',
-      ).toBe(true);
-      expect(title.clipped, 'the title should still fit at this width').toBe(
-        false,
-      );
-      // The reported symptom was a title reduced to about one character. Here
-      // it holds most of the row.
-      expect(title.width).toBeGreaterThan(300);
-    });
+    test.each([
+      ['application', ''],
+      ['Arial', 'Arial, sans-serif'],
+      ['monospace', 'monospace'],
+    ])(
+      'the engine/model token gives way first with %s font metrics',
+      async (_label, fontFamily) => {
+        const page = await browser.newPage({
+          viewport: { width: 1600, height: 200 },
+        });
+        try {
+          await page.setContent(fixtureHtml(markup(), 1600));
+          const measured = await page.evaluate(async (family) => {
+            document.body.style.fontFamily = family;
+            await document.fonts.ready;
+            const host = document.querySelector<HTMLElement>('.chat-dock');
+            const title = document.querySelector<HTMLElement>(
+              '.chat-dock__active-identity-title',
+            );
+            const engine = document.querySelector<HTMLElement>(
+              '.chat-dock__active-identity-engine',
+            );
+            if (!host || !title || !engine) throw new Error('missing identity');
+            const read = (width: number) => {
+              host.style.width = `${width}px`;
+              return {
+                width,
+                titleClipped: title.scrollWidth > title.clientWidth + 1,
+                engineClipped: engine.scrollWidth > engine.clientWidth + 1,
+                titleWidth: title.getBoundingClientRect().width,
+              };
+            };
+            let narrow = 260;
+            let wide = 1600;
+            const full = read(wide);
+            if (full.titleClipped || full.engineClipped)
+              throw new Error('wide fixture must fit before measuring shrink');
+            const squeezed = read(narrow);
+            if (!squeezed.titleClipped && !squeezed.engineClipped)
+              throw new Error('narrow fixture must exercise truncation');
+            // Find the FIRST clipping pixel, regardless of installed fonts.
+            // Looking for any later engine-only band could hide title-first
+            // clipping; this brackets the transition from no clipping at all.
+            while (wide - narrow > 1) {
+              const middle = Math.floor((wide + narrow) / 2);
+              const state = read(middle);
+              if (state.titleClipped || state.engineClipped) narrow = middle;
+              else wide = middle;
+            }
+            return { before: read(wide), first: read(narrow) };
+          }, fontFamily);
+          expect(measured.before).toMatchObject({
+            titleClipped: false,
+            engineClipped: false,
+          });
+          expect(measured.first).toMatchObject({
+            titleClipped: false,
+            engineClipped: true,
+          });
+          expect(measured.first.titleWidth).toBeGreaterThan(300);
+        } finally {
+          await page.close();
+        }
+      },
+    );
 
     /**
      * Squeezed past that, the parts that are not the row's subject stop at their
