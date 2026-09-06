@@ -20,6 +20,23 @@ import { expect, type Locator, type Page } from '@playwright/test';
  * observes that it holds the primary area.
  */
 
+/**
+ * The budget for a FIRST-RENDER wait — a shell region appearing after the app
+ * has resolved the data behind it, as opposed to a reaction to a click.
+ *
+ * Home is the case that forced it: its region appears only once the home
+ * surface resolves (connections, projects, the resolved surface itself), so on
+ * a loaded machine it lands seconds after the dock region beside it — observed
+ * live with the Activity shell already up and `#station-main` still empty.
+ * Playwright's 5s default is not a budget for that, and an assertion whose
+ * outcome depends on machine load is not a gate.
+ *
+ * Applies to the region/dock first-render waits in the specs that drive
+ * placement; it is deliberately not retrofitted onto unrelated waits for other
+ * surfaces, which carry their own budgets.
+ */
+export const FIRST_RENDER_TIMEOUT_MS = 15_000;
+
 /** Chat's dock shell, wherever Chat currently is. */
 export function chatDockShell(page: Page): Locator {
   return page.locator('#chat-dock');
@@ -62,7 +79,18 @@ export async function placeSurfaceThroughLayoutPicker(
       .getByRole('radiogroup', { name: `${surfaceTitle} placement` })
       .getByRole('radio', { name: regionLabel, exact: true });
 
-  await segment(await openPicker()).click();
+  const opened = await openPicker();
+  // The segment must not already be pressed. Without this the helper proves
+  // only a post-state, which a surface that was ALREADY there satisfies
+  // without anything having been placed — so a journey could assert a move
+  // that never happened. Callers that merely want a surface shown where it
+  // may already be must check first and skip the click (see
+  // `openChatThroughRegionControl` in orchestration.ts).
+  await expect(
+    segment(opened),
+    `${surfaceTitle} already holds ${regionLabel}, so clicking it would prove no placement`,
+  ).toHaveAttribute('aria-checked', 'false');
+  await segment(opened).click();
   const reopened = await openPicker();
   await expect(
     segment(reopened),
@@ -121,6 +149,10 @@ export async function expectBoxWithinViewport(
   what: string,
 ): Promise<void> {
   const viewport = page.viewportSize();
+  expect(
+    viewport,
+    'the containment assertion needs a viewport to compare against',
+  ).not.toBeNull();
   const bounds = await locator.boundingBox();
   expect(bounds, `${what} must have a rendered box`).not.toBeNull();
   expect(

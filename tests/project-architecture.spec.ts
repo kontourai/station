@@ -15,6 +15,7 @@ import {
   chatDockShell,
   documentFitsViewportWidth,
   expectBoxWithinViewport,
+  FIRST_RENDER_TIMEOUT_MS,
   placeSurfaceThroughLayoutPicker,
   showRegionThroughOverflowMenu,
   surfaceDockShell,
@@ -887,7 +888,7 @@ test.describe('ChatDock', () => {
     // archive#1064 removed the "Chat Dock" label; the dock is identified by its own
     // container now, which is what these tests actually care about.
     await expect(page.locator('.chat-dock')).toBeVisible({
-      timeout: 10_000,
+      timeout: FIRST_RENDER_TIMEOUT_MS,
     });
   });
 
@@ -1006,7 +1007,9 @@ test.describe('Ambient chat dock host at 390x844', () => {
   test.beforeEach(async ({ page }) => {
     await seedRoutes(page);
     await page.goto('/');
-    await expect(page.locator('.chat-dock')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.chat-dock')).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
   });
 
   test('keeps the hosted dock reachable without horizontal scroll', async ({

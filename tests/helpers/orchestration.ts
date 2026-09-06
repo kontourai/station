@@ -3,6 +3,7 @@ import {
   E2E_STATION_COMPATIBILITY,
   installE2EWorkspacePaneCatalog,
 } from './current-station-contract';
+import { placeSurfaceThroughLayoutPicker } from './region-placement';
 
 const E2E_ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
 const emittedOrchestrationEvents = new WeakMap<
@@ -81,31 +82,28 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
     // registry's `defaultRegion` for Chat, so it is where an unplaced Chat is
     // asked to go.
     const region = (await activeChatRegion(page)) ?? 'Bottom';
-    await picker
+    const segment = picker
       .getByRole('radiogroup', { name: 'Chat placement' })
-      .getByRole('radio', { name: region, exact: true })
-      .click();
+      .getByRole('radio', { name: region, exact: true });
 
-    const reopen = await regionControlTrigger(page);
-    if (!reopen) {
-      throw new Error(
-        'The region control disappeared after choosing a Chat placement.',
-      );
+    // Already showing Chat there: this helper's job is done, and clicking a
+    // pressed segment would assert a placement that did not happen. Leave the
+    // portalled panel closed the way it was found — its dismiss backdrop
+    // covers the viewport.
+    if ((await segment.getAttribute('aria-checked')) === 'true') {
+      await page.keyboard.press('Escape');
+      await expect(picker).toBeHidden();
+      return true;
     }
-    await reopen.click();
-    await expect(
-      page
-        .getByRole('group', { name: 'Layout regions' })
-        .getByRole('radiogroup', { name: 'Chat placement' })
-        .getByRole('radio', { name: region, exact: true }),
-      `Chat's ${region} segment is not pressed after choosing it, so the shell did not show Chat there`,
-    ).toHaveAttribute('aria-checked', 'true');
-    // Leave the shell as it was found: the panel is portalled over the app and
-    // its dismiss backdrop covers the viewport.
     await page.keyboard.press('Escape');
-    await expect(
-      page.getByRole('group', { name: 'Layout regions' }),
-    ).toBeHidden();
+    await expect(picker).toBeHidden();
+
+    // One implementation of choose → reopen → read the freshly derived
+    // pressed state → dismiss (#1541). The picker branch only renders on a
+    // fine pointer, where `regionControlTrigger` resolves to the same
+    // "Layout regions" button this opens; a coarse pointer gets the flat menu
+    // handled below, so the two cannot disagree about which control to press.
+    await placeSurfaceThroughLayoutPicker(page, 'Chat', region);
     return true;
   }
 

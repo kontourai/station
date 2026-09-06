@@ -30,22 +30,10 @@ import {
   chatDockShell,
   documentFitsViewportWidth,
   expectBoxWithinViewport,
+  FIRST_RENDER_TIMEOUT_MS,
   placeSurfaceThroughLayoutPicker,
   surfaceDockShell,
 } from './helpers/region-placement';
-
-/**
- * How long a wait for the HOME region gets.
- *
- * Home is not painted with the shell: its region appears only once the home
- * surface resolves (connections, projects, the resolved surface itself), so
- * on a loaded machine it lands seconds after the dock region beside it —
- * observed live, with the Activity shell up and `#station-main` still empty.
- * Playwright's 5s default is not a budget for that, and an assertion whose
- * outcome depends on machine load is not a gate. Every other first-render
- * wait in these specs is budgeted the same way.
- */
-const HOME_RENDER_TIMEOUT_MS = 15_000;
 
 /** The primary area's own heading, which only a `main` occupant renders. */
 function mainHeading(page: import('@playwright/test').Page, name: string) {
@@ -58,7 +46,7 @@ test.describe('Activity surface deep link', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?surface=activity');
     await expect(surfaceDockShell(page, 'Activity')).toBeVisible({
-      timeout: 15_000,
+      timeout: FIRST_RENDER_TIMEOUT_MS,
     });
   });
 
@@ -89,7 +77,7 @@ test.describe('Activity surface deep link', () => {
     await expect(
       page.locator('#station-main').getByRole('region', { name: 'Home' }),
       'the deep link must not displace the primary area',
-    ).toBeVisible({ timeout: HOME_RENDER_TIMEOUT_MS });
+    ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
     await expect(
       mainHeading(page, 'Activity'),
       'a revealed surface must not also be rendered as the primary area',
@@ -122,10 +110,13 @@ test.describe('Activity surface deep link', () => {
 
     // The arrangement is device state (#928 D), so a reload renders the same
     // placement. Read through the DOM: the record is the mechanism, and a
-    // reload is the only thing that proves the mechanism ran.
+    // reload is the only thing that proves the mechanism ran. It still
+    // discriminates despite the `?surface=activity` the reload replays: an
+    // unplaced reveal lands in Activity's `defaultRegion` `right`, never in
+    // `main`, so only a persisted record can put it back in the primary area.
     await page.reload();
     await expect(mainHeading(page, 'Activity')).toBeVisible({
-      timeout: 15_000,
+      timeout: FIRST_RENDER_TIMEOUT_MS,
     });
 
     await placeSurfaceThroughLayoutPicker(page, 'Activity', 'Right');
@@ -137,7 +128,7 @@ test.describe('Activity surface deep link', () => {
     await expect(
       page.locator('#station-main').getByRole('region', { name: 'Home' }),
       'an emptied primary area reads as Home',
-    ).toBeVisible({ timeout: HOME_RENDER_TIMEOUT_MS });
+    ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
     await expect(mainHeading(page, 'Activity')).toHaveCount(0);
   });
 });
@@ -154,7 +145,7 @@ test.describe('Activity surface at 390x844', () => {
   }) => {
     await page.goto('/?surface=activity');
     const activity = surfaceDockShell(page, 'Activity');
-    await expect(activity).toBeVisible({ timeout: 15_000 });
+    await expect(activity).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
 
     // A coarse pointer folds every dock edge to `bottom` and `RegionShells`
     // mounts only the folded region, so the reveal does not put Activity
