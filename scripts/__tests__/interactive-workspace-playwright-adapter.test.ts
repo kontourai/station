@@ -243,3 +243,41 @@ test.each(['constructor', '__proto__', 'toString'])(
     );
   },
 );
+
+test.each(['joined', 'refreshed'])(
+  'admits actual join outcome %s',
+  async (outcome) => {
+    const page = liveCommandPage(
+      Promise.resolve({
+        status: () => 200,
+        json: async () => ({
+          success: true,
+          data: { kind: 'available', result: { outcome } },
+        }),
+      }),
+      async () => {},
+    );
+    await expect(clickLiveCommand(page, 'Join room')).resolves.toBe(
+      outcome.toUpperCase(),
+    );
+  },
+);
+
+test.each(['updated', 'departed', 'unknown-private-value'])(
+  'refuses non-join outcome %s without interpreting envelope success as admission',
+  async (outcome) => {
+    const page = liveCommandPage(
+      Promise.resolve({
+        status: () => 200,
+        json: async () => ({
+          success: true,
+          data: { kind: 'available', result: { outcome } },
+        }),
+      }),
+      async () => {},
+    );
+    await expect(clickLiveCommand(page, 'Join room')).rejects.toThrow(
+      `Live command Join room status 200 outcome ${outcome === 'unknown-private-value' ? 'UNKNOWN' : outcome.toUpperCase()}`,
+    );
+  },
+);
