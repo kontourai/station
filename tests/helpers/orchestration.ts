@@ -91,6 +91,64 @@ export async function openChatRegion(page: Page): Promise<void> {
     }
   }
 
+  // Since #1552 the desktop toolbar carries one "Layout regions" menu instead
+  // of per-region Show/Hide/Place buttons: rows are grouped by region (the
+  // group's accessible name is the region label) and Chat's row in its own
+  // region is a Show/Hide checkbox, or "Place Chat here" while another surface
+  // holds the region. The complementary Hide row is the post-condition here
+  // too; the menu is reopened to read it because selecting a row closes it.
+  const layout = page.getByRole('button', {
+    name: 'Layout regions',
+    exact: true,
+  });
+  if (await layout.isVisible().catch(() => false)) {
+    const openLayoutMenu = async () => {
+      await layout.click();
+      const menu = page.getByRole('menu', { name: 'Layout regions' });
+      await expect(menu).toBeVisible();
+      return menu;
+    };
+    const expectHideRow = async () => {
+      const menu = await openLayoutMenu();
+      await expect(
+        menu.getByRole('menuitemcheckbox', { name: 'Hide Chat', exact: true }),
+      ).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+    };
+
+    const menu = await openLayoutMenu();
+    const hide = menu.getByRole('menuitemcheckbox', {
+      name: 'Hide Chat',
+      exact: true,
+    });
+    if (await hide.isVisible().catch(() => false)) {
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      return;
+    }
+    const show = menu.getByRole('menuitemcheckbox', {
+      name: 'Show Chat',
+      exact: true,
+    });
+    if (await show.isVisible().catch(() => false)) {
+      await show.click();
+      await expectHideRow();
+      return;
+    }
+    if (activeRegion) {
+      const place = menu
+        .getByRole('group', { name: activeRegion, exact: true })
+        .getByRole('menuitem', { name: 'Place Chat here', exact: true });
+      if (await place.isVisible().catch(() => false)) {
+        await place.click();
+        await expectHideRow();
+        return;
+      }
+    }
+    await page.keyboard.press('Escape');
+  }
+
   const expand = page.getByRole('button', {
     name: /^Expand chat(?: dock)?$/,
   });

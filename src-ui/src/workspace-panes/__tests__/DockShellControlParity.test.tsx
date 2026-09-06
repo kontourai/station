@@ -15,6 +15,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -151,25 +152,32 @@ function dockParam(): string | null {
   return new URLSearchParams(window.location.search).get('dock');
 }
 
+/**
+ * #1536 F: the toolbar's five per-region buttons folded into ONE "Layout"
+ * menu whose rows are grouped by region, so a placement is now the region's
+ * group plus its row rather than a button of its own.
+ */
+function layoutMenu() {
+  fireEvent.click(screen.getByRole('button', { name: 'Layout regions' }));
+  return screen.getByRole('menu', { name: 'Layout regions' });
+}
+
 async function placeChatRight() {
   renderHost();
   await waitFor(() =>
     expect(document.querySelector('.chat-dock')).not.toBeNull(),
   );
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Choose a surface for Right region' }),
-  );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Place Chat here' }));
+  chooseChatForEmptyRight();
   await waitFor(() =>
     expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
   );
 }
 
 function chooseChatForEmptyRight() {
+  const right = within(layoutMenu()).getByRole('group', { name: 'Right' });
   fireEvent.click(
-    screen.getByRole('button', { name: 'Choose a surface for Right region' }),
+    within(right).getByRole('menuitem', { name: 'Place Chat here' }),
   );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Place Chat here' }));
 }
 
 function dockToggle(): () => void {
@@ -514,10 +522,10 @@ describe('the docked Chat gets the full dock chrome (station#4460)', () => {
     await waitFor(() => {
       expect(document.querySelector('.chat-dock')).not.toBeNull();
     });
-    const control = screen.getByRole('button', {
-      name: 'Hide Chat Bottom region',
-    });
     expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
+    const control = within(layoutMenu()).getByRole('menuitemcheckbox', {
+      name: 'Hide Chat',
+    });
     fireEvent.click(control);
     await waitFor(() => {
       expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull();

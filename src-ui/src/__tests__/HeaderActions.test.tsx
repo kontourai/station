@@ -164,13 +164,51 @@ describe('HeaderActions — self-describing connection surface', () => {
     pendingApprovalRecord = null;
   });
 
-  test('names state and identity visibly, including a connection named Default', () => {
+  /**
+   * #1536 F: the ONE state that stopped being visible text. Connected, a
+   * single known Station, no sidecar qualification — nothing here changes
+   * while you work, and the chip was 203px of the row that runs out of width
+   * first. The words survive in the accessible name AND the tooltip, which is
+   * the only channel a dot leaves for the identity.
+   */
+  test('collapses the connected single-Station chip to its dot, keeping every word in the name and tooltip', () => {
     const button = renderConnButton();
-    expect(button.textContent).toContain('Connected');
-    // No 'Default'-name special-casing: identity always renders.
-    expect(button.textContent).toContain('Default');
+
+    expect(button.querySelector('.app-toolbar__conn-state')).toBeNull();
+    expect(button.querySelector('.app-toolbar__conn-name')).toBeNull();
+    expect(button.textContent).toBe('');
+    expect(button.classList).toContain('app-toolbar__conn--compact');
+    // No 'Default'-name special-casing: identity is always named.
     expect(button.getAttribute('aria-label')).toBe(
       'Manage Stations — Connected · Default',
+    );
+    expect(button.title).toBe('Manage Stations — Connected · Default');
+    // The dot is still the state channel that survives a device with no hover.
+    expect(screen.getByTestId('connection-status').dataset.state).toBe(
+      'connected',
+    );
+  });
+
+  test('a second known Station keeps the full chip — the identity is what says which one', () => {
+    savedConnections = [
+      SAVED_STATION,
+      { ...SAVED_STATION, id: 'c2', name: 'Laptop' },
+    ];
+    const button = renderConnButton();
+
+    expect(button.classList).not.toContain('app-toolbar__conn--compact');
+    expect(button.textContent).toContain('Connected');
+    expect(button.textContent).toContain('Default');
+  });
+
+  test('a sidecar-qualified connection keeps the full chip — "App only" is news', () => {
+    bundledStatus = { ownership: 'sidecar' };
+    const button = renderConnButton();
+
+    expect(button.classList).not.toContain('app-toolbar__conn--compact');
+    expect(button.textContent).toContain('Connected');
+    expect(screen.getByTestId('desktop-sidecar-indicator').textContent).toBe(
+      'App only',
     );
   });
 
@@ -180,8 +218,10 @@ describe('HeaderActions — self-describing connection surface', () => {
   // (WCAG 2.5.3). It is also the reason `needs-credential` shows "Pair" —
   // connectionIndicatorActionLabel's own word — rather than a fifth phrase
   // invented here.
+  // `connected` is deliberately absent: since #1536 F its single-Station form
+  // renders NO visible label, which the test above pins on its own terms. The
+  // invariant here is about the states that still show text.
   test.each([
-    ['connected', null, 'Connected'],
     ['connecting', null, 'Reconnecting'],
     ['error', 'unreachable', "Can't connect"],
     ['error', 'authentication-failed', 'Pair'],
@@ -222,16 +262,29 @@ describe('HeaderActions — a rejected credential is distinguishable without hov
     pendingApprovalRecord = null;
   });
 
-  test('leaves the healthy control titled exactly as before', () => {
+  test('keeps the healthy control reachable by the name the E2E selectors key on', () => {
     renderHeader();
     // archive#3311 put the state and identity in the accessible name, so the
-    // name is no longer the bare string — the TITLE is, which is what
-    // archive#3297 pinned and what the E2E selectors key on.
+    // name is no longer the bare string. It is the NAME the E2E selectors key
+    // on (`/^Manage Stations/`, tests/connect-modal.spec.ts), not the title —
+    // and #1536 F's collapsed chip needs the tooltip for the identity its
+    // visible text no longer carries, so the bare archive#3297 string is what
+    // every still-labelled state keeps (see the `needs-credential` case
+    // below).
     const button = screen.getByRole('button', { name: /^Manage Stations/ });
-    expect(button.title).toBe('Manage Stations');
+    expect(button.title).toBe('Manage Stations — Connected · Default');
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
       'connected',
     );
+  });
+
+  test('a still-labelled state keeps the bare archive#3297 tooltip', () => {
+    connectionStatus = 'error';
+    connectionReason = 'unreachable';
+    renderHeader();
+    const button = document.querySelector<HTMLElement>('.app-toolbar__conn');
+    // `connectionIndicatorLabel`'s own wording for the state, unchanged.
+    expect(button?.title).toBe("Manage Stations — Can't connect");
   });
 
   test('hands the dot a distinct state, not just a different tooltip', () => {
