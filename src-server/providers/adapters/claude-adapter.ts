@@ -1,4 +1,7 @@
 import crypto from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import nodePath from 'node:path';
 import {
   deleteSession,
   forkSession,
@@ -64,9 +67,12 @@ import type {
 } from '../adapter-shape.js';
 import { ProviderTurnEndedError } from '../adapter-shape.js';
 import { detectClaudeAuthState } from '../auth/claude-auth.js';
+import type { CliCommandResult } from '../auth/cli-auth.js';
 import {
   augmentedSpawnEnv,
   buildCliRuntimePrerequisites,
+  findCliBinaryAsync,
+  runCliCommand,
 } from '../auth/cli-auth.js';
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
 import {
@@ -78,6 +84,7 @@ import {
   type ClaudeMessageState,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
+  settleUnresolvedClaudeToolCalls,
 } from './claude-adapter-events.js';
 import {
   AsyncEventQueue,
@@ -110,6 +117,318 @@ type PendingRequest = {
   suggestions?: PermissionUpdate[];
   toolInput: Record<string, unknown>;
 };
+
+/** The command Station resolves on PATH for this engine. */
+const CLAUDE_CLI_COMMAND = 'claude';
+/** Id of the prerequisite `buildCliRuntimePrerequisites` emits for that command. */
+const CLAUDE_CLI_PREREQUISITE_ID = `${CLAUDE_CLI_COMMAND}-cli`;
+/** The one probe both readiness and the launch decision share (#1551). */
+const CLAUDE_VERSION_ARGS = ['--version'];
+/**
+ * A version at the START of a line — never mid-sentence, so prose such as
+ * "a newer version 2.1.300 is available" cannot be mistaken for the version
+ * the binary reports for itself.
+ */
+const CLAUDE_VERSION_LINE = /^\s*v?(\d+)\.(\d+)\.(\d+)\b/;
+
+/**
+ * Windows npm launcher shims. The Agent SDK spawns
+ * `pathToClaudeCodeExecutable` DIRECTLY — no shell, no PATH/PATHEXT
+ * resolution — so handing it one of these fails at spawn time (`EINVAL`),
+ * and handing it a bare command name fails with "native binary not found".
+ */
+const WINDOWS_LAUNCHER_SHIM_EXTENSIONS = new Set(['.cmd', '.bat', '.ps1']);
+
+/**
+ * The real package entrypoints an npm `claude` shim delegates to, relative to
+ * the directory the shim sits in. `bin/claude.exe` is the newer native build;
+ * `cli.js` is the older JS entry. Ordered most-preferred first.
+ */
+const WINDOWS_SHIM_TARGET_SUFFIXES = [
+  ['node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'],
+  ['node_modules', '@anthropic-ai', 'claude-code', 'cli.js'],
+];
+
+export type SpawnableClaudeExecutable = {
+  /** The path to hand the SDK, or `null` when Station refuses this answer. */
+  executable: string | null;
+  /** Why it was refused. `null` whenever `executable` is set. */
+  refusal: 'not-absolute' | 'unfollowable-launcher' | null;
+};
+
+/**
+ * #1551: normalizes a resolver answer into something the Agent SDK can
+ * actually spawn. A refused answer comes back as `executable: null` plus the
+ * `refusal` that produced it — the caller omits the option (the SDK then uses
+ * its bundled copy) and reports the specific refusal, never a generic one.
+ *
+ * Two refusals, both because the SDK spawns this path with no shell, and each
+ * reported distinctly so the readiness sentence can name the real one:
+ * - a non-absolute answer is refused outright (a bare command name reaches
+ *   the SDK as "native binary not found");
+ * - on win32 an npm launcher shim (`claude.cmd`/`.bat`/`.ps1`) is followed to
+ *   the real package entry beside it, and refused when neither entry exists.
+ *   Passing the shim would fail with `spawn EINVAL`; falling back to the
+ *   bundled CLI keeps the engine working instead.
+ *
+ * `platform`/`fileExists` are injected so the win32 branch is executed by
+ * tests on macOS and Linux — the branch is otherwise unreachable off Windows,
+ * and an unexecuted refusal path is an unproven one.
+ */
+export function resolveSpawnableClaudeExecutable(
+  resolved: string,
+  options: {
+    platform?: NodeJS.Platform;
+    fileExists?: (candidate: string) => boolean;
+  } = {},
+): SpawnableClaudeExecutable {
+  const platform = options.platform ?? process.platform;
+  const isWindows = platform === 'win32';
+  // Use the matching path grammar rather than the host's, so a win32 case is
+  // parsed as win32 even when the test runs on macOS.
+  const pathApi = isWindows ? nodePath.win32 : nodePath.posix;
+  if (!pathApi.isAbsolute(resolved))
+    return { executable: null, refusal: 'not-absolute' };
+  if (!isWindows) return { executable: resolved, refusal: null };
+  if (
+    !WINDOWS_LAUNCHER_SHIM_EXTENSIONS.has(
+      pathApi.extname(resolved).toLowerCase(),
+    )
+  )
+    return { executable: resolved, refusal: null };
+  const fileExists = options.fileExists ?? existsSync;
+  const shimDir = pathApi.dirname(resolved);
+  for (const suffix of WINDOWS_SHIM_TARGET_SUFFIXES) {
+    const candidate = pathApi.join(shimDir, ...suffix);
+    if (fileExists(candidate)) return { executable: candidate, refusal: null };
+  }
+  return { executable: null, refusal: 'unfollowable-launcher' };
+}
+
+/**
+ * #1551: the Claude Code version bundled inside the installed
+ * `@anthropic-ai/claude-agent-sdk`, read from the package's own
+ * `manifest.json` (`{ version, commit, buildDate, platforms, sdkCompat }`).
+ *
+ * The manifest is NOT reachable through the package's `exports` map — this
+ * SDK declares only `.`, `./extract`, `./browser`, `./bridge` and
+ * `./sdk-tools`, so `require.resolve('@anthropic-ai/claude-agent-sdk/manifest.json')`
+ * fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`. Resolving the package ENTRY
+ * (which is exported) and reading the sibling file is what actually works,
+ * and it still honors hoisting/pnpm layout because Node did the resolution.
+ *
+ * Returns `null` for every failure — a missing, unreadable, non-JSON or
+ * version-less manifest means "comparison unavailable", never a throw.
+ */
+export function readBundledClaudeCodeVersion(
+  deps: {
+    resolveManifestPath?: () => string;
+    readFile?: (path: string) => string;
+  } = {},
+): string | null {
+  try {
+    const resolveManifestPath =
+      deps.resolveManifestPath ??
+      (() =>
+        nodePath.join(
+          nodePath.dirname(
+            createRequire(import.meta.url).resolve(
+              '@anthropic-ai/claude-agent-sdk',
+            ),
+          ),
+          'manifest.json',
+        ));
+    const readFile = deps.readFile ?? ((path) => readFileSync(path, 'utf-8'));
+    const manifest: unknown = JSON.parse(readFile(resolveManifestPath()));
+    if (!manifest || typeof manifest !== 'object') return null;
+    return parseClaudeCodeVersion(
+      (manifest as { version?: unknown }).version as string | undefined,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read once per process, LAZILY — never at module import time, so importing
+ * this adapter never touches the filesystem.
+ */
+let bundledClaudeCodeVersionMemo: string | null | undefined;
+function bundledClaudeCodeVersion(): string | null {
+  if (bundledClaudeCodeVersionMemo === undefined) {
+    bundledClaudeCodeVersionMemo = readBundledClaudeCodeVersion();
+  }
+  return bundledClaudeCodeVersionMemo;
+}
+
+/**
+ * Extracts the `major.minor.patch` triple from a version string or from CLI
+ * output that contains one (`claude --version` prints
+ * `2.1.261 (Claude Code)`). Returns `null` when no triple is present, which
+ * is the "comparison unavailable" input.
+ */
+export function parseClaudeCodeVersion(
+  text: string | null | undefined,
+): string | null {
+  if (typeof text !== 'string') return null;
+  const lines = text.split(/\r?\n/);
+  const matching = lines.filter((line) => CLAUDE_VERSION_LINE.test(line));
+  // Prefer the line the CLI brands as its own. `claude --version` prints
+  // `2.1.261 (Claude Code)`, and an update notice on another line ("2.1.300
+  // is available") would otherwise be read as the INSTALLED version -- in the
+  // unsafe direction, since a too-high reading defeats the not-older guard.
+  const line =
+    matching.find((candidate) => candidate.includes('Claude Code')) ??
+    matching[0];
+  const match = line ? CLAUDE_VERSION_LINE.exec(line) : null;
+  return match ? `${match[1]}.${match[2]}.${match[3]}` : null;
+}
+
+/**
+ * Numeric `major.minor.patch` ordering. Prerelease and build metadata are
+ * deliberately ignored: `parseClaudeCodeVersion` never surfaces them, so
+ * `2.1.224-beta` compares equal to `2.1.224` and takes the "not older" branch
+ * — the same side an exact match takes.
+ */
+function compareClaudeCodeVersions(left: string, right: string): number {
+  const leftParts = left.split('.').map(Number);
+  const rightParts = right.split('.').map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+/** Which Claude Code Station will actually launch. */
+type ClaudeLaunchTarget = 'installed' | 'bundled';
+
+/**
+ * What one `<claude> --version` probe actually observed. Three outcomes, not
+ * two: a probe that never completed cleanly (`unreadable`) is a different fact
+ * from one that ran and printed nothing version-shaped
+ * (`ran-without-version`), and #1551's review found them merged — which had
+ * Station handing the SDK a binary its own probe had just failed to run.
+ */
+type InstalledVersionObservation =
+  | { kind: 'version'; version: string }
+  | { kind: 'ran-without-version' }
+  | { kind: 'unreadable' };
+
+/**
+ * Why {@link ClaudeExecutableResolution.launch} came out the way it did. Every
+ * readiness sentence is written from this, so the text cannot describe a
+ * decision the spawn did not make.
+ */
+type ClaudeLaunchReason =
+  /** Installed CLI is the same version as the bundle or newer. */
+  | 'installed-not-older'
+  /** Installed CLI predates the bundle, so the SDK's own copy is safer. */
+  | 'installed-older'
+  /**
+   * The `--version` probe produced no completed, zero-exit result — it failed
+   * to run, exited non-zero, or timed out. The SDK spawns the executable with
+   * the SAME no-shell mechanics this probe uses, so a zero exit is the only
+   * evidence Station has that the binary is spawnable at all: an unreadable
+   * probe means the bundled copy is launched, not the binary that just failed.
+   */
+  | 'installed-version-unreadable'
+  /**
+   * The probe RAN cleanly but printed nothing version-shaped. Spawnability is
+   * proven, but the rule this guard implements is "never launch an OLDER
+   * Claude Code", and nothing established that this one is not older (a
+   * wrapper that exits 0 without running Claude Code lands here too). The
+   * bundled copy is launched; the sentence says the installed one ran but
+   * reported no version. Uniform rule: the installed CLI wins only when
+   * Station read its version and it is not older, or when the bundle's own
+   * version could not be read.
+   */
+  | 'installed-version-unparsed'
+  /**
+   * The SDK's own bundled version could not be read, so there is nothing to
+   * compare against. The installed CLI wins — an unreadable manifest must not
+   * silently become a downgrade.
+   */
+  | 'bundled-unknown'
+  /** Nothing resolved on PATH. */
+  | 'no-installed'
+  /** Resolution itself failed, so nothing about the installed CLI is known. */
+  | 'resolution-failed'
+  /** Resolved, but the SDK cannot spawn it (Windows launcher shim). */
+  | 'unspawnable-launcher'
+  /** Resolved to something that is not an absolute path. */
+  | 'not-absolute';
+
+/**
+ * What one resolution produced: the resolver's own answer (`resolved`), the
+ * subset of it the Agent SDK can be handed (`spawnable`), both versions, and
+ * the decision between them. Every consumer — both `query()` sites and the
+ * readiness sentence — reads THIS record, which is what keeps what Station
+ * reports and what Station runs from drifting apart.
+ */
+type ClaudeExecutableResolution = {
+  resolved: string | null;
+  spawnable: string | null;
+  installedVersion: string | null;
+  bundledVersion: string | null;
+  launch: ClaudeLaunchTarget;
+  reason: ClaudeLaunchReason;
+};
+
+/**
+ * The single derivation of `Options.pathToClaudeCodeExecutable`: the installed
+ * path when the decision says to launch it, `null` (omit the option ⇒ the SDK
+ * uses its bundled copy) otherwise. Deliberately a function of the record
+ * rather than a stored field, so no call site can read a launch target that
+ * disagrees with the path beside it.
+ */
+function launchedClaudeExecutable(
+  resolution: ClaudeExecutableResolution,
+): string | null {
+  return resolution.launch === 'installed' ? resolution.spawnable : null;
+}
+
+/**
+ * #1551: says which Claude Code Station hands the Agent SDK and why, written
+ * from the same {@link ClaudeExecutableResolution} the spawn sites read. The
+ * SDK falls back to the Claude Code copy bundled inside the SDK package when
+ * the option is absent (sdk.d.ts: "Uses the built-in executable if not
+ * specified").
+ */
+function claudeExecutableSentence(
+  resolution: ClaudeExecutableResolution,
+): string {
+  const bundled = resolution.bundledVersion
+    ? `Claude Code ${resolution.bundledVersion} bundled with the Agent SDK`
+    : 'Claude Code CLI bundled with the Agent SDK';
+  switch (resolution.reason) {
+    case 'installed-not-older':
+      return `Station launches the installed Claude Code ${resolution.installedVersion} at ${resolution.spawnable} (the Agent SDK bundles ${resolution.bundledVersion}).`;
+    case 'installed-older':
+      return `Station launches the ${bundled}; the installed \`claude\` at ${resolution.spawnable} is ${resolution.installedVersion}, older than the bundle.`;
+    case 'installed-version-unreadable':
+      return `Station launches the ${bundled}; the installed \`claude\` at ${resolution.spawnable} did not report a version, so Station cannot confirm it runs or that it is not older than the bundle.`;
+    case 'installed-version-unparsed':
+      return `Station launches the ${bundled}; the installed \`claude\` at ${resolution.spawnable} ran but reported no version, so Station cannot confirm it is not older than the bundle.`;
+    case 'bundled-unknown':
+      return `Station launches the installed executable at ${resolution.spawnable}; the Claude Code version bundled with the Agent SDK could not be read, so no comparison was made (installed ${resolution.installedVersion ?? 'unknown'}).`;
+    case 'not-absolute':
+      return `Station launches the ${bundled}: the \`claude\` at ${resolution.resolved} is not an absolute path, and the Agent SDK spawns the executable without PATH resolution.`;
+    case 'unspawnable-launcher':
+      // The distinction matters: `claude` IS installed, Station just cannot
+      // hand this particular entry to the SDK (a Windows launcher shim with no
+      // package entry beside it). Reporting "none found" here would be a label
+      // contradicting the resolution that produced it.
+      return `Station launches the Claude Code CLI bundled with the Agent SDK: the \`claude\` at ${resolution.resolved} is a launcher the Agent SDK cannot spawn directly.`;
+    case 'no-installed':
+      return `Station launches the ${bundled}; no installed \`claude\` was found.`;
+    case 'resolution-failed':
+      // NOT 'no-installed': a failed lookup is not an observation that
+      // nothing is installed, and saying so would assert a fact the
+      // derivation never produced.
+      return `Station launches the ${bundled}; resolving the installed \`claude\` failed.`;
+  }
+}
 
 const CLAUDE_EFFORT_LEVELS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 type ClaudeEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -255,6 +574,50 @@ type ClaudeAdapterLogger = any;
 
 export interface ClaudeAdapterOptions {
   /**
+   * #1551: resolves the absolute path of the installed `claude` executable,
+   * or `null` when none is on PATH. Injected so both the spawn assertions and
+   * the readiness-text assertions exercise the INSTALLED and the ABSENT
+   * branch on any host — a test that is green only because the dev machine
+   * happens to have `claude` installed proves nothing. Defaults to
+   * `findCliBinaryAsync`, the async twin that AWAITS login-shell PATH
+   * resolution rather than racing it: a cold-cache false "missing" here would
+   * silently downgrade the session to the SDK's bundled CLI, which is exactly
+   * the defect this seam exists to fix.
+   */
+  findBinary?: (command: string) => Promise<string | null>;
+  /**
+   * #1551: platform the executable normalization is performed for. Injected
+   * so the win32 launcher-shim branch of
+   * {@link resolveSpawnableClaudeExecutable} runs on macOS/Linux too.
+   */
+  executablePlatform?: NodeJS.Platform;
+  /**
+   * #1551: existence check used when following a Windows launcher shim to the
+   * real package entry. Injected alongside {@link executablePlatform} so that
+   * branch never needs a real Windows filesystem.
+   */
+  executableFileExists?: (candidate: string) => boolean;
+  /**
+   * #1551: runs one bounded read-only CLI probe. Defaults to the shared
+   * `runCliCommand`. The adapter memoizes ONE `<claude> --version` call
+   * through this and hands the same result to
+   * `buildCliRuntimePrerequisites`, so readiness and the launch decision
+   * never spawn the user's launcher twice. Injected so tests can drive the
+   * version comparison without a real process.
+   */
+  runCommand?: (
+    command: string,
+    args: string[],
+    signal?: AbortSignal,
+  ) => Promise<CliCommandResult | null>;
+  /**
+   * #1551: the Claude Code version bundled inside the Agent SDK. Defaults to
+   * reading the SDK package's own `manifest.json`. Injected so the
+   * older/newer/equal and "manifest unreadable" branches are all executed by
+   * tests, on any machine, against versions the test chose.
+   */
+  readBundledVersion?: () => string | null;
+  /**
    * Resolve the claude connection's opted-in skill ids
    * (`AgentConnectionSettings.config.provideSkills`,
    * docs/design/connections-onboarding.md §5). Returns `undefined`/empty
@@ -306,6 +669,21 @@ export interface ClaudeAdapterOptions {
 }
 
 const DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS = 5_000;
+
+/**
+ * station#1558 (fix round, M8): how long `stopSession` waits for
+ * `consumeMessages` to stop before settling still-open tool calls itself.
+ *
+ * The SDK is expected to end its iterator once `query.close()` lands (the
+ * adapter tests model that; nothing here verifies it against a live engine),
+ * so this should elapse only when an engine misbehaves. It is a ceiling on
+ * teardown, not a delay anything normally pays. Residual: if the grace does
+ * elapse, the settle publishes `unresolved` and clears tracking, and a
+ * `tool_result` that still arrives afterwards is dropped by the replay guard
+ * — the original station#1558 M8 window, narrowed to this 1 s rather than
+ * removed. The grace-elapsed branch has no test yet (station follow-up).
+ */
+const CLAUDE_STREAM_STOP_GRACE_MS = 1_000;
 
 /**
  * Keep the raw SDK name for authentic grant provenance and any user-visible
@@ -472,6 +850,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   private readonly events = new AsyncEventQueue();
   private readonly sessions = new Map<string, ClaudeSessionRecord>();
+  /** #1551: memoized `<claude> --version` probes, keyed by command + args. */
+  private readonly versionProbes = new Map<
+    string,
+    Promise<CliCommandResult | null>
+  >();
 
   constructor(private readonly options: ClaudeAdapterOptions = {}) {}
 
@@ -488,6 +871,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const appHomeEnv = await this.resolveAppHomeEnv(input.credentialProfileRef);
     const augmentedEnv = await this.resolveAugmentedSpawnEnv();
     const preToolPolicy = await this.resolvePreToolPolicy(input);
+    const claudeExecutable = launchedClaudeExecutable(
+      await this.resolveClaudeExecutable(),
+    );
     return this.startTrackedSession(
       input,
       input.persistSession === true,
@@ -496,6 +882,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       overlayDir,
       augmentedEnv,
       preToolPolicy,
+      claudeExecutable,
     );
   }
 
@@ -540,6 +927,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // spawns MCP servers exactly like a fresh one.
       const augmentedEnv = await this.resolveAugmentedSpawnEnv();
       const preToolPolicy = await this.resolvePreToolPolicy(input);
+      const claudeExecutable = launchedClaudeExecutable(
+        await this.resolveClaudeExecutable(),
+      );
       return this.startTrackedSession(
         { ...input, resumeCursor: fork.sessionId, persistSession: true },
         true,
@@ -548,6 +938,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         overlayDir,
         augmentedEnv,
         preToolPolicy,
+        claudeExecutable,
       );
     } catch (error) {
       await deleteSession(fork.sessionId, { dir: input.cwd }).catch(() => {});
@@ -614,6 +1005,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     skillsOverlayDir?: string,
     augmentedEnv?: Record<string, string | undefined>,
     preToolPolicy?: StagedPreToolPolicyEvaluator,
+    claudeExecutable?: string | null,
   ): ProviderSession {
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
@@ -631,6 +1023,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         skillsOverlayDir,
         augmentedEnv,
         preToolPolicy,
+        claudeExecutable,
       ),
     });
 
@@ -1090,6 +1483,19 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     record.pendingRequests.clear();
     record.promptQueue.close();
     record.query.close();
+    // station#1558: the session is ending, so any `tool_use` still open can
+    // never receive a result — but "still open" can only be read AFTER the
+    // consumer has stopped. Closing the query does not discard messages the
+    // SDK has already queued, so a real `tool_result` can still be waiting to
+    // drain; settling before that drained (the first cut of this change did)
+    // published `unresolved` for a call that DID report, and then the replay
+    // guard dropped the real result because its entry was gone. So wait for
+    // `consumeMessages` to stop — its own `finally` performs the settle — and
+    // only settle here if it never ran or does not stop promptly. Either way
+    // this happens before the exit event, because `session.exited` closes any
+    // still-running tool card client-side (`background-tasks-store.ts`), and a
+    // card closed as "Stopped" no longer accepts the honest terminal.
+    await this.settleAfterStreamStops(record);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -1172,17 +1578,47 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async getPrerequisites(options?: {
     signal?: AbortSignal;
   }): Promise<Prerequisite[]> {
-    return buildCliRuntimePrerequisites({
-      command: 'claude',
+    // #1551: resolve ONCE and hand that single answer to both the
+    // install-status derivation (`findBinary`) and the description below, so
+    // the executable this reports is the one the spawn path resolves — not a
+    // label written beside it.
+    const executable = await this.resolveClaudeExecutable();
+    const prerequisites = await buildCliRuntimePrerequisites({
+      command: CLAUDE_CLI_COMMAND,
       displayName: 'Claude',
-      versionArgs: ['--version'],
+      versionArgs: CLAUDE_VERSION_ARGS,
       // Older Claude CLIs parse `claude auth status` as a chat prompt.
       authArgs: [],
+      // The SAME memoized probe the launch decision above already awaited.
+      // Redirected onto `spawnable` when it differs from `resolved` (win32:
+      // `claude.cmd` resolved, `claude.exe` launched): probing the shim would
+      // be a SECOND spawn, of a launcher the SDK never runs, whose failure
+      // would then be reported as this prerequisite's status. Readiness
+      // measures what Station launches.
+      runCommand: (command, args) =>
+        command === executable.resolved && executable.spawnable
+          ? this.executableVersionProbe(executable.spawnable, args)
+          : this.versionProbe(command, args),
+      // The resolver's own answer, so install status keeps meaning "a
+      // `claude` is on PATH" exactly as before; the sentence below reports
+      // separately whether Station can hand THAT entry to the SDK.
+      findBinary: () => executable.resolved,
       detectAuthState: detectClaudeAuthState,
       installStep: 'Install the Claude CLI and ensure `claude` is on PATH.',
       authStep: 'Run `claude auth login` before starting Station.',
       signal: options?.signal,
     });
+    const sentence = claudeExecutableSentence(executable);
+    return prerequisites.map((prerequisite) =>
+      prerequisite.id === CLAUDE_CLI_PREREQUISITE_ID
+        ? {
+            ...prerequisite,
+            description: prerequisite.description
+              ? `${prerequisite.description} ${sentence}`
+              : sentence,
+          }
+        : prerequisite,
+    );
   }
 
   async listModelCatalog(options?: {
@@ -1201,11 +1637,23 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const abortController = new AbortController();
     const abortProbe = () => abortController.abort(options?.signal?.reason);
     options?.signal?.addEventListener('abort', abortProbe, { once: true });
+    // #1551: the discovery probe must run the SAME executable a session will,
+    // or the model catalog is reported by a different Claude Code than the
+    // one that answers the turn. This is the probe's first await, so an abort
+    // can now land BEFORE the spawn — refuse there rather than spawning a
+    // process only to close it.
+    const claudeExecutable = launchedClaudeExecutable(
+      await this.resolveClaudeExecutable(),
+    );
+    options?.signal?.throwIfAborted();
     const promptQueue = new AsyncUserMessageQueue();
     const sdkQuery = query({
       prompt: promptQueue,
       options: {
         abortController,
+        ...(claudeExecutable
+          ? { pathToClaudeCodeExecutable: claudeExecutable }
+          : {}),
         // The Agent SDK owns this process spawn, so it cannot inherit
         // Station's normal subprocess environment. Give discovery the same
         // Station-owned tmp directory as an interactive session; otherwise a
@@ -1215,6 +1663,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         mcpServers: {},
         persistSession: false,
         plugins: [],
+        // Pinned, unlike a session (which loads the CLI's whole cascade —
+        // see the `settingSources` comment in `buildOptions`): this probe runs
+        // no tools, so it wants no ambient configuration at all.
         settingSources: [],
         skills: [],
         strictMcpConfig: true,
@@ -1387,11 +1838,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     skillsOverlayDir?: string,
     augmentedEnv?: Record<string, string | undefined>,
     preToolPolicy?: StagedPreToolPolicyEvaluator,
+    claudeExecutable?: string | null,
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
     return {
       cwd: input.cwd,
       model: input.modelId,
+      // #1551: run the Claude Code the user installed. Omitted when none
+      // resolved, which is the SDK's documented "use the built-in executable"
+      // default and the pre-#1551 behavior byte for byte.
+      ...(claudeExecutable
+        ? { pathToClaudeCodeExecutable: claudeExecutable }
+        : {}),
       resume:
         typeof input.resumeCursor === 'string' ? input.resumeCursor : undefined,
       includePartialMessages: true,
@@ -1556,6 +2014,51 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             },
           }
         : {}),
+      // NO `settingSources` — deliberately, and tested (#1545). Left unset, the
+      // SDK loads the CLI's whole cascade: `~/.claude/settings.json`, then the
+      // workspace's checked-in `.claude/settings.json`, then
+      // `.claude/settings.local.json` (sdk.d.ts: "When omitted, all sources are
+      // loaded"). So in Ask mode a workspace's committed `permissions.allow`
+      // rule can run a tool with no Station approval request and no Station
+      // receipt — the engine's own permission flow allows the call before
+      // `canUseTool` is consulted, which the SDK reports as
+      // `CLAUDE_SDK_CAN_USE_TOOL_SHADOWED`.
+      //
+      // ACCEPTED GAP, not an oversight. Reproduced against `claude` 2.1.224 with
+      // a live turn: a `permissions.allow: ['Bash']` rule in the `settings`
+      // (flag) tier ran the command with `canUseTool` never invoked. The
+      // project/local tiers add one precondition — in a workspace the CLI has
+      // never had trust accepted for (`~/.claude.json`, per-directory
+      // `hasTrustDialogAccepted`) the same rule did NOT shadow the callback — so
+      // this reaches a workspace the operator has already trusted in Claude
+      // Code, which is a same-user threat model: someone who can commit into a
+      // repository the operator trusts can already ask that operator to run it.
+      // The mitigation Station ships instead is that its approval surfaces now
+      // show the command (`toolRequestPreview`), so a call that IS prompted is
+      // never approved blind.
+      //
+      // Narrowing to `settingSources: ['user']` was built and reverted: the
+      // option is not permission-scoped, and an excluded tier is not read at
+      // all. Measured against `claude-agent-sdk` 0.3.224 (`resolveSettings()`,
+      // `getContextUsage().memoryFiles`, `mcpServerStatus()`), `['user']` also
+      // drops the workspace's `CLAUDE.md` (`memoryFiles` loses its
+      // `type: 'Project'` entry; the `type: 'User'` one survives), project
+      // `.mcp.json` servers (their approval lives in project/local
+      // `enabledMcpjsonServers`), and project/local `hooks`, `env`, `model` and
+      // `statusLine`. Losing a repository's own instructions to close a
+      // same-user gap was not the trade. `managedSettings:
+      // { allowManagedPermissionRulesOnly: true }` keeps `CLAUDE.md` but ignores
+      // EVERY filesystem permission rule including the operator's own.
+      //
+      // Nothing Station wires itself depends on the cascade either way:
+      // `resolveAgentToolServers` builds `mcpServers` explicitly (station-control
+      // included) and passes `strictMcpConfig`, and Station's `PreToolUse` hook is
+      // the SDK `hooks` OPTION, not a settings file. The model-catalog probe in
+      // `listModelCatalog` does pin `settingSources: []` — it runs no tools and
+      // wants no ambient configuration at all.
+      //
+      // See #1545 and docs/conformance/tool-policy-delivery.md. Setting this
+      // option here is a deliberate product change, so it has a test.
       permissionMode,
       // Required by the SDK whenever bypassPermissions is granted at spawn
       // time (sdk.d.ts: "Must be set to true when using permissionMode:
@@ -1605,7 +2108,59 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return resolveClaudePermissionMode(modelOptions) ?? 'default';
   }
 
+  /**
+   * station#1558 (fix round, M8): give `consumeMessages` a bounded moment to
+   * drain and run its own settle, then settle whatever is left.
+   *
+   * Bounded rather than an open `await`: `stopSession` must not be able to
+   * hang on an engine whose iterator never ends after `close()`. The settle
+   * is idempotent (it clears the map before publishing), so running it here
+   * after the consumer already ran it publishes nothing.
+   */
+  private async settleAfterStreamStops(
+    record: ClaudeSessionRecord,
+  ): Promise<void> {
+    try {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        record.streamTask,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, CLAUDE_STREAM_STOP_GRACE_MS);
+        }),
+      ]);
+      if (timer) clearTimeout(timer);
+    } catch {
+      // `consumeMessages` handles its own failures; a rejection here must not
+      // turn a stop into a throw, and must not skip the settle below.
+    }
+    settleUnresolvedClaudeToolCalls({
+      provider: this.provider,
+      record: record as ClaudeMessageState,
+      publish: (event) => this.publish(event),
+    });
+  }
+
   private async consumeMessages(record: ClaudeSessionRecord): Promise<void> {
+    try {
+      await this.consumeMessagesInner(record);
+    } finally {
+      // station#1558: the SDK iterator finishing or throwing means the
+      // `claude` process is gone — every path out of it is a SESSION end, and
+      // a `tool_use` still open at that point can never receive a result.
+      // This is the one settle site that covers a process exit nobody asked
+      // for; `stopSession` covers the deliberate stop. Whichever runs first
+      // empties the map, so the other publishes nothing.
+      settleUnresolvedClaudeToolCalls({
+        provider: this.provider,
+        record: record as ClaudeMessageState,
+        publish: (event) => this.publish(event),
+      });
+    }
+  }
+
+  private async consumeMessagesInner(
+    record: ClaudeSessionRecord,
+  ): Promise<void> {
     try {
       for await (const message of record.query) {
         // `interruptedResultObserved` suppresses only the iterator rejection
@@ -1732,6 +2287,208 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       );
       return undefined;
     }
+  }
+
+  /**
+   * #1551: the installed Claude Code executable Station hands the Agent SDK
+   * as `Options.pathToClaudeCodeExecutable`, or `null` for "use the copy
+   * bundled inside the SDK package". This is the single derivation behind
+   * BOTH spawn sites and the readiness sentence, so what Station reports and
+   * what Station runs cannot drift apart.
+   *
+   * Degrades to `null` rather than throwing: a resolver failure must fall
+   * back to the bundled CLI (today's behavior), never block session start.
+   */
+  private async resolveClaudeExecutable(): Promise<ClaudeExecutableResolution> {
+    // Read before anything can fail, so every branch below — the catch
+    // included — reports the bundled version it actually knows.
+    let bundledVersion: string | null = null;
+    try {
+      bundledVersion = this.bundledClaudeVersion();
+      const resolved =
+        (await (this.options.findBinary ?? findCliBinaryAsync)(
+          CLAUDE_CLI_COMMAND,
+        )) ?? null;
+      if (!resolved) {
+        return {
+          resolved: null,
+          spawnable: null,
+          installedVersion: null,
+          bundledVersion,
+          launch: 'bundled',
+          reason: 'no-installed',
+        };
+      }
+      const spawnable = resolveSpawnableClaudeExecutable(resolved, {
+        ...(this.options.executablePlatform
+          ? { platform: this.options.executablePlatform }
+          : {}),
+        ...(this.options.executableFileExists
+          ? { fileExists: this.options.executableFileExists }
+          : {}),
+      });
+      if (!spawnable.executable) {
+        // Deliberately no version probe: Station has already refused to run
+        // this entry, and spawning the launcher it refused to spawn would be
+        // measuring something it will never launch.
+        return {
+          resolved,
+          spawnable: null,
+          installedVersion: null,
+          bundledVersion,
+          launch: 'bundled',
+          reason:
+            spawnable.refusal === 'not-absolute'
+              ? 'not-absolute'
+              : 'unspawnable-launcher',
+        };
+      }
+      const executable = spawnable.executable;
+      const observed = await this.installedClaudeVersion(executable);
+      const base = {
+        resolved,
+        spawnable: executable,
+        installedVersion: observed.kind === 'version' ? observed.version : null,
+        bundledVersion,
+      };
+      // #1551 risk 1: before this change every user ran the bundled CLI, so
+      // adopting an installed CLI OLDER than the bundle would be a regression
+      // introduced by the fix -- the SDK's control protocol is versioned with
+      // the CLI. Newer or equal wins; older loses.
+      //
+      // The "cannot compare" cases are NOT the same observation. A probe that
+      // never completed cleanly is also the only spawnability signal Station
+      // has (the SDK spawns with the same no-shell mechanics), so it falls
+      // back to the bundled copy; so does a clean probe that printed no
+      // version, because nothing then shows the installed copy is not older
+      // (review D1). Only a missing BUNDLED version leaves the installed CLI
+      // in place -- Station's own manifest being unreadable must not
+      // silently become a downgrade of a CLI that demonstrably runs.
+      if (observed.kind === 'unreadable') {
+        return {
+          ...base,
+          launch: 'bundled',
+          reason: 'installed-version-unreadable',
+        };
+      }
+      if (bundledVersion === null) {
+        return { ...base, launch: 'installed', reason: 'bundled-unknown' };
+      }
+      if (observed.kind !== 'version') {
+        return {
+          ...base,
+          launch: 'bundled',
+          reason: 'installed-version-unparsed',
+        };
+      }
+      const installedIsOlder =
+        compareClaudeCodeVersions(observed.version, bundledVersion) < 0;
+      return {
+        ...base,
+        launch: installedIsOlder ? 'bundled' : 'installed',
+        reason: installedIsOlder ? 'installed-older' : 'installed-not-older',
+      };
+    } catch (error) {
+      (this.options.logger ?? console).warn?.(
+        `Claude executable resolution failed; continuing with the Claude Code CLI bundled with the Agent SDK: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return {
+        resolved: null,
+        spawnable: null,
+        installedVersion: null,
+        bundledVersion,
+        launch: 'bundled',
+        reason: 'resolution-failed',
+      };
+    }
+  }
+
+  /** Bundled Claude Code version; injectable, otherwise the cached manifest read. */
+  private bundledClaudeVersion(): string | null {
+    return (this.options.readBundledVersion ?? bundledClaudeCodeVersion)();
+  }
+
+  /**
+   * What ONE memoized `<executable> --version` probe observed.
+   * `getPrerequisites` routes `buildCliRuntimePrerequisites`'s own version
+   * probe through the same memo, keyed on the same executable (see
+   * `versionProbe`), so readiness and the launch decision spawn the user's
+   * launcher once rather than twice.
+   *
+   * A non-zero exit or a missing result is `unreadable`, NOT "version
+   * unknown": the probe is also the only evidence that the binary the SDK
+   * will spawn (with the same no-shell mechanics) can run at all.
+   */
+  private async installedClaudeVersion(
+    executable: string,
+  ): Promise<InstalledVersionObservation> {
+    const result = await this.executableVersionProbe(
+      executable,
+      CLAUDE_VERSION_ARGS,
+    );
+    if (!result || result.code !== 0) return { kind: 'unreadable' };
+    const version = parseClaudeCodeVersion(
+      `${result.stdout}\n${result.stderr}`,
+    );
+    return version
+      ? { kind: 'version', version }
+      : { kind: 'ran-without-version' };
+  }
+
+  /**
+   * Probe the executable Station will hand the SDK, the way the SDK spawns
+   * it: a `.js` entry (the older npm package's `cli.js`, reached through a
+   * followed Windows shim) runs as `node <entry>`, everything else directly.
+   * Probing a `.js` file directly can never succeed, so that arm would
+   * otherwise always read `unreadable` and fall back to the bundled copy
+   * (review D3). One memo entry either way, shared by readiness and the
+   * launch decision.
+   */
+  private executableVersionProbe(
+    executable: string,
+    args: string[],
+  ): Promise<CliCommandResult | null> {
+    return executable.toLowerCase().endsWith('.js')
+      ? this.versionProbe(process.execPath, [executable, ...args])
+      : this.versionProbe(executable, args);
+  }
+
+  /**
+   * One in-flight probe per `command + args`, and only a COMPLETED, zero-exit
+   * result is retained. The default `runCliCommand` never rejects — it catches
+   * everything and answers with `{ code }` or `null` — so caching by promise
+   * identity alone would pin a transient failure (a busy launcher, a cold mise
+   * shim hitting the 10s timeout) for the life of the process. Dropping every
+   * non-zero answer means the next caller re-probes; only success is durable.
+   *
+   * The caller's `AbortSignal` is deliberately NOT forwarded: the probe is
+   * shared, so one caller abandoning readiness must not abort the observation
+   * another caller is awaiting. The cost is that an aborted inspection leaves
+   * the probe child running until `runCliCommand`'s own timeout (10s) retires
+   * it — bounded, but not immediate.
+   */
+  private versionProbe(
+    command: string,
+    args: string[],
+  ): Promise<CliCommandResult | null> {
+    const key = `${command}\u0000${args.join('\u0000')}`;
+    const cached = this.versionProbes.get(key);
+    if (cached) return cached;
+    const probe = (this.options.runCommand ?? runCliCommand)(
+      command,
+      args,
+    ).then(
+      (result) => {
+        if (!result || result.code !== 0) this.versionProbes.delete(key);
+        return result;
+      },
+      (error) => {
+        this.versionProbes.delete(key);
+        throw error;
+      },
+    );
+    this.versionProbes.set(key, probe);
+    return probe;
   }
 
   /**

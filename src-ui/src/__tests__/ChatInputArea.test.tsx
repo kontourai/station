@@ -749,7 +749,7 @@ describe('ChatInputArea', () => {
       screen.queryByRole('button', { name: 'Enable full access' }),
     ).toBeNull();
     expect(
-      screen.getByRole('button', { name: /^Approval mode: Ask every time\./ }),
+      screen.getByRole('button', { name: /^Approval mode: Ask first\./ }),
     ).toBeTruthy();
     expect(onApprovalModeChange).not.toHaveBeenCalled();
   });

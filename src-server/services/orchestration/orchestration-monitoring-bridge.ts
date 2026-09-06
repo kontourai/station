@@ -162,7 +162,14 @@ export class OrchestrationMonitoringBridge {
             ? 'error'
             : event.status === 'success'
               ? 'success'
-              : undefined,
+              : // station#1558: its own reported outcome, never `error`.
+                // `cancelled` keeps its existing behaviour (omitted — the
+                // attribute has no member for it), but an unresolved call
+                // must be distinguishable from one whose producer simply
+                // never reported: insights counts the two apart.
+                event.status === 'unresolved'
+                ? 'unresolved'
+                : undefined,
       });
     } else if (event.method === 'token-usage.updated') {
       // Claude/Codex streams report cumulative usage, so retain the last frame.

@@ -67,17 +67,20 @@ function activityRightRecord(
         visible: true,
         size: 0,
         occupant: { kind: 'surface', id: 'home' },
+        maximized: false,
       },
-      left: { visible: false, size: 400, occupant: null },
+      left: { visible: false, size: 400, occupant: null, maximized: false },
       right: {
         visible: true,
         size: 517,
         occupant: { kind: 'surface', id: 'activity' },
+        maximized: false,
       },
       bottom: {
         visible: false,
         size: 320,
         occupant: { kind: 'surface', id: 'chat' },
+        maximized: false,
       },
       ...patch,
     },
@@ -178,6 +181,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
       visible: true,
       size: 517,
       occupant: 'activity',
+      maximized: false,
     });
     expect(model?.regions.bottom.occupant).toBe('chat');
     expect(model?.regions.main.occupant).toBe('home');
@@ -210,6 +214,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
           visible: false,
           size: 517,
           occupant: { kind: 'surface', id: 'activity' },
+          maximized: false,
         },
       }),
     });
@@ -229,6 +234,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
       visible: false,
       size: 517,
       occupant: 'activity',
+      maximized: false,
     });
     // The initializer did this, not a mount-time correction that then
     // persisted: no record write, no navigation write.
@@ -267,13 +273,15 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
           visible: false,
           size: 400,
           occupant: { kind: 'surface', id: 'activity' },
+          maximized: false,
         },
         right: {
           visible: true,
           size: 480,
           occupant: { kind: 'surface', id: 'chat' },
+          maximized: false,
         },
-        bottom: { visible: false, size: 320, occupant: null },
+        bottom: { visible: false, size: 320, occupant: null, maximized: false },
       }),
       dockSlotPlacement: 'left',
     });
@@ -288,6 +296,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
       visible: true,
       size: 480,
       occupant: 'chat',
+      maximized: false,
     });
     expect(model?.regions.left.occupant).toBe('activity');
   });
@@ -299,6 +308,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
           visible: true,
           size: 517,
           occupant: { kind: 'surface', id: 'retired-surface' },
+          maximized: false,
         },
       }),
     });
@@ -350,6 +360,7 @@ describe('RegionModelProvider persists every arrangement write as the record', (
               visible: true,
               size: 333,
               occupant: { kind: 'surface', id: 'activity' },
+              maximized: false,
             },
           }),
         }),
@@ -362,6 +373,7 @@ describe('RegionModelProvider persists every arrangement write as the record', (
       visible: true,
       size: 333,
       occupant: { kind: 'surface', id: 'activity' },
+      maximized: false,
     });
     // The store's echo of this tab's own write is not adopted as a change.
     await settle();
@@ -395,13 +407,15 @@ describe('RegionModelProvider persists every arrangement write as the record', (
           visible: false,
           size: 400,
           occupant: { kind: 'surface', id: 'activity' },
+          maximized: false,
         },
         right: {
           visible: true,
           size: 480,
           occupant: { kind: 'surface', id: 'chat' },
+          maximized: false,
         },
-        bottom: { visible: false, size: 320, occupant: null },
+        bottom: { visible: false, size: 320, occupant: null, maximized: false },
       }),
       dockSlotPlacement: 'left',
     });
@@ -438,6 +452,7 @@ describe('RegionModelProvider adopts another tab’s record without re-persistin
         visible: true,
         size: 320,
         occupant: { kind: 'surface', id: 'chat' },
+        maximized: false,
       },
     });
     act(() => writeFromAnotherTab(incoming));
@@ -490,6 +505,175 @@ describe('RegionModelProvider adopts another tab’s record without re-persistin
     expect(model?.regions).toBe(before);
     expect(model?.regions.left.occupant).toBe('chat');
     expect(regionArrangementWrites(setSpy)).toHaveLength(0);
+  });
+});
+
+// #928 slice iii / #1385: maximize is a region attribute; Chat's legacy
+// `maximize` param and `lastDockMaximized` are its mirror, never its source.
+describe('RegionModelProvider carries maximize as a region attribute', () => {
+  test('?dock=open&maximize=true maximizes Chat’s region at mount and writes nothing', async () => {
+    setUrl('/?dock=open&maximize=true');
+    const spies = spyOnEverySetter();
+
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+
+    expect(model?.regions.bottom).toMatchObject({
+      occupant: 'chat',
+      visible: true,
+      maximized: true,
+    });
+    await settle();
+    expectNoWrites(spies);
+  });
+
+  test('a record with right.maximized and Activity in right mounts maximized, and the URL says nothing', async () => {
+    seedEnvelope({
+      regionArrangement: activityRightRecord({
+        right: {
+          visible: true,
+          size: 517,
+          occupant: { kind: 'surface', id: 'activity' },
+          maximized: true,
+        },
+      }),
+    });
+    setUrl('/');
+    const spies = spyOnEverySetter();
+
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+
+    expect(model?.regions.right).toEqual({
+      visible: true,
+      size: 517,
+      occupant: 'activity',
+      maximized: true,
+    });
+    expect(model?.regions.bottom.maximized).toBe(false);
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
+    await settle();
+    expectNoWrites(spies);
+  });
+
+  test('the URL’s maximize=true beats a record maximizing another region', async () => {
+    seedEnvelope({
+      regionArrangement: activityRightRecord({
+        right: {
+          visible: true,
+          size: 517,
+          occupant: { kind: 'surface', id: 'activity' },
+          maximized: true,
+        },
+      }),
+    });
+    setUrl('/?dock=open&maximize=true');
+
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+
+    expect(model?.regions.bottom).toMatchObject({
+      occupant: 'chat',
+      visible: true,
+      maximized: true,
+    });
+    // One region at a time: the deep-linked Chat maximize restored Activity.
+    expect(model?.regions.right.maximized).toBe(false);
+  });
+
+  test('maximizing Activity through setRegion persists the record and never calls setDockState', async () => {
+    seedEnvelope({ regionArrangement: activityRightRecord() });
+    setUrl('/');
+    render(<Harness />);
+    await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
+    const spies = spyOnEverySetter();
+    // The store's memory is a module singleton an earlier test may have
+    // raised; lower it so "untouched" below is observable.
+    navigationStore.lastDockMaximized = false;
+
+    act(() => model?.setRegion('right', { maximized: true }));
+
+    await waitFor(() =>
+      expect(
+        deviceSettingsStore.get('regionArrangement').regions.right,
+      ).toEqual({
+        visible: true,
+        size: 517,
+        occupant: { kind: 'surface', id: 'activity' },
+        maximized: true,
+      }),
+    );
+    expect(model?.regions.right.maximized).toBe(true);
+    expect(spies.setDockState).not.toHaveBeenCalled();
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
+    expect(navigationStore.lastDockMaximized).toBe(false);
+  });
+
+  test('maximizing Chat’s region calls setDockState(true, true) exactly once and persists', async () => {
+    setUrl('/?dock=open');
+    render(<Harness />);
+    await waitFor(() => expect(model?.regions.bottom.visible).toBe(true));
+    const spies = spyOnEverySetter();
+
+    act(() => model?.setRegion('bottom', { maximized: true }));
+
+    await waitFor(() => expect(spies.setDockState).toHaveBeenCalledTimes(1));
+    expect(spies.setDockState).toHaveBeenCalledWith(true, true);
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+    expect(navigationStore.lastDockMaximized).toBe(true);
+    await waitFor(() =>
+      expect(
+        deviceSettingsStore.get('regionArrangement').regions.bottom.maximized,
+      ).toBe(true),
+    );
+    // Settled: the inbound sync saw a navigation that already agrees, so no
+    // second write.
+    await settle();
+    expect(spies.setDockState).toHaveBeenCalledTimes(1);
+
+    // Restore: an explicit un-maximize clears the memory (an explicit
+    // non-maximized open, navigation-store.ts).
+    act(() => model?.setRegion('bottom', { maximized: false }));
+    await waitFor(() => expect(spies.setDockState).toHaveBeenCalledTimes(2));
+    expect(spies.setDockState).toHaveBeenLastCalledWith(true, false);
+    expect(navigationStore.lastDockMaximized).toBe(false);
+  });
+
+  test('hiding a maximized Chat forwards the maximize it closed from, so lastDockMaximized survives', async () => {
+    setUrl('/?dock=open&maximize=true');
+    render(<Harness />);
+    await waitFor(() => expect(model?.regions.bottom.maximized).toBe(true));
+    const spies = spyOnEverySetter();
+
+    act(() => model?.setRegion('bottom', { visible: false }));
+
+    await waitFor(() => expect(spies.setDockState).toHaveBeenCalledTimes(1));
+    expect(spies.setDockState).toHaveBeenCalledWith(false, true);
+    expect(model?.regions.bottom.maximized).toBe(false);
+    expect(
+      new URLSearchParams(window.location.search).get('maximize'),
+    ).toBeNull();
+    expect(navigationStore.lastDockMaximized).toBe(true);
+  });
+
+  test('navigation’s maximize is inbound: a focusSession-style setDockState(true, true) maximizes Chat’s region', async () => {
+    setUrl('/?dock=open');
+    render(<Harness />);
+    await waitFor(() => expect(model?.regions.bottom.visible).toBe(true));
+    const setSpy = vi.spyOn(deviceSettingsStore, 'set');
+
+    act(() => navigationStore.setDockState(true, true));
+
+    await waitFor(() => expect(model?.regions.bottom.maximized).toBe(true));
+    // The seed is inbound: the mirror does not replay it as a user write,
+    // but the arrangement did change, so the record persists it.
+    await waitFor(() =>
+      expect(regionArrangementWrites(setSpy)).toHaveLength(1),
+    );
+
+    act(() => navigationStore.collapseMaximizedDock());
+    await waitFor(() => expect(model?.regions.bottom.maximized).toBe(false));
+    expect(navigationStore.lastDockMaximized).toBe(true);
   });
 });
 

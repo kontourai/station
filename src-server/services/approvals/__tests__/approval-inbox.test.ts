@@ -134,6 +134,62 @@ describe('approval inbox notifications', () => {
     });
   });
 
+  describe('#1545: the persisted standing-grant label says what it grants', () => {
+    // This label is stored ON the notification and rendered verbatim by
+    // `AttentionCard`'s `ApprovalActions`, so a bare "Allow for Session" here is
+    // what the durable inbox row shows however the live toast is worded. It read
+    // as a grant for the one call in front of you; it is a grant for every later
+    // call to the same tool in the session.
+    test.each([
+      [
+        'a reported tool name',
+        { toolName: 'bash.exec' },
+        'Allow bash.exec for this session',
+      ],
+      [
+        'an MCP wire name, read the way a person would',
+        { toolName: 'mcp__station-control__list_agents' },
+        'Allow station-control.list_agents for this session',
+      ],
+      [
+        'a station-agent payload naming the tool under `tool`',
+        { tool: 'Bash', toolArgs: { command: 'ls' } },
+        'Allow Bash for this session',
+      ],
+      [
+        // ACP publishes `rawInput` and `toolCallId` and no tool name. Stay
+        // generic rather than reaching for `event.title`, which is adapter
+        // display text — for Codex the literal shell command.
+        'no reported tool name at all',
+        { rawInput: { command: 'git status' } },
+        'Allow this tool for this session',
+      ],
+    ])('names %s', async (_case, payload, expected) => {
+      await emit('orchestration:event', {
+        event: {
+          createdAt: new Date().toISOString(),
+          method: 'request.opened',
+          payload,
+          provider: 'codex',
+          requestId: 'req-label',
+          requestType: 'approval',
+          threadId: 'thread-label',
+          title: 'rm -rf /var/tmp/scratch',
+        },
+      });
+
+      const notifications = await notificationService.list();
+      const action = notifications[0].actions?.find(
+        (candidate) => candidate.id === 'acceptForSession',
+      );
+      expect(action?.label).toBe(expected);
+      // The other two labels are per-call and must stay as they are.
+      expect(
+        notifications[0].actions?.map((candidate) => candidate.label),
+      ).toEqual(['Allow Once', expected, 'Deny']);
+    });
+  });
+
   test('hydrates a legacy persisted approval through production wiring before start', async () => {
     const legacyNotification = await notificationService.schedule(
       'approval-inbox',

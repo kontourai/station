@@ -17,10 +17,10 @@ import {
 } from '../region-model';
 
 const VALID: RegionArrangement = {
-  main: { visible: true, size: 0, occupant: 'home' },
-  left: { visible: false, size: 400, occupant: null },
-  right: { visible: true, size: 517, occupant: 'activity' },
-  bottom: { visible: false, size: 320, occupant: 'chat' },
+  main: { visible: true, size: 0, occupant: 'home', maximized: false },
+  left: { visible: false, size: 400, occupant: null, maximized: false },
+  right: { visible: true, size: 517, occupant: 'activity', maximized: false },
+  bottom: { visible: false, size: 320, occupant: 'chat', maximized: false },
 };
 
 /** A record with one region's stored fields replaced. */
@@ -236,21 +236,25 @@ describe('region arrangement record (#928 D)', () => {
             visible: true,
             size: 0,
             occupant: { kind: 'surface', id: 'activity' },
+            maximized: false,
           },
           left: {
             visible: true,
             size: 400,
             occupant: { kind: 'surface', id: 'activity' },
+            maximized: false,
           },
           right: {
             visible: true,
             size: 400,
             occupant: { kind: 'surface', id: 'activity' },
+            maximized: false,
           },
           bottom: {
             visible: false,
             size: 320,
             occupant: { kind: 'surface', id: 'chat' },
+            maximized: false,
           },
         },
       });
@@ -259,11 +263,13 @@ describe('region arrangement record (#928 D)', () => {
         visible: false,
         size: 400,
         occupant: null,
+        maximized: false,
       });
       expect(parsed!.right).toEqual({
         visible: false,
         size: 400,
         occupant: null,
+        maximized: false,
       });
       expect(parsed!.bottom.occupant).toBe('chat');
     });
@@ -315,6 +321,122 @@ describe('region arrangement record (#928 D)', () => {
         // `bottom` stored nothing readable, so its default — including its
         // default occupant, Chat — applies.
       });
+    });
+  });
+
+  // #928 slice iii: `maximized` is additive to the version-1 record.
+  describe('maximized (additive, #928 slice iii)', () => {
+    const MAXIMIZED: RegionArrangement = {
+      ...VALID,
+      right: { ...VALID.right, maximized: true },
+    };
+
+    test('round-trips a maximized region and writes the field explicitly', () => {
+      const record = toRegionArrangementRecord(MAXIMIZED);
+      expect(record.regions.right.maximized).toBe(true);
+      expect(record.regions.bottom.maximized).toBe(false);
+      expect(parseRegionArrangementRecord(record)).toEqual(MAXIMIZED);
+    });
+
+    test('an absent or non-boolean maximized reads as false (a record written before the field existed)', () => {
+      const record = toRegionArrangementRecord(VALID);
+      const regions = Object.fromEntries(
+        Object.entries(record.regions).map(([id, region]) => {
+          const { maximized: _dropped, ...rest } = region;
+          return [id, rest];
+        }),
+      );
+      const parsed = parseRegionArrangementRecord({ version: 1, regions });
+      expect(parsed).toEqual(VALID);
+      expect(
+        parseRegionArrangementRecord(recordWith('right', { maximized: 'yes' }))!
+          .right.maximized,
+      ).toBe(false);
+    });
+
+    test('main is never maximized whatever was stored', () => {
+      expect(
+        parseRegionArrangementRecord(recordWith('main', { maximized: true }))!
+          .main.maximized,
+      ).toBe(false);
+    });
+
+    test('a hidden region and an empty region are never maximized', () => {
+      // `bottom` holds Chat hidden in VALID.
+      expect(
+        parseRegionArrangementRecord(recordWith('bottom', { maximized: true }))!
+          .bottom.maximized,
+      ).toBe(false);
+      // `left` is empty in VALID; make it visible-and-maximized with nothing in it.
+      expect(
+        parseRegionArrangementRecord(
+          recordWith('left', { visible: true, maximized: true }),
+        )!.left.maximized,
+      ).toBe(false);
+      // An occupant the parser empties (retired surface) drops the maximize too.
+      expect(
+        parseRegionArrangementRecord(
+          recordWith('right', {
+            occupant: { kind: 'surface', id: 'retired-surface' },
+            maximized: true,
+          }),
+        )!.right.maximized,
+      ).toBe(false);
+    });
+
+    test('more than one maximized region keeps the first in REGION_IDS order', () => {
+      const record = toRegionArrangementRecord({
+        ...VALID,
+        left: { visible: true, size: 400, occupant: 'chat', maximized: true },
+        bottom: { visible: false, size: 320, occupant: null, maximized: false },
+        right: { ...VALID.right, maximized: true },
+      });
+      const parsed = parseRegionArrangementRecord(record);
+      expect(parsed!.left.maximized).toBe(true);
+      expect(parsed!.right.maximized).toBe(false);
+      expect(REGION_IDS.filter((id) => parsed![id].maximized)).toEqual([
+        'left',
+      ]);
+    });
+
+    test('a record without the field equals one spelling out false, so a pre-field default still reads as the default', () => {
+      const record = toRegionArrangementRecord(VALID);
+      const withoutField = {
+        ...record,
+        regions: Object.fromEntries(
+          Object.entries(record.regions).map(([id, region]) => {
+            const { maximized: _dropped, ...rest } = region;
+            return [id, rest];
+          }),
+        ) as typeof record.regions,
+      };
+      expect(regionArrangementRecordsEqual(record, withoutField)).toBe(true);
+      expect(
+        regionArrangementRecordsEqual(
+          record,
+          recordWith('right', { maximized: true }),
+        ),
+      ).toBe(false);
+      // The upgrade pin: a device holding the slice-D default literal (no
+      // `maximized`) must still read as "no record" after this slice.
+      const preFieldDefault = {
+        version: 1,
+        regions: {
+          main: {
+            visible: true,
+            size: 0,
+            occupant: { kind: 'surface', id: 'home' },
+          },
+          left: { visible: false, size: 400, occupant: null },
+          right: { visible: false, size: 400, occupant: null },
+          bottom: {
+            visible: false,
+            size: 320,
+            occupant: { kind: 'surface', id: 'chat' },
+          },
+        },
+      } as unknown as Parameters<typeof isDefaultRegionArrangementRecord>[0];
+      expect(isDefaultRegionArrangementRecord(preFieldDefault)).toBe(true);
     });
   });
 

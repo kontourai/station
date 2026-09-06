@@ -1,6 +1,13 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 
@@ -22,17 +29,30 @@ const { mockDeleteSession, mockForkSession, mockListSessions, mockQuery } =
     mockQuery: vi.fn(),
   }));
 
-const { mockBuildCliRuntimePrerequisites, mockAugmentedSpawnEnv } = vi.hoisted(
-  () => ({
-    mockBuildCliRuntimePrerequisites: vi.fn(),
-    // archive#1156: unset by default (resolves `undefined`) so every
-    // existing test keeps today's byte-identical `buildOptions` shape
-    // untouched -- only the dedicated 'archive#1156' describe block below opts a
-    // test into a concrete augmented-env value via `mockResolvedValue`/
-    // `mockRejectedValueOnce`.
-    mockAugmentedSpawnEnv: vi.fn(),
-  }),
-);
+const {
+  mockBuildCliRuntimePrerequisites,
+  mockAugmentedSpawnEnv,
+  mockFindCliBinaryAsync,
+  mockRunCliCommand,
+} = vi.hoisted(() => ({
+  mockBuildCliRuntimePrerequisites: vi.fn(),
+  // #1551: the module-level default resolver. Reset to "no installed
+  // claude" in beforeEach so every pre-existing test keeps today's
+  // byte-identical `buildOptions` shape (no
+  // `pathToClaudeCodeExecutable`), and so NO test in this suite can pass
+  // because the machine running it happens to have `claude` on PATH.
+  mockFindCliBinaryAsync: vi.fn(),
+  // #1551: the shared bounded CLI probe. Reset to `null` in beforeEach so
+  // this suite never spawns a real process, and so no version comparison is
+  // decided by whatever `claude` the host happens to have.
+  mockRunCliCommand: vi.fn(),
+  // archive#1156: unset by default (resolves `undefined`) so every
+  // existing test keeps today's byte-identical `buildOptions` shape
+  // untouched -- only the dedicated 'archive#1156' describe block below opts a
+  // test into a concrete augmented-env value via `mockResolvedValue`/
+  // `mockRejectedValueOnce`.
+  mockAugmentedSpawnEnv: vi.fn(),
+}));
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   deleteSession: mockDeleteSession,
@@ -44,6 +64,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 vi.mock('../auth/cli-auth.js', () => ({
   buildCliRuntimePrerequisites: mockBuildCliRuntimePrerequisites,
   augmentedSpawnEnv: mockAugmentedSpawnEnv,
+  findCliBinaryAsync: mockFindCliBinaryAsync,
+  runCliCommand: mockRunCliCommand,
 }));
 
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
@@ -52,7 +74,12 @@ import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
 import { ProviderTurnEndedError } from '../adapter-shape.js';
-import { ClaudeAdapter } from '../adapters/claude-adapter.js';
+import {
+  ClaudeAdapter,
+  parseClaudeCodeVersion,
+  readBundledClaudeCodeVersion,
+  resolveSpawnableClaudeExecutable,
+} from '../adapters/claude-adapter.js';
 
 function createMockQuery(
   messages: any[],
@@ -127,6 +154,13 @@ describe('ClaudeAdapter', () => {
     expect(new ClaudeAdapter().metadata.recovery).not.toHaveProperty(
       'dispatchSettlement',
     );
+  });
+
+  beforeEach(() => {
+    mockFindCliBinaryAsync.mockReset();
+    mockFindCliBinaryAsync.mockResolvedValue(null);
+    mockRunCliCommand.mockReset();
+    mockRunCliCommand.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -669,6 +703,52 @@ describe('ClaudeAdapter', () => {
       ]),
     ).resolves.toBe('empty');
     await adapter.stopSession('thread-invalid-utf8');
+  });
+
+  describe("#1545: a session loads the engine's own settings cascade (accepted gap)", () => {
+    // The option is UNSET on purpose, which means the SDK loads all sources —
+    // including a workspace's checked-in `.claude/settings.json`, whose
+    // `permissions.allow` rules can then run a tool with no Station approval
+    // request. That gap is accepted (same-user threat model; narrowing to
+    // `['user']` would cost the workspace's CLAUDE.md and its `.mcp.json`
+    // servers — see the comment at the call site). These assert ABSENCE rather
+    // than a value so that setting it later is a deliberate, visible change
+    // rather than something that lands unnoticed: `toBeUndefined()` alone would
+    // pass for a key explicitly present as `undefined`, so pin the key too.
+    const cases: Array<[string, Record<string, unknown> | undefined]> = [
+      ['a plain session', undefined],
+      ['an Ask-mode session', { approvalMode: 'ask' }],
+      ['a full-access session', { approvalMode: 'never' }],
+      ['a plan-mode session', { permissionMode: 'plan' }],
+    ];
+    for (const [label, modelOptions] of cases) {
+      test(`sets no settingSources for ${label}`, async () => {
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter();
+
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-setting-sources',
+          cwd: '/workspace/project',
+          ...(modelOptions ? { modelOptions } : {}),
+        });
+
+        const options = mockQuery.mock.calls[0][0].options as Record<
+          string,
+          unknown
+        >;
+        expect('settingSources' in options).toBe(false);
+      });
+    }
+
+    test('the model-catalog probe still pins settingSources to none at all', async () => {
+      // The one Station-owned Claude spawn that DOES narrow: it runs no tools,
+      // so its isolation is not the same decision as a session's.
+      mockQuery.mockReturnValue(createMockQuery([], []));
+      await new ClaudeAdapter().listModelCatalog?.();
+
+      expect(mockQuery.mock.calls[0][0].options.settingSources).toEqual([]);
+    });
   });
 
   test('carries the SDK subagent id on approval requests raised from a child agent', async () => {
@@ -1629,6 +1709,14 @@ describe('ClaudeAdapter', () => {
     const controller = new AbortController();
     const query = createMockQuery([]);
     let childSignal: AbortSignal | undefined;
+    // #1551: the probe resolves the installed executable before spawning, so
+    // the spawn is no longer synchronous with the call. Abort once the probe
+    // actually exists -- an abort landing before it is the separate case
+    // covered by 'never spawns a probe when the abort lands first'.
+    let markSpawned: () => void = () => {};
+    const spawned = new Promise<void>((resolve) => {
+      markSpawned = resolve;
+    });
     mockQuery.mockImplementation(({ options }) => {
       childSignal = options.abortController.signal;
       query.supportedModels.mockImplementation(
@@ -1641,17 +1729,35 @@ describe('ClaudeAdapter', () => {
             );
           }),
       );
+      markSpawned();
       return query;
     });
 
     const pending = new ClaudeAdapter().listModels?.({
       signal: controller.signal,
     });
+    await spawned;
     controller.abort();
 
     await expect(pending).rejects.toThrow(/abort/i);
     expect(childSignal?.aborted).toBe(true);
     expect(query.close).toHaveBeenCalledTimes(1);
+  });
+
+  test('never spawns a model probe when the abort lands before the executable resolves', async () => {
+    const controller = new AbortController();
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const adapter = new ClaudeAdapter({
+      findBinary: async () => {
+        controller.abort();
+        return null;
+      },
+    });
+
+    await expect(
+      adapter.listModels?.({ signal: controller.signal }),
+    ).rejects.toThrow(/abort/i);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   test('rejects approval responses for unknown requests', async () => {
@@ -3292,5 +3398,1113 @@ describe('ClaudeAdapter', () => {
       const secondCompleted = await iterator.next(); // turn.completed
       expect((secondCompleted.value as any).metadata).toBeUndefined();
     });
+  });
+  // #1551: Station detected the user's installed Claude Code, reported it
+  // ready, and then spawned the older CLI bundled inside the Agent SDK,
+  // because `pathToClaudeCodeExecutable` was never passed. Every test here
+  // stubs the resolver in BOTH directions, so none of them can pass merely
+  // because the host running them has `claude` installed.
+  describe('#1551 installed Claude Code executable', () => {
+    const INSTALLED = '/Users/example/.local/bin/claude';
+
+    /** A `claude --version` result, exactly as the CLI prints it. */
+    function versionResult(version: string) {
+      return { stdout: `${version} (Claude Code)\n`, stderr: '', code: 0 };
+    }
+
+    beforeEach(() => {
+      // Most cases here are about the executable REACHING `query()`, not about
+      // the version rule (which has its own block below and injects both
+      // versions). Give them an installed CLI that reports cleanly and that no
+      // bundle will outrank, so an SDK bump in node_modules cannot silently
+      // flip them -- and so none of them depends on this machine's `claude`.
+      mockRunCliCommand.mockResolvedValue(versionResult('9999.0.0'));
+    });
+
+    test('passes the resolved executable to the session spawn', async () => {
+      mockFindCliBinaryAsync.mockResolvedValue(INSTALLED);
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-1551',
+        cwd: '/workspace/project',
+        modelId: 'claude-sonnet-4-6',
+      });
+
+      expect(mockFindCliBinaryAsync).toHaveBeenCalledWith('claude');
+      expect(mockQuery.mock.calls[0][0].options).toMatchObject({
+        pathToClaudeCodeExecutable: INSTALLED,
+      });
+    });
+
+    test('passes the resolved executable to the adopted-session spawn', async () => {
+      mockFindCliBinaryAsync.mockResolvedValue(INSTALLED);
+      mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+
+      await adapter.adoptSession?.({
+        provider: 'claude',
+        threadId: 'station-child',
+        sourceSessionId: 'vendor-source',
+        sourceKind: 'claude-transcript',
+        cwd: '/workspace/project',
+        modelId: 'claude-sonnet-4-6',
+      });
+
+      expect(mockQuery.mock.calls[0][0].options).toMatchObject({
+        pathToClaudeCodeExecutable: INSTALLED,
+      });
+    });
+
+    test('passes the resolved executable to the model-discovery spawn', async () => {
+      mockFindCliBinaryAsync.mockResolvedValue(INSTALLED);
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+
+      await adapter.listModelCatalog();
+
+      expect(mockQuery.mock.calls[0][0].options).toMatchObject({
+        pathToClaudeCodeExecutable: INSTALLED,
+      });
+    });
+
+    test('omits the option at both spawn sites when no claude is installed', async () => {
+      mockFindCliBinaryAsync.mockResolvedValue(null);
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-1551-absent',
+        cwd: '/workspace/project',
+        modelId: 'claude-sonnet-4-6',
+      });
+      await adapter.listModelCatalog();
+
+      expect(mockQuery.mock.calls[0][0].options).not.toHaveProperty(
+        'pathToClaudeCodeExecutable',
+      );
+      expect(mockQuery.mock.calls[1][0].options).not.toHaveProperty(
+        'pathToClaudeCodeExecutable',
+      );
+    });
+
+    test('prefers the injected resolver over the module default', async () => {
+      mockFindCliBinaryAsync.mockResolvedValue(null);
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const findBinary = vi.fn().mockResolvedValue('/opt/claude/bin/claude');
+      const adapter = new ClaudeAdapter({ findBinary });
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-1551-injected',
+        cwd: '/workspace/project',
+        modelId: 'claude-sonnet-4-6',
+      });
+
+      expect(findBinary).toHaveBeenCalledWith('claude');
+      expect(mockFindCliBinaryAsync).not.toHaveBeenCalled();
+      expect(mockQuery.mock.calls[0][0].options).toMatchObject({
+        pathToClaudeCodeExecutable: '/opt/claude/bin/claude',
+      });
+    });
+
+    test('falls back to the bundled CLI when the resolver throws', async () => {
+      mockFindCliBinaryAsync.mockRejectedValue(new Error('resolver exploded'));
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const warn = vi.fn();
+      const adapter = new ClaudeAdapter({ logger: { warn } });
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-1551-throws',
+        cwd: '/workspace/project',
+        modelId: 'claude-sonnet-4-6',
+      });
+
+      expect(mockQuery.mock.calls[0][0].options).not.toHaveProperty(
+        'pathToClaudeCodeExecutable',
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('bundled with the Agent SDK'),
+      );
+
+      // And readiness must say the lookup FAILED, not that nothing is
+      // installed — the derivation never observed that.
+      mockBuildCliRuntimePrerequisites.mockResolvedValue([
+        {
+          id: 'claude-cli',
+          name: 'Claude CLI',
+          description: 'Required to launch the Claude runtime.',
+          status: 'missing',
+          category: 'required',
+        },
+      ]);
+      const readiness = await new ClaudeAdapter({
+        logger: { warn },
+        readBundledVersion: () => '2.1.224',
+      }).getPrerequisites?.();
+      expect(readiness?.[0]?.description).toBe(
+        'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; resolving the installed `claude` failed.',
+      );
+    });
+
+    test('readiness names the installed executable it will launch', async () => {
+      mockFindCliBinaryAsync.mockResolvedValue(INSTALLED);
+      mockRunCliCommand.mockResolvedValue(versionResult('2.1.261'));
+      mockBuildCliRuntimePrerequisites.mockResolvedValue([
+        {
+          id: 'claude-cli',
+          name: 'Claude CLI',
+          description: 'Required to launch the Claude runtime.',
+          status: 'installed',
+          category: 'required',
+        },
+        {
+          id: 'claude-auth',
+          name: 'Claude login',
+          description:
+            'Claude CLI authentication is managed by the local CLI session.',
+          status: 'installed',
+          category: 'required',
+        },
+      ]);
+      const adapter = new ClaudeAdapter({
+        readBundledVersion: () => '2.1.224',
+      });
+
+      const prerequisites = await adapter.getPrerequisites?.();
+
+      const cli = prerequisites?.find(
+        (prerequisite) => prerequisite.id === 'claude-cli',
+      );
+      expect(cli?.description).toBe(
+        `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+      );
+      // The install status and the sentence come from ONE resolution: the
+      // findBinary handed to the shared builder must answer with the same
+      // path the sentence names.
+      expect(
+        mockBuildCliRuntimePrerequisites.mock.calls[0][0].findBinary('claude'),
+      ).toBe(INSTALLED);
+      // Only the CLI prerequisite carries it — the auth line is untouched.
+      expect(
+        prerequisites?.find((prerequisite) => prerequisite.id === 'claude-auth')
+          ?.description,
+      ).toBe('Claude CLI authentication is managed by the local CLI session.');
+    });
+
+    test('readiness names the bundled CLI when nothing is installed', async () => {
+      mockFindCliBinaryAsync.mockResolvedValue(null);
+      mockBuildCliRuntimePrerequisites.mockResolvedValue([
+        {
+          id: 'claude-cli',
+          name: 'Claude CLI',
+          description: 'Required to launch the Claude runtime.',
+          status: 'missing',
+          category: 'required',
+        },
+      ]);
+      const adapter = new ClaudeAdapter({
+        readBundledVersion: () => '2.1.224',
+      });
+
+      const prerequisites = await adapter.getPrerequisites?.();
+
+      expect(prerequisites?.[0]?.description).toBe(
+        'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; no installed `claude` was found.',
+      );
+      expect(
+        mockBuildCliRuntimePrerequisites.mock.calls[0][0].findBinary('claude'),
+      ).toBeNull();
+    });
+
+    // #1551 risk 1: adopting the installed CLI is only safe when it is not
+    // OLDER than the Claude Code bundled with the Agent SDK -- the SDK's
+    // control protocol is versioned with the CLI, so a stale installed CLI
+    // would be a regression introduced by the very fix that reaches for it.
+    // Both versions are injected in every test here: nothing depends on what
+    // this machine has installed or on which SDK is in node_modules.
+    describe('version comparison against the bundled Claude Code', () => {
+      function adapterWith(options: {
+        installedVersionOutput?: string | null;
+        bundled: string | null;
+      }) {
+        const runCommand = vi.fn().mockResolvedValue(
+          options.installedVersionOutput === null
+            ? null
+            : {
+                stdout: options.installedVersionOutput,
+                stderr: '',
+                code: 0,
+              },
+        );
+        const adapter = new ClaudeAdapter({
+          findBinary: async () => INSTALLED,
+          runCommand,
+          readBundledVersion: () => options.bundled,
+        });
+        return { adapter, runCommand };
+      }
+
+      async function startAndReadOptions(adapter: ClaudeAdapter) {
+        mockQuery.mockReturnValue(createMockQuery([]));
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: `thread-${crypto.randomUUID()}`,
+          cwd: '/workspace/project',
+          modelId: 'claude-sonnet-4-6',
+        });
+        return mockQuery.mock.calls[0][0].options;
+      }
+
+      async function readCliDescription(adapter: ClaudeAdapter) {
+        mockBuildCliRuntimePrerequisites.mockResolvedValue([
+          {
+            id: 'claude-cli',
+            name: 'Claude CLI',
+            description: 'Required to launch the Claude runtime.',
+            status: 'installed',
+            category: 'required',
+          },
+        ]);
+        const prerequisites = await adapter.getPrerequisites?.();
+        return prerequisites?.[0]?.description;
+      }
+
+      test('launches the installed CLI when it is newer than the bundle', async () => {
+        const { adapter } = adapterWith({
+          installedVersionOutput: '2.1.261 (Claude Code)\n',
+          bundled: '2.1.224',
+        });
+
+        expect(await startAndReadOptions(adapter)).toMatchObject({
+          pathToClaudeCodeExecutable: INSTALLED,
+        });
+        expect(await readCliDescription(adapter)).toBe(
+          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+        );
+      });
+
+      test('launches the installed CLI when the versions are equal', async () => {
+        const { adapter } = adapterWith({
+          installedVersionOutput: '2.1.224 (Claude Code)\n',
+          bundled: '2.1.224',
+        });
+
+        expect(await startAndReadOptions(adapter)).toMatchObject({
+          pathToClaudeCodeExecutable: INSTALLED,
+        });
+        expect(await readCliDescription(adapter)).toBe(
+          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.224 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+        );
+      });
+
+      test('falls back to the bundled CLI when the installed one is older', async () => {
+        const { adapter } = adapterWith({
+          installedVersionOutput: '2.1.200 (Claude Code)\n',
+          bundled: '2.1.224',
+        });
+
+        expect(await startAndReadOptions(adapter)).not.toHaveProperty(
+          'pathToClaudeCodeExecutable',
+        );
+        expect(await readCliDescription(adapter)).toBe(
+          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} is 2.1.200, older than the bundle.`,
+        );
+      });
+
+      test.each([
+        ['a lower major', '1.9.999', '2.1.224'],
+        ['a lower minor', '2.0.999', '2.1.224'],
+      ])(
+        'falls back to the bundled CLI for %s',
+        async (_label, installed, bundled) => {
+          const { adapter } = adapterWith({
+            installedVersionOutput: `${installed} (Claude Code)\n`,
+            bundled,
+          });
+
+          expect(await startAndReadOptions(adapter)).not.toHaveProperty(
+            'pathToClaudeCodeExecutable',
+          );
+        },
+      );
+
+      test.each([
+        ['a higher major', '3.0.0', '2.1.224'],
+        ['a higher minor', '2.2.0', '2.1.224'],
+      ])(
+        'launches the installed CLI for %s',
+        async (_label, installed, bundled) => {
+          const { adapter } = adapterWith({
+            installedVersionOutput: `${installed} (Claude Code)\n`,
+            bundled,
+          });
+
+          expect(await startAndReadOptions(adapter)).toMatchObject({
+            pathToClaudeCodeExecutable: INSTALLED,
+          });
+        },
+      );
+
+      test('keeps the installed CLI when the bundled version cannot be read', async () => {
+        const { adapter } = adapterWith({
+          installedVersionOutput: '2.1.100 (Claude Code)\n',
+          bundled: null,
+        });
+
+        // Older than the SDK that is actually installed here -- yet still
+        // launched, because an unreadable MANIFEST must not silently become a
+        // downgrade of a CLI that demonstrably runs.
+        expect(await startAndReadOptions(adapter)).toMatchObject({
+          pathToClaudeCodeExecutable: INSTALLED,
+        });
+        expect(await readCliDescription(adapter)).toBe(
+          `Required to launch the Claude runtime. Station launches the installed executable at ${INSTALLED}; the Claude Code version bundled with the Agent SDK could not be read, so no comparison was made (installed 2.1.100).`,
+        );
+      });
+
+      test('falls back to the bundled CLI when the installed one runs cleanly but reports no version', async () => {
+        const { adapter } = adapterWith({
+          installedVersionOutput: 'claude: command output with no version\n',
+          bundled: '2.1.224',
+        });
+
+        // Exit 0 proves the binary can be spawned, but the guard's rule is
+        // "never launch an OLDER Claude Code" and nothing established that
+        // this one is not (a wrapper exiting 0 without running Claude Code
+        // lands here too) -- review D1.
+        expect(await startAndReadOptions(adapter)).not.toHaveProperty(
+          'pathToClaudeCodeExecutable',
+        );
+        expect(await readCliDescription(adapter)).toBe(
+          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} ran but reported no version, so Station cannot confirm it is not older than the bundle.`,
+        );
+      });
+
+      // #1551 review H1: an unreadable PROBE is not an unreadable version --
+      // the SDK spawns the executable with the same no-shell mechanics the
+      // probe uses, so a probe that never completed cleanly is the only
+      // evidence Station has that the binary cannot be run. Handing it to the
+      // SDK anyway would launch a binary Station just watched fail.
+      test('falls back to the bundled CLI when the version probe produces nothing', async () => {
+        const { adapter } = adapterWith({
+          installedVersionOutput: null,
+          bundled: '2.1.224',
+        });
+
+        expect(await startAndReadOptions(adapter)).not.toHaveProperty(
+          'pathToClaudeCodeExecutable',
+        );
+        expect(await readCliDescription(adapter)).toBe(
+          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} did not report a version, so Station cannot confirm it runs or that it is not older than the bundle.`,
+        );
+      });
+
+      test('falls back to the bundled CLI when the version probe exits non-zero', async () => {
+        const runCommand = vi
+          .fn()
+          .mockResolvedValue({ stdout: '9.9.9', stderr: '', code: 1 });
+        const adapter = new ClaudeAdapter({
+          findBinary: async () => INSTALLED,
+          runCommand,
+          readBundledVersion: () => '2.1.224',
+        });
+
+        // A non-zero exit is not an observation of the version, even when the
+        // output happens to contain a version-shaped string -- and it is a
+        // positive observation that the binary did not run cleanly.
+        expect(await startAndReadOptions(adapter)).not.toHaveProperty(
+          'pathToClaudeCodeExecutable',
+        );
+        expect(await readCliDescription(adapter)).toContain(
+          'did not report a version',
+        );
+      });
+
+      // #1551 review M1: `runCliCommand` never rejects -- it catches
+      // everything and answers `{ code }` or `null` -- so memoizing by promise
+      // identity alone pins a transient failure for the life of the process.
+      test('re-probes after a failed probe instead of caching the failure', async () => {
+        const runCommand = vi
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValue({
+            stdout: '2.1.261 (Claude Code)\n',
+            stderr: '',
+            code: 0,
+          });
+        const adapter = new ClaudeAdapter({
+          findBinary: async () => INSTALLED,
+          runCommand,
+          readBundledVersion: () => '2.1.224',
+        });
+
+        // First inspection: the probe failed, so the bundled copy wins.
+        expect(await readCliDescription(adapter)).toContain(
+          'did not report a version',
+        );
+        // Second inspection re-probes rather than inheriting that failure.
+        expect(await readCliDescription(adapter)).toBe(
+          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+        );
+        expect(runCommand).toHaveBeenCalledTimes(2);
+        // ...and the successful observation IS durable.
+        await readCliDescription(adapter);
+        expect(runCommand).toHaveBeenCalledTimes(2);
+      });
+
+      test('probes the launcher once per process and shares it with readiness', async () => {
+        const { adapter, runCommand } = adapterWith({
+          installedVersionOutput: '2.1.261 (Claude Code)\n',
+          bundled: '2.1.224',
+        });
+
+        await startAndReadOptions(adapter);
+        await readCliDescription(adapter);
+        // The probe the shared readiness builder was handed must reuse the
+        // same observation rather than spawn the user's launcher again.
+        const sharedProbe =
+          mockBuildCliRuntimePrerequisites.mock.calls[0][0].runCommand;
+        await sharedProbe(INSTALLED, ['--version']);
+
+        expect(runCommand).toHaveBeenCalledTimes(1);
+        expect(runCommand).toHaveBeenCalledWith(INSTALLED, ['--version']);
+      });
+
+      test('never probes a launcher shim it has already refused to spawn', async () => {
+        const runCommand = vi.fn().mockResolvedValue(null);
+        const adapter = new ClaudeAdapter({
+          findBinary: async () =>
+            'C:\\Users\\example\\AppData\\Roaming\\npm\\claude.cmd',
+          executablePlatform: 'win32',
+          executableFileExists: () => false,
+          runCommand,
+          readBundledVersion: () => '2.1.224',
+        });
+
+        await startAndReadOptions(adapter);
+
+        expect(runCommand).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('reading the bundled Claude Code version', () => {
+      test('reads `version` from the SDK package manifest', () => {
+        expect(
+          readBundledClaudeCodeVersion({
+            resolveManifestPath: () => '/sdk/manifest.json',
+            readFile: (path) =>
+              path === '/sdk/manifest.json'
+                ? JSON.stringify({
+                    version: '2.1.224',
+                    commit: '8a2a469b68f918917492973f3b16bd1682b9f82c',
+                    buildDate: '2026-08-06T01:47:12Z',
+                    platforms: { 'darwin-arm64': { binary: 'claude' } },
+                    sdkCompat: {
+                      testedWrapperVersions: ['0.3.224'],
+                      harnessSchema: 1,
+                    },
+                  })
+                : (() => {
+                    throw new Error(`unexpected read: ${path}`);
+                  })(),
+          }),
+        ).toBe('2.1.224');
+      });
+
+      test.each([
+        [
+          'an unreadable manifest',
+          () => {
+            throw new Error('ENOENT');
+          },
+        ],
+        ['a non-JSON manifest', () => 'not json at all'],
+        ['a manifest with no version', () => JSON.stringify({ commit: 'abc' })],
+        ['a non-object manifest', () => JSON.stringify('2.1.224')],
+        [
+          'a version that is not version-shaped',
+          () => JSON.stringify({ version: 'nightly' }),
+        ],
+      ])('returns null for %s', (_label, readFile) => {
+        expect(
+          readBundledClaudeCodeVersion({
+            resolveManifestPath: () => '/sdk/manifest.json',
+            readFile: readFile as (path: string) => string,
+          }),
+        ).toBeNull();
+      });
+
+      test('returns null rather than throwing when resolution itself fails', () => {
+        expect(
+          readBundledClaudeCodeVersion({
+            resolveManifestPath: () => {
+              throw new Error('ERR_PACKAGE_PATH_NOT_EXPORTED');
+            },
+          }),
+        ).toBeNull();
+      });
+
+      test('the default reader answers from the real SDK manifest', () => {
+        // #1551 review M3: the previous assertion (`null` OR version-shaped)
+        // was true for every possible return value, so a broken manifest read
+        // -- which routes every user to installed-always-wins -- would have
+        // passed it. Compare against an independent read of the same file
+        // instead: not pinned to a number, but it cannot pass on `null`.
+        const manifestPath = join(
+          dirname(
+            createRequire(import.meta.url).resolve(
+              '@anthropic-ai/claude-agent-sdk',
+            ),
+          ),
+          'manifest.json',
+        );
+        const declared = JSON.parse(
+          readFileSync(manifestPath, 'utf-8'),
+        ).version;
+
+        expect(declared).toMatch(/^\d+\.\d+\.\d+$/);
+        expect(readBundledClaudeCodeVersion()).toBe(declared);
+      });
+    });
+
+    describe('parsing a Claude Code version', () => {
+      test.each([
+        ['2.1.261 (Claude Code)\n', '2.1.261'],
+        ['2.1.224', '2.1.224'],
+        ['v2.1.224-beta.3', '2.1.224'],
+      ])('parses %j', (input, expected) => {
+        expect(parseClaudeCodeVersion(input)).toBe(expected);
+      });
+
+      // #1551 review L1: an update notice must never be read as the version
+      // the binary reports for ITSELF -- that error runs in the unsafe
+      // direction, since a too-high reading defeats the not-older guard.
+      test('ignores an update notice that follows the version line', () => {
+        expect(
+          parseClaudeCodeVersion(
+            '2.1.261 (Claude Code)\nA newer version 2.1.300 is available\n',
+          ),
+        ).toBe('2.1.261');
+      });
+
+      test('ignores an update notice that precedes the version line', () => {
+        expect(
+          parseClaudeCodeVersion(
+            'Update available: 2.1.300\n2.1.261 (Claude Code)\n',
+          ),
+        ).toBe('2.1.261');
+      });
+
+      test('prefers the Claude Code line over another line-leading version', () => {
+        expect(
+          parseClaudeCodeVersion(
+            '2.1.300 is available\n2.1.261 (Claude Code)\n',
+          ),
+        ).toBe('2.1.261');
+      });
+
+      test('does not read a version out of the middle of a line', () => {
+        expect(
+          parseClaudeCodeVersion('a newer version 2.1.300 is available\n'),
+        ).toBeNull();
+      });
+
+      test.each([[''], ['Claude Code'], ['2.1'], [null], [undefined]])(
+        'returns null for %j',
+        (input) => {
+          expect(parseClaudeCodeVersion(input)).toBeNull();
+        },
+      );
+    });
+
+    // The Agent SDK spawns pathToClaudeCodeExecutable with no shell and no
+    // PATHEXT resolution, so a Windows npm launcher shim fails with `spawn
+    // EINVAL`. These run the win32 branch on any host via the injected
+    // platform/file-exists seams.
+    describe('windows launcher shims', () => {
+      const SHIM = 'C:\\Users\\example\\AppData\\Roaming\\npm\\claude.cmd';
+      const NATIVE =
+        'C:\\Users\\example\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe';
+      const CLI_JS =
+        'C:\\Users\\example\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js';
+
+      test('follows a .cmd shim to the native package entry', () => {
+        expect(
+          resolveSpawnableClaudeExecutable(SHIM, {
+            platform: 'win32',
+            fileExists: (candidate) => candidate === NATIVE,
+          }),
+        ).toEqual({ executable: NATIVE, refusal: null });
+      });
+
+      test('follows a .cmd shim to cli.js when no native entry exists', () => {
+        expect(
+          resolveSpawnableClaudeExecutable(SHIM, {
+            platform: 'win32',
+            fileExists: (candidate) => candidate === CLI_JS,
+          }),
+        ).toEqual({ executable: CLI_JS, refusal: null });
+      });
+
+      test.each(['.cmd', '.bat', '.ps1', '.CMD'])(
+        'refuses an unfollowable %s shim rather than handing it to the SDK',
+        (extension) => {
+          expect(
+            resolveSpawnableClaudeExecutable(
+              `C:\\Users\\example\\AppData\\Roaming\\npm\\claude${extension}`,
+              { platform: 'win32', fileExists: () => false },
+            ),
+          ).toEqual({ executable: null, refusal: 'unfollowable-launcher' });
+        },
+      );
+
+      test('passes a real windows executable through untouched', () => {
+        const exe = 'C:\\Program Files\\claude\\claude.exe';
+        expect(
+          resolveSpawnableClaudeExecutable(exe, {
+            platform: 'win32',
+            fileExists: () => false,
+          }),
+        ).toEqual({ executable: exe, refusal: null });
+      });
+
+      // #1551 review L2: a bare command name and an unfollowable shim are
+      // different refusals and must not share a sentence.
+      test('refuses a bare command name on every platform, as not-absolute', () => {
+        expect(
+          resolveSpawnableClaudeExecutable('claude', {
+            platform: 'win32',
+            fileExists: () => true,
+          }),
+        ).toEqual({ executable: null, refusal: 'not-absolute' });
+        expect(
+          resolveSpawnableClaudeExecutable('claude', { platform: 'darwin' }),
+        ).toEqual({ executable: null, refusal: 'not-absolute' });
+      });
+
+      test('readiness names a non-absolute answer as such, not as a launcher', async () => {
+        mockBuildCliRuntimePrerequisites.mockResolvedValue([
+          {
+            id: 'claude-cli',
+            name: 'Claude CLI',
+            description: 'Required to launch the Claude runtime.',
+            status: 'installed',
+            category: 'required',
+          },
+        ]);
+        const runCommand = vi.fn().mockResolvedValue(null);
+        const adapter = new ClaudeAdapter({
+          findBinary: async () => 'claude',
+          runCommand,
+          readBundledVersion: () => '2.1.224',
+        });
+
+        const prerequisites = await adapter.getPrerequisites?.();
+
+        expect(prerequisites?.[0]?.description).toBe(
+          'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK: the `claude` at claude is not an absolute path, and the Agent SDK spawns the executable without PATH resolution.',
+        );
+        expect(runCommand).not.toHaveBeenCalled();
+      });
+
+      test('leaves posix paths alone, shim-looking extension or not', () => {
+        expect(
+          resolveSpawnableClaudeExecutable('/usr/local/bin/claude.cmd', {
+            platform: 'darwin',
+            fileExists: () => false,
+          }),
+        ).toEqual({ executable: '/usr/local/bin/claude.cmd', refusal: null });
+      });
+
+      test('the session spawn omits the option for an unfollowable shim', async () => {
+        mockFindCliBinaryAsync.mockResolvedValue(SHIM);
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter({
+          executablePlatform: 'win32',
+          executableFileExists: () => false,
+        });
+
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-1551-shim',
+          cwd: 'C:\\workspace\\project',
+          modelId: 'claude-sonnet-4-6',
+        });
+
+        expect(mockQuery.mock.calls[0][0].options).not.toHaveProperty(
+          'pathToClaudeCodeExecutable',
+        );
+      });
+
+      test('the session spawn uses the followed package entry', async () => {
+        mockFindCliBinaryAsync.mockResolvedValue(SHIM);
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter({
+          executablePlatform: 'win32',
+          executableFileExists: (candidate) => candidate === NATIVE,
+        });
+
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-1551-shim-ok',
+          cwd: 'C:\\workspace\\project',
+          modelId: 'claude-sonnet-4-6',
+        });
+
+        expect(mockQuery.mock.calls[0][0].options).toMatchObject({
+          pathToClaudeCodeExecutable: NATIVE,
+        });
+      });
+
+      // #1551 review M2: readiness used to probe `resolved` (the .cmd shim)
+      // while the decision probed `spawnable` (the followed .exe) -- two
+      // spawns, and the shim's failure was then reported as this
+      // prerequisite's status while the .exe was what Station launched.
+      test('readiness probes the followed entry, not the shim, and shares the memo', async () => {
+        const runCommand = vi.fn().mockResolvedValue({
+          stdout: '2.1.261 (Claude Code)\n',
+          stderr: '',
+          code: 0,
+        });
+        mockBuildCliRuntimePrerequisites.mockResolvedValue([
+          {
+            id: 'claude-cli',
+            name: 'Claude CLI',
+            description: 'Required to launch the Claude runtime.',
+            status: 'installed',
+            category: 'required',
+          },
+        ]);
+        const adapter = new ClaudeAdapter({
+          findBinary: async () => SHIM,
+          executablePlatform: 'win32',
+          executableFileExists: (candidate) => candidate === NATIVE,
+          runCommand,
+          readBundledVersion: () => '2.1.224',
+        });
+
+        const prerequisites = await adapter.getPrerequisites?.();
+        // The shared builder hands its probe the RESOLVED command (the shim);
+        // the adapter must redirect it onto the executable it will launch.
+        const sharedProbe =
+          mockBuildCliRuntimePrerequisites.mock.calls[0][0].runCommand;
+        await sharedProbe(SHIM, ['--version']);
+
+        expect(runCommand).toHaveBeenCalledTimes(1);
+        expect(runCommand).toHaveBeenCalledWith(NATIVE, ['--version']);
+        expect(runCommand).not.toHaveBeenCalledWith(SHIM, ['--version']);
+        expect(prerequisites?.[0]?.description).toBe(
+          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${NATIVE} (the Agent SDK bundles 2.1.224).`,
+        );
+      });
+
+      // #1551 review D3: the SDK spawns a `.js` entry as `node <entry>`, so the
+      // probe must too; probing `cli.js` directly can never exit 0, which
+      // would have routed every older-package install to the bundled CLI.
+      test('probes a followed cli.js entry through node and launches it', async () => {
+        const CLIJS =
+          'C:\\Users\\example\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js';
+        const runCommand = vi.fn().mockResolvedValue({
+          stdout: '2.1.261 (Claude Code)\n',
+          stderr: '',
+          code: 0,
+        });
+        mockBuildCliRuntimePrerequisites.mockResolvedValue([
+          {
+            id: 'claude-cli',
+            name: 'Claude CLI',
+            description: 'Required to launch the Claude runtime.',
+            status: 'installed',
+            category: 'required',
+          },
+        ]);
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter({
+          findBinary: async () => SHIM,
+          executablePlatform: 'win32',
+          executableFileExists: (candidate) => candidate === CLIJS,
+          runCommand,
+          readBundledVersion: () => '2.1.224',
+        });
+
+        const prerequisites = await adapter.getPrerequisites?.();
+        const sharedProbe =
+          mockBuildCliRuntimePrerequisites.mock.calls[0][0].runCommand;
+        await sharedProbe(SHIM, ['--version']);
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-1551-clijs',
+          cwd: 'C:\\workspace\\project',
+          modelId: 'claude-sonnet-4-6',
+        });
+
+        expect(runCommand).toHaveBeenCalledTimes(1);
+        expect(runCommand).toHaveBeenCalledWith(process.execPath, [
+          CLIJS,
+          '--version',
+        ]);
+        expect(mockQuery.mock.calls[0][0].options).toMatchObject({
+          pathToClaudeCodeExecutable: CLIJS,
+        });
+        expect(prerequisites?.[0]?.description).toBe(
+          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${CLIJS} (the Agent SDK bundles 2.1.224).`,
+        );
+      });
+
+      test('readiness distinguishes an unfollowable shim from nothing installed', async () => {
+        mockFindCliBinaryAsync.mockResolvedValue(SHIM);
+        mockBuildCliRuntimePrerequisites.mockResolvedValue([
+          {
+            id: 'claude-cli',
+            name: 'Claude CLI',
+            description: 'Required to launch the Claude runtime.',
+            status: 'installed',
+            category: 'required',
+          },
+        ]);
+        const adapter = new ClaudeAdapter({
+          executablePlatform: 'win32',
+          executableFileExists: () => false,
+          readBundledVersion: () => '2.1.224',
+        });
+
+        const prerequisites = await adapter.getPrerequisites?.();
+
+        expect(prerequisites?.[0]?.description).toBe(
+          `Required to launch the Claude runtime. Station launches the Claude Code CLI bundled with the Agent SDK: the \`claude\` at ${SHIM} is a launcher the Agent SDK cannot spawn directly.`,
+        );
+        // Install status still reflects the resolver's own answer: a `claude`
+        // IS on PATH, Station just cannot hand that entry to the SDK.
+        expect(
+          mockBuildCliRuntimePrerequisites.mock.calls[0][0].findBinary(
+            'claude',
+          ),
+        ).toBe(SHIM);
+      });
+    });
+  });
+});
+
+/**
+ * station#1558: a `tool_use` still open when the SESSION ends can never
+ * receive a result. Both session-end paths must settle it, on the turn that
+ * issued it, and neither may settle at a mere turn boundary (a backgrounded
+ * `Task` legitimately outlives its turn).
+ */
+describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)', () => {
+  afterEach(() => {
+    mockQuery.mockReset();
+  });
+
+  /** A push-driven query whose iterator can also FINISH, modelling the
+   * `claude` process exiting on its own. */
+  function createEndableMockQuery() {
+    const pending: any[] = [];
+    let wake: (() => void) | null = null;
+    let ended = false;
+    return {
+      push(message: any) {
+        pending.push(message);
+        wake?.();
+        wake = null;
+      },
+      end() {
+        ended = true;
+        wake?.();
+        wake = null;
+      },
+      async *[Symbol.asyncIterator]() {
+        for (;;) {
+          while (pending.length === 0) {
+            if (ended) return;
+            await new Promise<void>((resolve) => {
+              wake = resolve;
+            });
+          }
+          yield pending.shift();
+        }
+      },
+      interrupt: vi.fn().mockResolvedValue(undefined),
+      supportedModels: vi.fn().mockResolvedValue([]),
+      // The real SDK ends its iterator when the query closes — and it drains
+      // whatever it had already queued first. Modelling that is what makes
+      // the stopSession ordering below a real test rather than a mock's
+      // convenience (station#1558 fix round, M8).
+      close: vi.fn().mockImplementation(() => {
+        ended = true;
+        wake?.();
+        wake = null;
+      }),
+      setModel: vi.fn().mockResolvedValue(undefined),
+      setPermissionMode: vi.fn().mockResolvedValue(undefined),
+      applyFlagSettings: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  /** Drains the stream until `method` arrives, so a test never has to encode
+   * the exact number of lifecycle events between two facts. */
+  async function nextOf(
+    iterator: AsyncIterator<any>,
+    method: string,
+    limit = 12,
+  ) {
+    for (let step = 0; step < limit; step += 1) {
+      const next = await iterator.next();
+      if (next.done) throw new Error(`stream ended before ${method}`);
+      if (next.value.method === method) return next.value;
+    }
+    throw new Error(`no ${method} within ${limit} events`);
+  }
+
+  async function openCallOn(
+    threadId: string,
+    query: ReturnType<typeof createEndableMockQuery>,
+  ) {
+    mockQuery.mockReturnValue(query);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({ provider: 'claude', threadId });
+    const turn = await adapter.sendTurn({ threadId, input: 'work' });
+    await nextOf(iterator, 'turn.started');
+    query.push({
+      type: 'assistant',
+      parent_tool_use_id: null,
+      message: {
+        content: [
+          { type: 'tool_use', id: 'toolu-open', name: 'Bash', input: {} },
+        ],
+      },
+      uuid: 'assistant-1',
+      session_id: threadId,
+    });
+    await nextOf(iterator, 'tool.started');
+    return { adapter, iterator, turnId: turn.turnId };
+  }
+
+  test('stopSession settles the open call as unresolved, on its own turn, before session.exited', async () => {
+    const query = createEndableMockQuery();
+    const { adapter, iterator, turnId } = await openCallOn(
+      'thread-unresolved-stop',
+      query,
+    );
+
+    await adapter.stopSession('thread-unresolved-stop');
+
+    const settled = await nextOf(iterator, 'tool.completed');
+    expect(settled).toMatchObject({
+      toolCallId: 'toolu-open',
+      toolName: 'Bash',
+      status: 'unresolved',
+      turnId,
+      output:
+        'No result was reported before the session ended; whether the tool ran is unknown.',
+    });
+    // The exit event follows it, so a reader replaying the stream sees the
+    // call settle while the session is still the subject.
+    await nextOf(iterator, 'session.exited');
+  });
+
+  // station#1558 fix round (M8): closing the query does not discard messages
+  // the SDK already queued. Settling synchronously inside stopSession
+  // published `unresolved` for a call that DID report, and the replay guard
+  // then dropped the real result because its entry was gone.
+  test('a tool_result queued before the close still reports success, and no unresolved is published for it', async () => {
+    const query = createEndableMockQuery();
+    const { adapter, iterator, turnId } = await openCallOn(
+      'thread-unresolved-race',
+      query,
+    );
+
+    // Queued, not yet consumed, at the moment the stop lands.
+    query.push({
+      type: 'user',
+      parent_tool_use_id: null,
+      message: {
+        content: [
+          { type: 'tool_result', tool_use_id: 'toolu-open', content: 'ok' },
+        ],
+      },
+      uuid: 'user-1',
+      session_id: 'thread-unresolved-race',
+    });
+    await adapter.stopSession('thread-unresolved-race');
+
+    const settled = await nextOf(iterator, 'tool.completed');
+    expect(settled).toMatchObject({
+      toolCallId: 'toolu-open',
+      status: 'success',
+      turnId,
+    });
+    // …and only that one: the exit follows with no unresolved terminal
+    // between them.
+    const after: string[] = [];
+    for (let step = 0; step < 8; step += 1) {
+      const next = await iterator.next();
+      after.push(next.value.method);
+      if (next.value.method === 'session.exited') break;
+    }
+    expect(after).toContain('session.exited');
+    expect(after).not.toContain('tool.completed');
+  });
+
+  test('the SDK iterator ending (the process exiting) settles the open call too', async () => {
+    const query = createEndableMockQuery();
+    const { iterator, turnId } = await openCallOn(
+      'thread-unresolved-exit',
+      query,
+    );
+
+    // Nobody called stopSession: the engine process simply went away.
+    query.end();
+
+    const settled = await nextOf(iterator, 'tool.completed');
+    expect(settled).toMatchObject({
+      toolCallId: 'toolu-open',
+      status: 'unresolved',
+      turnId,
+    });
+  });
+
+  test('a completed TURN leaves the open call alone — only the session settles it', async () => {
+    const query = createEndableMockQuery();
+    const { iterator } = await openCallOn('thread-unresolved-turn', query);
+
+    query.push({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      num_turns: 1,
+      stop_reason: 'end_turn',
+      result: 'done',
+      usage: { input_tokens: 1, output_tokens: 1 },
+      uuid: 'result-1',
+      session_id: 'thread-unresolved-turn',
+    });
+
+    // A backgrounded Task's result legitimately arrives after its turn ends,
+    // so the turn boundary must publish no terminal for the call. Collected
+    // rather than scanned-past: a settle emitted BEFORE `turn.completed`
+    // would be invisible to a search that only looks for the terminal.
+    const seen: string[] = [];
+    for (let step = 0; step < 12; step += 1) {
+      const next = await iterator.next();
+      seen.push(next.value.method);
+      if (next.value.method === 'turn.completed') break;
+    }
+    expect(seen).toContain('turn.completed');
+    expect(seen).not.toContain('tool.completed');
+    const NOTHING = Symbol('nothing-else');
+    expect(
+      await Promise.race([
+        iterator.next().then((result) => result.value),
+        new Promise((resolve) => setTimeout(() => resolve(NOTHING), 50)),
+      ]),
+    ).toBe(NOTHING);
   });
 });
