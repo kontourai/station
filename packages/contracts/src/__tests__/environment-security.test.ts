@@ -11,6 +11,7 @@ import {
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_GRANT_PATHS,
+  PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
@@ -210,7 +211,7 @@ describe('handshake capability flags (station#1095, AC1: two-way fixture decode)
 });
 
 describe('scoped pairing (station#1098)', () => {
-  test('defines exactly the seven-token vocabulary (four-scope starter set + inference:invoke + access:approve + consent:decide)', () => {
+  test('defines exactly the eight-token vocabulary, including explicit home transfer authority', () => {
     expect(PAIRING_SCOPES).toEqual([
       'orchestration:read',
       'orchestration:operate',
@@ -219,6 +220,7 @@ describe('scoped pairing (station#1098)', () => {
       'inference:invoke',
       'access:approve',
       'consent:decide',
+      'home:transfer',
     ]);
   });
 
@@ -305,13 +307,15 @@ describe('scoped pairing (station#1098)', () => {
     // The decoupling itself: derived-from-the-vocabulary is exactly what
     // this constant must never be again.
     expect(DEFAULT_GRANT_PAIRING_SCOPE).not.toBe(PAIRING_SCOPES.join(' '));
-    // station#1887 grew this to six and station#3677 to seven. The default
+    // station#1887 grew this to six, station#3677 to seven, and home transfer
+    // to eight. The default
     // grant is unchanged and still four tokens — which is the whole point of
     // the decoupling: a vocabulary addition must not reach a single live
     // credential.
-    expect(PAIRING_SCOPES).toHaveLength(7);
+    expect(PAIRING_SCOPES).toHaveLength(8);
     expect(granted).not.toContain(PAIRING_SCOPE_ACCESS_APPROVE);
     expect(granted).not.toContain(PAIRING_SCOPE_CONSENT_DECIDE);
+    expect(granted).not.toContain(PAIRING_SCOPE_HOME_TRANSFER);
   });
 
   // station#1883: the trip-wire for the defect that produced `access:manage`'s
@@ -413,6 +417,32 @@ describe('scoped pairing (station#1098)', () => {
     }
   });
 
+  test('the home-transfer preset grants only planned home-transfer participation', () => {
+    expect(PAIRING_SCOPE_PRESETS['home-transfer']).toEqual([
+      PAIRING_SCOPE_HOME_TRANSFER,
+    ]);
+    expect(pairingScopePresetString('home-transfer')).toBe('home:transfer');
+    expect(PAIRING_SCOPE_GRANT_PATHS[PAIRING_SCOPE_HOME_TRANSFER]).toEqual([
+      'preset',
+    ]);
+
+    for (const [name, scopes] of Object.entries(PAIRING_SCOPE_PRESETS)) {
+      if (name === 'home-transfer') continue;
+      expect(scopes).not.toContain(PAIRING_SCOPE_HOME_TRANSFER);
+    }
+
+    for (const withheld of PAIRING_SCOPES.filter(
+      (scope) => scope !== PAIRING_SCOPE_HOME_TRANSFER,
+    )) {
+      expect(
+        pairingScopeIncludes(
+          pairingScopePresetString('home-transfer'),
+          withheld,
+        ),
+      ).toBe(false);
+    }
+  });
+
   test('old-peer compatibility: a client built against the four-token vocabulary still parses the default grant', () => {
     // NOTE (station#1398 slice 2 review, L-4 — recorded as a follow-up):
     // this simulation is a HAND-ROLLED restatement of `parsePairingScope`'s
@@ -464,6 +494,7 @@ describe('scoped pairing (station#1098)', () => {
     // to prevent, pinned so "refused" never quietly becomes "partially
     // granted".
     expect(legacyParse(pairingScopePresetString('inference'))).toBeNull();
+    expect(legacyParse(pairingScopePresetString('home-transfer'))).toBeNull();
     expect(legacyParse('orchestration:read inference:invoke')).toBeNull();
     // This build, by contrast, parses it.
     expect(parsePairingScope('orchestration:read inference:invoke')).toEqual([
