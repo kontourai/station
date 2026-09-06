@@ -58,6 +58,7 @@ import type { PairingScope } from '@kontourai/station-contracts';
 import {
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
+  PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
@@ -236,6 +237,27 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  {
+    id: '/api/home-authority/control-sessions/open:home-control',
+    method: 'POST',
+    prefix: '/api/home-authority/control-sessions/open',
+    exact: true,
+    scope: PAIRING_SCOPE_HOME_CONTROL,
+    origin: 'explicit',
+  },
+  ...[
+    '/api/home-authority/control-sessions/:deviceId/inspect',
+    '/api/home-authority/control-sessions/:deviceId/retire',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:administration`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
   ...[
     '/api/home-authority/channels/:channelId/bindings',
     '/api/home-authority/channels/:channelId/bindings/:controllerDeviceId/inspect',

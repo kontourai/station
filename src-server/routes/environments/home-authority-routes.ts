@@ -1,5 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type {
+  HomeControlSessionCapability,
+  HomeControlSessionInspectionObservation,
+  HomeControlSessionOpenObservation,
+  HomeControlSessionRetirementObservation,
   HomeTransferDecisionAdvanceObservation,
   HomeTransferRoomBindingObservation,
   PairedHomeIdentityObservation,
@@ -19,6 +23,11 @@ import {
   readHomeTransferRoomSeal,
 } from '../../services/orchestration/home-transfer-room-probe.js';
 import { createPairedHomeTransferAuthority } from '../../services/orchestration/paired-home-transfer-authority.js';
+import {
+  createPlannedHomeControlReplayCapabilityCache,
+  createPlannedHomeControlSessionAuthority,
+  type PlannedHomeControlResult,
+} from '../../services/orchestration/planned-home-control-session-authority.js';
 import type {
   PlannedHomeOwner,
   PlannedHomeTransfer,
@@ -94,6 +103,7 @@ export function createHomeAuthorityRoutes(
   }
   const app = new Hono();
   const personal = createPersonalRuntimeRequestGuard();
+  const controlReplayCache = createPlannedHomeControlReplayCapabilityCache();
   app.get('/identity', async (c) => {
     c.header('Cache-Control', 'no-store');
     if (!personal(c.req.raw)) {
@@ -139,51 +149,70 @@ export function createHomeAuthorityRoutes(
       return c.json({ error: { code: 'home_authority_unavailable' } }, 503);
     }
   });
-  async function decision<T>(
+  type CurrentPrincipal = NonNullable<
+    ReturnType<typeof getRuntimeAuthenticatedRequestPrincipal>
+  >;
+  type BoundaryFailure = { kind: 'denied' | 'unavailable' };
+  async function withPersonalAuthorityDatabase<T extends { kind: string }>(
     request: Request,
+    currentPrincipal: (principal: CurrentPrincipal) => boolean,
     run: (
-      authority: ReturnType<typeof createPairedHomeTransferAuthority>,
-      principal: NonNullable<
-        ReturnType<typeof getRuntimeAuthenticatedRequestPrincipal>
-      >,
+      principal: CurrentPrincipal,
       database: DatabaseSync,
       controllerEnvironmentId: string,
-    ) => TransferStoreResult<T> | Promise<TransferStoreResult<T>>,
-  ): Promise<TransferStoreResult<T>> {
+    ) => T | Promise<T>,
+  ): Promise<T | BoundaryFailure> {
     const principal = getRuntimeAuthenticatedRequestPrincipal(request);
     if (!principal || !personal(request)) return { kind: 'denied' };
-    if (!openDatabase) return { kind: 'unavailable' };
     try {
       const controller = await security.getPublicHandshake();
       const current = () =>
         personal(request) &&
         security.devicePairing.environmentId() === controller.environmentId &&
-        (principal.authority === 'operator-credential'
-          ? security.verifyOperatorCredential(principal.credential)
-          : principal.authority === 'device-credential' &&
-            typeof principal.deviceId === 'string' &&
-            currentHomeTransferDevice(request, security)?.id ===
-              principal.deviceId);
+        currentPrincipal(principal);
       if (!current()) return { kind: 'denied' };
-      const db = openDatabase();
+      if (!openDatabase) return { kind: 'unavailable' };
+      const database = openDatabase();
       try {
-        const result = await run(
-          createPairedHomeTransferAuthority({
-            database: db,
-            security,
-            controllerEnvironmentId: controller.environmentId,
-          }),
-          principal,
-          db,
-          controller.environmentId,
-        );
+        const result = await run(principal, database, controller.environmentId);
         return current() ? result : { kind: 'denied' };
       } finally {
-        db.close();
+        database.close();
       }
     } catch {
       return { kind: 'unavailable' };
     }
+  }
+  async function decision<T>(
+    request: Request,
+    run: (
+      authority: ReturnType<typeof createPairedHomeTransferAuthority>,
+      principal: CurrentPrincipal,
+      database: DatabaseSync,
+      controllerEnvironmentId: string,
+    ) => TransferStoreResult<T> | Promise<TransferStoreResult<T>>,
+  ): Promise<TransferStoreResult<T>> {
+    return withPersonalAuthorityDatabase<TransferStoreResult<T>>(
+      request,
+      (principal) =>
+        principal.authority === 'operator-credential'
+          ? security.verifyOperatorCredential(principal.credential)
+          : principal.authority === 'device-credential' &&
+            typeof principal.deviceId === 'string' &&
+            currentHomeTransferDevice(request, security)?.id ===
+              principal.deviceId,
+      (principal, database, controllerEnvironmentId) =>
+        run(
+          createPairedHomeTransferAuthority({
+            database,
+            security,
+            controllerEnvironmentId,
+          }),
+          principal,
+          database,
+          controllerEnvironmentId,
+        ),
+    );
   }
   const status = (result: TransferStoreResult<unknown>) =>
     result.kind === 'stored'
@@ -195,6 +224,16 @@ export function createHomeAuthorityRoutes(
           : result.kind === 'conflict'
             ? 409
             : 503;
+  const controlStatus = (result: PlannedHomeControlResult<unknown>) =>
+    result.kind === 'stored'
+      ? 200
+      : result.kind === 'denied'
+        ? 403
+        : result.kind === 'not-found'
+          ? 404
+          : result.kind === 'unavailable'
+            ? 503
+            : 409;
   async function body(request: Request, keys: string[]) {
     try {
       const bounded = await readBoundedRequestBody(request, 2048);
@@ -212,7 +251,7 @@ export function createHomeAuthorityRoutes(
       const data = value as Record<string, unknown>;
       if (
         keys.some((key) =>
-          key === 'expectedRevision'
+          key === 'expectedRevision' || key === 'expectedGeneration'
             ? !Number.isSafeInteger(data[key])
             : typeof data[key] !== 'string',
         )
@@ -223,6 +262,167 @@ export function createHomeAuthorityRoutes(
       return undefined;
     }
   }
+  async function controlOpenBody(request: Request) {
+    try {
+      const bounded = await readBoundedRequestBody(request, 2048);
+      if (bounded.status === 'too-large') return 'too-large' as const;
+      if (bounded.status !== 'ok') return undefined;
+      const value: unknown = JSON.parse(bounded.body);
+      if (!value || typeof value !== 'object' || Array.isArray(value))
+        return undefined;
+      const record = value as Record<string, unknown>;
+      const keys = Object.keys(record);
+      if (
+        keys.length !== 2 ||
+        !Object.hasOwn(record, 'openId') ||
+        typeof record.openId !== 'string'
+      )
+        return undefined;
+      if (
+        Object.hasOwn(record, 'replaySecret') &&
+        keys.every((key) => key === 'openId' || key === 'replaySecret') &&
+        typeof record.replaySecret === 'string'
+      )
+        return { openId: record.openId, replaySecret: record.replaySecret };
+      const capability = record.existingCapability;
+      if (
+        !Object.hasOwn(record, 'existingCapability') ||
+        !keys.every(
+          (key) => key === 'openId' || key === 'existingCapability',
+        ) ||
+        !capability ||
+        typeof capability !== 'object' ||
+        Array.isArray(capability)
+      )
+        return undefined;
+      const candidate = capability as Record<string, unknown>;
+      if (
+        Object.keys(candidate).length !== 4 ||
+        !['homeRef', 'openId', 'generation', 'token'].every((key) =>
+          Object.hasOwn(candidate, key),
+        ) ||
+        typeof candidate.homeRef !== 'string' ||
+        typeof candidate.openId !== 'string' ||
+        !Number.isSafeInteger(candidate.generation) ||
+        typeof candidate.token !== 'string'
+      )
+        return undefined;
+      return {
+        openId: record.openId,
+        existingCapability: {
+          homeRef: candidate.homeRef,
+          openId: candidate.openId,
+          generation: candidate.generation,
+          token: candidate.token,
+        } as HomeControlSessionCapability,
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  async function controlDecision<T>(
+    request: Request,
+    mode: 'participant' | 'operator',
+    run: (
+      authority: ReturnType<typeof createPlannedHomeControlSessionAuthority>,
+      principal: CurrentPrincipal,
+    ) => PlannedHomeControlResult<T>,
+  ): Promise<PlannedHomeControlResult<T>> {
+    return withPersonalAuthorityDatabase<PlannedHomeControlResult<T>>(
+      request,
+      (principal) =>
+        mode === 'operator'
+          ? principal.authority === 'operator-credential' &&
+            security.verifyOperatorCredential(principal.credential)
+          : principal.authority === 'device-credential' &&
+            typeof principal.deviceId === 'string' &&
+            security.identifyDevice(principal.credential)?.id ===
+              principal.deviceId &&
+            security.devicePairing.homeControlGrantRevision(
+              principal.deviceId,
+            ) !== undefined,
+      (principal, database, controllerEnvironmentId) =>
+        run(
+          createPlannedHomeControlSessionAuthority({
+            database,
+            security,
+            controllerEnvironmentId,
+            replayCapabilityCache: controlReplayCache,
+          }),
+          principal,
+        ),
+    );
+  }
+
+  app.post('/control-sessions/open', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    const input = await controlOpenBody(c.req.raw);
+    if (input === 'too-large') return c.json({ kind: 'invalid-request' }, 413);
+    if (!input) return c.json({ kind: 'invalid-request' }, 400);
+    const result = await controlDecision(
+      c.req.raw,
+      'participant',
+      (authority, principal) => authority.open(principal, input),
+    );
+    if (result.kind !== 'stored')
+      return c.json({ kind: result.kind }, controlStatus(result));
+    const observation: HomeControlSessionOpenObservation = {
+      schemaVersion: 'station.home-control-session-open/v1',
+      capability: result.value.capability,
+      replayed: result.value.replayed,
+      executionAuthorityTransferred: false,
+      executionResumeAvailable: false,
+    };
+    return c.json(observation, 200);
+  });
+
+  app.post('/control-sessions/:deviceId/inspect', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    const input = await body(c.req.raw, []);
+    if (input === 'too-large') return c.json({ kind: 'invalid-request' }, 413);
+    if (!input) return c.json({ kind: 'invalid-request' }, 400);
+    const result = await controlDecision(
+      c.req.raw,
+      'operator',
+      (authority, principal) =>
+        authority.inspect(principal, { deviceId: c.req.param('deviceId') }),
+    );
+    if (result.kind !== 'stored')
+      return c.json({ kind: result.kind }, controlStatus(result));
+    const observation: HomeControlSessionInspectionObservation = {
+      schemaVersion: 'station.home-control-session-inspection/v1',
+      ...result.value,
+      executionAuthorityTransferred: false,
+      executionResumeAvailable: false,
+    };
+    return c.json(observation, 200);
+  });
+
+  app.post('/control-sessions/:deviceId/retire', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    const input = await body(c.req.raw, ['expectedGeneration']);
+    if (input === 'too-large') return c.json({ kind: 'invalid-request' }, 413);
+    if (!input) return c.json({ kind: 'invalid-request' }, 400);
+    const result = await controlDecision(
+      c.req.raw,
+      'operator',
+      (authority, principal) =>
+        authority.retire(principal, {
+          deviceId: c.req.param('deviceId'),
+          expectedGeneration: input.expectedGeneration as number,
+        }),
+    );
+    if (result.kind !== 'stored')
+      return c.json({ kind: result.kind }, controlStatus(result));
+    const observation: HomeControlSessionRetirementObservation = {
+      schemaVersion: 'station.home-control-session-retirement/v1',
+      ...result.value,
+      executionAuthorityTransferred: false,
+      executionResumeAvailable: false,
+    };
+    return c.json(observation, 200);
+  });
   app.post('/channels/:channelId/owner', async (c) => {
     c.header('Cache-Control', 'no-store');
     const input = await body(c.req.raw, ['sourceDeviceId', 'policyRevision']);

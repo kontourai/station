@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import type { HomeControlSessionCapability } from '@kontourai/station-contracts/cloud-move';
 import {
   PAIRING_SCOPE_HOME_CONTROL,
   type PairedDevice,
@@ -42,11 +43,23 @@ export type PlannedHomeControlPrincipal = Readonly<
 >;
 
 /** Memory-only bearer. Persist only its digest in controller storage. */
-export interface PlannedHomeControlCapability {
-  readonly homeRef: string;
-  readonly openId: string;
-  readonly generation: number;
-  readonly token: string;
+export type PlannedHomeControlCapability = HomeControlSessionCapability;
+
+const REPLAY_CAPABILITY_CACHE = Symbol('planned-home-control-replay-cache');
+export interface PlannedHomeControlReplayCapabilityCache {
+  readonly [REPLAY_CAPABILITY_CACHE]: true;
+}
+const replayCapabilityCacheStates = new WeakMap<
+  PlannedHomeControlReplayCapabilityCache,
+  Map<string, { generation: number; token: string }>
+>();
+
+export function createPlannedHomeControlReplayCapabilityCache(): PlannedHomeControlReplayCapabilityCache {
+  const handle = Object.freeze({
+    [REPLAY_CAPABILITY_CACHE]: true as const,
+  });
+  replayCapabilityCacheStates.set(handle, new Map());
+  return handle;
 }
 
 export type PlannedHomeControlOpenInput =
@@ -103,6 +116,7 @@ export interface PlannedHomeControlSessionAuthorityOptions {
     'identifyDevice' | 'verifyOperatorCredential' | 'devicePairing'
   >;
   readonly controllerEnvironmentId: string;
+  readonly replayCapabilityCache?: PlannedHomeControlReplayCapabilityCache;
 }
 
 const TOKEN = /^[a-f0-9]{64}$/;
@@ -160,10 +174,14 @@ export function createPlannedHomeControlSessionAuthority(
   if (!controllerIdentity(controllerEnvironmentId))
     throw new Error('A bounded controller environment identity is required');
   const tenantId = personalControllerTenantId(controllerEnvironmentId);
-  const retainedCapabilities = new Map<
-    string,
-    { generation: number; token: string }
-  >();
+  const replayCapabilityCache =
+    options.replayCapabilityCache ??
+    createPlannedHomeControlReplayCapabilityCache();
+  const retainedCapabilities = replayCapabilityCacheStates.get(
+    replayCapabilityCache,
+  );
+  if (!retainedCapabilities)
+    throw new Error('A valid home control replay capability cache is required');
 
   assertDurableHomeTransferDatabase(database);
   database.exec(PLANNED_HOME_ADMISSION_SCHEMA_SQL);
