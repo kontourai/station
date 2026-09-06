@@ -32,10 +32,180 @@ async function activeChatRegion(page: Page): Promise<ChatRegionLabel | null> {
 }
 
 /**
+ * The toolbar's one folded region control, under whichever name this
+ * breakpoint gives it: "Layout regions" on a fine pointer, "Regions" on a
+ * coarse one too wide to be mobile. `null` where neither renders — a phone,
+ * where #917 moved the region commands into the `⋯` overflow.
+ */
+async function regionControlTrigger(page: Page) {
+  for (const name of ['Layout regions', 'Regions'] as const) {
+    const trigger = page.getByRole('button', { name, exact: true });
+    if (await trigger.isVisible().catch(() => false)) return trigger;
+  }
+  return null;
+}
+
+/**
+ * Opens Chat through the folded region control, whichever surface it opens.
+ *
+ * #1536 F folded the five per-region buttons into one control, and #1552 D2
+ * replaced what the fine pointer's branch opens: a `role="group"` placement
+ * PICKER whose rows are `radiogroup`s of region segments, not a `role="menu"`
+ * of Show/Hide verbs. The coarse branch still opens the flat menu. Both are
+ * handled here so a journey does not have to know which chrome it drew.
+ *
+ * The post-condition differs with the surface but says the same thing — that
+ * the model now shows Chat where it was asked to. The menu re-offers `Hide
+ * Chat`; the picker re-opens with that region's segment `aria-checked`. Each
+ * is read after REOPENING the panel, because selecting closes it, so the
+ * assertion sees freshly derived state rather than the DOM it just clicked.
+ *
+ * Three popups, one trigger. The picker is what #1552 D2 renders on a fine
+ * pointer; the grouped verb menu is what the toolbar branch renders on one
+ * (a7936006e's path, absorbed here so there is a single place that decides);
+ * the flat "Region surfaces" menu is the coarse branch on both.
+ *
+ * Returns false when no region control is on screen, or when the one that is
+ * opened a surface it could not act on, leaving the caller's remaining
+ * fallbacks to run.
+ */
+async function openChatThroughRegionControl(page: Page): Promise<boolean> {
+  const trigger = await regionControlTrigger(page);
+  if (!trigger) return false;
+  await trigger.click();
+
+  const picker = page.getByRole('group', { name: 'Layout regions' });
+  if (await picker.isVisible().catch(() => false)) {
+    // The Dock's own region class is the live shell state; a surface registry
+    // can retain a dormant Chat registration elsewhere. Bottom is the
+    // registry's `defaultRegion` for Chat, so it is where an unplaced Chat is
+    // asked to go.
+    const region = (await activeChatRegion(page)) ?? 'Bottom';
+    await picker
+      .getByRole('radiogroup', { name: 'Chat placement' })
+      .getByRole('radio', { name: region, exact: true })
+      .click();
+
+    const reopen = await regionControlTrigger(page);
+    if (!reopen) {
+      throw new Error(
+        'The region control disappeared after choosing a Chat placement.',
+      );
+    }
+    await reopen.click();
+    await expect(
+      page
+        .getByRole('group', { name: 'Layout regions' })
+        .getByRole('radiogroup', { name: 'Chat placement' })
+        .getByRole('radio', { name: region, exact: true }),
+      `Chat's ${region} segment is not pressed after choosing it, so the shell did not show Chat there`,
+    ).toHaveAttribute('aria-checked', 'true');
+    // Leave the shell as it was found: the panel is portalled over the app and
+    // its dismiss backdrop covers the viewport.
+    await page.keyboard.press('Escape');
+    await expect(
+      page.getByRole('group', { name: 'Layout regions' }),
+    ).toBeHidden();
+    return true;
+  }
+
+  // The GROUPED VERB MENU (a7936006e, the toolbar branch's own chrome): rows
+  // grouped by region, Chat's row in its own region a Show/Hide checkbox, or
+  // "Place Chat here" while another surface holds the region. Kept whole
+  // because the two branches can diverge again, and a helper that only knows
+  // the newer surface would then fail on the older one with a selector error
+  // rather than a statement about Chat.
+  const layoutMenu = page.getByRole('menu', { name: 'Layout regions' });
+  if (await layoutMenu.isVisible().catch(() => false)) {
+    const reopen = async () => {
+      const again = await regionControlTrigger(page);
+      if (!again) {
+        throw new Error('The region control disappeared while opening Chat.');
+      }
+      await again.click();
+      const menu = page.getByRole('menu', { name: 'Layout regions' });
+      await expect(menu).toBeVisible();
+      return menu;
+    };
+    const expectHideRow = async () => {
+      const menu = await reopen();
+      await expect(
+        menu.getByRole('menuitemcheckbox', { name: 'Hide Chat', exact: true }),
+      ).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+    };
+
+    const hide = layoutMenu.getByRole('menuitemcheckbox', {
+      name: 'Hide Chat',
+      exact: true,
+    });
+    if (await hide.isVisible().catch(() => false)) {
+      await page.keyboard.press('Escape');
+      await expect(layoutMenu).toBeHidden();
+      return true;
+    }
+    const show = layoutMenu.getByRole('menuitemcheckbox', {
+      name: 'Show Chat',
+      exact: true,
+    });
+    if (await show.isVisible().catch(() => false)) {
+      await show.click();
+      await expectHideRow();
+      return true;
+    }
+    const activeRegion = await activeChatRegion(page);
+    if (activeRegion) {
+      const place = layoutMenu
+        .getByRole('group', { name: activeRegion, exact: true })
+        .getByRole('menuitem', { name: 'Place Chat here', exact: true });
+      if (await place.isVisible().catch(() => false)) {
+        await place.click();
+        await expectHideRow();
+        return true;
+      }
+    }
+    await page.keyboard.press('Escape');
+    return false;
+  }
+
+  const menu = page.getByRole('menu', { name: 'Region surfaces' });
+  if (await menu.isVisible().catch(() => false)) {
+    const hide = menu.getByRole('menuitemcheckbox', { name: 'Hide Chat' });
+    if (!(await hide.isVisible().catch(() => false))) {
+      await menu.getByRole('menuitemcheckbox', { name: 'Show Chat' }).click();
+      const reopen = await regionControlTrigger(page);
+      if (!reopen) {
+        throw new Error('The region control disappeared after showing Chat.');
+      }
+      await reopen.click();
+    }
+    await expect(
+      page
+        .getByRole('menu', { name: 'Region surfaces' })
+        .getByRole('menuitemcheckbox', { name: 'Hide Chat' }),
+      'the folded region menu does not offer Hide Chat, so Chat is not shown',
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(
+      page.getByRole('menu', { name: 'Region surfaces' }),
+    ).toBeHidden();
+    return true;
+  }
+
+  // A trigger that opened none of the three is a chrome this helper has not
+  // been taught. Close whatever it did open and let the caller's remaining
+  // fallbacks run; `openChatRegion`'s own error names the failure if they
+  // cannot either.
+  await page.keyboard.press('Escape');
+  return false;
+}
+
+/**
  * Opens Chat through the shell's region controls instead of an internal dock
  * affordance. The region command is the public ownership boundary for where
- * Chat lives: after opening or placing it, the same region must expose its
- * complementary Hide command.
+ * Chat lives: after opening or placing it, the same region must report that it
+ * now shows Chat.
  *
  * Phone chrome does not always render the desktop region toolbar, so it falls
  * back only to the named mobile/legacy Chat expander. The anchored label
@@ -53,6 +223,11 @@ export async function openChatRegion(page: Page): Promise<void> {
       return;
     }
   }
+
+  // The live chrome since #1536 F: one folded control rather than a button per
+  // region. Tried before the legacy per-region Place/Show lookups below, which
+  // no surface has rendered since that fold.
+  if (await openChatThroughRegionControl(page)) return;
 
   // The Dock's own region class is the live shell state. A surface registry
   // can retain a dormant Chat registration in another region, so choosing the
@@ -524,6 +699,40 @@ export async function emitMockOrchestrationEvent(
     },
     [type, payload],
   );
+}
+
+/**
+ * Opens Settings the way the shell now offers it.
+ *
+ * #1552 D1 folded "Open settings" into the avatar's menu on a fine pointer: the
+ * standalone gear is `.app-toolbar__action--compact-only`, so at a desktop
+ * viewport it is `display: none` and `button[aria-label="Open settings"]`
+ * matches nothing visible. The gear still exists on a phone, where the avatar —
+ * and therefore its menu — is hidden instead, so this takes whichever route the
+ * running breakpoint actually offers rather than assuming one.
+ *
+ * The avatar branch is deliberately a real click through the real menu: it is
+ * the only end-to-end coverage of the route D1 introduced, and a spec that
+ * reached Settings by chord would pass with that menu completely broken.
+ */
+export async function openHeaderSettings(page: Page): Promise<void> {
+  const avatar = page.getByRole('button', { name: 'Profile and settings' });
+  const gear = page.getByRole('button', { name: 'Open settings' });
+  // WAIT BEFORE BRANCHING. Asking `isVisible()` the instant after `goto` answers
+  // "has the toolbar rendered yet", not "which breakpoint is this" — a first
+  // draft branched on that answer, took the phone path on a desktop, and then
+  // waited ten seconds for a gear that is `display: none` there. Wait for
+  // whichever route this breakpoint renders, THEN choose.
+  await expect(avatar.or(gear).first()).toBeVisible({ timeout: 15_000 });
+  if (await avatar.isVisible()) {
+    await avatar.click();
+    await page
+      .getByRole('menuitem', { name: 'Open settings' })
+      .click({ timeout: 10_000 });
+    return;
+  }
+  // The phone toolbar keeps the gear (see `.app-toolbar__action--compact-only`).
+  await gear.first().click();
 }
 
 export async function dismissSetupLauncher(page: Page): Promise<void> {

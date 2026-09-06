@@ -12,6 +12,10 @@ import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
 import type { RuntimeEngineStartIntent } from '../infra/resource-posture.js';
 import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
+import {
+  type SessionStartBoundaryClaim,
+  SessionStartIndeterminateError,
+} from './session-turn-boundary.js';
 
 /** The only start-session intent callers may issue. */
 export type SessionCommand = {
@@ -40,12 +44,13 @@ export type SessionCommandOutcome =
       code?: string;
     }
   | {
-      /** Session effects completed, but accepted-receipt durability is unknown. */
+      /** Provider creation or accepted-receipt durability is uncertain. */
       status: 'indeterminate';
       receipt: OrchestrationCommandReceipt;
       receiptStatus: 'unavailable';
-      session: ProviderSession;
+      session?: ProviderSession;
       message: string;
+      code?: string;
     };
 
 /** Closed, total command Interface shared by routes, tools, and tests. */
@@ -58,6 +63,10 @@ export interface SessionCommandModule {
 
 /** Service-only recovery choices. They cannot cross the public command seam. */
 export type SessionCommandInternalOptions = {
+  /** Borrowed dispatch capability; provider completion cannot release its parent. */
+  sessionStartAdmission?: SessionStartBoundaryClaim;
+  /** Exact server-owned Task reservation scope; never read from public metadata. */
+  roomExecutionBinding?: { projectId: string; taskId: string };
   /** Captured server-owned action admission; never accepted from public JSON. */
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /** Server-minted correlation for an exact higher-level start claim. */
@@ -167,6 +176,7 @@ export interface SessionCommandDependencies {
      */
     materializeRestoredSession?(
       threadId: string,
+      admission?: SessionStartBoundaryClaim,
     ): Promise<ProviderAdapterShape | undefined>;
     prepareStart(
       input: OrchestrationStartSessionInput,
@@ -417,7 +427,10 @@ export function createSessionCommandModule(
               input,
               existing.session,
             );
-            await deps.launchPolicy.materializeRestoredSession(input.threadId);
+            await deps.launchPolicy.materializeRestoredSession(
+              input.threadId,
+              internal?.sessionStartAdmission,
+            );
             existing = deps.sessionState.existing(input.threadId);
           }
           if (
@@ -489,6 +502,14 @@ export function createSessionCommandModule(
         deps.sessionState.releaseStart(input.threadId);
       }
     } catch (error) {
+      if (error instanceof SessionStartIndeterminateError)
+        return {
+          status: 'indeterminate',
+          receipt,
+          receiptStatus: 'unavailable',
+          message: error.message,
+          code: error.code,
+        };
       return fail(error, deps.isRejectedError(error));
     }
   };

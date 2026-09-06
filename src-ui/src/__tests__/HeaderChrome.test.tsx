@@ -48,7 +48,7 @@ vi.mock('../components/header/useHeaderViewModel', () => ({
     showHelp: false,
     showNotifications: false,
     showOverflow: false,
-    toggleHelp: vi.fn(),
+    openHelp: vi.fn(),
     toggleNotifications: vi.fn(),
     toggleOverflow: vi.fn(),
     userInitials: 'BA',
