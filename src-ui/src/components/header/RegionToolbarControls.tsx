@@ -159,6 +159,13 @@ function ToolbarMenuSurface({
     return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [onClose]);
 
+  // ONE dismissal closure for the three events that mean "the gesture ended
+  // on the backdrop", rather than three identical ones in the JSX.
+  const dismiss = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
+    onClose();
+  };
+
   return createPortal(
     <>
       <button
@@ -197,18 +204,9 @@ function ToolbarMenuSurface({
         // backdrop is removed on `pointerup`, so the browser retargets that
         // click to the nearest connected ancestor rather than to whatever
         // sits underneath.
-        onPointerUp={(event) => {
-          event.stopPropagation();
-          onClose();
-        }}
-        onPointerCancel={(event) => {
-          event.stopPropagation();
-          onClose();
-        }}
-        onClick={(event) => {
-          event.stopPropagation();
-          onClose();
-        }}
+        onPointerUp={dismiss}
+        onPointerCancel={dismiss}
+        onClick={dismiss}
       />
       {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: `role` is always set (its type is `'menu' | 'group'`), which the rule cannot see through a dynamic value; both roles support a name. */}
       <div

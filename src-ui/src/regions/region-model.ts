@@ -84,29 +84,30 @@ export function firstFreeDockRegion(
 }
 
 /**
- * The search order for a surface being displaced OUT of `vacated`, after the
- * swap back into the placer's own region has been ruled out.
+ * The search order for a surface being displaced OUT of a region, keyed by the
+ * region it is leaving.
  *
  * A side gives up its occupant to the OTHER side first, because the two sides
  * are the pair a reader already reads as one row: a surface pushed out of
  * `left` used to land in `bottom`, which reshapes the whole workspace to move
  * something sideways. `bottom` has no opposite, so it keeps the historical
- * order. The vacated region itself is listed last and is never free at the
- * point this runs (the placer holds it) — it is there so the order is total
- * over `DOCK_REGION_IDS` rather than a subset that could silently drop a
- * region someone adds.
+ * order, and `main` never displaces into the dock at all. Each order is total
+ * over `DOCK_REGION_IDS` — the vacated region is last and is never free at the
+ * point this is read (the placer holds it), but listing it means a region
+ * added to the model cannot be silently dropped from a subset.
  */
-function displacementSearchOrder(vacated: RegionId): readonly DockRegionId[] {
-  if (vacated === 'left') return ['right', 'bottom', 'left'];
-  if (vacated === 'right') return ['left', 'bottom', 'right'];
-  return ['bottom', 'right', 'left'];
-}
+const DISPLACEMENT_SEARCH_ORDER = {
+  left: ['right', 'bottom', 'left'],
+  right: ['left', 'bottom', 'right'],
+  bottom: ['bottom', 'right', 'left'],
+  main: ['bottom', 'right', 'left'],
+} as const satisfies Record<RegionId, readonly DockRegionId[]>;
 
 /**
  * Where a displaced surface goes when it cannot take the region the incoming
  * one vacated. Its own registered `defaultRegion` first — the region it would
  * have been revealed into had nothing placed it — then
- * `displacementSearchOrder`. Every candidate is checked against
+ * `DISPLACEMENT_SEARCH_ORDER`. Every candidate is checked against
  * `surfaceMayOccupy`, so a relocation can never put a surface somewhere it
  * does not declare, and `main` is never a destination: the primary area is
  * only ever handed to a surface that was placed there deliberately.
@@ -125,7 +126,7 @@ function displacementDestination(
     arrangement[id].occupant === null && surfaceMayOccupy(displacedSurface, id);
   const home = REGION_SURFACE_REGISTRY.get(displacedSurface)?.defaultRegion;
   if (home && isDockRegion(home) && available(home)) return home;
-  return displacementSearchOrder(vacated).find(available);
+  return DISPLACEMENT_SEARCH_ORDER[vacated].find(available);
 }
 
 /** The dock region holding chat; undefined when chat sits outside the dock (e.g. 'main'). */
@@ -218,8 +219,8 @@ export function syncRegionArrangementFromDock(
  * - into a dock region, the displaced surface relocates — back into the
  *   region the incoming surface vacated when it may occupy it (a swap), else
  *   into its own registered `defaultRegion` when that is free, else into the
- *   first free region of `displacementSearchOrder` (the opposite side first,
- *   when a side is what it is leaving), else it is unplaced;
+ *   first free region of `DISPLACEMENT_SEARCH_ORDER` (the opposite side
+ *   first, when a side is what it is leaving), else it is unplaced;
  * - into `main`, the displaced surface is UNPLACED, never relocated. `main`
  *   is the primary area: replacing what it shows must not spawn a dock panel
  *   the user did not ask for (#928 C2a, owner decision).
