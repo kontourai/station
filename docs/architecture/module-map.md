@@ -867,7 +867,10 @@ bind checkpoint observations to enrolled endpoints.
 The [admission journal](../../src-server/services/orchestration/planned-home-admission-store.ts)
 blocks transfer commits while effects remain unresolved.
 [Control sessions](../../src-server/services/orchestration/planned-home-control-session-authority.ts)
-own private session exclusivity and explicit control-grant checks;
+own private session exclusivity and explicit control-grant checks. The
+[room-write adapter](../../src-server/services/orchestration/planned-home-control-room-write-adapter.ts)
+binds that authority to the private history port and owns cross-room admission
+identity.
 [operator reconciliation](../../src-server/services/orchestration/planned-home-admission-reconciliation.ts)
 settles existing admissions only through a trusted durable-receipt verifier.
 The [controller guide](../guides/home-transfer-controller.md) owns setup,

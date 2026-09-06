@@ -256,6 +256,23 @@ finishing; a stored receipt digest
 does not independently verify it. This is private foundation only: no HTTP
 route, bootstrap composition, room writer or Agent launch path uses it yet.
 
+## Private room-write adapter
+
+`createPlannedHomeControlRoomWriteAdmissionAdapter` connects an existing
+control-session capability to the optional `ProjectTaskRoomHistory` write port.
+It fixes the channel, owner revision and room-write kind, and requires a current
+local-authority guard. Failed configuration returns a concrete refusing port;
+it never falls back to an unmanaged room. Observed room scope must hash to the
+bound channel, and historical `settled` work cannot authorize a new append.
+
+The controller admission ID is a versioned hash of channel and proposal IDs.
+Two rooms can reuse a proposal ID without colliding in the controller journal.
+The owning `plannedHomeControlRoomWriteAdmissionId` helper defines that mapping.
+Receipt-verifier adapters must verify this mapping against the actual retained
+proposal and intent digest; the controller admission ID is not the room's raw
+proposal ID. No network transport or production bootstrap installs this adapter
+yet. Target activation and provider execution still require their own owners.
+
 ## Private operator receipt reconciliation
 
 A grant may be revoked after an effect commits but before its admission is
@@ -286,6 +303,7 @@ From an isolated repository worktree with managed dependencies installed:
 ```bash
 npm run test:focused -- \
   src-server/services/orchestration/__tests__/planned-home-control-session-authority.test.ts \
+  src-server/services/orchestration/__tests__/planned-home-control-room-write-adapter.test.ts \
   src-server/services/orchestration/__tests__/planned-home-admission-reconciliation.test.ts \
   src-server/services/orchestration/__tests__/planned-home-admission-store.test.ts \
   src-server/services/orchestration/__tests__/planned-home-transfer-store.test.ts \
