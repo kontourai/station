@@ -1901,3 +1901,47 @@ describe('identity slugs reach the rows that display them', () => {
     expect(item.agentSlug).toBeUndefined();
   });
 });
+
+test('Open chats labels use the exact current child model instead of a persisted predecessor observation', () => {
+  const chats = {
+    tab: {
+      conversationId: 'conversation',
+      currentSessionId: 'claude-child',
+      agentSlug: 'claude',
+      agentName: 'Claude Code',
+      model: 'opus-current',
+      orchestrationModel: 'gpt-predecessor',
+      input: '',
+      attachments: [],
+      queuedMessages: [],
+      inputHistory: [],
+      hasUnread: false,
+    },
+  };
+  const sessions = [
+    {
+      threadId: 'conversation',
+      conversationId: 'conversation',
+      provider: 'codex',
+      model: 'gpt-newer-root-event',
+      updatedAt: '2026-09-06T01:00:00Z',
+    },
+    {
+      threadId: 'claude-child',
+      conversationId: 'conversation',
+      provider: 'claude',
+      reportedModel: 'opus-reported',
+      acceptedModel: 'opus-accepted',
+      model: 'opus-retained',
+      updatedAt: '2026-09-06T00:00:00Z',
+    },
+  ] as OrchestrationSessionSummary[];
+  const [row] = buildActiveChatTaskItems({
+    chats,
+    agents: [],
+    sessions,
+    resolveModelLabel: (model) => model ?? 'Unknown',
+  });
+  expect(row?.model).toBe('opus-reported');
+  expect(row?.modelLabel).toBe('opus-reported');
+});

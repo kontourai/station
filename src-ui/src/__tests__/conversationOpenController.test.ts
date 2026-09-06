@@ -25,7 +25,9 @@ const notAnswerable = {
   observedAt: '2026-08-29T00:02:00.000Z',
 };
 
-function resolved(canContinue = true): ConversationOpenResolution {
+function resolved(
+  canContinue = true,
+): Extract<ConversationOpenResolution, { status: 'resolved' }> {
   return {
     status: 'resolved',
     conversation,
@@ -127,4 +129,115 @@ describe('#749 conversation open controller', () => {
       recovery: { status: 'missing-session' },
     });
   });
+});
+
+test('restored Codex state adopts the current Claude child without carrying model or permission state', () => {
+  const previous = {
+    conversationId: conversation.id,
+    currentSessionId: 'old-codex',
+    agentSlug: 'codex',
+    agentName: 'Old Codex',
+    provider: 'codex',
+    orchestrationModel: 'gpt-sidebar-old',
+    agentConnectionId: 'old-codex-connection',
+    model: 'gpt-old',
+    requestedModel: 'gpt-deliberate',
+    requestedProviderOptions: { reasoningEffort: 'high' },
+    providerOptions: { fastMode: true },
+    input: 'Keep this unsent follow-up',
+    queuedMessages: ['Queued follow-up'],
+    sessionAutoApprove: ['shell'],
+    pendingApprovals: [],
+  };
+  const resolution: ConversationOpenResolution = {
+    ...resolved(),
+    conversation: { ...conversation, agentSlug: 'claude-agent' as any },
+    execution: {
+      sessionId: 'conversation-749:child:2',
+      agentId: 'claude-agent' as any,
+      provider: 'claude',
+      engineConnectionId: 'claude-connection',
+      model: 'sonnet-current',
+    },
+  };
+  const patch = conversationOpenPatch(resolution, previous);
+  const actual = { ...previous, ...patch };
+  expect(actual).toMatchObject({
+    currentSessionId: resolution.currentSessionId,
+    agentSlug: 'claude-agent',
+    provider: 'claude',
+    agentConnectionId: 'claude-connection',
+    model: 'sonnet-current',
+    orchestrationModel: 'sonnet-current',
+    requestedModel: null,
+    requestedProviderOptions: {},
+    providerOptions: {},
+    sessionAutoApprove: [],
+    input: 'Keep this unsent follow-up',
+    queuedMessages: ['Queued follow-up'],
+  });
+  expect(actual.queuedMessageFailure?.message).toContain(
+    'Review queued messages',
+  );
+  expect(conversationCanMutate(actual)).toBe(true);
+});
+
+test('same-child deliberate model intent waits for capability evidence and survives only a valid choice', () => {
+  const resolution: ConversationOpenResolution = {
+    ...resolved(),
+    execution: {
+      sessionId: 'conversation-749:child:2',
+      agentId: conversation.agentSlug,
+      provider: 'codex',
+      model: 'current-model',
+    },
+  };
+  const previous = {
+    conversationId: conversation.id,
+    currentSessionId: resolution.currentSessionId,
+    agentSlug: conversation.agentSlug,
+    provider: 'codex',
+    requestedModel: 'chosen-model',
+    requestedProviderOptions: { reasoningEffort: 'high' },
+    input: 'draft',
+  };
+  const pending = conversationOpenPatch(resolution, previous);
+  expect(pending.conversationOpenPending).toBe(true);
+  expect(pending.requestedModel).toBe('chosen-model');
+  expect(conversationCanMutate({ ...previous, ...pending })).toBe(false);
+  const valid = conversationOpenPatch(resolution, previous, {
+    validModelIds: ['chosen-model'],
+    providerOptions: { effort: 'high' },
+  });
+  expect(valid).toMatchObject({
+    conversationOpenPending: false,
+    requestedModel: 'chosen-model',
+    requestedProviderOptions: { effort: 'high' },
+  });
+  const invalid = conversationOpenPatch(resolution, previous, {
+    validModelIds: [],
+  });
+  expect(invalid.requestedModel).toBeNull();
+  expect(invalid.error).toContain('saved model choice');
+});
+
+test('a changed child from an older server cannot retain writable predecessor identity', () => {
+  const previous = {
+    conversationId: conversation.id,
+    currentSessionId: 'old-codex',
+    agentSlug: conversation.agentSlug,
+    provider: 'codex',
+    model: 'old-model',
+    requestedModel: 'old-model',
+    input: 'draft',
+  };
+  const actual = {
+    ...previous,
+    ...conversationOpenPatch(resolved(), previous),
+  };
+  expect(actual.agentSlug).toBeUndefined();
+  expect(actual.provider).toBeUndefined();
+  expect(actual.requestedModel).toBeNull();
+  expect(actual.input).toBe('draft');
+  expect(conversationCanMutate(actual)).toBe(false);
 });

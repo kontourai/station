@@ -1930,3 +1930,22 @@ Response commands preserve their existing receipts. An event mismatch or lost
 request authority is a refusal to act, requiring fresh inspection rather than a
 blind mutation retry. Requests without canonical approval/permission evidence
 keep their ordinary Session or notification fallback.
+
+
+### Restored conversation execution
+
+A resolved conversation-open response may include `execution`, an observation
+of the exact authorized current Session: Agent, engine provider, recorded
+engine connection when known, and separately reported/retained versus accepted
+model identities. This is distinct from inventory labels and mutable Agent
+defaults. The read refuses a lineage change across its awaited work instead of
+combining one child's labels with another child's transcript. No resume cursor
+or credential data is exposed.
+
+After a child changes, the composer refreshes this execution identity and drops
+predecessor model controls and local approval state. Draft text remains; queued
+messages require review. A same-child unsent model choice waits for current
+capability evidence and is retained only when supported. If an older server
+cannot establish a changed child's execution binding, the transcript remains
+available while sending stays unavailable. Open-chat labels prefer the exact
+current Session's reported/retained model rather than a persisted predecessor.

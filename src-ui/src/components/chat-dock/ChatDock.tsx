@@ -1547,10 +1547,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             ([, chat]) => chat.conversationId === conversationId,
           )?.[0],
         updateChat,
+        readChat: (tabId) => activeChatsStore.getSnapshot()[tabId],
+        agentName: (id) => agents.find((agent) => agent.slug === id)?.name,
         setRecovery: setConversationOpenRecovery,
       });
     },
-    [apiBase, openUserSelectedConversationInScopedPane, projects, updateChat],
+    [
+      apiBase,
+      openUserSelectedConversationInScopedPane,
+      projects,
+      updateChat,
+      agents,
+    ],
   );
   const retryActiveConversationOpen = useCallback(async () => {
     if (!activeSession?.conversationId) return;
@@ -1561,6 +1569,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       apiBase,
       updateChat,
       () => showToast('Conversation resolution is unavailable. Try again.'),
+      (tabId) => activeChatsStore.getSnapshot()[tabId],
     );
   }, [activeSession, apiBase, showToast, updateChat]);
   const retryConversationOpenRecovery = useCallback(async () => {
@@ -2957,6 +2966,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             conversationId: activeSession.conversationId,
             apiBase,
             updateChat,
+            availableModels: effectiveModels,
+            modelsLoading,
+            modelsStale,
+            canModelSelect: chatInput.canModelSelect,
+            agents,
           }}
           pending={null}
         />

@@ -985,11 +985,23 @@ export interface ConversationListItem {
  * branch on `status`; they must not infer a writable Session from an Agent or
  * provider decoration on the inventory row.
  */
+/** Execution facts from the same authorized current-child read, never Agent defaults. */
+export interface ConversationOpenExecution {
+  sessionId: string;
+  agentId: AgentId;
+  provider: EngineId;
+  engineConnectionId?: string;
+  model?: string;
+  acceptedModel?: string;
+}
+
 export type ConversationOpenResolution =
   | {
       status: 'resolved';
       conversation: ConversationListItem;
       currentSessionId: string;
+      /** Absent on older servers; a replaced child cannot borrow its predecessor's execution state. */
+      execution?: ConversationOpenExecution;
       transcript: {
         available: true;
         owner: 'runtime';

@@ -66,6 +66,10 @@ export function acceptConversationHandoffUiState(
     agentSlug: receipt.target.agentId,
     agentName: target?.name ?? `Deleted Agent (${receipt.target.agentId})`,
     currentSessionId: receipt.currentSessionId,
+    // A predecessor observation is not evidence about the newly admitted child.
+    orchestrationModel: undefined,
+    orchestrationProvider: execution.provider,
+    requestedProviderOptions: {},
     model: receipt.target.modelId ?? execution.model,
     modelSource: receipt.target.modelId
       ? 'session override'

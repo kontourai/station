@@ -454,3 +454,55 @@ describe('conversation inventory query controls', () => {
     ).toEqual(['conversation-1']);
   });
 });
+
+test('conversation open accepts exact execution metadata and refuses wrong-child or cursor-bearing snapshots', async () => {
+  const data = {
+    status: 'resolved',
+    currentSessionId: 'child-b',
+    canContinue: true,
+    recoveryActions: [],
+    answerability: { answerable: true },
+    conversation: {
+      id: 'conversation',
+      title: 'Restored',
+      agentSlug: 'claude-agent',
+    },
+    transcript: { available: true, owner: 'runtime', messageCount: 2 },
+    execution: {
+      sessionId: 'child-b',
+      agentId: 'claude-agent',
+      provider: 'claude',
+      engineConnectionId: 'claude-connection',
+      model: 'reported',
+      acceptedModel: 'accepted',
+    },
+  };
+  try {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(Response.json({ success: true, data })),
+    );
+    await expect(
+      resolveConversationOpen('conversation', 'https://station.example'),
+    ).resolves.toEqual(data);
+    for (const execution of [
+      { ...data.execution, sessionId: 'child-a' },
+      { ...data.execution, agentId: 'codex-agent' },
+      { ...data.execution, resumeCursor: 'private' },
+    ]) {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            Response.json({ success: true, data: { ...data, execution } }),
+          ),
+      );
+      await expect(
+        resolveConversationOpen('conversation', 'https://station.example'),
+      ).rejects.toMatchObject({ kind: 'invalid-response' });
+    }
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
