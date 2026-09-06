@@ -542,6 +542,17 @@ ownership, or an implicit change to completed-session behavior.
 
 **Seam, Implementation, callers, and tests.** `@kontourai/station-shared/station-home-lifecycle` owns runtime/maintenance exclusion; `station-home-archive` owns the portable archive format and filesystem/SQLite mechanics. `StationRuntime` retains its opaque lease until clean persistence shutdown. The CLI's `station home backup|restore` wrappers reuse the existing instance observation for user-facing offline diagnostics; reset shares the same DRY refusal helper. Shared real-process tests force a runtime attempt behind held maintenance; runtime composition proves construction-through-shutdown ownership; real-SQLite tests cover round-trip, tampering, corruption, symlinks, bounds, confirmation, publication faults, and startup I/O classification. **Do not reintroduce:** snapshot-only inactivity checks, runtime/home mutations outside the lifecycle authority, raw recursive home copies, live-home backup, SQLite WAL/shm copying, automatic reset on corruption, unchecked archive paths, restore that deletes the prior home, or a second backup format in server code.
 
+The service-level `home-reference-recovery.test.ts` composes real Project, Task,
+room history, working-state, evidence, and home lifecycle owners. It restores
+after removing its synthetic source and external workspace, checks exact prior
+references, and treats missing evidence keys as unavailable. Duplicate edit
+replay locates the original publication through the history owner's indexed
+proposal lookup and normal authorized, integrity-checked page reader, then
+validates the evidence against the exact scope and committed working revision.
+It never substitutes the current document or publishes another intent's outbox.
+This is offline recovery evidence, not cross-host execution fencing or tenant
+isolation. See the [operator recovery drill](../guides/deployment.md#offline-home-recovery-drill).
+
 ### Detached recovery candidate (fixture-first)
 
 `StationHomeArchive.stageStationHomeRecoveryCandidate()` accepts already-detached, bounded UTF-8 JSON records and an absent output directory. Its private classifier observes selected v1 fields only; the declared version is not proof of source schema or capture consistency. The archive owner stages exact original records as mode-0600 `.payload` files in a mode-0700 `inert-evidence` directory, verifies the intended file set and hashes, and returns a content-free plan. No Station-home marker, `config`, `agents`, database or active runtime store is emitted. Original ambiguous Agent records remain whole: removing an external Engine binding would otherwise change absence into Station-engine execution. Explicit credential payload records are excluded from copied evidence; credential references and sensitive original records never enter public plans or errors. All candidates remain `publishable:false`, with capture/owner exclusion, destination, identity/account mapping and import review still required. Unknown and malformed records are inert evidence, not validated or executable input.
@@ -952,3 +963,11 @@ Actual filesystem and command tests live in
 `packages/shared/src/__tests__/cloud-move.test.ts` and
 `packages/cli/src/__tests__/cloud.test.ts`. Template generation and schema
 validation do not establish AWS provisioning or application readiness.
+
+## Browser test evidence
+
+**Interface.** `test:fixtures:check`, `test:journeys:profile`, and `test:mutation:smoke` own syntax admission, diagnostic profiling, and targeted fault injection. `gate:for` consumes `fixturePolicyCommands` from the policy owner so contributors get the same route the gate enforces. Usage, scope, and limitations belong to [the testing guide](../guides/testing.md#fixture-fidelity-and-test-effectiveness).
+
+**Seams and adapters.** Typed engine and runtime-conversation factories in `tests/helpers` describe the backend fixture. `fixture-audit.ts` owns unknown-request failure at test teardown. `journey-profile.ts` instruments the real browser through CDP and the React commit hook; it adds no production endpoint. `run-test-mutations.mjs` reuses `lib/owned-process.mjs`, records exact replacement bytes, and restores only its own changes. The existing E2E runner owns app lifecycle and ports.
+
+**Evidence.** Policy known-bad/control tests, factory-to-execution binding tests, mutation restoration/verdict tests, profile schema tests, and the measured browser journeys exercise these interfaces. Do not copy the fixture defaults into a new catch-all router, replace the process owner, or treat a static PASS as behavioral coverage.

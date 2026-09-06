@@ -522,6 +522,24 @@ export class AgentPluginLoader {
       const installed = existsSync(this.pluginsDir)
         ? this.selectedRoot(manifest.name)
         : null;
+      if (
+        installed?.kind === 'incarnation' &&
+        installed.packageRoot === root &&
+        this.options.journal
+      ) {
+        const selected = this.options
+          .journal()
+          .currentInstallation(manifest.name);
+        if (
+          selected.state !== 'observed' ||
+          !this.admitsPluginAgent(
+            manifest.name,
+            selected.installation.incarnation,
+            this.options.composition,
+          )
+        )
+          throw new Error('Selected Plugin content is not admitted');
+      }
       dataRoot =
         installed?.kind === 'incarnation' && installed.packageRoot === root
           ? installed.dataRoot!
@@ -691,12 +709,11 @@ export class AgentPluginLoader {
               return (
                 !journal ||
                 (selectedAtCapture?.state === 'observed' &&
-                  (journal.admissionOpen(selectedAtCapture.installation) ||
-                    !!pluginActivationCompositionPermit(
-                      this.options.composition,
-                      journal,
-                      directoryName,
-                    )))
+                  this.admitsPluginAgent(
+                    directoryName,
+                    selectedAtCapture.installation.incarnation,
+                    this.options.composition,
+                  ))
               );
             } catch {
               return false;

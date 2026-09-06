@@ -45,6 +45,7 @@ import {
   filterPlugins,
   pluginSelectionId,
   slugifyProjectName,
+  soleLayoutTargetProject,
   toggleSetValue,
 } from './view-utils';
 
@@ -656,12 +657,12 @@ export function usePluginManagementViewModel() {
         name: quickProjectName,
         slug,
       });
-      await addLayoutFromPluginMutation.mutateAsync({
+      const createdLayout = await addLayoutFromPluginMutation.mutateAsync({
         projectSlug: slug,
         plugin: layoutAssignment.pluginName,
       });
       setLayoutAssignment(null);
-      setLayout(slug, layoutAssignment.layoutSlug);
+      setLayout(slug, createdLayout.slug);
     } catch (error) {
       console.warn('Quick project creation failed', error);
       setMessage({
@@ -673,18 +674,66 @@ export function usePluginManagementViewModel() {
     }
   }
 
+  /**
+   * "Add to project" from the plugin detail page (#1536 G2). Installing a
+   * starter opened this picker once and never again, so a layout the operator
+   * skipped past — or installed from Registry — had no route to a project at
+   * all. With exactly one project the destination is not a question: add the
+   * layout and open it. Otherwise the existing picker asks, unchanged.
+   */
+  async function addPluginLayout(plugin: {
+    name: string;
+    displayName?: string;
+    layout?: { slug: string };
+  }) {
+    const layoutSlug = plugin.layout?.slug;
+    if (!layoutSlug) return;
+    const displayName = plugin.displayName || plugin.name;
+    const sole = soleLayoutTargetProject(projects);
+    if (!sole) {
+      setMessage(null);
+      setQuickProjectName(displayName);
+      setSelectedProjects(new Set());
+      setLayoutAssignment({
+        pluginName: plugin.name,
+        displayName,
+        layoutSlug,
+      });
+      return;
+    }
+    setAssigningLayout(true);
+    try {
+      const createdLayout = await addLayoutFromPluginMutation.mutateAsync({
+        projectSlug: sole.slug,
+        plugin: plugin.name,
+      });
+      setLayout(sole.slug, createdLayout.slug);
+    } catch (error) {
+      console.warn('Layout assignment failed', error);
+      setMessage({
+        type: 'error',
+        text: `Failed to add the ${displayName} layout to ${sole.name}.`,
+      });
+    } finally {
+      setAssigningLayout(false);
+    }
+  }
+
   async function addLayoutToProjects() {
     if (!layoutAssignment) return;
     setAssigningLayout(true);
     try {
+      let firstCreated: { projectSlug: string; layoutSlug: string } | undefined;
       for (const slug of selectedProjects) {
-        await addLayoutFromPluginMutation.mutateAsync({
+        const createdLayout = await addLayoutFromPluginMutation.mutateAsync({
           projectSlug: slug,
           plugin: layoutAssignment.pluginName,
         });
+        firstCreated ??= { projectSlug: slug, layoutSlug: createdLayout.slug };
       }
       setLayoutAssignment(null);
-      setLayout([...selectedProjects][0], layoutAssignment.layoutSlug);
+      if (firstCreated)
+        setLayout(firstCreated.projectSlug, firstCreated.layoutSlug);
     } catch (error) {
       console.warn('Layout assignment failed', error);
       setMessage({
@@ -697,6 +746,7 @@ export function usePluginManagementViewModel() {
   }
 
   return {
+    addPluginLayout,
     apiBase,
     assigningLayout,
     pluginsError,

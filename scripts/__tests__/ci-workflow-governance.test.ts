@@ -5,7 +5,9 @@ import {
   collectCiWorkflowGovernanceFindings,
   collectPostMergeDetectorWorkflowFindings,
   collectPrimaryCiWorkflowTriggerFindings,
+  collectRequiredBrowserSmokeFindings,
   findNamedWorkflowStep,
+  REQUIRED_FAST_CHECKS_CONDITION,
   workflowExecutionScope,
 } from '../ci-workflow-governance.mjs';
 
@@ -21,10 +23,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  fast:
+  fast-checks:
+    needs: classify
+    if: ${REQUIRED_FAST_CHECKS_CONDITION}
     steps:
       - name: Run fast CI
         run: npm run ci:fast
+      - name: Verify critical browser journeys before merge
+        run: npm run test:e2e:pr-smoke
       - name: Run connected agents
         run: npm run test:connected-agents
       - name: Veritas readiness evidence
@@ -509,5 +515,63 @@ describe('primary CI workflow governance', () => {
       'run: |\n          echo pull_request:',
     );
     expect(collectPostMergeDetectorWorkflowFindings(decoy)).toEqual([]);
+  });
+});
+
+describe('required browser evidence cannot silently disappear', () => {
+  test('accepts the actual pre-merge job wiring', () => {
+    expect(
+      collectRequiredBrowserSmokeFindings(
+        readFileSync('.github/workflows/ci.yml', 'utf8'),
+      ),
+    ).toEqual([]);
+  });
+  test.each([
+    [
+      'manual dependency',
+      (text: string) =>
+        text.replace('needs: classify', 'needs: [classify, full-regression]'),
+    ],
+    [
+      'removed suite',
+      (text: string) =>
+        text.replace('run: npm run test:e2e:pr-smoke', 'run: echo omitted'),
+    ],
+    [
+      'conditional skip',
+      (text: string) =>
+        text.replace(
+          'run: npm run test:e2e:pr-smoke',
+          'if: false\n        run: npm run test:e2e:pr-smoke',
+        ),
+    ],
+    [
+      'swallowed error',
+      (text: string) =>
+        text.replace(
+          'run: npm run test:e2e:pr-smoke',
+          'run: npm run test:e2e:pr-smoke || true',
+        ),
+    ],
+    [
+      'optional step',
+      (text: string) =>
+        text.replace(
+          'run: npm run test:e2e:pr-smoke',
+          'continue-on-error: true\n        run: npm run test:e2e:pr-smoke',
+        ),
+    ],
+    [
+      'optional job',
+      (text: string) => text.replace('  fast-checks:', '  optional-smoke:'),
+    ],
+    [
+      'skipped job',
+      (text: string) => text.replace(REQUIRED_FAST_CHECKS_CONDITION, 'false'),
+    ],
+  ])('rejects %s before the workflow can claim green', (_name, mutate) => {
+    expect(
+      collectRequiredBrowserSmokeFindings(mutate(cleanWorkflow)),
+    ).not.toEqual([]);
   });
 });

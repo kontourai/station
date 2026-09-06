@@ -31,6 +31,32 @@ opens another database. Its service contract is also exercised over a real
 child-process transport. That demonstrates asynchronous/CAS boundaries, not
 enterprise deployment support.
 
+## Versioned content integrity
+
+Package trees use `station-plugin-tree/v2`: SHA-256 over a leading-NUL version
+domain and entries with explicit file/directory/link kinds and uint64 byte-length
+frames for paths and payloads. File payloads and symlink targets are bytes;
+symlinks are not followed. Empty directories participate, root `.git` is excluded,
+and filenames that cannot round-trip through UTF-8 are refused. The public Node
+leaf `@kontourai/station-shared/plugin-tree-digest` and the server's installed-root
+wrapper use the same encoding. The generic `sha256:` envelope does not by itself
+identify the tree encoding.
+
+The earlier delimiter-only encoding was ambiguous: file bytes could imitate
+another entry's boundary. Its bound grant, journal and signed-claim digests are
+not silently converted or accepted as v2 proof. Current-byte comparison withholds
+old bound permissions and refuses obsolete artifact/claim evidence while leaving
+the recorded selection, code and data intact. There is no read-time migration or
+legacy digest fallback. A new installation/review must use the existing consent
+and lifecycle owners; an unreadable or obsolete retained package is not a reason
+to erase its data. Existing unbound legacy grants retain their explicit
+unverified status, rather than gaining a content-integrity claim.
+
+This encoding addresses structural ambiguity. It does not make a concurrently
+mutable directory an atomic snapshot, establish filesystem containment, or
+authenticate a publisher. Those boundaries remain with the existing acquisition,
+materialization, grant and execution owners.
+
 ## Update, withdrawal, and data
 
 Every code materialization has its own physical root. Updating selects a new

@@ -3,6 +3,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type {
   PullRequestRepositoryContext,
   PullRequestRepositoryIdentityContext,
+  PullRequestUnavailableCause,
 } from '@kontourai/station-contracts/pull-request-provider';
 import type { WorkspaceIsolationMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import { execGit } from '../../utils/git-exec.js';
@@ -15,7 +16,12 @@ import {
 
 export type PullRequestRepositoryContextResolution =
   | { available: true; context: PullRequestRepositoryContext }
-  | { available: false; reason: string };
+  | {
+      available: false;
+      reason: string;
+      /** See `PullRequestUnavailableCause` — classified here, not by prose. */
+      cause?: PullRequestUnavailableCause;
+    };
 
 export interface PullRequestRepositoryContextInput {
   projectWorkingDirectory?: string;
@@ -94,10 +100,15 @@ export class PullRequestRepositoryContextResolver {
       workingDirectory,
     );
     if (!remotes.ok || remotes.remotes.length === 0)
-      return {
-        available: false,
-        reason: remotes.ok ? 'Checkout has no remote' : remotes.reason,
-      };
+      return remotes.ok
+        ? {
+            available: false,
+            reason: 'Checkout has no remote',
+            // The ordinary local repository, not a failure (#1536 G5). A read
+            // that could not be performed deliberately carries no cause.
+            cause: 'no-remote' as PullRequestUnavailableCause,
+          }
+        : { available: false, reason: remotes.reason };
     if (remotes.remotes.length === 1) {
       const unsupportedForge = knownUnsupportedForge(remotes.remotes[0].url);
       if (unsupportedForge)

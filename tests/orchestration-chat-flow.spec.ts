@@ -1,5 +1,6 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { monitorBrowserHealth } from './helpers/browser-health';
+import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,

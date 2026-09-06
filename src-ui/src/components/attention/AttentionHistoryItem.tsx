@@ -212,6 +212,9 @@ function openLinkLabel(kind: AttentionItem['kind']): string {
       return 'Open flow console';
     case 'device-pairing':
       return 'Open connections';
+    // #1536 D8: the requirement's route out, not a session.
+    case 'setup-incomplete':
+      return 'Open model connections';
     default:
       return 'Open session';
   }

@@ -45,6 +45,7 @@
     "./portability": "./src/portability.ts",
     "./ports": "./src/ports.ts",
     "./redaction": "./src/redaction.ts",
+    "./tool-request-preview": "./src/tool-request-preview.ts",
     "./return-focus": "./src/return-focus.ts",
     "./temp-dir": "./src/temp-dir.ts",
     "./fs-windows-compat": "./src/fs-windows-compat.ts",
@@ -77,6 +78,7 @@
     "./random-id": "./src/random-id.ts",
     "./terminal-capability": "./src/terminal-capability.ts",
     "./agent-plugin-manifest": "./src/agent-plugin-manifest.ts",
+    "./plugin-tree-digest": "./src/plugin-tree-digest.ts",
     "./knowledge-root-identity": "./src/knowledge-root-identity.ts",
     "./cloud-move": "./src/cloud-move.ts",
     "./workspace-package": "./src/workspace-package.ts"

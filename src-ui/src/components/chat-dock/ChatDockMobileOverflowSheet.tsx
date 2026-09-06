@@ -1,39 +1,12 @@
-import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { ChatDockMobileConnection } from './ChatDockMobileConnection';
-import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 import './ChatDockMobileOverflowSheet.css';
-import { useNavigation } from '../../contexts/NavigationContext';
-import { useIsMobile } from '../../hooks/useIsMobile';
-import {
-  ambientDockOccupantChoices,
-  chooseAmbientOccupant,
-} from '../../workspace-panes/ambientDockOccupants';
 import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
-import type {
-  ChatDockMobileOverflowActions,
-  ChatDockMobileProjectSwitcher,
-} from './ChatDockMobileHeader';
-
-/**
- * station#524 (review round 2, H2): every OTHER pane the ambient dock
- * admits — this sheet only ever mounts as part of Chat's own mobile header
- * (`ChatDockMobileHeader`), so Chat is always the current occupant here and
- * never needs its own menu item (picking the current occupant is already a
- * no-op in `DockOccupantPicker`, which this mirrors). The derivation is the
- * SAME `ambientDockOccupantChoices()` the picker itself reads — not a
- * curated list — so a pane admitted/refused there is admitted/refused here
- * too, with no second edit.
- */
-function otherAmbientOccupants() {
-  return ambientDockOccupantChoices().filter(
-    (choice) => choice.descriptor.id !== WORKSPACE_CHAT_PANE_DESCRIPTOR.id,
-  );
-}
+import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
 
 const loadSessionInventoryFullFallback = () =>
   import('./SessionInventoryFullFallback').then((module) => ({
@@ -51,7 +24,6 @@ const loadSessionInventoryFullFallback = () =>
 export function ChatDockMobileOverflowSheet({
   overflow,
   projectScope,
-  projectSwitcher,
   showConnection,
   onNewChat,
   onOpenActivity,
@@ -61,7 +33,6 @@ export function ChatDockMobileOverflowSheet({
   onClose,
 }: {
   overflow: ChatDockMobileOverflowActions;
-  projectSwitcher?: ChatDockMobileProjectSwitcher | null;
   showConnection?: boolean;
   onNewChat?: () => void;
   onOpenActivity?: () => void;
@@ -73,30 +44,10 @@ export function ChatDockMobileOverflowSheet({
   onClose: () => void;
 }) {
   const [inventoryOpen, setInventoryOpen] = useState(false);
-  const [projectOpen, setProjectOpen] = useState(false);
-  const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const run = (action: () => void) => {
     onClose();
     action();
   };
-  // station#520 (review round 3, B1): the occupant-switch items below need
-  // the SAME inputs `DockOccupantPicker` reads for `chooseAmbientOccupant`
-  // — this sheet is a real component too, so it reads them itself rather
-  // than having `ChatDock.tsx` compute and thread them down.
-  const isMobile = useIsMobile();
-  const { pathname } = useNavigation();
-
-  if (projectOpen && projectSwitcher)
-    return (
-      <ProjectSwitcherOverlay
-        anchorRef={projectTriggerRef}
-        boundProjectSlug={projectSwitcher.projectSlug}
-        projects={projectSwitcher.projects}
-        onOpenProject={projectSwitcher.onOpenProject}
-        onSwitchProject={projectSwitcher.onSwitchProject}
-        onClose={() => setProjectOpen(false)}
-      />
-    );
 
   if (inventoryOpen && overflow.sessionInventory)
     return (
@@ -161,20 +112,6 @@ export function ChatDockMobileOverflowSheet({
                 {activeCount} working
               </span>
             ) : null}
-          </button>
-        )}
-        {projectSwitcher && (
-          <button
-            ref={projectTriggerRef}
-            type="button"
-            role="menuitem"
-            className="composer-actions-menu__item"
-            onClick={() => setProjectOpen(true)}
-          >
-            Switch project
-            <span className="composer-actions-menu__item-hint">
-              {projectSwitcher.projectName}
-            </span>
           </button>
         )}
         {branchLabel && <p>{branchLabel}</p>}
@@ -276,39 +213,6 @@ export function ChatDockMobileOverflowSheet({
             Collapse chat
           </button>
         )}
-        {/* station#524 (review round 2, H2) + station#520 (review round 3,
-            B1): reachable at EVERY dock state (collapsed/half/maximized),
-            not only when the header's own picker hides — the mobile
-            dock-and-empty contract applies here exactly as it does to
-            `DockOccupantPicker`, through the SAME shared derivation
-            (`chooseAmbientOccupant`), not a second copy of it. Same
-            occupant list the picker reads too — a pane it admits/refuses
-            is admitted/refused here. */}
-        {overflow.onSwitchOccupant &&
-          otherAmbientOccupants().map((choice) => (
-            <button
-              key={choice.descriptor.id}
-              type="button"
-              role="menuitem"
-              className="composer-actions-menu__item"
-              onClick={() =>
-                run(() => {
-                  if (!overflow.onSwitchOccupant) return;
-                  chooseAmbientOccupant({
-                    isMobile,
-                    pathname,
-                    descriptor: choice.descriptor,
-                    instance: choice.instance,
-                    onChoose: overflow.onSwitchOccupant.onChoose,
-                    onChooseAsOnlyContent:
-                      overflow.onSwitchOccupant.onChooseAsOnlyContent,
-                  });
-                })
-              }
-            >
-              Switch to {choice.descriptor.name}
-            </button>
-          ))}
         {projectScope && (
           <button
             type="button"

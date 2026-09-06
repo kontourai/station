@@ -20,7 +20,8 @@ vi.mock('../../../providers/registries/registry.js', () => ({
     providerEntries.filter((entry) => entry.source.startsWith(type)),
 }));
 
-const { createACPRoutes } = await import('../acp.js');
+const { createACPRoutes, listDetectedUnconnectedACPRegistryEntries } =
+  await import('../acp.js');
 const homes: string[] = [];
 
 async function createFilesystemRuntimeContext() {
@@ -93,6 +94,62 @@ describe('ACP Routes', () => {
     const body = await json(await app.request('/connections'));
     expect(body.success).toBe(true);
     expect(body.data).toEqual([]);
+  });
+
+  // station#1548: the first-run Engines chapter only offers registry entries
+  // that are detected AND have no ACP connection. A connected ACP Engine
+  // reports engineId 'acp' in listEngineConnectionStates, so exclusion must be
+  // keyed on the ACP connection id (user config or plugin-provided), never on
+  // the engine id.
+  test('listDetectedUnconnectedACPRegistryEntries excludes connected and undetected entries', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'kiro',
+              name: 'Kiro CLI',
+              command: 'kiro-cli',
+              detected: true,
+            },
+            {
+              id: 'opencode',
+              name: 'OpenCode',
+              command: 'opencode',
+              detected: true,
+            },
+            { id: 'goose', name: 'Goose', command: 'goose', detected: false },
+            { id: 'qwen', name: 'Qwen Code', command: 'qwen' },
+          ],
+        },
+      },
+      {
+        source: 'acpConnections:plugin-a',
+        provider: {
+          getConnections: () => [
+            { id: 'opencode', name: 'OpenCode', command: 'opencode', args: [] },
+          ],
+        },
+      },
+    ];
+    const configLoader = {
+      loadACPConfig: async () => ({
+        connections: [
+          { id: 'kiro', name: 'Kiro CLI', command: 'kiro-cli', args: [] },
+        ],
+      }),
+    };
+
+    expect(
+      await listDetectedUnconnectedACPRegistryEntries(configLoader as any),
+    ).toEqual([]);
+
+    configLoader.loadACPConfig = async () => ({ connections: [] });
+    expect(
+      await listDetectedUnconnectedACPRegistryEntries(configLoader as any),
+    ).toEqual([{ id: 'kiro', name: 'Kiro CLI' }]);
   });
 
   test('GET /registry returns ACP connection registry entries', async () => {
@@ -278,7 +335,12 @@ describe('ACP Routes', () => {
         builtin: true,
         provider: {
           listAvailable: () => [
-            { id: 'kiro', name: 'Kiro CLI', command: 'kiro-cli' },
+            {
+              id: 'kiro',
+              name: 'Kiro CLI',
+              command: 'kiro-cli',
+              detected: true,
+            },
           ],
         },
       },
@@ -298,12 +360,26 @@ describe('ACP Routes', () => {
     const first = await app.request('/registry/kiro/install', {
       method: 'POST',
     });
+    expect(first.status).toBe(500);
+    // The saved config is not an installed Engine until the same registered
+    // identity predicate GET /connections uses can prove it. This makes the
+    // retryable partial write visible to first run again.
+    expect(
+      await listDetectedUnconnectedACPRegistryEntries(configLoader),
+    ).toEqual([{ id: 'kiro', name: 'Kiro CLI' }]);
+    // Add engine reads GET /registry and hides installed entries, so the
+    // same predicate must keep the stranded entry visible there too.
+    expect((await json(await app.request('/registry'))).data).toMatchObject([
+      { id: 'kiro', installed: false },
+    ]);
     const second = await app.request('/registry/kiro/install', {
       method: 'POST',
     });
 
-    expect(first.status).toBe(500);
     expect(second.status).toBe(200);
+    expect(await json(second)).toMatchObject({
+      agent: { created: true, data: { slug: 'kiro', name: 'Kiro CLI' } },
+    });
     expect((await configLoader.loadACPConfig()).connections).toHaveLength(1);
     expect(
       (await loadOrCreateAgentRegistry(configLoader)).defaultAgents,
@@ -311,6 +387,118 @@ describe('ACP Routes', () => {
       id: 'kiro',
       kind: 'engine-connection',
       engineConnectionId: 'kiro',
+    });
+  });
+
+  test('POST /registry/:id/install returns one Agent receipt and is idempotent on a second confirm', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            { id: 'kiro', name: 'Kiro CLI', command: 'kiro-cli' },
+          ],
+        },
+      },
+    ];
+    const { ctx, configLoader } = await createFilesystemRuntimeContext();
+    const app = createACPRoutes(ctx);
+
+    const first = await json(
+      await app.request('/registry/kiro/install', { method: 'POST' }),
+    );
+    const second = await json(
+      await app.request('/registry/kiro/install', { method: 'POST' }),
+    );
+
+    expect(first).toMatchObject({
+      success: true,
+      agent: { created: true, data: { slug: 'kiro', name: 'Kiro CLI' } },
+    });
+    expect(second).toMatchObject({
+      success: true,
+      agent: { created: false, data: { slug: 'kiro', name: 'Kiro CLI' } },
+    });
+    const registry = await loadOrCreateAgentRegistry(configLoader);
+    expect(
+      registry.defaultAgents.filter((agent) => agent.id === 'kiro'),
+    ).toHaveLength(1);
+  });
+
+  test('POST /registry/:id/install names an adopted differently named Agent', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            { id: 'kiro', name: 'Kiro CLI', command: 'kiro-cli' },
+          ],
+        },
+      },
+    ];
+    const { ctx, configLoader } = await createFilesystemRuntimeContext();
+    // Adoption (selectEngineAgentAdoption) takes a differently named Agent
+    // only when it carries engine-detection provenance for this engine; a
+    // merely bound Agent is left alone and the engine's own id is created.
+    await configLoader.createAgent({
+      slug: 'my-kiro',
+      name: 'My Kiro',
+      prompt: '',
+      execution: { agentConnectionId: 'kiro' },
+      provenance: {
+        origin: 'engine-detection',
+        engineId: 'kiro',
+        detectedAt: '2026-09-01T00:00:00.000Z',
+      },
+    } as any);
+
+    const body = await json(
+      await createACPRoutes(ctx).request('/registry/kiro/install', {
+        method: 'POST',
+      }),
+    );
+
+    expect(body).toMatchObject({
+      success: true,
+      agent: { created: false, data: { slug: 'my-kiro', name: 'My Kiro' } },
+    });
+  });
+
+  test('POST /registry/:id/install stays 200 with a slug-only receipt when the Agent file is unreadable after commit', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            { id: 'kiro', name: 'Kiro CLI', command: 'kiro-cli' },
+          ],
+        },
+      },
+    ];
+    const { ctx, configLoader } = await createFilesystemRuntimeContext();
+    const originalLoadAgent = configLoader.loadAgent.bind(configLoader);
+    let installed = false;
+    configLoader.loadAgent = async (slug: string) => {
+      if (installed && slug === 'kiro') {
+        throw new Error('simulated unreadable agent file');
+      }
+      return originalLoadAgent(slug);
+    };
+    const app = createACPRoutes(ctx);
+    const originalAddConnection = ctx.acpBridge.addConnection;
+    ctx.acpBridge.addConnection = async (...args: unknown[]) => {
+      installed = true;
+      return originalAddConnection(...args);
+    };
+
+    const res = await app.request('/registry/kiro/install', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(await json(res)).toMatchObject({
+      success: true,
+      agent: { created: true, data: { slug: 'kiro' } },
     });
   });
 

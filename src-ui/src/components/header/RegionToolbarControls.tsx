@@ -1,37 +1,24 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  useRegionModel,
-  useRegionModelOptional,
-} from '../../contexts/RegionModelContext';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
-import {
-  DOCK_REGION_IDS,
-  type RegionId,
-  type RegisteredSurface,
-  regionLabel,
-} from '../../regions/region-model';
+import type { RegisteredSurface } from '../../regions/region-model';
 import './HeaderMenu.css';
 import { useRegionSurfaceMenu } from './useRegionSurfaceMenu';
 
 const DOCK_WHEN = { not: 'composerFocused' } as const;
 
-function RegionGlyph({ id }: { id: RegionId }) {
+/**
+ * The region frame. One glyph, not one per region: since #1536 F the toolbar
+ * carries a single folded control, so the glyph names the arrangement rather
+ * than identifying which of five rectangles this one was.
+ */
+function LayoutGlyph() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 16">
       <rect x="1" y="1" width="18" height="14" rx="2" />
-      {id === 'left' ? (
-        <path d="M6 1v14" />
-      ) : id === 'right' ? (
-        <path d="M14 1v14" />
-      ) : id === 'bottom' ? (
-        <path d="M1 10h18" />
-      ) : (
-        // `main`: the filled centre of the same frame, since the primary area
-        // is the space the three dock edges surround.
-        <rect x="5" y="4" width="10" height="8" rx="1" fill="currentColor" />
-      )}
+      <path d="M6 1v9M1 10h18" />
     </svg>
   );
 }
@@ -58,24 +45,33 @@ function RegionShortcut({
   return null;
 }
 
+interface ToolbarMenuRow {
+  key: string;
+  label: string;
+  /** Present for a toggle; absent for a one-shot command. */
+  checked?: boolean;
+  onSelect: () => void;
+}
+
+interface ToolbarMenuSection {
+  key: string;
+  /** `null` renders the rows directly under the menu, with no group heading. */
+  label: string | null;
+  items: readonly ToolbarMenuRow[];
+}
+
 function ToolbarMenu({
   ariaLabel,
   dismissLabel,
   anchorRight,
   onClose,
-  items,
+  sections,
 }: {
   ariaLabel: string;
   dismissLabel: string;
   anchorRight: number;
   onClose: () => void;
-  items: readonly {
-    key: string;
-    label: string;
-    /** Present for a menu of toggles; absent for a menu of one-shot commands. */
-    checked?: boolean;
-    onSelect: () => void;
-  }[];
+  sections: readonly ToolbarMenuSection[];
 }) {
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
   useEffect(() => {
@@ -88,10 +84,33 @@ function ToolbarMenu({
     return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [onClose]);
 
+  const row = (item: ToolbarMenuRow) => (
+    <button
+      key={item.key}
+      type="button"
+      {...(item.checked === undefined
+        ? { role: 'menuitem' as const }
+        : {
+            role: 'menuitemcheckbox' as const,
+            'aria-checked': item.checked,
+          })}
+      onClick={() => {
+        item.onSelect();
+        onClose();
+      }}
+    >
+      {item.label}
+    </button>
+  );
+
   return createPortal(
     <>
       <button
         type="button"
+        // A pointer convenience, not a tab stop: it sits immediately before the
+        // menu in document order, so as a tab stop Shift+Tab off the first row
+        // landed on it and `useMenuFocus`'s focusout closed the menu.
+        tabIndex={-1}
         className="header-menu__dismiss-backdrop"
         aria-label={dismissLabel}
         style={{
@@ -116,24 +135,26 @@ function ToolbarMenu({
         tabIndex={-1}
         style={{ right: `${anchorRight}px` }}
       >
-        {items.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            {...(item.checked === undefined
-              ? { role: 'menuitem' as const }
-              : {
-                  role: 'menuitemcheckbox' as const,
-                  'aria-checked': item.checked,
-                })}
-            onClick={() => {
-              item.onSelect();
-              onClose();
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
+        {sections.map((section) =>
+          section.label === null ? (
+            <Fragment key={section.key}>{section.items.map(row)}</Fragment>
+          ) : (
+            // A `fieldset`, whose implicit role IS `group` — a legal child of
+            // `menu`, with the rows staying `menuitem`/`menuitemcheckbox`
+            // inside it — so the region a command belongs to is announced
+            // instead of being repeated in the label of every single row
+            // ("Hide Chat Bottom region" five times over). The `legend` is the
+            // group's name AND its visible heading, so there is no second
+            // aria-hidden copy of the same word to keep in step.
+            <fieldset
+              key={section.key}
+              className="app-toolbar__region-menu-group"
+            >
+              <legend>{section.label}</legend>
+              {section.items.map(row)}
+            </fieldset>
+          ),
+        )}
       </div>
     </>,
     document.body,
@@ -142,65 +163,38 @@ function ToolbarMenu({
 
 function ConnectedRegionToolbarControls() {
   const {
-    regions,
-    surfaces,
-    placeSurface: placeSurfaceInModel,
-  } = useRegionModel();
-  const {
-    available,
     bottomOnly,
     commandsInOverflowMenu,
     surfaceList,
     toggleSurface,
     menuItems,
+    layoutGroups,
   } = useRegionSurfaceMenu();
-  const availableRegions = DOCK_REGION_IDS.filter((id) =>
-    available.includes(id),
-  );
-  // Every registered surface, not the hook's dock-only `surfaceList`: the
-  // `main` control offers Home, which occupies no dock region.
-  const allSurfaces = [...surfaces.values()];
-  const surfacesFor = (id: RegionId) =>
-    allSurfaces.filter((surface) => surface.regions.includes(id));
-  const [menuRegion, setMenuRegion] = useState<RegionId | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the layout owners are this effect's trigger, not values it reads — it exists to fire when they change.
   useEffect(() => {
     // Close whenever the branch that OWNS the menu changes, not only when the
     // overflow branch takes over. Three transitions reach this, and rendering
     // through any of them is wrong in a different way:
-    //   fine -> coarse while still wide: `bottomOnly` flips but the overflow
-    //     branch does not, so an open per-region popover silently becomes the
-    //     folded Regions menu, anchored where the old trigger used to be.
+    //   fine -> coarse while still wide: the menu's CONTENTS change from the
+    //     grouped Layout rows to the folded Show/Hide list under a trigger
+    //     whose name changed too, so an open menu silently becomes a
+    //     different menu.
     //   -> overflow: the early return below unmounts the portal without
     //     clearing this, so widening back re-opens a menu nobody reopened.
     //   overflow -> back: same state, restored under a different owner.
     // The anchor belongs to the trigger that opened it, and that trigger is
     // what these transitions replace.
-    setMenuRegion(null);
+    setMenuOpen(false);
   }, [bottomOnly, commandsInOverflowMenu]);
   const [menuAnchorRight, setMenuAnchorRight] = useState(8);
-  // A null `main` occupant IS Home on screen (`MainRegionSurface`), so Home
-  // is never offered while it is already showing.
-  const occupantOf = (id: RegionId) =>
-    id === 'main' ? (regions.main.occupant ?? 'home') : regions[id].occupant;
-  const menuOccupant = menuRegion && occupantOf(menuRegion);
-  const menuLabel = menuRegion && regionLabel(menuRegion);
 
-  const openMenu = useCallback((id: RegionId, trigger: HTMLButtonElement) => {
+  const openMenu = useCallback((trigger: HTMLButtonElement) => {
     setMenuAnchorRight(
       window.innerWidth - trigger.getBoundingClientRect().right,
     );
-    setMenuRegion(id);
+    setMenuOpen(true);
   }, []);
-
-  const placeSurface = useCallback(
-    (surfaceId: string, id: RegionId) => {
-      if (id !== 'main' && !availableRegions.includes(id)) return;
-      if (!surfaces.has(surfaceId)) return;
-      placeSurfaceInModel(surfaceId, id);
-    },
-    [availableRegions, placeSurfaceInModel, surfaces],
-  );
 
   const shortcuts = surfaceList.flatMap((surface) =>
     surface.shortcut ? (
@@ -215,16 +209,6 @@ function ConnectedRegionToolbarControls() {
     ),
   );
 
-  // `main` is always visible, so its control has no show/hide toggle: the
-  // primary click opens the placement menu. Fine pointer only — a coarse
-  // device folds its region commands (#1400's toolbar occlusion floor), and
-  // this slice defers `main` there rather than widen that fold.
-  const mainOccupant = occupantOf('main');
-  const mainChoices = surfacesFor('main').filter(
-    (surface) => surface.id !== mainOccupant,
-  );
-  const mainLabel = `Change ${regionLabel('main')} region surface`;
-
   // #917: where the `⋯` overflow menu exists, it takes the region commands and
   // this row renders NO control at all. The 44px button plus its gap is
   // exactly what pushed the Settings gear off a 402px viewport once the
@@ -235,116 +219,51 @@ function ConnectedRegionToolbarControls() {
   // elements. `commandsInOverflowMenu`, not `bottomOnly`: see the hook.
   if (commandsInOverflowMenu) return <>{shortcuts}</>;
 
+  // #1536 F: ONE control, not five. The five per-region buttons were unlabeled
+  // monochrome rectangles distinguished by a 6px divider and a 6px "+" badge,
+  // and nothing on a fresh home said what any of them did. The commands are
+  // unchanged — every Show/Hide, Place and Swap the buttons carried is a row
+  // in this menu — and so are the chords above, which are the fast path.
+  const label = bottomOnly ? 'Regions' : 'Layout regions';
   return (
     <fieldset className="app-toolbar__regions">
       <legend>Regions</legend>
       {shortcuts}
-      {bottomOnly ? (
-        <button
-          type="button"
-          className="app-toolbar__region-btn"
-          aria-label="Regions"
-          title="Regions"
-          aria-haspopup="menu"
-          aria-expanded={menuRegion !== null}
-          onClick={(event) => openMenu('bottom', event.currentTarget)}
-        >
-          <RegionGlyph id="bottom" />
-        </button>
-      ) : (
-        <>
-          {mainChoices.length > 0 ? (
-            <button
-              type="button"
-              className="app-toolbar__region-btn"
-              aria-label={mainLabel}
-              title={mainLabel}
-              aria-haspopup="menu"
-              aria-expanded={menuRegion === 'main'}
-              onClick={(event) => openMenu('main', event.currentTarget)}
-            >
-              <RegionGlyph id="main" />
-            </button>
-          ) : null}
-          {availableRegions.map((id) => {
-            const occupant = regions[id].occupant;
-            const surface = occupant ? surfaces.get(occupant) : undefined;
-            const label = regionLabel(id);
-            const pressed = Boolean(surface && regions[id].visible);
-            const actionLabel = surface
-              ? `${pressed ? 'Hide' : 'Show'} ${surface.title} ${label} region`
-              : `Choose a surface for ${label} region`;
-            // What the swap menu would offer: the surfaces that declare this
-            // region, other than the one already in it.
-            const swapChoices = surfacesFor(id).filter(
-              (candidate) => candidate.id !== occupant,
-            );
-            return (
-              <span key={id} className="app-toolbar__region-control">
-                <button
-                  type="button"
-                  className="app-toolbar__region-btn"
-                  aria-label={actionLabel}
-                  {...(surface
-                    ? { 'aria-pressed': pressed }
-                    : {
-                        'aria-haspopup': 'menu' as const,
-                        'aria-expanded': menuRegion === id,
-                      })}
-                  title={actionLabel}
-                  onClick={(event) => {
-                    if (surface) toggleSurface(surface);
-                    else openMenu(id, event.currentTarget);
-                  }}
-                >
-                  <RegionGlyph id={id} />
-                  {!surface && (
-                    <span className="app-toolbar__region-add">+</span>
-                  )}
-                </button>
-                {surface && swapChoices.length > 0 ? (
-                  <button
-                    type="button"
-                    className="app-toolbar__region-swap"
-                    aria-label={`Change ${label} region surface`}
-                    aria-haspopup="menu"
-                    aria-expanded={menuRegion === id}
-                    onClick={(event) => openMenu(id, event.currentTarget)}
-                  >
-                    ⋯
-                  </button>
-                ) : null}
-              </span>
-            );
-          })}
-        </>
-      )}
-      {menuRegion && bottomOnly ? (
+      <button
+        type="button"
+        className="app-toolbar__region-btn app-toolbar__region-layout"
+        aria-label={label}
+        title={label}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={(event) => openMenu(event.currentTarget)}
+      >
+        <LayoutGlyph />
+        {/* A visible word, because the glyph alone is what nothing on a fresh
+            home explained. The accessible name contains it (WCAG 2.5.3). The
+            folded branch keeps its glyph-only button: it renders on a coarse
+            pointer too wide to be mobile, where #917's width budget is the
+            live constraint and the menu it opens is a flat Show/Hide list, not
+            a four-region arrangement needing a name. */}
+        {bottomOnly ? null : (
+          <span className="app-toolbar__region-layout-label">Layout</span>
+        )}
+      </button>
+      {menuOpen ? (
         <ToolbarMenu
-          ariaLabel="Region surfaces"
-          dismissLabel="Close regions menu"
+          ariaLabel={bottomOnly ? 'Region surfaces' : 'Layout regions'}
+          dismissLabel={bottomOnly ? 'Close regions menu' : 'Close layout menu'}
           anchorRight={menuAnchorRight}
-          onClose={() => setMenuRegion(null)}
-          items={menuItems}
-        />
-      ) : menuRegion ? (
-        <ToolbarMenu
-          ariaLabel={`${menuLabel} region surfaces`}
-          dismissLabel={`Close ${menuLabel} region menu`}
-          anchorRight={menuAnchorRight}
-          onClose={() => setMenuRegion(null)}
-          items={surfacesFor(menuRegion)
-            .filter((surface) => surface.id !== menuOccupant)
-            .map((surface) => ({
-              key: surface.id,
-              // `main` always has an occupant (a null one is Home), so its
-              // menu is always a placement, never a swap.
-              label:
-                menuOccupant && menuRegion !== 'main'
-                  ? `Swap in ${surface.title}`
-                  : `Place ${surface.title} here`,
-              onSelect: () => placeSurface(surface.id, menuRegion),
-            }))}
+          onClose={() => setMenuOpen(false)}
+          sections={
+            bottomOnly
+              ? [{ key: 'folded', label: null, items: menuItems }]
+              : layoutGroups.map((group) => ({
+                  key: group.region,
+                  label: group.label,
+                  items: group.items,
+                }))
+          }
         />
       ) : null}
     </fieldset>
