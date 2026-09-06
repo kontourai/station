@@ -204,7 +204,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           .map((part) => part.text ?? '')
           .join(''),
         contentParts: message.parts.flatMap((part) => {
-          const mapped: NonNullable<ChatMessage['contentParts']>[number] = {
+          const mapped = {
             type: part.type,
             content: part.text,
             url: part.url,

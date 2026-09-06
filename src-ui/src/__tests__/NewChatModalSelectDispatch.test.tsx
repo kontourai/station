@@ -14,6 +14,7 @@
  * the parent's onSelect handler surfaces instead of vanishing — from the
  * user's seat that failure is identical to the silent fall-through.
  */
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   act,
   cleanup,
@@ -185,7 +186,7 @@ function renderForkModal(
 
 test('late project context preserves the preferred fork Agent', () => {
   selectionModelState.agents = [
-    { ...AGENT, slug: 'other', name: 'Other' },
+    { ...AGENT, slug: agentId('other'), name: 'Other' },
     AGENT,
   ];
   const props = {
