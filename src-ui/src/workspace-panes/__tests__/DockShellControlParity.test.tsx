@@ -15,6 +15,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -151,25 +152,32 @@ function dockParam(): string | null {
   return new URLSearchParams(window.location.search).get('dock');
 }
 
+/**
+ * #1536 F: the toolbar's five per-region buttons folded into ONE "Layout"
+ * menu whose rows are grouped by region, so a placement is now the region's
+ * group plus its row rather than a button of its own.
+ */
+function layoutMenu() {
+  fireEvent.click(screen.getByRole('button', { name: 'Layout regions' }));
+  return screen.getByRole('menu', { name: 'Layout regions' });
+}
+
 async function placeChatRight() {
   renderHost();
   await waitFor(() =>
     expect(document.querySelector('.chat-dock')).not.toBeNull(),
   );
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Choose a surface for Right region' }),
-  );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Place Chat here' }));
+  chooseChatForEmptyRight();
   await waitFor(() =>
     expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
   );
 }
 
 function chooseChatForEmptyRight() {
+  const right = within(layoutMenu()).getByRole('group', { name: 'Right' });
   fireEvent.click(
-    screen.getByRole('button', { name: 'Choose a surface for Right region' }),
+    within(right).getByRole('menuitem', { name: 'Place Chat here' }),
   );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Place Chat here' }));
 }
 
 function dockToggle(): () => void {
@@ -358,6 +366,63 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     expect(navigationStore.lastDockMaximized).toBe(true);
   });
 
+  // #928 slice iii: the chord writes the REGION; navigation's `maximize`
+  // param and `lastDockMaximized` follow as its mirror. The collapse-on-
+  // navigate seam (archive#1298) restores the region without forgetting the
+  // preference, and a `focusSession`-style restore is inbound to the region.
+  test('dock.maximize maximizes the region, mirrors navigation, and survives collapse-on-navigate as memory', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock')).not.toBeNull(),
+    );
+    const maximize = (shortcutRegistry?.getAllShortcuts() ?? []).find(
+      (shortcut) => shortcut.id === 'dock.maximize',
+    );
+    if (!maximize) throw new Error('dock.maximize is not registered');
+    const dockStateWrite = vi.spyOn(navigationStore, 'setDockState');
+
+    act(() => maximize.handler());
+
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
+    );
+    expect(currentRegionModel().regions.bottom.maximized).toBe(true);
+    expect(dockStateWrite).toHaveBeenCalledTimes(1);
+    expect(dockStateWrite).toHaveBeenCalledWith(true, true);
+    expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+      'true',
+    );
+    expect(navigationStore.lastDockMaximized).toBe(true);
+
+    // Navigating elsewhere restores the dock to its docked size (archive#869)
+    // WITHOUT touching the memory (archive#1298): the region clears, the URL
+    // param clears, `lastDockMaximized` stays.
+    dockStateWrite.mockClear();
+    act(() => navigationStore.navigate('/projects'));
+    await waitFor(() =>
+      expect(currentRegionModel().regions.bottom.maximized).toBe(false),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).toBeNull(),
+    );
+    expect(
+      new URLSearchParams(window.location.search).get('maximize'),
+    ).toBeNull();
+    expect(dockStateWrite).not.toHaveBeenCalled();
+    expect(navigationStore.lastDockMaximized).toBe(true);
+
+    // The `focusSession` restore still speaks navigation; the region follows.
+    act(() =>
+      navigationStore.setDockState(true, navigationStore.lastDockMaximized),
+    );
+    await waitFor(() =>
+      expect(currentRegionModel().regions.bottom.maximized).toBe(true),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
+    );
+  });
+
   test('placing chat while the dock is hidden reveals it there', async () => {
     renderHost();
     await waitFor(() =>
@@ -457,10 +522,10 @@ describe('the docked Chat gets the full dock chrome (station#4460)', () => {
     await waitFor(() => {
       expect(document.querySelector('.chat-dock')).not.toBeNull();
     });
-    const control = screen.getByRole('button', {
-      name: 'Hide Chat Bottom region',
-    });
     expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
+    const control = within(layoutMenu()).getByRole('menuitemcheckbox', {
+      name: 'Hide Chat',
+    });
     fireEvent.click(control);
     await waitFor(() => {
       expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull();

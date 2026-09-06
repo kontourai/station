@@ -270,8 +270,38 @@ export interface DevicePairingAttentionItem extends AttentionItemBase {
   openHref: string;
 }
 
+/**
+ * Station's own Agent cannot run at all — the managed engine resolves no model
+ * connection (#1536 D8).
+ *
+ * Notifications said "All caught up · Nothing needs you right now" on a fresh
+ * home whose New Chat picker, one surface away, marked the Station row
+ * "Needs: No enabled LLM provider connection is configured." Both were reading
+ * real state; only one of them was reading THIS state, because nothing
+ * projected it. `body` is that same sentence, from the same derivation
+ * (`resolveManagedAvailabilityReason`) the picker's row renders — never a
+ * second wording of the same requirement.
+ *
+ * It is a live PRECONDITION rather than an event: it stops projecting the
+ * moment a connection resolves, so `createdAt`/`updatedAt` are the time the
+ * projection observed it, and the surfaces do not offer to dismiss it —
+ * acknowledging the only row that says why chat cannot start would leave the
+ * inbox claiming nothing needs you while the same thing still does.
+ */
+export interface SetupIncompleteAttentionItem extends AttentionItemBase {
+  kind: 'setup-incomplete';
+  source: {
+    /** What is missing. One member today; a discriminator, not a label. */
+    requirement: 'model-connection';
+    /** The Agent the requirement was evaluated for. */
+    agentSlug: string;
+  };
+  openHref: string;
+}
+
 export type AttentionItem =
   | ApprovalAttentionItem
+  | SetupIncompleteAttentionItem
   | NeedsInputAttentionItem
   | ReviewPendingAttentionItem
   | SessionFailedAttentionItem
@@ -279,6 +309,32 @@ export type AttentionItem =
   | GateBlockedAttentionItem
   | GateExceptionAttentionItem
   | DevicePairingAttentionItem;
+
+/**
+ * Kinds that are STANDING notices rather than per-event facts (#1536 D8; delta
+ * review DM3 moved this here from the server projection).
+ *
+ * A standing notice is continuously true until a configuration changes and has
+ * no event of its own. Two consequences follow from that one property, on two
+ * sides of the wire, and declaring it in the contract is what keeps them from
+ * drifting:
+ *
+ *  - it sorts BELOW live per-event attention, because its observation time says
+ *    only when the projection last looked. Ordering it by recency put "Station
+ *    cannot run yet" above every live approval on every read — an artefact of
+ *    the timestamp, not a priority anyone chose.
+ *  - it cannot be acknowledged, because it is still true after the dismissal.
+ *    The server refuses the acknowledgement and the surfaces offer no dismiss;
+ *    without the refusal, "Dismiss all" acked it and the row only came back
+ *    because the next read moved its `updatedAt`.
+ */
+export const STANDING_ATTENTION_KINDS: ReadonlySet<AttentionItem['kind']> =
+  new Set<AttentionItem['kind']>(['setup-incomplete']);
+
+/** See {@link STANDING_ATTENTION_KINDS}. */
+export function isStandingAttentionKind(kind: AttentionItem['kind']): boolean {
+  return STANDING_ATTENTION_KINDS.has(kind);
+}
 
 export interface AttentionProjection {
   items: AttentionItem[];

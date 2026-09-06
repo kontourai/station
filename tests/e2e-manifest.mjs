@@ -243,6 +243,10 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   retries: 0,
   isolation: 'temp-home-and-dynamic-loopback-ports',
   flakePolicy: 'fail-and-fix-no-retry',
+  requiredObservations: [320, 390, 412].map((width) => ({
+    path: 'tests/cross-runtime-chat-switching.spec.ts',
+    title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
+  })),
   journeys: [
     {
       path: 'tests/csp-shell.spec.ts',
@@ -1393,7 +1397,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "#304 regression guard: the dock project-context path's rtl start-truncation must not bidi-reorder leading `~`/`/` glyphs; asserts per-character visual order via Range rects, which only a real browser can see.",
+      "#304 successor guard: the dock project-context row's start-truncated path segment is retired (#1536 F), so its rtl bidi-reordering failure mode is unreachable; this now proves the working directory arrives whole and in its resolved form (`~` or absolute) in the channel that carries it — the project badge's tooltip — and that the retired segment is absent rather than hidden, neither of which a jsdom test can see.",
     exceptions: [],
   },
   {

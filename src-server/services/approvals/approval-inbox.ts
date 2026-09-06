@@ -5,6 +5,10 @@ import {
 } from '@kontourai/station-contracts/notification';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  toolRequestDisplayName,
+  toolRequestFromPayload,
+} from '@kontourai/station-shared/tool-request-preview';
 import type { INotificationProvider } from '../../providers/provider-interfaces.js';
 import { approvalInboxOps } from '../../telemetry/metrics.js';
 import type { NotificationService } from '../notifications/notification-service.js';
@@ -380,6 +384,22 @@ export function wireApprovalInboxNotifications(
         // lifecycle card already does, instead of always falling back to
         // /sessions.
         const projectSlug = provider.resolveProjectSlug(event.threadId);
+        // #1545: the standing grant has to say what it grants. "Allow for
+        // Session" reads as a grant for the one call in front of you, and it is
+        // a grant for every later call to the same tool in this session. This
+        // label is PERSISTED on the notification and rendered verbatim by
+        // `AttentionCard`'s `ApprovalActions`, so naming the tool here is the
+        // only way the durable card says it — fixing the live toast alone left
+        // the inbox row still reading "Allow for Session".
+        //
+        // `toolRequestDisplayName` collapses an `mcp__<server>__<tool>` wire
+        // name and bounds it. When the payload reported no tool name, stay
+        // generic rather than reaching for `event.title`: that is adapter
+        // display text (for Codex, the literal shell command), and a grant
+        // label built from it would misstate the grant's scope.
+        const grantToolName = toolRequestDisplayName(
+          toolRequestFromPayload(event.payload).toolName,
+        );
         const notification = await notificationService.schedule(
           APPROVAL_INBOX_SOURCE,
           {
@@ -391,7 +411,9 @@ export function wireApprovalInboxNotifications(
               { id: 'accept', label: 'Allow Once', variant: 'primary' },
               {
                 id: 'acceptForSession',
-                label: 'Allow for Session',
+                label: grantToolName
+                  ? `Allow ${grantToolName} for this session`
+                  : 'Allow this tool for this session',
                 variant: 'secondary',
               },
               { id: 'decline', label: 'Deny', variant: 'danger' },
@@ -408,10 +430,9 @@ export function wireApprovalInboxNotifications(
               sessionId: event.threadId,
               sessionKind: ORCHESTRATION_SESSION_KIND,
               threadId: event.threadId,
-              toolName:
-                typeof event.payload?.toolName === 'string'
-                  ? event.payload.toolName
-                  : undefined,
+              // Raw, not the display form: this is provenance for consumers,
+              // and `grantToolName` above is the display form for the button.
+              toolName: toolRequestFromPayload(event.payload).toolName,
             },
           },
         );

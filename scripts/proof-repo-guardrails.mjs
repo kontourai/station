@@ -1340,7 +1340,9 @@ const knowledgeSearch = readRequiredSource(
 for (const requiredHelper of [
   'export async function searchKnowledgeDocuments',
   "candidate.behavior === 'rag'",
-  'allResults.sort((left, right) => right.score - left.score);',
+  // #1546 chained the sort onto the merged candidates; the helper still
+  // ranks by descending score, which is the property this proof pins.
+  '.sort((left, right) => right.score - left.score)',
 ]) {
   if (!knowledgeSearch.includes(requiredHelper)) {
     errors.push(`knowledge-search.ts must include ${requiredHelper}.`);
@@ -6630,8 +6632,54 @@ for (const retiredInlineMessageBubbleSnippet of [
 const messageBubbleUtils = readRequiredSource(
   '../src-ui/src/components/chat/message-bubble/utils.ts',
 );
-if (!messageBubbleUtils.includes('export function getModelDisplayName')) {
-  errors.push('message-bubble/utils.ts must export getModelDisplayName.');
+// #1536 B5: `getModelDisplayName` was a private table of five Claude 3 ids
+// that answered "Custom" for everything newer, so a row running claude-opus-5
+// named it "Custom" while Home named the same session "Opus 5". The assertion
+// that has to hold now is the DELEGATION that replaced it: this module names
+// no model itself, it asks the one shared identity rule. The negative
+// assertion above keeps the table from growing back inside MessageBubble.
+//
+// Delta review DL6: the import check is a regex rather than an exact string, so
+// adding a second symbol to that import statement cannot silently retire this
+// assertion; and a `const getModelDisplayName =` is the same table under an
+// expression, so it is refused too.
+if (
+  /function\s+getModelDisplayName\s*\(/.test(messageBubbleUtils) ||
+  /const\s+getModelDisplayName\s*=/.test(messageBubbleUtils)
+) {
+  errors.push(
+    'message-bubble/utils.ts must not re-declare getModelDisplayName; use modelIdentityLabel.',
+  );
+} else if (
+  !/import\s*\{[^}]*\bmodelIdentityLabel\b[^}]*\}\s*from\s*'\.\.\/\.\.\/\.\.\/utils\/modelCapabilities'/.test(
+    messageBubbleUtils,
+  )
+) {
+  errors.push(
+    'message-bubble/utils.ts must resolve model names through modelIdentityLabel.',
+  );
+}
+
+/**
+ * #1536 D8 delta review DM2: every availability surface reads
+ * `createStationEngineAvailabilityReader`, never `resolveManagedAvailabilityReason`
+ * directly. Six callers built that call themselves and had drifted — three onto
+ * the app config the process BOOTED with, one of those also dropping the
+ * check-gated connection receipts, and `/chat` last of all — so fixing the
+ * default model connection at runtime cleared the picker and the inbox while
+ * chat went on refusing until restart. A hand-rolled call cannot come back
+ * green; the reader's own module is where the call belongs.
+ */
+for (const availabilityConsumer of [
+  '../src-server/runtime/routes/runtime-routes.ts',
+  '../src-server/routes/chat/chat.ts',
+]) {
+  const source = readRequiredSource(availabilityConsumer);
+  if (/\bresolveManagedAvailabilityReason\s*\(/.test(source)) {
+    errors.push(
+      `${availabilityConsumer} must resolve Agent availability through createStationEngineAvailabilityReader, not resolveManagedAvailabilityReason directly.`,
+    );
+  }
 }
 const messageBubbleRating = readRequiredSource(
   '../src-ui/src/components/chat/message-bubble/MessageRating.tsx',

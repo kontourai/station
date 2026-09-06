@@ -147,6 +147,12 @@ jobs:
           STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
         run: npm run ci:fast
 
+      - name: Report contract-test changes for review
+        if: always()
+        env:
+          STATION_REVIEW_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
+        run: node scripts/test-contract-review.mjs
+
       # Synthetic fixture only: the reference-hardware lane owns actual
       # latency evidence, so arbitrary PR runners cannot pass it by accident.
       - name: Run interactive workspace performance smoke
@@ -157,6 +163,15 @@ jobs:
       # from landing silently and billing the next contributor at pre-push.
       - name: Enforce candidate UI bundle budget
         run: npm run build:ui
+
+      # Keep critical browser journeys inside the existing required check.
+      # The separate manual diagnostic below depends on full-regression and
+      # cannot supply pre-merge evidence when that manual job is skipped.
+      - name: Verify critical browser journeys before merge
+        env:
+          STATION_REQUIRED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        timeout-minutes: 10
+        run: npm run test:e2e:pr-smoke
 
       - name: Upload bounded fast-feedback diagnostics
         if: always()
@@ -170,6 +185,10 @@ jobs:
           path: |
             .kontourai/verification-receipts/
             .kontourai/verification-output/
+            .kontourai/veritas/external/test-contract-review.json
+            .kontourai/browser-evidence/
+            playwright-report/
+            test-results/
           if-no-files-found: ignore
           # station#4132: upload-artifact v4 EXCLUDES hidden files by default,
           # and .kontourai is a hidden directory — without this line the step

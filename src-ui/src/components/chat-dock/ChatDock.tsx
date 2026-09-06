@@ -11,6 +11,7 @@ import {
   useInvalidateQuery,
   useOrchestrationSessionsQuery,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   applyReturnFocus,
   captureReturnFocus,
@@ -94,6 +95,7 @@ import { useChatAuthRecovery } from './ChatAuthRecoveryContext';
 import { ChatDockActiveIdentity } from './ChatDockActiveIdentity';
 import { ChatDockContentArea } from './ChatDockContentArea';
 import { ChatDockHeader } from './ChatDockHeader';
+import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { ChatDockMobileHeader } from './ChatDockMobileHeader';
 import { ChatDockProjectContext } from './ChatDockProjectContext';
 import {
@@ -138,6 +140,7 @@ import {
 } from './projectChatRequest';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockViewModel } from './useChatDockViewModel';
+import { useDockCopyActions } from './useDockCopyActions';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently
@@ -771,6 +774,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     orchestrationSessions,
     orchestrationSessionsStatus,
   });
+  // The occurrence store's key for THIS dock's inventory. Owned here because
+  // #1536 F split the inventory's control (a row of the header's More menu)
+  // from its host (`ChatDockSessionInventoryHost`, lazily mounted), and both
+  // halves have to name the same host. Stable for the dock's lifetime: the
+  // registration is re-written whenever the session identity changes, and a
+  // remounting id would drop an open panel on every such change.
+  const sessionInventoryHostId = useRef(
+    `session-inventory:${randomCorrelationId()}`,
+  ).current;
   const inventoryChatStoreId = activeSession?.id;
   const conversationCanMutate = activeSession
     ? canMutateConversation(activeSession)
@@ -944,14 +956,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // station#3309: the model the dock header names — the same answer the
   // composer's model pill gives, arrived at the same way. `effectiveChatModelId`
-  // picks WHICH id; then, exactly as `ChatInputArea` does, an alias that the
-  // engine has resolved renders as the concrete model it resolved TO (#1012)
-  // and everything else falls through to the shared `modelDisplayLabel`.
+  // picks WHICH id; `chatModelLabel` then asks the one shared identity rule
+  // (`modelIdentityLabel`, #1536 B5), so an alias the engine has resolved
+  // renders as the concrete model it resolved TO (#1012) and an unresolved
+  // engine default reads "Default" rather than the catalog's option copy.
   //
-  // Caught live rather than reasoned about: without the `resolvedModelLabel`
-  // arm the header read "Default (recommended)" beside a composer pill naming
-  // the actual model — one fact, two stories, which is the whole reason both
-  // of these helpers exist. No id reported means no chip, not a placeholder.
+  // Caught live rather than reasoned about: before that rule was shared, the
+  // header read "Default (recommended)" beside a composer pill naming the
+  // actual model — one fact, two stories. No id reported means no chip, not a
+  // placeholder.
   const activeChatModelId = effectiveChatModelId({
     composerModel: chatInput.currentModel,
     sessionModel: activeSession?.model,
@@ -1077,6 +1090,46 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [collapseDockForNavigation, setLayout],
   );
+  const copyActions = useDockCopyActions({
+    conversationId: activeSession?.conversationId,
+    workingDirectory: sessionDisplayCwd,
+  });
+  /**
+   * #1536 F: rows whose subject is the active CONVERSATION rather than the
+   * dock's chrome, so the header takes them as data instead of deriving them.
+   *
+   * "Open code layout" is here because the project-context row lost the
+   * start-truncated path it used to hang that link off — the path was eating
+   * the conversation title, and deleting the link with it would have removed
+   * the dock's only route to a session's coding layout when the shell is not
+   * already on a project page.
+   *
+   * It carries BOTH halves of the gate the retired link had, and they were
+   * different things: the project is the SESSION's own (`activeSession`), which
+   * is the fact the link was always about — station#4525 review HIGH-2 is
+   * explicit that session facts never gate on the badge's bound project — while
+   * `scopedProjectSlug` suppresses the row entirely, because a project
+   * CHAT-SCOPE filter (or a full-screen placement's immutable project) has
+   * never shown session-specific facts and navigating out of it is not this
+   * row's business. Dropping either one silently changes what the row opens.
+   */
+  const dockMoreActions: DockMoreAction[] = [
+    ...copyActions,
+    ...(!scopedProjectSlug && sessionCodingLayout && activeSession?.projectSlug
+      ? [
+          {
+            key: 'open-code-layout',
+            label: 'Open code layout',
+            onSelect: () => {
+              handleOpenLayout(
+                activeSession.projectSlug as string,
+                sessionCodingLayout.slug,
+              );
+            },
+          },
+        ]
+      : []),
+  ];
   // station#4524: the project switcher's row action switches the dock's own
   // project context directly — no navigation, no chat creation. Previously
   // ("Continue in <project>") it silently opened the New Chat modal, which
@@ -2084,16 +2137,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     workingDirectory={
                       scopedProjectSlug ? null : sessionDisplayCwd
                     }
-                    codingLayoutSlug={
-                      scopedProjectSlug
-                        ? null
-                        : (sessionCodingLayout?.slug ?? null)
-                    }
                     gitStatus={scopedProjectSlug ? undefined : gitStatus}
                     sessionProjectMismatchLabel={sessionProjectMismatchLabel}
                     projects={projects}
                     onSelectProject={handleSelectProject}
-                    onOpenLayout={handleOpenLayout}
                     onSwitchProject={handleSwitchProject}
                     onClearProjectScope={
                       scopedProjectSlug && !hasImmutableProjectScope
@@ -2119,7 +2166,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               regionVisible={isDockOpen}
               shellMaximized={isDockMaximized}
               canMaximize={chrome.canMaximize}
+              showMaximizeShortcut={chrome.ownsMaximizeShortcut}
               surfaceShortcutId={chrome.surfaceShortcutId}
+              moreActions={dockMoreActions}
               // #3309: the tab strip's controls fold into the header — one
               // chrome bar, every reclaimed pixel is transcript space. Only
               // while the pane is open; the collapsed bar stays minimal.
@@ -2146,6 +2195,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       sessionInventory:
                         !conversationOpenRecovery && inventoryExecutionId
                           ? {
+                              hostId: sessionInventoryHostId,
                               chatStoreId: inventoryChatStoreId!,
                               executionId: inventoryExecutionId,
                               projectId: inventoryProjectId,
@@ -2192,8 +2242,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     station#1797: the panel itself mounts only while
                     expanded — collapsed means collapsed, with no rail
                     duplicating the header's own expand/collapse toggle
-                    (`chat-dock__inbox-toggle`, the single control for this
-                    now). */}
+                    (the "Collapse/Expand chat list" row of the header's More
+                    menu since #1536 F, the single control for this now). */}
                 {inboxPanelMounts({
                   isMobile,
                   dockMode: effectiveDockSlotPlacement,

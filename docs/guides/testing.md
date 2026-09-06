@@ -1068,6 +1068,27 @@ layer that can fail for the right reason.
 
 5. **Playwright for browser/runtime boundaries.** SSE and HTTP route contracts normally use server integration tests; component state uses Vitest/jsdom. Use Playwright when browser streaming behavior, focus/layout, navigation, or the live packaged boundary is itself the claim.
 
+### Product contracts and test changes
+
+Critical user actions are acceptance criteria, not incidental button counts or
+component structure. Record their priority in the owning design document and
+protect durable invariants through the product-law registry. Changes to those
+invariants must state the product decision and replacement behavioral evidence
+in the PR; changing an assertion solely to match an implementation is not that
+justification.
+
+The required `fast-checks` job executes critical browser smoke before merge.
+The required repository-governance evidence rejects moving that suite into an
+optional/manual dependency or swallowing its result. Product-law observations
+use named structured results: missing, skipped, or unavailable evidence is not
+a pass, and changed areas are matched to their registered laws.
+
+CI also emits a non-blocking contract-test review report for changed contract
+policy, removed assertions/selectors, and added skips. It cannot infer semantic
+weakening: moving a valid test can produce a signal. Review the diff and its
+behavioral evidence rather than treating this advisory as a verdict. Promote
+new review heuristics to blocking rules only after measured catch evidence.
+
 ### What counts as "tested"
 
 | Change Type | Required Test |
