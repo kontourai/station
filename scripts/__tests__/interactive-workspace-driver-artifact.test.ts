@@ -39,7 +39,40 @@ test('persists closed driver rejection through a real Chromium binding and produ
       `<textarea data-station-performance-surface="task-editor" data-station-task-id="task-fixture" data-station-working-revision="swsr-v1:${'a'.repeat(64)}"></textarea><section data-station-performance-surface="task-room-presence"><header><p role="status">Live room connected.</p></header><button>Join room</button><button>Announce work</button><button>Leave room</button></section>`,
     );
     await page.addScriptTag({ content: bundled.outputFiles[0]!.text });
-    let rejection: 'identity' | 'wire' = 'identity';
+    let rejection: 'identity' | 'wire' | 'join' = 'identity';
+    const commandPage = await browser.newPage();
+    await commandPage.setContent(await page.content());
+    let joinRefusal = 'rate_limited';
+    let refusedCommand = 'join';
+    const requests: string[] = [];
+    let announceRequests = 0;
+    await commandPage.route(
+      'http://fixture.invalid/room/live',
+      async (route) => {
+        const command = route.request().postDataJSON().command;
+        requests.push(command);
+        if (command === 'announce') announceRequests += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: { 'access-control-allow-origin': '*' },
+          body: JSON.stringify({
+            success: true,
+            data: {
+              kind: 'available',
+              result: {
+                outcome:
+                  command === refusedCommand
+                    ? joinRefusal
+                    : command === 'join'
+                      ? 'joined'
+                      : 'updated',
+              },
+            },
+          }),
+        });
+      },
+    );
     let message = '';
     let invocations = 0;
     await page.exposeBinding(
@@ -47,6 +80,20 @@ test('persists closed driver rejection through a real Chromium binding and produ
       async () => {
         invocations += 1;
         if (rejection === 'wire') throw new Error(message);
+        if (rejection === 'join')
+          return publishPeerPresence(
+            {
+              url: () => 'http://fixture.invalid/tasks/task-fixture',
+              waitForFunction: commandPage.waitForFunction.bind(commandPage),
+              evaluate: commandPage.evaluate.bind(commandPage),
+              getByRole: commandPage.getByRole.bind(commandPage),
+              waitForResponse: commandPage.waitForResponse.bind(commandPage),
+            },
+            page,
+            14,
+            'http://fixture.invalid/tasks/task-fixture',
+            'task-fixture',
+          );
         // Fault at the exact identity wait; the real producer wraps the failure,
         // observes this real DOM, and rejects across Playwright's actual binding.
         const peer = {
@@ -96,6 +143,83 @@ test('persists closed driver rejection through a real Chromium binding and produ
     expect(readFileSync(artifact, 'utf8')).not.toMatch(
       /private-token|private\.invalid|task-fixture/,
     );
+    rejection = 'join';
+    await commandPage.evaluate(`(() => {
+      document
+        .querySelector('section')
+        .setAttribute('data-viewer-actor-id', 'fixture-peer');
+      for (const button of document.querySelectorAll('button')) {
+        const command = button.textContent === 'Join room' ? 'join' : button.textContent === 'Leave room' ? 'depart' : 'announce';
+        button.disabled = command !== 'join';
+        button.addEventListener('click', () => {
+          void fetch('http://fixture.invalid/room/live', {
+            method: 'POST',
+            body: JSON.stringify({ command }),
+          });
+        });
+      }
+    })()`);
+
+    for (const outcome of [
+      'invalid',
+      'forbidden',
+      'identity_changed',
+      'capacity_exceeded',
+      'rate_limited',
+      'degraded',
+      'unavailable',
+    ]) {
+      joinRefusal = outcome;
+      persistRawBridgeEvidence(artifact, await measure());
+      expect(read()).toMatchObject({
+        status: 'NOT_VERIFIED',
+        driverFailure: {
+          stage: 'join',
+          iteration: 14,
+          joinOutcome: outcome.toUpperCase(),
+          command: `Live command Join room status 200 outcome ${outcome.toUpperCase()}`,
+          stream: 'LIVE',
+          join: 'ENABLED',
+          announce: 'DISABLED',
+        },
+      });
+      expect(announceRequests).toBe(0);
+    }
+    for (const [command, stage, label] of [
+      ['depart', 'leave', 'Leave room'],
+      ['announce', 'announce', 'Announce work'],
+    ]) {
+      refusedCommand = command!;
+      await commandPage.evaluate(
+        command === 'depart'
+          ? "document.querySelectorAll('button').forEach(button => { button.disabled = false; })"
+          : "document.querySelectorAll('button').forEach(button => { button.disabled = button.textContent === 'Leave room'; })",
+      );
+      expect(
+        await commandPage.getByRole('button', { name: label }).isEnabled(),
+      ).toBe(true);
+      for (const outcome of [
+        'invalid',
+        'forbidden',
+        'identity_changed',
+        'capacity_exceeded',
+        'rate_limited',
+        'degraded',
+        'unavailable',
+      ]) {
+        joinRefusal = outcome;
+        requests.length = 0;
+        persistRawBridgeEvidence(artifact, await measure());
+        expect(read().driverFailure).toMatchObject({
+          stage,
+          iteration: 14,
+          command: `Live command ${label} status 200 outcome ${outcome.toUpperCase()}`,
+        });
+        expect(requests).toEqual(
+          command === 'depart' ? ['depart'] : ['join', 'announce'],
+        );
+      }
+    }
     rejection = 'wire';
     for (const stage of [
       'navigation-context',

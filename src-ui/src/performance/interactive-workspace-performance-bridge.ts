@@ -641,11 +641,11 @@ async function measureCollaboration(
       if (receipt) throw new ClosedCollaborationFailure(receipt);
       const message = error instanceof Error ? error.message : 'unknown';
       const diagnostic =
-        /Live command (Leave room|Join room|Announce work) status (\d{3}|UNKNOWN) outcome (DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN)/.exec(
+        /Live command (Leave room|Join room|Announce work) status (\d{3}|UNKNOWN) outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)/.exec(
           message,
         );
       const presence =
-        /^Collaboration presence (navigation|leave|owner-absence|join|announce) failed(?:: Live command (Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN))?$/.exec(
+        /^Collaboration presence (navigation|leave|owner-absence|join|announce) failed(?:: Live command (Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN))?$/.exec(
           message,
         );
       throw new Error(
@@ -1991,7 +1991,7 @@ function readClosedCollaborationFailure(
 ): ClosedCollaborationFailureReceipt | undefined {
   if (!(error instanceof Error) || error.message.length > 768) return;
   const match =
-    /^Collaboration presence (navigation-context|navigation|task-context|identity|leave-state|leave|owner-absence|join|ingress-clock|send-clock|announce) failed(?:: (Live command (?:(?:depart|join|announce|cursor) (?:input|response) (?:TIMEOUT|TARGET_CLOSED|FAILED)|(?:Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (?:DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN))))?; iteration=(UNKNOWN|0|[1-9][0-9]{0,2}); joinOutcome=(NOT_OBSERVED|DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN); stream=(LIVE|CONNECTING|TERMINAL|UNKNOWN); join=(ABSENT|HIDDEN|AMBIGUOUS|DISABLED|ENABLED|UNKNOWN); announce=(ABSENT|HIDDEN|AMBIGUOUS|DISABLED|ENABLED|UNKNOWN); dialog=(VISIBLE|NONE|UNKNOWN); telemetry=(VISIBLE|NONE|UNKNOWN)$/.exec(
+    /^Collaboration presence (navigation-context|navigation|task-context|identity|leave-state|leave|owner-absence|join|ingress-clock|send-clock|announce) failed(?:: (Live command (?:(?:depart|join|announce|cursor) (?:input|response) (?:TIMEOUT|TARGET_CLOSED|FAILED)|(?:Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (?:DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN))))?; iteration=(UNKNOWN|0|[1-9][0-9]{0,2}); joinOutcome=(NOT_OBSERVED|DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN); stream=(LIVE|CONNECTING|TERMINAL|UNKNOWN); join=(ABSENT|HIDDEN|AMBIGUOUS|DISABLED|ENABLED|UNKNOWN); announce=(ABSENT|HIDDEN|AMBIGUOUS|DISABLED|ENABLED|UNKNOWN); dialog=(VISIBLE|NONE|UNKNOWN); telemetry=(VISIBLE|NONE|UNKNOWN)$/.exec(
       error.message,
     );
   if (!match) return;
@@ -2028,7 +2028,7 @@ export function productMarkFailureCode(error: unknown): string {
   if (corpusReceipt)
     return `PRODUCT_FILE_100K_PREPARE_CORPUS_${corpusReceipt[1]!}`;
   const liveCommand =
-    /Collaboration (?:presence|measure) ([a-z-]+) failed: (?:Collaboration presence (?:navigation|leave|owner-absence|join|announce) failed: )?Live command (?:Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN)/.exec(
+    /Collaboration (?:presence|measure) ([a-z-]+) failed: (?:Collaboration presence (?:navigation|leave|owner-absence|join|announce) failed: )?Live command (?:Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)/.exec(
       message,
     );
   if (liveCommand)
@@ -2049,7 +2049,7 @@ export function productMarkFailureCode(error: unknown): string {
   );
   if (collaborationMeasure)
     if (
-      /Live command .* outcome (DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN)/.test(
+      /Live command .* outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)/.test(
         message,
       )
     )

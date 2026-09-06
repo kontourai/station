@@ -15,6 +15,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -151,25 +152,40 @@ function dockParam(): string | null {
   return new URLSearchParams(window.location.search).get('dock');
 }
 
+/**
+ * #1536 F folded the toolbar's five per-region buttons into ONE "Layout" control;
+ * #1552 D2 made what it opens a placement PICKER — a `radiogroup` row per
+ * surface whose segments are the regions it may occupy plus `Hidden`. A
+ * placement is therefore the surface's row plus the region's segment, and the
+ * panel is a `group` rather than a `menu` (the arrow keys belong to the rows).
+ */
+function layoutPicker() {
+  fireEvent.click(screen.getByRole('button', { name: 'Layout regions' }));
+  return screen.getByRole('group', { name: 'Layout regions' });
+}
+
+/** Press one segment of one surface's row of the picker. */
+function chooseSegment(surfaceTitle: string, segmentLabel: string) {
+  const row = within(layoutPicker()).getByRole('radiogroup', {
+    name: `${surfaceTitle} placement`,
+  });
+  fireEvent.click(within(row).getByRole('radio', { name: segmentLabel }));
+}
+
 async function placeChatRight() {
   renderHost();
   await waitFor(() =>
     expect(document.querySelector('.chat-dock')).not.toBeNull(),
   );
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Choose a surface for Right region' }),
-  );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Place Chat here' }));
+  chooseChatForEmptyRight();
   await waitFor(() =>
     expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
   );
 }
 
 function chooseChatForEmptyRight() {
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Choose a surface for Right region' }),
-  );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Place Chat here' }));
+  // The retired "Place Chat here" under a Right heading.
+  chooseSegment('Chat', 'Right');
 }
 
 function dockToggle(): () => void {
@@ -514,11 +530,9 @@ describe('the docked Chat gets the full dock chrome (station#4460)', () => {
     await waitFor(() => {
       expect(document.querySelector('.chat-dock')).not.toBeNull();
     });
-    const control = screen.getByRole('button', {
-      name: 'Hide Chat Bottom region',
-    });
     expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
-    fireEvent.click(control);
+    // The retired "Hide Chat" row: Chat's `Hidden` segment.
+    chooseSegment('Chat', 'Hidden');
     await waitFor(() => {
       expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull();
     });
