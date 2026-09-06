@@ -713,6 +713,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fix tied on specificity with a rule 90 lines below it and lost on source
   // order while the declaration read correct.
   'src-ui/src/__tests__/menu-primitive.cascade.test.tsx',
+  // #1636: launches a real Chromium to measure whether the workspace pane
+  // route's page frame survives on a route that lacks the project-page chunk,
+  // composing only the entry stylesheet and the sheets the route's own module
+  // declares. jsdom computes no layout and would report the pre-fix
+  // edge-to-edge frame and the fixed one identically.
+  'src-ui/src/workspace-panes/__tests__/WorkspacePaneRouteView.frame.test.tsx',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =
