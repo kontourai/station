@@ -113,6 +113,28 @@ describe('ingestBackgroundTaskEvent — tool cards', () => {
     expect(state.entries['call-1'].state).toBe('stopped');
   });
 
+  // station#1558: the session ended with this call still open. Not 'stopped'
+  // (nobody asked it to stop) and not 'failed' (nothing observed a failure).
+  test('tool.completed(unresolved) closes the card as unresolved', () => {
+    let state = ingestBackgroundTaskEvent(
+      createEmptyBackgroundTasksState(),
+      event('tool.started', { toolCallId: 'call-1', toolName: 'bash' }),
+    );
+    state = ingestBackgroundTaskEvent(
+      state,
+      event('tool.completed', {
+        toolCallId: 'call-1',
+        toolName: 'bash',
+        status: 'unresolved',
+        createdAt: '2026-07-29T00:00:09.000Z',
+      }),
+    );
+    expect(state.entries['call-1']).toMatchObject({
+      state: 'unresolved',
+      endedAt: Date.parse('2026-07-29T00:00:09.000Z'),
+    });
+  });
+
   test('tool.completed(error) closes the card as failed', () => {
     let state = ingestBackgroundTaskEvent(
       createEmptyBackgroundTasksState(),

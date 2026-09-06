@@ -12,6 +12,7 @@ import { PluginEmptyState } from './plugin-management/PluginEmptyState';
 import { PluginModalStack } from './plugin-management/PluginModalStack';
 import { isRejectedPlugin } from './plugin-management/types';
 import { usePluginManagementViewModel } from './plugin-management/usePluginManagementViewModel';
+import { soleLayoutTargetProject } from './plugin-management/view-utils';
 
 /* ── Main View ── */
 export function PluginManagementView({
@@ -21,6 +22,7 @@ export function PluginManagementView({
 }) {
   const {
     addLayoutToProjects,
+    addPluginLayout,
     apiBase,
     assigningLayout,
     changelogData,
@@ -161,6 +163,14 @@ export function PluginManagementView({
             revokingPermissions={revokingPermissions}
             onReloadRejected={() => void reloadRejectedPlugin()}
             reloadRejectedPending={reloadRejectedPending}
+            layoutTargetProjectName={
+              soleLayoutTargetProject(projects)?.name ?? null
+            }
+            addLayoutPending={assigningLayout}
+            onAddLayout={() => {
+              if (isRejectedPlugin(selected)) return;
+              void addPluginLayout(selected);
+            }}
             onRevokePermission={(entry) =>
               requestRevokePermission(
                 selected.name,

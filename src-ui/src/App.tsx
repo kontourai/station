@@ -42,8 +42,9 @@ import { useNavigation } from './contexts/NavigationContext';
 import { ProjectsProvider } from './contexts/ProjectsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
+import { useShowSurface } from './contexts/useShowSurface';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
-import { chatRegion } from './regions/region-model';
+import { foldedDockRegion } from './regions/region-model';
 
 /**
  * The cheatsheet is an overlay behind a keystroke — nothing about first paint
@@ -188,7 +189,17 @@ function App() {
     effective: effectiveDockSlotPlacement,
   } = useDockSlotPlacement(dockSlotPreference);
   const regionModel = useRegionModelOptional();
-  const modelChatRegion = regionModel && chatRegion(regionModel.regions);
+  // The dock region a coarse device renders: `RegionShells` mounts exactly
+  // this one there (the fold), whatever its occupant — so it, not Chat's
+  // region, is what the mobile full-screen predicate below must read (#1385
+  // review). Undefined when no dock region is occupied.
+  const renderedDockRegion = regionModel
+    ? foldedDockRegion(regionModel.regions, regionModel.lastShownRegion)
+    : undefined;
+  const renderedDockState =
+    regionModel && renderedDockRegion
+      ? regionModel.regions[renderedDockRegion]
+      : null;
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const {
@@ -219,9 +230,21 @@ function App() {
     [navigate, setLayout],
   );
 
-  const navigateHome = useCallback(() => {
+  // Two producers that used to share one `navigateHome` (#1523). Since `/`
+  // renders whatever occupies `main` (#928 C2a), "go to `/`" and "show Home"
+  // are different intents, and the name says which one a caller holds:
+  //
+  // `returnToOutlet` — leave this routed view for `/`, whatever occupies
+  // `main`: the settings toggle's return (⌘, and the header gear), the
+  // Settings view's Escape, the New Project modal's dismissal. A user who
+  // had Activity in `main` gets Activity back, not Home.
+  const returnToOutlet = useCallback(() => {
     navigate('/');
   }, [navigate]);
+  // `showHome` — Home BY NAME: reveal the Home surface, which places it in
+  // `main` (the model navigates to `/`). The not-found view's "Go home".
+  const showSurface = useShowSurface();
+  const showHome = useCallback(() => showSurface('home'), [showSurface]);
 
   // Listen for path changes (back/forward navigation)
   useEffect(() => {
@@ -412,10 +435,10 @@ function App() {
    */
   const isAmbientMobileDockFullscreen = isMobileDockFullscreenState({
     isMobile: isMobileViewport,
-    isDockOpen: modelChatRegion
-      ? regionModel.regions[modelChatRegion].visible
-      : isDockOpen,
-    isDockMaximized,
+    isDockOpen: renderedDockState ? renderedDockState.visible : isDockOpen,
+    isDockMaximized: renderedDockState
+      ? renderedDockState.maximized
+      : isDockMaximized,
     isDockOwnedView: isDockOwnedViewType(displayCurrentView.type),
   });
   const isMobileDockFullscreen =
@@ -452,11 +475,12 @@ function App() {
     'Toggle settings',
     useCallback(() => {
       if (displayCurrentView.type === 'settings') {
-        navigateHome();
+        // A toggle returns to where the user was: the outlet's occupant.
+        returnToOutlet();
       } else {
         navigateToView({ type: 'settings' });
       }
-    }, [displayCurrentView.type, navigateHome, navigateToView]),
+    }, [displayCurrentView.type, returnToOutlet, navigateToView]),
   );
 
   useKeyboardShortcut(
@@ -529,7 +553,8 @@ function App() {
       availableModels={availableModels}
       defaultModel={appConfig?.defaultModel}
       onNavigate={navigateToView}
-      onNavigateHome={navigateHome}
+      onShowHome={showHome}
+      onReturnToOutlet={returnToOutlet}
       onSettingsSaved={handleSettingsSaved}
       projectsLoading={projectsLoading}
       homeContinuation={
@@ -612,7 +637,8 @@ function App() {
               onNavigate={navigateToView}
               onToggleSettings={() => {
                 if (displayCurrentView.type === 'settings') {
-                  navigateHome();
+                  // The gear is a toggle: back to the outlet's occupant.
+                  returnToOutlet();
                 } else {
                   navigateToView({ type: 'settings' });
                 }

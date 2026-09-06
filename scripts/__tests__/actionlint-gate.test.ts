@@ -1312,6 +1312,46 @@ describe('persistent runner policy', () => {
     },
   );
 
+  test('admits the reviewed browser evidence commands but still rejects an extra candidate command', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('fast-checks', () => {}),
+      ),
+    ).toEqual([]);
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('fast-checks', (job) => {
+          (job.steps as Array<Record<string, unknown>>).push({
+            name: 'Unreviewed extra command',
+            run: 'echo unreviewed',
+          });
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks',
+      message:
+        'pull_request_target router jobs must not add unreviewed shell execution',
+    });
+  });
+
+  test('the always-on workflow gate rejects removal of required browser smoke', () => {
+    const findings = persistentRunnerPolicyFindings(
+      primaryCiJobFixture('fast-checks', (job) => {
+        job.steps = (job.steps as Array<Record<string, unknown>>).filter(
+          (step) =>
+            step.name !== 'Verify critical browser journeys before merge',
+        );
+      }),
+    );
+    expect(findings).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks',
+      message:
+        'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks.',
+    });
+  });
+
   test('rejects unreviewed fork shell execution', () => {
     expect(
       persistentRunnerPolicyFindings(
