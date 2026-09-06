@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, test } from 'vitest';
+import { createPlannedHomeAdmissionStore } from '../planned-home-admission-store.js';
 import {
   createAuthorizedSqlitePlannedHomeTransferStore,
   createSqlitePlannedHomeTransferStore,
@@ -52,7 +53,9 @@ const closure: ProjectTaskRoomSourceSeal = {
   },
   workingStateDigest: 'c'.repeat(64),
 };
-function stored<T>(result: TransferStoreResult<T>): T {
+function stored<T>(
+  result: TransferStoreResult<T> | { kind: 'admission-pending' },
+): T {
   expect(result.kind).toBe('stored');
   if (result.kind !== 'stored') throw new Error('Missing stored result');
   return result.value;
@@ -212,18 +215,22 @@ test('identical channel and operation identifiers remain isolated by tenant', ()
 test('a write failure rolls ownership and operation state back together', () => {
   const { db, store } = fixture();
   ready(store);
+  let injectedFailureReached = false;
   const faulted = createSqlitePlannedHomeTransferStore({
     exec: (sql) => db.exec(sql),
     prepare(sql) {
       const statement = db.prepare(sql);
       return {
         get: (...values) => statement.get(...values),
+        all: (...values) => statement.all(...values),
         run: (...values) => {
           if (
             sql.startsWith('INSERT INTO planned_home_transfers') &&
             String(values.at(-1)).includes('"phase":"committed"')
-          )
+          ) {
+            injectedFailureReached = true;
             throw new Error('Injected persistence failure');
+          }
           return statement.run(...values);
         },
       };
@@ -232,6 +239,7 @@ test('a write failure rolls ownership and operation state back together', () => 
   expect(faulted.commit(owner.tenantId, intent.operationId).kind).toBe(
     'unavailable',
   );
+  expect(injectedFailureReached).toBe(true);
   expect(stored(store.inspect(owner.tenantId, owner.channelId))).toEqual(owner);
   expect(stored(store.resolve(owner.tenantId, intent.operationId)).phase).toBe(
     'target-ready',
@@ -442,3 +450,86 @@ test('rejected asynchronous guards do not emit unhandled rejections', async () =
     process.removeListener('unhandledRejection', record);
   }
 });
+
+test('unresolved admission blocks commit across reopen until its exact receipt is finished', () => {
+  const { db, store, open } = fixture();
+  const input = {
+    tenantId: owner.tenantId,
+    channelId: owner.channelId,
+    admissionId: 'write-1',
+    ownerRevision: 0,
+    homeRef: owner.homeRef,
+    kind: 'room-write' as const,
+    intentDigest: 'd'.repeat(64),
+  };
+  const admissions = createPlannedHomeAdmissionStore(db, () => true);
+  expect(admissions.begin(input).kind).toBe('stored');
+  ready(store);
+  expect(store.commit(owner.tenantId, intent.operationId)).toEqual({
+    kind: 'admission-pending',
+  });
+  expect(stored(store.inspect(owner.tenantId, owner.channelId))).toEqual(owner);
+  db.close();
+  const reopened = open();
+  const resumed = createSqlitePlannedHomeTransferStore(reopened);
+  const resumedAdmissions = createPlannedHomeAdmissionStore(
+    reopened,
+    () => true,
+  );
+  expect(resumed.commit(owner.tenantId, intent.operationId)).toEqual({
+    kind: 'admission-pending',
+  });
+  expect(
+    resumedAdmissions.begin({ ...input, admissionId: 'write-2' }).kind,
+  ).toBe('conflict');
+  expect(resumedAdmissions.begin(input).kind).toBe('stored');
+  expect(
+    resumedAdmissions.finish({
+      ...input,
+      intentDigest: 'e'.repeat(64),
+      receiptDigest: 'f'.repeat(64),
+    }).kind,
+  ).toBe('conflict');
+  expect(resumed.commit(owner.tenantId, intent.operationId)).toEqual({
+    kind: 'admission-pending',
+  });
+  expect(
+    resumedAdmissions.finish({ ...input, receiptDigest: 'f'.repeat(64) }).kind,
+  ).toBe('stored');
+  const committed = stored(resumed.commit(owner.tenantId, intent.operationId));
+  expect(committed.phase).toBe('committed');
+  expect(stored(resumed.inspect(owner.tenantId, owner.channelId)).homeRef).toBe(
+    'target',
+  );
+  expect(resumed.commit(owner.tenantId, intent.operationId)).toEqual({
+    kind: 'stored',
+    value: committed,
+  });
+});
+
+test.each(['channel_id', 'tenant_id'])(
+  'corrupt admission %s cannot hide unresolved work from commit',
+  (column) => {
+    const { db, store } = fixture();
+    const admissions = createPlannedHomeAdmissionStore(db, () => true);
+    expect(
+      admissions.begin({
+        tenantId: owner.tenantId,
+        channelId: owner.channelId,
+        admissionId: 'write-corrupt',
+        ownerRevision: 0,
+        homeRef: owner.homeRef,
+        kind: 'room-write',
+        intentDigest: 'a'.repeat(64),
+      }).kind,
+    ).toBe('stored');
+    ready(store);
+    db.exec(`UPDATE planned_home_admissions SET ${column}='wrong-routing'`);
+    expect(store.commit(owner.tenantId, intent.operationId)).toEqual({
+      kind: 'unavailable',
+    });
+    expect(stored(store.inspect(owner.tenantId, owner.channelId))).toEqual(
+      owner,
+    );
+  },
+);
