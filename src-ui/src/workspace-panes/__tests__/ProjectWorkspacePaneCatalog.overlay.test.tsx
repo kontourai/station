@@ -122,6 +122,21 @@ function routeStylesheet(): string {
 }
 
 function assertModelsARouteWithoutTheProjectPageChunk(css: string): void {
+  // The property every measurement below rests on is not "one class is absent"
+  // — it is "this cascade is index.css and its own imports, and NOTHING else".
+  // Recomputed here independently of `routeStylesheet`, so appending a
+  // co-located sheet to that function (which would measure a richer cascade
+  // than the worst route offers, and pass for the wrong reason) fails here
+  // rather than silently widening the fixture.
+  if (css !== resolveCssImports(INDEX_CSS_PATH)) {
+    throw new Error(
+      'the composed stylesheet is no longer exactly `index.css` and its own ' +
+        'imports. A component stylesheet only reaches a route that imports it, ' +
+        'so adding one here measures a cascade some route does not have — the ' +
+        'exact condition #1616 lived on. Measure the worst route, or change ' +
+        'what this fixture claims.',
+    );
+  }
   if (css.includes('.project-page__modal-overlay')) {
     throw new Error(
       'index.css now defines `.project-page__modal-overlay`, so this fixture ' +
