@@ -23,7 +23,6 @@ import {
   cleanupE2ERun,
   discoverE2EDaemon,
   E2E_SUITE_PORTS,
-  e2ePhaseOutputRoot,
   e2eTestResultsRoot,
   establishedUserPlaywrightEnv,
   extractE2EUiBootstrapToken,
@@ -174,22 +173,6 @@ describe('runE2EExecutionPhases', () => {
       'shared-instance-exclusive: exclusive red',
     );
     expect(calls).toEqual(['parallel-safe', 'shared-instance-exclusive']);
-  });
-
-  test('gives product phases distinct nested roots and leaves other suites flat', () => {
-    expect(e2ePhaseOutputRoot('/results/run', 'product', 'parallel-safe')).toBe(
-      '/results/run/parallel-safe',
-    );
-    expect(
-      e2ePhaseOutputRoot(
-        '/results/run',
-        'product',
-        'shared-instance-exclusive',
-      ),
-    ).toBe('/results/run/shared-instance-exclusive');
-    expect(e2ePhaseOutputRoot('/results/run', 'extended', 'extended')).toBe(
-      '/results/run',
-    );
   });
 });
 

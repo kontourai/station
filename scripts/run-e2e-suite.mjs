@@ -340,12 +340,6 @@ export async function runE2EExecutionPhases(phases, execute) {
   }
 }
 
-export function e2ePhaseOutputRoot(testResultsRoot, suite, phaseName) {
-  return suite === 'product'
-    ? join(testResultsRoot, phaseName)
-    : testResultsRoot;
-}
-
 async function runWithinOwnedDeadline(
   command,
   args,
@@ -2116,7 +2110,9 @@ async function main() {
             },
           ];
     await runE2EExecutionPhases(phases, async (phase) => {
-      const outputRoot = e2ePhaseOutputRoot(testResultsRoot, suite, phase.name);
+      // Playwright clears outputDir before running. Keep the live Station log
+      // in its parent so startup does not unlink the daemon's open log file.
+      const outputRoot = join(testResultsRoot, phase.name);
       console.log(
         `[e2e] ${suite} phase ${phase.name}: ${phase.specs.length} spec(s), ${phase.workers} worker(s)`,
       );
