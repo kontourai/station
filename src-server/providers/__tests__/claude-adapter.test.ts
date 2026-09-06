@@ -1800,6 +1800,171 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test.each([true, false])(
+    'a provider refusal emits one failed-turn error with wrapper=%s and leaves native binding status unknown',
+    async (throwsWrapper) => {
+      const failureText =
+        "API Error: Opus 5 (1M context)'s safeguards flagged this message. Details: [reasoning_extraction]";
+      mockQuery.mockReturnValue({
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: 'result',
+            subtype: 'success',
+            is_error: true,
+            result: failureText,
+            stop_reason: null,
+            usage: { input_tokens: 1, output_tokens: 0 },
+            uuid: 'refused-result',
+            session_id: 'native-refused',
+          };
+          if (throwsWrapper)
+            throw new Error(
+              `Claude Code returned an error result: ${failureText}`,
+            );
+        },
+        interrupt: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn(),
+      });
+      const adapter = new ClaudeAdapter();
+      const events: any[] = [];
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'refused-turn',
+        resumeCursor: 'last-known-native',
+      });
+      await vi.waitFor(async () =>
+        expect((await adapter.listSessions())[0]?.status).toBe('error'),
+      );
+      await expect(
+        adapter.sendTurn({
+          threadId: 'refused-turn',
+          input: 'must not be silently accepted',
+        }),
+      ).rejects.toThrow(
+        'The provider turn ended before the input could be enqueued.',
+      );
+      expect(events.some((event) => event.method === 'turn.started')).toBe(
+        false,
+      );
+      await adapter.stopAll();
+      await drain;
+      const failures = events.filter(
+        (event) => event.method === 'runtime.error',
+      );
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toMatchObject({
+        code: 'engine-turn-failed',
+        retriable: false,
+        message: failureText,
+      });
+      expect(events.some((event) => event.method === 'turn.completed')).toBe(
+        false,
+      );
+      expect(
+        failures.some((event) => event.code === 'engine-session-binding-dead'),
+      ).toBe(false);
+    },
+  );
+
+  test('a query failure during asynchronous turn setup refuses enqueue without publishing a started turn', async () => {
+    let failQuery!: () => void;
+    const failureReady = new Promise<void>((resolve) => {
+      failQuery = resolve;
+    });
+    const adapter = new ClaudeAdapter();
+    mockQuery.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        await failureReady;
+        yield {
+          type: 'result',
+          is_error: true,
+          result: 'Query failed during control setup',
+          usage: { input_tokens: 0, output_tokens: 0 },
+          uuid: 'setup-failure',
+          session_id: 'native-setup',
+        };
+      },
+      setPermissionMode: vi.fn(async () => {
+        failQuery();
+        await vi.waitFor(async () =>
+          expect((await adapter.listSessions())[0]?.status).toBe('error'),
+        );
+      }),
+      close: vi.fn(),
+    });
+    const events: any[] = [];
+    const drain = (async () => {
+      for await (const event of adapter.streamEvents()) events.push(event);
+    })();
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'setup-failure',
+      modelOptions: { approvalMode: 'ask' },
+    });
+    await expect(
+      adapter.sendTurn({
+        threadId: 'setup-failure',
+        input: 'no silent enqueue',
+        modelOptions: { approvalMode: 'auto' },
+      }),
+    ).rejects.toThrow('The provider turn ended');
+    await adapter.stopAll();
+    await drain;
+    expect(
+      events.filter((event) => event.method === 'runtime.error'),
+    ).toHaveLength(1);
+    expect(events.some((event) => event.method === 'turn.started')).toBe(false);
+  });
+
+  test('a later SDK message ends wrapper suppression so a distinct query failure remains visible', async () => {
+    mockQuery.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'result',
+          is_error: true,
+          result: 'Provider refusal',
+          usage: { input_tokens: 0, output_tokens: 0 },
+          uuid: 'first-failure',
+          session_id: 'native-refused',
+        };
+        yield { type: 'system', subtype: 'status', status: null };
+        throw new Error('Distinct later transport failure');
+      },
+      close: vi.fn(),
+    });
+    const adapter = new ClaudeAdapter();
+    const events: any[] = [];
+    const drain = (async () => {
+      for await (const event of adapter.streamEvents()) events.push(event);
+    })();
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'later-failure',
+    });
+    await vi.waitFor(() =>
+      expect(
+        events.filter((event) => event.method === 'runtime.error'),
+      ).toHaveLength(2),
+    );
+    await expect(
+      adapter.sendTurn({
+        threadId: 'later-failure',
+        input: 'no silent enqueue',
+      }),
+    ).rejects.toThrow('The provider turn ended');
+    await adapter.stopAll();
+    await drain;
+    expect(
+      events
+        .filter((event) => event.method === 'runtime.error')
+        .map((event) => event.message),
+    ).toEqual(['Provider refusal', 'Distinct later transport failure']);
+    expect(events.some((event) => event.method === 'turn.started')).toBe(false);
+  });
+
   /**
    * archive#1827. Reproduces the ticket's exact live shape: the SDK
    * delivers a `result` message with `is_error: true` (the STRUCTURED
@@ -1807,8 +1972,7 @@ describe('ClaudeAdapter', () => {
    * normal message stream, and only THEN the underlying `claude` CLI
    * process exits and the SDK's own query iterator re-throws the SAME
    * failure text wrapped as a generic Error (`Query`'s `lastErrorResultText`
-   * mechanism in `@anthropic-ai/claude-agent-sdk`'s `sdk.mjs`, cited in
-   * `claude-result-outcome.ts`'s doc comment). Before this fix, that shape
+   * mechanism in `@anthropic-ai/claude-agent-sdk`'s `sdk.mjs`). Before this fix, that shape
    * published the raw text as `turn.completed` (folding an error into what
    * looked like a completed reply) and then published it a SECOND time,
    * unclassified, from the generic catch — exactly the "shown twice, then
@@ -3369,6 +3533,7 @@ describe('ClaudeAdapter', () => {
       });
       controlled.push({
         type: 'result',
+        is_error: false,
         result: 'hi',
         stop_reason: 'end_turn',
         usage: { input_tokens: 1, output_tokens: 1 },
@@ -3388,6 +3553,7 @@ describe('ClaudeAdapter', () => {
 
       controlled.push({
         type: 'result',
+        is_error: false,
         result: 'bye',
         stop_reason: 'end_turn',
         usage: { input_tokens: 1, output_tokens: 1 },
@@ -4538,6 +4704,15 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
    * exactly why this branch had no test.
    */
   describe('the stop grace elapsing (station#1569 item 1)', () => {
+    // The default-bound case below installs a fake clock. If it ever fails
+    // mid-await, its own `finally` does not run before the next test starts —
+    // and a fake clock left installed makes every later test in this file
+    // time out, which reads as four unrelated regressions. Restoring here
+    // bounds a failure to the test that failed.
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
     test('settles the open call as unresolved, on its own turn, before session.exited', async () => {
       const query = createEndableMockQuery({ endOnClose: false });
       const { adapter, iterator, turnId } = await openCallOn(
@@ -4607,6 +4782,77 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
             output: 'ok',
           }),
         ],
+      );
+    });
+
+    /**
+     * station#1586 (item 1): every case above injects a 5ms bound, so the
+     * DEFAULT — `CLAUDE_STREAM_STOP_GRACE_MS`, the value every real stop
+     * actually uses — was never exercised. A test that spends a real second
+     * to reach it is a test nobody runs, so this drives the clock instead:
+     * the adapter is constructed with NO `streamStopGraceMs`, and the settle
+     * is proven to fire at 1000ms and not before.
+     */
+    test('with no injected bound, the settle fires at the 1s default and not before', async () => {
+      const query = createEndableMockQuery({ endOnClose: false });
+      const warn = vi.fn();
+      const { adapter, iterator, turnId } = await openCallOn(
+        'thread-grace-default',
+        query,
+        { logger: { warn } },
+      );
+
+      // Collected in the background: with the clock frozen, a `nextOf` scan
+      // for an event that has not been published yet would never resolve.
+      const seen: any[] = [];
+      const collector = (async () => {
+        for (;;) {
+          const next = await iterator.next();
+          if (next.done) return;
+          seen.push(next.value);
+        }
+      })();
+      void collector;
+
+      vi.useFakeTimers();
+      try {
+        let stopSettled = false;
+        const stop = adapter.stopSession('thread-grace-default').then(() => {
+          stopSettled = true;
+        });
+
+        // One millisecond short of the default: the grace is still running,
+        // so nothing has been settled and nothing has been said about it.
+        await vi.advanceTimersByTimeAsync(999);
+        expect(
+          seen.filter((event) => event.method === 'tool.completed'),
+        ).toEqual([]);
+        expect(warn).not.toHaveBeenCalled();
+        expect(stopSettled).toBe(false);
+
+        // …and the millisecond that reaches 1000 is the one that fires it.
+        await vi.advanceTimersByTimeAsync(1);
+        await stop;
+        expect(stopSettled).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(seen.filter((event) => event.method === 'tool.completed')).toEqual(
+        [
+          expect.objectContaining({
+            toolCallId: 'toolu-open',
+            toolName: 'Bash',
+            status: 'unresolved',
+            turnId,
+          }),
+        ],
+      );
+      // The operator-visible half of station#1569 item 1, carrying the bound
+      // that actually elapsed — the literal, so widening the default cannot
+      // leave this assertion silently describing a different wait.
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('within 1000ms of close()'),
       );
     });
 
@@ -4818,6 +5064,43 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
         await stop;
 
         expect(skillsCleanup.cleanupMaterializedSkills).not.toHaveBeenCalled();
+      });
+
+      test('the real-cwd manifest path runs for an ordinary stop', async () => {
+        // station#1586 (item 5): the discriminating control the overlay
+        // branch already had and this one did not. Without it, the assertion
+        // above holds just as well for a branch that never cleans up at all
+        // — "skipped when retaken" only means something beside "runs when
+        // not".
+        const skillsCleanup = cleanupSpies();
+        const query = createEndableMockQuery({ endOnClose: false });
+        const { adapter } = await openCallOn(
+          'thread-cleanup-cwd-no-restart',
+          query,
+          { skillsCleanup },
+        );
+        // No overlay: cleanup is scoped to this session's own manifest inside
+        // the user's real workspace.
+        (
+          adapter as unknown as {
+            sessions: Map<string, { session: { cwd?: string } }>;
+          }
+        ).sessions.get('thread-cleanup-cwd-no-restart')!.session.cwd =
+          '/repo/project';
+
+        const stop = adapter.stopSession('thread-cleanup-cwd-no-restart');
+        query.end();
+        await stop;
+
+        expect(skillsCleanup.cleanupMaterializedSkills).toHaveBeenCalledWith(
+          expect.objectContaining({
+            cwd: '/repo/project',
+            sessionId: 'thread-cleanup-cwd-no-restart',
+          }),
+        );
+        // The overlay leaf belongs to the other branch: a session with no
+        // overlay must not have its (non-existent) overlay directory removed.
+        expect(skillsCleanup.removeSkillOverlayDir).not.toHaveBeenCalled();
       });
     });
   });

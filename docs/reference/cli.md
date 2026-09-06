@@ -1985,6 +1985,16 @@ Validate every manifest entry and content hash, then atomically restore a
 Station home while retaining the replaced home as a timestamped sibling.
 Restore never runs while a matching Station instance is live.
 
+The CLI identifies the result as **recovered from a copy**, prints the backup's
+snapshot time, and notes that work after that snapshot may be missing. Its JSON
+receipt includes `recovery` with a new recovery ID, snapshot/recovery times,
+the validated manifest digest, and `authorityTransferred: false`. Restore
+publishes `station-home-recovery.json` atomically with the home, replacing any
+prior recovery disclosure from that copy. This metadata grants no execution
+authority and does not claim witnessed failover. Connected browsers show the same recovery-from-copy notice after refreshing
+system status. This home-level disclosure does not establish a channel-specific
+divergence checkpoint or witnessed transfer.
+
 ```
 station home restore --from=<backup-directory> --confirm [--home=<dir>] [--base=<dir>] [--json]
 ```
@@ -2602,8 +2612,23 @@ Preview supports `aws-ec2` and `gcp-compute`; template generation is AWS-only:
 ```sh
 station cloud preview --home=/absolute/path/to/station-home --provider=aws-ec2 --region=us-east-1 --instance-type=t3.micro --json
 station cloud preview --home=/absolute/path/to/station-home --provider=gcp-compute --region=us-central1 --instance-type=e2-micro --json
+station cloud verify-target --station=cloud-dev --json
 station cloud template --provider=aws-ec2 --region=us-east-1 --instance-type=t3.micro --image=REGISTRY/IMAGE@sha256:DIGEST --output=station-cloud.json
 ```
+
+`verify-target` requires exactly one explicitly enrolled `--station` or
+`--api-base` target. Complete owner-approved Station pairing first. It uses
+that connection's bearer credential and observes environment discovery between
+two matching boot-identity reads. Redirects, missing or wrong-origin
+credentials, malformed identities, responses over 4 KiB, and a boot change
+fail verification. The entire observation has a 15-second deadline.
+
+JSON output contains the target origin, environment ID, instance ID, boot ID,
+build SHA and observation time. It contains no credential and grants no
+execution authority. A saved observation cannot authorize activation: verify
+the target again when the future transfer coordinator reaches that boundary.
+The command does not provision, transfer files, or continue agents.
+
 
 Replace the image placeholder with a verified, publicly readable Linux/x86 image
 and its 64-character SHA-256 digest. The template command refuses existing output

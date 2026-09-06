@@ -6,7 +6,10 @@ import type {
   SessionControlMode,
   TaskRecord,
 } from '@kontourai/station-sdk';
-import type { ChatUIState } from '../../contexts/active-chats-state';
+import {
+  activeChatHasWork,
+  type ChatUIState,
+} from '../../contexts/active-chats-state';
 import type { AgentSummary } from '../../types';
 import type { HomeLifecycleLabel } from '../../utils/lifecycle-priority';
 import {
@@ -823,9 +826,23 @@ export function buildActiveChatTaskItems({
   agents,
   sessions = [],
   resolveModelLabel = defaultResolveModelLabel,
+  onlyWork = false,
 }: {
   chats: Record<string, ChatUIState>;
   agents: AgentSummary[];
+  /**
+   * #1582 B9: drop chats nothing has been put into (`activeChatHasWork`).
+   *
+   * OFF by default, and the default is the load-bearing half: an inbox lists
+   * the chats OPEN IN THIS TAB, and a chat the user is looking at has to be in
+   * it whether or not it has been typed into yet. Filtering here unconditionally
+   * made a just-created chat vanish from the dock's own list — caught by
+   * `tests/cross-runtime-chat-switching.spec.ts`, not by any unit test.
+   *
+   * Home's "Continue most recent work" card is the surface that means WORK, so
+   * it is the one that opts in (`useOpenWorkChats`).
+   */
+  onlyWork?: boolean;
   /**
    * Optional: when a chat correlates with an orchestration session, that
    * session's `hasActiveTurn` fold decides whether the chat is "Running".
@@ -855,50 +872,53 @@ export function buildActiveChatTaskItems({
       }
     }
   }
-  const items = Object.entries(chats).map<MergeItem>(([id, chat]) => {
-    const agentLabel = safeAgentLabel({
-      slug: chat.agentSlug,
-      name:
-        chat.agentName ||
-        agents.find((agent) => agent.slug === chat.agentSlug)?.name,
+  const items = Object.entries(chats)
+    .filter(([, chat]) => !onlyWork || activeChatHasWork(chat))
+    .map<MergeItem>(([id, chat]) => {
+      const agentLabel = safeAgentLabel({
+        slug: chat.agentSlug,
+        name:
+          chat.agentName ||
+          agents.find((agent) => agent.slug === chat.agentSlug)?.name,
+      });
+      return {
+        id: chat.conversationId || id,
+        ...(chat.conversationId ? { conversationId: chat.conversationId } : {}),
+        kind: 'chat' as const,
+        kindLabel: 'Direct chat' as const,
+        // Match the dock session-title convention (useDerivedSessions):
+        // untitled chats read "<Agent> Chat", not the bare agent name —
+        // title is not persisted across reloads, so this fallback is the
+        // steady-state name for rehydrated sessions.
+        title:
+          chat.title?.trim() || (agentLabel ? `${agentLabel} Chat` : 'Task'),
+        projectLabel: chat.projectName || chat.projectSlug || 'No project',
+        agentLabel,
+        modelLabel: resolveModelLabel(chat.orchestrationModel || chat.model),
+        // archive#3391: the id itself, not only its label — the label is a
+        // derivation of this, and a consumer that needs the model (reopen)
+        // must not have to parse a display string back into one.
+        model: chat.orchestrationModel || chat.model,
+        updatedAt: latestChatTimestamp(chat),
+        lifecycleLabel: chatLifecycleLabel(chat, id, turnByThread),
+        // Bound to the label in both directions, like unanswerableNotice: a
+        // notice may exist only under a 'Failed' chip, and a 'Failed' chip
+        // shows its reason whenever one was recorded.
+        ...(chatLifecycleLabel(chat, id, turnByThread) === 'Failed' &&
+        chatFailureNotice(chat)
+          ? { failureNotice: chatFailureNotice(chat) as string }
+          : {}),
+        chatSessionId: id,
+        ...(chat.currentSessionId
+          ? { currentSessionId: chat.currentSessionId }
+          : {}),
+        // Identity facts, not display ones — see the field docblocks. Both
+        // are inert for the open policy (`chatSessionId` above short-circuits
+        // it) and are read by Home's row icon and its activity chart.
+        ...(chat.agentSlug ? { agentSlug: chat.agentSlug } : {}),
+        ...(chat.projectSlug ? { projectSlug: chat.projectSlug } : {}),
+      };
     });
-    return {
-      id: chat.conversationId || id,
-      ...(chat.conversationId ? { conversationId: chat.conversationId } : {}),
-      kind: 'chat' as const,
-      kindLabel: 'Direct chat' as const,
-      // Match the dock session-title convention (useDerivedSessions):
-      // untitled chats read "<Agent> Chat", not the bare agent name —
-      // title is not persisted across reloads, so this fallback is the
-      // steady-state name for rehydrated sessions.
-      title: chat.title?.trim() || (agentLabel ? `${agentLabel} Chat` : 'Task'),
-      projectLabel: chat.projectName || chat.projectSlug || 'No project',
-      agentLabel,
-      modelLabel: resolveModelLabel(chat.orchestrationModel || chat.model),
-      // archive#3391: the id itself, not only its label — the label is a
-      // derivation of this, and a consumer that needs the model (reopen)
-      // must not have to parse a display string back into one.
-      model: chat.orchestrationModel || chat.model,
-      updatedAt: latestChatTimestamp(chat),
-      lifecycleLabel: chatLifecycleLabel(chat, id, turnByThread),
-      // Bound to the label in both directions, like unanswerableNotice: a
-      // notice may exist only under a 'Failed' chip, and a 'Failed' chip
-      // shows its reason whenever one was recorded.
-      ...(chatLifecycleLabel(chat, id, turnByThread) === 'Failed' &&
-      chatFailureNotice(chat)
-        ? { failureNotice: chatFailureNotice(chat) as string }
-        : {}),
-      chatSessionId: id,
-      ...(chat.currentSessionId
-        ? { currentSessionId: chat.currentSessionId }
-        : {}),
-      // Identity facts, not display ones — see the field docblocks. Both
-      // are inert for the open policy (`chatSessionId` above short-circuits
-      // it) and are read by Home's row icon and its activity chart.
-      ...(chat.agentSlug ? { agentSlug: chat.agentSlug } : {}),
-      ...(chat.projectSlug ? { projectSlug: chat.projectSlug } : {}),
-    };
-  });
   // A handoff replaces the execution Session while retaining one durable
   // Conversation. Every consumer of this adapter must therefore see the
   // newest child identity, never an arbitrary predecessor map entry.

@@ -168,6 +168,7 @@ describe('claude-adapter-events', () => {
       publish,
       message: {
         type: 'result',
+        is_error: false,
         result: 'done',
         stop_reason: 'tool_use',
         usage: { input_tokens: 10, output_tokens: 5 },
@@ -209,6 +210,7 @@ describe('claude-adapter-events', () => {
       logInfo,
       message: {
         type: 'result',
+        is_error: false,
         result: '',
         stop_reason: null,
         usage: { input_tokens: 3, output_tokens: 0 },
@@ -263,6 +265,7 @@ describe('claude-adapter-events', () => {
       message: {
         type: 'result',
         subtype: 'success',
+        is_error: false,
         num_turns: 0,
         result: '',
         stop_reason: null,
@@ -321,6 +324,7 @@ describe('claude-adapter-events', () => {
       message: {
         type: 'result',
         subtype: 'success',
+        is_error: false,
         num_turns: 1,
         result: 'done',
         stop_reason: 'end_turn',
@@ -342,6 +346,7 @@ describe('claude-adapter-events', () => {
       message: {
         type: 'result',
         subtype: 'success',
+        is_error: false,
         num_turns: 0,
         result: '',
         stop_reason: null,
@@ -367,7 +372,7 @@ describe('claude-adapter-events', () => {
    * engine's raw error text into `turn.completed` as if it were an ordinary
    * assistant reply (the exact defect this ticket fixes).
    */
-  test('an is_error: true result publishes a terminal runtime.error instead of turn.completed, and sets terminalResultObserved', () => {
+  test('a cursor-matched missing-session result publishes a binding-dead runtime.error instead of turn.completed, and sets terminalResultObserved', () => {
     const publish = vi.fn();
     const record = {
       session: {
@@ -377,6 +382,7 @@ describe('claude-adapter-events', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
       },
+      attemptedResumeCursor: 'd434e194-cc2e-4edc-8733-d8645c512fab',
       activeTurnId: 'turn-dead',
       dispatchedTurnId: 'turn-dead',
       lastSessionState: 'running' as const,
@@ -415,7 +421,7 @@ describe('claude-adapter-events', () => {
     expect(
       publish.mock.calls.some(([event]) => event.method === 'turn.completed'),
     ).toBe(false);
-    expect((record as any).terminalResultObserved).toBe(true);
+    expect((record as any).terminalResultObserved).toBe('binding-dead');
   });
 
   test("a requested interruption consumes Claude's null-stop-reason error result without replacing Stopped with Failed (#898)", () => {
@@ -1326,6 +1332,7 @@ describe('station#1182 — claude-adapter-events runtime-reported model', () => 
       publish,
       message: {
         type: 'result',
+        is_error: false,
         result: 'done',
         stop_reason: 'end_turn',
         usage: { input_tokens: 1, output_tokens: 1 },
@@ -1364,6 +1371,7 @@ describe('station#1182 — claude-adapter-events runtime-reported model', () => 
       publish,
       message: {
         type: 'result',
+        is_error: false,
         result: undefined,
         stop_reason: 'end_turn',
         usage: { input_tokens: 0, output_tokens: 0 },
@@ -1579,6 +1587,7 @@ describe('claude token-usage.updated — provider-reported cost and cache (stati
   const resultMessage = (usage: Record<string, unknown>, extra = {}) =>
     ({
       type: 'result',
+      is_error: false,
       result: 'done',
       stop_reason: 'end_turn',
       usage,

@@ -10,6 +10,7 @@ import { isTerminalConnectionStatus } from '@kontourai/station-contracts/http';
 import type {
   DevicePresentation,
   ExternalEngineReadinessProjection,
+  HomeRecoveryDisclosure,
 } from '@kontourai/station-contracts/system-status';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
@@ -84,6 +85,7 @@ export interface SystemBuildProvenance {
 }
 
 export interface SystemStatus {
+  homeRecovery?: HomeRecoveryDisclosure;
   build?: SystemBuildProvenance;
   /**
    * The answering instance's own endpoint identity (#2551): bound listen

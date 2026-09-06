@@ -34,6 +34,19 @@ export interface AppConfig {
   defaultVectorDbProvider?: string;
   agentConnections?: Record<string, AgentConnectionSettings>;
   terminalShell?: string;
+  /**
+   * Runtime-derived (never persisted): the shell this host would try FIRST
+   * when `terminalShell` is unset — `SHELL` where the environment sets one,
+   * else the platform's own first fallback. Produced by
+   * `defaultTerminalShell` in the server's terminal-shell resolver, which is
+   * the same list a spawn walks, so the hint the Settings input shows cannot
+   * disagree with what a terminal actually starts. Absent when the resolver
+   * offers no candidate at all.
+   *
+   * "Tries first", not "uses": a spawn falls through when a candidate fails to
+   * start, and nothing computes that without launching a process.
+   */
+  defaultTerminalShell?: string;
   disableDefaultSkillRegistries?: boolean;
   approvalGuardian?: ApprovalGuardianConfig;
   /**

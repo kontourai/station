@@ -1363,6 +1363,141 @@ describe('projectRuntimeEventsToMessages', () => {
       expect(aTools[0]).not.toHaveProperty('result');
     });
 
+    /**
+     * station#1586 (fix round, A): the START names its turn too. This fold
+     * placed it by stream position, so a `tool.started` for an already-
+     * emitted turn opened its row on whichever turn was open — while the live
+     * handler (`streamHandlers.ts`, fix round M1) puts it on the turn the
+     * event names. Same events, two different transcripts across a reload.
+     */
+    it('opens a late tool.started on the turn it names, and settles it there', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+        ev({
+          method: 'tool.started',
+          itemId: 'i1',
+          turnId: 'turn-a',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-a',
+          finishReason: 'stop',
+        }),
+        ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+        ev({ method: 'content.text-delta', itemId: 'i2', delta: 'B answers.' }),
+        // A second call on turn A, both halves arriving while B streams —
+        // the backgrounded-Task shape.
+        ev({
+          method: 'tool.started',
+          itemId: 'i3',
+          turnId: 'turn-a',
+          toolCallId: 'call-2',
+          toolName: 'Task',
+          arguments: { prompt: 'background' },
+        }),
+        ev({
+          method: 'tool.completed',
+          itemId: 'i3',
+          turnId: 'turn-a',
+          toolCallId: 'call-2',
+          toolName: 'Task',
+          status: 'success',
+          output: 'late output',
+          eventId: 'late-2',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-b',
+          finishReason: 'stop',
+        }),
+      ]);
+
+      const turnA = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-a',
+      )!;
+      const turnB = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-b',
+      )!;
+      const aTools = toolPartsOf(turnA) as Array<{ toolCallId?: string }>;
+      expect(aTools.map((part) => part.toolCallId)).toEqual([
+        'call-1',
+        'call-2',
+      ]);
+      // ONE row for the late call, opened and settled on A — not a start on B
+      // plus a result on A.
+      expect(aTools[1]).toMatchObject({
+        toolCallId: 'call-2',
+        toolName: 'Task',
+        args: { prompt: 'background' },
+        state: 'result',
+        result: 'late output',
+        sourceEventId: 'late-2',
+      });
+      expect(toolPartsOf(turnB)).toHaveLength(0);
+      // …and B's own narration is untouched: a late start must not flush or
+      // reopen the turn it does not belong to.
+      expect(turnB.parts.filter((part) => part.type === 'text')).toHaveLength(
+        1,
+      );
+    });
+
+    it('still opens a start for the OPEN turn on that turn', () => {
+      // The discriminating control: the routing is "the turn the event
+      // names", not "always an earlier turn".
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-a',
+          finishReason: 'stop',
+        }),
+        ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+        ev({
+          method: 'tool.started',
+          itemId: 'i2',
+          turnId: 'turn-b',
+          toolCallId: 'call-b',
+          toolName: 'Bash',
+        }),
+        ev({
+          method: 'tool.completed',
+          itemId: 'i2',
+          turnId: 'turn-b',
+          toolCallId: 'call-b',
+          toolName: 'Bash',
+          status: 'success',
+          output: 'b output',
+          eventId: 'b-result',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-b',
+          finishReason: 'stop',
+        }),
+      ]);
+
+      const turnB = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-b',
+      )!;
+      const bTools = toolPartsOf(turnB);
+      expect(bTools).toHaveLength(1);
+      expect(bTools[0]).toMatchObject({
+        toolCallId: 'call-b',
+        state: 'result',
+        result: 'b output',
+      });
+      const turnA = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-a',
+      );
+      expect(turnA ? toolPartsOf(turnA) : []).toHaveLength(0);
+    });
+
     // Fix round (M3): a reused call id must not evict the earlier turn's
     // carried row, or that turn's own late result appends a duplicate and the
     // original row reads "running" forever.
