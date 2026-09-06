@@ -164,9 +164,52 @@ export type SkillOrigin =
   | 'package'
   | 'migrated-playbook';
 
+/**
+ * Why Station will not write a skill's own package, as a code a reader may
+ * branch on.
+ *
+ * The DECISION belongs to the server (`SkillService.isSkillWritable`); this is
+ * that decision projected, never a second derivation of it. `source` and
+ * `origin` are close enough to be tempting and answer a different question: a
+ * registry install living in a writable root is perfectly writable, and an
+ * install record stating `source: 'local'` says nothing about which root the
+ * package actually sits in. The rule has already moved once — in #1619 it
+ * stopped meaning "this name resolves to this one directory" and started
+ * meaning "this package sits in a root Station writes" — so a client
+ * rebuilding it from those fields would have been wrong before that change and
+ * wrong again after it.
+ */
+export type SkillWriteRefusalReason =
+  /** A SOURCE serves it in place (a plugin's prompt file), not a directory Station owns. */
+  | 'served-in-place'
+  /** It is served from a canonical package root, which ships read-only. */
+  | 'canonical-package'
+  /** Its package sits in some other root, which Station does not write. */
+  | 'outside-writable-root';
+
+/** The server's refusal to write a skill package, with its own sentence about it. */
+export interface SkillWriteRefusal {
+  reason: SkillWriteRefusalReason;
+  /**
+   * The server's statement of THIS package's refusal, for display. Readers
+   * render it rather than composing an explanation from `reason`; nothing may
+   * branch on the text.
+   */
+  detail: string;
+}
+
 export interface Skill extends RegistryItem {
   name: string;
   source?: string;
+  /**
+   * May Station write this skill's own package — the server's writability
+   * predicate PROJECTED, never re-derived here. Absent means the server did
+   * not state it, and a reader must then treat the package as read-only: a
+   * missing decision is not a permissive one.
+   */
+  writable?: boolean;
+  /** Why `writable` is false. Absent whenever `writable` is not false. */
+  writeRefusal?: SkillWriteRefusal;
   path?: string;
   installedVersion?: string;
   updateAvailable?: boolean;

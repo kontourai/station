@@ -268,6 +268,7 @@ describe('SkillsView', () => {
         description: 'Installed locally',
         version: '1.0.0',
         source: 'local',
+        writable: true,
       },
     ];
     registrySkillsMock = [
@@ -311,10 +312,25 @@ describe('SkillsView', () => {
   // so a builder-only assertion would pass with neither on screen.
   test('every row says which root it was loaded from, banded by source', () => {
     localSkillsMock = [
-      { name: 'built-in-skill', source: 'flow-agents', origin: 'package' },
-      { name: 'machine-skill', source: 'local', origin: 'user' },
-      { name: 'workspace-skill', source: 'local', origin: 'project' },
-      { name: 'unrecorded-skill', source: 'local' },
+      {
+        name: 'built-in-skill',
+        source: 'flow-agents',
+        origin: 'package',
+        writable: false,
+      },
+      {
+        name: 'machine-skill',
+        source: 'local',
+        origin: 'user',
+        writable: true,
+      },
+      {
+        name: 'workspace-skill',
+        source: 'local',
+        origin: 'project',
+        writable: true,
+      },
+      { name: 'unrecorded-skill', source: 'local', writable: true },
     ];
 
     const { container } = render(<SkillsView />);
@@ -360,6 +376,7 @@ describe('SkillsView', () => {
         source: 'local',
         origin: 'user',
         installed: true,
+        writable: true,
       },
     ];
     editableSkillMock = { name: 'machine-skill', body: 'do the thing' };
@@ -373,9 +390,17 @@ describe('SkillsView', () => {
   // The Skills editor owns the whole authoring surface: the command switch,
   // the body's variables, usage counters, and test/export.
   describe('command skills', () => {
+    /**
+     * The server states a writability decision for every row it serves
+     * (#1655), so these fixtures state one. `writable: true` is the DEFAULT
+     * here because this block's subject is the command surface, and a caller
+     * that is about writability overrides it — the packaged-skill case below
+     * does. The field itself is the subject of its own describe block, where
+     * nothing is defaulted.
+     */
     function selectSkill(skill: any, detail?: any) {
       selectionState.selectedId = skill.name;
-      localSkillsMock = [skill];
+      localSkillsMock = [{ writable: true, ...skill }];
       editableSkillMock = detail ?? skill;
     }
 
@@ -510,7 +535,16 @@ describe('SkillsView', () => {
     // switch that fails on save.
     test('offers the install action, not a switch, on a read-only skill', () => {
       selectSkill(
-        { name: 'packaged-skill', source: 'package' },
+        {
+          name: 'packaged-skill',
+          source: 'package',
+          writable: false,
+          writeRefusal: {
+            reason: 'canonical-package',
+            detail:
+              "'packaged-skill' is served from the package at /pkgs/packaged-skill, which ships read-only",
+          },
+        },
         { name: 'packaged-skill', source: 'package', body: 'Read only' },
       );
 
@@ -546,8 +580,13 @@ describe('SkillsView', () => {
 
     test('the commands filter narrows the list to command skills', () => {
       localSkillsMock = [
-        { name: 'plain-skill', source: 'local' },
-        { name: 'release-check', source: 'local', command: { enabled: true } },
+        { name: 'plain-skill', source: 'local', writable: true },
+        {
+          name: 'release-check',
+          source: 'local',
+          writable: true,
+          command: { enabled: true },
+        },
       ];
 
       render(<SkillsView filter="commands" />);
@@ -565,7 +604,9 @@ describe('SkillsView', () => {
     // the CURRENT TAB's pre-query collection, not the whole (both-tabs)
     // skills list.
     test('a typed query on an empty Commands tab shows the tab-empty state, not FilteredEmpty', () => {
-      localSkillsMock = [{ name: 'plain-skill', source: 'local' }];
+      localSkillsMock = [
+        { name: 'plain-skill', source: 'local', writable: true },
+      ];
 
       render(<SkillsView filter="commands" />);
       fireEvent.change(screen.getByPlaceholderText('Search skills...'), {
@@ -607,8 +648,8 @@ describe('SkillsView', () => {
     // pane waits (skeleton), A's body is gone, and every body-bound action is
     // disabled.
     test("selecting a second skill with its detail pending clears the first skill's body and disables the actions", () => {
-      const skillA = { name: 'skill-a', source: 'local' };
-      const skillB = { name: 'skill-b', source: 'local' };
+      const skillA = { name: 'skill-a', source: 'local', writable: true };
+      const skillB = { name: 'skill-b', source: 'local', writable: true };
       selectionState.selectedId = 'skill-a';
       localSkillsMock = [skillA, skillB];
       editableSkillMock = { name: 'skill-a', source: 'local', body: 'A body' };
@@ -652,8 +693,8 @@ describe('SkillsView', () => {
     test('a failed detail read renders the error with retry and keeps actions disabled', () => {
       selectionState.selectedId = 'skill-b';
       localSkillsMock = [
-        { name: 'skill-a', source: 'local' },
-        { name: 'skill-b', source: 'local' },
+        { name: 'skill-a', source: 'local', writable: true },
+        { name: 'skill-b', source: 'local', writable: true },
       ];
       editableSkillMock = undefined;
       detailErrorMock = new Error('detail read failed');
@@ -670,6 +711,135 @@ describe('SkillsView', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       expect(refetchDetailMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
+   * #1655 — the editor offers Save from the SERVER's writability decision.
+   *
+   * Every fixture here is one where `writable` and the fields the view used to
+   * derive editability from DISAGREE, because a fixture where they coincide
+   * passes under both derivations and therefore proves nothing. The exact
+   * payload shapes are the ones
+   * `src-server/routes/agents/__tests__/skills.routes.writable.test.ts` asserts
+   * the route emits, so the two halves of the seam are pinned against the same
+   * bytes rather than against each other's imagination.
+   */
+  describe('the Save action follows the server writability decision', () => {
+    function selectRow(row: any, detail?: any) {
+      selectionState.selectedId = row.name;
+      localSkillsMock = [row];
+      editableSkillMock = detail ?? { ...row, body: 'Body' };
+    }
+
+    /** A registry install in the workspace root: `source: 'registry'`, writable. */
+    const REGISTRY_BUT_WRITABLE = {
+      name: 'bought-in',
+      description: 'From the registry',
+      source: 'registry',
+      origin: 'registry' as const,
+      writable: true,
+    };
+
+    /**
+     * A package in the plugins root whose own install record says
+     * `source: 'local'`. Station does not write that root, so `PUT` answers 409.
+     */
+    const LOCAL_BUT_NOT_WRITABLE = {
+      name: 'vendor-tool',
+      description: 'From a plugin root',
+      source: 'local',
+      writable: false,
+      writeRefusal: {
+        reason: 'outside-writable-root' as const,
+        detail:
+          "'vendor-tool' is served from /home/plugins/vendor/skills/vendor-tool, which is not a skills root Station writes",
+      },
+    };
+
+    test("offers Save on a writable package the old derivation called read-only (source: 'registry')", () => {
+      selectRow(REGISTRY_BUT_WRITABLE);
+
+      render(<SkillsView />);
+
+      expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+      // Editable fields follow the same decision, not just the button.
+      expect(
+        (
+          screen.getByLabelText('Description', {
+            selector: 'input',
+          }) as HTMLInputElement
+        ).disabled,
+      ).toBe(false);
+      expect(screen.queryByText(/^Read-only:/)).toBeNull();
+    });
+
+    test("withholds Save on a package the server refuses, even though source is 'local'", () => {
+      selectRow(LOCAL_BUT_NOT_WRITABLE);
+
+      render(<SkillsView />);
+
+      // The whole defect: this used to render a Save the route answers 409 for.
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+      expect(
+        (
+          screen.getByLabelText('Description', {
+            selector: 'input',
+          }) as HTMLInputElement
+        ).disabled,
+      ).toBe(true);
+    });
+
+    test("states the SERVER's reason rather than an explanation composed here", () => {
+      selectRow(LOCAL_BUT_NOT_WRITABLE);
+
+      render(<SkillsView />);
+
+      // The server's own sentence, verbatim — it names the root the package
+      // sits in, which is the part a reader can act on. A reason code alone
+      // could not say which root, and prose composed in the view would be a
+      // second derivation of a decision the view does not make.
+      expect(
+        screen.getByText(
+          new RegExp(
+            LOCAL_BUT_NOT_WRITABLE.writeRefusal.detail.replace(
+              /[.*+?^${}()|[\]\\]/g,
+              '\\$&',
+            ),
+          ),
+        ),
+      ).toBeTruthy();
+      // And not the generic sentence that used to stand in for every refusal.
+      expect(
+        screen.queryByText(/Browse Registry to discover or install skills/),
+      ).toBeNull();
+    });
+
+    test('a server that states no decision is read-only, not permissively writable', () => {
+      // Fail-closed: `writable` absent is not a grant. The old derivation read
+      // `source: 'local'` here and offered Save.
+      selectRow({ name: 'undecided', source: 'local' });
+
+      render(<SkillsView />);
+
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+      // With no reason to state, the generic sentence is what is left — and it
+      // is honest, because Station has not said why.
+      expect(
+        screen.getByText(/Browse Registry to discover or install skills/),
+      ).toBeTruthy();
+    });
+
+    test('Create is still offered while authoring a new skill', () => {
+      // `isCreating` short-circuits the decision on purpose: nothing is
+      // discovered under a name that does not exist yet, so there is no package
+      // to refuse.
+      selectionState.selectedId = 'new';
+      localSkillsMock = [LOCAL_BUT_NOT_WRITABLE];
+
+      render(<SkillsView />);
+
+      expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
     });
   });
 });

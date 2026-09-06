@@ -103,11 +103,17 @@ export function SkillsView({
     refetch: refetchSkills,
   } = useSkillsQuery();
 
+  // `source: s.source || 'local'` used to sit here, coercing an unrecorded
+  // source into a claim the server had declined to make — and `editableLocal`
+  // read exactly that coerced value, so a package with no install record was
+  // offered a Save on the strength of the coercion. Editability now derives
+  // from the server's `writable` (#1655), and `source` is carried through as
+  // sent: nothing in this view reads it any more (the row chip and the detail
+  // heading both derive from `origin`).
   const localSkills: Skill[] = localRaw.map((s: any) => ({
     ...s,
     name: s.name || s.id,
     installedVersion: s.version,
-    source: s.source || 'local',
     installed: true,
     updateAvailable: false,
   }));
@@ -381,8 +387,16 @@ export function SkillsView({
     guard(() => navigate(path));
   }
 
+  // The SERVER's writability decision, projected onto the listing and read
+  // here — never re-derived (#1655). This read `selected.source === 'local'`,
+  // which is the install record's statement about where a package CAME FROM
+  // and not the question "may Station write it": a registry install in a
+  // writable root is writable and read as read-only, while a `source: 'local'`
+  // record in a plugin's root is read-only and was offered a Save that the
+  // route answers 409. `=== true` and not `!== false` on purpose — a server
+  // that did not state the decision has not granted it.
   const editableLocal =
-    isCreating || (selected?.installed && selected.source === 'local');
+    isCreating || (selected?.installed && selected.writable === true);
   // Same derivation as the list chip. It used to read `source === 'local'` and
   // print "Workspace-authored skill" for anything writable, which called a
   // machine-scoped skill a workspace one — the conflation #1582 D6 names. The
@@ -561,11 +575,17 @@ export function SkillsView({
                     <div className="skill-detail__meta">
                       <span>{sourceLabel}</span>
                     </div>
+                    {/* The server's own reason, not a sentence invented here:
+                        it names the root the package sits in, which is the one
+                        thing that tells a reader what to do about it. The
+                        fallback covers a server that stated no decision — a
+                        Save is still withheld, and saying so without a reason
+                        beats inventing one. */}
                     {!editableLocal && (
                       <p className="skill-detail__source-note">
-                        This skill is read-only here. Browse Registry to
-                        discover or install skills; create a new workspace skill
-                        to author one.
+                        {selected?.writeRefusal
+                          ? `Read-only: ${selected.writeRefusal.detail}. Install it into your workspace to author it here.`
+                          : 'This skill is read-only here. Browse Registry to discover or install skills; create a new workspace skill to author one.'}
                       </p>
                     )}
                   </div>

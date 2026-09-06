@@ -26,6 +26,7 @@ import type {
   SkillProvenance,
   SkillStats,
   SkillVariable,
+  SkillWriteRefusal,
 } from '@kontourai/station-contracts/catalog';
 import { skillToGuidanceAsset } from '@kontourai/station-contracts/guidance-assets';
 import {
@@ -225,6 +226,17 @@ export interface SkillListing {
    * can be moved aside; a directory cannot.
    */
   servedInPlace?: true;
+  /**
+   * May Station write this package — `isSkillWritable`'s answer, projected.
+   *
+   * Required, because a reader with no decision cannot offer to save: an
+   * absent field is the shape a client would have to guess at, and every guess
+   * available to it (`source`, `origin`, `servedInPlace`) answers a DIFFERENT
+   * question (#1655).
+   */
+  writable: boolean;
+  /** Why `writable` is false; absent when it is true. */
+  writeRefusal?: SkillWriteRefusal;
 }
 
 /**
@@ -235,7 +247,21 @@ export interface SkillDetail extends SkillConfig {
   commandDiagnostic?: string;
   /** Present only when `command`/`variables` did not come from `SKILL.md`. */
   declarationsDiagnostic?: string;
+  /** `isSkillWritable`'s answer, projected — see `SkillListing.writable`. */
+  writable: boolean;
+  /** Why `writable` is false; absent when it is true. */
+  writeRefusal?: SkillWriteRefusal;
 }
+
+/**
+ * A detail read before writability is projected onto it.
+ *
+ * `getSkill` answers from four different places (a served-in-place source, a
+ * canonical package, the install record alone, and parsed frontmatter) and the
+ * projection must reach all four. Naming the undecorated shape lets ONE exit
+ * decorate, so a fifth answer cannot be added that forgets to.
+ */
+type SkillDetailBody = Omit<SkillDetail, 'writable' | 'writeRefusal'>;
 
 /**
  * The identity record was published but an exact cleanup could not be made
@@ -282,6 +308,25 @@ export class SkillService {
    * derivation reads a `skill.json` per skill.
    */
   private legacyIdIndex = new Map<string, string>();
+  /**
+   * Writability decisions, for the registry generation they were made in.
+   * `null` means writable; a missing key means undecided.
+   *
+   * Kept because the rule is per-package filesystem I/O — `resolveSkillDirectory`
+   * resolves the skills root and the package directory through `realpathSync`
+   * — and it is now read once per row by `listSkills()`. Measured on a
+   * 100-package home: ~8.3ms per listing, about 60% of `listSkills()`'s total,
+   * and `listSkills()` is also on the command-clash path of every write, not
+   * only the listing route.
+   *
+   * Cleared by `discoverSkills`, because the REGISTRY is what this rule reads
+   * (which package a name resolves to): a decision must not outlive the
+   * registry it was made against. Both the projection and the route's gate read
+   * THROUGH it, deliberately — a cache only one of them consulted would be a
+   * second answer to the same question, which is the defect this projection
+   * exists to remove.
+   */
+  private writabilityCache = new Map<string, SkillWriteRefusal | null>();
 
   constructor(
     private configLoader: ConfigLoader,
@@ -324,6 +369,9 @@ export class SkillService {
   ): Promise<void> {
     const start = Date.now();
     this.registry.clear();
+    // A writability decision is about which package a name resolves to, so it
+    // dies with the registry that resolved it.
+    this.writabilityCache.clear();
 
     // Canonical package sources scan FIRST so locally installed or
     // project-scoped skills override a canonical skill on name collision
@@ -532,6 +580,11 @@ export class SkillService {
   listSkills(): SkillListing[] {
     const usage = this.usage.snapshot();
     const records = this.skillRecords();
+    // Resolved ONCE for the whole listing rather than per row: the writability
+    // rule reads the filesystem (`resolveSkillDirectory` follows the skills
+    // root through `realpathSync`), and every row would otherwise re-resolve
+    // the same home.
+    const projectHomeDir = this.projectHomeDir();
     // Declarations become behaviour in ONE place, across every root: a command
     // word nobody can type, or one two skills both claim, is reported disabled
     // with the reason rather than listed as enabled and doing nothing. Origin
@@ -575,6 +628,7 @@ export class SkillService {
         ...(install.legacyIds ? { legacyIds: install.legacyIds } : {}),
         ...(origin ? { origin } : {}),
         ...(s.provided ? { servedInPlace: true as const } : {}),
+        ...this.writabilityAgainstHome(s.name, projectHomeDir),
       };
     });
   }
@@ -736,13 +790,121 @@ export class SkillService {
     projectHomeDir: string,
     projectSlug?: string,
   ): boolean {
-    const registered = this.registry.get(name);
-    if (!registered?.location) return true;
-    if (this.canonicalSourceFor(registered.location)) return false;
     return (
-      dirname(registered.location) ===
-      this.resolveSkillDir(projectHomeDir, name, projectSlug)
+      this.writeRefusalFor(name, projectHomeDir, projectSlug) === undefined
     );
+  }
+
+  /**
+   * `skillWriteRefusal` behind `writabilityCache` — the ONE entry point every
+   * caller (the route's gate and both read models) goes through, so they cannot
+   * be served different answers.
+   */
+  private writeRefusalFor(
+    name: string,
+    projectHomeDir: string,
+    projectSlug?: string,
+  ): SkillWriteRefusal | undefined {
+    // NUL-joined: no path or skill name can contain it, so two different
+    // (home, slug, name) triples can never collide on one key.
+    const key = [projectHomeDir, projectSlug ?? '', name].join('\u0000');
+    const cached = this.writabilityCache.get(key);
+    if (cached !== undefined) return cached ?? undefined;
+    const refusal =
+      this.skillWriteRefusal(name, projectHomeDir, projectSlug) ?? null;
+    this.writabilityCache.set(key, refusal);
+    return refusal ?? undefined;
+  }
+
+  /**
+   * THE writability rule, in the shape a read model and a message both need:
+   * the reason this package is not Station's to write, or `undefined` when it
+   * is. `isSkillWritable` is this same rule as a boolean, for the route.
+   *
+   * One rule, two shapes — deliberately, because a second copy of an
+   * authorization-shaped rule is how two readers end up disagreeing, and the
+   * read models (#1655) are now the third reader. It is the FUNCTION they
+   * call, not conditions they restate: the rule has already moved once (#1619)
+   * and every caller moved with it for free.
+   */
+  private skillWriteRefusal(
+    name: string,
+    projectHomeDir: string,
+    projectSlug?: string,
+  ): SkillWriteRefusal | undefined {
+    const registered = this.registry.get(name);
+    // Nothing discovered under this name: there is no package to refuse, and a
+    // create is what a caller asking about it is about to do.
+    if (!registered?.location) return undefined;
+    const directory = dirname(registered.location);
+    // A SOURCE serves this one in place; no directory Station owns holds it.
+    // Named apart from the root failure below because it has a different
+    // remedy — the plugin is the thing to change, not where the package lives.
+    if (registered.provided) {
+      return {
+        reason: 'served-in-place',
+        detail: `'${name}' is served in place from ${directory}, which Station does not own`,
+      };
+    }
+    if (this.canonicalSourceFor(registered.location)) {
+      return {
+        reason: 'canonical-package',
+        detail: `'${name}' is served from the package at ${directory}, which ships read-only`,
+      };
+    }
+    // `resolveSkillDir` refuses a name that cannot become a path at all, and
+    // that refusal is a refusal to WRITE — carried through rather than thrown
+    // at a caller only asking whether a write is possible.
+    let writableDirectory: string;
+    try {
+      writableDirectory = this.resolveSkillDir(
+        projectHomeDir,
+        name,
+        projectSlug,
+      );
+    } catch (error) {
+      return {
+        reason: 'outside-writable-root',
+        detail: `'${name}' cannot be written: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    if (directory !== writableDirectory) {
+      return {
+        reason: 'outside-writable-root',
+        detail: `'${name}' is served from ${directory}, which is not a skills root Station writes`,
+      };
+    }
+    return undefined;
+  }
+
+  /**
+   * The writability decision as the read models carry it, resolved the way the
+   * ROUTE resolves it.
+   *
+   * `this.projectHomeDir()` is `configLoader.getProjectHomeDir()` — the very
+   * call `createSkillRoutes`' `getProjectHomeDir` closure makes, on the same
+   * `ConfigLoader` instance (`runtime-service-bootstrap.ts` hands both the
+   * same one). A second resolution of the project root would be the same
+   * defect this projection exists to remove, one layer up. The slug is omitted
+   * for the same reason: the route's own call omits it, so the projection and
+   * the enforcement answer the same question about the same roots.
+   */
+  private skillWritability(name: string): {
+    writable: boolean;
+    writeRefusal?: SkillWriteRefusal;
+  } {
+    return this.writabilityAgainstHome(name, this.projectHomeDir());
+  }
+
+  /** `skillWritability` with the home resolved once, for a whole listing. */
+  private writabilityAgainstHome(
+    name: string,
+    projectHomeDir: string,
+  ): { writable: boolean; writeRefusal?: SkillWriteRefusal } {
+    const writeRefusal = this.writeRefusalFor(name, projectHomeDir);
+    return writeRefusal
+      ? { writable: false, writeRefusal }
+      : { writable: true };
   }
 
   /**
@@ -860,6 +1022,17 @@ export class SkillService {
    */
   async getSkill(name: string): Promise<SkillDetail> {
     skillOps.add(1, { operation: 'get' });
+    // ONE decoration site for four answers. The writability projection is a
+    // fact about the PACKAGE, not about which of the four reads found it, so
+    // deciding it here rather than inside each branch is also the only shape
+    // in which the four cannot disagree.
+    return {
+      ...(await this.readSkillDetail(name)),
+      ...this.skillWritability(name),
+    };
+  }
+
+  private async readSkillDetail(name: string): Promise<SkillDetailBody> {
     // Canonical package skills have no installed config record — serve them
     // straight from the registry (read-only, content from the package).
     const registered = this.registry.get(name);
@@ -1007,7 +1180,7 @@ export class SkillService {
   private fromInstallRecordOnly(
     config: SkillConfig,
     declarationsDiagnostic: string,
-  ): SkillDetail {
+  ): SkillDetailBody {
     // The mirror goes through the SAME resolution frontmatter does. Returning
     // it raw let a mirrored `enabled: true` that is invalid or clashes come
     // back as an active command with no diagnostic, while the listing — which
