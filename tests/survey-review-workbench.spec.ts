@@ -88,12 +88,12 @@ test.describe('Survey Review Workbench plugin', () => {
     await page.goto('/plugins');
     await page.getByText('Survey Review Workbench', { exact: true }).click();
     await page
-      .getByRole('button', { name: /Review Permissions \(1\)/ })
+      .getByRole('button', { name: 'Review request', exact: true })
       .click();
 
     await expect(page.getByText('Trusted', { exact: true })).toBeVisible();
     await expect(
-      page.getByText('plugin.server', { exact: true }),
+      page.getByRole('dialog').getByText('plugin.server', { exact: true }),
     ).toBeVisible();
     await expect(
       page.getByText(/separate, host-owned review page/),

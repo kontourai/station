@@ -322,10 +322,10 @@ test.describe('Builder Delivery Viewer plugin', () => {
     await dismissSetupLauncher(page);
     await page.getByText('Builder Delivery Viewer', { exact: true }).click();
     await page
-      .getByRole('button', { name: /Review Permissions \(1\)/ })
+      .getByRole('button', { name: 'Review request', exact: true })
       .click();
     await expect(
-      page.getByText('plugin.server', { exact: true }),
+      page.getByRole('dialog').getByText('plugin.server', { exact: true }),
     ).toBeVisible();
 
     const popupPromise = page.waitForEvent('popup');

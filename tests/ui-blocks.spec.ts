@@ -123,6 +123,9 @@ test.describe('Structured UI blocks', () => {
     await expect(page.getByRole('heading', { name: 'Snippet' })).toBeVisible();
     await expect(page.getByText('verify.sh')).toBeVisible();
     await expect(page.getByText('npm run verify:static')).toBeVisible();
+    await page.reload();
+    await expect(page.getByText('Build Summary')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Artifacts' })).toBeVisible();
   });
 
   test('submitting a form block re-enters the conversation as a tagged user turn', async ({

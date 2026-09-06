@@ -79,12 +79,12 @@ test.describe('Agent editor', () => {
       page.getByRole('button', { name: 'Add model connection' }),
     ).toHaveCount(0);
 
-    // §3.4 is the section a CLI engine IS allowed, so its presence is what
-    // proves the assertions above are about §3.3 rather than about an editor
-    // that failed to render.
     await expect(
-      page.getByRole('heading', { name: 'Model options', level: 3 }),
+      page.getByRole('region', { name: 'Engine', exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole('radio', { name: new RegExp(`^${engineName}`) }),
+    ).toBeChecked();
   });
 
   test('a description edit round-trips through Save', async ({
@@ -149,7 +149,7 @@ test.describe('Agent editor at 390x844', () => {
     // Scroll to the END of the form: the footer's whole reason to exist is
     // that the header's Save has scrolled away by now.
     await page
-      .getByRole('heading', { name: 'Skills and tools', level: 3 })
+      .getByRole('heading', { name: /^Delegated-child denials/, level: 4 })
       .scrollIntoViewIfNeeded();
 
     const footer = page.locator('.detail-header__mobile-footer');
