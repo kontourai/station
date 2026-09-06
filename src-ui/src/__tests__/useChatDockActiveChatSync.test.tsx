@@ -558,11 +558,16 @@ describe('useChatDockActiveChatSync', () => {
     expect(showSurface).not.toHaveBeenCalled();
   });
 
-  // archive#1284: the conversation simply doesn't resolve at all
-  // (deleted, or the ORIGINAL ground-truth bug -- `!conversation` at
-  // useChatDockActiveChatSync.ts:148-150 used to silently null the pointer
-  // here without ever trying `openConversation`).
-  it('reveals Activity for the session when the conversation cannot be found at all', async () => {
+  // station#1582: a lookup that answers "no such conversation" is the one
+  // outcome that carries no session to show. `?chat=` holds a chat's durable
+  // id (`activeChatDurableId`), which for a chat never promoted to a
+  // conversation is its client session id -- and `serializeActiveChats` never
+  // persists such a chat, so a reload of that URL is a guaranteed definitive
+  // miss. Revealing Activity for it opened a region the user never opened and
+  // filled it with skeletons for an id that resolves to nothing. The pointer
+  // still clears (archive#1284's real requirement: the effect must not loop
+  // back into the dead conversation); no surface is placed.
+  it('clears the dead pointer WITHOUT placing a surface when the conversation cannot be found at all', async () => {
     fetchConversationById.mockResolvedValue(null);
     const openConversation = vi.fn();
     const setActiveSessionId = vi.fn();
@@ -582,11 +587,9 @@ describe('useChatDockActiveChatSync', () => {
     );
 
     await waitFor(() =>
-      expect(showSurface).toHaveBeenCalledWith('activity', {
-        session: 'dead-chat',
-      }),
+      expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null }),
     );
-    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
+    expect(showSurface).not.toHaveBeenCalled();
     expect(openConversation).not.toHaveBeenCalled();
   });
 
