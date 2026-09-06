@@ -47,12 +47,14 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   {
     pattern: 'packages/sdk/src/client/**',
+    related: true,
     tests: ['packages/sdk/src/__tests__/client-entry-portability.test.ts'],
     reason:
       'portable client dependency scan reads source outside the import graph',
   },
   {
     pattern: 'packages/cli/src/commands/session-client.ts',
+    related: true,
     tests: [
       'packages/cli/src/__tests__/core.test.ts',
       'packages/cli/src/__tests__/core-http.test.ts',

@@ -346,6 +346,7 @@ describe('changed verification selection', () => {
       ).toContain(
         'packages/sdk/src/__tests__/client-entry-portability.test.ts',
       );
+      expect(selectChangedVerification([path]).relatedPaths).toContain(path);
     }
     expect(
       selectChangedVerification([
@@ -357,6 +358,10 @@ describe('changed verification selection', () => {
         'packages/cli/src/__tests__/core-http.test.ts',
       ]),
     );
+    expect(
+      selectChangedVerification(['packages/cli/src/commands/session-client.ts'])
+        .relatedPaths,
+    ).toContain('packages/cli/src/commands/session-client.ts');
   });
   test('uses focused tests for the project-bound file preview contract', () => {
     const selection = selectChangedVerification([
