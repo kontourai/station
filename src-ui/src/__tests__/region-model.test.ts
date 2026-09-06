@@ -574,6 +574,105 @@ describe('region model', () => {
     expect(placed.right).toMatchObject({ occupant: 'chat', visible: false });
   });
 
+  /**
+   * #1386 (b). The displacement used to pass the region the PLACER had just
+   * taken as `firstFreeDockRegion`'s `preferred`, which is occupied by
+   * definition, so the preference branch could never fire and the fallback
+   * order `['bottom','right','left']` decided every relocation.
+   *
+   * Activity is pushed out of `left` with both `bottom` and `right` free. Its
+   * registered `defaultRegion` is `right` — where a reveal would have put it —
+   * and that is where it goes. The old order would have said `bottom`.
+   */
+  test('a displaced surface takes its own default region when that is free', () => {
+    const activityAtLeft = {
+      ...structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),
+      left: {
+        visible: true,
+        size: 400,
+        occupant: 'activity',
+        maximized: false,
+      },
+      bottom: { visible: false, size: 320, occupant: null, maximized: false },
+    };
+    const placed = placeSurface(activityAtLeft, 'chat', 'left');
+
+    expect(placed.left.occupant).toBe('chat');
+    expect(REGION_SURFACE_REGISTRY.get('activity')?.defaultRegion).toBe(
+      'right',
+    );
+    expect(placed.right).toMatchObject({ occupant: 'activity' });
+    expect(placed.bottom.occupant).toBeNull();
+  });
+
+  /**
+   * #1386 (c). A surface the registry does not hold has no default region, so
+   * the search order decides — and a side gives its occupant to the OTHER
+   * side before reshaping the workspace through `bottom`, which is the
+   * complaint the issue names.
+   */
+  test('a displaced surface with no registered default prefers the opposite side', () => {
+    const fixtureAtLeft = {
+      ...structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),
+      left: { visible: true, size: 400, occupant: 'fixture', maximized: false },
+      bottom: { visible: false, size: 320, occupant: null, maximized: false },
+    };
+    expect(REGION_SURFACE_REGISTRY.get('fixture')).toBeUndefined();
+
+    const fromLeft = placeSurface(fixtureAtLeft, 'chat', 'left');
+    expect(fromLeft.right).toMatchObject({ occupant: 'fixture' });
+    expect(fromLeft.bottom.occupant).toBeNull();
+
+    // And mirrored, so the rule is the pair rather than a hardcoded `right`.
+    const fixtureAtRight = {
+      ...structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),
+      right: {
+        visible: true,
+        size: 400,
+        occupant: 'fixture',
+        maximized: false,
+      },
+      bottom: { visible: false, size: 320, occupant: null, maximized: false },
+    };
+    const fromRight = placeSurface(fixtureAtRight, 'chat', 'right');
+    expect(fromRight.left).toMatchObject({ occupant: 'fixture' });
+    expect(fromRight.bottom.occupant).toBeNull();
+
+    // `bottom` has no opposite: it keeps the historical order, so a surface
+    // leaving it still lands in `right`.
+    const fixtureAtBottom = {
+      ...structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),
+      bottom: {
+        visible: true,
+        size: 320,
+        occupant: 'fixture',
+        maximized: false,
+      },
+    };
+    const fromBottom = placeSurface(fixtureAtBottom, 'chat', 'bottom');
+    expect(fromBottom.right).toMatchObject({ occupant: 'fixture' });
+    expect(fromBottom.left.occupant).toBeNull();
+  });
+
+  /**
+   * The preference never outranks what the surface DECLARES: Home's only
+   * region is `main`, so a Home that somehow held a dock region is unplaced
+   * rather than relocated, and the default-region step cannot smuggle it into
+   * `main` either.
+   */
+  test('a displaced surface is unplaced rather than relocated somewhere it does not declare', () => {
+    const homeAtLeft = {
+      ...structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),
+      left: { visible: true, size: 400, occupant: 'home', maximized: false },
+      bottom: { visible: false, size: 320, occupant: null, maximized: false },
+    };
+    const placed = placeSurface(homeAtLeft, 'chat', 'left');
+
+    expect(placed.left.occupant).toBe('chat');
+    expect(occupiedDockRegion(placed, 'home')).toBeUndefined();
+    expect(placed.main.occupant).toBe('home');
+  });
+
   test('placing a homeless surface vacates the displaced occupant when no dock region is free', () => {
     const fullArrangement = {
       ...structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),

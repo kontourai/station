@@ -75,8 +75,9 @@ export interface RegionPlacementSegment {
    * What choosing this segment does to the region's CURRENT occupant, worded
    * from what `placeSurface` will actually do rather than from a guess about
    * it — the model relocates a displaced surface into the region the incoming
-   * one vacates, else the first free dock region, else nowhere. `undefined`
-   * when nothing is displaced.
+   * one vacates, else its own default region, else the first free one in the
+   * model's search order, else nowhere. `undefined` when nothing is
+   * displaced.
    */
   displaces?: string;
   onSelect: () => void;
@@ -234,7 +235,8 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
    *
    * This is the honest form of what the retired verb list called "Swap in X".
    * The rules are not obvious (a swap back into the vacated region, else the
-   * first free dock region, else unplaced; and into `main` the displaced surface
+   * displaced surface's own default region, else the model's search order,
+   * else unplaced; and into `main` the displaced surface
    * is always unplaced), and a hand-written sentence about them is a claim
    * nothing derives — the class of defect this arc exists to remove. Pure
    * function, no state touched.

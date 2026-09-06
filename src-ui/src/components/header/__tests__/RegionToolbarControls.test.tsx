@@ -634,12 +634,13 @@ describe('RegionToolbarControls', () => {
     const { menu } = openLayoutMenu();
 
     // Activity → Bottom evicts Chat. Chat cannot go back to the region Activity
-    // vacates (Activity is unplaced), so the model relocates it to the first
-    // free dock region — and `firstFreeDockRegion` searches
-    // `['bottom','right','left']`, so that is RIGHT, not Left. Written here as
-    // the derivation reports it: my first draft of this expectation said Left
-    // and the assertion caught me, which is the whole argument for computing the
-    // sentence from `placeSurface` rather than composing it by hand.
+    // vacates (Activity is unplaced) and its own default region IS the bottom
+    // Activity just took, so the model falls through to its search order for a
+    // surface leaving `bottom` — `['bottom','right','left']` — which is RIGHT,
+    // not Left. Written here as the derivation reports it: my first draft of
+    // this expectation said Left and the assertion caught me, which is the
+    // whole argument for computing the sentence from `placeSurface` rather
+    // than composing it by hand.
     expect(
       within(surfaceRow(menu, 'Activity'))
         .getByRole('radio', { name: 'Bottom' })
