@@ -672,11 +672,6 @@ export function BannerHost({
   if (banners.length === 0) return null;
 
   const view = buildBannerStackView(banners, expanded);
-  const hasHiddenCriticalChrome =
-    hasCriticalChrome &&
-    !view.visible.some(
-      (banner) => banner.phase !== 'exiting' && requiresCriticalChrome(banner),
-    );
   // One button plays both roles so toggling never unmounts the control the
   // keyboard user's focus is sitting on.
   const showToggle = expanded || view.cap !== null;
@@ -712,10 +707,16 @@ export function BannerHost({
       {showToggle ? (
         <button
           type="button"
+          // #1132: no `--critical-chrome` modifier any more. It marked the
+          // narrower case of a cap standing in for a HIDDEN critical card, and
+          // `BannerHost.css` now raises EVERY cap in a critical-chrome host
+          // over a maximized dock — the cap is the only route to the rest of
+          // the stack and the only collapse control whether or not the critical
+          // card is the visible one. With no rule left reading it, the modifier
+          // was a class nothing computed anything from.
           className={[
             'banner-host__cap',
             view.cap ? `banner-host__cap--${view.cap.tone}` : '',
-            hasHiddenCriticalChrome ? 'banner-host__cap--critical-chrome' : '',
           ]
             .filter(Boolean)
             .join(' ')}

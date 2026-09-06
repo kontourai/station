@@ -33,6 +33,15 @@
  *    class only exists in the wide state, and two independent lanes have each
  *    measured this toolbar in the CONNECTED state and concluded it fits.
  *
+ *    Since #1132 the STATE is no longer the only thing that decides whether
+ *    that span renders: below a measured width `chat.css` collapses the chip
+ *    to its dot in every state, because the row cannot hold the label and the
+ *    Settings gear at once. So "the span has zero width" no longer means "the
+ *    drive landed on connected/idle", and precondition 1(b) reads which of the
+ *    two it is out of the live cascade rather than assuming. At those widths
+ *    the narrow chip is the correct layout and the thing to assert is that it
+ *    APPLIED — see `labelWidthSuppression`.
+ *
  *    That span's width is NOT a constant, and this comment deliberately does
  *    not name one. It was `min-width: 116px` (chip 151px) when the defects in
  *    this class shipped; #1424 replaced that at the mobile breakpoint with
@@ -150,60 +159,52 @@ const REQUIRED_CONTROL_KEYS = [
 ] as const;
 
 /**
- * WHY 390 AND 360 ARE SKIPPED, AND WHY FOR DIFFERENT REASONS.
+ * WHY 390 AND 360 ARE NO LONGER SKIPPED.
  *
  * `.app-toolbar__actions` is `flex-shrink: 0`, so the toolbar row's content
  * width is viewport-INDEPENDENT (the brand is the only shrinking member and it
- * has already bottomed out). On this branch's base the row ends at x≈421 and
- * the Settings gear occupies x=377..421 at EVERY width, so its centre (x≈399)
- * falls outside any viewport narrower than 399px — the row clips rather than
- * reflowing. Measured: reachable at 412 and 402, unreachable at 390 and 360.
+ * has already bottomed out). When this guard was written the row ended at
+ * x≈421 and the Settings gear occupied x=377..421 at EVERY width, so its
+ * centre (x≈399) fell outside any viewport narrower than 399px — the row
+ * clipped rather than reflowing. Both widths were present-but-skipped, each
+ * naming in its own reason the fix that would un-skip it.
  *
- * Both are supported phone widths and the assertion is correct at both. They
- * differ in what it would take to make them pass, which is why they carry
- * different reasons rather than one shared string: #1401's partial fix moves
- * the gear to 340..384, which clears 390 — but not 360, where the row is
- * over-subscribed no matter how short the label is.
+ * Both fixes have landed and both cases are enforced:
+ *
+ * - 390 by #1401/#1424, which released the chip's 116px `min-width`
+ *   reservation at the mobile breakpoint. Measured on a running app, the gear
+ *   moved to x=348..392, centre x=370, inside 390. That reason said "un-skip it
+ *   there — it is the check that proves that fix"; this is that.
+ *
+ * - 360 by #1132 — and that reason was WRONG about what it would take. It said
+ *   a hamburger plus four 44px controls plus the chip "does not fit in 360px at
+ *   all, so no amount of narrowing makes every control reachable", and
+ *   concluded that only a control LEAVING the row could close it. The
+ *   arithmetic omitted the chip's own label: #1132 drops it below a measured
+ *   width, taking the chip from 110px to its 44px floor and the cluster from
+ *   266px to 200px. Measured on a running app at 360, every control resolves to
+ *   itself and the row ends at x=348. No control left the toolbar.
+ *
+ * All four widths are enforced now, which is what the header's
+ * "present-but-skipped so the coverage stays visible" note was holding the
+ * place for.
  */
-const SETTINGS_CLIPPED_AT_390 =
-  '#1401 — CORRECT at this width and red on pristine main today: the Settings ' +
-  'gear (x=377..421, centre x≈399) has its centre outside a 390px viewport, ' +
-  'because `.app-toolbar__actions` is flex-shrink:0 and the row clips instead ' +
-  'of reflowing. 390 is a fully supported width and there is nothing wrong ' +
-  'with asserting it — the layout is what is wrong. THIS CASE IS UN-SKIPPABLE ' +
-  'BY #1401’s FIX: PR #1424 moves the gear to 340..384, which clears 390 (and ' +
-  '412). Un-skip it there — it is the check that proves that fix.';
-
-const ROW_OVERSUBSCRIBED_AT_360 =
-  '#1401 — CORRECT at this width and red on pristine main today, but NOT ' +
-  'fixed by #1401’s partial fix and not un-skippable with it. At 360 the row ' +
-  'is over-subscribed independently of the connection label: a hamburger plus ' +
-  'four 44px controls plus the chip does not fit in 360px at all, so no ' +
-  'amount of narrowing makes every control reachable. Closing it needs a ' +
-  'control to LEAVE the toolbar, which is an open product decision. Keep this ' +
-  'skipped until that decision is made, then un-skip it as the proof.';
 
 /**
- * Every width this guard knows about, widest first. A width with no
- * `skipReason` is ENFORCED with zero tolerance: any visible control there that
- * is not reachable at its own centre fails the suite.
+ * Every width this guard enforces, widest first, all with zero tolerance: any
+ * visible control at any of them that is not reachable at its own centre fails
+ * the suite.
  *
- * 412 is the Pixel 7's own viewport. 402 is a second real Android width above
- * the #1401 threshold, and it matters that there are TWO enforced widths: a
- * single one cannot notice a defect confined to a narrow band. 390 and 360 are
- * present-but-skipped rather than absent so the coverage stays visible in
- * every run's output and can be un-skipped in one line, instead of living only
- * in an issue.
+ * 412 is the Pixel 7's own viewport. 402 is a second real Android width. 390 is
+ * the common iPhone width #1401 closed. 360 is the common Android width #1132
+ * closed, and it is the only one of the four BELOW `chat.css`'s dot-only
+ * breakpoint — so it is the only case that evaluates that rule at all, and the
+ * only place a regression in it can surface. Four rather than two because a
+ * single width cannot notice a defect confined to a narrow band, and a narrow
+ * band is exactly what either of those two fixes leaves behind if it stops
+ * applying.
  */
-const TOOLBAR_WIDTHS: ReadonlyArray<{
-  width: number;
-  skipReason: string | null;
-}> = [
-  { width: 412, skipReason: null },
-  { width: 402, skipReason: null },
-  { width: 390, skipReason: SETTINGS_CLIPPED_AT_390 },
-  { width: 360, skipReason: ROW_OVERSUBSCRIBED_AT_360 },
-];
+const TOOLBAR_WIDTHS: readonly number[] = [412, 402, 390, 360];
 
 /**
  * The news-carrying connection states this guard drives, each through the real
@@ -344,6 +345,17 @@ interface ToolbarMeasurement {
    * would quietly go stale.
    */
   connectionStateMaxWidth: number | null;
+  /**
+   * The width rule that hides the chip's LABEL on width alone (#1132), found
+   * in the live stylesheet rather than transcribed, plus whether this viewport
+   * matches it. `null` when no such rule exists.
+   *
+   * There are now two independent reasons `.app-toolbar__conn-state` can have
+   * zero width — the two dot-only STATES, and this WIDTH breakpoint — and
+   * precondition 1(b) below has to tell them apart or it blames the drive for
+   * a correct layout.
+   */
+  labelWidthSuppression: { condition: string; matches: boolean } | null;
   /** The app's own mobile breakpoint, copied from `chat.css` verbatim. */
   mobileBreakpoint: boolean;
   maxTouchPoints: number;
@@ -544,6 +556,39 @@ async function measureToolbarControls(page: Page): Promise<ToolbarMeasurement> {
           ? null
           : round(parsed);
       })(),
+      // Read out of the live cascade, not transcribed: any @media rule that
+      // declares `display: none` for `.app-toolbar__conn-state` through a
+      // selector naming NO connection-state modifier is a width rule. The
+      // state rules (`.app-toolbar__conn--connected .app-toolbar__conn-state`)
+      // are excluded by that test, and the sibling `__conn-name`/`__conn-note`
+      // rules never mention this selector at all. A transcribed pixel value
+      // here would be the exact staleness `connectionStateMaxWidth` above
+      // already exists to avoid.
+      labelWidthSuppression: (() => {
+        for (const sheet of Array.from(document.styleSheets)) {
+          let rules: CSSRule[];
+          try {
+            rules = Array.from(sheet.cssRules ?? []);
+          } catch {
+            continue; // A cross-origin sheet cannot be inspected; none of ours are.
+          }
+          for (const rule of rules) {
+            if (!(rule instanceof CSSMediaRule)) continue;
+            for (const inner of Array.from(rule.cssRules ?? [])) {
+              if (!(inner instanceof CSSStyleRule)) continue;
+              const selector = inner.selectorText;
+              if (!selector.includes('.app-toolbar__conn-state')) continue;
+              if (selector.includes('.app-toolbar__conn--')) continue;
+              if (inner.style.display !== 'none') continue;
+              return {
+                condition: rule.conditionText,
+                matches: window.matchMedia(rule.conditionText).matches,
+              };
+            }
+          }
+        }
+        return null;
+      })(),
       coarsePointer: window.matchMedia('(pointer: coarse)').matches,
       // Byte-for-byte the query `chat.css` uses for its mobile branch. If this
       // is false the page is being styled as a desktop and every measurement
@@ -626,21 +671,50 @@ function assertToolbarPreconditions(
       `that cannot reproduce any defect in this class)\n${context}`,
   ).toContain(expectedModifier);
 
-  // (b) The label span is actually laid out. Independent of (a): the class is
-  //     what the component wrote, this is what the browser did with it.
-  //     `chat.css` gives the span `display: none` in exactly the two dot-only
-  //     states, so zero width IS the dot-only chip. Deliberately not a pixel
-  //     threshold: an earlier revision of this required >=110px, which encoded
-  //     the 116px reservation of the day and would have reddened this guard on
-  //     #1424 — a change that narrows the span to <=85px without making the
-  //     chip any less news-carrying. The strength here comes from (a) and (c),
-  //     which are tied to mechanisms rather than to a number.
-  expect(
-    measurement.connectionStateWidth ?? 0,
-    `.app-toolbar__conn-state has zero width, which is the dot-only chip — ` +
-      `chat.css hides this span for connected/idle, and a measurement of it ` +
-      `cannot reproduce any defect in this class\n${context}`,
-  ).toBeGreaterThan(0);
+  // (b) The label span is actually laid out — WHERE THE STYLESHEET LAYS IT OUT.
+  //     Independent of (a): the class is what the component wrote, this is what
+  //     the browser did with it. Deliberately not a pixel threshold: an earlier
+  //     revision required >=110px, which encoded the 116px reservation of the
+  //     day and would have reddened this guard on #1424 — a change that narrows
+  //     the span to <=85px without making the chip any less news-carrying. The
+  //     strength here comes from (a) and (c), which are tied to mechanisms
+  //     rather than to a number.
+  //
+  //     #1132 gave zero width a SECOND cause. It used to have exactly one —
+  //     `chat.css` hides this span for connected/idle — so "zero width IS the
+  //     dot-only chip" was a sound reading, and this assertion could say so.
+  //     There is now also a width breakpoint below which the chip is
+  //     deliberately dot-only in EVERY state, because the row cannot hold the
+  //     label and `Open settings` at once. Left as it was, this would fail at
+  //     those widths blaming the drive for reaching connected/idle — a wrong
+  //     diagnosis of a correct layout, and the reason the 360px case could not
+  //     simply be un-skipped.
+  //
+  //     So the fork is read out of the live cascade
+  //     (`labelWidthSuppression`), never transcribed, and BOTH sides assert:
+  //     above the breakpoint the span must be laid out; at or below it the span
+  //     must NOT be, because the narrow presentation is what makes the row fit
+  //     and a regression that stopped applying it is exactly what this guard's
+  //     reachability check would then catch one assertion later.
+  const labelSuppressedByWidth =
+    measurement.labelWidthSuppression?.matches === true;
+  if (labelSuppressedByWidth) {
+    expect(
+      measurement.connectionStateWidth ?? 0,
+      `this viewport matches ${JSON.stringify(measurement.labelWidthSuppression?.condition)}, ` +
+        `where chat.css collapses the chip to its dot so the action cluster ` +
+        `fits — but the label span still laid out, so the rule that keeps ` +
+        `\`Open settings\` on screen at this width is not applying\n${context}`,
+    ).toBe(0);
+  } else {
+    expect(
+      measurement.connectionStateWidth ?? 0,
+      `.app-toolbar__conn-state has zero width at a width where no rule ` +
+        `suppresses it, which is the dot-only chip — chat.css hides this span ` +
+        `for connected/idle, and a measurement of it cannot reproduce any ` +
+        `defect in this class\n${context}`,
+    ).toBeGreaterThan(0);
+  }
 
   // (c) THE DERIVATION that makes driving two states a statement about all
   //     five. Every news-carrying label, measured in this chip's own live
@@ -657,6 +731,11 @@ function assertToolbarPreconditions(
   // one — so asserting it of every case would red the `error` case the moment
   // #1424 lands and the labels stop being equal-width.
   if (!coversClassMaximum) return;
+  // …and it cannot be checked below the width breakpoint, where no state lays
+  // the label out at all. The class maximum is not lost there, it is trivial:
+  // every news-carrying state renders the SAME dot-only chip, which the branch
+  // above has just asserted, so there is no wider member to miss.
+  if (labelSuppressedByWidth) return;
   const measuredSpan = measurement.connectionStateWidth ?? 0;
   const ceiling =
     measurement.connectionStateMaxWidth ?? Number.POSITIVE_INFINITY;
@@ -739,20 +818,14 @@ test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: 'ignoreErrors' });
 });
 
-for (const { width, skipReason } of TOOLBAR_WIDTHS) {
-  const suffix = skipReason ? ' (skipped — #1401)' : '';
-  test.describe(`Toolbar reachability on a phone at ${width}px${suffix}`, () => {
+for (const width of TOOLBAR_WIDTHS) {
+  test.describe(`Toolbar reachability on a phone at ${width}px`, () => {
     // Per-width viewport at LOAD time, not a `setViewportSize` on an already
     // laid-out page: the mobile breakpoint and the region-control fold are
     // decided on mount, and a resize is not the same input. The Pixel 7
     // profile supplies the touch/mobile emulation the app's CSS keys on;
     // `assertToolbarPreconditions` verifies it actually applied.
     test.use({ ...PHONE, viewport: { width, height: VIEWPORT_HEIGHT } });
-
-    // `#1401` is in the describe title as well as the annotation so the reason
-    // is legible in a plain terminal reporter, which prints skipped tests by
-    // title only. The two skipped widths carry DIFFERENT reasons; see them.
-    if (skipReason) test.skip(true, skipReason);
 
     for (const state of NEWS_STATES) {
       test(`every visible app-toolbar control is reachable at its own centre — ${state.id}`, async ({

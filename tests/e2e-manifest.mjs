@@ -763,9 +763,11 @@ export const e2eManifest = [
       'rather than living in tests/android/, whose lane a src-ui change never ' +
       'triggers (build-android.yml is path-filtered to src-desktop and six ' +
       'named scripts), so the guard would never have run where it is needed.',
-    // The 390/360 cases are skipped with #1401 named as the reason, not
-    // deleted: un-skipping them is the check that proves that fix.
-    exceptions: ['test.skip'],
+    // No exception any more: the 390 and 360 cases were skipped with the fix
+    // that would un-skip each named in its own reason, and both have landed
+    // (#1401/#1424 for 390, #1132 for 360). All four widths are enforced, so
+    // the file carries no `test.skip` for this to exempt.
+    exceptions: [],
   },
   {
     path: 'tests/mobile-dock-clearance.spec.ts',

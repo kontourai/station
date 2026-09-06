@@ -653,11 +653,65 @@
   z-index: auto;
 }
 
+/* #1132, two boxes and one tier, because both cross for the same reason and
+ * at the same height.
+ *
+ * THE CAP, in any critical-chrome host. #920 raised it only when it stood in
+ * for a HIDDEN critical card, but when the critical card is the visible one —
+ * the measured case: a `Can't connect` decision in front, an ordinary notice
+ * behind it — the cap is still the only route to the rest of the stack and the
+ * only collapse control. Raising the card without it left the card readable
+ * and the cap owned by the dock: `elementFromPoint` at the cap's own centre
+ * resolved to the maximized dock's `.empty__label`, and a click retried for
+ * 30s against "subtree intercepts pointer events".
+ *
+ * THE EXPANDED HOST. Expanding is the reader asking for the whole notice
+ * surface, so the whole surface crosses — the per-card exception cannot cover
+ * an expanded stack, whose ordinary cards would otherwise render visible and
+ * inert over the dock (worse than #919's "kept alive underneath", because they
+ * are on screen rather than deliberately deferred).
+ *
+ * Expansion is always user-initiated — only the cap's onClick sets it. It is
+ * NOT true that it can only happen in a host already carrying critical chrome:
+ * the cap renders whenever the stack has something hidden, critical or not, and
+ * `banner-host--critical-chrome` is derived live from the banner set
+ * (`BannerHost.tsx`). So a reader who expanded an ORDINARY stack and then has a
+ * connection failure arrive gets the whole expanded stack across the dock with
+ * no fresh action of their own. That is intended, not incidental: it is the
+ * same outcome as expanding one moment later, and the alternative — collapsing
+ * on the transition — would bury a blocking notice at the instant it appeared,
+ * which is the defect #1132 exists to close, and would add a state write driven
+ * by a derived value changing underneath it.
+ *
+ * What #919 is owed survives either way: a COLLAPSED host still puts only the
+ * critical card and its cap over the dock, and the dock's own header and search
+ * stay clickable throughout — the host is `pointer-events: none` and
+ * `.banner-host__stack` takes pointer events only while genuinely scrollable,
+ * so what crosses is paint plus the literal control rectangles.
+ *
+ * The two selectors here are (0,6,0) for the expanded host and (0,5,0) for the
+ * cap, and the rule below is (0,5,0) on a DIFFERENT element (an item, which no
+ * cap carries), so nothing here turns on source order. What the contract rests
+ * on is the two TIERS — see the rule below. */
 .app__main:has(> .chat-dock.is-maximized)
-  > .banner-host.banner-host--critical-chrome
-  :is(.banner-host__item--critical-chrome, .banner-host__cap--critical-chrome) {
-  position: relative;
+> .banner-host.banner-host--critical-chrome.banner-host--expanded,
+.app__main:has(> .chat-dock.is-maximized)
+  > .banner-host--critical-chrome
+  .banner-host__cap {
   z-index: calc(var(--layer-dock) + 1);
+}
+
+/* One tier above the cap: the cap is tucked 8px under the card it hangs off
+ * (`margin-top: -14px`, 6px of which cancels the column gap) and is a later
+ * sibling, so an equal tier would paint the cap's border and background over
+ * the card's bottom edge. `.banner-host__cap`'s base `z-index: -1` is what
+ * holds that order inside the host's own stacking context; this is the same
+ * order re-stated once the host has no stacking context left to hold it. */
+.app__main:has(> .chat-dock.is-maximized)
+  > .banner-host--critical-chrome
+  .banner-host__item--critical-chrome {
+  position: relative;
+  z-index: calc(var(--layer-dock) + 2);
 }
 
 /* Shell mobile breakpoint — keep in lockstep with index.css. */
