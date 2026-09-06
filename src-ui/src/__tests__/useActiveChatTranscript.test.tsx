@@ -22,7 +22,10 @@ const resetRecovery = vi.fn((apiBase: string, sessionId: string) => {
   recoveryBudget.delete(`${apiBase}\u0000${sessionId}`);
 });
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async () => ({
+  extractUIBlocks: (
+    await import('../../../packages/sdk/src/query-domains/uiBlocks')
+  ).extractUIBlocks,
   fetchSessionEventWindowCapability: (...args: unknown[]) =>
     fetchCapability(...args),
   claimSessionEventWindowCapabilityRecovery: (...args: unknown[]) =>
@@ -371,7 +374,13 @@ describe('useActiveChatTranscript', () => {
           toolCallId: 'same-call',
           toolName: 'shell',
           status: 'success',
-          output: 'done',
+          output: {
+            uiBlock: {
+              type: 'card',
+              title: 'Replay card',
+              body: 'Kept result',
+            },
+          },
         }),
         event('e3', 'turn.completed', {
           turnId: 'turn-1',
@@ -385,6 +394,17 @@ describe('useActiveChatTranscript', () => {
     await waitFor(() => expect(result.current.messages).toHaveLength(2));
     expect(result.current.messages[1]?.contentParts).toContainEqual(
       expect.objectContaining({ type: 'tool-invocation', sourceEventId: 'e2' }),
+    );
+    expect(result.current.messages[1]?.contentParts).toContainEqual(
+      expect.objectContaining({
+        type: 'ui-block',
+        toolCallId: 'same-call',
+        sourceEventId: 'e2',
+        uiBlock: expect.objectContaining({
+          id: 'e2-block-0',
+          title: 'Replay card',
+        }),
+      }),
     );
   });
 
