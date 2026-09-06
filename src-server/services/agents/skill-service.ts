@@ -45,6 +45,7 @@ import {
   toReadToolSchema,
 } from 'agent-skills-ts-sdk';
 import type { ConfigLoader, SkillConfig } from '../../domain/config-loader.js';
+import { skillRecordClaimsName } from '../../domain/config-loader-storage.js';
 import {
   canonicalSkillsDiscovered,
   skillActivationDuration,
@@ -1556,11 +1557,23 @@ export class SkillService {
     // installed into the workspace before they can be edited"); until now a
     // description edit quietly published a shadow package into the workspace
     // instead.
-    if (!this.isSkillWritable(name, projectHomeDir, projectSlug)) {
-      const location = this.registry.get(name)?.location;
+    // Read the registry entry here rather than inside the message: a package
+    // with no discovered location is writable by definition
+    // (`isSkillWritable` returns true for it), so this condition is exactly the
+    // predicate's own — with no unreachable "or else" to describe a case it
+    // cannot produce.
+    const registered = this.registry.get(name);
+    if (
+      registered?.location &&
+      !this.isSkillWritable(name, projectHomeDir, projectSlug)
+    ) {
       return {
         success: false,
-        message: `Skill '${name}' is served from ${location ? dirname(location) : 'a package Station does not own'}, which this update does not own; it would have written a second copy to ${skillDir}`,
+        message: `Skill '${name}' is served from ${dirname(registered.location)}, which this update does not own; it would have ${
+          existsSync(skillDir)
+            ? `overwritten the package at ${skillDir}`
+            : `written a second copy to ${skillDir}`
+        }`,
       };
     }
     const current = await this.getSkill(name);
@@ -1638,6 +1651,20 @@ export class SkillService {
     // neither. (Pre-existing on origin/main, not introduced by this branch;
     // fixed here because this branch made rename reachable and refusable.)
     if (nextDir !== skillDir) {
+      // A NAME, not just a directory. `existsSync(nextDir)` only sees this
+      // root, so renaming onto a canonical package's or a plugin's name — which
+      // lives somewhere else entirely — passed it, and because `<home>/skills`
+      // is scanned last the local package then took the name and the one it
+      // shadowed vanished from the listing. `createLocalSkill` has refused
+      // exactly this since it was written (`hasSkill(input.name)`); a rename is
+      // a create under a new name, so it refuses the same way (review round 2,
+      // M2).
+      if (this.hasSkill(next.name)) {
+        return {
+          success: false,
+          message: `Cannot rename ${name} to ${next.name}: a skill called '${next.name}' already exists`,
+        };
+      }
       if (existsSync(nextDir)) {
         throw new Error(
           `Cannot rename ${name} to ${next.name}: a skill directory already exists at ${nextDir}`,
@@ -1841,13 +1868,11 @@ export class SkillService {
         const record = JSON.parse(
           await readFile(recordPath, 'utf-8'),
         ) as SkillConfig;
-        // A record answers only for the name it CLAIMS. A package copied into
-        // a new directory keeps the record it was copied with, and that
-        // record's `legacyIds`, `provenance` and `installedAt` belong to the
-        // skill it was written for — answering the new name with them would
-        // hand a caller another skill's identity, and `resolveSkillName` would
-        // then route that skill's legacy ids here.
-        if (record.name === name) return record;
+        // A record answers only for the name it CLAIMS — the same rule
+        // `loadSkillConfig` applies to the record it resolves by path, shared
+        // rather than restated (see its docblock for what a disowned record
+        // hands a caller).
+        if (skillRecordClaimsName(record, name)) return record;
       }
       // Discovery found this package, so its own directory is the only place
       // its record can be. A record next door under a name-derived path is

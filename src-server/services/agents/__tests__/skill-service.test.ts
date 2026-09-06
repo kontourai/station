@@ -23,6 +23,9 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   canonicalSkillsDiscovered: { add: vi.fn() },
 }));
 const { SkillService } = await import('../skill-service.js');
+const { skillRecordClaimsName } = await import(
+  '../../../domain/config-loader-storage.js'
+);
 
 let testDir: string;
 const mockConfigLoader = {
@@ -83,7 +86,13 @@ beforeEach(() => {
   mockConfigLoader.loadSkill.mockImplementation(async (name: string) => {
     const configPath = join(testDir, 'skills', name, 'skill.json');
     if (!existsSync(configPath)) throw new Error(`Skill '${name}' not found`);
-    return JSON.parse(readFileSync(configPath, 'utf-8'));
+    const record = JSON.parse(readFileSync(configPath, 'utf-8'));
+    // The REAL rule, called rather than mirrored: a record that claims another
+    // name is not this name's record, and `loadSkillConfig` answers that the
+    // same way it answers a missing file.
+    if (!skillRecordClaimsName(record, name))
+      throw new Error(`Skill '${name}' not found`);
+    return record;
   });
   service = new SkillService(mockConfigLoader as any, mockLogger);
 });
@@ -1202,6 +1211,37 @@ describe('SkillService', () => {
     expect(result.message).toContain(projectDir);
   });
 
+  // The other half of that refusal's message. The machine root can already hold
+  // a directory for this name without holding a PACKAGE — a record-only
+  // directory is exactly what a scoped `createLocalSkill` leaves behind today
+  // (`configLoader.saveSkill` has no slug either, #1619) — and there the write
+  // would not have added a copy, it would have written over what is there. The
+  // refusal says which.
+  test('the refusal says overwritten when the destination already holds something', async () => {
+    const projectDir = seedProjectSkill('shadowed');
+    const machineDir = join(testDir, 'skills', 'shadowed');
+    mkdirSync(machineDir, { recursive: true });
+    writeFileSync(
+      join(machineDir, 'skill.json'),
+      JSON.stringify({ name: 'shadowed', source: 'local' }),
+      'utf-8',
+    );
+    await service.discoverSkills(testDir, 'demo');
+
+    const result = await service.updateLocalSkill(
+      'shadowed',
+      { description: 'Edited' },
+      testDir,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain(
+      `overwritten the package at ${machineDir}`,
+    );
+    expect(result.message).toContain(projectDir);
+    expect(existsSync(join(machineDir, 'SKILL.md'))).toBe(false);
+  });
+
   // Review L2. A package copied into a new directory keeps the record it was
   // copied with. That record's `legacyIds`/`provenance`/`installedAt` are the
   // ORIGINAL skill's, so answering the new name with them hands a caller
@@ -1702,7 +1742,9 @@ describe('SkillService', () => {
     expect(existsSync(newDir)).toBe(false);
   });
 
-  test('a rename onto an existing skill directory is refused, moving nothing', async () => {
+  // A rename is a create under a new name, so it refuses on the same rule
+  // `createLocalSkill` does — the NAME, wherever that name's package lives.
+  test('a rename onto a name another package holds is refused, moving nothing', async () => {
     await service.createLocalSkill(
       { name: 'alpha', description: 'Mine', body: 'Body' },
       testDir,
@@ -1712,14 +1754,122 @@ describe('SkillService', () => {
       testDir,
     );
 
+    const result = await service.updateLocalSkill(
+      'alpha',
+      { name: 'taken' },
+      testDir,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/already exists/);
+    expect(existsSync(join(testDir, 'skills', 'alpha', 'SKILL.md'))).toBe(true);
+    expect(
+      readFileSync(join(testDir, 'skills', 'taken', 'SKILL.md'), 'utf-8'),
+    ).toContain('Other body');
+  });
+
+  // The DIRECTORY half of that refusal, which the name rule above cannot reach:
+  // a directory with no `SKILL.md` is not a discovered package, so `hasSkill`
+  // says nothing about it and only the path check stands between a rename and
+  // whatever is sitting there.
+  test('a rename onto a directory that is not a discovered package still refuses', async () => {
+    await service.createLocalSkill(
+      { name: 'alpha', description: 'Mine', body: 'Body' },
+      testDir,
+    );
+    const squatted = join(testDir, 'skills', 'taken');
+    mkdirSync(squatted, { recursive: true });
+    writeFileSync(join(squatted, 'notes.txt'), 'Not a skill', 'utf-8');
+
     await expect(
       service.updateLocalSkill('alpha', { name: 'taken' }, testDir),
     ).rejects.toThrow(/already exists/);
 
     expect(existsSync(join(testDir, 'skills', 'alpha', 'SKILL.md'))).toBe(true);
+    expect(readFileSync(join(squatted, 'notes.txt'), 'utf-8')).toBe(
+      'Not a skill',
+    );
+  });
+
+  // Review round 2, M2. The name a rename takes can belong to a package in a
+  // root this write never looks at: `existsSync(nextDir)` only sees
+  // `<home>/skills`, and `<home>/skills` is scanned LAST, so the renamed local
+  // package took the canonical package's name and the canonical one dropped out
+  // of the listing entirely.
+  test('a rename onto a canonical package name is refused and the package stays listed', async () => {
+    const packageRoot = join(testDir, 'canonical');
+    const packageSkill = join(packageRoot, 'pdf');
+    mkdirSync(packageSkill, { recursive: true });
+    writeFileSync(
+      join(packageSkill, 'SKILL.md'),
+      '---\nname: pdf\ndescription: From a package\n---\nPackage body',
+      'utf-8',
+    );
+    const withPackage = new SkillService(mockConfigLoader as any, mockLogger, {
+      canonicalSources: [
+        { label: 'flow-agents' as const, root: packageRoot, version: '1.0.0' },
+      ],
+    });
+    await withPackage.createLocalSkill(
+      { name: 'notes', description: 'Mine', body: 'Body' },
+      testDir,
+    );
     expect(
-      readFileSync(join(testDir, 'skills', 'taken', 'SKILL.md'), 'utf-8'),
-    ).toContain('Other body');
+      withPackage
+        .listSkills()
+        .map((skill) => skill.name)
+        .sort(),
+    ).toEqual(['notes', 'pdf']);
+
+    const result = await withPackage.updateLocalSkill(
+      'notes',
+      { name: 'pdf' },
+      testDir,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('pdf');
+    // The package is still there, still canonical, and still the one that
+    // answers to its own name.
+    const listed = new Map(
+      withPackage.listSkills().map((skill) => [skill.name, skill]),
+    );
+    expect(listed.get('pdf')?.origin).toBe('package');
+    expect(listed.get('pdf')?.path).toBe(packageSkill);
+    expect(listed.get('notes')).toBeDefined();
+    expect(existsSync(join(testDir, 'skills', 'notes', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(testDir, 'skills', 'pdf'))).toBe(false);
+  });
+
+  // Review round 2, L3, at the seam it actually reaches: with no `SKILL.md`
+  // nothing discovers this package, so the detail read falls to the loader's
+  // name-derived path — the branch the registry cannot cover. `nextName` is
+  // read back off that record, so a disowned one renamed `bar` to `foo` on a
+  // request that asked for no rename at all.
+  test('an update never renames a skill from a record that claims another name', async () => {
+    const dir = join(testDir, 'skills', 'bar');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'skill.json'),
+      JSON.stringify({
+        name: 'foo',
+        source: 'local',
+        installedAt: '2020-01-01T00:00:00.000Z',
+        path: join(testDir, 'skills', 'foo'),
+      }),
+      'utf-8',
+    );
+    await service.discoverSkills(testDir);
+
+    await expect(
+      service.updateLocalSkill('bar', { body: 'Edited' }, testDir),
+    ).rejects.toThrow("Skill 'bar' not found");
+
+    expect(
+      existsSync(join(testDir, 'skills', 'foo')),
+      'the update renamed a package nobody asked to rename',
+    ).toBe(false);
+    expect(existsSync(join(testDir, 'skills', 'bar'))).toBe(true);
   });
 
   test('an update that is not a rename leaves the directory where it is', async () => {
