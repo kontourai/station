@@ -1412,6 +1412,71 @@ describe('SkillService', () => {
     expect(existsSync(`${projectDir}.mutation`)).toBe(false);
   });
 
+  // Review M2, a regression against main. `<home>/plugins` is scanned AFTER
+  // `<home>/skills`, so a plugin package sharing a name takes the registry key
+  // from the user's own package. Refusing a remove on the registry entry alone
+  // then meant the user could not delete their own skill, and the message
+  // blamed a plugin they may never have heard of. Main removed it, because its
+  // target was name-derived.
+  test('a package of ours is removable even when a plugin holds its name', async () => {
+    const mine = join(testDir, 'skills', 'hello');
+    mkdirSync(mine, { recursive: true });
+    writeFileSync(
+      join(mine, 'SKILL.md'),
+      '---\nname: hello\ndescription: Mine\n---\nMy body',
+      'utf-8',
+    );
+    const pluginCopy = join(testDir, 'plugins', 'acme', 'skills', 'hello');
+    mkdirSync(pluginCopy, { recursive: true });
+    writeFileSync(
+      join(pluginCopy, 'SKILL.md'),
+      '---\nname: hello\ndescription: From a plugin\n---\nPlugin body',
+      'utf-8',
+    );
+    await service.discoverSkills(testDir);
+    // The plugin package holds the name — the precondition, asserted so this
+    // cannot pass by the collision never happening.
+    expect(service.listSkills().find((s) => s.name === 'hello')?.origin).toBe(
+      'plugin',
+    );
+
+    const result = await service.removeSkill('hello', testDir);
+
+    expect(
+      existsSync(mine),
+      'the user could not delete their own package',
+    ).toBe(false);
+    expect(existsSync(pluginCopy), "the plugin's own package was deleted").toBe(
+      true,
+    );
+    expect(result.success).toBe(true);
+  });
+
+  // …and with nothing of ours there, the refusal is what answers, naming the
+  // root rather than reporting the skill as absent.
+  test('a plugin-only package is refused, not reported missing', async () => {
+    const pluginOnly = join(
+      testDir,
+      'plugins',
+      'acme',
+      'skills',
+      'only-theirs',
+    );
+    mkdirSync(pluginOnly, { recursive: true });
+    writeFileSync(
+      join(pluginOnly, 'SKILL.md'),
+      '---\nname: only-theirs\ndescription: From a plugin\n---\nBody',
+      'utf-8',
+    );
+    await service.discoverSkills(testDir);
+
+    const result = await service.removeSkill('only-theirs', testDir);
+
+    expect(existsSync(pluginOnly)).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('is not a skills root Station writes');
+  });
+
   // Review H1, the worst defect this branch produced. `removeSkillIfRevision`
   // digested `resolveSkillDir(home, name, slug)` — name-derived — and then
   // called a remove that resolved through `packageDirectoryFor`, so it verified
