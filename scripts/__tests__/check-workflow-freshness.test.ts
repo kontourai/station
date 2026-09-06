@@ -435,15 +435,31 @@ describe('workflow wiring', () => {
     expect(workflow).not.toContain('physical-host-capacity@');
   });
 
-  test('main-health watches the freshness workflow by name', async () => {
+  /**
+   * main-health.yml matches a watched workflow by its exact `name`, so the two
+   * sides have to be equal strings — not merely similar ones. An earlier
+   * version of this test asserted `toContain('- Gallery freshness')` and a
+   * fault injection walked straight through it: `- Gallery freshnesss`
+   * contains that substring, so the typo passed while main-health would have
+   * watched nothing and the tracker half of this design would be silently
+   * dead. Both names are parsed and compared for identity instead.
+   */
+  test('main-health watches the freshness workflow by its exact name', async () => {
     const { readFileSync } = await import('node:fs');
-    const health = readFileSync('.github/workflows/main-health.yml', 'utf8');
-    const freshness = readFileSync(
-      '.github/workflows/gallery-freshness.yml',
-      'utf8',
-    );
-    expect(freshness).toContain('name: Gallery freshness');
-    expect(health).toContain('- Gallery freshness');
+    const { JSON_SCHEMA, load } = await import('js-yaml');
+    const parse = (path: string) =>
+      load(readFileSync(path, 'utf8'), { schema: JSON_SCHEMA }) as {
+        name?: unknown;
+        on?: { workflow_run?: { workflows?: unknown } };
+      };
+
+    const freshnessName = parse('.github/workflows/gallery-freshness.yml').name;
+    const watched = parse('.github/workflows/main-health.yml').on?.workflow_run
+      ?.workflows;
+
+    expect(freshnessName).toBe('Gallery freshness');
+    expect(Array.isArray(watched)).toBe(true);
+    expect(watched as unknown[]).toContain(freshnessName);
   });
 
   test('the gallery gate keeps a stalled run visible and pins its renderer by digest', async () => {
