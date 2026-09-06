@@ -539,6 +539,32 @@ describe('the step variant contributes no chrome of its own', () => {
     expect(actions?.contains(primary)).toBe(true);
   });
 
+  test('the none-capable panel uses the same row and tone as the choosing one', () => {
+    // Found by fault injection: forcing the modal chrome back on THIS branch
+    // changed nothing any test could see, because every step-variant case
+    // above has capable engines. The branch is reachable — it is what a fresh
+    // home with nothing connected renders — and it is a step of the run too.
+    statusData = { providers: { configuredChatReady: false } };
+    connectionsData = [];
+    configData = undefined;
+    render(
+      <EnginePicker variant="step" onChosen={() => {}} onDismiss={() => {}} />,
+    );
+
+    const picker = screen.getByTestId('engine-picker');
+    expect(screen.getByTestId('engine-picker-none-capable')).toBeTruthy();
+    expect(picker.querySelector('.engine-picker__backdrop')).toBeNull();
+    expect(picker.querySelector('.engine-picker__eyebrow')).toBeNull();
+    const actions = picker.querySelector('.first-run-chapter__actions');
+    expect(
+      actions,
+      'the none-capable step did not use the shared actions row',
+    ).toBeTruthy();
+    const primary = screen.getByRole('button', { name: 'Got it' });
+    expect(primary.className).toContain('button--primary');
+    expect(actions?.contains(primary)).toBe(true);
+  });
+
   test('reports the title it actually rendered, so a shared header cannot lie', () => {
     const titles: string[] = [];
     renderStep({
