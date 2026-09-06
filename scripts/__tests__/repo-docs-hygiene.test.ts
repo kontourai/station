@@ -7,30 +7,6 @@ const read = (fixtures: Record<string, string>) => (file: string) =>
   fixtures[file] ?? '';
 
 describe('repo docs hygiene', () => {
-  it('does not mistake a settings filename for a private DNS suffix while retaining real local hosts', () => {
-    expect(
-      findingsFor(
-        ['docs/settings.md'],
-        read({
-          'docs/settings.md':
-            'Use `.claude/settings.local.json` and `config.internal.json`.',
-        }),
-      ).size,
-    ).toBe(0);
-    for (const host of [
-      'printer.local',
-      'printer.local.',
-      'https://service.internal:8443/',
-      'host.home.arpa',
-    ]) {
-      const { failures } = evaluate({
-        byFile: findingsFor(['docs/host.md'], read({ 'docs/host.md': host })),
-        grandfathered: [],
-      });
-      expect(failures.join('\n')).toContain('private-hostname');
-    }
-  });
-
   it('flags a real machine name, path, and mailbox in a non-grandfathered doc', () => {
     const byFile = findingsFor(
       ['docs/new.md'],
@@ -54,6 +30,35 @@ describe('repo docs hygiene', () => {
       }),
     );
     expect(byFile.size).toBe(0);
+  });
+
+  it('distinguishes a filename suffix from a complete private hostname', () => {
+    expect(
+      findingsFor(
+        ['docs/new.md'],
+        read({
+          'docs/new.md':
+            'Use `.claude/settings.local.json` and settings.internal.json.',
+        }),
+      ).size,
+    ).toBe(0);
+    for (const host of [
+      'settings.local',
+      'build.internal',
+      'node.corp',
+      'node.lan',
+      'node.home.arpa',
+    ]) {
+      const findings = findingsFor(
+        ['docs/new.md'],
+        read({
+          'docs/new.md': `Connect to https://${host}:443/path or ${host}.`,
+        }),
+      );
+      expect(
+        evaluate({ byFile: findings, grandfathered: [] }).failures.join('\n'),
+      ).toContain(`private-hostname: ${host}`);
+    }
   });
 
   it('a grandfathered file holds exactly its pinned findings without failing', () => {
