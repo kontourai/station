@@ -144,6 +144,14 @@ export function createRemoteHomeTransferCoordinator(
           principal,
           operationId,
         );
+        if (resolved.kind === 'committed-operation')
+          return resolved.isCurrent()
+            ? {
+                kind: 'decision-committed',
+                decision: resolved.transfer,
+                ...flags,
+              }
+            : { kind: 'denied', ...flags };
         if (resolved.kind !== 'bound-owners')
           return { kind: resolved.kind, ...flags };
         if (!resolved.isCurrent()) return { kind: 'denied', ...flags };

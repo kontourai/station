@@ -46,6 +46,11 @@ export type HomeTransferOwnerResolutionResult =
       readonly target: HomeTransferBoundOwner;
       readonly isCurrent: () => boolean;
     }
+  | {
+      readonly kind: 'committed-operation';
+      readonly transfer: PlannedHomeTransfer;
+      readonly isCurrent: () => boolean;
+    }
   | { readonly kind: 'denied' | 'conflict' | 'not-found' | 'unavailable' };
 
 export type HomeTransferRoomBindingResult =
@@ -679,6 +684,14 @@ export function createHomeTransferRoomBindingService(
         if (exact.kind !== 'stored') return exact;
         if (JSON.stringify(exact.value) !== JSON.stringify(transfer))
           return { kind: 'conflict' };
+        if (transfer.phase === 'committed') {
+          if (!participantsCurrent()) return { kind: 'denied' };
+          return Object.freeze({
+            kind: 'committed-operation' as const,
+            transfer,
+            isCurrent: participantsCurrent,
+          });
+        }
 
         const sourceBinding = readBinding(
           transfer.intent.channelId,

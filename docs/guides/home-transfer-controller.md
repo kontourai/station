@@ -160,7 +160,9 @@ It exposes the existing closing checkpoint, not message/document content.
 The controller uses it internally with an 8 KiB response ceiling and a 15-second
 whole-RPC deadline. Individual identity and seal RPCs have their own deadlines;
 a complete advance can make several calls. Lost responses are resolved by
-operation ID, not by assuming rollback.
+operation ID, not by assuming rollback. A committed replay uses the stored
+decision and current controller-side participant grants; it does not require
+the source or its outbound peer record to remain available.
 
 No raw closure/readiness submission, remote source-close command, target
 activation or Agent launch endpoint is enabled.

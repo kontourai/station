@@ -224,7 +224,41 @@ async function transferOwnersFixture(options?: {
       expectedRevision: 0,
     }),
   ).toMatchObject({ kind: 'stored' });
-  return { ...f, target, database, service, observed };
+  return { ...f, target, database, service, observed, store, tenantId };
+}
+
+function commitTransfer(
+  f: Awaited<ReturnType<typeof transferOwnersFixture>>,
+): void {
+  const closure = {
+    operationId: 'operation-one',
+    sourceHomeRef: `paired:${f.input.controllerDeviceId}`,
+    targetHomeRef: `paired:${f.target.device.id}`,
+    checkpoint: {
+      channelId: f.input.channelId,
+      epoch: 0,
+      throughSeq: 1,
+      checkpointDigest: 'a'.repeat(64),
+      retainedAnchorSeq: 0,
+      retainedAnchorDigest: 'b'.repeat(64),
+    },
+    workingStateDigest: 'c'.repeat(64),
+  };
+  const closed = f.store.recordClosure(f.tenantId, 'operation-one', closure);
+  expect(closed).toMatchObject({ kind: 'stored' });
+  if (closed.kind !== 'stored') throw new Error('closure not stored');
+  expect(
+    f.store.recordReady(
+      f.tenantId,
+      'operation-one',
+      `paired:${f.target.device.id}`,
+      closed.value.closureDigest!,
+    ),
+  ).toMatchObject({ kind: 'stored' });
+  expect(f.store.commit(f.tenantId, 'operation-one')).toMatchObject({
+    kind: 'stored',
+    value: { phase: 'committed', committedRevision: 1 },
+  });
 }
 
 describe('home transfer room binding', () => {
@@ -676,5 +710,41 @@ describe('home transfer room binding', () => {
     const result = await pending;
     expect(result.kind).toBe('bound-owners');
     expect(f.observed).toHaveLength(2);
+  });
+
+  test('resolves committed retries locally after remote peers disappear', async () => {
+    const f = await transferOwnersFixture();
+    commitTransfer(f);
+    await f.peers.remove('remote-environment');
+    await f.peers.remove('target-environment');
+    f.observed.splice(0);
+
+    expect(
+      await f.service.resolveTransferOwners(
+        f.target.principal,
+        'operation-one',
+      ),
+    ).toEqual({ kind: 'denied' });
+    const committed = await f.service.resolveTransferOwners(
+      f.device,
+      'operation-one',
+    );
+    expect(committed).toMatchObject({
+      kind: 'committed-operation',
+      transfer: { phase: 'committed', committedRevision: 1 },
+    });
+    expect(f.observed).toEqual([]);
+    if (committed.kind !== 'committed-operation')
+      throw new Error('committed operation not resolved');
+    expect(committed.isCurrent()).toBe(true);
+
+    f.security.devicePairing.revokeDevice(
+      f.target.device.id,
+      'operator-credential',
+    );
+    expect(committed.isCurrent()).toBe(false);
+    expect(
+      await f.service.resolveTransferOwners(f.device, 'operation-one'),
+    ).toEqual({ kind: 'denied' });
   });
 });

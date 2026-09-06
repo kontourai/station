@@ -515,6 +515,17 @@ test.skipIf(process.platform === 'win32')(
       ).toEqual({ kind: 'denied' });
       await reopenedSource.close();
       await reopenedTarget.close();
+      await source.closeStorage();
+      sourceOpen = false;
+      await peers.remove(source.identity.environmentId);
+      await peers.remove(target.identity.environmentId);
+      const offlineReplay = await post(
+        `/transfers/${operationId}/advance`,
+        sourceParticipant.credential,
+        {},
+      );
+      expect(offlineReplay.status).toBe(200);
+      expect(await offlineReplay.json()).toEqual(committedBody);
     } finally {
       if (sourceOpen) await source.closeStorage();
       if (targetOpen) await target.closeStorage();

@@ -295,7 +295,10 @@ that unavailable outcome and needs repair, not timeout promotion. Wrong
 operation, endpoint identity, nonce, target or checkpoint conflicts. Lost commit
 acknowledgements resolve to the stored operation. If another driver finishes
 during an idempotent closure/readiness acknowledgement, the first returns the
-same committed decision. Revocation during an asynchronous local source closure
+same committed decision. Committed replay rechecks the original source caller
+and both controller-side participant grants, but does not re-probe endpoints or
+require outbound peer records: the source may already be offline. Revocation
+during an asynchronous local source closure
 can leave a sealed source and an unadvanced controller record; no error unseals it.
 
 The public result is `HomeTransferDecisionAdvanceObservation`: pending uses HTTP
