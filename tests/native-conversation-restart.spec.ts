@@ -4,7 +4,15 @@ import type { Server } from 'node:http';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  DelegatedTaskFollowUpHandle,
+  ForegroundMessageInput,
+  ForegroundMessageReceipt,
+} from '@kontourai/station-sdk/client';
 import { expect } from '@playwright/test';
 import {
   e2eOperatorAuthorizationHeaders,
@@ -39,19 +47,6 @@ interface ModelMessage {
 }
 interface ModelRequest {
   messages?: ModelMessage[];
-}
-interface TurnHandle {
-  conversationId: string;
-  sessionId: string;
-  currentSessionId?: string;
-  providerTurnId?: string;
-}
-interface SessionEvent {
-  method: string;
-  turnId?: string;
-  prompt?: string;
-  cwd?: string;
-  metadata?: { projectSlug?: string };
 }
 function textOf(message: ModelMessage): string {
   return typeof message.content === 'string'
@@ -89,17 +84,18 @@ async function api<T>(
 }
 async function completed(
   live: LiveStation,
-  handle: TurnHandle,
+  handle: ForegroundMessageReceipt | DelegatedTaskFollowUpHandle,
   prompt: string,
 ) {
-  const sessionId = handle.currentSessionId ?? handle.sessionId;
+  const sessionId =
+    'currentSessionId' in handle ? handle.currentSessionId : handle.sessionId;
   expect(sessionId).toBeTruthy();
-  let events: SessionEvent[] = [];
+  let events: CanonicalRuntimeEvent[] = [];
   await expect
     .poll(
       async () => {
         events = (
-          await api<{ data: SessionEvent[] }>(
+          await api<{ data: CanonicalRuntimeEvent[] }>(
             live,
             `/api/orchestration/sessions/${encodeURIComponent(sessionId)}/events`,
           )
@@ -107,7 +103,8 @@ async function completed(
         const started = events.find(
           (event) => event.method === 'turn.started' && event.prompt === prompt,
         );
-        const turnId = handle.providerTurnId ?? started?.turnId;
+        const turnId =
+          'providerTurnId' in handle ? handle.providerTurnId : started?.turnId;
         return (
           Boolean(turnId) &&
           events.some(
@@ -245,28 +242,33 @@ for (const runtimeFramework of ['voltagent', 'strands'] as const) {
       expect(await api(live, '/api/system/runtime')).toEqual({
         runtime: runtimeFramework,
       });
-      const target = {
+      const target: ForegroundMessageInput['target'] = {
         environment: { kind: 'current' },
-        agent: agentSlug,
+        agent: agentId(agentSlug),
         model: { override: MODEL },
         workspace: { kind: 'project', projectSlug },
       };
       const first = (
-        await api<{ data: TurnHandle }>(
+        await api<{ data: ForegroundMessageReceipt }>(
           live,
           '/api/orchestration/chat',
           'POST',
           {
             target,
             message: PROMPTS[0],
-          },
+          } satisfies ForegroundMessageInput,
         )
       ).data;
       expect(first.conversationId).toBeTruthy();
       expect(first.providerTurnId).toBeTruthy();
+      expect(first.resolution.workspace).toMatchObject({
+        kind: 'project',
+        projectSlug,
+        cwd: repository,
+      });
       await completed(live, first, PROMPTS[0]);
       const second = (
-        await api<{ data: TurnHandle }>(
+        await api<{ data: ForegroundMessageReceipt }>(
           live,
           '/api/orchestration/chat',
           'POST',
@@ -274,15 +276,20 @@ for (const runtimeFramework of ['voltagent', 'strands'] as const) {
             target,
             conversationId: first.conversationId,
             message: PROMPTS[1],
-          },
+          } satisfies ForegroundMessageInput,
         )
       ).data;
       expect(second.conversationId).toBe(first.conversationId);
       expect(second.providerTurnId).toBeTruthy();
+      expect(second.resolution.workspace).toEqual(first.resolution.workspace);
       await completed(live, second, PROMPTS[1]);
 
       await stopStation(live);
       await startStation(live, false, lifecycle);
+      expect(
+        (await api<{ data: Pick<AppConfig, 'runtime'> }>(live, '/config/app'))
+          .data.runtime,
+      ).toBe(runtimeFramework);
       expect(await api(live, '/api/system/runtime')).toEqual({
         runtime: runtimeFramework,
       });
@@ -315,21 +322,31 @@ for (const runtimeFramework of ['voltagent', 'strands'] as const) {
           STATION_API_CREDENTIAL: readE2EOperatorCredential(live.home),
         },
       });
-      const result = JSON.parse(stdout) as { ok: boolean; data: TurnHandle };
+      const result = JSON.parse(stdout) as {
+        ok: boolean;
+        kind: string;
+        data: DelegatedTaskFollowUpHandle;
+      };
       expect(result.ok).toBe(true);
+      expect(result.kind).toBe('delegate.continue');
+      expect(result.data.status).toBe('dispatched');
       expect(result.data.conversationId).toBe(first.conversationId);
       const thirdEvents = await completed(live, result.data, PROMPTS[2]);
       expect(
         thirdEvents.some(
-          (event) => event.metadata?.projectSlug === projectSlug,
+          (event) =>
+            (event.method === 'session.started' ||
+              event.method === 'session.configured') &&
+            event.metadata?.projectSlug === projectSlug,
         ),
       ).toBe(true);
       expect(
         thirdEvents.some(
           (event) =>
-            event.cwd === repository ||
-            (event.metadata as { cwd?: string } | undefined)?.cwd ===
-              repository,
+            (event.method === 'session.configured' &&
+              event.cwd === repository) ||
+            (event.method === 'session.started' &&
+              event.metadata?.cwd === repository),
         ),
       ).toBe(true);
       const thirdRequests = requests.filter((body) => {
