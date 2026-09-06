@@ -206,6 +206,7 @@ async function fetchWithDeadline(
   const signal = init?.signal
     ? AbortSignal.any([init.signal, deadline])
     : deadline;
+  signal.throwIfAborted();
   // `fetch` defaults an init without a method to GET, so reading GET here is a
   // derivation of what was actually sent, not a stand-in for an unknown.
   const method =

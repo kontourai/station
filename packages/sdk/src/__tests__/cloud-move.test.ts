@@ -12,6 +12,7 @@ const identity = {
 const options = { credential: 'synthetic-secret', credentialOrigin: origin };
 const reply = (value: unknown) => new Response(JSON.stringify(value));
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   setClientCredentialResolver(undefined);
 });
@@ -179,4 +180,39 @@ test('revocation during the bounded body read cannot publish an observation', as
     verifyCloudMoveTarget(origin, { requestScope: scope }),
   ).rejects.toThrow();
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+test('cancellation settles during credential resolution and prevents a late dispatch', async () => {
+  let release!: (value: { origin: string; credential: string }) => void;
+  let entered!: () => void;
+  const resolving = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  setClientCredentialResolver(() => {
+    entered();
+    return new Promise((resolve) => {
+      release = resolve;
+    });
+  });
+  const fetch = fixture();
+  const controller = new AbortController();
+  const request = verifyCloudMoveTarget(origin, { signal: controller.signal });
+  await resolving;
+  controller.abort(new Error('Cancelled target verification'));
+  await expect(request).rejects.toThrow('Cancelled target verification');
+  release({ origin, credential: options.credential });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test('the operation deadline settles even when credential resolution never answers', async () => {
+  vi.useFakeTimers();
+  setClientCredentialResolver(() => new Promise(() => {}));
+  const fetch = fixture();
+  const assertion = expect(verifyCloudMoveTarget(origin)).rejects.toThrow(
+    'Target verification timed out',
+  );
+  await vi.advanceTimersByTimeAsync(15000);
+  await assertion;
+  expect(fetch).not.toHaveBeenCalled();
 });

@@ -39,9 +39,14 @@ export async function verifyCloudMoveTarget(
       'Select a Station origin without a path, query or embedded credential',
     );
   const origin = url.origin;
+  const deadline = new AbortController();
+  const timer = setTimeout(
+    () => deadline.abort(new Error('Target verification timed out')),
+    15000,
+  );
   const signal = options?.signal
-    ? AbortSignal.any([options.signal, AbortSignal.timeout(15000)])
-    : AbortSignal.timeout(15000);
+    ? AbortSignal.any([options.signal, deadline.signal])
+    : deadline.signal;
   const requestOptions = {
     ...options,
     authentication: 'required' as const,
@@ -52,6 +57,7 @@ export async function verifyCloudMoveTarget(
     timeoutMs: 15000,
   };
   const read = async (path: string) => {
+    signal.throwIfAborted();
     const response = await getJson(`${origin}${path}`, requestOptions);
     if (!response.ok || response.redirected)
       throw new Error('Target identity verification failed');
@@ -61,33 +67,46 @@ export async function verifyCloudMoveTarget(
       throw new Error('Target returned an invalid Station identity');
     }
   };
-  const first = await read('/api/system/identity');
-  const instanceId = field(first, 'instanceId');
-  const bootId = field(first, 'bootId');
-  const sha = field(first, 'sha');
-  if (!/^[a-f0-9]{40}$/i.test(sha))
-    throw new Error('Target returned an invalid Station build identity');
-  const discovery = await read('/.well-known/station/v1');
-  const environmentId = field(discovery, 'environmentId');
-  const last = await read('/api/system/identity');
-  if (
-    field(last, 'instanceId') !== instanceId ||
-    field(last, 'bootId') !== bootId ||
-    field(last, 'sha') !== sha
-  )
-    throw new Error(
-      'Target restarted or changed during verification; verify again',
-    );
-  signal.throwIfAborted();
-  return {
-    schemaVersion: 'station.cloud-target-observation/v1',
-    targetOrigin: origin,
-    environmentId,
-    instanceId,
-    bootId,
-    sha,
-    observedAt: new Date().toISOString(),
-    executionAuthorityTransferred: false,
-    executionResumeAvailable: false,
-  };
+  return await new Promise<CloudMoveTargetObservation>((resolve, reject) => {
+    const aborted = () => reject(signal.reason);
+    if (signal.aborted) {
+      aborted();
+      return;
+    }
+    signal.addEventListener('abort', aborted, { once: true });
+    const observe = async (): Promise<CloudMoveTargetObservation> => {
+      const first = await read('/api/system/identity');
+      const instanceId = field(first, 'instanceId');
+      const bootId = field(first, 'bootId');
+      const sha = field(first, 'sha');
+      if (!/^[a-f0-9]{40}$/i.test(sha))
+        throw new Error('Target returned an invalid Station build identity');
+      const discovery = await read('/.well-known/station/v1');
+      const environmentId = field(discovery, 'environmentId');
+      const last = await read('/api/system/identity');
+      if (
+        field(last, 'instanceId') !== instanceId ||
+        field(last, 'bootId') !== bootId ||
+        field(last, 'sha') !== sha
+      )
+        throw new Error(
+          'Target restarted or changed during verification; verify again',
+        );
+      signal.throwIfAborted();
+      return {
+        schemaVersion: 'station.cloud-target-observation/v1',
+        targetOrigin: origin,
+        environmentId,
+        instanceId,
+        bootId,
+        sha,
+        observedAt: new Date().toISOString(),
+        executionAuthorityTransferred: false,
+        executionResumeAvailable: false,
+      };
+    };
+    void observe()
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener('abort', aborted));
+  }).finally(() => clearTimeout(timer));
 }
