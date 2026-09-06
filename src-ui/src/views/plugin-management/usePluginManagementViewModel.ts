@@ -660,12 +660,12 @@ export function usePluginManagementViewModel() {
         name: quickProjectName,
         slug,
       });
-      await addLayoutFromPluginMutation.mutateAsync({
+      const createdLayout = await addLayoutFromPluginMutation.mutateAsync({
         projectSlug: slug,
         plugin: layoutAssignment.pluginName,
       });
       setLayoutAssignment(null);
-      setLayout(slug, layoutAssignment.layoutSlug);
+      setLayout(slug, createdLayout.slug);
     } catch (error) {
       console.warn('Quick project creation failed', error);
       setMessage({
@@ -706,11 +706,11 @@ export function usePluginManagementViewModel() {
     }
     setAssigningLayout(true);
     try {
-      await addLayoutFromPluginMutation.mutateAsync({
+      const createdLayout = await addLayoutFromPluginMutation.mutateAsync({
         projectSlug: sole.slug,
         plugin: plugin.name,
       });
-      setLayout(sole.slug, layoutSlug);
+      setLayout(sole.slug, createdLayout.slug);
     } catch (error) {
       console.warn('Layout assignment failed', error);
       setMessage({
@@ -726,14 +726,17 @@ export function usePluginManagementViewModel() {
     if (!layoutAssignment) return;
     setAssigningLayout(true);
     try {
+      let firstCreated: { projectSlug: string; layoutSlug: string } | undefined;
       for (const slug of selectedProjects) {
-        await addLayoutFromPluginMutation.mutateAsync({
+        const createdLayout = await addLayoutFromPluginMutation.mutateAsync({
           projectSlug: slug,
           plugin: layoutAssignment.pluginName,
         });
+        firstCreated ??= { projectSlug: slug, layoutSlug: createdLayout.slug };
       }
       setLayoutAssignment(null);
-      setLayout([...selectedProjects][0], layoutAssignment.layoutSlug);
+      if (firstCreated)
+        setLayout(firstCreated.projectSlug, firstCreated.layoutSlug);
     } catch (error) {
       console.warn('Layout assignment failed', error);
       setMessage({
