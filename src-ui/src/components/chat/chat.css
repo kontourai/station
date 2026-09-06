@@ -245,18 +245,11 @@
 }
 
 @media (max-width: 480px) {
-  .app-toolbar__actions {
-    gap: var(--space-1);
-  }
   .app-toolbar__icon-btn {
     padding: 4px 6px;
     font-size: var(--text-md);
   }
   .app-toolbar__workspace-btn {
-    display: none;
-  }
-  .app-toolbar__conn-name,
-  .app-toolbar__conn-note {
     display: none;
   }
   /* A finger needs the same 44px floor the composer controls get; the glyph
@@ -2032,18 +2025,12 @@
     font-size: var(--text-xl); /* prevents iOS zoom on focus */
   }
 
-  .app-toolbar__icon-btn {
-    min-height: 44px;
-    min-width: 44px;
-  }
-
+  /* The row's only gap declaration at this breakpoint — the `--space-1` copy
+     that used to sit in the 480px block above never applied, because this
+     block always matches when that one does and declares the same property
+     later in the same file. */
   .app-toolbar__actions {
     gap: var(--space-2);
-  }
-
-  .app-toolbar__conn-name,
-  .app-toolbar__conn-note {
-    display: none;
   }
 
   .message__rating-btn {

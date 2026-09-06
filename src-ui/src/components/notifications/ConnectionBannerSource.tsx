@@ -218,6 +218,27 @@ export function ConnectionBannerSource() {
         : BANNER_PRIORITY.connectionTransient,
       tone: blocked ? 'blocked' : 'warning',
       badge: blocked ? 'Credential required' : undefined,
+      /**
+       * #1132: this source's banners are critical chrome, so a maximized
+       * region does not bury them (`BannerHost.css`). Unconditional, not
+       * `blocked ? …`: the `blocked` half already qualified through the
+       * `connectionBlocking` priority band (`requiresCriticalChrome`), and it
+       * is the OTHER half — an unreachable or mismatched host at
+       * `connectionTransient` — that the measurement in #1132 found buried
+       * under a maximized dock.
+       *
+       * The claim is about THIS source, not about the band: `showDecision`
+       * above admits a banner only when there is a decision to make
+       * (archive#3297 narrowed ordinary transient reachability out of this
+       * strip entirely), and every decision it does admit has its remedy in
+       * the banner's own actions — "Pair again", "Try now", "Remove". A
+       * notice whose only route to recovery is a control the user cannot
+       * reach is the worst of the outcomes #1132 lists. Ordinary notices
+       * (an available update, a redirect explanation) carry no such route
+       * and deliberately stay below the dock, keeping the maximized
+       * occupant's own header and search reachable (#919).
+       */
+      criticalChrome: true,
       message: copy.summary,
       detail: detail || undefined,
       // Every banner that reaches this point names a decision, so none of them

@@ -787,6 +787,58 @@ describe('ConnectionBannerSource → BannerHost — blocked credential', () => {
   });
 
   /**
+   * #1132: a maximized region covers the whole viewport and owns the layer
+   * above ordinary notices (#919), so a notice that is only reachable through
+   * its own actions has to be marked as critical chrome or it is buried —
+   * measured live, `elementFromPoint` at this banner's centre resolved to the
+   * maximized dock's own empty state.
+   *
+   * `blocked: false` on purpose. The blocked half already qualified through
+   * the `connectionBlocking` priority band, so a test written on it would
+   * stay green with the mark deleted; this half sits at `connectionTransient`
+   * and the mark is the only thing that raises it.
+   *
+   * Class names, not the store's field: `BannerHost` derives both from
+   * `requiresCriticalChrome`, and the classes are what `BannerHost.css`'s
+   * maximized rules key on. Asserting `criticalChrome === true` on the record
+   * would pin the flag while proving nothing about it reaching the selector.
+   */
+  it('marks a non-blocking connection decision as critical chrome (#1132)', async () => {
+    connectionStatus.reason = 'unexpected-response';
+    connectionStatus.failureStreak = 1;
+    connectionStatus.blocked = false;
+
+    renderChrome();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.className).toMatch(/banner-host__item--critical-chrome/);
+    expect(screen.getByTestId('banner-host').className).toMatch(
+      /banner-host--critical-chrome/,
+    );
+
+    // The other direction, in the same host: an ordinary notice presented
+    // beside it stays out of the exception, so the mark is not something the
+    // host hands to everything once one critical source exists.
+    act(() => {
+      bannerStore.present({
+        id: 'test:ordinary',
+        priority: 10,
+        tone: 'info',
+        message: 'An update is available',
+      });
+    });
+    // Collapsed, only the front card is in the DOM at all, so the stack has
+    // to be opened before there is a second card to make a claim about.
+    fireEvent.click(screen.getByTestId('banner-stack-cap'));
+    const ordinary = await waitFor(() => {
+      const node = document.querySelector('[data-banner-id="test:ordinary"]');
+      if (!node) throw new Error('ordinary banner never rendered');
+      return node;
+    });
+    expect(ordinary.className).not.toMatch(/banner-host__item--critical-chrome/);
+  });
+
+  /**
    * archive#3297 — the remedy, offered. "Try now" was the only action
    * on a rejected credential, and it is the one thing that provably cannot
    * fix one.
