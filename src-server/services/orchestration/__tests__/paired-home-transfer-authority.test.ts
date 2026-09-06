@@ -14,6 +14,7 @@ import {
   createPairedHomeTransferAuthority,
   type PairedHomeTransferAuthority,
 } from '../paired-home-transfer-authority.js';
+import { createLocalProjectTaskRoomTransferOwners } from '../planned-home-transfer-coordinator.js';
 import type { ProjectTaskRoomCapabilityAuthority } from '../project-task-room-history.js';
 
 const roots: string[] = [];
@@ -389,30 +390,26 @@ test('paired source advances actual room owners through a copied checkpoint with
         expectedRevision: 0,
       }).kind,
     ).toBe('stored');
-    const sourceOwner = {
-      history: sourceHistory,
-      grant: roomGrant('home-transfer'),
-    };
-    const absentTarget = {
-      history: {
-        readSourceSeal: async () => ({ kind: 'unsealed' as const }),
+    const absentOwners = createLocalProjectTaskRoomTransferOwners({
+      source: {
+        history: sourceHistory,
+        grant: roomGrant('home-transfer'),
       },
-      grant: roomGrant('history-read'),
-    };
+      target: {
+        history: {
+          readSourceSeal: async () => ({ kind: 'unsealed' as const }),
+        },
+        grant: roomGrant('history-read'),
+      },
+    });
     expect(
-      await f.authority.advance(target.principal, 'real-move', {
-        source: sourceOwner,
-        target: absentTarget,
-      }),
+      await f.authority.advance(target.principal, 'real-move', absentOwners),
     ).toMatchObject({ kind: 'denied' });
     expect(
       await sourceHistory.readSourceSeal({ grant: roomGrant('history-read') }),
     ).toEqual({ kind: 'unsealed' });
     expect(
-      await f.authority.advance(source.principal, 'real-move', {
-        source: sourceOwner,
-        target: absentTarget,
-      }),
+      await f.authority.advance(source.principal, 'real-move', absentOwners),
     ).toMatchObject({
       kind: 'pending',
       reason: 'target-unavailable',
@@ -425,10 +422,16 @@ test('paired source advances actual room owners through a copied checkpoint with
     const targetHistory = targetEvents.createProjectTaskRoomHistory({
       capabilities: roomCapabilities,
     });
-    const owners = {
-      source: sourceOwner,
-      target: { history: targetHistory, grant: roomGrant('history-read') },
-    };
+    const owners = createLocalProjectTaskRoomTransferOwners({
+      source: {
+        history: sourceHistory,
+        grant: roomGrant('home-transfer'),
+      },
+      target: {
+        history: targetHistory,
+        grant: roomGrant('history-read'),
+      },
+    });
     const committed = await f.authority.advance(
       source.principal,
       'real-move',
@@ -492,21 +495,24 @@ test('revocation during real source closure leaves the sealed source frozen and 
       'revoked-close',
       {
         source: {
-          grant: roomGrant('home-transfer'),
-          history: {
-            sealSource: async (input) => {
-              const seal = await history.sealSource(input);
-              f.security.devicePairing.revokeDevice(
-                target.device.id,
-                'operator-credential',
-              );
-              return seal;
-            },
+          ownerIdentity: history,
+          ensureClosed: async (intent) => {
+            const seal = await history.sealSource({
+              grant: roomGrant('home-transfer'),
+              operationId: intent.operationId,
+              sourceHomeRef: intent.sourceHomeRef,
+              targetHomeRef: intent.targetHomeRef,
+            });
+            f.security.devicePairing.revokeDevice(
+              target.device.id,
+              'operator-credential',
+            );
+            return seal;
           },
         },
         target: {
-          grant: roomGrant('history-read'),
-          history: { readSourceSeal: async () => ({ kind: 'unavailable' }) },
+          ownerIdentity: {},
+          readSeal: async () => ({ kind: 'unavailable' }),
         },
       },
     );
