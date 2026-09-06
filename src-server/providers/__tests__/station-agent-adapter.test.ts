@@ -170,6 +170,27 @@ describe('mapStationAgentStreamEvent — tool-result relay (station#3113, #3117)
 });
 
 describe('StationAgentAdapter', () => {
+  test.each([true, false, undefined])(
+    'preserves explicit persistence intent %s without defaulting',
+    async (persistSession) => {
+      const adapter = new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:3141',
+        hasAgent: () => true,
+        ...approvalDeps(),
+      });
+      const session = await adapter.startSession({
+        provider: 'station-agent',
+        threadId: 'persistence-intent',
+        metadata: { agentId: 'reviewer' },
+        ...(persistSession !== undefined ? { persistSession } : {}),
+      });
+      expect(session.persistSession).toBe(persistSession);
+      expect(Object.hasOwn(session, 'persistSession')).toBe(
+        persistSession !== undefined,
+      );
+    },
+  );
+
   test('relays only an exact authorized turn correlation and uses its canonical turn id', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

@@ -625,6 +625,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       provider: this.provider,
       threadId: input.threadId,
       status: 'ready',
+      ...(input.persistSession !== undefined
+        ? { persistSession: input.persistSession }
+        : {}),
       ...(input.modelId ? { model: input.modelId } : {}),
       ...(input.cwd ? { cwd: input.cwd } : {}),
       ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
