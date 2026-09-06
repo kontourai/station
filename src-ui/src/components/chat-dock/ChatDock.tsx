@@ -73,7 +73,6 @@ import {
   type OpenProjectChatsDetail,
   UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
 } from '../../lib/projectChatEvents';
-import { REGION_SURFACE_REGISTRY } from '../../regions/region-model';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
 import {
   type EffectiveModelSource,
@@ -300,9 +299,6 @@ const loadConversationOpenRevalidator = () =>
  * already settled), and App.tsx's `showAmbientChatDock` remounts the dock on
  * ordinary navigation.
  */
-/** Chat's registry entry: the one place its user-facing title comes from. */
-const CHAT_SURFACE = REGION_SURFACE_REGISTRY.get('chat')!;
-
 const loadAmbientChatDockPaneHost = () =>
   import('../../workspace-panes/AmbientChatDockPaneHost').then((module) => ({
     default: module.AmbientChatDockPaneHost,
@@ -2198,9 +2194,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               shellMaximized={isDockMaximized}
               // #1386: Chat's own header said "Hide dock region" while every
               // other shell said "Hide <title>", because this was the one
-              // `ChatDockHeader` that passed no title. Non-null: the registry
-              // is a module constant and `chat` is one of its three entries.
-              surfaceTitle={CHAT_SURFACE.title}
+              // `ChatDockHeader` that passed no title. From the chrome, not
+              // from the registry: Chat's renderer is not allowed to read the
+              // region model (`region-surface-boundary.test.ts`), and the
+              // chrome already derives the shell's shortcut id the same way.
+              surfaceTitle={chrome.surfaceTitle}
               canMaximize={chrome.canMaximize}
               showMaximizeShortcut={chrome.ownsMaximizeShortcut}
               surfaceShortcutId={chrome.surfaceShortcutId}

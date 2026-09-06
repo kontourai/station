@@ -90,6 +90,15 @@ export interface DockShellChrome {
   availableDockSlotPlacements: readonly DockMode[];
   effectiveDockSlotPlacement: DockMode;
   surfaceShortcutId: string;
+  /**
+   * The registered title of the surface this shell holds, which is what its
+   * visibility control is named after: "Hide Chat", "Show Activity". Derived
+   * from the region's occupant exactly as `surfaceShortcutId` above is, so a
+   * shell never reads a registry to learn which surface it is — and so
+   * `ChatDock`, which IS Chat's registered renderer, can be named without
+   * importing the region model (`region-surface-boundary.test.ts`).
+   */
+  surfaceTitle: string;
   /** Any dock occupant may maximize its region (#928 slice iii). */
   canMaximize: boolean;
   /**
@@ -674,6 +683,13 @@ export function useDockShellChrome({
       (shellOccupant
         ? regionModel?.surfaces.get(shellOccupant)?.shortcut?.id
         : undefined) ?? 'dock.toggle',
+    // Falls back to Chat's title for the same mount `dock.toggle` above
+    // falls back for: the model-less ambient dock, which is Chat's and
+    // nothing else's.
+    surfaceTitle:
+      (shellOccupant
+        ? regionModel?.surfaces.get(shellOccupant)?.title
+        : undefined) ?? 'Chat',
     canMaximize: shellOccupant !== null,
     ownsMaximizeShortcut: registersDockShortcuts,
     applyDockSnap,
