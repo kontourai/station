@@ -9,6 +9,7 @@ import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { createLogger } from '../../../utils/logger.js';
 import { createHomeAuthorityRoutes } from '../home-authority-routes.js';
+import { createHomeTransferRoomRoutes } from '../home-transfer-room-routes.js';
 
 const homes: string[] = [];
 afterEach(() => {
@@ -45,6 +46,9 @@ async function fixture() {
   const createApp = (
     getPublicHandshake = () => security.getPublicHandshake(),
     openDatabase?: ReturnType<typeof createPersonalHomeAuthorityDatabase>,
+    roomRuntime?: Parameters<
+      typeof createHomeTransferRoomRoutes
+    >[0]['roomRuntime'],
   ) => {
     const app = new Hono();
     configureRuntimeHttp({
@@ -76,6 +80,10 @@ async function fixture() {
         },
         openDatabase,
       ),
+    );
+    app.route(
+      '/api/home-authority/rooms',
+      createHomeTransferRoomRoutes({ security, roomRuntime }),
     );
     return app;
   };
@@ -268,4 +276,83 @@ test('decision routes refuse absent configuration and oversized input', async ()
     body: JSON.stringify({ channelId: 'x'.repeat(4096) }),
   });
   expect(oversized.status).toBe(413);
+});
+
+test('room probes require real transfer pairing and return only the bound identity and nonce', async () => {
+  const f = await fixture();
+  const paired = f.pair('home:transfer');
+  const probe = vi.fn(async ({ request }: { request: Request }) => {
+    expect(request.headers.get('authorization')).toBe(
+      `Bearer ${paired.credential}`,
+    );
+    return {
+      kind: 'available' as const,
+      taskId: 'task-1',
+      channelId: 'channel-1',
+    };
+  });
+  const app = f.createApp(undefined, undefined, { inspectTransferRoom: probe });
+  const post = (credential: string, body: unknown) =>
+    app.request('/api/home-authority/rooms/task-1/identity', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${credential}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  const input = { channelId: 'channel-1', nonce: 'fresh-probe-1' };
+  expect((await post(f.pair().credential, input)).status).toBe(403);
+  expect(probe).not.toHaveBeenCalled();
+  expect(
+    (await post(paired.credential, { ...input, tenantId: 'forged' })).status,
+  ).toBe(400);
+  const response = await post(paired.credential, input);
+  expect(response.status).toBe(200);
+  expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(await response.json()).toEqual({
+    schemaVersion: 'station.home-transfer-room-identity/v1',
+    environmentId: f.record.environmentId,
+    pairedDeviceId: paired.device.id,
+    taskId: 'task-1',
+    channelId: 'channel-1',
+    nonce: input.nonce,
+    executionAuthorityTransferred: false,
+    executionResumeAvailable: false,
+  });
+  expect(
+    (await post(paired.credential, { ...input, channelId: 'wrong-channel' }))
+      .status,
+  ).toBe(409);
+  f.security.devicePairing.revokeDevice(
+    paired.device.id,
+    'operator-credential',
+  );
+  expect((await post(paired.credential, input)).status).toBe(401);
+});
+
+test('room probe delivery rechecks actual pairing after the runtime lookup', async () => {
+  const f = await fixture();
+  const paired = f.pair('home:transfer');
+  const app = f.createApp(undefined, undefined, {
+    inspectTransferRoom: async () => {
+      f.security.devicePairing.revokeDevice(
+        paired.device.id,
+        'operator-credential',
+      );
+      return { kind: 'available', taskId: 'task-1', channelId: 'channel-1' };
+    },
+  });
+  const response = await app.request(
+    '/api/home-authority/rooms/task-1/identity',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${paired.credential}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ channelId: 'channel-1', nonce: 'nonce' }),
+    },
+  );
+  expect(response.status).toBe(403);
 });

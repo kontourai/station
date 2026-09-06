@@ -10,6 +10,7 @@ import {
 import { Hono } from 'hono';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import { currentHomeTransferDevice } from '../../security/home-transfer-request.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { createPairedHomeTransferAuthority } from '../../services/orchestration/paired-home-transfer-authority.js';
 import type {
@@ -92,15 +93,10 @@ export function createHomeAuthorityRoutes(
     if (principal?.authority !== 'device-credential' || !principal.deviceId) {
       return c.json({ error: { code: 'home_transfer_pairing_required' } }, 403);
     }
-    const current = () => {
-      const device = security.identifyDevice(principal.credential);
-      return (
-        personal(c.req.raw) &&
-        device !== null &&
-        device.id === principal.deviceId &&
-        pairingScopeIncludes(device.scope, PAIRING_SCOPE_HOME_TRANSFER)
-      );
-    };
+    const current = () =>
+      personal(c.req.raw) &&
+      currentHomeTransferDevice(c.req.raw, security)?.id === principal.deviceId;
+
     try {
       if (!current()) {
         return c.json(

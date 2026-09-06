@@ -1,3 +1,4 @@
+import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 
 export {
@@ -2351,8 +2352,16 @@ export function configureRuntimeRoutes(
     };
     context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
+    context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
     context.app.route('/api/tasks', createProjectTaskRoomRoutes(roomRuntime));
   }
+  context.app.route(
+    '/api/home-authority/rooms',
+    createHomeTransferRoomRoutes({
+      security: context.environmentSecurityService,
+      roomRuntime: projectTaskRoomRuntime,
+    }),
+  );
   context.app.route(
     '/api/live-activity',
     createLiveActivityRoutes({
