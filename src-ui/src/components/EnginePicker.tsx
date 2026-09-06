@@ -39,7 +39,7 @@ import {
   useReconnectACPConnectionMutation,
   useUpdateConfigMutation,
 } from '@kontourai/station-sdk';
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useSystemStatus } from '../hooks/useSystemStatus';
 import {
   capableEngineOptions,
@@ -49,6 +49,8 @@ import {
   pendingObservationEngineOptions,
   readyEngineOptions,
 } from '../utils/engineBinding';
+import { Button } from './Button';
+import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import './EnginePicker.css';
 
 /**
@@ -104,6 +106,23 @@ export interface EnginePickerProps {
    * stale draft value.
    */
   onSelect?: (connectionId: EngineConnectionId | null) => void;
+  /**
+   * #1582 A5. `'modal'` (the default, and what Settings' "Change…" opens) is
+   * this component's own scrim, panel, eyebrow, title and dismiss. `'step'`
+   * renders the CONTENT ONLY, for a caller that already owns a dialog — the
+   * first-run chapter, whose header carries the title, the step counter and
+   * the close control, and whose actions row carries the primary tone. The
+   * role screen used to be a second overlay with its own visual system
+   * beside a three-step wizard; one numbering means one surface.
+   */
+  variant?: 'modal' | 'step';
+  /**
+   * Reports the title this picker actually rendered, so a `'step'` caller's
+   * shared header can print it. Load-bearing for the none-capable panel:
+   * "Choose what powers Station" over a screen that says nothing here can is
+   * a question the screen cannot answer.
+   */
+  onTitleChange?: (title: string) => void;
 }
 
 export function EnginePicker({
@@ -113,6 +132,8 @@ export function EnginePicker({
   title = 'Choose what powers your default assistant',
   description = 'Station found more than one ready option. Choose one for your default assistant.',
   onSelect,
+  variant = 'modal',
+  onTitleChange,
 }: EnginePickerProps) {
   const { data: status } = useSystemStatus();
   const { data: connections = [] } = useEngineConnectionsQuery();
@@ -252,6 +273,56 @@ export function EnginePicker({
       </section>
     );
 
+  // The title THIS render put on screen, which is not always the one the
+  // caller asked for: the none-capable panel answers a different question.
+  const noneCapable = options.length === 0;
+  const resolvedTitle = noneCapable
+    ? pendingOptions.length > 0
+      ? 'No connected engine can run the built-in assistant yet'
+      : 'No connected engine can run the built-in assistant'
+    : title;
+  useEffect(() => {
+    onTitleChange?.(resolvedTitle);
+  }, [onTitleChange, resolvedTitle]);
+
+  /**
+   * The chrome, or the absence of it. A `'step'` caller already owns a
+   * dialog: a second scrim inside it would darken its own panel, and a
+   * second title and dismiss would duplicate the header above.
+   */
+  const shell = (body: ReactNode, panelTestId?: string) =>
+    variant === 'step' ? (
+      <div className="engine-picker--step" data-testid="engine-picker">
+        {panelTestId ? <div data-testid={panelTestId}>{body}</div> : body}
+      </div>
+    ) : (
+      <div className="engine-picker" data-testid="engine-picker">
+        <div className="engine-picker__backdrop" />
+        <div
+          className="engine-picker__panel"
+          {...(panelTestId ? { 'data-testid': panelTestId } : {})}
+          role="dialog"
+          aria-labelledby="engine-picker-title"
+        >
+          <div className="engine-picker__eyebrow">{eyebrow}</div>
+          <div className="engine-picker__header">
+            <div className="engine-picker__title" id="engine-picker-title">
+              {resolvedTitle}
+            </div>
+            <button
+              type="button"
+              aria-label="Dismiss engine picker"
+              onClick={onDismiss}
+              className="engine-picker__dismiss"
+            >
+              ×
+            </button>
+          </div>
+          {body}
+        </div>
+      </div>
+    );
+
   if (options.length === 0) {
     // Nothing to choose from. This is a REACHABLE steady state once
     // incapable engines are filtered out — an engine can be connected and
@@ -274,32 +345,9 @@ export function EnginePicker({
       .filter((option) => option.capability !== 'observation-required')
       .map((option) => option.name);
     const capableNames = capableEngineSentence();
-    return (
-      <div className="engine-picker" data-testid="engine-picker">
-        <div className="engine-picker__backdrop" />
-        <div
-          className="engine-picker__panel"
-          data-testid="engine-picker-none-capable"
-          role="dialog"
-          aria-labelledby="engine-picker-title"
-        >
-          <div className="engine-picker__eyebrow">{eyebrow}</div>
-          <div className="engine-picker__header">
-            <div className="engine-picker__title" id="engine-picker-title">
-              {pendingOptions.length > 0
-                ? 'No connected engine can run the built-in assistant yet'
-                : 'No connected engine can run the built-in assistant'}
-            </div>
-            <button
-              type="button"
-              aria-label="Dismiss engine picker"
-              onClick={onDismiss}
-              className="engine-picker__dismiss"
-            >
-              ×
-            </button>
-          </div>
-          {/*
+    return shell(
+      <>
+        {/*
             MERGE (#1644 x #1547 AC5). Both descriptions speak about
             `incapableNames`, so both sit behind this branch's guard rather
             than only the first: on a panel whose one unresolved engine is
@@ -310,16 +358,16 @@ export function EnginePicker({
             reached. Gating one and not the other would keep half of a
             two-sentence claim on screen with its premise removed.
 */}
-          {(incapableNames.length > 0 || pendingOptions.length === 0) && (
-            <>
-              <div className="engine-picker__description">
-                {incapableNames.length === 0
-                  ? 'You have no engine connected yet, so nothing can run the built-in assistant — the assistant that operates Station for you: creating agents, running jobs, changing settings.'
-                  : incapableNames.length === 1
-                    ? `${incapableNames[0]} can chat, but it can't operate Station — creating agents, running jobs, changing settings — so it can't run the built-in assistant.`
-                    : `Your connected engines (${incapableNames.join(', ')}) can chat, but none of them can operate Station — creating agents, running jobs, changing settings — so none of them can run the built-in assistant.`}
-              </div>
-              {/* archive#1547. Restored, and this time it has a producer:
+        {(incapableNames.length > 0 || pendingOptions.length === 0) && (
+          <>
+            <div className="engine-picker__description">
+              {incapableNames.length === 0
+                ? 'You have no engine connected yet, so nothing can run the built-in assistant — the assistant that operates Station for you: creating agents, running jobs, changing settings.'
+                : incapableNames.length === 1
+                  ? `${incapableNames[0]} can chat, but it can't operate Station — creating agents, running jobs, changing settings — so it can't run the built-in assistant.`
+                  : `Your connected engines (${incapableNames.join(', ')}) can chat, but none of them can operate Station — creating agents, running jobs, changing settings — so none of them can run the built-in assistant.`}
+            </div>
+            {/* archive#1547. Restored, and this time it has a producer:
                   the ACP adapter now delivers the credential-free
                   `station-docs` server on every ACP session (acp-adapter.ts),
                   which is exactly the engine class that can never carry
@@ -338,29 +386,36 @@ export function EnginePicker({
                   built-in assistant itself, not by this grant, so the broader
                   sentence would be making a claim about a delivery path that
                   does not exist for it. */}
-              <div className="engine-picker__description">
-                {incapableNames.length === 0
-                  ? "An engine that can't run the built-in assistant still gets Station's documentation, so it can explain how Station works, answer questions about it, and help you plan — it just can't create agents, run jobs, or change settings."
-                  : incapableNames.length === 1
-                    ? `${incapableNames[0]} still gets Station's documentation, so it can explain how Station works, answer questions about it, and help you plan — it just can't create agents, run jobs, or change settings.`
-                    : "They still get Station's documentation, so they can explain how Station works, answer questions about it, and help you plan — they just can't create agents, run jobs, or change settings."}
-              </div>
-            </>
-          )}
-          {pendingRows}
-          {pendingOptions.length > 0 && (
-            // Without this, the only call to action on a panel whose one
-            // unresolved engine is mid-check would be "go connect a different
-            // engine" — true, but the wrong thing to tell that user.
             <div className="engine-picker__description">
-              This panel updates on its own if Station finds one of them can run
-              the assistant.
+              {incapableNames.length === 0
+                ? "An engine that can't run the built-in assistant still gets Station's documentation, so it can explain how Station works, answer questions about it, and help you plan — it just can't create agents, run jobs, or change settings."
+                : incapableNames.length === 1
+                  ? `${incapableNames[0]} still gets Station's documentation, so it can explain how Station works, answer questions about it, and help you plan — it just can't create agents, run jobs, or change settings.`
+                  : "They still get Station's documentation, so they can explain how Station works, answer questions about it, and help you plan — they just can't create agents, run jobs, or change settings."}
             </div>
-          )}
+          </>
+        )}
+        {pendingRows}
+        {pendingOptions.length > 0 && (
+          // Without this, the only call to action on a panel whose one
+          // unresolved engine is mid-check would be "go connect a different
+          // engine" — true, but the wrong thing to tell that user.
           <div className="engine-picker__description">
-            Engines that can run it today: {capableNames}. Add one in
-            Connections, then come back here.
+            This panel updates on its own if Station finds one of them can run
+            the assistant.
           </div>
+        )}
+        <div className="engine-picker__description">
+          Engines that can run it today: {capableNames}. Add one in Connections,
+          then come back here.
+        </div>
+        {variant === 'step' ? (
+          <ResponsiveSurfaceActions className="first-run-chapter__actions">
+            <Button variant="primary" onClick={onDismiss}>
+              Got it
+            </Button>
+          </ResponsiveSurfaceActions>
+        ) : (
           <button
             type="button"
             className="engine-picker__primary"
@@ -368,116 +423,116 @@ export function EnginePicker({
           >
             Got it
           </button>
-        </div>
-      </div>
+        )}
+      </>,
+      'engine-picker-none-capable',
     );
   }
 
-  return (
-    <div className="engine-picker" data-testid="engine-picker">
-      <div className="engine-picker__backdrop" />
-      <div
-        className="engine-picker__panel"
-        role="dialog"
-        aria-labelledby="engine-picker-title"
-      >
-        <div className="engine-picker__eyebrow">{eyebrow}</div>
-        <div className="engine-picker__header">
-          <div className="engine-picker__title" id="engine-picker-title">
-            {title}
-          </div>
+  const saving = updateConfig.isPending;
+  // Same guard, whichever chrome renders it. UX audit 2026-09-05 A7: with two
+  // or more capable external engines and no Station model provider, the
+  // resolver has no default (`resolveBuiltinAgentEngineBinding` returns null
+  // when the choice is ambiguous), so no radio is preselected. An enabled
+  // primary in that state saved `builtinAgentEngineConnectionId: null` while
+  // reading "Saving…", left the built-in assistant unrunnable, and the wizard
+  // moved on as if a choice had been made.
+  //
+  // `null` is only "nothing chosen" when NO row carries it. When a Station
+  // model provider is chat-ready, `readyEngineOptions` offers a "Station" row
+  // whose value IS null, and an explicit Station binding is a sticky
+  // first-class config value — so the guard asks whether a null row is on
+  // offer, not whether null is selected. It reads `options` (the array that
+  // renders the radios) rather than `stationChatReady`, so the guard can
+  // never disagree with the rows on screen if the Station row's derivation
+  // changes.
+  const confirmDisabled =
+    saving ||
+    (resolvedSelectedId === null &&
+      !options.some((option) => option.connectionId === null));
+  const confirm = () => {
+    if (onSelect) {
+      // route the choice through the caller's own draft/save cycle — no
+      // network mutation here.
+      onSelect(resolvedSelectedId);
+      onChosen();
+      return;
+    }
+    updateConfig.mutate(
+      { builtinAgentEngineConnectionId: resolvedSelectedId },
+      { onSuccess: onChosen },
+    );
+  };
+
+  return shell(
+    <>
+      <div className="engine-picker__description">{description}</div>
+
+      <div className="engine-picker__options" role="radiogroup">
+        {options.map((option) => {
+          const optionKey = option.connectionId ?? 'station';
+          const isSelected = resolvedSelectedId === option.connectionId;
+          return (
+            <label
+              key={optionKey}
+              className={`engine-picker__option${
+                isSelected ? ' engine-picker__option--selected' : ''
+              }`}
+            >
+              <input
+                type="radio"
+                name="engine-picker-option"
+                value={optionKey}
+                checked={isSelected}
+                onChange={() => setSelectedId(option.connectionId)}
+              />
+              <div className="engine-picker__option-body">
+                <div className="engine-picker__option-name">{option.name}</div>
+                <div className="engine-picker__option-detail">
+                  {CAPABILITY_DESCRIPTION}
+                </div>
+              </div>
+            </label>
+          );
+        })}
+      </div>
+
+      {pendingRows}
+
+      {variant === 'step' ? (
+        <ResponsiveSurfaceActions className="first-run-chapter__actions">
+          <Button variant="secondary" onClick={onDismiss}>
+            Decide later
+          </Button>
+          <Button
+            variant="primary"
+            disabled={confirmDisabled}
+            pending={saving}
+            pendingLabel="Saving…"
+            onClick={confirm}
+          >
+            Use this engine
+          </Button>
+        </ResponsiveSurfaceActions>
+      ) : (
+        <>
           <button
             type="button"
-            aria-label="Dismiss engine picker"
-            onClick={onDismiss}
-            className="engine-picker__dismiss"
+            className="engine-picker__primary"
+            disabled={confirmDisabled}
+            onClick={confirm}
           >
-            ×
+            {saving ? 'Saving…' : 'Use this engine'}
           </button>
-        </div>
-        <div className="engine-picker__description">{description}</div>
-
-        <div className="engine-picker__options" role="radiogroup">
-          {options.map((option) => {
-            const optionKey = option.connectionId ?? 'station';
-            const isSelected = resolvedSelectedId === option.connectionId;
-            return (
-              <label
-                key={optionKey}
-                className={`engine-picker__option${
-                  isSelected ? ' engine-picker__option--selected' : ''
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="engine-picker-option"
-                  value={optionKey}
-                  checked={isSelected}
-                  onChange={() => setSelectedId(option.connectionId)}
-                />
-                <div className="engine-picker__option-body">
-                  <div className="engine-picker__option-name">
-                    {option.name}
-                  </div>
-                  <div className="engine-picker__option-detail">
-                    {CAPABILITY_DESCRIPTION}
-                  </div>
-                </div>
-              </label>
-            );
-          })}
-        </div>
-
-        {pendingRows}
-
-        <button
-          type="button"
-          className="engine-picker__primary"
-          // UX audit 2026-09-05 A7: with two or more capable external
-          // engines and no Station model provider, the resolver has no
-          // default (`resolveBuiltinAgentEngineBinding` returns null when the
-          // choice is ambiguous), so no radio is preselected. An enabled
-          // primary in that state saved `builtinAgentEngineConnectionId:
-          // null` while reading "Saving…", left the built-in assistant
-          // unrunnable, and the wizard moved on as if a choice had been made.
-          //
-          // `null` is only "nothing chosen" when NO row carries it. When a
-          // Station model provider is chat-ready, `readyEngineOptions` offers
-          // a "Station" row whose value IS null, and an explicit Station
-          // binding is a sticky first-class config value — so the guard asks
-          // whether a null row is on offer, not whether null is selected.
-          // It reads `options` (the array that renders the radios) rather
-          // than `stationChatReady`, so the guard can never disagree with
-          // the rows on screen if the Station row's derivation changes.
-          disabled={
-            updateConfig.isPending ||
-            (resolvedSelectedId === null &&
-              !options.some((option) => option.connectionId === null))
-          }
-          onClick={() => {
-            if (onSelect) {
-              // route the choice through the caller's own
-              // draft/save cycle — no network mutation here.
-              onSelect(resolvedSelectedId);
-              onChosen();
-              return;
-            }
-            updateConfig.mutate(
-              { builtinAgentEngineConnectionId: resolvedSelectedId },
-              { onSuccess: onChosen },
-            );
-          }}
-        >
-          {updateConfig.isPending ? 'Saving…' : 'Use this engine'}
-        </button>
-        <button
-          type="button"
-          className="engine-picker__secondary"
-          onClick={onDismiss}
-        >
-          Decide later
-        </button>
-      </div>
-    </div>
+          <button
+            type="button"
+            className="engine-picker__secondary"
+            onClick={onDismiss}
+          >
+            Decide later
+          </button>
+        </>
+      )}
+    </>,
   );
 }

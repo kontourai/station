@@ -17,7 +17,7 @@ import {
   rename,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, extname, join } from 'node:path';
+import { dirname, extname, join, sep } from 'node:path';
 import type {
   GuidanceAsset,
   SkillCommand,
@@ -648,10 +648,41 @@ export class SkillService {
       }
       return {
         skill,
-        origin: recordedOrigin ?? this.deriveOrigin(skill.location, source),
+        origin:
+          this.recordedOriginAgainstPath(recordedOrigin, skill.location) ??
+          this.deriveOrigin(skill.location, source),
         install: { version, source, path, provenance, legacyIds },
       };
     });
+  }
+
+  /**
+   * A recorded origin, checked against the root the package actually sits in.
+   *
+   * `user` and `project` are the two WRITABLE roots and differ only in SCOPE —
+   * and the scope IS the root, so for that pair the path is the authority and a
+   * recorded `user` yields to a location under `<home>/projects`. Every
+   * `skill.json` written before `project` existed records `user` for a
+   * project-scoped package, and `updateLocalSkill` faithfully preserves it, so
+   * without this correction every skill already on disk in a workspace would
+   * read as "This machine" forever (#1582 D6, review M1).
+   *
+   * Every other recorded origin stands. `registry`/`plugin`/`package`/
+   * `migrated-playbook` record where a skill CAME FROM, which is a fact about
+   * its history that no path can restate — a registry install living in the
+   * project root is still a registry install.
+   *
+   * `undefined` in, `undefined` out: this corrects a record, it does not invent
+   * one. The read sites fall through to `deriveOrigin` exactly as before.
+   */
+  private recordedOriginAgainstPath(
+    recorded: SkillOrigin | undefined,
+    location: string | undefined,
+  ): SkillOrigin | undefined {
+    if (recorded !== 'user') return recorded;
+    return this.deriveOrigin(location, undefined) === 'project'
+      ? 'project'
+      : 'user';
   }
 
   /**
@@ -666,8 +697,17 @@ export class SkillService {
   ): SkillOrigin | undefined {
     if (location && this.canonicalSourceFor(location)) return 'package';
     if (location) {
-      const pluginsRoot = join(this.projectHomeDir(), 'plugins');
+      const home = this.projectHomeDir();
+      const pluginsRoot = join(home, 'plugins');
       if (location.startsWith(pluginsRoot)) return 'plugin';
+      // `discoverSkills` scans exactly one project-scoped root,
+      // `<home>/projects/<slug>/skills`, so a location under `<home>/projects`
+      // IS workspace-scoped — no slug needed to read that off the path. This
+      // sits before the `source` fallthrough because a project skill's
+      // `skill.json` records `source: 'local'` just like a machine one, and
+      // that is what used to collapse the two into `user` (#1582 D6).
+      if (home && location.startsWith(join(home, 'projects') + sep))
+        return 'project';
     }
     if (source === 'registry') return 'registry';
     if (source === 'plugin') return 'plugin';
@@ -939,7 +979,10 @@ export class SkillService {
         variables: variables.length > 0 ? variables : undefined,
         legacyIds: readSkillLegacyIds(config.legacyIds),
         origin:
-          readSkillOrigin(config.origin) ??
+          this.recordedOriginAgainstPath(
+            readSkillOrigin(config.origin),
+            registered?.location ?? skillPath,
+          ) ??
           this.deriveOrigin(registered?.location ?? skillPath, config.source),
       };
     } catch (error) {
@@ -1175,7 +1218,11 @@ export class SkillService {
       command: stableInput.command,
       variables: stableInput.variables,
       legacyIds: stableInput.legacyIds,
-      origin: stableInput.origin ?? 'user',
+      // The writer knows the scope it is writing into — `skillDir` above is
+      // `<home>/projects/<slug>/skills/<name>` when a slug was passed. Stamping
+      // `user` there made the recorded origin (which outranks the path
+      // derivation on read) contradict the path (#1582 D6).
+      origin: stableInput.origin ?? (projectSlug ? 'project' : 'user'),
     };
     const skillMarkdown = serializeSkillMarkdown(stableInput);
     return {
@@ -1507,7 +1554,19 @@ export class SkillService {
       command: updates.command ?? declared.command,
       variables: updates.variables ?? declared.variables,
       legacyIds: updates.legacyIds ?? readSkillLegacyIds(current.legacyIds),
-      origin: updates.origin ?? readSkillOrigin(current.origin),
+      // Corrected on the way BACK to disk too, so a workspace package stops
+      // carrying a stale `user` the moment anything edits it. Nothing more is
+      // claimed here: `current.origin` is ALREADY the resolved value (`getSkill`
+      // folds `recorded ?? derived`), so a record with no origin of its own has
+      // long been written one on update — pre-existing, unchanged, and not
+      // something this line can be read as preventing. All it adds is
+      // `user` -> `project` (delta-review L2).
+      origin:
+        updates.origin ??
+        this.recordedOriginAgainstPath(
+          readSkillOrigin(current.origin),
+          skillPath,
+        ),
     };
     // The EFFECTIVE command after this write, not the submitted fragment: a
     // rename changes the derived command word even when the request carries no

@@ -458,13 +458,13 @@ export function ConversationStatsModal({
                             Consumed
                           </div>
                           <div>
-                            In: {modelStat.inputTokens.toLocaleString()}
+                            In: {formatMeasuredTokens(modelStat.inputTokens)}
                           </div>
                           <div>
-                            Out: {modelStat.outputTokens.toLocaleString()}
+                            Out: {formatMeasuredTokens(modelStat.outputTokens)}
                           </div>
                           <div>
-                            Total: {modelStat.totalTokens.toLocaleString()}
+                            Total: {formatMeasuredTokens(modelStat.totalTokens)}
                           </div>
                         </div>
                         <div>
@@ -480,7 +480,8 @@ export function ConversationStatsModal({
                           <div>Turns: {modelStat.turns}</div>
                           <div>Tool Calls: {modelStat.toolCalls}</div>
                           <div style={{ marginTop: '4px' }}>
-                            Cost: ${(modelStat.estimatedCost ?? 0).toFixed(4)}
+                            Cost:{' '}
+                            {formatMeasuredCostUsd(modelStat.estimatedCost)}
                           </div>
                         </div>
                       </div>

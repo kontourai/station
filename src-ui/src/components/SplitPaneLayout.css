@@ -498,6 +498,19 @@
   align-items: center;
   min-width: 0;
   max-width: 38%;
+  /*
+   * ...and when two controls share the slot, the second one takes the line
+   * below rather than the leftovers. `.session-evidence-button` is
+   * `flex: 0 0 auto; white-space: nowrap`, so it claims its full 64px first
+   * and an Activity row's project chip was left 40.8px of a 104.8px slot —
+   * padding plus three glyphs, "dem…", which names no project (#1582 E7,
+   * measured in `SessionsView.projectPill.overflow.test.tsx`). Widening the
+   * cap instead would spend the NAME's width, which is what the cap above
+   * exists to protect.
+   */
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 0.2rem;
 }
 
 .split-pane__section-header {

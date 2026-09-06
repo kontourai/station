@@ -197,6 +197,7 @@ export function wireStrandsAgentHooks(options: {
 
     await syncStrandsMessagesToMemory({
       agentMessages,
+      agent: (event as { agent?: object }).agent,
       invocation: ctx,
       logger,
       memoryAdapter,

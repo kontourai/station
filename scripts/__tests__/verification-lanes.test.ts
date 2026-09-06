@@ -86,6 +86,7 @@ describe('canonical completion lane literal', () => {
   it('keeps full-regression public while declaring bounded internal scheduling phases', () => {
     expect(resolveLane('full-regression').weight).toBe(1);
     expect(FULL_REGRESSION_PHASES).toEqual([
+      expect.objectContaining({ id: 'browser-prerequisite', weight: 20 }),
       expect.objectContaining({ id: 'repo-governance', weight: 20 }),
       expect.objectContaining({ id: 'sdk-builds', weight: 50 }),
       expect.objectContaining({ id: 'verify-static', weight: 60 }),
@@ -140,7 +141,7 @@ describe('canonical completion lane literal', () => {
         0,
       ),
     );
-    expect(FULL_REGRESSION_TIMEOUT_MS).toBe(251 * 60_000);
+    expect(FULL_REGRESSION_TIMEOUT_MS).toBe(252 * 60_000);
     expect(resolveLane('full-regression').timeoutMs).toBe(
       FULL_REGRESSION_TIMEOUT_MS,
     );
@@ -642,8 +643,8 @@ describe('validateLaneCatalog strictness', () => {
       entry.id === CANONICAL_COMPLETION_LANE
         ? {
             ...entry,
-            phases: entry.phases.map((phase, index) =>
-              index === 0
+            phases: entry.phases.map((phase) =>
+              phase.id === 'repo-governance'
                 ? { ...phase, command: 'npm run proof:unexpected' }
                 : phase,
             ),

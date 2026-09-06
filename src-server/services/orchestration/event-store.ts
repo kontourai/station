@@ -188,6 +188,7 @@ import {
   type ProjectTaskRoomCapabilityAuthority,
   type ProjectTaskRoomHistory,
   type ProjectTaskRoomLinkAuthority,
+  type ProjectTaskRoomWriteAdmissionPort,
 } from './project-task-room-history.js';
 import {
   bindProjectTaskRoomExecution,
@@ -2250,6 +2251,7 @@ export class EventStore {
     capabilities: ProjectTaskRoomCapabilityAuthority;
     links?: ProjectTaskRoomLinkAuthority;
     agents?: ProjectTaskRoomAgentGrantAuthority;
+    roomWriteAdmissions?: ProjectTaskRoomWriteAdmissionPort;
     /** Test-only response-loss seam for sequential-instance recovery proof. */
     unavailableAfterCommitOnce?: boolean;
   }): ProjectTaskRoomHistory {
@@ -6648,7 +6650,13 @@ export class EventStore {
             : JSON.stringify(session.attachedSource),
           session.continuationSourceThreadId ?? null,
           session.adoptionIdempotencyKey ?? null,
-          session.persistSession === true ? 1 : 0,
+          // Keep legacy/undeclared 0 distinct from an explicit refusal (-1).
+          // Older readers omit -1 and cannot enforce that refusal on downgrade.
+          session.persistSession === true
+            ? 1
+            : session.persistSession === false
+              ? -1
+              : 0,
           session.ephemeral === true ? 1 : 0,
           session.tenantExecutionContext === undefined
             ? null
@@ -11046,7 +11054,11 @@ function mapPersistedSessionRow(row: any): ProviderSession {
     ...(row.adoption_idempotency_key
       ? { adoptionIdempotencyKey: row.adoption_idempotency_key }
       : {}),
-    ...(row.persist_session === 1 ? { persistSession: true } : {}),
+    ...(row.persist_session === 1
+      ? { persistSession: true }
+      : row.persist_session === -1
+        ? { persistSession: false }
+        : {}),
     ...(row.ephemeral === 1 ? { ephemeral: true as const } : {}),
     ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
     createdAt: row.created_at,

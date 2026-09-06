@@ -134,6 +134,7 @@
     "verify": "npm run verify:static && npm run verify:e2e:full",
     "install:playwright": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium",
     "install:playwright:ci": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium --with-deps",
+    "check:full-regression-browser": "node scripts/check-full-regression-browser.mjs",
     "dev:server": "tsx watch ./src-server/index.ts",
     "dev:ui": "vite dev",
     "dev:desktop": "tsx scripts/dev-desktop.mts",
