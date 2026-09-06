@@ -66,6 +66,7 @@ type BrowserCapability = 'discover' | 'history-read' | 'message-write';
 type RoomCapability =
   | BrowserCapability
   | 'lifecycle-append'
+  | 'home-transfer'
   | 'revision-link'
   | 'agent-publish';
 // Room policy is deliberately independent from mutable Task projection fields
@@ -282,36 +283,16 @@ export class ProjectTaskRoomRuntime {
 
   /** Server-only ingress after Task/Session association; no browser DTO enters here. */
   async prepareAgentStarted(result: TaskDispatchResult): Promise<void> {
-    await this.#persistAgentLifecycle({
-      taskId: result.task.id,
-      sessionId: result.session.threadId,
-      provider: result.session.provider,
-      outcome: 'started',
-      dispatchId: `task-association:${result.task.id}:${result.session.threadId}`,
-      occurredAt: result.task.dispatchedAt ?? result.dispatch.createdAt,
-      authorizationReceiptId: agentLifecycleReceiptId(
-        result.task.id,
-        result.session.threadId,
-        'started',
-      ),
-    });
+    const lifecycle = agentStartedLifecycle(result);
+    if (!lifecycle) return;
+    if ((await this.#persistAgentLifecycle(lifecycle)) !== 'stored')
+      throw new Error('Agent lifecycle publication could not be stored');
   }
 
   /** Server-only ingress after Task/Session association; no browser DTO enters here. */
   async publishAgentStarted(result: TaskDispatchResult): Promise<void> {
-    const lifecycle: PendingAgentLifecycle = {
-      taskId: result.task.id,
-      sessionId: result.session.threadId,
-      provider: result.session.provider,
-      outcome: 'started',
-      dispatchId: `task-association:${result.task.id}:${result.session.threadId}`,
-      occurredAt: result.task.dispatchedAt ?? result.dispatch.createdAt,
-      authorizationReceiptId: agentLifecycleReceiptId(
-        result.task.id,
-        result.session.threadId,
-        'started',
-      ),
-    };
+    const lifecycle = agentStartedLifecycle(result);
+    if (!lifecycle) return;
     await this.#persistAgentLifecycle(lifecycle);
     await this.#publishAgentLifecycle(lifecycle);
   }
@@ -1755,11 +1736,11 @@ export class ProjectTaskRoomRuntime {
 
   async #persistAgentLifecycle(
     lifecycle: PendingAgentLifecycle,
-  ): Promise<void> {
-    if (this.#closed || this.#deps.hosted?.()) return;
+  ): Promise<'stored' | 'unavailable'> {
+    if (this.#closed || this.#deps.hosted?.()) return 'unavailable';
     const scope = this.#scope(lifecycle.taskId);
-    if (!scope) return;
-    await this.#deps.working.agentLifecycle({
+    if (!scope) return 'unavailable';
+    return this.#deps.working.agentLifecycle({
       scope: { ...scope, documentId: documentIdFor(scope) },
       intentId: `agent:${lifecycle.outcome}:${lifecycle.sessionId}`,
       value: lifecycle,
@@ -3252,4 +3233,24 @@ function authorizationEpoch(policyRevision: string) {
     .digest()
     .readUInt32BE(0);
   return value === 0 ? 1 : value;
+}
+
+function agentStartedLifecycle(
+  result: TaskDispatchResult,
+): PendingAgentLifecycle | undefined {
+  // A Task without an Agent has no agent-start publication to manufacture.
+  if (!result.task.agentId) return undefined;
+  return {
+    taskId: result.task.id,
+    sessionId: result.session.threadId,
+    provider: result.session.provider,
+    outcome: 'started',
+    dispatchId: `task-association:${result.task.id}:${result.session.threadId}`,
+    occurredAt: result.task.dispatchedAt ?? result.dispatch.createdAt,
+    authorizationReceiptId: agentLifecycleReceiptId(
+      result.task.id,
+      result.session.threadId,
+      'started',
+    ),
+  };
 }

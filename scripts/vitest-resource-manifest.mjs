@@ -700,7 +700,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Layout menu's RESOLVED row/group borders. A text scan could not: the first
   // fix tied on specificity with a rule 90 lines below it and lost on source
   // order while the declaration read correct.
-  'src-ui/src/__tests__/RegionLayoutMenu.dividers.test.tsx',
+  'src-ui/src/__tests__/menu-primitive.cascade.test.tsx',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

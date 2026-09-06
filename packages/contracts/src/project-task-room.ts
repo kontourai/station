@@ -31,6 +31,7 @@ export type ProjectTaskRoomGrantKind =
   | 'message-write'
   | 'lifecycle-append'
   | 'revision-link'
+  | 'home-transfer'
   | 'agent-publish';
 declare const roomGrantBrand: unique symbol;
 export interface ProjectTaskRoomGrant<K extends ProjectTaskRoomGrantKind> {

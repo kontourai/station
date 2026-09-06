@@ -85,6 +85,9 @@ function renderHeader(onToggleNotifications = vi.fn()) {
       showHelp={false}
       showNotifications={false}
       showOverflow={false}
+      showProfileMenu={false}
+      onCloseProfileMenu={vi.fn()}
+      onToggleProfileMenu={vi.fn()}
       userInitials="ST"
       onCloseHelp={vi.fn()}
       onCloseNotifications={vi.fn()}
@@ -92,7 +95,7 @@ function renderHeader(onToggleNotifications = vi.fn()) {
       onHelpPrompt={vi.fn()}
       onOpenConnections={vi.fn()}
       onOpenProfile={vi.fn()}
-      onToggleHelp={vi.fn()}
+      onOpenHelp={vi.fn()}
       onToggleNotifications={onToggleNotifications}
       onToggleSettings={vi.fn()}
       onToggleOverflow={vi.fn()}
@@ -137,16 +140,31 @@ describe('HeaderActions attention badge', () => {
     expect(screen.queryByText('0')).toBeNull();
   });
 
+  /**
+   * Discovered from the DOM rather than from a list of names: the list said
+   * ['Notifications', 'Ask Station for help'] and #1552 D1 moved the second into
+   * the avatar's menu, which would have left this test naming a control that no
+   * longer exists — or, worse, quietly checking one. The claim is about every
+   * glyph-bearing control in this row, so the row is what it enumerates.
+   */
   test('keeps icon-only button SVGs decorative because their buttons are named', () => {
     renderHeader();
 
-    for (const name of ['Notifications', 'Ask Station for help']) {
+    const glyphButtons = [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        '.app-toolbar__actions button',
+      ),
+    ].filter((button) => button.querySelector('svg'));
+    // A precondition, not decoration: an empty inventory would pass the loop.
+    expect(glyphButtons.length).toBeGreaterThan(1);
+    for (const button of glyphButtons) {
       expect(
-        screen
-          .getByRole('button', { name })
-          .querySelector('svg')
-          ?.getAttribute('aria-hidden'),
-      ).toBe('true');
+        button.getAttribute('aria-label'),
+        `${button.className} has a glyph and no accessible name`,
+      ).toBeTruthy();
+      for (const svg of button.querySelectorAll('svg')) {
+        expect(svg.getAttribute('aria-hidden')).toBe('true');
+      }
     }
   });
 });
