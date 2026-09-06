@@ -244,8 +244,7 @@ This observation proves the selected authenticated endpoint resolved that room;
 it is not hardware attestation or evidence that credentials were never copied.
 The [controller enrollment guide](../guides/home-transfer-controller.md) describes
 the implemented operator-approved participant-to-room mapping, server-owned peer
-lookup, nonce/environment/device/channel validation and live rechecks. Network
-seal/advance adapters still need to consume those bindings before use. Merely obtaining a successful observation does not enroll
+lookup, nonce/environment/device/channel validation and live rechecks. Bound network readers now consume those mappings for decision advancement. Merely obtaining a successful observation does not enroll
 a target or authorize coordinator adapters.
 
 Tests cover real pairing/HTTP enforcement, revocation during lookup, exact-body
@@ -254,60 +253,69 @@ composition test verifies that the new route primes the existing room-principal
 resolver and leaves the durable room-head table empty. Runtime scope tests cover
 missing/moved Tasks and revoked/hosted authority without calling history methods.
 
-## Private coordinator and verified decisions
+## Bound network decisions and local owner ports
 
-The paired authority's server-private `advance` operation composes the
-[planned coordinator](../../src-server/services/orchestration/planned-home-transfer-coordinator.ts)
-with its caller-bound transaction guard. Only the prepared source participant
-may advance; both participant grants and the controller identity must remain
-current. The integration supplies trusted source history and target history
-owners with their respective grants. These are server-owned adapters, not request
-JSON, manifest locators or user-submitted checkpoint assertions. An authenticated
-remote-home transport and enrollment binding still need to supply these owners
-before this can become a public one-click flow. Passing the same history object
-as both owners is refused before sealing. Distinct objects alone are not proof
-that a target store belongs to the paired target: wrappers can alias a source
-store. That runtime enrollment binding is still an explicit prerequisite, so
-this private API must not be mounted as a public advance/commit endpoint or used
-as execution authority. The tests prove checkpoint verification for the supplied
-stores, not authenticated remote-store ownership.
+The [planned coordinator](../../src-server/services/orchestration/planned-home-transfer-coordinator.ts)
+accepts explicit source and target owner ports. Local server integrations use
+`createLocalProjectTaskRoomTransferOwners` to bind real history methods and frozen
+grants. The same local history cannot fill both roles. Arbitrary local ports
+remain a trusted server integration surface; they are never decoded from HTTP.
 
-The coordinator resolves the stored operation before doing work. It seals the
-source through `ProjectTaskRoomHistory.sealSource`, records that exact closing
-checkpoint and document digest, reads the restored target through
-`readSourceSeal`, and compares its canonical digest before recording readiness.
-A retry from target-ready verifies the target again before the conditional
-ownership decision commit. There is one canonical seal-digest implementation
-shared with the decision store.
+Public `POST /api/home-authority/transfers/:operationId/advance` accepts only an
+empty JSON object and requires the prepared source participant. Its
+[network factory](../../src-server/services/orchestration/remote-home-transfer-coordinator.ts)
+resolves both owners from the stored operation and operator-enrolled bindings.
+It rejects shared environment identities or shared endpoint origins, re-probes
+the exact rooms, captures the peer fingerprints, and rechecks current controller,
+participants and binding records around every call and storage transition.
+Clients cannot provide endpoints, credentials, grants or owner adapters.
 
-Publication-pending and execution-pending source outcomes remain pending. An
-unsealed or unavailable target remains target-unavailable; unavailable can include
-corrupt restored data, which needs repair rather than timeout promotion. Wrong
-operation, target or checkpoint evidence conflicts. Lost commit responses remain
-resolvable from the durable operation; a retry of a committed decision returns
-that decision without sealing or copying again. If another driver commits before
-a closure/readiness acknowledgement arrives, the first driver returns the
-already-committed decision instead of reporting a conflicting intent.
-No error automatically unseals
-the source. Revocation during the asynchronous source seal can leave a sealed
-source and an unadvanced controller record; that is a frozen recovery case, never
-permission to restart the source.
+Each remote `POST /api/home-authority/rooms/:taskId/seal-observation` reads an
+existing seal through the real runtime/history grant owners. Its exact body is
+`channelId`, `operationId`, `sourceHomeRef`, `targetHomeRef` and a fresh `nonce`.
+The response binds the remote environment, remote-issued device, Task, channel
+and nonce to either an unsealed outcome or the validated closing checkpoint and
+working-document digest. Identity responses are bounded to 4 KiB and seal
+responses to 8 KiB; redirects are refused and each complete RPC, including body
+reads, has a 15-second deadline. This is authenticated endpoint/credential/store
+identity, not hardware attestation or proof of unique physical hosts.
 
-`decision-committed` is deliberately smaller than a completed move. Both execution
-flags stay false; source and copied target remain sealed. This driver does not
-copy files, enroll remote transports, activate target writes, renew a lease or
-launch an Agent. Public HTTP routes still expose only registration, preparation
-and readback; there is no route accepting raw closure/readiness evidence or an
-ownership commit command.
+The network source port only observes closure: an unsealed source returns
+`pending` with `source-not-closed`, without writing a closure record. A source
+owner must perform the separate closing operation. The network driver never
+commands source closure. Once that seal exists, it records the exact source
+checkpoint, reads the enrolled target's actual copied seal, compares canonical
+digests, records readiness and conditionally commits the metadata decision.
+Target-ready retries verify the target again. The shared canonical digest owner
+prevents JSON property ordering from changing the comparison.
 
-Coordinator tests use actual file SQLite, EventStore room owners, closing seals,
-a stopped-source database copy and restored readers. They cover retry after a
-lost decision acknowledgement, target corruption and wrong seal, pending source
-outcomes and revocation. Paired-authority integration tests connect the real
-pairing registry to those same room owners and prove that a target caller cannot
-advance and that revocation during source closure leaves the source sealed.
-These tests do not establish independent-host transport, provider continuation
-or target activation. Those remain the next acceptance boundaries.
+Local source ports can report publication-pending or execution-pending. An
+unsealed/unavailable target remains target-unavailable; corruption can produce
+that unavailable outcome and needs repair, not timeout promotion. Wrong
+operation, endpoint identity, nonce, target or checkpoint conflicts. Lost commit
+acknowledgements resolve to the stored operation. If another driver finishes
+during an idempotent closure/readiness acknowledgement, the first returns the
+same committed decision. Committed replay rechecks the original source caller
+and both controller-side participant grants, but does not re-probe endpoints or
+require outbound peer records: the source may already be offline. Revocation
+during an asynchronous local source closure
+can leave a sealed source and an unadvanced controller record; no error unseals it.
+
+The public result is `HomeTransferDecisionAdvanceObservation`: pending uses HTTP
+202 and a committed decision uses HTTP 200. The projected decision omits private
+controller namespaces and checkpoint content. Both execution flags remain false.
+There is no raw closure/readiness submission, remote source-close command, target
+activation, lease renewal or Agent launch endpoint in this profile.
+
+Tests use real pairing registries, persisted TaskGraph scope, EventStore room
+owners, controller SQLite and separate Hono endpoints. The source begins unsealed
+and cannot advance. An explicit fixture-owner action seals it; both stores close
+before a real database copy. After reopen, the network reader verifies the target
+and commits the decision while leaving both seals intact and source writes
+refused. A tampered target nonce conflicts without changing ownership; retrying
+the same operation with valid observations succeeds and is idempotent. These are
+three isolated runtime contexts in one test process, not independent-host,
+provider-continuation or target-activation qualification.
 
 ## Fence the operation, not only admission
 
