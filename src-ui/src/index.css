@@ -7686,15 +7686,16 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     grid-template-rows: auto minmax(0, 1fr) var(--region-bottom-track, 0);
   }
 
+  /* Each side track reads its OWN width. A single-side width alias used to
+     sit in this fallback chain naming one width for both sides, so it
+     DECLARED one side's number as the other side's fallback; it is retired
+     (#1374). The literal is the `chatDockWidth` device-setting default. */
   .app__main:has(> [data-region="left"]) {
-    --region-left-track: var(--region-left-size, var(--chat-dock-width, 400px));
+    --region-left-track: var(--region-left-size, 400px);
   }
 
   .app__main:has(> [data-region="right"]) {
-    --region-right-track: var(
-      --region-right-size,
-      var(--chat-dock-width, 400px)
-    );
+    --region-right-track: var(--region-right-size, 400px);
   }
 
   .app__main:has(> [data-region="bottom"]) {

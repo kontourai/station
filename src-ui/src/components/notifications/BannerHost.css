@@ -586,11 +586,15 @@
  * surface, so its header/search must remain reachable and the banner returns
  * to its named notice layer underneath it.
  *
- * Keep the widths in lockstep with the dock grid in index.css
- * (the per-region size fallback chain, and the 36px collapsed rail). */
+ * Keep the widths in lockstep with the dock grid in index.css (each side's
+ * own `--region-<side>-size`, and the 36px collapsed rail);
+ * `banner-inset-two-side-composition.test.ts` pins that, and pins that each
+ * rule below insets ONE side from ONE side's presence — which is what lets
+ * both apply at once with a surface in `left` and another in `right`
+ * (#1374). */
 @media (min-width: 769px) and (not ((max-height: 540px) and (pointer: coarse))) {
   .app__main:has(> [data-region="right"]) > .banner-host {
-    right: var(--region-right-size, var(--chat-dock-width, 400px));
+    right: var(--region-right-size, 400px);
   }
 
   .app__main:has(> [data-region="right"].is-collapsed) > .banner-host {
@@ -598,7 +602,7 @@
   }
 
   .app__main:has(> [data-region="left"]) > .banner-host {
-    left: var(--region-left-size, var(--chat-dock-width, 400px));
+    left: var(--region-left-size, 400px);
   }
 
   .app__main:has(> [data-region="left"].is-collapsed) > .banner-host {
