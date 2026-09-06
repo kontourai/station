@@ -906,6 +906,20 @@ Hosted requests fail closed unless a tenant-bound composition is provided.
 
 **Seam, Implementation, callers, and tests.** `StationRuntime` composes `TaskGraphService` after concrete project and workflow dependencies exist, then publishes `composeTaskDispatcher(taskGraph, adapters)` to runtime routes and capabilities. The dispatcher Implementation owns private task-graph Adapter contributions. Evidence includes `src-server/services/projects/__tests__/task-dispatcher.test.ts`, `task-dispatch-composition.test.ts`, `task-graph-service.dispatch-claim.test.ts`, task route tests, and cold-start/runtime tests. See [Task dispatch](../design/task-dispatcher.md). **Do not reintroduce:** `TaskGraphService.dispatchTask`, post-construction project/workflow setters, or a route that reaches graph execution details directly.
 
+The Task dispatcher additionally composes a server-owned room execution
+binding and the existing `SessionTurnBoundaryAuthority`. One durable
+`task-dispatch` record spans external claims, provider creation, graph
+association and publication preparation. Its session-start capability is bound
+to the exact session and cannot release the enclosing dispatch. Provider exit
+alone cannot retire that record. Ordinary start claims separately preserve
+uncertain adapter creation without fabricating a turn ID.
+`ProjectTaskRoomHistory.sealSource` reauthorizes a dedicated operator grant and
+serializes its immutable intent/checkpoint with room commits, publication
+queues and bound execution records. Both room workers enforce the seal in
+their write transactions. This is a private source barrier, not an exposed
+move command or external ownership lease. See the
+[handoff design and remaining integration](../design/channel-home-authority.md).
+
 ## StationInstanceReconciler
 
 **Intent and Interface.** `inspect(instance)` returns one coherent `InstanceState` but may reject when its direct platform observation fails; `reconcile({ instance, desired, deadlineMs? })` is the total operation and returns `converged`, `already-converged`, `not-installed`, `timed-out`, `contended`, `partial`, or `failed` results.

@@ -33,6 +33,7 @@ category.
 - [answer-share-permalinks.md](answer-share-permalinks.md) — Scoped answer share permalinks (station#1423)
 - [browser-preview-host-spike.md](browser-preview-host-spike.md) — Browser-preview host spike (Station #1376)
 - [browser-preview-pane-mvp.md](browser-preview-pane-mvp.md) — Browser Preview Pane MVP (Station #1375)
+- [channel-home-authority.md](channel-home-authority.md) — Channel home authority and planned transfer
 - [chat-composer.md](chat-composer.md) — Design: Chat composer & the agent-navigability principle
 - [cli-product.md](cli-product.md) — Design: the Station CLI as a published product
 - [cli-triage.md](cli-triage.md) — Design: bounded guided triage

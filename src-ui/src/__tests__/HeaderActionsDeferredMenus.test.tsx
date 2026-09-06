@@ -3,8 +3,8 @@
  */
 
 /**
- * The header's three dropdowns — notification history, help menu, overflow menu
- * are mounted behind `showX && <Suspense>` + `React.lazy` so their markup
+ * The header's four dropdowns — notification history, help menu, overflow menu,
+ * and (#1552 D1) the avatar's profile menu — are mounted behind `showX && <Suspense>` + `React.lazy` so their markup
  * stays out of the first-paint chunk (archive#2751). Each one already opened
  * with `if (!isOpen) return null`, so deferring the *mount* is meant to be
  * invisible: closed still renders nothing, open still renders the panel.
@@ -61,6 +61,7 @@ const stubs = vi.hoisted(() => ({
   notificationHistory: vi.fn(),
   helpMenu: vi.fn(),
   overflowMenu: vi.fn(),
+  profileMenu: vi.fn(),
 }));
 
 vi.mock('../components/notifications/NotificationHistory', () => ({
@@ -86,12 +87,20 @@ vi.mock('../components/header/OverflowMenu', () => ({
   },
 }));
 
+vi.mock('../components/header/ProfileMenu', () => ({
+  ProfileMenu: (props: { isOpen: boolean }) => {
+    stubs.profileMenu(props);
+    return props.isOpen ? <div data-testid="deferred-profile-menu" /> : null;
+  },
+}));
+
 import { HeaderActions } from '../components/header/HeaderActions';
 
 type OpenState = {
   showHelp?: boolean;
   showNotifications?: boolean;
   showOverflow?: boolean;
+  showProfileMenu?: boolean;
 };
 
 function renderHeader(open: OpenState = {}) {
@@ -102,6 +111,7 @@ function renderHeader(open: OpenState = {}) {
       showHelp={open.showHelp ?? false}
       showNotifications={open.showNotifications ?? false}
       showOverflow={open.showOverflow ?? false}
+      showProfileMenu={open.showProfileMenu ?? false}
       userInitials="ST"
       onCloseHelp={vi.fn()}
       onCloseNotifications={vi.fn()}
@@ -109,10 +119,12 @@ function renderHeader(open: OpenState = {}) {
       onHelpPrompt={vi.fn()}
       onOpenConnections={vi.fn()}
       onOpenProfile={vi.fn()}
-      onToggleHelp={vi.fn()}
+      onOpenHelp={vi.fn()}
       onToggleNotifications={vi.fn()}
       onToggleSettings={vi.fn()}
       onToggleOverflow={vi.fn()}
+      onCloseProfileMenu={vi.fn()}
+      onToggleProfileMenu={vi.fn()}
       onViewAllNotifications={vi.fn()}
     />,
   );
@@ -136,6 +148,12 @@ const surfaces = [
     prop: 'showOverflow' as const,
     testId: 'deferred-overflow-menu',
     stub: stubs.overflowMenu,
+  },
+  {
+    name: 'profile menu',
+    prop: 'showProfileMenu' as const,
+    testId: 'deferred-profile-menu',
+    stub: stubs.profileMenu,
   },
 ];
 

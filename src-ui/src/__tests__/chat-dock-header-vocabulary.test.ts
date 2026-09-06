@@ -73,13 +73,23 @@ describe('chat dock project status segment (station audit F6)', () => {
     expect(badge).not.toMatch(/color:\s*var\(--accent-primary\)/);
   });
 
-  test('the badge keeps the monospace status-text family the row reads in', () => {
-    // The path segment it used to share that family with is gone (#1536 F —
-    // the path is the badge's tooltip now), so the pair this originally
-    // compared no longer exists. The badge's own treatment is what F6 fixed and
-    // is what this still pins; its surviving neighbour in the row is the muted
-    // mismatch lead-in, which uses the same family.
-    expect(badge).toMatch(/font-family:\s*var\(--font-mono\)/);
+  test('the badge reads in the row’s own font, not a second family', () => {
+    // F6's finding was that the badge encoded no state in its colour and read as
+    // a colored label rather than as text; its remedy was the muted tone plus the
+    // MONOSPACE family, chosen because the badge then shared a row with a visible
+    // directory path. #1536 F removed that path (it is the badge's tooltip), and
+    // #1552 D3 finished the job: with nothing monospace left beside it, a second
+    // type family in a 38px bar was the only thing that family bought. The chip
+    // inherits, so the bar has one font.
+    //
+    // The part of F6 that still holds is asserted next door: the tone is neutral,
+    // not the accent green a READY badge uses.
+    expect(badge).toMatch(/font-family:\s*inherit/);
+    expect(badge).not.toMatch(/var\(--font-mono\)/);
+    // Its surviving neighbour, the mismatch lead-in, keeps the monospace family
+    // deliberately: archive#4525 gave it that treatment because it names a
+    // DIVERGENCE between the session's project and the badge's, and it is the
+    // only place in this row that still prints an identifier verbatim.
     expect(firstRuleFor('.chat-dock__project-session-name')).toMatch(
       /font-family:\s*var\(--font-mono\)/,
     );
