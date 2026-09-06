@@ -12,7 +12,11 @@
  * call, `refused` is a host admission (or host document model) that declined
  * the occurrence, `already-open` is the occurrence's own id already in the
  * document, and `not-persisted` is a durable write or a caller state
- * preparation that failed and was rolled back. There is deliberately NO
+ * preparation that failed, after which rollback was ATTEMPTED — a failed
+ * durable rollback leaves the prepared superset in storage and hydration
+ * quarantines the uncommitted occurrence instead (see
+ * `rollbackPreparedHostDocument`). Either way nothing this host renders holds
+ * the occurrence. There is deliberately NO
  * `host-unmounted` reason: a caller with no host has nothing to open into and
  * nothing to report on, so the absence of a host is a rendering
  * precondition — the surface withholds or withdraws its control — not an
@@ -28,7 +32,11 @@ export type WorkspacePaneHostOpenRefusal =
   | 'refused'
   /** The occurrence's own id is already in this host's document. */
   | 'already-open'
-  /** A durable write or caller state preparation failed, and was rolled back. */
+  /**
+   * A durable write or caller state preparation failed; rollback was attempted
+   * and, when its durable half also fails, hydration quarantines the
+   * uncommitted occurrence. The pane is not open either way.
+   */
   | 'not-persisted';
 
 export type WorkspacePaneHostOpenOutcome =

@@ -25,6 +25,7 @@ import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contr
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { describe, expect, test, vi } from 'vitest';
 import { createBrowserPreviewPaneInstance } from '../../workspace-panes/browserPreviewPaneInstance';
 import { writeBrowserPreviewPaneState } from '../../workspace-panes/browserPreviewPaneStateStorage';
@@ -1160,6 +1161,28 @@ describe('ProjectLayoutRenderer', () => {
       'project-uuid',
       'c'.repeat(32),
     )!;
+    // An occurrence the catalog calls available and this build cannot render:
+    // no builtin renderer for its descriptor, and no trusted plugin layout
+    // (the mock below). Its card still offers Open, which is the whole point.
+    const unrenderableDescriptor = {
+      version: '1.0',
+      id: 'pane:plugin%3Aunrenderable:main',
+      name: 'Unrenderable pane',
+      rendererId: 'renderer:plugin%3Aunrenderable:main',
+      renderer: { kind: 'plugin-component', name: 'unrenderable-main' },
+      placement: { supportedRegions: ['primary'] },
+      modes: [{ id: 'default', contextRequirement: { project: true } }],
+      provenance: { origin: 'plugin', pluginId: 'unrenderable' },
+      lifecycle: { stage: 'stable' },
+    } as any;
+    const unrenderableInstance = {
+      version: '1.0',
+      descriptorId: unrenderableDescriptor.id,
+      instanceId: 'instance:plugin:project-uuid:unrenderable',
+      stateKey: 'state:plugin:project-uuid:unrenderable',
+      boundContext: { projectId: 'project-uuid' },
+    } as any;
+    trustedPluginLayoutMock.mockReturnValue(undefined);
     catalogMock.mockReturnValue({
       projectId: 'project-uuid',
       projectSlug: 'project-route',
@@ -1179,6 +1202,14 @@ describe('ProjectLayoutRenderer', () => {
             reason: { code: 'ready', source: 'resolver' },
           },
           descriptor: WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR,
+        },
+        {
+          instance: unrenderableInstance,
+          availability: {
+            state: 'available',
+            reason: { code: 'ready', source: 'resolver' },
+          },
+          descriptor: unrenderableDescriptor,
         },
       ],
     });
@@ -1216,6 +1247,13 @@ describe('ProjectLayoutRenderer', () => {
 
       expect(open).toHaveBeenCalledOnce();
       expect(within(dialog).getByText(sentence)).toBeTruthy();
+      // Assertive, because the reader did not go looking for this — see the
+      // modal's own comment.
+      expect(
+        within(dialog).getByRole('alert', {
+          name: 'Workspace pane could not open',
+        }).textContent,
+      ).toContain(sentence);
       // The picker stays on screen with its control live: a refusal is
       // information, and `no-lease` can clear while it is still open.
       expect(
@@ -1244,6 +1282,32 @@ describe('ProjectLayoutRenderer', () => {
     },
   );
 
+  test('reports a selection this build has no renderer for', () => {
+    const hostProps = renderPickerHost();
+    const open = vi.fn(() => WORKSPACE_PANE_OPENED);
+    act(() => {
+      hostProps.onOpenActionChange({ open });
+      hostProps.onOpenCatalog({ type: 'add', targetGroupId: 'root' });
+    });
+    // The catalog offered an available occurrence whose renderer this build
+    // does not resolve — neither a builtin nor a trusted plugin layout (the
+    // fixture's own mock). The card said "available" and the click was real,
+    // so it gets a sentence rather than the silent return it used to take.
+    const dialog = screen.getByRole('dialog', { name: 'Add workspace pane' });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Open Unrenderable pane' }),
+    );
+    expect(open).not.toHaveBeenCalled();
+    expect(
+      within(dialog).getByRole('alert', {
+        name: 'Workspace pane could not open',
+      }).textContent,
+    ).toContain('This workspace cannot hold that pane, so it was not opened.');
+    expect(
+      screen.getByRole('dialog', { name: 'Add workspace pane' }),
+    ).toBeTruthy();
+  });
+
   test('withdraws the pane picker when the host that owns it goes away', () => {
     const hostProps = renderPickerHost();
     act(() => {
@@ -1257,7 +1321,13 @@ describe('ProjectLayoutRenderer', () => {
     // The host publishes null from the same effect cleanup that runs when it
     // unmounts. The picker is its control, so it goes too — rather than
     // staying up to report a refusal for a click with nowhere to land.
-    act(() => {
+    //
+    // `flushSync` is what makes this a test of the RENDER rather than of the
+    // clearing effect: it commits the state update and paints without letting
+    // React run passive effects first, so a picker that only disappeared once
+    // an effect had cleared `catalogRequest` would still be on screen here —
+    // and that one frame is enough to click.
+    flushSync(() => {
       hostProps.onOpenActionChange(null);
     });
     expect(

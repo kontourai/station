@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { BrowserPreviewPaneLauncher } from '../BrowserPreviewPaneLauncher';
 import { readBrowserPreviewPaneState } from '../browserPreviewPaneStateStorage';
+import type { WorkspacePaneHostOpenAction } from '../WorkspacePaneHostOpenContext';
 import {
   WORKSPACE_PANE_OPENED,
   workspacePaneOpenRefused,
@@ -17,11 +18,15 @@ const AVAILABLE = {
 describe('BrowserPreviewPaneLauncher', () => {
   test('opens only a validated local target through the host prepare transaction', () => {
     window.localStorage.clear();
-    const open = vi.fn((_, preparation) =>
+    // `satisfies` is load-bearing, not decoration: with untyped parameters TS
+    // infers the mock's own signature and ACCEPTS a fake that still answers a
+    // boolean — which is how two suites here kept passing a boolean host
+    // through a typecheck that was green (#1596). This pins the fake to the
+    // real contract.
+    const open = vi.fn(((_instance, preparation) =>
       preparation?.prepare() === false
         ? workspacePaneOpenRefused('not-persisted')
-        : WORKSPACE_PANE_OPENED,
-    );
+        : WORKSPACE_PANE_OPENED) satisfies WorkspacePaneHostOpenAction['open']);
     render(
       <BrowserPreviewPaneLauncher
         projectId="project-uuid-1"
@@ -57,7 +62,10 @@ describe('BrowserPreviewPaneLauncher', () => {
 
   test('reports the reason the host refused, not one sentence for every refusal', () => {
     window.localStorage.clear();
-    const open = vi.fn(() => workspacePaneOpenRefused('no-lease'));
+    const open = vi.fn((() =>
+      workspacePaneOpenRefused(
+        'no-lease',
+      )) satisfies WorkspacePaneHostOpenAction['open']);
     render(
       <BrowserPreviewPaneLauncher
         projectId="project-uuid-1"

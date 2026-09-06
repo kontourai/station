@@ -50,9 +50,19 @@ function renderModal(notice?: string | null) {
 test('carries an open refusal in the sanctioned callout primitive, above a still-usable list', () => {
   renderModal('That pane is already open in this workspace.');
   const dialog = screen.getByRole('dialog', { name: 'Add workspace pane' });
-  const callout = within(dialog).getByRole('status', {
+  // `alert`, not `status`: the callout is mounted BY the click it answers, and
+  // a polite live region inserted already holding its text is not reliably
+  // announced — a screen-reader user would get the same "nothing happened"
+  // #1596 exists to close.
+  const callout = within(dialog).getByRole('alert', {
     name: 'Workspace pane could not open',
   });
+  expect(callout.getAttribute('role')).toBe('alert');
+  expect(
+    within(dialog).queryByRole('status', {
+      name: 'Workspace pane could not open',
+    }),
+  ).toBeNull();
   // The shared page-callout primitive, not bespoke copy markup: the
   // state-primitives family owns this shape (#192) and `data-callout-id` is
   // how it identifies itself.
@@ -78,7 +88,7 @@ test('shows no callout when the picker has refused nothing', () => {
   renderModal(null);
   const dialog = screen.getByRole('dialog', { name: 'Add workspace pane' });
   expect(
-    within(dialog).queryByRole('status', {
+    within(dialog).queryByRole('alert', {
       name: 'Workspace pane could not open',
     }),
   ).toBeNull();

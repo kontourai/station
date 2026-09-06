@@ -586,11 +586,20 @@ function BuiltinCodingLayoutHost({
     [],
   );
   /**
-   * The picker cannot outlive the host it was opened from. Its only entry point
+   * The picker cannot outlive the host it was opened from: its only entry point
    * is that host's command menu, and the host publishes `null` from the same
-   * effect cleanup that runs when it unmounts — so withdrawing the picker is
-   * the honest answer, rather than reporting a refusal for a click that has
-   * nowhere to land.
+   * effect cleanup that runs when it unmounts. Withdrawing the picker is the
+   * honest answer, rather than reporting a refusal for a click with nowhere to
+   * land.
+   *
+   * WHY THE `show` PROP DERIVES IT and this effect does not. An effect runs
+   * AFTER the render that observed `hostOpen === null`, so on its own it would
+   * leave the picker painted for one frame with no host behind it — one frame
+   * is enough to click, and that click would take the silent early return in
+   * `openCatalogEntry`, which is the exact defect this change removes. The
+   * modal's `show` therefore reads both facts during render; this effect only
+   * clears the state that render already stopped honouring, so a later host
+   * does not resurrect a stale request.
    */
   useEffect(() => {
     if (hostOpen) return;
@@ -607,9 +616,10 @@ function BuiltinCodingLayoutHost({
   );
   const openCatalogEntry = useCallback(
     (entry: WorkspacePaneAvailabilityCatalogEntry) => {
-      // Neither of these can be true while a card's Open button is on screen:
-      // the picker only renders with a request, and only an available entry
-      // that carries an instance renders Open at all.
+      // None of these can be true while a card's Open button is on screen: the
+      // picker renders only with BOTH a request and a host (see the modal's
+      // `show`), and only an available entry that carries an instance renders
+      // Open at all.
       if (
         !catalogRequest ||
         !hostOpen ||
@@ -1246,7 +1256,7 @@ function BuiltinCodingLayoutHost({
         }}
       />
       <ProjectWorkspacePaneModal
-        show={catalogRequest !== null}
+        show={catalogRequest !== null && hostOpen !== null}
         notice={
           openRefusal ? describeWorkspacePaneOpenRefusal(openRefusal) : null
         }

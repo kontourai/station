@@ -89,8 +89,10 @@ function rollbackPreparedOpen(
  * Why a prepared open did not produce a next state. Each value names the
  * branch that produced it — `already-open` and `refused` are decided before
  * anything is written, `not-persisted` only after a write was attempted and
- * rolled back — so a caller reporting one is reporting what happened rather
- * than a guess (#1596).
+ * its rollback attempted in turn — so a caller reporting one is reporting what
+ * happened rather than a guess (#1596). `not-persisted` does not promise the
+ * durable rollback SUCCEEDED: `rollbackPreparedHostDocument` says what happens
+ * when it does not, and hydration is what quarantines the residue.
  */
 export type WorkspacePaneHostPrepareOpenResult =
   | { readonly ok: true; readonly state: WorkspacePaneHostState }

@@ -122,7 +122,13 @@ export function ProjectWorkspacePaneModal({
         <PageCallout
           calloutId="workspace-pane-open-refused"
           tone="warning"
-          role="status"
+          // `alert`, not `status`: this callout is MOUNTED by the click it
+          // answers, and a polite region inserted already holding its text is
+          // not reliably announced — which would leave a screen-reader user
+          // with the "nothing happened" #1596 exists to close. The Browser
+          // Preview launcher's refusal already uses `alert` for the same
+          // reason.
+          role="alert"
           ariaLabel="Workspace pane could not open"
         >
           {notice}

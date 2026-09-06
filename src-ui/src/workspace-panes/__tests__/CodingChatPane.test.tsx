@@ -3,7 +3,10 @@
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readFilePreviewPaneState } from '../filePreviewPaneStateStorage';
-import { WorkspacePaneHostOpenContext } from '../WorkspacePaneHostOpenContext';
+import {
+  type WorkspacePaneHostOpenAction,
+  WorkspacePaneHostOpenContext,
+} from '../WorkspacePaneHostOpenContext';
 
 const { isMobile, navigation, setDockState } = vi.hoisted(() => ({
   isMobile: vi.fn(() => false),
@@ -78,11 +81,14 @@ describe('CodingChatPane', () => {
         path: 'src/deep-link.ts',
         lineRange: { start: 17, end: 17 },
       };
-      const open = vi.fn((_, preparation) =>
+      // `satisfies` is load-bearing: with untyped parameters TS infers the
+      // mock's own signature and ACCEPTS a boolean-returning fake, which is
+      // exactly how this suite kept a boolean host through a green typecheck
+      // (#1596).
+      const open = vi.fn(((_instance, preparation) =>
         preparation?.prepare() === false
           ? workspacePaneOpenRefused('not-persisted')
-          : WORKSPACE_PANE_OPENED,
-      );
+          : WORKSPACE_PANE_OPENED) satisfies WorkspacePaneHostOpenAction['open']);
 
       render(
         <WorkspacePaneHostOpenContext.Provider value={{ open }}>
@@ -119,11 +125,10 @@ describe('CodingChatPane', () => {
       projectSlug: 'demo',
       path: 'src/one-shot.ts',
     };
-    const open = vi.fn((_, preparation) =>
+    const open = vi.fn(((_instance, preparation) =>
       preparation?.prepare() === false
         ? workspacePaneOpenRefused('not-persisted')
-        : WORKSPACE_PANE_OPENED,
-    );
+        : WORKSPACE_PANE_OPENED) satisfies WorkspacePaneHostOpenAction['open']);
     navigation.updateParams.mockImplementation(() => {
       navigation.openFilePreviewIntent = null;
     });
@@ -146,7 +151,12 @@ describe('CodingChatPane', () => {
   test('renders one catalog-admitted Browser Preview creator with its resolved reason', () => {
     render(
       <WorkspacePaneHostOpenContext.Provider
-        value={{ open: vi.fn(() => WORKSPACE_PANE_OPENED) }}
+        value={{
+          open: vi.fn(
+            (() =>
+              WORKSPACE_PANE_OPENED) satisfies WorkspacePaneHostOpenAction['open'],
+          ),
+        }}
       >
         <CodingChatPane
           projectId="project-uuid"

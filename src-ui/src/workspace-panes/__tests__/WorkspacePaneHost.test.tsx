@@ -908,6 +908,49 @@ test('answers a refused open with the reason the controller derived', async () =
   ).toEqual(['One', 'Three']);
 });
 
+/**
+ * #1596. `open`'s callers now branch on `.ok`, so a throw from inside it would
+ * be read by every one of them as "no outcome at all" — the silent completion
+ * this change exists to remove. The rollback a failed preparation triggers is
+ * the closest thing to a throwing path, and this pins that it stays an
+ * OUTCOME. (The `preparation.rollback` here throws; the host's own durable
+ * rollback cannot, because `persistWorkspacePaneHost` and
+ * `registerLiveWorkspacePaneHostDocument` are total.)
+ */
+test('answers with an outcome when a caller rollback throws', async () => {
+  let hostOpen: WorkspacePaneHostOpenAction | null = null;
+  render(
+    <WorkspacePaneHost
+      document={singlePaneHostDocument('throwing-rollback-host', one)}
+      onOpenActionChange={(action) => {
+        hostOpen = action;
+      }}
+      renderPane={(pane) => <div>{pane.descriptorId} content</div>}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+
+  let outcome: WorkspacePaneHostOpenOutcome | undefined;
+  let threw: unknown;
+  act(() => {
+    try {
+      outcome = hostOpen?.open(two, {
+        prepare: () => false,
+        rollback: () => {
+          throw new Error('caller rollback exploded');
+        },
+      });
+    } catch (error) {
+      threw = error;
+    }
+  });
+  expect(threw).toBeUndefined();
+  expect(outcome).toEqual({ ok: false, reason: 'not-persisted' });
+  expect(screen.getAllByRole('tab')).toHaveLength(1);
+});
+
 test('focuses an existing pane without admitting a duplicate instance', async () => {
   let hostOpen: WorkspacePaneHostOpenAction | null = null;
   const onDocumentChange = vi.fn();
