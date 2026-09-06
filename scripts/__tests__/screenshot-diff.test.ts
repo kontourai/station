@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -345,6 +346,125 @@ describe('runBaseline and runDiff (in-process)', () => {
       volatile: true,
       reason: 'test reason',
     });
+  });
+
+  /**
+   * #1652: a volatile entry's reason may point a human at a hand-curated
+   * reference image, and the REPLACE path used to delete it by construction —
+   * its keep set was derived from non-volatile entries only. Nothing covered
+   * the deletion loop at all, in either direction.
+   *
+   * The reference here is deliberately given DIFFERENT pixels and different
+   * dimensions from what a capture of that screen would produce, so surviving
+   * byte-identical is only possible if the loop neither deleted nor rewrote
+   * it — "the file still exists" would also pass if REPLACE had removed it and
+   * something re-stored a fresh capture under the same name.
+   */
+  it('a REPLACE run leaves a hand-added reference image for a volatile entry byte-identical, and still rewrites the non-volatile ones', () => {
+    dir = mkdtempSync(join(tmpdir(), 'screenshot-diff-'));
+    const baselinePath = join(dir, 'baseline.json');
+    const imagesDir = baselineImagesDir(baselinePath);
+    writeCapture(
+      dir,
+      [
+        { name: 'a', ok: true },
+        { name: 'b', ok: true },
+      ],
+      null,
+    );
+    runBaseline(
+      { gallery: dir, baseline: baselinePath, allowPartial: false },
+      { log: () => {} },
+    );
+    const manifest = JSON.parse(readFileSync(baselinePath, 'utf8'));
+    manifest.screens = manifest.screens.map((entry: { name: string }) =>
+      entry.name === 'b'
+        ? { name: 'b', volatile: true, reason: 'test reason' }
+        : entry,
+    );
+    writeFileSync(baselinePath, JSON.stringify(manifest));
+
+    // Stand in for the human: replace whatever the first run stored for 'b'
+    // with a hand-curated image no capture of 'b' could produce.
+    const curated = solidPng(31, 17, [7, 8, 9]);
+    writeFileSync(join(imagesDir, 'b.png'), curated);
+
+    writeCapture(
+      dir,
+      [
+        { name: 'a', ok: true },
+        { name: 'b', ok: true },
+      ],
+      null,
+    );
+    const result = runBaseline(
+      { gallery: dir, baseline: baselinePath, allowPartial: false },
+      { log: () => {} },
+    );
+
+    expect(result).toEqual({
+      updated: 1,
+      preservedVolatile: 1,
+      total: 2,
+      replaced: true,
+    });
+    expect(readFileSync(join(imagesDir, 'b.png'))).toEqual(curated);
+    // The non-volatile entry is still stored from this capture, so keeping the
+    // volatile name has not turned the keep set into "leave everything alone".
+    expect(readFileSync(join(imagesDir, 'a.png'))).toEqual(
+      readFileSync(join(dir, 'a.png')),
+    );
+  });
+
+  it('a REPLACE run still deletes a reference image no current manifest entry claims', () => {
+    dir = mkdtempSync(join(tmpdir(), 'screenshot-diff-'));
+    const baselinePath = join(dir, 'baseline.json');
+    const imagesDir = baselineImagesDir(baselinePath);
+    writeCapture(
+      dir,
+      [
+        { name: 'a', ok: true },
+        { name: 'b', ok: true },
+      ],
+      null,
+    );
+    runBaseline(
+      { gallery: dir, baseline: baselinePath, allowPartial: false },
+      { log: () => {} },
+    );
+    const manifest = JSON.parse(readFileSync(baselinePath, 'utf8'));
+    manifest.screens = manifest.screens.map((entry: { name: string }) =>
+      entry.name === 'b'
+        ? { name: 'b', volatile: true, reason: 'test reason' }
+        : entry,
+    );
+    writeFileSync(baselinePath, JSON.stringify(manifest));
+
+    // A genuine orphan: a screen this baseline no longer has any entry for,
+    // alongside the volatile entry's own reference so the two dispositions are
+    // decided in the same run.
+    writeFileSync(join(imagesDir, 'b.png'), solidPng(31, 17, [7, 8, 9]));
+    writeFileSync(
+      join(imagesDir, 'retired-screen.png'),
+      solidPng(12, 9, [3, 2, 1]),
+    );
+
+    writeCapture(
+      dir,
+      [
+        { name: 'a', ok: true },
+        { name: 'b', ok: true },
+      ],
+      null,
+    );
+    runBaseline(
+      { gallery: dir, baseline: baselinePath, allowPartial: false },
+      { log: () => {} },
+    );
+
+    expect(existsSync(join(imagesDir, 'retired-screen.png'))).toBe(false);
+    expect(existsSync(join(imagesDir, 'b.png'))).toBe(true);
+    expect(existsSync(join(imagesDir, 'a.png'))).toBe(true);
   });
 
   it('REPLACE refuses when it would drop more than half of the existing baseline, without --force-replace', () => {

@@ -357,10 +357,26 @@ export function runBaseline(options, { log = console.log } = {}) {
     // REPLACE also drops stale reference images for screens no longer in
     // the manifest (renamed/retired screens), so the companion directory
     // never accumulates orphans a full-run baseline no longer claims.
+    //
+    // #1652: the keep set is every CURRENT entry's `<name>.png`, volatile
+    // included. This run still writes no image for a volatile screen (the
+    // branch above carries the entry forward untouched) and `runDiff` returns
+    // `skipped-volatile` before it would ever read one — so the only way such
+    // a file exists is a human having put it there to eyeball. Deriving the
+    // keep set from non-volatile entries alone made deleting it unavoidable:
+    // a full regeneration removed the very artifact a volatile entry's own
+    // `reason` could point a reader at, which is what happened to
+    // `mobile-onboarding-setup`. Keeping the name costs nothing — no
+    // comparison path reads it — and the orphan pruning this loop exists for
+    // still removes every file no current entry claims.
+    //
+    // What this cannot distinguish is a hand-added reference from a leftover
+    // auto-generated capture of the same screen taken before the entry was
+    // marked volatile. Both are real captures of that screen, and both are
+    // only ever read by a human, so nothing downstream depends on the
+    // difference.
     const keep = new Set(
-      [...nextByName.values()]
-        .filter((entry) => entry.volatile !== true)
-        .map((entry) => `${entry.name}.png`),
+      [...nextByName.values()].map((entry) => `${entry.name}.png`),
     );
     for (const file of existsSync(imagesDir) ? readdirSync(imagesDir) : []) {
       if (!keep.has(file)) rmSync(join(imagesDir, file), { force: true });
