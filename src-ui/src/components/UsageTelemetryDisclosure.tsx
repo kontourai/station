@@ -1,6 +1,10 @@
-import { authenticatedFetch } from '@kontourai/station-sdk';
+import {
+  authenticatedFetch,
+  useConfigQuery,
+  useUpdateConfigMutation,
+} from '@kontourai/station-sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type ReactNode, useRef, useSyncExternalStore } from 'react';
+import { type ReactNode, useRef, useState, useSyncExternalStore } from 'react';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
@@ -17,6 +21,27 @@ type Disclosure = {
       properties: Record<string, { domain: string | readonly string[] }>;
     }
   >;
+  /**
+   * Whether THIS host has a telemetry endpoint. Optional because a paired
+   * peer may be running an older build that does not report it; the summary
+   * below then drops the clause rather than guessing, because "nothing is
+   * sent" is a claim about a host, not a general reassurance.
+   */
+  endpointConfigured?: boolean;
+  /**
+   * The EFFECTIVE `telemetryEnabled` setting — the stored value folded over
+   * the `STATION_TELEMETRY_ENABLED` fallback and the default, which is what
+   * actually governs emission. Read rather than derived from `AppConfig`
+   * alone so the first-run step cannot offer to turn off something the
+   * environment has already turned off.
+   */
+  telemetryEnabled?: boolean;
+  /**
+   * Which link of that chain won. `'env'` is the one that matters: the value
+   * is in force but nothing durable records it, so keeping it has to write it
+   * down or the choice evaporates when the variable does.
+   */
+  enabledSource?: 'config' | 'env' | 'default';
 };
 
 /**
@@ -284,34 +309,98 @@ function acknowledgeErrorNotice(isError: boolean): ReactNode {
 }
 
 /**
+ * The sentence the first screen leads with, derived from what the host
+ * reports rather than asserted.
+ *
+ * `endpointConfigured` is the whole reason the server reports it: "none is
+ * configured here, so nothing is sent" is a claim about THIS Station, and
+ * before #1582 A3 nothing in the API could see the endpoint at all (it is
+ * read from the environment in `UsageTelemetryService`'s constructor). An
+ * older peer that does not report it gets the clause dropped, not guessed.
+ */
+export function usageTelemetryDisclosureSummary(
+  endpointConfigured: boolean | undefined,
+): string {
+  const lede =
+    'Station can send anonymous usage events, only when a telemetry endpoint is configured';
+  if (endpointConfigured === false)
+    return `${lede}; none is configured here, so nothing is sent.`;
+  if (endpointConfigured === true)
+    return `${lede}; one is configured on this Station.`;
+  return `${lede}.`;
+}
+
+/**
+ * The two decisions the first screen offers, named after what they do.
+ *
+ * Both are derived from the EFFECTIVE setting, never from the label: on a
+ * host the environment has already switched telemetry off, "Turn it off"
+ * would be an action with nothing behind it and "Keep usage telemetry on"
+ * would describe a state that is not the case.
+ */
+export function usageTelemetryDecisionLabels(enabled: boolean): {
+  keep: string;
+  change: string;
+} {
+  return enabled
+    ? { keep: 'Keep usage telemetry on', change: 'Turn it off' }
+    : { keep: 'Keep usage telemetry off', change: 'Turn it on' };
+}
+
+/**
  * The disclosure as the FIRST STEP of the guided first run, rather than as a
  * modal of its own over the top of it (UX audit follow-up to RT-02/SHELL-12).
  *
- * On a brand-new home both surfaces used to fire at once: this dialog is
- * mounted by `OnboardingGate` after its children, so it landed at
+ * On a brand-new home both surfaces used to fire at once: the standalone
+ * dialog is mounted by `OnboardingGate` after its children, so it landed at
  * `--layer-dialog` ON TOP of the first-run chapter — two modals on the first
  * screen a person ever sees, the second one unreadable underneath. The
  * disclosure belongs to onboarding, so on a `pending` home it is shown here,
  * and `OnboardingGate` does not mount the standalone modal at all.
  *
- * Same copy, same acknowledgement, same "Not now": declining snoozes the
- * disclosure and DEFERS the run — the dialog closes, exactly as "Not now" on
- * the standalone modal closes it. It used to advance to the next step
- * instead, which read as the modal refusing to go away (#765 B1). Chrome
- * (scrim, focus trap, header, step count) belongs to `FirstRunHomeChapter`'s
- * dialog; this owns the inventory and its two actions and nothing else.
+ * #1582 A3 — WHAT CHANGED AND WHY. The step used to open with the whole
+ * generated schema (every event, every property, every domain) and two
+ * buttons that named neither choice: "I understand" and "Not now". The
+ * screen a person meets first is now a single derived sentence plus a
+ * collapsed "See exactly what is sent" holding that same inventory, and the
+ * buttons name the decision they make.
+ *
+ * THE SETTINGS TOGGLE IS THE SOURCE OF TRUTH. Both actions write and read
+ * `telemetryEnabled` through the same `PUT /config/app` the Settings row
+ * uses (`views/settings/StationConfigSection.tsx`), so this screen cannot
+ * record a preference Settings does not show. "Keep" usually writes nothing
+ * — the state it names is already the case — unless the ENVIRONMENT is the
+ * only thing holding that state, in which case it records it, because a
+ * decision resting on `STATION_TELEMETRY_ENABLED` alone disappears the day
+ * that variable does. The changing action always writes, and either action
+ * acknowledges only once its write has landed, so a refused write can never
+ * be reported as a saved choice.
+ *
+ * Chrome (scrim, focus trap, header, step count) belongs to
+ * `FirstRunHomeChapter`'s dialog; this owns the summary, the inventory and
+ * its two actions and nothing else. The exit that decides NOTHING is the
+ * dialog's own close control, which still snoozes the disclosure and defers
+ * the run (#765 B1) — see `FirstRunHomeChapter`'s `defer`.
  */
 export function UsageTelemetryDisclosureStep({
   onAdvance,
-  onDefer,
 }: {
-  /** The acknowledgement landed — the run moves to its next step. */
+  /** The decision landed — the run moves to its next step. */
   onAdvance: () => void;
-  /** The disclosure was declined — the run closes without advancing. */
-  onDefer: () => void;
 }) {
   const { data, settled } = useUsageTelemetryDisclosureState();
   const acknowledge = useAcknowledgeDisclosure(onAdvance);
+  // The SAME `['config']` query the Settings row reads and this step's own
+  // write invalidates. The disclosure query is NOT invalidated by a config
+  // write and carries a five-minute `staleTime`, so reading the setting from
+  // it alone made this screen answer with whatever was true when the chapter
+  // first asked: defer the run, change the toggle in Settings, come back, and
+  // the step offered to "keep" a state that had already moved. The disclosure
+  // stays the fallback because it is the only thing that can see the
+  // environment.
+  const { data: config } = useConfigQuery();
+  const updateConfig = useUpdateConfigMutation();
+  const [settingError, setSettingError] = useState(false);
 
   if (!settled || !data?.events) {
     return (
@@ -321,40 +410,89 @@ export function UsageTelemetryDisclosureStep({
     );
   }
 
+  // The server's own precedence (`config ?? STATION_TELEMETRY_ENABLED ??
+  // true`), rebuilt over the FRESHER read of its first link. The `?? true` is
+  // the same last link of that chain, for a peer too old to report the field.
+  const configEnabled = (config as { telemetryEnabled?: boolean } | undefined)
+    ?.telemetryEnabled;
+  const enabled = configEnabled ?? data.telemetryEnabled ?? true;
+  const labels = usageTelemetryDecisionLabels(enabled);
+  const busy = updateConfig.isPending || acknowledge.isPending;
+  // Keeping a state usually writes nothing — it is already the case. The
+  // exception is a state the ENVIRONMENT is holding with nothing durable
+  // behind it: "Keep usage telemetry off" on a host whose only reason for
+  // being off is `STATION_TELEMETRY_ENABLED` would be a decision that
+  // disappears the day that variable does. Read from the config query's own
+  // answer first, so a value recorded since the disclosure was fetched is
+  // never re-written.
+  const keepMustRecord =
+    configEnabled === undefined && data.enabledSource === 'env';
+
+  const decide = (next: boolean) => {
+    if (busy) return;
+    setSettingError(false);
+    if (next === enabled && !keepMustRecord) {
+      // Nothing to write: the choice is the state the host is already in, and
+      // something durable already says so.
+      acknowledge.mutate();
+      return;
+    }
+    updateConfig.mutate(
+      { telemetryEnabled: next },
+      {
+        onSuccess: (result) => {
+          // A key the server declines comes back in `ignoredKeys` on a 2xx,
+          // so a silent no-op would otherwise be acknowledged as a saved
+          // choice — the setting still on, the receipt written, and the
+          // reader told it was turned off.
+          if (
+            result.ignoredKeys?.some(
+              (ignored) => ignored.key === 'telemetryEnabled',
+            )
+          ) {
+            setSettingError(true);
+            return;
+          }
+          acknowledge.mutate();
+        },
+        onError: () => setSettingError(true),
+      },
+    );
+  };
+
   return (
     <div className="first-run-disclosure" data-testid="first-run-disclosure">
-      <div className="first-run-disclosure__body">
-        <DisclosureInventory data={data} />
-      </div>
+      <p className="first-run-chapter__lede">
+        {usageTelemetryDisclosureSummary(data.endpointConfigured)}
+      </p>
+      <details className="first-run-disclosure__inventory">
+        <summary>See exactly what is sent</summary>
+        <div className="first-run-disclosure__body">
+          <DisclosureInventory data={data} />
+        </div>
+      </details>
       <ResponsiveSurfaceActions className="first-run-chapter__actions">
-        {acknowledgeErrorNotice(acknowledge.isError)}
-        {/* "Not now" is the same decision it is in the standalone modal: no
-            receipt is written, the disclosure is snoozed, and the dialog
-            CLOSES. It must never advance — a decline that pushes the reader
-            into step 2 reads as the modal refusing to be dismissed
-            (#765 B1, reproduced live). */}
-        <button
-          type="button"
-          className="editor-btn"
-          onClick={() => {
-            dismissUsageTelemetryDisclosure(data.inventoryRevision);
-            onDefer();
-          }}
+        {settingError ? (
+          <p className="usage-telemetry-disclosure__error" role="alert">
+            The usage telemetry setting could not be saved.
+          </p>
+        ) : (
+          acknowledgeErrorNotice(acknowledge.isError)
+        )}
+        <Button
+          variant="secondary"
+          aria-busy={busy}
+          onClick={() => decide(!enabled)}
         >
-          Not now
-        </button>
-        <button
-          type="button"
-          className="editor-btn editor-btn--primary"
-          aria-busy={acknowledge.isPending}
-          aria-disabled={acknowledge.isPending}
-          onClick={() => {
-            if (acknowledge.isPending) return;
-            acknowledge.mutate();
-          }}
+          {labels.change}
+        </Button>
+        <Button
+          variant="primary"
+          aria-busy={busy}
+          onClick={() => decide(enabled)}
         >
-          {acknowledge.isError ? 'Try again' : 'I understand'}
-        </button>
+          {acknowledge.isError ? 'Try again' : labels.keep}
+        </Button>
       </ResponsiveSurfaceActions>
     </div>
   );

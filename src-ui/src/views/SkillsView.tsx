@@ -42,8 +42,10 @@ import {
   formatSkillStatsSummary,
   formCommandWord,
   formVariables,
+  SKILLS_SUBTITLE,
   type SkillForm,
   skillDetailToForm,
+  skillSourceLabel,
 } from './skills/skill-view-utils';
 import './editor-layout.css';
 import './page-layout.css';
@@ -117,7 +119,20 @@ export function SkillsView({
     [skills, search, filter],
   );
 
-  const items = useMemo(() => buildSkillListItems(filtered), [filtered]);
+  // The band header and the row chip say the same derived thing on purpose:
+  // the rail is short and the built-in band is long, so a row scrolled away
+  // from its header still has to answer "where is this from?" on its own
+  // (#1582 D6). Both read the one `source` the builder derived, so they cannot
+  // disagree.
+  const items = useMemo(
+    () =>
+      buildSkillListItems(filtered).map(({ source, ...item }) => ({
+        ...item,
+        section: source,
+        badge: <span className="skill-source-chip">{source}</span>,
+      })),
+    [filtered],
+  );
 
   // the CURRENT TAB's collection with no query
   // applied — so a tab that itself has zero matches (e.g. no skill is a
@@ -368,10 +383,13 @@ export function SkillsView({
 
   const editableLocal =
     isCreating || (selected?.installed && selected.source === 'local');
-  const sourceLabel =
-    selected?.source === 'local'
-      ? 'Workspace-authored skill'
-      : 'Installed read-only skill';
+  // Same derivation as the list chip. It used to read `source === 'local'` and
+  // print "Workspace-authored skill" for anything writable, which called a
+  // machine-scoped skill a workspace one — the conflation #1582 D6 names. The
+  // editability sentence below is a separate fact and keeps its own predicate.
+  const sourceLabel = selected
+    ? skillSourceLabel(selected.origin)
+    : 'Source unrecorded';
   const statsSummary = selected ? formatSkillStatsSummary(selected) : null;
   const savePending =
     createLocalMutation.isPending || updateLocalMutation.isPending;
@@ -381,7 +399,7 @@ export function SkillsView({
       <SplitPaneLayout
         label="skills"
         title="Installed Skills"
-        subtitle="Author workspace skills here; discover and install new skills in Registry."
+        subtitle={SKILLS_SUBTITLE}
         items={items}
         loading={isLoading}
         error={skillsError}
