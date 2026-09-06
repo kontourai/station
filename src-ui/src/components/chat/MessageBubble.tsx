@@ -3,6 +3,7 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import type { ChatMessage } from '../../types';
+import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
@@ -19,9 +20,9 @@ import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { MessageContent } from './message-bubble/MessageContent';
 import { MessageRating } from './message-bubble/MessageRating';
 import {
-  getModelDisplayName,
   resolveTurnEngine,
   resolveTurnModelIdentity,
+  turnCompletedNormally,
 } from './message-bubble/utils';
 import { TurnProvenanceCard } from './TurnProvenanceCard';
 import './chat.css';
@@ -355,7 +356,11 @@ function MessageBubbleComponent({
         modelIdentity.source === 'metadata-absent' &&
         msg.model && (
           <div className="message__model-badge" title={modelOptionsTitle}>
-            {getModelDisplayName(msg.model)}
+            {/* #1536 B5: the shared identity rule. This used to be a
+                hardcoded table that answered "Custom" for every model newer
+                than Claude 3, so a row running claude-opus-5 with no
+                provenance envelope named it "Custom". */}
+            {modelIdentityLabel(msg.model)}
           </div>
         )}
 
@@ -503,6 +508,11 @@ function MessageBubbleComponent({
                 msg.turnId &&
                 answerSessionId &&
                 msg.answerEligible === true &&
+                // #1536 B3: the same precondition the Basis route applies. A
+                // turn whose envelope records an aborted outcome can only ever
+                // be answered 404, and the affordance rendered that refusal as
+                // "Basis · Unavailable" on a healthy instance.
+                turnCompletedNormally(msg) &&
                 (!isLastMessage || !activeSession.isThinking) ? (
                   <LazyBoundary
                     load={loadConnectedAnswerBasisAffordance}

@@ -301,6 +301,82 @@ export interface DockMirrorDiff {
   size?: Partial<Record<RegionId, number>>;
 }
 
+/**
+ * What a surface's toggle (its chord, or its row in the folded Regions menu)
+ * does, decided from the arrangement alone (#1523; #1420 wanted no placement
+ * rule left in the toolbar):
+ *
+ * - `arrangement`: the toggle resolved to a state write — a dock occupant
+ *   hidden or revealed in place, or a `main` occupant relocated to its
+ *   `defaultRegion`. `shownRegion` names the dock region that became visible,
+ *   for the fold's `lastShownRegion`, or null when something was hidden.
+ * - `show`: the toggle means "show it", and the model's own `showSurface`
+ *   owns that (where an unplaced surface lands, the coarse show-alone fold,
+ *   the `main` navigation).
+ * - `none`: nothing to do — a `main` occupant whose default IS `main` (Home).
+ */
+export type SurfaceToggle =
+  | {
+      kind: 'arrangement';
+      arrangement: RegionArrangement;
+      shownRegion: DockRegionId | null;
+    }
+  | { kind: 'show' }
+  | { kind: 'none' };
+
+/**
+ * Resolve a surface's toggle. Occupying a dock region toggles that region's
+ * visibility, with the coarse rule kept from the folded menu: on a
+ * bottom-only device the surface is HIDDEN only when it is the folded region
+ * (the one visible dock such a device has); any other placed-but-not-showing
+ * surface is shown alone instead. Occupying `main` moves the surface to its
+ * `defaultRegion` when that is a dock region — visible, and folded alone on a
+ * coarse device — so a chord that "hides" a `main` occupant leaves Home
+ * behind (an emptied `main` reads as Home) rather than doing nothing.
+ * Unplaced means show.
+ */
+export function toggleSurface(
+  arrangement: RegionArrangement,
+  surfaceId: string,
+  defaultRegion: RegionId,
+  options: { lastShownRegion: RegionId | null; bottomOnly: boolean },
+): SurfaceToggle {
+  const occupied = occupiedRegion(arrangement, surfaceId);
+  if (!occupied) return { kind: 'show' };
+  if (occupied === 'main') {
+    if (!isDockRegion(defaultRegion)) return { kind: 'none' };
+    let next = placeSurface(arrangement, surfaceId, defaultRegion, true);
+    if (options.bottomOnly) {
+      for (const id of DOCK_REGION_IDS) {
+        if (id !== defaultRegion)
+          next = updateRegion(next, id, { visible: false });
+      }
+    }
+    return {
+      kind: 'arrangement',
+      arrangement: next,
+      shownRegion: defaultRegion,
+    };
+  }
+  if (options.bottomOnly) {
+    const folded = foldedDockRegion(arrangement, options.lastShownRegion);
+    if (occupied === folded && arrangement[occupied].visible) {
+      return {
+        kind: 'arrangement',
+        arrangement: updateRegion(arrangement, occupied, { visible: false }),
+        shownRegion: null,
+      };
+    }
+    return { kind: 'show' };
+  }
+  const visible = !arrangement[occupied].visible;
+  return {
+    kind: 'arrangement',
+    arrangement: updateRegion(arrangement, occupied, { visible }),
+    shownRegion: visible ? occupied : null,
+  };
+}
+
 export function dockMirrorDiff(
   previous: RegionArrangement,
   next: RegionArrangement,

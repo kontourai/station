@@ -182,6 +182,8 @@ export function SkillsView({
       });
       return;
     }
+    // Escape is a dismissal: return to `/` and whatever occupies `main`, not
+    // to Home by name (#1523).
     navigate('/');
   });
 

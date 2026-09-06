@@ -944,14 +944,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // station#3309: the model the dock header names — the same answer the
   // composer's model pill gives, arrived at the same way. `effectiveChatModelId`
-  // picks WHICH id; then, exactly as `ChatInputArea` does, an alias that the
-  // engine has resolved renders as the concrete model it resolved TO (#1012)
-  // and everything else falls through to the shared `modelDisplayLabel`.
+  // picks WHICH id; `chatModelLabel` then asks the one shared identity rule
+  // (`modelIdentityLabel`, #1536 B5), so an alias the engine has resolved
+  // renders as the concrete model it resolved TO (#1012) and an unresolved
+  // engine default reads "Default" rather than the catalog's option copy.
   //
-  // Caught live rather than reasoned about: without the `resolvedModelLabel`
-  // arm the header read "Default (recommended)" beside a composer pill naming
-  // the actual model — one fact, two stories, which is the whole reason both
-  // of these helpers exist. No id reported means no chip, not a placeholder.
+  // Caught live rather than reasoned about: before that rule was shared, the
+  // header read "Default (recommended)" beside a composer pill naming the
+  // actual model — one fact, two stories. No id reported means no chip, not a
+  // placeholder.
   const activeChatModelId = effectiveChatModelId({
     composerModel: chatInput.currentModel,
     sessionModel: activeSession?.model,
