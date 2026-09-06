@@ -4774,6 +4774,15 @@ button.tool-call__line:hover {
   font-weight: 600;
 }
 
+.tool-call-batch__unresolved {
+  flex-shrink: 0;
+  /* station#1569 (item 3): not an error colour — nothing failed. It is the
+     same "we do not know" the row's own badge carries, so it reads as a
+     qualifier on the summary rather than a verdict. */
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
 .tool-call-batch__chevron {
   flex-shrink: 0;
   opacity: 0.6;

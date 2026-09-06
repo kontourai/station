@@ -2262,6 +2262,17 @@ export class EventStore {
   }
 
   /** Immutable server-owned scope for provider admission; never inferred from metadata. */
+  readProjectTaskRoomExecutionBinding(
+    sessionId: string,
+  ): { projectId: string; taskId: string } | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT project_id AS projectId,task_id AS taskId FROM project_task_room_execution_bindings WHERE session_id=?',
+      )
+      .get(sessionId) as { projectId: string; taskId: string } | undefined;
+    return row ? { ...row } : undefined;
+  }
+
   bindProjectTaskRoomExecution(input: {
     projectId: string;
     taskId: string;

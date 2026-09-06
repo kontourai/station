@@ -1365,17 +1365,32 @@ export async function clickLiveCommand(page, name) {
     clickWhenEnabled(page, name),
   );
   const body = await settled.json();
+  const accepted = {
+    join: ['JOINED', 'REFRESHED'],
+    announce: ['UPDATED'],
+    depart: ['DEPARTED', 'UPDATED'],
+  };
   if (
     settled.status() !== 200 ||
     body?.success !== true ||
-    body?.data?.kind !== 'available'
+    body?.data?.kind !== 'available' ||
+    !accepted[command].includes(closedLiveOutcome(body?.data?.result?.outcome))
   )
-    throw new Error(
-      `Live command ${name} status ${settled.status()} outcome ${closedLiveOutcome(body?.data?.result?.outcome)}`,
+    throw new LiveCommandOutcomeError(
+      name,
+      settled.status(),
+      closedLiveOutcome(body?.data?.result?.outcome),
     );
   // An available transport envelope is not proof that a join was admitted.
   // Retain only its closed outcome for a later failure diagnostic.
   return closedLiveOutcome(body?.data?.result?.outcome);
+}
+
+class LiveCommandOutcomeError extends Error {
+  constructor(name, status, outcome) {
+    super(`Live command ${name} status ${status} outcome ${outcome}`);
+    this.outcome = outcome;
+  }
 }
 
 function closedLiveOutcome(value) {
@@ -1388,6 +1403,13 @@ function closedLiveOutcome(value) {
     'DEGRADED',
     'REFUSED',
     'UNAVAILABLE',
+    'CLEARED',
+    'PAUSED',
+    'INVALID',
+    'FORBIDDEN',
+    'IDENTITY_CHANGED',
+    'CAPACITY_EXCEEDED',
+    'RATE_LIMITED',
   ].includes(outcome)
     ? outcome
     : 'UNKNOWN';
@@ -1543,6 +1565,8 @@ export async function publishPeerPresence(
     try {
       return await work();
     } catch (error) {
+      if (name === 'join' && error instanceof LiveCommandOutcomeError)
+        joinOutcome = error.outcome;
       const diagnostic = closedLiveCommandDiagnostic(error);
       const state = await readLiveCommandFailureState(peer);
       const index = validDriverIteration(iteration) ? iteration : 'UNKNOWN';
@@ -1638,7 +1662,7 @@ export function closedLiveCommandDiagnostic(error) {
     )
   )
     return message;
-  return /^Live command (Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN)$/.test(
+  return /^Live command (Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)$/.test(
     message,
   )
     ? message
