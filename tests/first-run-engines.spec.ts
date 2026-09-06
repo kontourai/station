@@ -1102,9 +1102,14 @@ for (const viewport of [
     if (await page.getByTestId('engine-picker').isVisible()) {
       // #1582 A5: the role screen is a STEP of the chapter now, so it has no
       // dismiss of its own — the chapter header's "Close setup" is the run's
-      // exit and would DEFER it. "Decide later" is the step's own way past
-      // the question, and the one that goes on to the next screen.
-      await page.getByRole('button', { name: 'Decide later' }).click();
+      // exit and would DEFER it. Its own way past the question is "Decide
+      // later", or "Got it" on the panel this fixture actually renders: with
+      // no engine connected there is nothing to choose, so the step explains
+      // instead of asking, and acknowledging IS moving on.
+      const past = page.getByRole('button', {
+        name: /^(Decide later|Got it)$/,
+      });
+      await past.first().click();
     }
     const questions = page.getByTestId('first-run-about-you');
     await expect(questions).toBeVisible();
