@@ -337,8 +337,10 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
             occupied && occupied === foldedRegion && regions[occupied].visible,
           );
           // "… the dock", like the `main`-occupant row above, and for the
-          // same reason it is honest here: these rows exist on coarse devices
-          // ONLY, where the fold gives the whole shell one dock slot.
+          // same reason it is honest here: these rows exist only on a
+          // BOTTOM-ONLY device (`availablePlacements`: a coarse pointer or a
+          // viewport at or under 768px, so a narrow desktop window too), where
+          // the fold gives the whole shell one dock slot.
           //
           // #1386: the bare `Hide Activity` was the accessible name of the
           // SHELL HEADER's own visibility control at the same time — two

@@ -234,7 +234,9 @@ export function placeSurface(
   // placed it — then, when a SIDE is what it is leaving, the OTHER side, since
   // a surface pushed out of `left` landing in `bottom` reshapes the whole
   // workspace to move something sideways; then the historical order. The
-  // vacated region is not a candidate: the placer holds it.
+  // region the displaced surface just lost is not a candidate: the placer
+  // holds it now. (The region the PLACER vacated is a candidate — that is the
+  // swap above.)
   //
   // Every candidate must be a free dock region the surface DECLARES, so a
   // relocation can never put one somewhere it does not declare and `main` is

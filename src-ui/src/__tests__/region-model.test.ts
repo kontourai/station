@@ -657,8 +657,13 @@ describe('region model', () => {
   /**
    * The preference never outranks what the surface DECLARES: Home's only
    * region is `main`, so a Home that somehow held a dock region is unplaced
-   * rather than relocated, and the default-region step cannot smuggle it into
-   * `main` either.
+   * rather than relocated.
+   *
+   * The second case is the one that exercises the `isDockRegion` filter. With
+   * `main` occupied — as the default arrangement has it — the free-region
+   * predicate rejects `main` on its own and the guard is unobservable, so the
+   * fixture empties `main` first. Home's registry `defaultRegion` IS `main`,
+   * so without the filter the default-region step places it there.
    */
   test('a displaced surface is unplaced rather than relocated somewhere it does not declare', () => {
     const homeAtLeft = {
@@ -670,6 +675,16 @@ describe('region model', () => {
 
     expect(placed.left.occupant).toBe('chat');
     expect(occupiedDockRegion(placed, 'home')).toBeUndefined();
+
+    const homeAtLeftWithEmptyMain = {
+      ...homeAtLeft,
+      main: { visible: true, size: 0, occupant: null, maximized: false },
+    };
+    const intoEmptyMain = placeSurface(homeAtLeftWithEmptyMain, 'chat', 'left');
+
+    expect(intoEmptyMain.left.occupant).toBe('chat');
+    expect(intoEmptyMain.main.occupant).toBeNull();
+    expect(occupiedDockRegion(intoEmptyMain, 'home')).toBeUndefined();
     expect(placed.main.occupant).toBe('home');
   });
 

@@ -433,14 +433,19 @@ describe('RegionToolbarControls', () => {
     expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
     expect(document.activeElement).toBe(trigger);
 
-    // The ordinary click, in browser order. `onClose` runs on `pointerup` and
-    // again on `click`; the second call must be inert. Focus is returned by
-    // `useMenuFocus`'s cleanup, which is the only thing a close moves, so the
-    // spy's count IS the answer to "what does the second call do to focus".
+    // The ordinary click, in browser order. Note what this does NOT prove: a
+    // second `onClose`. `pointerup` unmounts the portal, so the click that
+    // follows dispatches on a detached node whose path reaches neither the
+    // React root nor the portal container — `dismiss` runs once, and the focus
+    // count would read 1 whether or not a second call were inert. The
+    // detachment is the real mechanism, so it is asserted directly below.
+    // What the rest pins is the outcome: closed, focus back on the trigger
+    // exactly once, no model write, and still reopenable.
     backdrop = openBackdrop();
     const returnedFocus = vi.spyOn(trigger, 'focus');
     fireEvent(backdrop, createEvent.pointerDown(backdrop));
     fireEvent.pointerUp(backdrop);
+    expect(backdrop.isConnected).toBe(false);
     fireEvent.click(backdrop);
     expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
     expect(returnedFocus).toHaveBeenCalledTimes(1);

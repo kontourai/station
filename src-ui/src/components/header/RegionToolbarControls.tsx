@@ -187,13 +187,18 @@ function ToolbarMenuSurface({
           event.preventDefault();
           event.stopPropagation();
         }}
-        // `click` alone was the whole dismissal, and a pointer sequence that
-        // never becomes a click left the menu open until the next input
-        // (#1386): a touch on the backdrop that turns into a scroll ends in
-        // `pointercancel`, and a press that is released somewhere the click
-        // target cannot be computed from ends in neither. Both ends of the
-        // sequence close, so the gesture that started on the backdrop
-        // dismisses however it finishes.
+        // `click` alone was the whole dismissal, and a touch on the backdrop
+        // that turns into a scroll never becomes one — it ends in
+        // `pointercancel`, and the menu stayed open until the next input
+        // (#1386). `pointercancel` is what fixes that case.
+        //
+        // `pointerup` is not a second fix for it: `click` targets the
+        // inclusive common ancestor of the press and the release, so a press
+        // AND release both on the backdrop always produced a click anyway.
+        // What it adds is dismissing at the release rather than at the click,
+        // which also covers a gesture that starts inside the menu and ends on
+        // the backdrop. A press released outside the window is still covered
+        // by neither; Escape and the next click remain the recovery there.
         //
         // `onClose` is idempotent by contract — the panel's owner sets its
         // `menuOpen` state to false, and focus is returned once by

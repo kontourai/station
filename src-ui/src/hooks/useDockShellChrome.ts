@@ -683,12 +683,17 @@ export function useDockShellChrome({
       (shellOccupant
         ? regionModel?.surfaces.get(shellOccupant)?.shortcut?.id
         : undefined) ?? 'dock.toggle',
-    // Falls back to Chat's title for the same mount `dock.toggle` above
-    // falls back for: the model-less ambient dock, which is Chat's and
-    // nothing else's.
+    // Three cases reach a fallback: the model-less ambient dock (Chat's and
+    // nothing else's, the same mount `dock.toggle` above falls back for), an
+    // empty region, and an occupant the registry does not hold. Only the
+    // first is Chat's. For the others the occupant's own id beats naming
+    // another surface — a non-Chat shell reading "Hide Chat" would be #1386's
+    // defect relocated. Unreachable today: `RegionShells` mounts a shell only
+    // for an occupant in `REGION_SURFACE_SHELLS`, whose keys
+    // `region-surface-boundary.test.ts` pins equal to the registry's.
     surfaceTitle:
       (shellOccupant
-        ? regionModel?.surfaces.get(shellOccupant)?.title
+        ? (regionModel?.surfaces.get(shellOccupant)?.title ?? shellOccupant)
         : undefined) ?? 'Chat',
     canMaximize: shellOccupant !== null,
     ownsMaximizeShortcut: registersDockShortcuts,
