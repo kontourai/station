@@ -154,11 +154,32 @@ const REGION_ARRANGEMENT_PERSIST_DELAY_MS = 150;
  *    an older device has. Only this path reads the legacy size keys; a record
  *    keeps its own sizes.
  *
+ * Maximize follows the same order (#928 slice iii): the URL's `maximize=true`
+ * is a Chat deep-link fact and maximizes Chat's region whichever path placed
+ * it; otherwise the record's own `maximized` stands; the legacy seed carries
+ * none of its own (navigation's flag IS the URL param).
+ *
  * A mount is not a write: nothing here reaches navigation or device settings.
  * A record and legacy keys that disagree are reconciled by the mirror on the
  * next user change (see `mirroredRegionsRef` and `seenNavigationRef`).
  */
 function initialRegionArrangement(
+  settings: DeviceSettings,
+  dockMode: DockRegionId,
+  isDockOpen: boolean,
+  isDockMaximized: boolean,
+): RegionArrangement {
+  const arrangement = initialRegionPlacement(settings, dockMode, isDockOpen);
+  if (!isDockMaximized) return arrangement;
+  const chatAt = chatRegion(arrangement);
+  // `updateRegion` holds the invariants: a hidden Chat stays restored even
+  // if a hand-typed URL says `maximize=true` without `dock=open`.
+  return chatAt
+    ? updateRegion(arrangement, chatAt, { maximized: true })
+    : arrangement;
+}
+
+function initialRegionPlacement(
   settings: DeviceSettings,
   dockMode: DockRegionId,
   isDockOpen: boolean,
@@ -212,7 +233,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   const bottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
   const { setDeviceSetting } = useDeviceSettingsActions();
   const [regions, setRegions] = useState<RegionArrangement>(() =>
-    initialRegionArrangement(settings, dockMode, isDockOpen),
+    initialRegionArrangement(settings, dockMode, isDockOpen, isDockMaximized),
   );
   const [lastShownRegion, setLastShownRegion] = useState<RegionId | null>(
     () => chatRegion(regions) ?? null,
@@ -247,7 +268,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // record whose Chat placement disagrees with the legacy keys would be
   // "corrected" at mount — and `setDockMode` would write the device setting
   // before the user touched anything.
-  const seenNavigationRef = useRef({ dockMode, isDockOpen });
+  const seenNavigationRef = useRef({ dockMode, isDockOpen, isDockMaximized });
 
   const setRegion = useCallback((id: RegionId, patch: Partial<RegionState>) => {
     const next = updateRegion(regionsRef.current, id, patch);
@@ -446,7 +467,28 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     const diff = dockMirrorDiff(previous, regions);
     const placement = diff.placement;
     if (placement) setDockMode(placement);
-    if (diff.visible !== undefined) setDockState(diff.visible, isDockMaximized);
+    // Chat's maximize is the region's (#928 slice iii); navigation's
+    // `maximize` param and `lastDockMaximized` are its mirror, written here
+    // through the one setter that owns both. A visibility change forwards the
+    // maximize the region is closing FROM or opening at (a close from Full
+    // keeps the memory, archive#945; an open is never maximized). A maximize
+    // change navigation already shows — the collapse-on-navigate seam clears
+    // the URL param first (`useDockShellChrome.restoreDockToDocked`) precisely
+    // so `lastDockMaximized` is left alone (archive#1298) — is not re-written,
+    // because `setDockState(open, false)` would overwrite that memory.
+    if (diff.visible !== undefined) {
+      const previousChat = chatRegion(previous);
+      setDockState(
+        diff.visible,
+        diff.maximized ??
+          (previousChat ? previous[previousChat].maximized : false),
+      );
+    } else if (
+      diff.maximized !== undefined &&
+      diff.maximized !== isDockMaximized
+    ) {
+      setDockState(true, diff.maximized);
+    }
     if (diff.size !== undefined)
       for (const id of DOCK_REGION_IDS) {
         const size = diff.size[id];
@@ -463,18 +505,35 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: device-setting notifications are mirror traffic, not inbound navigation.
   useEffect(() => {
     const seen = seenNavigationRef.current;
-    if (seen.dockMode === dockMode && seen.isDockOpen === isDockOpen) return;
-    seenNavigationRef.current = { dockMode, isDockOpen };
+    if (
+      seen.dockMode === dockMode &&
+      seen.isDockOpen === isDockOpen &&
+      seen.isDockMaximized === isDockMaximized
+    )
+      return;
+    seenNavigationRef.current = { dockMode, isDockOpen, isDockMaximized };
     const current = regionsRef.current;
     const placement = chatRegion(current);
-    if (placement === dockMode && current[placement].visible === isDockOpen)
-      return;
-    const next = syncRegionArrangementFromDock(
-      regionsRef.current,
-      settings,
-      isDockOpen,
-      dockMode,
-    );
+    let next = current;
+    if (
+      !(placement === dockMode && current[placement].visible === isDockOpen)
+    ) {
+      next = syncRegionArrangementFromDock(
+        current,
+        settings,
+        isDockOpen,
+        dockMode,
+      );
+    }
+    // Navigation's `maximize` is also inbound (#928 slice iii): a
+    // `?maximize=true` link, `focusSession`'s `setDockState(true,
+    // lastDockMaximized)` restore and the coding pane's mount all still speak
+    // it, and Chat's region is what the shell renders.
+    const chatAfterSync = chatRegion(next);
+    if (chatAfterSync && next[chatAfterSync].maximized !== isDockMaximized) {
+      next = updateRegion(next, chatAfterSync, { maximized: isDockMaximized });
+    }
+    if (next === current) return;
     regionsRef.current = next;
     const nextChatRegion = chatRegion(next);
     if (isDockOpen && nextChatRegion) setLastShownRegion(nextChatRegion);
@@ -487,7 +546,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     // the region Chat actually retained (#928).
     mirroredRegionsRef.current = next;
     setRegions(next);
-  }, [dockMode, isDockOpen]);
+  }, [dockMode, isDockOpen, isDockMaximized]);
 
   const intentKey = surfaceIntent
     ? `${surfaceIntent.surfaceId}|${surfaceIntent.sessionId ?? ''}|${surfaceIntent.focus ?? ''}`

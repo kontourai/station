@@ -120,8 +120,22 @@ interface ChatDockHeaderProps {
   surfaceShortcutId?: string;
   /** Registered title for a non-Chat shell's visibility action. */
   surfaceTitle?: string;
-  /** Whether this shell owns the Chat-only maximize state. */
+  /** Whether this shell offers the maximize control (any dock occupant, #928 slice iii). */
   canMaximize?: boolean;
+  /**
+   * The snap a collapsed shell reopens to. Chat leaves this unset and reads
+   * its persisted `station.chatDock.snap` (archive#795: a Full-height
+   * collapse reopens Full); every other shell passes its chrome's own
+   * in-memory snap, so "Show Activity" can never maximize Activity because
+   * Chat's persisted snap happened to be `full` (#1385 review).
+   */
+  restoreSnap?: DockSnap;
+  /**
+   * Whether ⌘M acts on this shell (`DockShellChrome.ownsMaximizeShortcut`).
+   * The hint is shown only where it is true — a chord that maximizes Chat's
+   * region must not be advertised on Activity's button.
+   */
+  showMaximizeShortcut?: boolean;
 }
 
 export function ChatDockHeader({
@@ -141,11 +155,16 @@ export function ChatDockHeader({
   surfaceShortcutId = 'dock.toggle',
   surfaceTitle,
   canMaximize = true,
+  showMaximizeShortcut = true,
+  restoreSnap,
 }: ChatDockHeaderProps) {
   const isDockOpen = regionVisible;
   const isDockMaximized = shellMaximized;
   const toggleDockShortcut = useShortcutDisplay(surfaceShortcutId);
-  const maximizeShortcut = useShortcutDisplay('dock.maximize');
+  const registeredMaximizeShortcut = useShortcutDisplay('dock.maximize');
+  const maximizeShortcut = showMaximizeShortcut
+    ? registeredMaximizeShortcut
+    : '';
   const visibilityLabel = surfaceTitle
     ? `${isDockOpen ? 'Hide' : 'Show'} ${surfaceTitle}`
     : `${isDockOpen ? 'Hide' : 'Show'} dock region`;
@@ -373,7 +392,11 @@ export function ChatDockHeader({
                 }
               >
                 <RegionExtentGlyph expanded={isDockMaximized} />
-                <span className="chat-dock__subtitle">{maximizeShortcut}</span>
+                {maximizeShortcut ? (
+                  <span className="chat-dock__subtitle">
+                    {maximizeShortcut}
+                  </span>
+                ) : null}
               </button>
             ) : null}
             <button
@@ -384,7 +407,7 @@ export function ChatDockHeader({
                 onDockSnap(
                   isDockOpen
                     ? 'collapsed'
-                    : canMaximize && readDockSnap() === 'full'
+                    : canMaximize && (restoreSnap ?? readDockSnap()) === 'full'
                       ? 'full'
                       : 'half',
                 );

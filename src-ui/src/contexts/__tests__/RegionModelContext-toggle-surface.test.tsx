@@ -93,6 +93,7 @@ describe('RegionModelProvider.toggleSurface', () => {
     expect(model?.regions.main).toEqual({
       visible: true,
       size: 0,
+      maximized: false,
       occupant: null,
     });
     // The fold follows the region that just became visible.

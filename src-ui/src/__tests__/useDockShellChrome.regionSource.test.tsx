@@ -27,17 +27,21 @@ const harness = vi.hoisted(() => ({
   isDockOpen: true,
   dockMode: 'bottom' as 'left' | 'bottom' | 'right',
   setDeviceSetting: vi.fn(),
+  setDockState: vi.fn(),
+  collapseMaximizedDock: vi.fn(),
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     isDockOpen: harness.isDockOpen,
+    // Navigation's flag is pinned FALSE for the whole file: any shell that
+    // renders maximized below did so from its region, never from here.
     isDockMaximized: false,
     dockMode: harness.dockMode,
     pathname: '/',
-    setDockState: vi.fn(),
+    setDockState: harness.setDockState,
     setDockMode: vi.fn(),
-    collapseMaximizedDock: vi.fn(),
+    collapseMaximizedDock: harness.collapseMaximizedDock,
   }),
   NavigationProvider: ({ children }: { children: ReactNode }) => children,
 }));
@@ -63,6 +67,69 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     harness.settings.chatDockWidth = 400;
     harness.settings.regionArrangement = undefined;
     harness.setDeviceSetting.mockReset();
+    harness.setDockState.mockReset();
+    harness.collapseMaximizedDock.mockReset();
+  });
+
+  // #928 slice iii / #1385: maximize is the region's attribute.
+  describe('maximize is read from and written to the shell’s region', () => {
+    function mount(regionId?: 'left' | 'right' | 'bottom') {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>
+          <RegionModelProvider>{children}</RegionModelProvider>
+        </QueryClientProvider>
+      );
+      return renderHook(
+        () => ({
+          chrome: useDockShellChrome({
+            publishesDockSlotClearance: false,
+            registersDockShortcuts: false,
+            regionId,
+          }),
+          model: useRegionModel(),
+        }),
+        { wrapper },
+      );
+    }
+
+    test('a Chat shell renders its region’s maximize while navigation’s flag says false', () => {
+      const { result } = mount('bottom');
+      expect(result.current.chrome.isDockMaximized).toBe(false);
+
+      act(() => result.current.model.setRegion('bottom', { maximized: true }));
+
+      // The mock's `isDockMaximized` is still false; only the region changed.
+      expect(result.current.model.regions.bottom.maximized).toBe(true);
+      expect(result.current.chrome.isDockMaximized).toBe(true);
+    });
+
+    test('an Activity shell maximizes its own region and never reaches navigation’s setter', () => {
+      const { result } = mount('right');
+      act(() => result.current.model.placeSurface('activity', 'right'));
+      expect(result.current.chrome.canMaximize).toBe(true);
+
+      act(() => result.current.chrome.applyDockSnap('full'));
+
+      expect(result.current.model.regions.right.maximized).toBe(true);
+      expect(result.current.chrome.isDockMaximized).toBe(true);
+      expect(result.current.model.regions.bottom.maximized).toBe(false);
+      // Chat's mirror only: no `maximize` param, no `lastDockMaximized`.
+      expect(harness.setDockState).not.toHaveBeenCalled();
+
+      act(() => result.current.chrome.restoreDockToDocked());
+      expect(result.current.model.regions.right.maximized).toBe(false);
+      expect(result.current.chrome.isDockMaximized).toBe(false);
+      // `collapseMaximizedDock` is Chat's memory-preserving seam.
+      expect(harness.collapseMaximizedDock).not.toHaveBeenCalled();
+    });
+
+    test('a shell that does not register dock.maximize does not own the chord', () => {
+      const { result } = mount('right');
+      expect(result.current.chrome.ownsMaximizeShortcut).toBe(false);
+    });
   });
 
   // #928 D, closes #1380: a persisted region size renders. The record says
@@ -433,7 +500,8 @@ describe('useDockShellChrome reads its open state from the region model', () => 
       { wrapper },
     );
     act(() => result.current.model.placeSurface('activity', 'right'));
-    expect(result.current.chrome.canMaximize).toBe(false);
+    // #928 slice iii: any dock occupant may maximize its own region.
+    expect(result.current.chrome.canMaximize).toBe(true);
 
     act(() => result.current.chrome.applyDockSnap('collapsed'));
     expect(result.current.chrome.dockSnap).toBe('collapsed');
@@ -473,7 +541,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
         }),
       { wrapper },
     );
-    expect(result.current.canMaximize).toBe(false);
+    expect(result.current.canMaximize).toBe(true);
     expect(result.current.dockSnap).toBe('half');
     expect(localStorage.getItem('station.chatDock.snap')).toBe('collapsed');
   });

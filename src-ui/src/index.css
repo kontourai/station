@@ -7536,15 +7536,26 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     grid-column: 1 / -1;
   }
 
+  /* A maximized region owns the dock area (#928 slice iii, #1385). Maximize
+     is one region's attribute and at most one region holds it
+     (region-model.ts `updateRegion`); while one shell is maximized every
+     other shell is hidden here, by CSS and with no state, so the
+     single-column and single-row collapses below never place a second shell
+     in a collapsed track or an implicit row. Pinned by
+     `region-maximize-owns-dock-area.test.ts`. */
+  .app__main:has(> .chat-dock.is-maximized) > .chat-dock:not(.is-maximized) {
+    display: none;
+  }
+
   /* chat-dock-maximize-readiness: a maximized right dock must become the sole
      full available main surface. Collapsing the grid to a single column and
      hiding .main-content prevents the underlying workspace (including the
      coding-layout inspector side panel) from consuming a grid column or
      painting through behind the spanning dock. Mirrors the existing
-     :has(> .chat-dock.is-collapsed) pattern above.
-     Single-occupant only: with a second region shell present this collapse
-     leaves that shell's column outside the explicit grid (archive#1055 on
-     the column axis). Per-region maximize is the #928 follow-up slice. */
+     :has(> .chat-dock.is-collapsed) pattern above. A second shell is hidden
+     while one is maximized (the rule above), so the collapse never leaves
+     another shell's column outside the explicit grid (archive#1055 on the
+     column axis). */
   .app__main:has(
     > :is([data-region="left"], [data-region="right"]).is-maximized
   ) {
@@ -7727,8 +7738,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      `var(--dock-slot-size)` third row and spanning across it left percentage
      height resolution anchored to the content row in Chromium, producing a
      dead band roughly the size of the former dock at the viewport bottom.
-     Single-occupant only, like the side-maximize collapse above: a side
-     shell would share row 2 with the maximized bottom shell. */
+     A side shell is hidden while the bottom shell is maximized (the
+     maximized-region rule above), so nothing shares row 2 with it. */
   .app__main:has(> [data-region="bottom"].is-maximized) {
     grid-template-rows: auto minmax(0, 1fr);
   }
