@@ -54,9 +54,18 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
-      # Playwright's documented remedy for Chromium crashing on the 64MB
-      # /dev/shm a container job gets by default.
-      options: --ipc=host
+      # --ipc=host is Playwright's documented remedy for Chromium crashing on
+      # the 64MB /dev/shm a container job gets by default.
+      #
+      # --init runs tini as PID 1 so orphaned processes are REAPED. Without it,
+      # `run-e2e-suite.mjs`'s exact process-group ownership cannot settle:
+      # `./station start` detaches a daemon, the harness signals the group, and
+      # a killed-but-unreaped process still answers a signal-0 liveness check,
+      # so settlement never completes and the suite aborts with "exact process
+      # group did not settle" (measured in run 34065115674, after Station had
+      # built and booted successfully). A container job's PID 1 is GitHub's
+      # keepalive, which does not reap; tini does.
+      options: --ipc=host --init
     timeout-minutes: 60
     defaults:
       run:
