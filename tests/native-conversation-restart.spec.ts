@@ -155,7 +155,7 @@ for (const runtimeFramework of ['voltagent', 'strands'] as const) {
       await startStation(live, true, lifecycle);
       // Persist the boot selection through the real config owner. A feature
       // flag alone is lost from appConfig when Agent setup reloads from disk.
-      await api(live, '/api/config/app', 'PUT', { runtime: runtimeFramework });
+      await api(live, '/config/app', 'PUT', { runtime: runtimeFramework });
       const fixture = await startOllamaFixture(
         MODEL,
         (body) => {
