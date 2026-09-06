@@ -304,6 +304,21 @@ export class SkillService {
    * derivation reads a `skill.json` per skill.
    */
   private legacyIdIndex = new Map<string, string>();
+  /**
+   * The scope the LAST discovery actually ran with.
+   *
+   * NOT a claim about which project is "active": nothing in the runtime knows
+   * that. The only slug it can offer is `getActiveRuntimeProjectSlug`
+   * (`listProjects()[0]?.slug` — the first project, not a chosen one), which is
+   * precisely the input #1619 refused to thread into writes. This is a memory
+   * of a real prior event: the roots the registry currently holds were scanned
+   * with these arguments, so a write that re-discovers afterwards can restore
+   * the same view instead of silently narrowing it.
+   */
+  private lastDiscoveryScope?: {
+    projectHomeDir: string;
+    projectSlug?: string;
+  };
 
   constructor(
     private configLoader: ConfigLoader,
@@ -345,6 +360,9 @@ export class SkillService {
     projectSlug?: string,
   ): Promise<void> {
     const start = Date.now();
+    // Recorded BEFORE the scan, because it describes the arguments this
+    // discovery runs with rather than its outcome.
+    this.lastDiscoveryScope = { projectHomeDir, projectSlug };
     this.registry.clear();
 
     // Canonical package sources scan FIRST so locally installed or
@@ -1264,7 +1282,7 @@ export class SkillService {
       }
       throw error;
     }
-    await this.discoverSkills(projectHomeDir, projectSlug);
+    await this.rediscoverAfterWrite(projectHomeDir, projectSlug);
     return { success: true, message: `Created ${input.name}` };
   }
 
@@ -1530,7 +1548,7 @@ export class SkillService {
           message: 'Interrupted package changed during repair',
         };
       }
-      await this.discoverSkills(projectHomeDir, projectSlug);
+      await this.rediscoverAfterWrite(projectHomeDir, projectSlug);
       return {
         success: true,
         repaired,
@@ -1790,7 +1808,7 @@ export class SkillService {
       legacyIds: next.legacyIds,
       origin: next.origin,
     });
-    await this.discoverSkills(projectHomeDir, projectSlug);
+    await this.rediscoverAfterWrite(projectHomeDir, projectSlug);
     return { success: true, message: `Updated ${next.name}` };
   }
 
@@ -1811,7 +1829,8 @@ export class SkillService {
       projectSlug,
       configLoader: this.configLoader,
       providers: getSkillRegistryProviders(),
-      rediscover: async () => this.discoverSkills(projectHomeDir, projectSlug),
+      rediscover: async () =>
+        this.rediscoverAfterWrite(projectHomeDir, projectSlug),
     });
   }
 
@@ -1838,7 +1857,8 @@ export class SkillService {
       name,
       projectHomeDir,
       projectSlug,
-      rediscover: async () => this.discoverSkills(projectHomeDir, projectSlug),
+      rediscover: async () =>
+        this.rediscoverAfterWrite(projectHomeDir, projectSlug),
     });
   }
 
@@ -1916,6 +1936,34 @@ export class SkillService {
         location.startsWith(source.root),
       ) ?? null
     );
+  }
+
+  /**
+   * Re-discover after a write, in the scope the registry was BUILT with.
+   *
+   * `discoverSkills` clears the registry and re-scans exactly the roots its
+   * arguments name, so a write that re-discovered with the caller's slug —
+   * `undefined` from every route (`routes/agents/skills.ts`) — dropped the
+   * project root for everyone. After any skill PUT, workspace skills vanished
+   * from the listing until something else re-discovered with a slug, and the
+   * unscoped-update refusal became non-deterministic: the second PUT on the
+   * same package answered "not found" because the registry no longer held it
+   * (#1619).
+   *
+   * A caller that names a scope still wins — it knows something this does not.
+   * The remembered scope only applies to the same home it was recorded for.
+   */
+  private async rediscoverAfterWrite(
+    projectHomeDir: string,
+    projectSlug?: string,
+  ): Promise<void> {
+    const remembered = this.lastDiscoveryScope;
+    const slug =
+      projectSlug ??
+      (remembered?.projectHomeDir === projectHomeDir
+        ? remembered.projectSlug
+        : undefined);
+    await this.discoverSkills(projectHomeDir, slug);
   }
 
   /** THE one place a discovered skill's install record is located: beside its body. */

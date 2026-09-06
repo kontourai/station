@@ -1176,6 +1176,66 @@ describe('SkillService', () => {
     expect(existsSync(join(testDir, 'skills', 'scoped'))).toBe(false);
   });
 
+  // #1619. `discoverSkills` clears the registry and re-scans exactly the roots
+  // its arguments name. Every write re-discovered with the CALLER's slug, which
+  // is `undefined` from every route, so any PUT dropped the project root and
+  // workspace skills disappeared from the listing until something else
+  // re-discovered with a slug.
+  test('an unscoped write keeps the roots the registry was built with', async () => {
+    seedProjectSkill('workspace-kept');
+    await service.createLocalSkill(
+      { name: 'machine-one', description: 'Mine', body: 'Body' },
+      testDir,
+    );
+    await service.discoverSkills(testDir, 'demo');
+    expect(
+      service
+        .listSkills()
+        .map((skill) => skill.name)
+        .sort(),
+    ).toEqual(['machine-one', 'workspace-kept']);
+
+    // The route's shape: a home, no slug.
+    const result = await service.updateLocalSkill(
+      'machine-one',
+      { description: 'Edited' },
+      testDir,
+    );
+    expect(result.success).toBe(true);
+
+    expect(
+      service
+        .listSkills()
+        .map((skill) => skill.name)
+        .sort(),
+      'the workspace package fell out of the listing after an unrelated write',
+    ).toEqual(['machine-one', 'workspace-kept']);
+  });
+
+  // The same defect wearing its other face: with the project root dropped, the
+  // refusal below stopped being reachable at all — a SECOND unscoped PUT on the
+  // same workspace package answered "not found" instead, because the registry
+  // no longer held it.
+  test('the unscoped-update refusal is the same on the second attempt', async () => {
+    seedProjectSkill('workspace-twice');
+    await service.discoverSkills(testDir, 'demo');
+
+    const first = await service.updateLocalSkill(
+      'workspace-twice',
+      { description: 'Edited' },
+      testDir,
+    );
+    const second = await service.updateLocalSkill(
+      'workspace-twice',
+      { description: 'Edited' },
+      testDir,
+    );
+
+    expect(first.success).toBe(false);
+    expect(second.success).toBe(false);
+    expect(second.message).toBe(first.message);
+  });
+
   // Review H1. The read resolves a workspace package (#1602); this write still
   // derives its directory from the name and the caller's slug, and the route
   // passes none. Unguarded, a PUT on a workspace skill read the workspace
