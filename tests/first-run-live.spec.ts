@@ -290,17 +290,34 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await page.goto(
       `${baseURL}/projects/mobile-dogfood/layouts/coding?dock=open`,
     );
-    // archive#3309 pulled New chat back out of the "Chat actions" overflow to a
-    // pinned far-right header icon. Assert the affordance, then open the
-    // selection surface via the deterministic event — clicking the icon takes
-    // the one-click direct path whenever exactly one runtime is chat-ready,
-    // and this live spec must land on the picker either way (same pattern as
-    // mobile-chat-composer.spec.ts's openComposer).
-    await expect(
-      page.getByRole('button', { name: 'New chat', exact: true }),
-    ).toBeVisible({
-      timeout: 20_000,
+    // archive#3309 pulled New chat out of the "Chat actions" overflow to a
+    // pinned far-right header icon; #1552's toolbar declutter folded it back
+    // in, so on a phone the sheet is where the affordance now is (#1606).
+    // Assert it there, then open the selection surface via the deterministic
+    // event — clicking the item takes the one-click direct path whenever
+    // exactly one runtime is chat-ready, which is this fixture once the Ollama
+    // connection above is healthy, and this live spec must land on the picker
+    // to choose `station` by id (same pattern as
+    // new-chat-mobile-context-sheet.spec.ts's openNewChat).
+    const chatActions = page.getByRole('button', {
+      name: 'Chat actions',
+      exact: true,
     });
+    await expect(chatActions).toBeVisible({ timeout: 20_000 });
+    await chatActions.click();
+    const chatActionsMenu = page.getByRole('menu', { name: 'Chat actions' });
+    // The sheet is a lazily imported chunk (`ChatDockMobileOverflowSheet`,
+    // kept out of the entry bundle), so its FIRST open is a module fetch that
+    // renders nothing while it is in flight. Playwright's 5s expect default is
+    // not a budget for that on a loaded host — observed pending at 5s with the
+    // trigger already `aria-expanded`.
+    await expect(chatActionsMenu).toBeVisible({ timeout: 15_000 });
+    await expect(
+      chatActionsMenu.getByRole('menuitem', { name: 'New chat', exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    // The picker must open over a closed sheet, not under its overlay.
+    await expect(chatActionsMenu).toHaveCount(0);
     await page.evaluate(() =>
       window.dispatchEvent(new Event('station:open-new-chat')),
     );

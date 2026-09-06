@@ -1218,7 +1218,53 @@ for (const viewport of [
   });
 }
 
-async function setupReturnFixture(page: Page) {
+/**
+ * The chrome each device class actually offers for New Chat, named by the
+ * caller rather than sniffed.
+ *
+ * A wide chrome keeps `ChatDockHeader`'s own control — "New chat", or "Start a
+ * chat" while the dock holds no session. On a phone that control is gone:
+ * archive#3309's pinned far-right icon was folded back into the mobile header's
+ * `⋯` "Chat actions" sheet by #1552's toolbar declutter, so the sheet's menu
+ * item is the phone's route (the same one `mobile-chat-composer.spec.ts` and
+ * `new-chat-mobile-context-sheet.spec.ts` drive).
+ */
+type NewChatChrome = 'wide' | 'phone';
+
+async function openNewChatFromChrome(page: Page, chrome: NewChatChrome) {
+  const wideControl = page.getByRole('button', {
+    name: /^(New chat|Start a chat)$/,
+  });
+  if (chrome === 'wide') {
+    await wideControl.click();
+    return;
+  }
+  // Absence first: it is what makes this a drive of the phone's route rather
+  // than of a wide control that happens to have survived at 390px — the exact
+  // claim #1552 makes, and the exact claim that broke this fixture when
+  // archive#3309's icon went away (#1606).
+  await expect(
+    wideControl,
+    'the phone chrome must not render a top-level New chat control',
+  ).toHaveCount(0);
+  await page
+    .getByRole('button', { name: 'Chat actions', exact: true })
+    .click();
+  // The sheet is a lazily imported chunk (`ChatDockMobileOverflowSheet`, kept
+  // out of the entry bundle), so its first open is a module fetch that renders
+  // nothing while it is in flight — more than Playwright's 5s expect default
+  // allows on a loaded host.
+  const sheet = page.getByRole('menu', { name: 'Chat actions' });
+  await expect(sheet).toBeVisible({ timeout: 15_000 });
+  // The fixture's only agent is unavailable until `repair()`, so New chat has
+  // no single chat-ready agent to open directly and lands on the picker —
+  // an ordinary click, no event injection.
+  await sheet
+    .getByRole('menuitem', { name: 'New chat', exact: true })
+    .click();
+}
+
+async function setupReturnFixture(page: Page, chrome: NewChatChrome = 'wide') {
   let ready = false;
   let deletedProject = false;
   const projects = [
@@ -1304,7 +1350,7 @@ async function setupReturnFixture(page: Page) {
     },
   );
   await page.goto('/');
-  await page.getByRole('button', { name: /^(New chat|Start a chat)$/ }).click();
+  await openNewChatFromChrome(page, chrome);
   const modal = page.getByRole('dialog', { name: 'New Chat', exact: true });
   await expect(modal).toBeVisible();
   await modal.locator('.new-chat-modal__context-button').click();
@@ -1324,14 +1370,17 @@ async function setupReturnFixture(page: Page) {
 }
 
 for (const viewport of [
-  { label: 'desktop', width: 1280, height: 900 },
-  { label: 'mobile', width: 390, height: 844 },
+  { label: 'desktop', width: 1280, height: 900, chrome: 'wide' as const },
+  { label: 'mobile', width: 390, height: 844, chrome: 'phone' as const },
 ]) {
   test(`New Chat setup return preserves choices on ${viewport.label}`, async ({
     page,
   }, testInfo) => {
-    await page.setViewportSize(viewport);
-    const fixture = await setupReturnFixture(page);
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
+    const fixture = await setupReturnFixture(page, viewport.chrome);
     await fixture.modal
       .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
       .click();
