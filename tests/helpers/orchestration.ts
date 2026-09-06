@@ -696,7 +696,14 @@ export async function emitMockOrchestrationEvent(
     payload.event !== null
   ) {
     const events = emittedOrchestrationEvents.get(page) ?? [];
-    events.push(payload.event as Record<string, unknown>);
+    const event = payload.event as Record<string, unknown>;
+    // EventStore assigns identity before both live delivery and replay.
+    // Negative fixtures can still explicitly supply a malformed identity.
+    const identified = Object.hasOwn(event, 'eventId')
+      ? event
+      : { ...event, eventId: `e2e-live-${events.length + 1}` };
+    payload = { ...payload, event: identified };
+    events.push(identified);
     emittedOrchestrationEvents.set(page, events);
   }
   await page.evaluate(

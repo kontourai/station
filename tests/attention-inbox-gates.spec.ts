@@ -105,7 +105,9 @@ test.describe('Attention inbox — gate items (station#612)', () => {
     // Copy separation: the three gate kinds render distinct badge copy, and
     // none of it uses "approval" — a gate verdict evaluates evidence, it
     // does not allow an action (root CONTEXT.md ~624).
-    await expect(page.getByText('Route back', { exact: true })).toBeVisible();
+    await expect(
+      page.locator('.attention-item__type').filter({ hasText: /^Route back$/ }),
+    ).toBeVisible();
     await expect(page.getByText('Gate blocked', { exact: true })).toBeVisible();
     await expect(
       page.getByText('Exception pending', { exact: true }),

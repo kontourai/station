@@ -140,8 +140,8 @@ export function KnowledgeConnectionView({
     useSectionNavigation(knowledgeSections, 'vector-database');
   const dirty =
     dataDir !== null && dataDir !== (vectorDb?.config.dataDir as string);
-  const { guard, DiscardModal } = useUnsavedGuard(dirty);
-  useCloseShortcut(() => guard(() => navigate('/connections')), !embedded);
+  const { DiscardModal } = useUnsavedGuard(dirty);
+  useCloseShortcut(() => navigate('/connections'), !embedded);
   /**
    * Embedded in a Settings section this view is not a page, so it publishes
    * nothing — the host page keeps its own title. Standalone, the frame
@@ -166,12 +166,10 @@ export function KnowledgeConnectionView({
             type="button"
             className="button button--link"
             onClick={() =>
-              guard(() =>
-                navigate('/settings', {
-                  view: 'knowledge',
-                  highlight: 'personal-knowledge-store',
-                }),
-              )
+              navigate('/settings', {
+                view: 'knowledge',
+                highlight: 'personal-knowledge-store',
+              })
             }
           >
             Open Settings → My knowledge store
@@ -347,9 +345,7 @@ export function KnowledgeConnectionView({
                 <button
                   type="button"
                   className="knowledge-view__link"
-                  onClick={() =>
-                    guard(() => navigate('/settings?view=knowledge'))
-                  }
+                  onClick={() => navigate('/settings?view=knowledge')}
                 >
                   Add a knowledge source →
                 </button>
@@ -386,13 +382,11 @@ export function KnowledgeConnectionView({
                     type="button"
                     className="knowledge-view__link"
                     onClick={() =>
-                      guard(() =>
-                        navigate(
-                          getPathForView({
-                            type: 'connections-model-edit',
-                            id: embeddingProvider.id,
-                          })!,
-                        ),
+                      navigate(
+                        getPathForView({
+                          type: 'connections-model-edit',
+                          id: embeddingProvider.id,
+                        })!,
                       )
                     }
                   >
@@ -414,9 +408,7 @@ export function KnowledgeConnectionView({
                   type="button"
                   className="knowledge-view__link"
                   onClick={() =>
-                    guard(() =>
-                      navigate(getPathForView({ type: 'connections-models' })!),
-                    )
+                    navigate(getPathForView({ type: 'connections-models' })!)
                   }
                 >
                   Add one in Models →

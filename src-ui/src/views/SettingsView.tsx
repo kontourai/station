@@ -160,7 +160,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const configJson = JSON.stringify(config);
   const baselineJson = JSON.stringify(savedConfig);
   const hasChanges = configJson !== baselineJson;
-  const { guard, DiscardModal } = useUnsavedGuard(hasChanges);
+  const { DiscardModal } = useUnsavedGuard(hasChanges);
   const highlightNotice = highlightAnnouncement ? (
     <div
       className="settings__highlight-notice"
@@ -378,7 +378,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     setSavedConfig(merged);
   }, [baselineJson, configData, configJson, configUpdatedAt, savedConfig]);
 
-  useCloseShortcut(() => guard(onBack));
+  useCloseShortcut(onBack);
 
   const {
     errors: validationErrors,
@@ -724,7 +724,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               onRegionChange={(value) =>
                 setConfig({ ...config, region: value })
               }
-              guard={guard}
             />
           )}
         </section>
@@ -853,7 +852,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           )}
 
           {sectionVisible('notifications') && (
-            <NotificationsSection apiBase={currentApiBase} guard={guard} />
+            <NotificationsSection apiBase={currentApiBase} />
           )}
 
           {sectionVisible('voice') && <VoiceFeaturesSection />}
@@ -896,7 +895,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               Saved to this Station — available from every device that connects
               to it.
             </p>
-            <KnowledgeStoreSection guard={guard} />
+            <KnowledgeStoreSection />
           </section>
         )}
       </div>

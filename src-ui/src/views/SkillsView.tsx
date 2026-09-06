@@ -377,10 +377,6 @@ export function SkillsView({
     });
   }
 
-  function navigateWithGuard(path: string) {
-    guard(() => navigate(path));
-  }
-
   const editableLocal =
     isCreating || (selected?.installed && selected.source === 'local');
   // Same derivation as the list chip. It used to read `source === 'local'` and
@@ -457,7 +453,7 @@ export function SkillsView({
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => navigateWithGuard('/registry/skills')}
+            onClick={() => navigate('/registry/skills')}
           >
             Browse Registry Skills
           </Button>

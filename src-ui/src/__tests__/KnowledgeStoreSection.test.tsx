@@ -4,6 +4,7 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { navigationStore } from '../contexts/navigation-store';
 
 let rootsQueryResult: {
   data?: Array<{
@@ -37,7 +38,10 @@ vi.mock('@kontourai/station-connect', () => ({
   }),
 }));
 
-const navigateMock = vi.fn();
+const navigateMock = vi.fn(
+  (...args: Parameters<typeof navigationStore.navigate>) =>
+    navigationStore.navigate(...args),
+);
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: navigateMock }),
 }));
@@ -84,20 +88,12 @@ vi.mock('../components/PathAutocomplete', () => ({
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { KnowledgeStoreSection } from '../views/settings/KnowledgeStoreSection';
 
-// Pass-through by default (the "not dirty" case) — the guard-intercept
-// coverage below renders `GuardedHarness` instead of a bare pass-through.
-const passthroughGuard = (callback: () => void) => callback();
-
-/**
- * `SettingsView.tsx`'s real shape: `useUnsavedGuard(dirty)`'s `guard` passed
- * straight into `KnowledgeStoreSection` — archive#settings-revamp
- * 1.
- */
+/** The parent registers its dirty state with the real navigation store. */
 function GuardedHarness({ dirty }: { dirty: boolean }) {
-  const { guard, DiscardModal } = useUnsavedGuard(dirty);
+  const { DiscardModal } = useUnsavedGuard(dirty);
   return (
     <>
-      <KnowledgeStoreSection guard={guard} />
+      <KnowledgeStoreSection />
       <DiscardModal />
     </>
   );
@@ -126,9 +122,7 @@ describe('KnowledgeStoreSection', () => {
       isError: false,
       refetch: vi.fn(),
     };
-    const { container } = render(
-      <KnowledgeStoreSection guard={passthroughGuard} />,
-    );
+    const { container } = render(<KnowledgeStoreSection />);
     expect(
       container.querySelector('.knowledge-store-section__skeleton'),
     ).toBeTruthy();
@@ -143,7 +137,7 @@ describe('KnowledgeStoreSection', () => {
       error: new Error('network down'),
       refetch,
     };
-    render(<KnowledgeStoreSection guard={passthroughGuard} />);
+    render(<KnowledgeStoreSection />);
 
     expect(screen.getByText("Couldn't load your knowledge store")).toBeTruthy();
     expect(screen.getByText('network down')).toBeTruthy();
@@ -152,7 +146,7 @@ describe('KnowledgeStoreSection', () => {
   });
 
   test('empty state: creates the default personal knowledge store on click', () => {
-    render(<KnowledgeStoreSection guard={passthroughGuard} />);
+    render(<KnowledgeStoreSection />);
 
     expect(screen.getByText('Personal knowledge is off')).toBeTruthy();
     expect(screen.getByText(/^Optional\./)).toBeTruthy();
@@ -184,7 +178,7 @@ describe('KnowledgeStoreSection', () => {
       isError: false,
       refetch: vi.fn(),
     };
-    render(<KnowledgeStoreSection guard={passthroughGuard} />);
+    render(<KnowledgeStoreSection />);
 
     expect(
       screen.getByText('/home/user/.station/knowledge/personal'),
@@ -200,7 +194,7 @@ describe('KnowledgeStoreSection', () => {
       reason: 'storeRoot is an empty directory with no .obsidian/ vault marker',
     });
 
-    render(<KnowledgeStoreSection guard={passthroughGuard} />);
+    render(<KnowledgeStoreSection />);
 
     fireEvent.click(
       screen.getByRole('button', {
@@ -236,7 +230,7 @@ describe('KnowledgeStoreSection', () => {
   test('Obsidian connect flow: enables Connect only after a successful validation of the current path', async () => {
     validateRootMutateAsync.mockResolvedValue({ ok: true });
 
-    render(<KnowledgeStoreSection guard={passthroughGuard} />);
+    render(<KnowledgeStoreSection />);
 
     fireEvent.click(
       screen.getByRole('button', {
@@ -266,6 +260,7 @@ describe('KnowledgeStoreSection', () => {
   // archive#settings-revamp 1.
   describe('unsaved-guard wiring for the "Open Knowledge infrastructure" cross-link', () => {
     test('navigates to /connections/knowledge when the page is not dirty', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty={false} />);
 
@@ -274,10 +269,12 @@ describe('KnowledgeStoreSection', () => {
       );
 
       expect(navigateMock).toHaveBeenCalledWith('/connections/knowledge');
+      expect(window.location.pathname).toBe('/connections/knowledge');
       expect(screen.queryByText('Unsaved Changes')).toBeNull();
     });
 
     test('a dirty page intercepts navigation with the discard-confirmation modal instead of silently navigating away', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty />);
 
@@ -285,21 +282,23 @@ describe('KnowledgeStoreSection', () => {
         screen.getByRole('button', { name: 'Open Knowledge infrastructure' }),
       );
 
-      expect(navigateMock).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/guard-origin');
       expect(screen.getByText('Unsaved Changes')).toBeTruthy();
     });
 
     test('confirming discard from a dirty page completes the deferred navigation', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty />);
 
       fireEvent.click(
         screen.getByRole('button', { name: 'Open Knowledge infrastructure' }),
       );
-      expect(navigateMock).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/guard-origin');
 
       fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
       expect(navigateMock).toHaveBeenCalledWith('/connections/knowledge');
+      expect(window.location.pathname).toBe('/connections/knowledge');
     });
   });
 });

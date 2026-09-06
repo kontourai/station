@@ -202,7 +202,7 @@ test.describe('ACP + Project Context', () => {
   }) => {
     await seedRoutes(page);
     await page.goto('/agents');
-    const kiroRow = page.getByRole('button', { name: /Kiro/ });
+    const kiroRow = page.getByRole('button', { name: /^Kiro Ready$/ });
     await expect(kiroRow).toBeVisible({ timeout: 5000 });
     // LOW-2: assert the engine chip itself (not just that the row's
     // accessible name happens to contain the connection's own name) —
@@ -216,7 +216,7 @@ test.describe('ACP + Project Context', () => {
   }) => {
     await seedRoutes(page);
     await page.goto('/agents');
-    await page.getByRole('button', { name: /Kiro/ }).click();
+    await page.getByRole('button', { name: /^Kiro Ready$/ }).click();
     await expect(
       page.getByText(/managed by its engine connection/i),
     ).toBeVisible();

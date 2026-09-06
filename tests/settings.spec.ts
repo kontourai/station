@@ -207,7 +207,7 @@ test.describe('Settings', () => {
     await expect(page).toHaveURL('/settings?keep=1');
     await expect(
       page.getByRole('link', { name: 'Overview', exact: true }),
-    ).toHaveAttribute('aria-current', 'page');
+    ).toHaveAttribute('aria-current', 'location');
     await expect(
       page.getByRole('heading', { name: 'System', exact: true }),
     ).toBeVisible();
@@ -377,16 +377,6 @@ test.describe('Settings', () => {
     ).not.toBeVisible();
   });
 
-  test('routes provider, service, and computer setup to Connections', async ({
-    page,
-  }) => {
-    await expect(
-      page.getByText('Providers, developer services, and computers'),
-    ).toBeVisible();
-    await page.getByRole('button', { name: 'Open Connections' }).click();
-    await expect(page).toHaveURL(/\/connections$/);
-  });
-
   test('Agent defaults shows the generic region field behind the disclosure', async ({
     page,
   }) => {
@@ -553,24 +543,11 @@ test.describe('Settings', () => {
       page.getByText('Unsaved changes', { exact: true }),
     ).toBeVisible();
 
-    // useCloseShortcut listens for keydown on `window`; a genuine
-    // `keyboard.press('Control+x')`/`Meta+x` risks being swallowed by the
-    // browser's native cut binding before our handler sees it, so dispatch
-    // the same keydown directly (mirrors tests/command-palette.spec.ts's
-    // ⌘K dispatch for the same reason).
     async function pressCloseShortcut() {
-      await page.evaluate(() => {
-        const isMac = navigator.platform.toUpperCase().includes('MAC');
-        window.dispatchEvent(
-          new KeyboardEvent('keydown', {
-            key: 'x',
-            metaKey: isMac,
-            ctrlKey: !isMac,
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
-      });
+      await page
+        .getByRole('heading', { name: 'Settings', exact: true })
+        .click();
+      await page.keyboard.press('ControlOrMeta+x');
     }
 
     await pressCloseShortcut();

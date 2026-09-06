@@ -386,6 +386,25 @@ async function seedStationAccess(page: Page) {
         }),
       );
     if (path === '/api/plugins') return route.fulfill(json({ plugins: [] }));
+    if (route.request().method() === 'GET' && path === '/api/projects') {
+      await route.fulfill(
+        json({
+          success: true,
+          data: [
+            {
+              id: 'project-ui',
+              slug: 'project-ui',
+              name: 'UI project',
+              description: '',
+              hasWorkingDirectory: false,
+              layoutCount: 0,
+              hasKnowledge: false,
+            },
+          ],
+        }),
+      );
+      return;
+    }
     if (await fulfillStationShellRead(route)) return;
     return rejectUnexpectedFixtureRequest(route);
   });
