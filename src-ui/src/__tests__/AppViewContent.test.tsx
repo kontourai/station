@@ -158,7 +158,8 @@ const baseProps = {
   apiBase: 'http://localhost:3242',
   availableModels: [],
   onNavigate: vi.fn(),
-  onNavigateHome: vi.fn(),
+  onShowHome: vi.fn(),
+  onReturnToOutlet: vi.fn(),
   onSettingsSaved: vi.fn(),
 };
 
@@ -394,12 +395,14 @@ describe('AppViewContent — the page header while a route loads', () => {
 
 describe('AppViewContent — not-found', () => {
   test('renders ErrorState with role="alert" and a Go home action for unmatched routes', () => {
-    const onNavigateHome = vi.fn();
+    const onShowHome = vi.fn();
+    const onReturnToOutlet = vi.fn();
 
     render(
       <AppViewContent
         {...baseProps}
-        onNavigateHome={onNavigateHome}
+        onShowHome={onShowHome}
+        onReturnToOutlet={onReturnToOutlet}
         currentView={{ type: 'not-found', path: '/nowhere' }}
       />,
     );
@@ -408,8 +411,11 @@ describe('AppViewContent — not-found', () => {
     expect(alert).toBeTruthy();
     expect(screen.getByText('Page not found')).toBeTruthy();
 
+    // #1523: "Go home" says Home, so it means the Home surface — not a return
+    // to `/` and whatever occupies `main`.
     fireEvent.click(screen.getByRole('button', { name: 'Go home' }));
-    expect(onNavigateHome).toHaveBeenCalledTimes(1);
+    expect(onShowHome).toHaveBeenCalledTimes(1);
+    expect(onReturnToOutlet).not.toHaveBeenCalled();
   });
 });
 

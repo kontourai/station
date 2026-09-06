@@ -14,7 +14,24 @@ export interface ReadyPlugin {
   description?: string;
   hasBundle: boolean;
   hasSettings?: boolean;
-  layout?: { slug: string };
+  /**
+   * `name` is optional because `GET /api/plugins` sends `manifest.layout`,
+   * which carries only the slug and source — the layout's own display name
+   * lives in its layout.json. A server that later fills it in reaches the
+   * detail page with no client change (#1536 review M4).
+   */
+  layout?: {
+    slug: string;
+    name?: string;
+    displayName?: string;
+    title?: string;
+  };
+  /**
+   * Panes the manifest declares. `GET /api/plugins` has always sent these;
+   * the client dropped them, so an installed plugin's detail page could not
+   * say what it had added (#1536 G2).
+   */
+  workspacePanes?: Array<{ id: string; name: string }>;
   agents?: Array<{ slug: string }>;
   providers?: Array<{ type: string }>;
   providerDetails?: Array<{

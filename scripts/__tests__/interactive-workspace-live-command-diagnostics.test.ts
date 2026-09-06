@@ -101,3 +101,50 @@ test('failure diagnostics cannot replace the actual command input cause', async 
   );
   expect((failure as Error).message).not.toContain('private');
 });
+
+test.each(['leave-state', 'ingress-clock', 'send-clock'])(
+  'wraps %s without losing the primary failure or exporting its text',
+  async (stage) => {
+    const primary = new Error('private-token');
+    let clocks = 0;
+    const peer = {
+      url: () => 'http://fixture.invalid/tasks/task-one',
+      waitForFunction: async () => ({
+        jsonValue: async () => 'actor',
+        dispose: async () => {},
+      }),
+      getByRole: () => ({
+        isEnabled: async () => {
+          if (stage === 'leave-state') throw primary;
+          return false;
+        },
+        waitFor: async () => {},
+        click: async () => {},
+      }),
+      waitForResponse: async () => ({
+        status: () => 200,
+        json: async () => ({
+          success: true,
+          data: { kind: 'available', result: { outcome: 'JOINED' } },
+        }),
+      }),
+      evaluate: async () => {
+        clocks += 1;
+        if (clocks === (stage === 'send-clock' ? 2 : 1)) throw primary;
+        return 42;
+      },
+    };
+    const error = await publishPeerPresence(
+      peer,
+      {},
+      2,
+      peer.url(),
+      'task-one',
+    ).catch((value: unknown) => value);
+    expect(error).toMatchObject({ cause: primary });
+    expect((error as Error).message).toContain(
+      `Collaboration presence ${stage} failed;`,
+    );
+    expect((error as Error).message).not.toContain('private-token');
+  },
+);

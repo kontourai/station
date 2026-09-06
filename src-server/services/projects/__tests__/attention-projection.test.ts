@@ -95,6 +95,14 @@ function makeService(opts: {
   getUserId?: () => string;
   /** #765 D5: the pairing service's current request list. */
   pairingRequests?: unknown[];
+  /**
+   * #1536 D8: what stands between Station's own Agent and running. A function
+   * lets a test change the requirement between reads (review M2).
+   */
+  stationSetupRequirement?:
+    | { agentSlug: string; agentName: string; reason: string }
+    | null
+    | (() => { agentSlug: string; agentName: string; reason: string } | null);
 }) {
   const {
     notifications = [],
@@ -107,6 +115,7 @@ function makeService(opts: {
     acknowledgementStore,
     getUserId,
     pairingRequests,
+    stationSetupRequirement,
   } = opts;
   // Production receives a complete registry dependency. Keep older fixtures
   // terse while supplying its harmless personal-mode default explicitly.
@@ -143,6 +152,12 @@ function makeService(opts: {
     pairingRequests
       ? () => ({ listRequests: () => pairingRequests as never })
       : undefined,
+    stationSetupRequirement === undefined
+      ? undefined
+      : async () =>
+          typeof stationSetupRequirement === 'function'
+            ? stationSetupRequirement()
+            : stationSetupRequirement,
   );
 }
 
@@ -833,7 +848,69 @@ describe('AttentionProjectionService', () => {
           requestType: 'approval',
         }),
       );
-      expect(result.items[0].body).toContain('args: {command}');
+      // #1545: the command itself, not a field-name list — `args: {command}`
+      // read the same for `ls -la` and `rm -rf /`.
+      expect(result.items[0].body).toContain('ls -la');
+    });
+
+    test('a Codex file-change approval names the files it will change (#1545 D4)', async () => {
+      // Codex publishes the app-server's raw request params, so there is no
+      // named argument bag at all — this row said only "Approve file changes".
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'thread-codex-files',
+            lifecycleState: 'review_pending',
+          }),
+        ],
+        sessionEvents: {
+          'thread-codex-files': [
+            requestOpened({
+              threadId: 'thread-codex-files',
+              requestType: 'approval',
+              title: 'Approve file changes',
+              payload: {
+                changes: [
+                  { path: 'src/index.ts', diff: '@@ -1 +1 @@' },
+                  { path: 'README.md', diff: 'x'.repeat(4_000) },
+                ],
+              },
+            }),
+          ],
+        },
+      });
+
+      const result = await projection.list();
+
+      expect(result.items[0].body).toContain('src/index.ts, README.md');
+      // The diff bodies must not be what the line gets spent on.
+      expect(result.items[0].body).not.toContain('@@');
+      expect(result.items[0].body).not.toContain('xxxx');
+    });
+
+    test('a Codex command approval names the command (#1545 D4)', async () => {
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'thread-codex-cmd',
+            lifecycleState: 'review_pending',
+          }),
+        ],
+        sessionEvents: {
+          'thread-codex-cmd': [
+            requestOpened({
+              threadId: 'thread-codex-cmd',
+              requestType: 'approval',
+              title: 'rm -rf tmp',
+              payload: { command: 'rm -rf tmp', reason: 'Needs approval' },
+            }),
+          ],
+        },
+      });
+
+      const result = await projection.list();
+
+      expect(result.items[0].body).toContain('rm -rf tmp');
     });
 
     test('a permission request produces a title naming the tool', async () => {
@@ -993,16 +1070,19 @@ describe('AttentionProjectionService', () => {
       expect(item.body).not.toContain(secret);
       expect(item.body).not.toContain(hugeBlob);
       expect(item.title).not.toContain(secret);
-      // Field-name shape summary, not values — bounded length overall.
+      // #1545 renders values, so the bound and the secret redaction are now
+      // the ONLY things keeping this row safe: the field names still appear,
+      // their values do not, and the huge blob cannot fit.
       expect(item.body).toContain('apiKey');
       expect(item.body).toContain('authorization');
+      expect(item.body).toContain('[REDACTED]');
       expect((item.body ?? '').length).toBeLessThan(300);
       // Exact match, not just toContain: this is the secret-payload row of
       // the PR body's example table (title AND full body) — previously
       // only verified by code trace (review finding #5).
       expect(item.title).toBe('Tool call awaiting approval: http_request');
       expect(item.body).toBe(
-        'Allow http_request — args: {apiKey, authorization, body}',
+        `Allow http_request — {"apiKey":"[REDACTED]","authorization":"Bearer [REDACTED]","body":"${'x'.repeat(92)}…`,
       );
     });
 
@@ -1180,7 +1260,7 @@ describe('AttentionProjectionService', () => {
       // the one that fails against unconverged `projectApproval` (see the
       // red-output transcript in the PR).
       expect(item?.title).toBe('Tool call awaiting approval: bash');
-      expect(item?.body).toBe('Allow bash — args: {command}');
+      expect(item?.body).toBe('Allow bash — ls -la');
       // Convergence must not regress the existing approval-kind contract:
       // kind, actions, and the approval-notification source shape stay put.
       expect(item?.kind).toBe('approval');
@@ -2531,6 +2611,160 @@ describe('device pairing requests need attention (#765 D5)', () => {
         acknowledgedAt: expect.any(String),
       }),
     ]);
+  });
+});
+
+/**
+ * #1536 D8. The inbox read "All caught up · Nothing needs you right now" on
+ * a fresh home whose New Chat picker, one surface away, marked the Station
+ * row "Needs: No enabled LLM provider connection is configured."
+ */
+describe('Station cannot run its own Agent (#1536 D8)', () => {
+  const requirement = {
+    agentSlug: 'station',
+    agentName: 'Station',
+    reason: 'No enabled LLM provider connection is configured.',
+  };
+
+  test("projects the requirement, in the picker's own sentence", async () => {
+    const service = makeService({ stationSetupRequirement: requirement });
+
+    const result = await service.list();
+
+    expect(result.pendingCount).toBe(1);
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'setup-incomplete:model-connection:station',
+        kind: 'setup-incomplete',
+        title: 'Station cannot run yet',
+        body: 'No enabled LLM provider connection is configured.',
+        openHref: '/connections/models',
+        source: { requirement: 'model-connection', agentSlug: 'station' },
+      }),
+    ]);
+  });
+
+  test('projects nothing once the Agent resolves', async () => {
+    const service = makeService({ stationSetupRequirement: null });
+
+    await expect(service.list()).resolves.toEqual({
+      items: [],
+      pendingCount: 0,
+    });
+  });
+
+  test('is unavailable, not assumed, when no resolver is wired', async () => {
+    const service = makeService({});
+
+    await expect(service.list()).resolves.toEqual({
+      items: [],
+      pendingCount: 0,
+    });
+  });
+
+  /**
+   * Review M1: "Dismiss all" mapped every item to the acknowledge route, and
+   * the row only came back because its `updatedAt` moved on the next read — an
+   * accident, not a refusal.
+   */
+  test('cannot be acknowledged away, because it is still true afterwards', async () => {
+    const acked = new Map<string, string>();
+    const service = makeService({
+      stationSetupRequirement: requirement,
+      acknowledgementStore: {
+        getMany: (userId, conversationIds) =>
+          new Map(
+            conversationIds.flatMap((conversationId) => {
+              const version = acked.get(`${userId}:${conversationId}`);
+              return version === undefined
+                ? []
+                : [[conversationId, version] as const];
+            }),
+          ),
+        acknowledge: ({ userId, conversationId, updatedAt }) => {
+          acked.set(`${userId}:${conversationId}`, updatedAt);
+        },
+      },
+    });
+
+    expect(
+      await service.acknowledge('setup-incomplete:model-connection:station'),
+    ).toBe(false);
+    expect(acked.size).toBe(0);
+    const result = await service.list();
+    expect(result.pendingCount).toBe(1);
+    expect(result.items[0]?.acknowledgedAt).toBeUndefined();
+  });
+
+  /**
+   * Review M2: a read-time stamp made this row outrank every live approval on
+   * every read — an artefact of the timestamp, not a priority anyone chose —
+   * and made acknowledgement versioning meaningless.
+   */
+  test('says since when it has been true, not when the projection last looked', async () => {
+    const service = makeService({ stationSetupRequirement: requirement });
+
+    const first = (await service.list()).items[0];
+    await new Promise((settle) => setTimeout(settle, 3));
+    const second = (await service.list()).items[0];
+
+    expect(second?.updatedAt).toBe(first?.updatedAt);
+    expect(second?.createdAt).toBe(first?.createdAt);
+  });
+
+  test('a changed requirement is a new observation', async () => {
+    let current = requirement;
+    const service = makeService({
+      stationSetupRequirement: () => current,
+    });
+
+    const before = (await service.list()).items[0]?.updatedAt;
+    current = {
+      ...requirement,
+      reason:
+        'Multiple enabled LLM provider connections require an explicit default.',
+    };
+    await new Promise((settle) => setTimeout(settle, 3));
+    const after = (await service.list()).items[0];
+
+    expect(after?.body).toContain('explicit default');
+    expect(after?.updatedAt).not.toBe(before);
+  });
+
+  test('sorts below a live approval, whatever the clock says', async () => {
+    const older = new Date(Date.parse(now) - 3_600_000).toISOString();
+    const service = makeService({
+      stationSetupRequirement: requirement,
+      notifications: [registryApproval({ createdAt: older, updatedAt: older })],
+      sessions: [baseSession({ threadId: 'conversation-1' })],
+      approvalRegistry: { has: () => true },
+    });
+
+    const { items } = await service.list();
+
+    // A live approval an hour old still leads a standing notice observed now.
+    expect(items.map((item) => item.kind)).toEqual([
+      'approval',
+      'setup-incomplete',
+    ]);
+  });
+
+  test('host model configuration is not projected to a hosted tenant read', async () => {
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [{ id: 'alpha', authority: 'alpha.example.test' }],
+    });
+    const service = makeService({ stationSetupRequirement: requirement });
+
+    const result = await service.list(
+      sessionReadAuthorityFromRequest(
+        'alpha',
+        { tenantId: registry.tenants[0].id },
+        registry,
+      ),
+    );
+
+    expect(result.items).toEqual([]);
   });
 });
 

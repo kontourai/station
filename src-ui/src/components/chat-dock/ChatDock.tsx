@@ -61,15 +61,13 @@ import { useChatDockKeyboardShortcuts } from '../../hooks/useChatDockKeyboardSho
 import { useChatDockState } from '../../hooks/useChatDockState';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useDerivedSessions } from '../../hooks/useDerivedSessions';
-import { useDockShellChrome } from '../../hooks/useDockShellChrome';
+import {
+  type DockShellChrome,
+  useDockShellChrome,
+} from '../../hooks/useDockShellChrome';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
-import type {
-  ChatSession,
-  DockMode,
-  FileAttachment,
-  NavigationView,
-} from '../../types';
+import type { ChatSession, DockMode, FileAttachment } from '../../types';
 import {
   type EffectiveModelSource,
   isSessionExecutionActive,
@@ -78,9 +76,6 @@ import {
   buildHomeTaskItems,
   chatTaskSessionId,
 } from '../../views/home/home-view-model';
-import type { HomeViewNavigation } from '../../views/home/useHomeViewModel';
-import type { AmbientDockShellApi } from '../../workspace-panes/AmbientChatDockPaneHost';
-import type { WorkspacePaneDockAction } from '../../workspace-panes/WorkspacePaneDockContext';
 import { agentRunnability } from '../agent-runnability';
 import {
   selectChatReadyAgents,
@@ -308,7 +303,7 @@ void loadAmbientChatDockPaneHost().catch(() => {
 function renderAmbientChatPane(
   _instance: WorkspacePaneInstance,
   onRequestAuth: (() => Promise<boolean> | undefined) | undefined,
-  shellChrome: AmbientDockShellApi,
+  shellChrome: DockShellChrome,
 ) {
   return (
     <ChatWorkspacePane
@@ -332,17 +327,17 @@ interface ChatWorkspacePaneSharedProps {
 /**
  * Discriminated on `placement` (station#4460 review M3): a docked pane MUST
  * carry the ambient `DockShell`'s chrome (geometry, snap, placement,
- * `dock.toggle`/`dock.maximize`, `dockPane` for the occupant picker) — the
- * shell is the single, persistent owner of that state, so a docked Chat
- * consumes it rather than keeping its own copy. A full-screen placement
- * never mounts inside `DockShell` and so never receives one; it owns an
- * independent local instance instead (see `ChatWorkspacePane` below). Typing
- * it this way lets the compiler prove `shellChrome` is defined wherever
- * `placement === 'dock'`, instead of a non-null assertion at every read.
+ * `dock.toggle`/`dock.maximize`, the project binding) — the shell is the
+ * single, persistent owner of that state, so a docked Chat consumes it
+ * rather than keeping its own copy. A full-screen placement never mounts
+ * inside `DockShell` and so never receives one; it owns an independent local
+ * instance instead (see `ChatWorkspacePane` below). Typing it this way lets
+ * the compiler prove `shellChrome` is defined wherever `placement === 'dock'`,
+ * instead of a non-null assertion at every read.
  */
 type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
   (
-    | { placement: 'dock'; shellChrome: AmbientDockShellApi }
+    | { placement: 'dock'; shellChrome: DockShellChrome }
     | { placement: 'fullscreen'; shellChrome?: never }
   );
 
@@ -364,43 +359,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // half of that: this LOCAL instance must only register `dock.toggle` /
   // `dock.maximize` for the full-screen case — a docked Chat's local
   // instance registering too would fight `DockShell`'s real registration for
-  // the same ids after an occupant switch (station#4460 review H1).
+  // the same ids (station#4460 review H1).
   const localShellChrome = useDockShellChrome({
     publishesDockSlotClearance: false,
     registersDockShortcuts: isFullscreenPlacement,
   });
   // Narrowed on `props.placement` directly (not a destructured alias) so
   // TypeScript proves `props.shellChrome` is defined in the docked branch —
-  // no non-null assertion (station#4460 review M3). `occupantPicker` is a
-  // pre-rendered node the ambient host already built (review round M4) —
-  // Chat renders it as-is, the same way Home/Activity do, instead of
-  // importing `DockOccupantPicker` into this eager module itself.
-  // station#524 (review round 2, H2) + station#520 (review round 3, B1):
-  // `dockPane` AND `dockPaneAsOnlyContent` alongside `occupantPicker`, same
-  // reasoning — the ⋯ overflow sheet's occupant-switch fallback is
-  // reachable at EVERY dock state (not only when the header's own picker
-  // hides), so it needs the same route-aware choice `DockOccupantPicker`
-  // makes, which needs both RAW actions, not the pre-rendered picker node.
-  const {
-    chrome,
-    occupantPicker,
-    occupantSwitchDockPane,
-    occupantSwitchDockPaneAsOnlyContent,
-  } =
-    props.placement === 'fullscreen'
-      ? {
-          chrome: localShellChrome,
-          occupantPicker: undefined,
-          occupantSwitchDockPane: null,
-          occupantSwitchDockPaneAsOnlyContent: null,
-        }
-      : {
-          chrome: props.shellChrome,
-          occupantPicker: props.shellChrome.occupantPicker,
-          occupantSwitchDockPane: props.shellChrome.dockPane,
-          occupantSwitchDockPaneAsOnlyContent:
-            props.shellChrome.dockPaneAsOnlyContent,
-        };
+  // no non-null assertion (station#4460 review M3).
+  const chrome =
+    props.placement === 'fullscreen' ? localShellChrome : props.shellChrome;
   const recoverAuth = useChatAuthRecovery();
   const requestAuth = onRequestAuth ?? recoverAuth;
   // The composer's grouped "+" actions menu is the only persistently
@@ -976,14 +944,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // station#3309: the model the dock header names — the same answer the
   // composer's model pill gives, arrived at the same way. `effectiveChatModelId`
-  // picks WHICH id; then, exactly as `ChatInputArea` does, an alias that the
-  // engine has resolved renders as the concrete model it resolved TO (#1012)
-  // and everything else falls through to the shared `modelDisplayLabel`.
+  // picks WHICH id; `chatModelLabel` then asks the one shared identity rule
+  // (`modelIdentityLabel`, #1536 B5), so an alias the engine has resolved
+  // renders as the concrete model it resolved TO (#1012) and an unresolved
+  // engine default reads "Default" rather than the catalog's option copy.
   //
-  // Caught live rather than reasoned about: without the `resolvedModelLabel`
-  // arm the header read "Default (recommended)" beside a composer pill naming
-  // the actual model — one fact, two stories, which is the whole reason both
-  // of these helpers exist. No id reported means no chip, not a placeholder.
+  // Caught live rather than reasoned about: before that rule was shared, the
+  // header read "Default (recommended)" beside a composer pill naming the
+  // actual model — one fact, two stories. No id reported means no chip, not a
+  // placeholder.
   const activeChatModelId = effectiveChatModelId({
     composerModel: chatInput.currentModel,
     sessionModel: activeSession?.model,
@@ -2060,12 +2029,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // #3309: New chat is the bar's pinned far-right icon now, with
               // the same single-ready-agent shortcut the desktop New has.
               onNewChat={openNewChatDirect}
-              // station#524: the same pre-rendered occupant switcher the
-              // desktop-style header passes below (already `undefined` for
-              // the full-screen Chat placement, which has no ambient
-              // occupant to switch away from — see the `occupantPicker`
-              // derivation above).
-              occupantPicker={occupantPicker}
               overflow={{
                 onOpenConversation: () => setShowSessionPicker(true),
                 onToggleHistory: toggleHistory,
@@ -2096,14 +2059,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onRestoreDock: () => applyDockSnap('half'),
                 isDockMaximized: isPaneMaximized,
                 dockControls: !isFullscreenPlacement,
-                onSwitchOccupant:
-                  occupantSwitchDockPane && occupantSwitchDockPaneAsOnlyContent
-                    ? {
-                        onChoose: occupantSwitchDockPane,
-                        onChooseAsOnlyContent:
-                          occupantSwitchDockPaneAsOnlyContent,
-                      }
-                    : null,
               }}
             />
           ) : (
@@ -2177,12 +2132,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               regionVisible={isDockOpen}
               shellMaximized={isDockMaximized}
               canMaximize={chrome.canMaximize}
+              showMaximizeShortcut={chrome.ownsMaximizeShortcut}
               surfaceShortcutId={chrome.surfaceShortcutId}
-              // station#4460: Chat is one entry in the SAME occupant
-              // switcher Home/Activity carry — not a special case with no
-              // way to leave. Absent for a full-screen placement, which has
-              // no ambient dock to switch away from.
-              occupantPicker={occupantPicker}
               // #3309: the tab strip's controls fold into the header — one
               // chrome bar, every reclaimed pixel is transcript space. Only
               // while the pane is open; the collapsed bar stays minimal.
@@ -2980,35 +2931,28 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
 }
 
-/** The ambient application placement of the shared Chat workspace pane. */
+/**
+ * The ambient application placement of the shared Chat workspace pane: Chat
+ * mounted in its own dock (`AmbientChatDockPaneHost` → `DockShell` →
+ * chromeless `WorkspacePaneHost`). Chat is the only pane that host renders
+ * (#928 C2b deleted the legacy docked-Home path and its occupant switching).
+ */
 export function ChatDock({
   regionId,
   onRequestAuth,
-  homeContinuation = null,
-  onNavigate,
-  onDockActionChange,
 }: {
   onRequestAuth?: () => Promise<boolean> | undefined;
-  homeContinuation?: HomeViewNavigation | null;
-  onNavigate: (view: NavigationView) => void;
-  onDockActionChange?: (action: WorkspacePaneDockAction | null) => void;
   regionId?: DockMode;
 }) {
-  // Mounted directly, not behind a LazyBoundary. The chromeless presentation
-  // renders a frame and the occupant — there is no tab or split controller to
-  // defer — and a `pending={null}` boundary would make the dock, a persistent
-  // shell affordance, blink out on a slow chunk and vanish entirely on a
-  // failed one. An absent dock is indistinguishable from one Station never
-  // had, which is the whole reason this codebase does not hide affordances.
+  // `pending={null}`: the dock is a persistent shell affordance, and the
+  // chunk is pre-warmed at module load above, so the boundary resolves
+  // without a visible gap rather than blinking a placeholder in and out.
   return (
     <LazyBoundary
       load={loadAmbientChatDockPaneHost}
       componentProps={{
         onRequestAuth,
         renderChatPane: renderAmbientChatPane,
-        homeContinuation,
-        onNavigate,
-        onDockActionChange,
         regionId,
       }}
       pending={null}

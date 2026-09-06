@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import App from '../App';
 import { bannerStore } from '../contexts/banner-store';
 import { openChatsStore } from '../contexts/open-chats-store';
+import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
 
 vi.mock('../contexts/open-chats-store', () => ({
@@ -187,9 +188,11 @@ vi.mock('../app-shell/AppViewContent', () => ({
   AppViewContent: ({
     currentView,
     onNavigate,
+    onShowHome,
   }: {
     currentView: unknown;
     onNavigate: (view: unknown) => void;
+    onShowHome: () => void;
   }) => (
     <>
       {/* Mirrors the real component's structure: the route body sits inside a
@@ -206,6 +209,11 @@ vi.mock('../app-shell/AppViewContent', () => ({
       )}
       <button type="button" onClick={() => onNavigate({ type: 'schedule' })}>
         Go to Schedule
+      </button>
+      {/* The real not-found view's "Go home" (`AppViewContent.test.tsx` pins
+          that it calls `onShowHome`); this fixture reads what App hands it. */}
+      <button type="button" onClick={onShowHome}>
+        Go home
       </button>
     </>
   ),
@@ -354,6 +362,7 @@ function resetHooks() {
   setLayout.mockClear();
   showToast.mockClear();
   chatControllerAction.mockClear();
+  vi.mocked(useKeyboardShortcut).mockClear();
 }
 
 describe('App home route resolution', () => {
@@ -567,6 +576,96 @@ describe('App home route resolution', () => {
     placeSurface: vi.fn(),
   });
 
+  /**
+   * #1385 review: the mobile full-screen predicate reads the shell a coarse
+   * device RENDERS — the folded dock region (`foldedDockRegion`, the same
+   * expression `RegionShells` mounts by) — whatever its occupant, matching
+   * its own docblock ("any occupant, not just Chat"). Navigation's flags are
+   * absent from this file's mock, so a predicate reading them cannot pass
+   * these; one reading Chat's region alone cannot pass the Activity case.
+   */
+  describe('the mobile full-screen dock follows the rendered shell (#1385)', () => {
+    const MOBILE_MEDIA_QUERY =
+      '(max-width: 768px), (max-height: 540px) and (pointer: coarse)';
+    const appMain = () => document.querySelector('.app__main');
+    const fullscreenClass = 'app__main--mobile-dock-fullscreen';
+
+    function installMobileViewport() {
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: query === MOBILE_MEDIA_QUERY,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }));
+    }
+
+    test.each([
+      {
+        name: 'Activity maximized as the folded occupant',
+        regions: {
+          ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+          right: {
+            visible: true,
+            size: 400,
+            occupant: 'activity',
+            maximized: true,
+          },
+        },
+        lastShownRegion: 'right' as const,
+        fullscreen: true,
+      },
+      {
+        name: 'Chat maximized as the folded occupant (unchanged behaviour)',
+        regions: {
+          ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+          bottom: {
+            visible: true,
+            size: 320,
+            occupant: 'chat',
+            maximized: true,
+          },
+        },
+        lastShownRegion: 'bottom' as const,
+        fullscreen: true,
+      },
+      {
+        name: 'Activity shown but not maximized',
+        regions: {
+          ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+          right: {
+            visible: true,
+            size: 400,
+            occupant: 'activity',
+            maximized: false,
+          },
+        },
+        lastShownRegion: 'right' as const,
+        fullscreen: false,
+      },
+    ])('$name', async ({ regions, lastShownRegion, fullscreen }) => {
+      installMobileViewport();
+      try {
+        hooks.regionModel = {
+          ...regionModelStub(),
+          regions,
+          lastShownRegion,
+        };
+
+        render(<App />);
+        await act(async () => undefined);
+
+        expect(appMain()).not.toBeNull();
+        expect(appMain()?.classList.contains(fullscreenClass)).toBe(fullscreen);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+
   test('registers a region surface host on Home', async () => {
     hooks.regionModel = regionModelStub();
 
@@ -765,6 +864,76 @@ describe('App home route resolution', () => {
     });
     expect(await screen.findByTestId('activity-region-shell')).toBeTruthy();
     expect(screen.queryByTestId('app-view-content')).toBeNull();
+  });
+
+  /**
+   * #1523. Since `/` renders `main`'s occupant, "go to `/`" and "show Home"
+   * are different intents, and App holds one producer of each. Both are
+   * driven with Activity in `main` — the arrangement where the two diverge.
+   */
+  const activityInMain = () => ({
+    ...regionModelStub(),
+    regions: {
+      ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      main: { visible: true, size: 0, occupant: 'activity' },
+    },
+  });
+
+  test('the not-found view’s Go home reveals the Home surface, not whatever occupies main', async () => {
+    window.history.replaceState({}, '', '/nowhere');
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.regionModel = activityInMain();
+
+    render(<App />);
+    await act(async () => undefined);
+    expect(screen.getByTestId('app-view-content').textContent).toContain(
+      '"type":"not-found"',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go home' }));
+
+    // Home BY NAME: the Home surface is placed in `main` (the model navigates
+    // to `/` itself). A bare `navigate('/')` would have shown Activity.
+    expect(showSurface).toHaveBeenCalledTimes(1);
+    expect(showSurface).toHaveBeenCalledWith('home');
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test('the settings toggle’s return goes to the outlet, whatever occupies main, and NOT to the Home surface', async () => {
+    window.history.replaceState({}, '', '/settings');
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.regionModel = activityInMain();
+
+    render(<App />);
+    await act(async () => undefined);
+    expect(screen.getByTestId('app-view-content').textContent).toContain(
+      '"type":"settings"',
+    );
+
+    // ⌘, is registered through `useKeyboardShortcut` (mocked here); the last
+    // registration holds the handler closed over the current view.
+    const registration = vi
+      .mocked(useKeyboardShortcut)
+      .mock.calls.filter(([id]) => id === 'app.settings')
+      .at(-1);
+    if (!registration) throw new Error('app.settings chord not registered');
+    const handler = registration[4] as () => void;
+    act(() => {
+      handler();
+    });
+
+    // A toggle returns to where the user was — `/` and its occupant,
+    // Activity here — so it must not route through the Home reveal.
+    expect(navigate).toHaveBeenCalledWith('/');
+    expect(showSurface).not.toHaveBeenCalled();
   });
 
   test('registers no region surface host for a full-screen chat layout', async () => {

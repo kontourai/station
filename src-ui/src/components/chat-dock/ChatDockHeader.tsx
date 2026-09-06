@@ -114,25 +114,28 @@ interface ChatDockHeaderProps {
   availableDockSlotPlacements: readonly DockMode[];
   effectiveDockSlotPlacement: DockMode;
   onDockPlacementChange: (placement: DockMode) => void;
-  /**
-   * A pre-rendered `DockOccupantPicker`, not `{current, onChoose}` data
-   * (station#4460 review M4): this component is imported by the EAGER entry
-   * path (`ChatDock.tsx` → `App.tsx`), and `DockOccupantPicker` pulls in
-   * `ambientDockOccupants.ts` plus all three pane-descriptor contracts
-   * modules — real weight that belongs in the ambient host's LAZY chunk,
-   * which is the only place that still imports `DockOccupantPicker` and
-   * builds this node. Absent only for the full-screen Chat layout
-   * placement, which has no ambient occupant to switch away from.
-   */
-  occupantPicker?: React.ReactNode;
   regionVisible: boolean;
   shellMaximized: boolean;
   /** Registered visibility shortcut for the shell's surface. */
   surfaceShortcutId?: string;
   /** Registered title for a non-Chat shell's visibility action. */
   surfaceTitle?: string;
-  /** Whether this shell owns the Chat-only maximize state. */
+  /** Whether this shell offers the maximize control (any dock occupant, #928 slice iii). */
   canMaximize?: boolean;
+  /**
+   * The snap a collapsed shell reopens to. Chat leaves this unset and reads
+   * its persisted `station.chatDock.snap` (archive#795: a Full-height
+   * collapse reopens Full); every other shell passes its chrome's own
+   * in-memory snap, so "Show Activity" can never maximize Activity because
+   * Chat's persisted snap happened to be `full` (#1385 review).
+   */
+  restoreSnap?: DockSnap;
+  /**
+   * Whether ⌘M acts on this shell (`DockShellChrome.ownsMaximizeShortcut`).
+   * The hint is shown only where it is true — a chord that maximizes Chat's
+   * region must not be advertised on Activity's button.
+   */
+  showMaximizeShortcut?: boolean;
 }
 
 export function ChatDockHeader({
@@ -147,17 +150,21 @@ export function ChatDockHeader({
   availableDockSlotPlacements,
   effectiveDockSlotPlacement,
   onDockPlacementChange,
-  occupantPicker,
   regionVisible,
   shellMaximized,
   surfaceShortcutId = 'dock.toggle',
   surfaceTitle,
   canMaximize = true,
+  showMaximizeShortcut = true,
+  restoreSnap,
 }: ChatDockHeaderProps) {
   const isDockOpen = regionVisible;
   const isDockMaximized = shellMaximized;
   const toggleDockShortcut = useShortcutDisplay(surfaceShortcutId);
-  const maximizeShortcut = useShortcutDisplay('dock.maximize');
+  const registeredMaximizeShortcut = useShortcutDisplay('dock.maximize');
+  const maximizeShortcut = showMaximizeShortcut
+    ? registeredMaximizeShortcut
+    : '';
   const visibilityLabel = surfaceTitle
     ? `${isDockOpen ? 'Hide' : 'Show'} ${surfaceTitle}`
     : `${isDockOpen ? 'Hide' : 'Show'} dock region`;
@@ -223,14 +230,6 @@ export function ChatDockHeader({
             onPlacementChange={onDockPlacementChange}
           />
         ) : null}
-        {/* station#4460: every ambient occupant carries the SAME switcher —
-            Chat is one entry in the menu, not a special case with no way
-            back in. Replaces the old fixed "Dock this pane"/"return to
-            Chat" idea entirely: choosing THIS occupant again is a no-op
-            (`DockOccupantPicker` itself guards that), so there is no
-            meaningful second control to suppress. Pre-rendered by the
-            caller — see the `occupantPicker` prop doc. */}
-        {!fullscreen ? occupantPicker : null}
         {chatControls && (
           <button
             type="button"
@@ -393,7 +392,11 @@ export function ChatDockHeader({
                 }
               >
                 <RegionExtentGlyph expanded={isDockMaximized} />
-                <span className="chat-dock__subtitle">{maximizeShortcut}</span>
+                {maximizeShortcut ? (
+                  <span className="chat-dock__subtitle">
+                    {maximizeShortcut}
+                  </span>
+                ) : null}
               </button>
             ) : null}
             <button
@@ -404,7 +407,7 @@ export function ChatDockHeader({
                 onDockSnap(
                   isDockOpen
                     ? 'collapsed'
-                    : canMaximize && readDockSnap() === 'full'
+                    : canMaximize && (restoreSnap ?? readDockSnap()) === 'full'
                       ? 'full'
                       : 'half',
                 );

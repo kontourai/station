@@ -222,6 +222,26 @@ describe('groupToolCallParts', () => {
     expect(group.summary).toBe('Running npm run build…');
   });
 
+  // station#1558 (fix round, M6): the collapsed header is what a reader sees
+  // first, and it used to say "Ran npm test" for a call whose session ended
+  // before it reported — contradicting the row it expands into, which
+  // `ToolCallDisplay` already refuses to put in the past tense.
+  test('a solo unresolved call keeps the bare verb, not the past tense', () => {
+    const parts = [
+      toolCall({
+        toolCallId: 'solo',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+        state: 'unresolved',
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(group.summary).toBe('Run npm test');
+    // Not running either: no ellipsis, no failure claim.
+    expect(group.inProgress).toBe(false);
+    expect(group.failedCount).toBe(0);
+  });
+
   test('extracts a truncated command label for exec calls', () => {
     const longCommand = 'a'.repeat(120);
     const parts = [

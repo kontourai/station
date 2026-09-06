@@ -2,7 +2,10 @@
  * @vitest-environment jsdom
  */
 
-import { DEFAULT_NOTIFICATION_SOUND_PREFERENCES } from '@kontourai/station-contracts/device-settings';
+import {
+  DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
+  DEFAULT_REGION_ARRANGEMENT_RECORD,
+} from '@kontourai/station-contracts/device-settings';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const ENVELOPE_KEY = 'station-device-settings-v1';
@@ -645,6 +648,68 @@ describe('device-settings-store', () => {
       expect(deviceSettingsStore.get('theme')).toBe('light');
       expect(deviceSettingsStore.get('diffStyle')).toBe('unified');
       expect(deviceSettingsStore.get('chatDockAutoHide')).toBe(false);
+    });
+
+    // #928 D: the record's parser is its import validation. The generic
+    // composite path accepts any plain object, which would let a
+    // `{ version: 99 }` land and every later read re-reject it.
+    test('drops an unrecognisable regionArrangement record, canonicalizes a readable one, and boots on a malformed stored one', async () => {
+      const { deviceSettingsStore } = await freshStore();
+
+      const dropped = deviceSettingsStore.importEnvelope({
+        version: 1,
+        values: {
+          theme: 'light',
+          regionArrangement: { version: 99, regions: {} },
+        },
+      });
+      expect(dropped.droppedKeys).toEqual(['regionArrangement']);
+      expect(deviceSettingsStore.get('theme')).toBe('light');
+      expect(deviceSettingsStore.get('regionArrangement')).toEqual(
+        DEFAULT_REGION_ARRANGEMENT_RECORD,
+      );
+
+      const readable = deviceSettingsStore.importEnvelope({
+        version: 1,
+        values: {
+          regionArrangement: {
+            version: 1,
+            regions: {
+              right: {
+                visible: true,
+                size: 517,
+                occupant: { kind: 'surface', id: 'retired-surface' },
+              },
+            },
+          },
+        },
+      });
+      expect(readable.droppedKeys).toEqual([]);
+      const record = deviceSettingsStore.get('regionArrangement');
+      expect(record.regions.right).toEqual({
+        visible: true,
+        size: 517,
+        occupant: null,
+        maximized: false,
+      });
+      expect(record.regions.bottom.occupant).toEqual({
+        kind: 'surface',
+        id: 'chat',
+      });
+
+      // A value already in storage is served as-is (the store validates on
+      // import, the region model validates on read): booting over it must
+      // not throw, and every other setting still resolves.
+      localStorage.setItem(
+        ENVELOPE_KEY,
+        JSON.stringify({
+          version: 2,
+          values: { theme: 'light', regionArrangement: 'not a record' },
+        }),
+      );
+      const { deviceSettingsStore: rebooted } = await freshStore();
+      expect(rebooted.get('theme')).toBe('light');
+      expect(rebooted.get('regionArrangement')).toBe('not a record');
     });
 
     describe('shortcutOverrides / modelPickerPreferences shape validation (slice 3 review finding 2)', () => {

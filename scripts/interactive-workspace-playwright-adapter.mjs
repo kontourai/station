@@ -430,16 +430,10 @@ export async function measure(
       source: bridgeSource ?? 'station-ui-production-bridge',
       observations,
     };
-    const rawOutput = env.STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT;
-    if (
-      typeof rawOutput === 'string' &&
-      isAbsolute(rawOutput) &&
-      Buffer.byteLength(rawOutput, 'utf8') <= 4096 &&
-      realpathSync(dirname(rawOutput)) === dirname(resolve(rawOutput))
-    )
-      writeFileSync(rawOutput, `${JSON.stringify(evidence)}\n`, {
-        mode: 0o600,
-      });
+    persistRawBridgeEvidence(
+      env.STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT,
+      evidence,
+    );
     const validated = validateProductionBridgeEvidence(config, evidence);
     return {
       adapter: ADAPTER,
@@ -1527,6 +1521,16 @@ export async function readLiveCommandFailureState(page) {
   }
 }
 
+export function persistRawBridgeEvidence(rawOutput, evidence) {
+  if (
+    typeof rawOutput === 'string' &&
+    isAbsolute(rawOutput) &&
+    Buffer.byteLength(rawOutput, 'utf8') <= 4096 &&
+    realpathSync(dirname(rawOutput)) === dirname(resolve(rawOutput))
+  )
+    writeFileSync(rawOutput, `${JSON.stringify(evidence)}\n`, { mode: 0o600 });
+}
+
 export async function publishPeerPresence(
   peer,
   owner,
@@ -1548,20 +1552,32 @@ export async function publishPeerPresence(
       );
     }
   };
-  if (new URL(peer.url()).pathname !== `/tasks/${encodeURIComponent(taskId)}`) {
+  const requiresNavigation = await stage(
+    'navigation-context',
+    async () =>
+      new URL(peer.url()).pathname !== `/tasks/${encodeURIComponent(taskId)}`,
+  );
+  if (requiresNavigation) {
     await stage('navigation', () =>
       peer.goto(target, {
         waitUntil: 'domcontentloaded',
         timeout: 60_000,
       }),
     );
-    if (!(await authenticatedTaskAvailable(peer, taskId)))
-      throw new Error('peer Task context is unavailable');
+    await stage('task-context', async () => {
+      if (!(await authenticatedTaskAvailable(peer, taskId)))
+        throw new Error('peer Task context is unavailable');
+    });
   }
-  const peerActorId = await stage('identity', () => peerActorIdentity(peer));
-  if (!peerActorId) throw new Error('peer actor identity is unavailable');
-  const leave = peer.getByRole('button', { name: 'Leave room' });
-  if (await leave.isEnabled()) {
+  const peerActorId = await stage('identity', async () => {
+    const actor = await peerActorIdentity(peer);
+    if (!actor) throw new Error('peer actor identity is unavailable');
+    return actor;
+  });
+  const canLeave = await stage('leave-state', () =>
+    peer.getByRole('button', { name: 'Leave room' }).isEnabled(),
+  );
+  if (canLeave) {
     await stage('leave', () => clickLiveCommand(peer, 'Leave room'));
     await stage('owner-absence', () =>
       owner
@@ -1570,11 +1586,11 @@ export async function publishPeerPresence(
     );
   }
   joinOutcome = await stage('join', () => clickLiveCommand(peer, 'Join room'));
-  const ingressStartedEpochMs = await epoch(peer);
+  const ingressStartedEpochMs = await stage('ingress-clock', () => epoch(peer));
   // Fence the authoritative peer publish before the command that can make the
   // owner's SSE/layout commit observable. Recording this after the awaited
   // command response races a legitimate faster owner commit.
-  const sentEpochMs = await epoch(peer);
+  const sentEpochMs = await stage('send-clock', () => epoch(peer));
   await stage('announce', () => clickLiveCommand(peer, 'Announce work'));
   return {
     kind: 'presence-published',
