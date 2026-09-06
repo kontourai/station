@@ -583,7 +583,7 @@ describe('resolveDockProjectContextDirectory (#1536 G6)', () => {
     ).toBe('/tmp/session-cwd');
   });
 
-  test("a foreign session still reports its OWN directory", () => {
+  test('a foreign session still reports its OWN directory', () => {
     // station#4525 review HIGH-2, which used to be pinned as an inline shape in
     // `ChatDock.tsx` and moved here with the derivation: a project-binding
     // MISMATCH must not suppress the session's own facts. Step 2 precedes the
