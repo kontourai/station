@@ -30,6 +30,7 @@ import { createBrowserPreviewPaneInstance } from '../../workspace-panes/browserP
 import { writeBrowserPreviewPaneState } from '../../workspace-panes/browserPreviewPaneStateStorage';
 import { createFilePreviewPaneInstance } from '../../workspace-panes/filePreviewPaneInstance';
 import { writeFilePreviewPaneState } from '../../workspace-panes/filePreviewPaneStateStorage';
+import { WORKSPACE_PANE_OPENED } from '../../workspace-panes/workspacePaneHostOpenOutcome';
 import { WorkspacePaneHostRuntime } from '../../workspace-panes/workspacePaneHostRuntime';
 
 const layoutQueryMock = vi.fn();
@@ -924,7 +925,7 @@ describe('ProjectLayoutRenderer', () => {
         boundContext: { ...basis.boundContext, projectId: 'other-project' },
       }),
     ).not.toBeNull();
-    const open = vi.fn(() => true);
+    const open = vi.fn(() => WORKSPACE_PANE_OPENED);
     act(() => {
       hostProps.onOpenActionChange({ open });
       hostProps.onOpenCatalog({

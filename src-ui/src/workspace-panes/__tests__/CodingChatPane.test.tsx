@@ -27,6 +27,10 @@ vi.mock('../../hooks/useIsMobile', () => ({
 }));
 
 import { CodingChatPane } from '../CodingChatPane';
+import {
+  WORKSPACE_PANE_OPENED,
+  workspacePaneOpenRefused,
+} from '../workspacePaneHostOpenOutcome';
 
 describe('CodingChatPane', () => {
   afterEach(() => {
@@ -74,7 +78,11 @@ describe('CodingChatPane', () => {
         path: 'src/deep-link.ts',
         lineRange: { start: 17, end: 17 },
       };
-      const open = vi.fn((_, preparation) => preparation?.prepare() ?? false);
+      const open = vi.fn((_, preparation) =>
+        preparation?.prepare() === false
+          ? workspacePaneOpenRefused('not-persisted')
+          : WORKSPACE_PANE_OPENED,
+      );
 
       render(
         <WorkspacePaneHostOpenContext.Provider value={{ open }}>
@@ -111,7 +119,11 @@ describe('CodingChatPane', () => {
       projectSlug: 'demo',
       path: 'src/one-shot.ts',
     };
-    const open = vi.fn((_, preparation) => preparation?.prepare() ?? false);
+    const open = vi.fn((_, preparation) =>
+      preparation?.prepare() === false
+        ? workspacePaneOpenRefused('not-persisted')
+        : WORKSPACE_PANE_OPENED,
+    );
     navigation.updateParams.mockImplementation(() => {
       navigation.openFilePreviewIntent = null;
     });
@@ -133,7 +145,9 @@ describe('CodingChatPane', () => {
 
   test('renders one catalog-admitted Browser Preview creator with its resolved reason', () => {
     render(
-      <WorkspacePaneHostOpenContext.Provider value={{ open: vi.fn() }}>
+      <WorkspacePaneHostOpenContext.Provider
+        value={{ open: vi.fn(() => WORKSPACE_PANE_OPENED) }}
+      >
         <CodingChatPane
           projectId="project-uuid"
           projectSlug="demo"

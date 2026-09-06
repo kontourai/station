@@ -4,6 +4,10 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { BrowserPreviewPaneLauncher } from '../BrowserPreviewPaneLauncher';
 import { readBrowserPreviewPaneState } from '../browserPreviewPaneStateStorage';
+import {
+  WORKSPACE_PANE_OPENED,
+  workspacePaneOpenRefused,
+} from '../workspacePaneHostOpenOutcome';
 
 const AVAILABLE = {
   state: 'available' as const,
@@ -13,7 +17,11 @@ const AVAILABLE = {
 describe('BrowserPreviewPaneLauncher', () => {
   test('opens only a validated local target through the host prepare transaction', () => {
     window.localStorage.clear();
-    const open = vi.fn((_, preparation) => preparation?.prepare() ?? false);
+    const open = vi.fn((_, preparation) =>
+      preparation?.prepare() === false
+        ? workspacePaneOpenRefused('not-persisted')
+        : WORKSPACE_PANE_OPENED,
+    );
     render(
       <BrowserPreviewPaneLauncher
         projectId="project-uuid-1"
@@ -44,6 +52,31 @@ describe('BrowserPreviewPaneLauncher', () => {
       projectId: 'project-uuid-1',
       requestedUrl: 'http://localhost:4173/',
     });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  test('reports the reason the host refused, not one sentence for every refusal', () => {
+    window.localStorage.clear();
+    const open = vi.fn(() => workspacePaneOpenRefused('no-lease'));
+    render(
+      <BrowserPreviewPaneLauncher
+        projectId="project-uuid-1"
+        host={{ open }}
+        availability={AVAILABLE}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Local preview address'), {
+      target: { value: 'http://localhost:4173' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open Browser Preview' }),
+    );
+
+    expect(open).toHaveBeenCalledOnce();
+    expect(screen.getByRole('alert').textContent).toBe(
+      'This tab cannot save workspace changes right now, so the pane was not opened.',
+    );
   });
 
   test('does not prepare or open an arbitrary remote address', () => {
