@@ -196,6 +196,9 @@ async function renderMarkupForState(state: ChipState): Promise<string> {
       showHelp={false}
       showNotifications={false}
       showOverflow={false}
+      showProfileMenu={false}
+      onCloseProfileMenu={vi.fn()}
+      onToggleProfileMenu={vi.fn()}
       userInitials="ST"
       onCloseHelp={() => {}}
       onCloseNotifications={() => {}}
@@ -203,7 +206,7 @@ async function renderMarkupForState(state: ChipState): Promise<string> {
       onHelpPrompt={() => {}}
       onOpenConnections={() => {}}
       onOpenProfile={() => {}}
-      onToggleHelp={() => {}}
+      onOpenHelp={() => {}}
       onToggleNotifications={() => {}}
       onToggleSettings={() => {}}
       onToggleOverflow={() => {}}
@@ -246,7 +249,18 @@ describe.skipIf(!chromiumAvailable)(
       cleanup();
     });
 
-    async function settingsX(
+    /**
+     * The x of the row's TRAILING control — the sibling furthest from the chip,
+     * so any width the chip fails to reserve shows up here.
+     *
+     * It used to be the Settings gear. #1552 D1 moved Settings into the avatar's
+     * menu on a fine pointer (the gear is `--compact-only`, phone-only, and this
+     * fixture is 1280px wide), so the gear is legitimately absent here and the
+     * avatar is now the trailing control. Retargeted rather than deleted: the
+     * contract station#4474 pinned is about the chip not reflowing its siblings,
+     * and it holds for whichever sibling is last.
+     */
+    async function trailingControlX(
       markup: string,
       viewport: { width: number; height: number },
     ): Promise<number> {
@@ -254,41 +268,169 @@ describe.skipIf(!chromiumAvailable)(
       try {
         await page.setContent(buildFixtureHtml(markup));
         const box = await page
-          .locator('[aria-label="Open settings"]')
+          .locator('[aria-label="Profile and settings"]')
           .boundingBox();
-        expect(box, 'Open settings control not visible').not.toBe(null);
+        expect(box, 'trailing toolbar control not visible').not.toBe(null);
         return box!.x;
       } finally {
         await page.close();
       }
     }
 
-    test('the Settings control holds its position across every label-bearing state on a desktop-width toolbar', async () => {
-      // At desktop widths the state label is always visible (the mobile
-      // breakpoint's dot-only-while-healthy rule, below, does not apply), so
-      // this is the full reproduction of the reported class: every visibly
-      // different label this chip can show — including the two widest,
-      // "Needs re-pairing" and "Awaiting approval" — must not move any
+    test('the trailing control holds its position across every label-bearing state on a desktop-width toolbar', async () => {
+      // Every visibly different label this chip can show — including the two
+      // widest, "Needs re-pairing" and "Awaiting approval" — must not move any
       // sibling control.
+      //
+      // #1536 F removed `connected` from this list, and that is a trade, not
+      // an oversight: its single-Station form now renders NO label at all
+      // (`compactConn` in `HeaderActions.tsx`), so a connect or a drop moves
+      // the cluster once by design — the same trade #1401 already made at
+      // phone width, where `connected` has been dot-only since archive#3311.
+      // What that buys is measured by the test below. The reservation this
+      // file pinned is still what holds the remaining states to one width, and
+      // `connected` is the only state leaving the set.
       const viewport = { width: 1280, height: 400 };
       const states: ChipState[] = [
-        'connected',
         'connecting',
         'error',
         'needs-credential',
         'needs-repair',
         'awaiting-approval',
-        'connected',
+        'connecting',
       ];
       const xs: number[] = [];
       for (const state of states) {
-        xs.push(await settingsX(await renderMarkupForState(state), viewport));
+        xs.push(
+          await trailingControlX(await renderMarkupForState(state), viewport),
+        );
       }
 
       expect(
         xs,
-        'Settings control shifted horizontally as the connection chip flipped state — the chip must reserve its own width rather than reflow the rest of the toolbar.',
+        'The trailing toolbar control shifted horizontally as the connection chip flipped state — the chip must reserve its own width rather than reflow the rest of the toolbar.',
       ).toEqual(states.map(() => xs[0]));
+    });
+
+    test('the collapsed connected chip reclaims the width the label-bearing states reserve (#1536 F)', async () => {
+      // The point of collapsing it: a fact that never changes while you work
+      // stops holding ~150px of the row that runs out of width first. Measured
+      // against the widest label-bearing state in the same fixture, so this
+      // cannot pass on an absolute number that drifts with the font.
+      const viewport = { width: 1280, height: 400 };
+      const chipWidth = async (state: ChipState): Promise<number> => {
+        const page = await browser.newPage({ viewport });
+        try {
+          await page.setContent(
+            buildFixtureHtml(await renderMarkupForState(state)),
+          );
+          const box = await page.locator('.app-toolbar__conn').boundingBox();
+          expect(box, `connection chip not visible in ${state}`).not.toBe(null);
+          return box!.width;
+        } finally {
+          await page.close();
+        }
+      };
+
+      /** Any sibling icon button, for the one-button-size comparison below. */
+      const siblingWidth = async (): Promise<number> => {
+        const page = await browser.newPage({ viewport });
+        try {
+          await page.setContent(
+            buildFixtureHtml(await renderMarkupForState('connected')),
+          );
+          const box = await page
+            .locator('[aria-label="Notifications"]')
+            .boundingBox();
+          expect(box, 'notifications control not visible').not.toBe(null);
+          return box!.width;
+        } finally {
+          await page.close();
+        }
+      };
+
+      const collapsed = await chipWidth('connected');
+      const widest = await chipWidth('awaiting-approval');
+      const sibling = await siblingWidth();
+
+      // #1552 D1: the collapsed chip is the SAME size as its siblings, which is
+      // the whole of "one button size" — asserted as an equality against a
+      // measured sibling rather than as the literal 44px this used to pin, so it
+      // cannot pass while the row holds two different box sizes and cannot red
+      // merely because the shared size changed. (It was 44px on every pointer,
+      // making the smallest-content control the largest box in the row; the 44px
+      // floor still applies under the coarse-pointer query, where it is a WCAG
+      // 2.5.5 obligation rather than a look.)
+      expect(Math.round(collapsed)).toBe(Math.round(sibling));
+      // And it must not have grown a label back: a chip still rendering
+      // "Connected · Default" measures ~200px.
+      expect(collapsed).toBeLessThan(widest - 80);
+    });
+
+    /**
+     * #1552 D1's headline claim, and the only thing that holds it: the
+     * fine-pointer row is FOUR controls (Layout, the status dot, Notifications,
+     * the avatar), and the Settings gear is phone-only.
+     *
+     * Added because a fault injection went green without it. Flipping
+     * `.app-toolbar__action--compact-only` from `display: none` to `display:
+     * flex` — the whole mechanism keeping the gear off the desktop row — broke
+     * nothing in this suite, so "four controls" was an assertion nobody made.
+     * `HeaderActions` renders three of the four (Layout is
+     * `RegionToolbarControls`, a sibling in the toolbar, not in this cluster),
+     * so the count here is three and the claim is about which three.
+     *
+     * Both directions, because a `display` rule can fail either way: the gear
+     * must be absent on a fine pointer AND present on a phone, where the avatar
+     * that carries its menu row is itself hidden and
+     * `tests/toolbar-reachability.spec.ts` requires the gear in its inventory.
+     */
+    test('the fine-pointer row holds three named controls and no Settings gear; a phone is the mirror', async () => {
+      const inventory = async (viewport: {
+        width: number;
+        height: number;
+      }): Promise<string[]> => {
+        const page = await browser.newPage({ viewport });
+        try {
+          await page.setContent(
+            buildFixtureHtml(await renderMarkupForState('connected')),
+          );
+          return await page.evaluate(() =>
+            [
+              ...document.querySelectorAll<HTMLElement>(
+                '.app-toolbar__actions button',
+              ),
+            ]
+              // Laid out, not merely present: `display: none` is exactly what
+              // this test is about, and a hidden control has no boxes.
+              .filter((button) => button.getClientRects().length > 0)
+              .map(
+                (button) =>
+                  button.getAttribute('aria-label') ??
+                  button.getAttribute('title') ??
+                  (button.textContent || '').trim(),
+              ),
+          );
+        } finally {
+          await page.close();
+        }
+      };
+
+      const desktop = await inventory({ width: 1280, height: 400 });
+      expect(desktop).toEqual([
+        'Manage Stations — Connected · Default',
+        'Notifications',
+        'Profile and settings',
+      ]);
+      expect(desktop).not.toContain('Open settings');
+
+      const phone = await inventory({ width: 390, height: 600 });
+      expect(
+        phone,
+        'a phone has no avatar menu (the avatar is --secondary there), so the gear IS its route to Settings',
+      ).toContain('Open settings');
+      expect(phone).toContain('More actions');
+      expect(phone).not.toContain('Profile and settings');
     });
 
     test('the connection chip fits the width a phone row can spare', async () => {

@@ -619,7 +619,7 @@ describe('changed verification selection', () => {
     );
     expect(result.executed.map((entry) => entry.kind)).toEqual(['explicit']);
   });
-  test('does not run a partial test subset when a deferred lane is selected', () => {
+  test('keeps broad related-test expansion deferred', () => {
     const run = vi.fn();
     const result = runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
@@ -647,6 +647,43 @@ describe('changed verification selection', () => {
       passed: false,
     });
   });
+  test.each([false, true])(
+    'runs known tests beside deferred obligations and propagates failures=%s',
+    (fails) => {
+      const run = reportedRun({
+        status: fails ? 1 : 0,
+        report: fails ? failingReport : passingReport,
+      });
+      const result = runChangedVerification(['--base=origin/main'], {
+        root: process.cwd(),
+        run,
+        changedPathsFn: () => ({
+          mergeBase: 'base-sha',
+          paths: [
+            'src-ui/src/components/modals/useNewChatSetupReturn.ts',
+            scenarios.deferredEdges.e2e,
+          ],
+        }),
+        collectProvenance: provenance,
+        writeReceipt: vi.fn(),
+      });
+      expect(run).toHaveBeenCalledOnce();
+      expect(run.mock.calls[0][1]).toEqual(
+        expect.arrayContaining([
+          'run',
+          'src-ui/src/__tests__/NewChatModalEngineChips.test.tsx',
+          'src-ui/src/__tests__/NewChatModalSetupReturn.test.tsx',
+        ]),
+      );
+      expect(result.exitCode).toBe(fails ? 1 : 3);
+      expect(result.receipt.terminal).toMatchObject({
+        status: fails ? 'failed' : 'provisional',
+        passed: false,
+      });
+      expect(result.nextCommands.length).toBeGreaterThan(0);
+    },
+  );
+
   test('explains without execution but never records a pass', () => {
     const result = runChangedVerification(['--base=origin/main', '--explain'], {
       root: process.cwd(),
