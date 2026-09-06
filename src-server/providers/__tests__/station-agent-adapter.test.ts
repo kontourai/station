@@ -338,6 +338,65 @@ describe('mapStationAgentStreamEvent — id-less tool chunks (station#1586 item 
     });
   });
 
+  /**
+   * station#1586 (fix round, E): the shape the ONE in-tree producer of
+   * id-less chunks actually emits. Strands
+   * (`strands-stream-events.ts`) always mints a call id on `tool-call`
+   * (`start.toolUseId || 'tool-<ts>'`) and its `tool-result` carries neither
+   * the id (when `toolUseId` is absent) nor a `toolName` (archive#3082).
+   * Both halves are asserted: with nothing queued the result publishes
+   * unpaired, and with an id-less call queued the nameless result DOES claim
+   * it — the residual the docblock calls a bound rather than a fix.
+   */
+  test("Strands' shape — identified call, id-less nameless result — publishes unpaired", () => {
+    const pending: PendingIdlessToolCall[] = [];
+    const { published, reports } = relay(
+      [
+        {
+          type: 'tool-call',
+          toolCallId: 'toolu-strands',
+          toolName: 'shell',
+          input: {},
+        },
+        // No toolCallId (absent `toolUseId`) and, by design, no toolName.
+        { type: 'tool-result', output: 'strands output' },
+      ],
+      pending,
+    );
+
+    expect(reports[1].toolSettled).toBeUndefined();
+    expect(reports[1].unpairedToolResult).toBe(true);
+    expect(
+      (published[1] as unknown as { toolCallId: string }).toolCallId,
+    ).not.toBe('toolu-strands');
+    // Nothing was queued for it to take, because Strands never emits an
+    // id-less CALL — which is what keeps the order-only pairing safe there.
+    expect(pending).toEqual([]);
+  });
+
+  test('a nameless result claims a queued id-less call on order alone — the bound, pinned', () => {
+    // The residual stated in `claimPendingIdlessToolCall`: a result that
+    // reports no name contradicts nothing. If a producer ever emits an
+    // id-less call alongside Strands-shaped results, this is what happens —
+    // recorded so the limit is visible rather than discovered.
+    const pending: PendingIdlessToolCall[] = [];
+    const { published, reports } = relay(
+      [
+        { type: 'tool-call', toolName: 'idless_tool', input: {} },
+        { type: 'tool-result', output: 'nameless output' },
+      ],
+      pending,
+    );
+
+    const openedId = (published[0] as unknown as { toolCallId: string })
+      .toolCallId;
+    expect((published[1] as unknown as { toolCallId: string }).toolCallId).toBe(
+      openedId,
+    );
+    expect(reports[1].toolSettled).toEqual({ toolCallId: openedId });
+    expect(pending).toEqual([]);
+  });
+
   test('an unnamed chunk on either side still pairs in order', () => {
     // The name check must not break the ordinary case: `safeToolName`'s
     // display fallback is not a reported name, so a chunk that reported

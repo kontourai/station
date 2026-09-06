@@ -103,7 +103,18 @@ function turnContradicts(
   );
 }
 
-/** Newest-first index of the committed message belonging to `turnId`. */
+/**
+ * Newest-first index of the committed ASSISTANT message belonging to
+ * `turnId`.
+ *
+ * The role filter is load-bearing (station#1586 fix round, B): a failed turn's
+ * only turnId-bearing message is the `role: 'user'` error marker
+ * `handleRuntimeErrorEvent` appends (`turnHandlers.ts`), and its renderer
+ * short-circuits on `isSystemEvent` (`ChatDockBody.tsx`) without ever
+ * iterating `contentParts`. Routing a tool row there would file it where
+ * nothing renders it — worse than the documented fallback, which at least
+ * shows the row on the streaming shell.
+ */
 function committedMessageIndexForTurn(
   messages: ReturnType<typeof activeChatsStore.getSnapshot>[string]['messages'],
   turnId: string | undefined,
@@ -111,7 +122,10 @@ function committedMessageIndexForTurn(
   if (turnId === undefined) return -1;
   const list = messages ?? [];
   for (let position = list.length - 1; position >= 0; position -= 1) {
-    if (list[position].turnId === turnId) return position;
+    const candidate = list[position];
+    if (candidate.turnId === turnId && candidate.role === 'assistant') {
+      return position;
+    }
   }
   return -1;
 }
@@ -125,6 +139,11 @@ function committedMessageIndexForTurn(
  * event names, exactly as the terminal does; with no such message they fall
  * back to the streaming shell, which is what every pre-turn-id event and
  * every event for the turn actually streaming still gets.
+ *
+ * The durable side agrees (fix round, A): `runtime-event-projection.ts`'s
+ * `tool.started` case routes a start for an already-emitted turn onto that
+ * turn's message and carries it, so a reload reproduces what this shows
+ * rather than folding the start by stream position.
  *
  * `isProcessingStep` is set only for the streaming path: it describes the
  * turn in flight, and activity on an EARLIER turn says nothing about it

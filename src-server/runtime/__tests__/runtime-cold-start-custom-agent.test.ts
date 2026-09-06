@@ -270,6 +270,9 @@ const { StationRuntime } = await import('../bootstrap/station-runtime.js');
 const { BedrockAdapter } = await import(
   '../../providers/adapters/bedrock-adapter.js'
 );
+const { ClaudeAdapter } = await import(
+  '../../providers/adapters/claude-adapter.js'
+);
 const { BedrockModelCatalog } = await import(
   '../../providers/llm/bedrock-models.js'
 );
@@ -435,7 +438,10 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     expect(enginePrerequisitePriming.calls).toHaveLength(1);
     const [primed] = enginePrerequisitePriming.calls;
     // The adapter the runtime itself constructed and registered — priming a
-    // different instance would warm a memo no session ever reads.
+    // different instance would warm a memo no session ever reads. Typed
+    // first: `toEqual([runtime.claudeAdapter])` alone passes when BOTH are
+    // undefined, which is exactly what a renamed or removed field looks like.
+    expect(primed.adapters[0]).toBeInstanceOf(ClaudeAdapter);
     expect(primed.adapters).toEqual([
       (runtime as unknown as { claudeAdapter: unknown }).claudeAdapter,
     ]);

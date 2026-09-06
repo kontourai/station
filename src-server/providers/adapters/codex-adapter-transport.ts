@@ -683,10 +683,11 @@ export class CodexAdapterTransport {
       // unregistered after this method's `await terminateRecord` — and every
       // other unregister site (`stopSession`, the process `error` door, the
       // stdin EPIPE door) sets `stopped` first, so it takes the arm above.
-      // The one shape that does arrive here is a SECOND teardown door after
-      // the ordinary path below already unregistered and settled this record,
-      // where `openToolCalls` is empty and this publishes nothing. So the
-      // settle is not a fix for an observed leak; it is here so that this
+      // Nor is there a second door that could arrive after the ordinary
+      // path below: only the `exit` handler reaches this method, the stdin
+      // EPIPE door returns before it, and the process `error` door publishes
+      // its own terminals. So the settle is not a fix for an observed leak
+      // — as things stand nothing reaches it at all; it is here so that this
       // branch cannot become the one door that abandons rows if the
       // registration lifecycle changes — which is exactly how the Claude
       // adapter's own restart window (station#1569 item 6, an observed path

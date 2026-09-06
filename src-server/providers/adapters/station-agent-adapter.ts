@@ -132,13 +132,21 @@ interface StationAgentSessionRecord {
    * relay minted for them. They were excluded while an id-less start and its
    * id-less result minted DIFFERENT ids — an entry its own result could not
    * delete would have been settled as a false "no result was reported" — and
-   * the relay's pairing (`pendingIdlessToolCalls`) is what BOUNDS that
-   * hazard. Bounds, not removes (fix round, L5): pairing reads only order
-   * and the reported tool name, so an engine that runs same-named tools
-   * concurrently AND omits ids can still have two id-less results settle
-   * each other's entries. What the name check does remove is the asymmetric
-   * case — an identified call whose result arrives id-less no longer claims
-   * a different call's minted id.
+   * the relay's pairing (`pendingIdlessToolCalls`) BOUNDS that hazard.
+   *
+   * Bounds, never removes (fix round, L5/E). Pairing reads only order and
+   * the reported tool name, so: two same-named id-less calls running
+   * concurrently can still settle each other's entries; and the asymmetric
+   * shape — an identified call whose result arrives id-less — is refused
+   * only when that result REPORTS a name to contradict with. The one
+   * in-tree producer of id-less chunks is Strands
+   * (`strands-stream-events.ts`), and its shape is exactly the one the name
+   * check cannot see: it always mints a call id
+   * (`start.toolUseId || 'tool-<ts>'`) and its `tool-result` deliberately
+   * carries neither the id (when `toolUseId` is absent) nor a `toolName`
+   * (archive#3082). For that producer the check is inert and pairing is
+   * order-only — which is safe today only because it never emits an id-less
+   * CALL, so nothing is queued for such a result to claim.
    */
   openToolCalls: Map<string, { toolName: string; turnId: string }>;
 }
@@ -460,7 +468,11 @@ export interface PendingIdlessToolCall {
  *
  * A missing name on either side is not a contradiction — the same rule the
  * turn checks use — so the ordinary case (an engine that omits ids, and may
- * omit names too) still pairs in order.
+ * omit names too) still pairs in order. That is also the limit of the check
+ * (fix round, E): a result reporting NO name contradicts nothing and claims
+ * the oldest entry on order alone, which is precisely the Strands shape
+ * (id-less AND nameless results). This narrows the hazard; it does not close
+ * it, and nothing in the chunks would.
  */
 function claimPendingIdlessToolCall(
   pending: PendingIdlessToolCall[],

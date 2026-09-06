@@ -510,9 +510,11 @@ export class StationRuntime {
    * `--version` probe (one caller abandoning readiness must not abort an
    * observation another is awaiting — see `versionProbe`'s comment), so a
    * probe already spawned still runs to `runCliCommand`'s own 10s ceiling.
-   * This stops the priming from starting after a shutdown and stops it
-   * waiting on work the runtime no longer has a use for; killing the child
-   * would need a change in the adapter's shared-probe contract.
+   * Nor does it cut a prime already under way: the signal is read once,
+   * before the first await, and the adapter drops it on the way to
+   * `runCommand`. What it does, exactly and only, is prevent a prime from
+   * STARTING after shutdown. Killing the child, or interrupting a prime in
+   * flight, would need a change in the adapter's shared-probe contract.
    */
   private readonly enginePrerequisitePrimingAbort = new AbortController();
   private configurationSourceUnsubscribers: Array<() => void> = [];

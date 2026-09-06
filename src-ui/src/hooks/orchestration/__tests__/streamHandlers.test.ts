@@ -13,6 +13,7 @@ let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChats
 let handleToolStartedEvent: typeof import('../streamHandlers').handleToolStartedEvent;
 let handleToolCompletedEvent: typeof import('../streamHandlers').handleToolCompletedEvent;
 let handleToolProgressEvent: typeof import('../streamHandlers').handleToolProgressEvent;
+let handleRuntimeErrorEvent: typeof import('../turnHandlers').handleRuntimeErrorEvent;
 let handleTextDeltaEvent: typeof import('../streamHandlers').handleTextDeltaEvent;
 // archive#3351: spies on the messageParts module (see the doMock in the
 // text-delta describe below) to prove the dedup actually removed the
@@ -62,6 +63,7 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
       handleToolCompletedEvent,
       handleToolProgressEvent,
     } = await import('../streamHandlers'));
+    ({ handleRuntimeErrorEvent } = await import('../turnHandlers'));
 
     activeChatsStore.initChat(threadId, {
       agentSlug: 'assistant',
@@ -798,6 +800,110 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
         expect(
           historyParts(1).filter((part) => part.type === 'tool-invocation')[0],
         ).toMatchObject({ state: 'running' });
+      });
+    });
+
+    /**
+     * station#1586 (fix round, B): a FAILED turn's only turnId-bearing
+     * message is the `role: 'user'` `[SYSTEM_EVENT] [CHAT_ERROR]` marker
+     * `handleRuntimeErrorEvent` appends. `ChatDockBody` renders that marker
+     * through an `isSystemEvent` short-circuit that never iterates
+     * `contentParts`, so routing a tool row onto it files the row where
+     * nothing can render it. The turn-index lookup therefore considers only
+     * assistant messages.
+     */
+    describe('a failed turn error marker never takes a tool row (station#1586 B)', () => {
+      function failTurnA() {
+        // The real handler, so the marker's shape (role, turnId, content) is
+        // the one production writes rather than one this test imagines.
+        handleRuntimeErrorEvent({
+          eventId: 'evt-error',
+          provider: 'station-agent',
+          threadId,
+          createdAt: '2026-08-15T00:00:00.000Z',
+          method: 'runtime.error',
+          severity: 'error',
+          turnId: 'turn-a',
+          message: 'the engine failed',
+        } as unknown as Parameters<typeof handleRuntimeErrorEvent>[0]);
+        const chat = activeChatsStore.getSnapshot()[threadId];
+        const marker = (chat?.messages ?? []).find(
+          (message) => message.turnId === 'turn-a',
+        );
+        // The precondition this test exists for: the only message carrying
+        // turn A is a user-role marker.
+        expect(marker).toMatchObject({ role: 'user' });
+        expect(
+          (chat?.messages ?? []).some(
+            (message) =>
+              message.turnId === 'turn-a' && message.role === 'assistant',
+          ),
+        ).toBe(false);
+        return marker;
+      }
+
+      const markerParts = () =>
+        (activeChatsStore.getSnapshot()[threadId]?.messages ?? []).find(
+          (message) => message.turnId === 'turn-a',
+        )?.contentParts ?? [];
+
+      test('a late tool.completed for the failed turn falls back instead of landing on the marker', () => {
+        failTurnA();
+
+        handleToolCompletedEvent(
+          toolCompleted({
+            eventId: 'evt-late',
+            turnId: 'turn-a',
+            toolCallId: 'tool-late',
+            status: 'success',
+            output: 'late output',
+          }),
+        );
+
+        expect(
+          markerParts().filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+        // The documented fallback: the streaming shell, which does render.
+        expect(
+          streamingParts()
+            .filter((part) => part.type === 'tool-invocation')
+            .map((part) => part.toolCallId),
+        ).toEqual(['tool-late']);
+      });
+
+      test('a late tool.started for the failed turn falls back too, even with another turn open', () => {
+        failTurnA();
+        // A new turn is streaming, so the opener's turn check is live.
+        activeChatsStore.updateChat(threadId, {
+          openTurnId: 'turn-b',
+          streamingMessage: {
+            role: 'assistant',
+            content: 'B answers.',
+            contentParts: [{ type: 'text', content: 'B answers.' }],
+          },
+        });
+
+        handleToolStartedEvent({
+          eventId: 'evt-start',
+          provider: 'station-agent',
+          threadId,
+          createdAt: '2026-08-15T00:00:01.000Z',
+          method: 'tool.started',
+          turnId: 'turn-a',
+          itemId: 'tool-late',
+          toolCallId: 'tool-late',
+          toolName: 'write_file',
+          arguments: {},
+        } as unknown as Parameters<typeof handleToolStartedEvent>[0]);
+
+        expect(
+          markerParts().filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+        expect(
+          streamingParts()
+            .filter((part) => part.type === 'tool-invocation')
+            .map((part) => part.toolCallId),
+        ).toEqual(['tool-late']);
       });
     });
 
