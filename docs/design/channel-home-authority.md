@@ -55,6 +55,51 @@ transition and uncertainty semantics. For example, etcd documents atomic
 comparison/transaction operations in its [v3 API](https://etcd.io/docs/v3.6/learning/api/).
 Backend choice does not replace the write-path integration below.
 
+## Explicit participant pairing
+
+The runtime exposes `GET /api/home-authority/identity` for a separately paired
+participant carrying the explicit `home:transfer` permission. The `home-transfer`
+pairing preset contains only that permission. Existing default, standard,
+delegation and inference grants do not gain it on upgrade. It grants neither
+agent execution nor terminal access nor pairing administration.
+
+An operator creates a fresh offer on the intended controller with
+`POST /api/pairing/offers`, authenticated through the existing operator path:
+
+```json
+{"endpoint":"https://controller.example.test","scope":"home:transfer"}
+```
+
+Use the normal request, owner approval and exchange ceremony described in the
+[remote access model](../security/remote-access-threat-model.md). Create a
+separate pairing for each participant; do not copy the controller's operator
+credential or reuse one participant credential for both homes. An integration
+uses the exchanged credential through its authenticated client to read
+`GET /api/home-authority/identity`. Store credentials using the integration's
+private credential owner, never in a Project manifest or workspace package.
+
+The response contract is `PairedHomeIdentityObservation` in
+[`cloud-move`](../../packages/contracts/src/cloud-move.ts). It names the
+controller environment and its current paired-device ID, with `scope: personal`
+and both execution-transfer/resume flags false. The pair of IDs is meaningful
+only within that controller's registry. It survives an ordinary controller
+restart while the registry remains intact. It is not physical-machine
+attestation, a lease, or evidence that a credential has not been copied.
+
+The route reads the middleware-authenticated principal, then rechecks the real
+pairing registry before and after reading controller identity. Revoked pairings,
+ordinary device grants and operator credentials are refused. Responses are
+uncacheable; lookup errors return a generic unavailable result. Hosted mode is
+refused until paired identity is bound to actual tenant membership. A trusted
+tenant header alone does not bind this process-wide device registry to a tenant.
+
+Tests exercise real pairing records and the HTTP authentication middleware,
+separate participants, controller registry reopen, revoked credentials, revocation
+during a read, forged query fields, hosted refusal and sanitized errors. This is
+an enrollment observation prerequisite. Binding the participants to durable home
+records, channel permission, the decision store and execution admission remains
+unfinished; no transfer mutation endpoint is exposed.
+
 ## Planned-transfer decision storage
 
 The private [planned transfer store](../../src-server/services/orchestration/planned-home-transfer-store.ts)
@@ -66,6 +111,14 @@ The adapter requires a file-backed SQLite database with durable journaling and
 `synchronous=FULL` or `EXTRA`, checked at initialization and in every transaction.
 A later durability downgrade makes operations unavailable. These settings do
 not certify the underlying filesystem or storage hardware.
+A composing authority service uses `createAuthorizedSqlitePlannedHomeTransferStore`
+with a required caller-bound synchronous authorization predicate. The adapter first checks it before acquiring the write lock, then checks again
+under the transaction lock before access and before commit. Revocation rolls back the entire decision change and
+returns `denied`; a failed authority lookup returns `unavailable`. Promise-valued
+guards are refused, never treated as truthy grants. The callback must be owned
+by the service, not supplied by a request body. The guarded entry rejects an absent guard. The separate unguarded constructor
+retains the private storage-only API; it is not safe to expose directly.
+
 The adapter itself performs no home authentication, membership authorization,
 lease issuance, renewal or target activation. No runtime write path currently
 uses its decisions as execution authority.

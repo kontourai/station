@@ -10,6 +10,9 @@ This is a workspace copy, not a complete Station setup migration. The unpack com
 register a Project; the optional combined command below does. Neither installs
 dependencies, enrolls credentials, or resumes agents.
 The [cloud move design](../design/cloud-move.md) tracks those separate steps.
+Integrations preparing separate transfer participants can use the
+[explicit pairing prerequisite](../design/channel-home-authority.md#explicit-participant-pairing);
+its identity observation does not authorize execution or make a package transfer live.
 
 ## Prepare the source
 

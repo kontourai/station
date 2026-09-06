@@ -181,6 +181,22 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
 /** Deterministic, reviewable edges the runtime dependency graph cannot see. */
 export const TEST_IMPACT_MANIFEST = Object.freeze([
   {
+    pattern: 'src-server/runtime/routes/runtime-routes.ts',
+    tests: [
+      'src-server/runtime/routes/__tests__/runtime-routes-hosted-mcp-composition.test.ts',
+    ],
+    reason: 'runtime route composition and hosted MCP capability coverage',
+  },
+  {
+    pattern:
+      'src-server/services/orchestration/completed-task-dispatch-recovery.ts',
+    tests: [
+      'src-server/runtime/routes/__tests__/runtime-routes-hosted-mcp-composition.test.ts',
+      'src-server/services/orchestration/__tests__/completed-task-dispatch-recovery.test.ts',
+    ],
+    reason: 'boot-time dispatch recovery must compose with runtime routes',
+  },
+  {
     pattern:
       'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
     tests: [

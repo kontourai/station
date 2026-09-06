@@ -1,5 +1,6 @@
 import type {
   Skill,
+  SkillOrigin,
   SkillVariable,
 } from '@kontourai/station-contracts/catalog';
 import {
@@ -150,11 +151,82 @@ export function filterSkills(
 }
 
 /**
- * The list rows say what the skill IS: its `/command` when it has one, then
- * how much it has been used.
+ * The Skills list's one subtitle, shared by the page header and the pane so the
+ * two cannot drift. It used to call the whole list "workspace skills" while
+ * most rows were built-in package skills and none of them were workspace-scoped
+ * — a claim the loader contradicted on every row (#1582 D6).
+ */
+export const SKILLS_SUBTITLE =
+  'Every skill Station loaded, grouped by where it came from. Author your own here; install more from Registry.';
+
+/**
+ * Where the loader found a skill, in the user's words.
+ *
+ * One label per `SkillOrigin` and nothing invented: the server derives the
+ * origin from the root a skill was discovered under (or from the record its
+ * writer left), so every label here is backed by a value something computed.
+ * An origin the listing does not carry renders as a NAMED gap rather than
+ * silently joining "This machine" — the listing not saying where a skill came
+ * from is a different fact from it coming from here (#1582 D6).
+ */
+export function skillSourceLabel(origin: SkillOrigin | undefined): string {
+  switch (origin) {
+    case 'project':
+      return 'This workspace';
+    case 'user':
+      return 'This machine';
+    case 'registry':
+      return 'Registry';
+    case 'plugin':
+      return 'Plugin';
+    case 'migrated-playbook':
+      return 'Migrated playbook';
+    case 'package':
+      return 'Built in';
+    default:
+      return 'Source unrecorded';
+  }
+}
+
+/**
+ * Group order. The roots a user authored or installed into come first because
+ * those are the rows they act on; the read-only built-in bulk sorts last so it
+ * cannot push a user's own two skills below the fold. `undefined` is last of
+ * all — an unrecorded source is the least useful band to land in first.
+ */
+const SKILL_SOURCE_ORDER: readonly (SkillOrigin | undefined)[] = [
+  'project',
+  'user',
+  'migrated-playbook',
+  'registry',
+  'plugin',
+  'package',
+  undefined,
+];
+
+function skillSourceRank(origin: SkillOrigin | undefined): number {
+  const index = SKILL_SOURCE_ORDER.indexOf(origin);
+  return index === -1 ? SKILL_SOURCE_ORDER.length : index;
+}
+
+/**
+ * The list rows say what the skill IS: where it came from, its `/command` when
+ * it has one, then how much it has been used.
+ *
+ * Rows are ordered by source so `section` bands stay contiguous — the pane
+ * emits a header whenever `section` changes, so a scrambled order would emit
+ * the same header repeatedly.
  */
 export function buildSkillListItems(skills: readonly Skill[]) {
-  return skills.map((skill) => {
+  const ordered = skills
+    .map((skill, index) => ({ skill, index }))
+    .sort(
+      (a, b) =>
+        skillSourceRank(a.skill.origin) - skillSourceRank(b.skill.origin) ||
+        a.index - b.index,
+    )
+    .map((entry) => entry.skill);
+  return ordered.map((skill) => {
     const commandWord = resolveSkillCommandName(skill);
     // Only facts the LISTING carries: it has no `category`/`tags`, and a row
     // that printed an always-absent field would be a permanent blank.
@@ -164,7 +236,12 @@ export function buildSkillListItems(skills: readonly Skill[]) {
     ]
       .filter(Boolean)
       .join(' · ');
-    return { id: skill.name, name: skill.name, subtitle };
+    return {
+      id: skill.name,
+      name: skill.name,
+      subtitle,
+      source: skillSourceLabel(skill.origin),
+    };
   });
 }
 

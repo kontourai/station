@@ -2,6 +2,7 @@ import {
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
+  PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_PRESETS,
   type PairingScope,
   type PairingScopePreset,
@@ -84,6 +85,14 @@ const ELEVATED_GRANTS: ReadonlyArray<{
     label: 'Fleet inference',
     detail: 'Can request model completions from this Station.',
     // Not elevated: it is a `preset` grant path, offered at pairing time.
+    elevated: false,
+  },
+  {
+    token: PAIRING_SCOPE_HOME_TRANSFER,
+    label: 'Home transfer',
+    detail:
+      'Identifies this device for transfer setup. Moving homes and resuming agents are not available yet.',
+    // This is a dedicated pairing preset, not an operator-promotion grant.
     elevated: false,
   },
   {

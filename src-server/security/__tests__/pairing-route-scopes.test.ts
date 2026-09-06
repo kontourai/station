@@ -85,6 +85,32 @@ function scanMountedRouteBases(): string[] {
 }
 
 describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () => {
+  test('reserves the entire home-authority family for explicit home-transfer grants', () => {
+    const transferScope = pairingScopePresetString('home-transfer');
+
+    for (const method of ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']) {
+      const path = '/api/home-authority/identity';
+      expect(matchPairingScopeRule(method, path)).toMatchObject({
+        method: '*',
+        prefix: '/api/home-authority',
+        scope: 'home:transfer',
+        origin: 'explicit',
+      });
+      expect(requiredPairingScope(method, path)).toBe('home:transfer');
+      expect(pairingScopeIncludes(transferScope, 'home:transfer')).toBe(true);
+      expect(
+        pairingScopeIncludes(DEFAULT_GRANT_PAIRING_SCOPE, 'home:transfer'),
+      ).toBe(false);
+    }
+
+    expect(requiredPairingScope('GET', '/api/home-authority')).toBe(
+      'home:transfer',
+    );
+    expect(requiredPairingScope('GET', '/api/home-authority-other')).toBe(
+      undefined,
+    );
+  });
+
   test('a standard paired chat tier admits every attachment staging control leaf', () => {
     const standard = pairingScopePresetString('standard');
     const chatScope = requiredPairingScope('POST', '/api/orchestration/chat');
