@@ -33,13 +33,19 @@ function renderHeader({
   fullscreen = false,
   chatIdentity,
   projectContext,
+  surfaceTitle,
+  restoreSnap,
 }: {
   fullscreen?: boolean;
   chatIdentity?: ReactNode;
   projectContext?: ReactNode;
+  surfaceTitle?: string;
+  restoreSnap?: 'collapsed' | 'half' | 'full';
 } = {}) {
   return render(
     <ChatDockHeader
+      surfaceTitle={surfaceTitle}
+      restoreSnap={restoreSnap}
       chatIdentity={chatIdentity}
       projectContext={projectContext}
       chatControls={{
@@ -105,6 +111,32 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
     renderHeader();
 
     fireEvent.click(screen.getByTitle('Show dock region'));
+
+    expect(onDockSnap).toHaveBeenCalledWith('full');
+  });
+
+  // #1385 review: `station.chatDock.snap` is Chat's key. A non-Chat shell
+  // reopens to ITS chrome's snap, so Chat having collapsed from Full cannot
+  // maximize Activity when its own collapsed bar is expanded.
+  test('a non-Chat shell reopens to its own snap, never to Chat’s persisted Full', () => {
+    isDockOpen = false;
+    isDockMaximized = false;
+    window.localStorage.setItem('station.chatDock.snap', 'full');
+    renderHeader({ surfaceTitle: 'Activity', restoreSnap: 'half' });
+
+    fireEvent.click(screen.getByTitle('Show Activity'));
+
+    expect(onDockSnap).toHaveBeenCalledWith('half');
+    expect(onDockSnap).not.toHaveBeenCalledWith('full');
+  });
+
+  test('a non-Chat shell that collapsed from its own Full reopens Full', () => {
+    isDockOpen = false;
+    isDockMaximized = false;
+    window.localStorage.setItem('station.chatDock.snap', 'half');
+    renderHeader({ surfaceTitle: 'Activity', restoreSnap: 'full' });
+
+    fireEvent.click(screen.getByTitle('Show Activity'));
 
     expect(onDockSnap).toHaveBeenCalledWith('full');
   });

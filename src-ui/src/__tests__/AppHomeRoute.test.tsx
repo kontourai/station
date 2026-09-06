@@ -576,6 +576,96 @@ describe('App home route resolution', () => {
     placeSurface: vi.fn(),
   });
 
+  /**
+   * #1385 review: the mobile full-screen predicate reads the shell a coarse
+   * device RENDERS — the folded dock region (`foldedDockRegion`, the same
+   * expression `RegionShells` mounts by) — whatever its occupant, matching
+   * its own docblock ("any occupant, not just Chat"). Navigation's flags are
+   * absent from this file's mock, so a predicate reading them cannot pass
+   * these; one reading Chat's region alone cannot pass the Activity case.
+   */
+  describe('the mobile full-screen dock follows the rendered shell (#1385)', () => {
+    const MOBILE_MEDIA_QUERY =
+      '(max-width: 768px), (max-height: 540px) and (pointer: coarse)';
+    const appMain = () => document.querySelector('.app__main');
+    const fullscreenClass = 'app__main--mobile-dock-fullscreen';
+
+    function installMobileViewport() {
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: query === MOBILE_MEDIA_QUERY,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }));
+    }
+
+    test.each([
+      {
+        name: 'Activity maximized as the folded occupant',
+        regions: {
+          ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+          right: {
+            visible: true,
+            size: 400,
+            occupant: 'activity',
+            maximized: true,
+          },
+        },
+        lastShownRegion: 'right' as const,
+        fullscreen: true,
+      },
+      {
+        name: 'Chat maximized as the folded occupant (unchanged behaviour)',
+        regions: {
+          ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+          bottom: {
+            visible: true,
+            size: 320,
+            occupant: 'chat',
+            maximized: true,
+          },
+        },
+        lastShownRegion: 'bottom' as const,
+        fullscreen: true,
+      },
+      {
+        name: 'Activity shown but not maximized',
+        regions: {
+          ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+          right: {
+            visible: true,
+            size: 400,
+            occupant: 'activity',
+            maximized: false,
+          },
+        },
+        lastShownRegion: 'right' as const,
+        fullscreen: false,
+      },
+    ])('$name', async ({ regions, lastShownRegion, fullscreen }) => {
+      installMobileViewport();
+      try {
+        hooks.regionModel = {
+          ...regionModelStub(),
+          regions,
+          lastShownRegion,
+        };
+
+        render(<App />);
+        await act(async () => undefined);
+
+        expect(appMain()).not.toBeNull();
+        expect(appMain()?.classList.contains(fullscreenClass)).toBe(fullscreen);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+
   test('registers a region surface host on Home', async () => {
     hooks.regionModel = regionModelStub();
 
