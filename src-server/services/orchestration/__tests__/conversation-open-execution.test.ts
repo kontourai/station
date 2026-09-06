@@ -84,7 +84,6 @@ test('opening a durable conversation observes its current Claude child and recor
     sessionId: child,
     provider: 'claude',
     method: 'session.started',
-    model: 'opus-current',
     metadata: {
       userId: 'owner',
       agentSlug: 'claude-agent',
