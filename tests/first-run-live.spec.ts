@@ -67,16 +67,18 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   // `/api/usage-telemetry/disclosure/acknowledgements` on this home.
   const disclosure = page.getByTestId('first-run-disclosure');
   await expect(disclosure).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText('Step 1 of 3')).toBeVisible();
+  await expect(page.getByText('Step 1 of 4')).toBeVisible();
   await expect(
     page.getByTestId('usage-telemetry-disclosure-modal'),
   ).toHaveCount(0);
   await expect(page.locator('.responsive-surface-overlay')).toHaveCount(1);
-  await disclosure.getByRole('button', { name: 'I understand' }).click();
+  await disclosure
+    .getByRole('button', { name: 'Keep usage telemetry on' })
+    .click();
 
   const chapter = page.getByTestId('first-run-engines');
   await expect(chapter).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText('Step 2 of 3')).toBeVisible();
+  await expect(page.getByText('Step 2 of 4')).toBeVisible();
   // Same archive#3656 shell move as tests/first-run-engines.spec.ts — the `main`
   // landmark is the shell's, Home is a `section` inside it (archive#3877).
   await expect(
@@ -187,7 +189,9 @@ test('phone first run recovers from no provider to a real streamed reply', async
     if (firstRunStatus.data?.firstRun?.status === 'pending') {
       const disclosure = page.getByTestId('first-run-disclosure');
       await expect(disclosure).toBeVisible();
-      await disclosure.getByRole('button', { name: 'I understand' }).click();
+      await disclosure
+        .getByRole('button', { name: 'Keep usage telemetry on' })
+        .click();
       await expect(chapter).toBeVisible();
       await chapter.getByRole('button', { name: 'Not now' }).click();
       await expect

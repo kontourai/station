@@ -109,6 +109,7 @@ import { createConnectionRoutes } from '../../routes/connections/connections.js'
 import { createModelsRoutes } from '../../routes/connections/models.js';
 import { createProviderRoutes } from '../../routes/connections/providers.js';
 import { createConsentNativeRoutes } from '../../routes/consent/consent-native-routes.js';
+import { createHomeAuthorityRoutes } from '../../routes/environments/home-authority-routes.js';
 import { createPeerCredentialRoutes } from '../../routes/environments/peer-credential-routes.js';
 import {
   createDiffCommentRoutes,
@@ -1128,6 +1129,10 @@ export function configureRuntimeRoutes(
     eventBus: context.eventBus,
     security: runtimeSecurity,
   });
+  context.app.route(
+    '/api/home-authority',
+    createHomeAuthorityRoutes(context.environmentSecurityService),
+  );
   // Shared resolver keeps project and Registry catalog projections identical.
   const layoutCatalog = new DistributionProfileService(
     context.configLoader.getProjectHomeDir(),
