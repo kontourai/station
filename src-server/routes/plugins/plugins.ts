@@ -1,6 +1,7 @@
 import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 /**
  * Plugin Routes — top-level composer for plugin discovery, install, and public bridge routes.
  */
@@ -43,6 +44,7 @@ export function createPluginRoutes(
   eventBus?: EventBus,
   runtime?: {
     installationHost?: PluginInstallationHost;
+    registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
     packageMcpJournal?: PackageMcpAdmissionJournal;
     /** archive#3677: the distinct-origin consent surface (host approvals). */
     consentChannel?: ConsentChannelService;
@@ -207,6 +209,7 @@ export function createPluginRoutes(
     consentChannel: runtime?.consentChannel,
   });
   registerPluginLifecycleRoutes(app, {
+    registryTrustPolicyAuthority: runtime?.registryTrustPolicyAuthority,
     packageMcpJournal: runtime?.packageMcpJournal,
     installationHost: runtime?.installationHost,
     agentsDir,
@@ -231,6 +234,7 @@ export function createPluginRoutes(
     projectHomeDir,
   });
   registerPluginInstallRoutes(app, {
+    registryTrustPolicyAuthority: runtime?.registryTrustPolicyAuthority,
     packageMcpJournal: runtime?.packageMcpJournal,
     installationHost: runtime?.installationHost,
     agentsDir,

@@ -23,6 +23,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
+| `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |

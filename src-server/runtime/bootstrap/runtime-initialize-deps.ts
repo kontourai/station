@@ -25,6 +25,7 @@ import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import type { Logger } from '../../utils/logger.js';
@@ -133,6 +134,7 @@ export interface RuntimeInitializationContext {
     appConfig: number;
     selectedPackageFingerprint?: string;
   };
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   onAgentConfigurationReady?: (revisions: {
     provider: number;
     appConfig: number;
@@ -208,6 +210,7 @@ export function createRuntimeInitializationDeps(
     reloadAgents: context.reloadAgents,
     captureAgentConfigurationRevisions:
       context.captureAgentConfigurationRevisions,
+    registryTrustPolicyAuthority: context.registryTrustPolicyAuthority,
     onAgentConfigurationReady: context.onAgentConfigurationReady,
     guardDefaultAgentTools: context.guardDefaultAgentTools,
     replaceTemplateVariables: context.replaceTemplateVariables,

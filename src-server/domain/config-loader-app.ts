@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { renameSync, statSync } from 'node:fs';
-import { chmod, mkdir, open, rm, stat } from 'node:fs/promises';
+import {
+  type BigIntStats,
+  constants,
+  realpathSync,
+  renameSync,
+  statSync,
+} from 'node:fs';
+import { chmod, lstat, mkdir, open, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
@@ -95,10 +101,33 @@ function assertSafeAppConfig(config: AppConfig): void {
   }
 }
 
-async function readAppConfigBounded(path: string): Promise<string> {
-  const handle = await open(path, 'r');
+async function readAppConfigBounded(
+  path: string,
+  expectedIdentity?: string,
+): Promise<string> {
+  const handle = await open(
+    path,
+    expectedIdentity === undefined
+      ? 'r'
+      : constants.O_RDONLY |
+          (constants.O_NOFOLLOW ?? 0) |
+          (constants.O_NONBLOCK ?? 0),
+  );
   try {
-    if ((await handle.stat()).size > APP_CONFIG_MAX_BYTES) {
+    const opened = await handle.stat({ bigint: true });
+    if (
+      !opened.isFile() ||
+      (expectedIdentity !== undefined &&
+        [
+          opened.dev,
+          opened.ino,
+          opened.size,
+          opened.mtimeNs,
+          opened.ctimeNs,
+        ].join(':') !== expectedIdentity)
+    )
+      throw new AppConfigConflictError();
+    if (opened.size > APP_CONFIG_MAX_BYTES) {
       throw new Error('app config exceeds the byte limit.');
     }
     const bytes = Buffer.alloc(APP_CONFIG_MAX_BYTES + 1);
@@ -120,6 +149,47 @@ async function readAppConfigBounded(path: string): Promise<string> {
   } finally {
     await handle.close();
   }
+}
+
+/** Bounded observation only: never initializes, migrates, chmods or repairs configuration. */
+export async function observeAppConfigFile(
+  projectHomeDir: string,
+): Promise<Readonly<Record<string, unknown>> | null> {
+  const path = getAppConfigPath(projectHomeDir);
+  let before: BigIntStats;
+  try {
+    before = await lstat(path, { bigint: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+  const signature = (value: BigIntStats) =>
+    [value.dev, value.ino, value.size, value.mtimeNs, value.ctimeNs].join(':');
+  // Preserve an existing stable app-config symlink supported by ConfigLoader.
+  // Open its captured physical target, never a freshly followed replacement.
+  if (!before.isFile() && !before.isSymbolicLink())
+    throw new AppConfigConflictError();
+  const target = before.isSymbolicLink() ? realpathSync.native(path) : path;
+  const targetBefore = before.isSymbolicLink()
+    ? await lstat(target, { bigint: true })
+    : before;
+  if (!targetBefore.isFile() || targetBefore.isSymbolicLink())
+    throw new AppConfigConflictError();
+  const content = await readAppConfigBounded(target, signature(targetBefore));
+  const after = await lstat(path, { bigint: true });
+  const targetAfter = await lstat(target, { bigint: true });
+  if (
+    signature(after) !== signature(before) ||
+    signature(targetAfter) !== signature(targetBefore) ||
+    !targetAfter.isFile() ||
+    targetAfter.isSymbolicLink() ||
+    (before.isSymbolicLink() && realpathSync.native(path) !== target)
+  )
+    throw new AppConfigConflictError();
+  const value: unknown = JSON.parse(content);
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('app config must be an object');
+  return value as Record<string, unknown>;
 }
 
 export interface AppConfigFileMutationOptions {

@@ -2378,8 +2378,23 @@ POST /plugins/preview
 
 Fetches a plugin from a git URL or local path, validates it, and returns manifest, components, conflicts, and dependencies — without installing.
 
-Dependencies with unsupported lifecycle features (including ordinary dependency
-permissions such as `network.fetch`) return HTTP 400 with
+For a registry entry, send `registryId`; the host resolves its source and claim.
+When a selected registry policy verifies the claim, preview also returns
+`registryTrustRevision` for the root and each verified dependency. Return those
+opaque values in the corresponding install consent. They bind the reviewed
+claim, signing key, and applied policy; request bodies cannot supply trust keys
+or a verified claim. Required signatures are scoped to that registry, while
+unrelated unsigned local sources remain supported.
+
+Trust refusal is HTTP 409 with `code: "registry-trust-refused"`, a closed `reason`
+(such as `stale-review`, `missing-claim`, `signature-mismatch`, or
+`continuity-change`), and a bounded message. A stale review needs another
+preview. Continuity changes and unavailable receipts retain data and require
+the separately reviewed remedy; they are not automatically retried or migrated.
+See [registry trust policy](../design/registry-trust-policy.md) for the supported
+local profile, execution fences, and tenant/hosted limits.
+
+Dependencies with unsupported lifecycle features return HTTP 400 with
 `code: "unsupported-plugin-dependency"` and `valid: false`, without a digest or
 permission approval payload. Preview and install use the same support policy;
 preview does not grant or expand permissions. Registry-backed local dependencies

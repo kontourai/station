@@ -134,6 +134,7 @@ describe('plugin CLI API authority', () => {
           consent: {
             permissions: ['providers.register'],
             contentDigest: 'sha256:dependency',
+            registryTrustRevision: `sha256:${'e'.repeat(64)}`,
             grantRevision: 'dependency-reviewed-revision',
             dependencies: [],
             pendingConsent: [
@@ -143,6 +144,7 @@ describe('plugin CLI API authority', () => {
         },
       ],
       contentDigest: 'sha256:reviewed',
+      registryTrustRevision: `sha256:${'d'.repeat(64)}`,
       grantRevision: 'parent-reviewed-revision',
       permissions: {
         required: ['navigation.dock', 'network.fetch'],
@@ -183,27 +185,32 @@ describe('plugin CLI API authority', () => {
       'http://127.0.0.1:3141/api/plugins/install',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({
-          source: '/tmp/demo',
-          skip: ['agent:helper'],
-          consent: {
-            permissions: ['navigation.dock', 'network.fetch'],
-            contentDigest: 'sha256:reviewed',
-            grantRevision: 'parent-reviewed-revision',
-            dependencies: ['shared-lib'],
-            dependencyApprovals: [
-              {
-                id: 'shared-lib',
-                permissions: ['providers.register'],
-                contentDigest: 'sha256:dependency',
-                grantRevision: 'dependency-reviewed-revision',
-                dependencies: [],
-              },
-            ],
-          },
-        }),
+        body: expect.any(String),
       }),
     );
+    const postedBody = authenticatedFetch.mock.calls.at(-1)?.[1]?.body;
+    expect(typeof postedBody).toBe('string');
+    expect(JSON.parse(postedBody as string)).toEqual({
+      source: '/tmp/demo',
+      skip: ['agent:helper'],
+      consent: {
+        permissions: ['navigation.dock', 'network.fetch'],
+        contentDigest: 'sha256:reviewed',
+        registryTrustRevision: `sha256:${'d'.repeat(64)}`,
+        grantRevision: 'parent-reviewed-revision',
+        dependencies: ['shared-lib'],
+        dependencyApprovals: [
+          {
+            id: 'shared-lib',
+            permissions: ['providers.register'],
+            contentDigest: 'sha256:dependency',
+            registryTrustRevision: `sha256:${'e'.repeat(64)}`,
+            grantRevision: 'dependency-reviewed-revision',
+            dependencies: [],
+          },
+        ],
+      },
+    });
 
     // The disclosure the operator answered: the server's own derivation,
     // printed before the question. A prompt with nothing above it is not a
@@ -245,6 +252,7 @@ describe('plugin CLI API authority', () => {
                 consent: {
                   permissions: ['providers.register'],
                   contentDigest: 'sha256:dependency',
+                  registryTrustRevision: `sha256:${'e'.repeat(64)}`,
                   grantRevision: 'dependency-reviewed-revision',
                   dependencies: [],
                   pendingConsent: [
@@ -254,6 +262,7 @@ describe('plugin CLI API authority', () => {
               },
             ],
             contentDigest: 'sha256:reviewed',
+            registryTrustRevision: `sha256:${'d'.repeat(64)}`,
             grantRevision: 'parent-reviewed-revision',
             permissions: {
               required: [],
@@ -312,6 +321,7 @@ describe('plugin CLI API authority', () => {
         components: [],
         conflicts: [],
         contentDigest: 'sha256:reviewed',
+        registryTrustRevision: `sha256:${'d'.repeat(64)}`,
         grantRevision: 'parent-reviewed-revision',
         permissions: {
           required: ['network.fetch'],
@@ -350,6 +360,7 @@ describe('plugin CLI API authority', () => {
         components: [],
         conflicts: [],
         contentDigest: 'sha256:reviewed',
+        registryTrustRevision: `sha256:${'d'.repeat(64)}`,
         grantRevision: 'parent-reviewed-revision',
         permissions: { required: [], autoGranted: [], pendingConsent: [] },
       }),
@@ -371,6 +382,7 @@ describe('plugin CLI API authority', () => {
           components: [],
           conflicts: [],
           contentDigest: 'sha256:reviewed',
+          registryTrustRevision: `sha256:${'d'.repeat(64)}`,
           grantRevision: 'parent-reviewed-revision',
           permissions: { required: [], autoGranted: [], pendingConsent: [] },
         }),
@@ -450,6 +462,7 @@ describe('plugin CLI API authority', () => {
           components: [],
           conflicts: [],
           contentDigest: 'sha256:reviewed',
+          registryTrustRevision: `sha256:${'d'.repeat(64)}`,
           grantRevision: 'parent-reviewed-revision',
           permissions: {
             required: [],
@@ -471,18 +484,22 @@ describe('plugin CLI API authority', () => {
     expect(authenticatedFetch).toHaveBeenLastCalledWith(
       'http://127.0.0.1:3141/api/plugins/install',
       expect.objectContaining({
-        body: JSON.stringify({
-          source: process.cwd(),
-          skip: [],
-          consent: {
-            permissions: [],
-            contentDigest: 'sha256:reviewed',
-            grantRevision: 'parent-reviewed-revision',
-            dependencies: [],
-          },
-        }),
+        body: expect.any(String),
       }),
     );
+    const postedBody = authenticatedFetch.mock.calls.at(-1)?.[1]?.body;
+    expect(typeof postedBody).toBe('string');
+    expect(JSON.parse(postedBody as string)).toEqual({
+      source: process.cwd(),
+      skip: [],
+      consent: {
+        permissions: [],
+        contentDigest: 'sha256:reviewed',
+        registryTrustRevision: `sha256:${'d'.repeat(64)}`,
+        grantRevision: 'parent-reviewed-revision',
+        dependencies: [],
+      },
+    });
   });
 
   test.each(['preview', 'install'] as const)(

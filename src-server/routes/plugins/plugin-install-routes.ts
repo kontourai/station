@@ -34,6 +34,14 @@ import {
   readPluginGrantState,
   requiredPermissionsForManifest,
 } from '../../services/plugins/plugin-permissions.js';
+import {
+  isRegistryAcquisitionRefusal,
+  RegistryAcquisitionRefused,
+  registryAcquisitionRefusalDetails,
+  registryAcquisitionRevision,
+  verifyRetainedRegistryAcquisition,
+} from '../../services/plugins/registry-acquisition.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   errorMessage,
@@ -51,11 +59,12 @@ import {
 import { buildPlugin } from './plugin-bundles.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 import {
+  capturePluginRegistryAcquisition,
   installPluginFromSource,
   type PluginInstallSharedDeps,
   previewInstalledPluginRecovery,
   recoverInstalledPlugin,
-  resolvePluginRegistrySource,
+  resolvePluginRegistryInstall,
 } from './plugin-install-shared.js';
 import {
   detectPluginConflicts,
@@ -68,6 +77,7 @@ import {
 
 interface PluginInstallRouteDeps {
   installationHost?: PluginInstallationHost;
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: {
@@ -275,6 +285,7 @@ export function registerPluginInstallRoutes(
     logger,
     eventBus,
     installationHost: deps.installationHost,
+    registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
     packageMcpJournal: deps.packageMcpJournal,
     buildPlugin: (directory, name, manifest) =>
       buildPlugin(directory, name, logger, manifest),
@@ -350,13 +361,14 @@ export function registerPluginInstallRoutes(
       const grantRevisions = observePluginGrantRevisions(projectHomeDir);
       const { source: bodySource, registryId } = getBody(c);
       let source = bodySource;
+      let registryKey: string | undefined;
       // The Registry view previews by catalog id: its listings carry provider
       // labels, not source paths, so the server resolves the id through the
       // same registry providers the install itself would use. `code` lets a
       // caller distinguish "this id is not a plugin" (an agent-face entry it
       // should install as before) from a broken plugin source.
-      if (!source && registryId) {
-        const resolved = await resolvePluginRegistrySource(registryId);
+      if (registryId) {
+        const resolved = await resolvePluginRegistryInstall(registryId);
         if (!resolved) {
           return c.json(
             {
@@ -369,7 +381,10 @@ export function registerPluginInstallRoutes(
             404,
           );
         }
-        source = resolved;
+        if (source && source !== resolved.source)
+          throw new Error('Registry source changed; preview again');
+        source = resolved.source;
+        registryKey = resolved.registryKey;
       }
       if (!source) {
         return c.json(
@@ -515,6 +530,75 @@ export function registerPluginInstallRoutes(
           logger,
           undefined,
           source,
+          undefined,
+          {
+            beforeResolve: () => {},
+            async resolved(entry, evidence) {
+              if (!entry.consent || !evidence.manifest) return;
+              const selection = deps.packageMcpJournal?.currentInstallation(
+                entry.id,
+              );
+              const trust =
+                selection?.state === 'observed'
+                  ? deps.packageMcpJournal!.registryAcquisition(
+                      selection.installation,
+                    )
+                  : undefined;
+              if (trust?.state === 'unavailable')
+                throw new RegistryAcquisitionRefused();
+              const policy =
+                await deps.registryTrustPolicyAuthority?.captureAdmission();
+              if (entry.status === 'installed' && trust?.receipt) {
+                if (!policy) throw new RegistryAcquisitionRefused();
+                entry.consent.registryTrustRevision =
+                  registryAcquisitionRevision(
+                    await verifyRetainedRegistryAcquisition(
+                      policy,
+                      trust.receipt,
+                    ),
+                  );
+                return;
+              }
+              const required =
+                policy?.configuration?.profiles.some(
+                  (profile) =>
+                    profile.registryKey === registryKey &&
+                    profile.signatures === 'required',
+                ) === true;
+              if (entry.status === 'installed') {
+                if (required) throw new RegistryAcquisitionRefused();
+                return;
+              }
+              const registry =
+                !entry.source || required
+                  ? await resolvePluginRegistryInstall(entry.id)
+                  : undefined;
+              if (!evidence.source) {
+                if (required) throw new RegistryAcquisitionRefused();
+                return;
+              }
+              if (required && !registry) throw new RegistryAcquisitionRefused();
+              const verified = await capturePluginRegistryAcquisition(
+                evidence.source,
+                evidence.manifest,
+                entry.consent.contentDigest,
+                deps,
+                registry ? entry.id : undefined,
+                registry?.registryKey,
+                trust?.receipt ?? undefined,
+              );
+              if (required && !verified.registryAcquisition)
+                throw new RegistryAcquisitionRefused();
+              if (
+                verified.registryAcquisition &&
+                evidence.format !== 'agent-plugin-1.0'
+              )
+                throw new RegistryAcquisitionRefused();
+              if (verified.registryAcquisition)
+                entry.consent.registryTrustRevision =
+                  registryAcquisitionRevision(verified.registryAcquisition);
+            },
+          },
         );
         const git = await getPluginGitInfo(tempDir, logger);
         // archive#4288: the preview already staged and validated everything a
@@ -534,6 +618,31 @@ export function registerPluginInstallRoutes(
           );
         }
 
+        const selection = deps.packageMcpJournal?.currentInstallation(
+          manifest.name,
+        );
+        const priorTrust =
+          selection?.state === 'observed'
+            ? deps.packageMcpJournal!.registryAcquisition(
+                selection.installation,
+              )
+            : undefined;
+        if (priorTrust?.state === 'unavailable')
+          throw new RegistryAcquisitionRefused();
+        const { registryAcquisition } = await capturePluginRegistryAcquisition(
+          source,
+          manifest,
+          consentBasis.contentDigest,
+          deps,
+          registryId,
+          registryKey,
+          priorTrust?.receipt ?? undefined,
+        );
+        if (registryAcquisition && format !== 'agent-plugin-1.0')
+          throw new RegistryAcquisitionRefused();
+        const registryTrustRevision = registryAcquisition
+          ? registryAcquisitionRevision(registryAcquisition)
+          : undefined;
         const installationRevision =
           format !== 'agent-plugin-1.0'
             ? undefined
@@ -550,6 +659,7 @@ export function registerPluginInstallRoutes(
           valid: true,
           manifest,
           installationRevision,
+          registryTrustRevision,
           grantRevision: grantRevisions.revisionFor(manifest.name),
           existingDataScope: installationRevision != null,
           components,
@@ -577,6 +687,16 @@ export function registerPluginInstallRoutes(
         rmSync(tempDir, { recursive: true, force: true });
       }
     } catch (error: unknown) {
+      if (isRegistryAcquisitionRefusal(error))
+        return c.json(
+          {
+            valid: false,
+            ...registryAcquisitionRefusalDetails(error),
+            components: [],
+            conflicts: [],
+          },
+          409,
+        );
       if (error instanceof PluginPreviewUnsupportedDependencyError) {
         return c.json(
           {
@@ -637,6 +757,7 @@ export function registerPluginInstallRoutes(
       }
       const operatorDecision: PluginInstallConsent = {
         kind: 'operator-decision',
+        registryTrustRevision: consent.registryTrustRevision,
         grantRevision: consent.grantRevision,
         permissions: consent.permissions,
         contentDigest: consent.contentDigest,
@@ -653,6 +774,7 @@ export function registerPluginInstallRoutes(
             skip,
             {
               agentsDir,
+              registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
               packageMcpJournal: deps.packageMcpJournal,
               installationHost: deps.installationHost,
               beginConfigurationMutation: beginMutation,
@@ -695,6 +817,14 @@ export function registerPluginInstallRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (isRegistryAcquisitionRefusal(error))
+        return c.json(
+          {
+            success: false,
+            ...registryAcquisitionRefusalDetails(error),
+          },
+          409,
+        );
       if (error instanceof PluginInstallationPending)
         return c.json(
           {

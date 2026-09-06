@@ -45,8 +45,10 @@ import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { createStationHomeBackup } from '@kontourai/station-shared/station-home-archive';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ConfigLoader } from '../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
+import { listProviders } from '../../providers/registries/registry.js';
 import {
   principalKey,
   UnattendedGrantStore,
@@ -54,6 +56,7 @@ import {
 import { EventStore } from '../../services/orchestration/event-store.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../services/usage-telemetry-inventory.js';
+import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
 
 const TEST_PORT = 31_141;
 const hostedRegistryFileEnv = 'STATION_HOSTED_TENANT_REGISTRY_FILE';
@@ -638,6 +641,25 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     // both real agent builders still receive the resulting (empty) tool list.
     vi.spyOn(MCPManager, 'loadAgentTools').mockResolvedValue([]);
 
+    // ACP readiness is intentionally detached from initialize(). Observe its
+    // real reload instead of invoking a hook during the mutation it owns.
+    let resolveAcpReload!: () => void;
+    let rejectAcpReload!: (error: unknown) => void;
+    const acpReload = new Promise<void>((resolve, reject) => {
+      resolveAcpReload = resolve;
+      rejectAcpReload = reject;
+    });
+    const reloadDefaultAgent = runtime.reloadDefaultAgent.bind(runtime);
+    vi.spyOn(runtime, 'reloadDefaultAgent').mockImplementation(async () => {
+      try {
+        await reloadDefaultAgent();
+        resolveAcpReload();
+      } catch (error) {
+        rejectAcpReload(error);
+        throw error;
+      }
+    });
+
     await expect(runtime.initialize()).resolves.toBeUndefined();
     expect(runtime.listAgents()).toEqual(
       expect.arrayContaining(['default', 'custom-writer']),
@@ -661,6 +683,14 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       grantedTool.toolName,
       'operator',
     );
+
+    await acpReload;
+    const configuration = runtime as unknown as {
+      agentConfigurationMutationQueue: Promise<void>;
+      getStableAgentConfigurationRevision(): number | null;
+    };
+    await configuration.agentConfigurationMutationQueue;
+    expect(configuration.getStableAgentConfigurationRevision()).not.toBeNull();
 
     for (const agentSlug of ['default', 'custom-writer']) {
       const hooks = runtimeInternals.agentHooksMap.get(agentSlug);
@@ -812,6 +842,9 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
 
   it('releases terminal and defers voice when initialization fails, then retries cleanly', async () => {
     home = await createSchemaHome('station-coldstart-retry-');
+    await new ConfigLoader({ projectHomeDir: home }).mutateAppConfig(() => ({
+      registryTrust: { profiles: [] },
+    }));
     const port = TEST_PORT;
     runtime = new StationRuntime({
       projectHomeDir: home,
@@ -819,6 +852,9 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       host: '127.0.0.1',
     });
     const terminalListener = replaceTerminalListener(runtime);
+    const policies = (
+      runtime as unknown as { orchestrationEventStore: EventStore }
+    ).orchestrationEventStore.createRegistryTrustPolicyDecisions();
     const eventLog = (
       runtime as unknown as {
         eventLog: { loadRecentEvents(): Promise<void> };
@@ -834,6 +870,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     routeMocks.deferServerFactory = true;
 
     await expect(runtime.initialize()).rejects.toBe(failure);
+    expect(policies.read()).toBeNull();
     expect(terminalListener.stop).toHaveBeenCalledTimes(1);
     expect(terminalListener.start).toHaveBeenNthCalledWith(
       1,
@@ -856,6 +893,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     expect(failedVoltAgent.shutdown).toHaveBeenCalledTimes(1);
 
     await expect(runtime.initialize()).resolves.toBeUndefined();
+    expect(policies.read()?.identity.configured).toBe(true);
     expect(terminalListener.start).toHaveBeenNthCalledWith(
       2,
       port + 1,
@@ -1021,6 +1059,51 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     captureSpy.mockRestore();
   });
 
+  it('applies a changed policy with a pinned provider present and fences its old composition without blocking startup', async () => {
+    home = await createSchemaHome('station-coldstart-pinned-policy-');
+    const fixture = await installSignedStartupProvider(home);
+    await new ConfigLoader({ projectHomeDir: home }).mutateAppConfig(() => ({
+      registryTrust: { profiles: [] },
+    }));
+    const globals = globalThis as typeof globalThis & {
+      __stationSignedStartupImports?: number;
+    };
+    const before = globals.__stationSignedStartupImports ?? 0;
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    replaceTerminalListener(runtime);
+    await expect(runtime.initialize()).resolves.toBeUndefined();
+    expect(globals.__stationSignedStartupImports).toBeGreaterThan(before);
+    const internal = runtime as unknown as {
+      orchestrationEventStore: EventStore;
+      agentConfigurationMutationQueue: Promise<unknown>;
+      reconcileAgentConfigurationSources(): Promise<void>;
+      getStableAgentConfigurationRevision(): number | null;
+    };
+    const decision = internal.orchestrationEventStore
+      .createRegistryTrustPolicyDecisions()
+      .read();
+    expect(decision?.epoch).not.toBe(fixture.applied?.epoch);
+    expect(decision?.identity.profiles).toEqual([]);
+    expect(
+      listProviders('branding').some(
+        (entry) => entry.source === fixture.pluginName,
+      ),
+    ).toBe(false);
+    const journal =
+      internal.orchestrationEventStore.createPackageMcpAdmissionJournal();
+    const selected = journal.currentInstallation(fixture.pluginName);
+    if (selected.state !== 'observed')
+      throw new Error('Missing pinned selection');
+    expect(journal.admissionOpen(selected.installation)).toBe(false);
+    await internal.agentConfigurationMutationQueue;
+    await internal.reconcileAgentConfigurationSources();
+    expect(internal.getStableAgentConfigurationRevision()).not.toBeNull();
+  });
+
   it('rejects a foreign selected-package change across startup capture and recovers on retry', async () => {
     home = await createSchemaHome('station-coldstart-selected-generation-');
     runtime = new StationRuntime({
@@ -1031,6 +1114,11 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     replaceTerminalListener(runtime);
     const peer = new EventStore(getOrchestrationDatabasePath(home));
     const internal = runtime as any;
+    await internal.configLoader.mutateAppConfig(() => ({
+      registryTrust: { profiles: [] },
+    }));
+    const policyDecisions = peer.createRegistryTrustPolicyDecisions();
+    expect(policyDecisions.read()).toBeNull();
     const capture = internal.captureAgentConfigurationRevisions.bind(runtime);
     let count = 0;
     const captureSpy = vi
@@ -1056,12 +1144,14 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       );
       expect(captureSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
       expect(ready).not.toHaveBeenCalled();
+      expect(policyDecisions.read()).toBeNull();
       expect(internal.getStableAgentConfigurationRevision()).toBeNull();
       await expect(runtime.initialize()).resolves.toBeUndefined();
       // Startup may already have queued a normal configuration notification.
       // Observe its owning queue rather than treating in-flight work as ready.
       await internal.agentConfigurationMutationQueue;
       expect(internal.getStableAgentConfigurationRevision()).not.toBeNull();
+      expect(policyDecisions.read()?.identity.configured).toBe(true);
     } finally {
       captureSpy.mockRestore();
       ready.mockRestore();

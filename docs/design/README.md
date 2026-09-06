@@ -72,6 +72,7 @@ category.
 - [principals.md](principals.md) — Design: Principals — what "people" means in Station, and when it changes
 - [private-cloud-environment.md](private-cloud-environment.md) — Private cloud Station environment
 - [project-task-room-history.md](project-task-room-history.md) — Project/Task room history
+- [registry-trust-policy.md](registry-trust-policy.md) — Applied registry trust policy
 - [revision-bound-evidence.md](revision-bound-evidence.md) — Design: revision-bound evidence
 - [settings-architecture.md](settings-architecture.md) — Settings Architecture: scope-first settings for Station
 - [shared-working-state.md](shared-working-state.md) — Shared working-state protocol

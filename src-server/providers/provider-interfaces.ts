@@ -65,6 +65,11 @@ export interface ISkillRegistryProvider {
 
 export interface IPluginRegistryProvider {
   readonly registryKey?: string;
+  /** One fresh catalog observation. Claims remain untrusted until the installer verifies them. */
+  resolvePackage?(id: string): Promise<{
+    source: string;
+    claim?: unknown;
+  } | null>;
   listAvailable(): Promise<RegistryItem[]>;
   listInstalled(): Promise<RegistryItem[]>;
   resolveSource?(id: string): Promise<string | null>;

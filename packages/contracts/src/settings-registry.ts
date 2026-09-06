@@ -201,6 +201,14 @@ export const APP_SETTINGS_REGISTRY = [
       'Where the Registry page loads its catalog of agents, skills, and plugins. Leave empty for the default catalog.',
   }),
   defineSetting({
+    key: 'registryTrust',
+    scope: 'station',
+    descriptor: { kind: 'composite' },
+    label: 'Registry trust policy',
+    description:
+      'Candidate registry signature policy. It becomes authoritative only after configuration is applied.',
+  }),
+  defineSetting({
     key: 'gitRemote',
     scope: 'station',
     descriptor: { kind: 'string' },

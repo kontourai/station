@@ -45,6 +45,7 @@ interface ManifestPlugin {
   version: string;
   source: string;
   type?: string;
+  claim?: unknown;
 }
 
 /** `ManifestPlugin.type` for an entry that is an agent DEFINITION, not code. */
@@ -143,30 +144,52 @@ export class JsonManifestRegistryProvider
    * the response BODY too, not just the headers, because the signal stays live
    * until `json()` resolves.
    */
-  private async fetchManifest(): Promise<Manifest> {
+  private async fetchManifest(fresh = false): Promise<Manifest> {
     const now = Date.now();
-    if (this.manifestCache && now < this.cacheExpiry) {
+    if (!fresh && this.manifestCache && now < this.cacheExpiry) {
       return this.manifestCache;
     }
 
+    // Keep this request's result local: another concurrent fetch must not
+    // substitute its catalog between this source and claim observation.
+    let manifest: Manifest;
     // Support both URLs and local file paths
     if (this.manifestUrl.startsWith('/') || this.manifestUrl.startsWith('.')) {
       const raw = readFileSync(this.manifestUrl, 'utf-8');
-      this.manifestCache = JSON.parse(raw) as Manifest;
+      manifest = JSON.parse(raw) as Manifest;
     } else {
       const response = await fetch(this.manifestUrl, {
         signal: AbortSignal.timeout(this.manifestFetchTimeoutMs),
+        ...(fresh ? { cache: 'no-store' as const } : {}),
       });
       if (!response.ok) {
         throw new Error(
           `Failed to fetch manifest: ${response.status} ${response.statusText}`,
         );
       }
-      this.manifestCache = (await response.json()) as Manifest;
+      manifest = (await response.json()) as Manifest;
     }
 
+    this.manifestCache = manifest;
     this.cacheExpiry = now + this.cacheTimeout;
-    return this.manifestCache!;
+    return manifest;
+  }
+
+  async resolvePackage(
+    id: string,
+  ): Promise<{ source: string; claim?: unknown } | null> {
+    const manifest = await this.fetchManifest(true);
+    const matches = manifest.plugins.filter((plugin) => plugin.id === id);
+    if (matches.length > 1)
+      throw new Error('Registry package identity is ambiguous');
+    const plugin = matches[0];
+    if (!plugin) return null;
+    return {
+      source: this.resolveManifestSource(plugin.source),
+      ...(plugin.claim === undefined
+        ? {}
+        : { claim: structuredClone(plugin.claim) }),
+    };
   }
 
   private getPluginsDir(): string {
