@@ -479,7 +479,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Regression #574: two completed native turns followed by an actual same-home server restart and public CLI conversation continuation. Independently owned temporary Station instances qualify VoltAgent and Strands with deterministic readiness disabled; captured model requests must retain both prior user/assistant exchanges and original Project/cwd binding.',
+      'Regression #574: four legitimate restart journeys across VoltAgent/Strands and foreground/delegated origins. Two completed native turns precede actual same-home restart; foreground resumes through CLI chat and delegated Tasks through CLI delegate. Independently owned temporary instances use real readiness, and captured model requests must retain ordered user/assistant exchanges and original Conversation/Project/cwd binding.',
     exceptions: [],
   },
   {
