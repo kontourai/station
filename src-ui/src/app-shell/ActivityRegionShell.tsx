@@ -31,8 +31,10 @@ const loadActivityWorkspacePane = () =>
  * `page-frame-registry.ts`), with the surface's registered title. No dock
  * chrome — there is no region to hide, resize or move.
  */
+const ACTIVITY_SURFACE = REGION_SURFACE_REGISTRY.get('activity')!;
+
 const ACTIVITY_MAIN_FRAME: PageFrameSpec = {
-  title: REGION_SURFACE_REGISTRY.get('activity')?.title,
+  title: ACTIVITY_SURFACE.title,
   width: 'full',
   body: 'fill',
   flush: true,
@@ -126,7 +128,10 @@ export function ActivityRegionShell({ regionId }: { regionId: RegionId }) {
             showMaximizeShortcut={chrome.ownsMaximizeShortcut}
             restoreSnap={chrome.dockSnap}
             surfaceShortcutId={chrome.surfaceShortcutId}
-            surfaceTitle={REGION_SURFACE_REGISTRY.get('activity')?.title}
+            // Non-null: the registry is a module constant with an `activity`
+            // entry, and the control's name is not allowed to degrade to a
+            // fallback (#1386).
+            surfaceTitle={ACTIVITY_SURFACE.title}
             isDragging={chrome.isDragging}
             onDockSnap={chrome.applyDockSnap}
             availableDockSlotPlacements={chrome.availableDockSlotPlacements}
