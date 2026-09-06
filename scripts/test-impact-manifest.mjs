@@ -181,6 +181,26 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
 /** Deterministic, reviewable edges the runtime dependency graph cannot see. */
 export const TEST_IMPACT_MANIFEST = Object.freeze([
   {
+    pattern: 'src-desktop/Cargo.toml',
+    tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
+    reason: 'embedded WebDriver dependency boundary',
+  },
+  {
+    pattern: 'src-desktop/tauri.webdriver.conf.json',
+    tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
+    reason: 'embedded WebDriver application identity boundary',
+  },
+  {
+    pattern: 'src-desktop/src/lib.rs',
+    tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
+    reason: 'embedded WebDriver release and mock-credential boundary',
+  },
+  {
+    pattern: 'tests/tauri-shell/direct-webdriver.ts',
+    tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
+    reason: 'embedded WebDriver test harness boundary',
+  },
+  {
     pattern: 'src-server/runtime/routes/runtime-routes.ts',
     tests: [
       'src-server/runtime/routes/__tests__/runtime-routes-hosted-mcp-composition.test.ts',
