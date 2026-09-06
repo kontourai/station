@@ -88,6 +88,25 @@ const CONTENT_COLUMN = { width: 1200, height: 762 };
  */
 const harness = vi.hoisted(() => ({ builtinRendererPresent: true }));
 
+/**
+ * The one catalog entry every branch below reshapes. `availability` and
+ * `selectedRenderer` are annotated rather than inferred: the inferred literal
+ * type has no `selectedRenderer` at all (the baseline is the builtin branch,
+ * which carries none), so `typecheck:ui` — which, unlike a bare
+ * `tsc -p tsconfig.json`, compiles test files — rejects every branch that
+ * declares one.
+ */
+type CatalogEntryFixture = {
+  descriptor: { id: string; name: string; description: string };
+  instance: { instanceId: string; boundContext: { projectId: string } };
+  availability: { state: string; reason: { code: string; source: string } };
+  selectedRenderer?: {
+    source: string;
+    renderer: { kind: string; ref?: string };
+  };
+  clientRendererPresence: string;
+};
+
 const catalogMock = vi.hoisted(() => ({
   projectId: 'project-uuid',
   projectSlug: 'demo',
@@ -108,7 +127,7 @@ const catalogMock = vi.hoisted(() => ({
       },
       clientRendererPresence: 'present',
     },
-  ],
+  ] as CatalogEntryFixture[],
   isLoading: false,
   isError: false,
   refetch: vi.fn(),
