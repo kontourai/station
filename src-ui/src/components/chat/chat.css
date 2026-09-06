@@ -2261,7 +2261,9 @@
    THE BOUND. The widest the cluster can get: 126 (left side at its floor) +
    116 (this chip — an 85px `max-width` label plus 31px of measured furniture:
    button padding, the 7px dot, its gap) + 4 + 62 (notifications carrying its
-   widest badge: 38px of button plus a 23.91px badge, the two-character worst
+   widest badge: 38px of button plus a 23.91px badge — that is "99"'s width,
+   which the `9+` cap makes unrenderable (the cap's own string is 23.80px), so
+   the budget is ~1px conservative rather than exact. The two-character worst
    case that HeaderActions.tsx's "9+" cap creates — uncapped this member is
    unbounded and so is this paragraph) + 4 + 44 (More actions) + 4 + 44 (Open
    settings) = 404px, of which the last control's own CENTRE sits at 382. At

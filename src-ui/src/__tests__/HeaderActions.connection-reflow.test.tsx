@@ -545,7 +545,9 @@ describe.skipIf(!chromiumAvailable)(
      * out, so the row's content width is viewport-independent and the left side
      * ends at x=126. The widest the cluster can reach is 126 + 116 (this chip
      * at its 85px label ceiling plus 31px of furniture) + 4 + 62 (notifications
-     * at their widest badge — 38px of button plus the 23.91px two-character
+     * at their widest badge — 38px of button plus 23.91px, which is "99"'s
+     * width rather than the cap's own "9+" (23.80px), so the budget is ~1px
+     * conservative. The two-character
      * ceiling `HeaderActions.tsx`'s "9+" cap creates) + 4 + 44 + 4 + 44 = 404,
      * putting `Open settings`'s centre at 382. The live sweep is narrower,
      * because the state it drove renders a 79px label beside a one-digit badge:

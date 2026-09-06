@@ -228,8 +228,10 @@ export function ConnectionBannerSource() {
        *
        * Scoped to THIS banner, not to this component: the compatibility strip
        * below (`BANNER_IDS.compat`) is published by the same source and is
-       * deliberately not marked — it carries no action at all, so there is
-       * nothing under the dock for a reader to fail to reach.
+       * deliberately not marked: a version mismatch is not a connection that
+       * is DOWN, so it fails the state test below rather than the action one.
+       * Whether that strip also deserves to cross a maximized dock is a
+       * separate question and out of scope here.
        *
        * What makes this one critical is the state, not the actions. Only
        * `authentication-failed` and `identity-mismatch` are given real

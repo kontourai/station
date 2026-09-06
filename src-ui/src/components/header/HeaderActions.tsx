@@ -414,6 +414,12 @@ export function HeaderActions({
                The exact count is not lost: it is in this button's accessible
                name (`${notificationLabel} (${notificationBadge.label})` above,
                "N need attention"), and the panel the button opens lists them.
+               What the cap does cost: above nine, the visible "9+" is no
+               longer a substring of that name, where the uncapped count was.
+               The NAME — "Notifications" — still is, and the badge reads as a
+               status indicator rather than as the control's label, so the
+               speech-input pairing WCAG 2.5.3 asks for still holds on the
+               label itself.
                Capped HERE rather than in `destination-registry.ts` because it
                is this ROW that has no room — `DestinationBadge.count` stays
                the true count for any surface that can afford to print it. */
