@@ -395,6 +395,68 @@ describe('RegionToolbarControls', () => {
   });
 
   /**
+   * #1386. `click` was the backdrop's only dismissal, and a pointer sequence
+   * that never becomes a click left the menu open until the next input: a
+   * touch on the backdrop that turns into a scroll ends in `pointercancel`,
+   * and a press released where the browser cannot compute a click target ends
+   * in neither event. Both ends of the sequence dismiss now, and `pointerdown`
+   * still does not — it is swallowed so the panel keeps focus.
+   */
+  test('the backdrop dismisses on pointercancel and on pointerup, and a whole click closes it once', () => {
+    render(<RegionToolbarControls />);
+    const trigger = screen.getByRole('button', { name: 'Layout regions' });
+    const openBackdrop = () => {
+      trigger.focus();
+      fireEvent.click(trigger);
+      expect(
+        screen.getByRole('group', { name: 'Layout regions' }),
+      ).toBeTruthy();
+      return screen.getByRole('button', { name: 'Close layout menu' });
+    };
+
+    // A cancelled sequence: press, then the gesture becomes a scroll. No
+    // `click` is ever dispatched, which is what left the menu stuck.
+    let backdrop = openBackdrop();
+    fireEvent(backdrop, createEvent.pointerDown(backdrop));
+    expect(
+      screen.queryByRole('group', { name: 'Layout regions' }),
+    ).not.toBeNull();
+    fireEvent.pointerCancel(backdrop);
+    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    // The release itself dismisses, so a press whose click never arrives is
+    // still a dismissal.
+    backdrop = openBackdrop();
+    fireEvent(backdrop, createEvent.pointerDown(backdrop));
+    fireEvent.pointerUp(backdrop);
+    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    // The ordinary click, in browser order. `onClose` runs on `pointerup` and
+    // again on `click`; the second call must be inert. Focus is returned by
+    // `useMenuFocus`'s cleanup, which is the only thing a close moves, so the
+    // spy's count IS the answer to "what does the second call do to focus".
+    backdrop = openBackdrop();
+    const returnedFocus = vi.spyOn(trigger, 'focus');
+    fireEvent(backdrop, createEvent.pointerDown(backdrop));
+    fireEvent.pointerUp(backdrop);
+    fireEvent.click(backdrop);
+    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
+    expect(returnedFocus).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(trigger);
+    // Dismissal is not a placement: the backdrop must never reach the model.
+    expect(harness.placeSurface).not.toHaveBeenCalled();
+    expect(harness.toggleSurface).not.toHaveBeenCalled();
+    expect(harness.setRegion).not.toHaveBeenCalled();
+    returnedFocus.mockRestore();
+
+    // And the trigger still opens it again, so nothing was left half-closed.
+    fireEvent.click(trigger);
+    expect(screen.getByRole('group', { name: 'Layout regions' })).toBeTruthy();
+  });
+
+  /**
    * KEYBOARD OWNERSHIP, which is what the change of role in #1552 D2 buys.
    *
    * The picker is a stack of `radiogroup`s: the arrow keys move WITHIN one

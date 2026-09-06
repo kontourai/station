@@ -174,9 +174,36 @@ function ToolbarMenuSurface({
           inset: 0,
           zIndex: 'calc(var(--layer-navigation) - 1)',
         }}
+        // The press is swallowed so the menu keeps focus and its "Close …
+        // menu" button stays operable; the RELEASE is what dismisses.
         onPointerDown={(event) => {
           event.preventDefault();
           event.stopPropagation();
+        }}
+        // `click` alone was the whole dismissal, and a pointer sequence that
+        // never becomes a click left the menu open until the next input
+        // (#1386): a touch on the backdrop that turns into a scroll ends in
+        // `pointercancel`, and a press that is released somewhere the click
+        // target cannot be computed from ends in neither. Both ends of the
+        // sequence close, so the gesture that started on the backdrop
+        // dismisses however it finishes.
+        //
+        // `onClose` is idempotent by contract — the panel's owner sets its
+        // `menuOpen` state to false, and focus is returned once by
+        // `useMenuFocus`'s cleanup, not by this callback — so a normal click,
+        // whose `pointerup` closes the panel before `click` is dispatched, is
+        // not a double dismissal. `onClick` is kept because it is the only
+        // channel a caller without pointer events has, and because the
+        // backdrop is removed on `pointerup`, so the browser retargets that
+        // click to the nearest connected ancestor rather than to whatever
+        // sits underneath.
+        onPointerUp={(event) => {
+          event.stopPropagation();
+          onClose();
+        }}
+        onPointerCancel={(event) => {
+          event.stopPropagation();
+          onClose();
         }}
         onClick={(event) => {
           event.stopPropagation();
