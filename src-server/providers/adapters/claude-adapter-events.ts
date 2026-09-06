@@ -16,6 +16,7 @@ import {
   classifyClaudeResultOutcome,
   claudeResultFailureText,
 } from './claude-result-outcome.js';
+import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /** A token figure is only usable when it is a finite, non-negative count. */
 function tokenCount(value: unknown): number | undefined {
@@ -227,6 +228,29 @@ export interface ClaudeMessageState {
    * already says it did not run.
    */
   activeToolCalls?: Map<string, ClaudeActiveToolCall>;
+  /**
+   * station#1569 (item 1): entries moved out of `activeToolCalls` by the
+   * session-end settle, kept so a `tool_result` that STILL drains afterwards
+   * is published as the real terminal instead of being dropped by the replay
+   * guard above.
+   *
+   * The settle runs either from `consumeMessages`' `finally` — after which no
+   * further message can arrive, so this map is simply never read — or from
+   * `stopSession` when its bounded grace elapses on an engine whose iterator
+   * did not end at `close()`. That second case is the whole reason this map
+   * exists: the SDK can still be holding a queued `tool_result`, and the
+   * `unresolved` Station just published is an admitted non-answer, not an
+   * observed outcome. A real result that arrives after it CORRECTS it.
+   *
+   * Entries whose terminal a settled Task already published
+   * (`terminalPublished`) are recorded here too: their own docblock says the
+   * real `tool_result` remains the authoritative output, and the settle
+   * skipping them must not also take that away.
+   *
+   * Not a replay-guard hole: this map is only ever populated at the end of
+   * THIS record's session, and a resume builds a new record.
+   */
+  settledToolCalls?: Map<string, ClaudeActiveToolCall>;
   /**
    * archive#1827: set when a `result` message classified `terminal`
    * (`classifyClaudeResultOutcome`) has already been published as a
@@ -877,9 +901,33 @@ export function mapClaudeSdkMessage({
       const toolCallId = toolResult.tool_use_id;
       if (typeof toolCallId !== 'string') continue;
       const tracked = record.activeToolCalls?.get(toolCallId);
-      if (!tracked) continue;
-      const toolName = tracked.toolName;
-      record.activeToolCalls?.delete(toolCallId);
+      // station#1569 (item 1): an id the session-end settle already moved to
+      // `settledToolCalls` is not an untracked id. It is a call Station told
+      // the reader it had no answer for, and this is the answer arriving late
+      // — the only authoritative outcome Station ever receives for it.
+      // Dropping it (the `continue` below) left `unresolved` standing over a
+      // result that exists. See the field's docblock for when this is
+      // reachable at all.
+      const settled = tracked
+        ? undefined
+        : record.settledToolCalls?.get(toolCallId);
+      const entry = tracked ?? settled;
+      if (!entry) continue;
+      const toolName = entry.toolName;
+      if (tracked) {
+        record.activeToolCalls?.delete(toolCallId);
+      } else {
+        record.settledToolCalls?.delete(toolCallId);
+        logInfo?.('Claude tool result arrived after the session-end settle', {
+          threadId: record.session.threadId,
+          toolCallId,
+          toolName,
+          // Which claim this terminal supersedes: `unresolved` for an
+          // ordinary settled entry, or nothing at all for one whose Task
+          // terminal the settle deliberately left alone.
+          supersedes: entry.terminalPublished ? 'task-terminal' : 'unresolved',
+        });
+      }
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -889,7 +937,7 @@ export function mapClaudeSdkMessage({
         // now: a stopped turn's delayed result must not land on its
         // successor (the #921 window), or the provenance fold sees a start
         // without a completion on one turn and the reverse on the other.
-        turnId: tracked.turnId ?? record.activeTurnId,
+        turnId: entry.turnId ?? record.activeTurnId,
         itemId: toolCallId,
         method: 'tool.completed',
         toolCallId,
@@ -933,16 +981,12 @@ interface ClaudeActiveToolCall {
 
 /**
  * station#1558: what a reader is told about a `tool_use` that was still open
- * when its SESSION ended.
- *
- * The two honest facts are that no result was reported and that Station
- * cannot tell whether the tool ran — the engine process is gone, and a
- * `tool_result` it may or may not have produced went with it. Anything more
- * specific ("the tool failed", "the call was cancelled") would be a claim
- * nothing observed.
+ * when its SESSION ended. Retained under the Claude name for this adapter's
+ * own consumers; station#1569 (item 4) moved the sentence itself to
+ * `unresolved-tool-output.ts` once three more adapters had to say the same
+ * thing (see that module).
  */
-export const CLAUDE_UNRESOLVED_TOOL_OUTPUT =
-  'No result was reported before the session ended; whether the tool ran is unknown.';
+export const CLAUDE_UNRESOLVED_TOOL_OUTPUT = UNRESOLVED_TOOL_OUTPUT;
 
 /**
  * Settle every `tool_use` still tracked in `record.activeToolCalls` as
@@ -980,7 +1024,13 @@ export function settleUnresolvedClaudeToolCalls({
   const settledAt = createdAt ?? new Date().toISOString();
   const entries = [...open];
   open.clear();
+  // station#1569 (item 1): remember what was settled. `stopSession`'s grace
+  // can elapse while the SDK still holds a queued `tool_result`, and the
+  // replay guard used to drop it — leaving `unresolved` standing over a
+  // result Station had actually received. See `settledToolCalls`.
+  const settled = (record.settledToolCalls ??= new Map());
   for (const [toolCallId, tracked] of entries) {
+    settled.set(toolCallId, tracked);
     // station#1558 (fix round, H1): a call whose terminal was already
     // published (a settled backgrounded Task) is not unresolved — its outcome
     // was reported, only its `tool_result` never came back. Publishing

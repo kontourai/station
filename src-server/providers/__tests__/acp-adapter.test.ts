@@ -3038,6 +3038,56 @@ describe('AcpAdapter', () => {
     expect(exited.method).toBe('session.exited');
   });
 
+  // station#1569 (item 4): the seam, not the helper. A call still open when
+  // the session ends must get its honest terminal from the real stop path —
+  // and before `session.exited`, which closes the card client-side
+  // (`background-tasks-store.ts`) and would take the terminal with it.
+  test('stopSession settles a still-open tool call as unresolved, before session.exited', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-stop-open-tool',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+
+    const proc = processes[0];
+    await proc.client.sessionUpdate({
+      sessionId: 'native-kiro-cli',
+      update: {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'acp-open-call',
+        title: 'Run the build',
+        name: 'shell',
+        status: 'in_progress',
+      },
+    } as any);
+    const started = await nextEvent(iterator, 'tool.started');
+    expect(started).toMatchObject({
+      method: 'tool.started',
+      toolCallId: 'acp-open-call',
+    });
+
+    await adapter.stopSession('thread-stop-open-tool');
+
+    // Ordered pair: the terminal, then the exit.
+    expect(await nextEvent(iterator, 'tool.completed')).toMatchObject({
+      method: 'tool.completed',
+      toolCallId: 'acp-open-call',
+      toolName: 'shell',
+      status: 'unresolved',
+      output:
+        'No result was reported before the session ended; whether the tool ran is unknown.',
+    });
+    expect(await nextEvent(iterator, 'session.exited')).toMatchObject({
+      method: 'session.exited',
+    });
+  });
+
   test('retains process ownership and withholds session.exited when teardown fails', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();

@@ -4303,8 +4303,13 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
   });
 
   /** A push-driven query whose iterator can also FINISH, modelling the
-   * `claude` process exiting on its own. */
-  function createEndableMockQuery() {
+   * `claude` process exiting on its own.
+   *
+   * `endOnClose: false` models the engine `CLAUDE_STREAM_STOP_GRACE_MS`
+   * exists for (station#1569 item 1): one whose iterator does NOT end when
+   * `query.close()` lands, so `stopSession` reaches its grace instead of the
+   * consumer's own settle. */
+  function createEndableMockQuery({ endOnClose = true } = {}) {
     const pending: any[] = [];
     let wake: (() => void) | null = null;
     let ended = false;
@@ -4337,6 +4342,7 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
       // the stopSession ordering below a real test rather than a mock's
       // convenience (station#1558 fix round, M8).
       close: vi.fn().mockImplementation(() => {
+        if (!endOnClose) return;
         ended = true;
         wake?.();
         wake = null;
@@ -4362,12 +4368,28 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
     throw new Error(`no ${method} within ${limit} events`);
   }
 
+  /** Drains everything the stream produces until it goes quiet, so a test can
+   * assert what was NOT published (an absence a `nextOf` scan cannot see). */
+  async function drainUntilQuiet(iterator: AsyncIterator<any>, quietMs = 40) {
+    const seen: any[] = [];
+    const NOTHING = Symbol('nothing-else');
+    for (;;) {
+      const next = await Promise.race([
+        iterator.next().then((result) => result.value),
+        new Promise((resolve) => setTimeout(() => resolve(NOTHING), quietMs)),
+      ]);
+      if (next === NOTHING) return seen;
+      seen.push(next);
+    }
+  }
+
   async function openCallOn(
     threadId: string,
     query: ReturnType<typeof createEndableMockQuery>,
+    options?: ConstructorParameters<typeof ClaudeAdapter>[0],
   ) {
     mockQuery.mockReturnValue(query);
-    const adapter = new ClaudeAdapter();
+    const adapter = new ClaudeAdapter(options);
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({ provider: 'claude', threadId });
     const turn = await adapter.sendTurn({ threadId, input: 'work' });
@@ -4506,5 +4528,188 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
         new Promise((resolve) => setTimeout(() => resolve(NOTHING), 50)),
       ]),
     ).toBe(NOTHING);
+  });
+
+  /**
+   * station#1569 (item 1): the branch `CLAUDE_STREAM_STOP_GRACE_MS` exists
+   * for — an engine whose iterator does NOT end when `query.close()` lands,
+   * so `consumeMessages`' own settle never runs and `stopSession` has to do
+   * it. Every case above is served by a query that ends on close, which is
+   * exactly why this branch had no test.
+   */
+  describe('the stop grace elapsing (station#1569 item 1)', () => {
+    test('settles the open call as unresolved, on its own turn, before session.exited', async () => {
+      const query = createEndableMockQuery({ endOnClose: false });
+      const { adapter, iterator, turnId } = await openCallOn(
+        'thread-grace-elapsed',
+        query,
+        { streamStopGraceMs: 5 },
+      );
+
+      await adapter.stopSession('thread-grace-elapsed');
+
+      expect(await nextOf(iterator, 'tool.completed')).toMatchObject({
+        toolCallId: 'toolu-open',
+        toolName: 'Bash',
+        status: 'unresolved',
+        turnId,
+        output:
+          'No result was reported before the session ended; whether the tool ran is unknown.',
+      });
+      await nextOf(iterator, 'session.exited');
+      // The stop returned rather than hanging on an iterator that never ends:
+      // the bound is the whole point of the grace.
+      expect(query.close).toHaveBeenCalled();
+    });
+
+    test('a tool_result that drains AFTER that settle still publishes the real terminal on its issuing turn', async () => {
+      const query = createEndableMockQuery({ endOnClose: false });
+      const { adapter, iterator, turnId } = await openCallOn(
+        'thread-grace-late-result',
+        query,
+        { streamStopGraceMs: 5 },
+      );
+
+      await adapter.stopSession('thread-grace-late-result');
+      expect(await nextOf(iterator, 'tool.completed')).toMatchObject({
+        status: 'unresolved',
+      });
+      await nextOf(iterator, 'session.exited');
+
+      // The SDK was holding this the whole time. Before station#1569 the
+      // replay guard dropped it because the settle had cleared its entry,
+      // leaving `unresolved` standing over an outcome Station did receive.
+      query.push({
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-open', content: 'ok' },
+          ],
+        },
+        uuid: 'user-late',
+        session_id: 'thread-grace-late-result',
+      });
+
+      // Drained rather than scanned: when this regresses the result is
+      // DROPPED, and a scan for an event that never arrives can only fail by
+      // timing out. This says "nothing was published" in 40ms instead.
+      const seen = await drainUntilQuiet(iterator);
+      expect(seen.filter((event) => event.method === 'tool.completed')).toEqual(
+        [
+          expect.objectContaining({
+            toolCallId: 'toolu-open',
+            toolName: 'Bash',
+            status: 'success',
+            // The turn that ISSUED the call, read back from the settle record —
+            // there is no active turn left to fall back on.
+            turnId,
+            output: 'ok',
+          }),
+        ],
+      );
+    });
+
+    test('a second result for an id already superseded is dropped like any other replay', async () => {
+      const query = createEndableMockQuery({ endOnClose: false });
+      const { adapter, iterator } = await openCallOn(
+        'thread-grace-double-result',
+        query,
+        { streamStopGraceMs: 5 },
+      );
+
+      await adapter.stopSession('thread-grace-double-result');
+      await nextOf(iterator, 'tool.completed');
+      await nextOf(iterator, 'session.exited');
+
+      const result = {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-open', content: 'ok' },
+          ],
+        },
+        uuid: 'user-late',
+        session_id: 'thread-grace-double-result',
+      };
+      query.push(result);
+      query.push({ ...result, uuid: 'user-late-2' });
+
+      // The settle record is consumed by the first result, so the second is
+      // an untracked id again — one late correction, not a repeatable one.
+      const seen = await drainUntilQuiet(iterator);
+      expect(seen.filter((event) => event.method === 'tool.completed')).toEqual(
+        [expect.objectContaining({ status: 'success' })],
+      );
+    });
+  });
+
+  /**
+   * station#1569 (item 6): `stopSession` removes the record BEFORE awaiting
+   * the settle, so a `startSession` for the same thread during that await
+   * makes the thread live again — and `session.exited` is keyed by threadId,
+   * not by record.
+   */
+  describe('a restart during the stop drain (station#1569 item 6)', () => {
+    test('publishes no session.exited for a thread that is live again, and still settles the stopped session own calls', async () => {
+      // The stopped session's stream is ended explicitly below rather than by
+      // `close()`, so the restart is guaranteed to land inside the window
+      // instead of racing a timer.
+      const query = createEndableMockQuery({ endOnClose: false });
+      const { adapter, iterator, turnId } = await openCallOn(
+        'thread-stop-restart',
+        query,
+      );
+
+      const stop = adapter.stopSession('thread-stop-restart');
+      const restarted = createEndableMockQuery();
+      mockQuery.mockReturnValue(restarted);
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-stop-restart',
+      });
+      // Only now does the stopped session's stream end, so the stop resolves
+      // with the new record already installed.
+      query.end();
+      await stop;
+
+      const seen = await drainUntilQuiet(iterator);
+      const methods = seen.map((event) => event.method);
+      // The restart happened…
+      expect(methods).toContain('session.started');
+      // …the stopped session's open call still got its honest terminal…
+      expect(seen).toContainEqual(
+        expect.objectContaining({
+          method: 'tool.completed',
+          toolCallId: 'toolu-open',
+          status: 'unresolved',
+          turnId,
+        }),
+      );
+      // …and nothing told the client this thread's session had ended.
+      expect(methods).not.toContain('session.exited');
+      expect(await adapter.hasSession('thread-stop-restart')).toBe(true);
+    });
+
+    test('with no restart, the same stop still publishes session.exited', async () => {
+      // The discriminating control for the assertion above: the suppression
+      // is conditional on the thread being retaken, not unconditional.
+      const query = createEndableMockQuery({ endOnClose: false });
+      const { adapter, iterator } = await openCallOn(
+        'thread-stop-no-restart',
+        query,
+      );
+
+      const stop = adapter.stopSession('thread-stop-no-restart');
+      query.end();
+      await stop;
+
+      const methods = (await drainUntilQuiet(iterator)).map(
+        (event) => event.method,
+      );
+      expect(methods).toContain('session.exited');
+      expect(await adapter.hasSession('thread-stop-no-restart')).toBe(false);
+    });
   });
 });

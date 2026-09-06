@@ -47,6 +47,7 @@ import type {
 } from '../adapter-shape.js';
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
+import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 const PROVIDER = 'station-agent' as const;
 
@@ -114,6 +115,20 @@ interface StationAgentSessionRecord {
   pendingRequests: Map<string, { toolName?: string; turnId?: string }>;
   approvedTools: Set<string>;
   resolvedBeforeOpen: Map<string, ApprovalStatus>;
+  /**
+   * station#1569 (item 4): `toolCallId → { toolName, turnId }` for calls
+   * whose `tool.started` has been published and whose `tool-result` chunk has
+   * not arrived. The adapter had no tool-call state at all before this — the
+   * SSE relay is stateless — so a call whose stream was abandoned (a stop, a
+   * dropped connection) left a row running forever with no terminal from any
+   * path.
+   *
+   * Maintained by `consumeChatStream` from the relay's own `toolOpened` /
+   * `toolSettled` reports (the same shape `approvalOpened` already uses), so
+   * `mapStationAgentStreamEvent` stays a pure per-chunk translator. Settled
+   * only when the SESSION ends (`stopSession`), never at a turn boundary.
+   */
+  openToolCalls: Map<string, { toolName: string; turnId: string }>;
 }
 
 export interface StationAgentAdapterOptions {
@@ -412,6 +427,14 @@ export function mapStationAgentStreamEvent(options: {
   failed?: true;
   approvalOpened?: { requestId: string; toolName?: string };
   /**
+   * station#1569 (item 4): this chunk opened a tool call, or closed one.
+   * Reported rather than recorded, because this relay is a pure translator
+   * with no access to the session record — `consumeChatStream` owns the
+   * tracking the session-end settle reads (same split as `approvalOpened`).
+   */
+  toolOpened?: { toolCallId: string; toolName: string };
+  toolSettled?: { toolCallId: string };
+  /**
    * archive#2649: `/chat`'s own dispatch-time context receipt, parsed
    * strictly (a malformed record is dropped whole, leaving the honest
    * envelope gap, never a partial claim). Not published as its own canonical
@@ -458,7 +481,7 @@ export function mapStationAgentStreamEvent(options: {
       toolName: safeToolName(event),
       arguments: event.input,
     });
-    return {};
+    return { toolOpened: { toolCallId, toolName: safeToolName(event) } };
   }
   if (event.type === 'tool-result') {
     const toolCallId = stringField(event.toolCallId) ?? crypto.randomUUID();
@@ -496,7 +519,7 @@ export function mapStationAgentStreamEvent(options: {
                 : event.output,
           }),
     });
-    return {};
+    return { toolSettled: { toolCallId } };
   }
   if (event.type === 'tool-approval-request') {
     const requestId = stringField(event.approvalId);
@@ -641,6 +664,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       pendingRequests: new Map(),
       approvedTools: new Set(),
       resolvedBeforeOpen: new Map(),
+      openToolCalls: new Map(),
     });
     this.publish({
       eventId: crypto.randomUUID(),
@@ -969,6 +993,14 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     this.cancelPendingApprovals(record);
     record.activeController?.abort('session stopped');
     this.sessions.delete(threadId);
+    // station#1569 (item 4): the abort above tears down the SSE stream
+    // without publishing anything for the calls it was mid-way through —
+    // `consumeChatStream`'s aborted branch returns silently by design. So
+    // every call still open here can never report, and this is the last
+    // moment anyone can say so. Before `session.exited`, which closes a
+    // still-running card client-side (`background-tasks-store.ts`), taking
+    // the honest terminal with it.
+    this.settleUnresolvedToolCalls(record);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -978,6 +1010,38 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       sessionId: threadId,
       reason: 'stopped',
     });
+  }
+
+  /**
+   * Publishes `tool.completed` status `'unresolved'` for every call still
+   * open on this record, each on the turn that ISSUED it — the terminal the
+   * Claude adapter publishes for the same moment
+   * (`settleUnresolvedClaudeToolCalls`).
+   *
+   * Session end only. A turn ending is not enough: nothing here proves the
+   * engine will never report, and a call outliving its turn is a shape other
+   * adapters legitimately produce.
+   */
+  private settleUnresolvedToolCalls(record: StationAgentSessionRecord): void {
+    if (record.openToolCalls.size === 0) return;
+    const createdAt = this.now().toISOString();
+    const entries = [...record.openToolCalls];
+    record.openToolCalls.clear();
+    for (const [toolCallId, { toolName, turnId }] of entries) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.session.threadId,
+        createdAt,
+        turnId,
+        itemId: toolCallId,
+        method: 'tool.completed',
+        toolCallId,
+        toolName,
+        status: 'unresolved',
+        output: UNRESOLVED_TOOL_OUTPUT,
+      });
+    }
   }
 
   async listSessions(): Promise<ProviderSession[]> {
@@ -1054,6 +1118,17 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           });
           if (mapped.approvalOpened) {
             this.trackApproval(record, turnId, mapped.approvalOpened);
+          }
+          // station#1569 (item 4): what the session-end settle reads. Kept
+          // here rather than inside the relay so that function stays pure.
+          if (mapped.toolOpened) {
+            record.openToolCalls.set(mapped.toolOpened.toolCallId, {
+              toolName: mapped.toolOpened.toolName,
+              turnId,
+            });
+          }
+          if (mapped.toolSettled) {
+            record.openToolCalls.delete(mapped.toolSettled.toolCallId);
           }
           outputText += mapped.outputDelta ?? '';
           resolvedFinishReason = mapped.finishReason ?? resolvedFinishReason;

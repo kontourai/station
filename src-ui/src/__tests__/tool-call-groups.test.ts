@@ -242,6 +242,98 @@ describe('groupToolCallParts', () => {
     expect(group.failedCount).toBe(0);
   });
 
+  // station#1569 (item 3): the same defect one level up. The BATCH header
+  // derived its verb from `inProgress` alone, so a run containing an
+  // unresolved call still read "Ran 2 commands" — past tense for work that
+  // may never have happened, contradicting the very rows it expands into.
+  describe('a batch containing an unresolved call (station#1569 item 3)', () => {
+    const unresolvedBatch = (extra: Partial<ToolCallLike> = {}) => [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+        state: 'completed',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'npm run build' },
+        state: 'unresolved',
+        ...extra,
+      }),
+    ];
+
+    test('takes the bare verb, never the past tense', () => {
+      const [group] = groupToolCallParts(unresolvedBatch()) as ToolCallGroup[];
+      expect(group.summary).toBe('Run 2 commands');
+      expect(group.unresolvedCount).toBe(1);
+      // Not a failure claim either: nothing observed the tool fail.
+      expect(group.failedCount).toBe(0);
+    });
+
+    test('counts every unresolved call in the run', () => {
+      const [group] = groupToolCallParts([
+        toolCall({ toolCallId: 'a', toolName: 'Bash', state: 'unresolved' }),
+        toolCall({ toolCallId: 'b', toolName: 'Read', state: 'unresolved' }),
+        toolCall({ toolCallId: 'c', toolName: 'Read', state: 'completed' }),
+      ]) as ToolCallGroup[];
+      expect(group.unresolvedCount).toBe(2);
+      expect(group.calls.map((call) => call.unresolved)).toEqual([
+        true,
+        true,
+        false,
+      ]);
+    });
+
+    test('does not claim flight either when a sibling call is still running', () => {
+      const [group] = groupToolCallParts([
+        toolCall({ toolCallId: 'a', toolName: 'Bash', state: 'running' }),
+        toolCall({ toolCallId: 'b', toolName: 'Bash', state: 'unresolved' }),
+      ]) as ToolCallGroup[];
+      // "Running 2 commands…" would be as false for the unresolved call as
+      // "Ran" was; the bare verb is the only form true of both, and the
+      // ellipsis (which means "still going") is dropped with it.
+      expect(group.summary).toBe('Run 2 commands');
+      expect(group.inProgress).toBe(true);
+      expect(group.unresolvedCount).toBe(1);
+    });
+
+    test('leaves an ordinary finished batch in the past tense', () => {
+      // The discriminating control: the bare verb is conditional on an
+      // unresolved call being present, not the new default.
+      const [group] = groupToolCallParts([
+        toolCall({ toolCallId: 'a', toolName: 'Bash', state: 'completed' }),
+        toolCall({ toolCallId: 'b', toolName: 'Bash', state: 'completed' }),
+      ]) as ToolCallGroup[];
+      expect(group.summary).toBe('Ran 2 commands');
+      expect(group.unresolvedCount).toBe(0);
+    });
+
+    test('a mixed-kind batch takes the bare verb in every segment', () => {
+      const [group] = groupToolCallParts([
+        toolCall({
+          toolCallId: 'a',
+          toolName: 'Read',
+          args: { file_path: '/repo/a.ts' },
+          state: 'completed',
+        }),
+        toolCall({
+          toolCallId: 'b',
+          toolName: 'Read',
+          args: { file_path: '/repo/b.ts' },
+          state: 'completed',
+        }),
+        toolCall({
+          toolCallId: 'c',
+          toolName: 'Bash',
+          args: { command: 'npm test' },
+          state: 'unresolved',
+        }),
+      ]) as ToolCallGroup[];
+      expect(group.summary).toBe('Read 2 files, run 1 command');
+    });
+  });
+
   test('extracts a truncated command label for exec calls', () => {
     const longCommand = 'a'.repeat(120);
     const parts = [

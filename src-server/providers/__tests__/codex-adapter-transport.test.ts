@@ -594,6 +594,105 @@ describe('CodexAdapterTransport', () => {
     });
   });
 
+  /**
+   * station#1569 (item 4): `publishOrphanedTurnFailure` closes the orphaned
+   * TURN, which says nothing about the individual tool rows of that turn —
+   * they were left running forever in every client. Each session-end door now
+   * settles them first, on the turn that issued them.
+   */
+  describe('open tool calls at session end (station#1569 item 4)', () => {
+    function recordWithOpenCall(threadId: string) {
+      const transport = new CodexAdapterTransport(
+        () => new Date('2026-04-11T00:00:00Z'),
+      );
+      const processHandle = new FakeCodexProcess();
+      const record = createCodexSessionRecord({
+        externalThreadId: threadId,
+        process: processHandle,
+        provider: 'codex',
+        threadId,
+        model: 'gpt-5-codex',
+        nowIso: () => '2026-04-11T00:00:00Z',
+      });
+      transport.registerSession(record);
+      transport.handleProcess(record);
+      // The shape `handleCodexItemStarted` leaves behind: the tool.started is
+      // out, and the completion never came.
+      record.activeTurnId = 'turn-open';
+      record.toolNames.set('item-open', 'shell');
+      record.openToolCalls.set('item-open', {
+        toolName: 'shell',
+        turnId: 'turn-open',
+      });
+      return { transport, processHandle, record };
+    }
+
+    test('stopSession settles them as unresolved, on their own turn, before session.exited', async () => {
+      const { transport } = recordWithOpenCall('thread-stop-open-tool');
+      const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+
+      await transport.stopSession(
+        'thread-stop-open-tool',
+        () => '2026-04-11T00:00:01Z',
+      );
+
+      const events = await drainEvents(iterator);
+      expect(events.map((event) => event.method)).toEqual([
+        'tool.completed',
+        'runtime.error',
+        'session.exited',
+      ]);
+      expect(events[0]).toMatchObject({
+        toolCallId: 'item-open',
+        toolName: 'shell',
+        status: 'unresolved',
+        turnId: 'turn-open',
+        output:
+          'No result was reported before the session ended; whether the tool ran is unknown.',
+      });
+    });
+
+    test('an unexpected process exit settles them too', async () => {
+      const { transport, processHandle } = recordWithOpenCall(
+        'thread-exit-open-tool',
+      );
+      const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+
+      processHandle.emit('exit', 1, null);
+
+      const events = await drainEvents(iterator);
+      expect(events.map((event) => event.method)).toEqual([
+        'tool.completed',
+        'runtime.error',
+        'session.exited',
+      ]);
+      expect(events[0]).toMatchObject({
+        toolCallId: 'item-open',
+        status: 'unresolved',
+        turnId: 'turn-open',
+      });
+    });
+
+    test('a call that already completed is not settled again', async () => {
+      // The discriminating control: the settle iterates observed open calls,
+      // not every tool the session ever ran.
+      const { transport, record } = recordWithOpenCall('thread-stop-no-open');
+      record.openToolCalls.clear();
+      const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+
+      await transport.stopSession(
+        'thread-stop-no-open',
+        () => '2026-04-11T00:00:01Z',
+      );
+
+      const events = await drainEvents(iterator);
+      expect(events.map((event) => event.method)).toEqual([
+        'runtime.error',
+        'session.exited',
+      ]);
+    });
+  });
+
   test('ignores notifications for foreign Codex subagent threads', async () => {
     const transport = new CodexAdapterTransport(
       () => new Date('2026-04-11T00:00:00Z'),

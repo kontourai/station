@@ -502,9 +502,12 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    * Three of these assert what happened: `success` and `error` are the
    * engine's own verdict, and `cancelled` is a stop Station or the user
    * asked for. `unresolved` (station#1558) asserts the opposite — that no
-   * verdict will ever arrive. It is published for a `tool_use` still open
+   * verdict will ever arrive. It is published for a tool call still open
    * when its SESSION ended, where the call's fate is genuinely unknown:
-   * Station never saw a result, and cannot tell whether the tool ran. It is
+   * Station never saw a result, and cannot tell whether the tool ran (every
+   * adapter that tracks its open calls settles them this way at session end
+   * — station#1569 item 4 extended it past Claude to ACP, Codex and
+   * station-agent). It is
    * NOT a failure (nothing observed the tool fail) and NOT a cancellation
    * (nobody asked for it to stop); folding it into either would be a claim
    * Station cannot support. Without it, the row simply stayed "running"

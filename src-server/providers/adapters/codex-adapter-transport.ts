@@ -13,7 +13,10 @@ import {
   mapApprovalResolutionStatus,
   mapServerRequestToEvent,
 } from './codex-adapter-events.js';
-import { handleCodexNotification } from './codex-adapter-notifications.js';
+import {
+  handleCodexNotification,
+  settleUnresolvedCodexToolCalls,
+} from './codex-adapter-notifications.js';
 import type {
   CodexProcessLike,
   CodexSessionRecord,
@@ -92,7 +95,7 @@ export function createCodexSessionRecord(options: {
     lastSessionState: 'idle',
     turnOutput: new Map(),
     toolNames: new Map(),
-    toolStarted: new Set(),
+    openToolCalls: new Map(),
     stopped: false,
   };
 }
@@ -197,6 +200,7 @@ export class CodexAdapterTransport {
         record,
         () => new Error(`Codex app-server failed to start: ${error.message}`),
       );
+      this.settleUnresolvedToolCalls(record, nowIso);
       this.publishOrphanedTurnFailure(
         record,
         nowIso,
@@ -246,6 +250,7 @@ export class CodexAdapterTransport {
         () =>
           new Error(`Codex app-server stdin write failed: ${error.message}`),
       );
+      this.settleUnresolvedToolCalls(record, nowIso);
       this.publishOrphanedTurnFailure(
         record,
         nowIso,
@@ -480,6 +485,7 @@ export class CodexAdapterTransport {
     // `publishOrphanedTurnFailure`'s `skipSynthesis` doc): that RPC's caller
     // owns the turn's terminal fate and, for the one caller that also calls
     // `stopSession` (the cooperative-stop deadline), already published it.
+    this.settleUnresolvedToolCalls(record, nowIso());
     this.publishOrphanedTurnFailure(
       record,
       nowIso(),
@@ -654,6 +660,7 @@ export class CodexAdapterTransport {
     // the turn's terminal fact before the session's, so nothing turnId-keyed
     // (the completion-notification listener, `hasActiveTurn`, the stall
     // watchdog) is left waiting on a turn that is already over.
+    this.settleUnresolvedToolCalls(record, nowIso);
     this.publishOrphanedTurnFailure(
       record,
       nowIso,
@@ -671,6 +678,33 @@ export class CodexAdapterTransport {
       sessionId: record.externalThreadId,
       exitCode: code ?? undefined,
       reason: code === 0 ? 'completed' : 'process-exit',
+    });
+  }
+
+  /**
+   * station#1569 (item 4): every tool item still open when the session ends
+   * gets its honest terminal, on the turn that issued it.
+   *
+   * Placed immediately before `publishOrphanedTurnFailure` at all four
+   * session-end doors for the reason that method's own comment gives —
+   * before `session.exited`, which closes a still-running card client-side
+   * (`background-tasks-store.ts`). Innermost terminal first: the tool rows,
+   * then the orphaned turn, then the session.
+   *
+   * Unconditional, unlike the turn synthesis beside it: an open tool call is
+   * a fact in `record.openToolCalls`, not an inference from `activeTurnId`,
+   * and no other path publishes a terminal for it. The helper is idempotent
+   * (it clears the map first), so a session that reaches two doors — a stdin
+   * EPIPE followed by the process `exit`, say — settles each call once.
+   */
+  private settleUnresolvedToolCalls(
+    record: CodexSessionRecord,
+    nowIso: string,
+  ): void {
+    settleUnresolvedCodexToolCalls({
+      record,
+      nowIso,
+      publish: (event) => this.publish(event),
     });
   }
 

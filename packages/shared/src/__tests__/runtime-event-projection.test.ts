@@ -1438,6 +1438,124 @@ describe('projectRuntimeEventsToMessages', () => {
       expect(toolPartsOf(byTurn('turn-c'))).toHaveLength(0);
     });
 
+    // station#1569 (item 2): the other half of the M2 rule — a CARRIED row
+    // whose own turn had no identity is not a mismatch. Only the comment said
+    // so; these execute the `carriedEntry.turnKey === undefined` branch and
+    // pin what it buys and what it costs.
+    describe('a carried row whose turn had no identity (station#1569 item 2)', () => {
+      /** The mixed-vintage shape: a turn recorded before `turnId` reached
+       * these events, whose result arrives once it had. */
+      const unidentifiedTurnWithOpenCall = [
+        ev({ method: 'turn.started', prompt: 'first' }),
+        ev({
+          method: 'tool.started',
+          itemId: 'i1',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+        }),
+        ev({ method: 'turn.completed', finishReason: 'stop' }),
+      ];
+
+      it('is settled in place by a completion that names a turn, rather than stranded', () => {
+        const messages = projectRuntimeEventsToMessages([
+          ...unidentifiedTurnWithOpenCall,
+          ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+          ev({
+            method: 'content.text-delta',
+            itemId: 'i2',
+            delta: 'B answers.',
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i1',
+            turnId: 'turn-b',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'success',
+            output: 'late output',
+            eventId: 'late-result',
+          }),
+          ev({
+            method: 'turn.completed',
+            turnId: 'turn-b',
+            finishReason: 'stop',
+          }),
+        ]);
+
+        const assistants = messages.filter(
+          (message) => message.role === 'assistant',
+        );
+        const unidentified = assistants.find(
+          (message) => message.metadata?.turnId === undefined,
+        )!;
+        const turnB = assistants.find(
+          (message) => message.metadata?.turnId === 'turn-b',
+        )!;
+        const carried = toolPartsOf(unidentified);
+        expect(carried).toHaveLength(1);
+        expect(carried[0]).toMatchObject({
+          toolCallId: 'call-1',
+          state: 'result',
+          result: 'late output',
+          sourceEventId: 'late-result',
+        });
+        // Treating it as a mismatch would have appended a duplicate,
+        // result-only row here and left the row above reading "running".
+        expect(toolPartsOf(turnB)).toHaveLength(0);
+      });
+
+      it('loses to the CURRENT turn when that turn reuses the call id', () => {
+        const messages = projectRuntimeEventsToMessages([
+          ...unidentifiedTurnWithOpenCall,
+          ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+          ev({
+            method: 'tool.started',
+            itemId: 'i2',
+            turnId: 'turn-b',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i2',
+            turnId: 'turn-b',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'success',
+            output: 'B result',
+            eventId: 'b-result',
+          }),
+          ev({
+            method: 'turn.completed',
+            turnId: 'turn-b',
+            finishReason: 'stop',
+          }),
+        ]);
+
+        const assistants = messages.filter(
+          (message) => message.role === 'assistant',
+        );
+        const unidentified = assistants.find(
+          (message) => message.metadata?.turnId === undefined,
+        )!;
+        const turnB = assistants.find(
+          (message) => message.metadata?.turnId === 'turn-b',
+        )!;
+        // The carried map is consulted LAST, so an open call on the current
+        // turn always outranks a same-id row carried from an earlier one.
+        expect(toolPartsOf(turnB)).toHaveLength(1);
+        expect(toolPartsOf(turnB)[0]).toMatchObject({
+          state: 'result',
+          result: 'B result',
+        });
+        // The identity-less row is still owed the result it was promised —
+        // it is not retired by another turn's answer.
+        expect(toolPartsOf(unidentified)).toHaveLength(1);
+        expect(toolPartsOf(unidentified)[0]).toMatchObject({ state: 'call' });
+        expect(toolPartsOf(unidentified)[0]).not.toHaveProperty('result');
+      });
+    });
+
     it('puts a start-less late completion on the turn its own turnId names, never on the open one', () => {
       const messages = projectRuntimeEventsToMessages([
         ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),

@@ -489,6 +489,150 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
       });
     });
 
+    // station#1569 (item 2): the OTHER half of the M2 rule — a committed row
+    // with no turn identity of its own is deliberately NOT a mismatch. Only
+    // prose said so; these execute the branch (`candidate.turnId !==
+    // undefined` is what makes it fall through) and pin the consequence,
+    // including the one it accepts.
+    describe('a row with no turn identity (station#1569 item 2)', () => {
+      /** The pre-turnId shape: a committed assistant row holding an open
+       * call, with no `turnId` on the message at all. */
+      function seedUnidentifiedRow() {
+        activeChatsStore.updateChat(threadId, {
+          messages: [
+            {
+              role: 'assistant',
+              content: 'Older client, no turn identity.',
+              contentParts: [
+                { type: 'text', content: 'Older client, no turn identity.' },
+                {
+                  type: 'tool-invocation',
+                  toolCallId: 'tool-1',
+                  toolName: 'write_file',
+                  args: { path: 'a.txt' },
+                  state: 'running',
+                },
+              ],
+            },
+          ],
+          streamingMessage: {
+            role: 'assistant',
+            content: 'B answers.',
+            contentParts: [{ type: 'text', content: 'B answers.' }],
+          },
+        });
+      }
+
+      test('is settled by a completion that names a turn, rather than stranded', () => {
+        seedUnidentifiedRow();
+
+        handleToolCompletedEvent(
+          toolCompleted({
+            turnId: 'turn-b',
+            status: 'success',
+            output: 'late output',
+          }),
+        );
+
+        const settled = historyParts(0).filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(settled).toHaveLength(1);
+        expect(settled[0]).toMatchObject({
+          toolCallId: 'tool-1',
+          state: 'completed',
+          result: 'late output',
+        });
+        // Rejecting it would have appended a second, result-only row to the
+        // streaming turn and left this one running forever.
+        expect(
+          streamingParts().filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+      });
+
+      test('loses to a row that DOES name the completion turn when the call id is reused', () => {
+        seedUnidentifiedRow();
+        const chat = activeChatsStore.getSnapshot()[threadId]!;
+        activeChatsStore.updateChat(threadId, {
+          messages: [
+            chat.messages![0],
+            {
+              role: 'assistant',
+              content: 'B is working.',
+              turnId: 'turn-b',
+              contentParts: [
+                {
+                  type: 'tool-invocation',
+                  toolCallId: 'tool-1',
+                  toolName: 'write_file',
+                  args: { path: 'b.txt' },
+                  state: 'running',
+                },
+              ],
+            },
+          ],
+        });
+
+        handleToolCompletedEvent(
+          toolCompleted({ turnId: 'turn-b', status: 'success', output: 'B' }),
+        );
+
+        // The scan runs newest-first and stops at the first row that does not
+        // contradict the named turn, so the row that actually claims turn-b
+        // wins over the one that claims nothing.
+        const bTools = historyParts(1).filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(bTools).toHaveLength(1);
+        expect(bTools[0]).toMatchObject({ state: 'completed', result: 'B' });
+        const aTools = historyParts(0).filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(aTools).toHaveLength(1);
+        expect(aTools[0]).toMatchObject({ state: 'running' });
+        expect(aTools[0]?.result).toBeUndefined();
+      });
+
+      test('absorbs a completion for a turn it cannot disclaim — the accepted cost of the rule', () => {
+        seedUnidentifiedRow();
+        const chat = activeChatsStore.getSnapshot()[threadId]!;
+        activeChatsStore.updateChat(threadId, {
+          messages: [
+            chat.messages![0],
+            {
+              role: 'assistant',
+              content: 'B is working.',
+              turnId: 'turn-b',
+              contentParts: [
+                {
+                  type: 'tool-invocation',
+                  toolCallId: 'tool-1',
+                  toolName: 'write_file',
+                  args: { path: 'b.txt' },
+                  state: 'running',
+                },
+              ],
+            },
+          ],
+        });
+
+        // Names a THIRD turn: turn-b's row contradicts it and is skipped, and
+        // the unidentified row has no claim to contradict it with — so it
+        // takes the result. This is the trade the rule makes on purpose:
+        // stranding every identity-less row is the worse failure.
+        handleToolCompletedEvent(
+          toolCompleted({ turnId: 'turn-c', status: 'success', output: 'C' }),
+        );
+
+        expect(
+          historyParts(0).filter((part) => part.type === 'tool-invocation')[0],
+        ).toMatchObject({ state: 'completed', result: 'C' });
+        expect(
+          historyParts(1).filter((part) => part.type === 'tool-invocation')[0],
+        ).toMatchObject({ state: 'running' });
+      });
+    });
+
     test('a result for the streaming turn still lands on the streaming message', () => {
       seedTwoMessages('tool-1');
 

@@ -665,6 +665,13 @@ export interface ClaudeAdapterOptions {
   ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
   /** Testable bound for the in-process PreToolUse callback. */
   preToolPolicyTimeoutMs?: number;
+  /**
+   * Testable bound for `CLAUDE_STREAM_STOP_GRACE_MS` — see that constant.
+   * Injected for the same reason `preToolPolicyTimeoutMs` is: the
+   * grace-elapsed branch is only reachable by letting the grace elapse, and
+   * a test that spends the real 1 s to do it is a test nobody runs.
+   */
+  streamStopGraceMs?: number;
   logger?: ClaudeAdapterLogger;
 }
 
@@ -677,11 +684,23 @@ const DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS = 5_000;
  * The SDK is expected to end its iterator once `query.close()` lands (the
  * adapter tests model that; nothing here verifies it against a live engine),
  * so this should elapse only when an engine misbehaves. It is a ceiling on
- * teardown, not a delay anything normally pays. Residual: if the grace does
- * elapse, the settle publishes `unresolved` and clears tracking, and a
- * `tool_result` that still arrives afterwards is dropped by the replay guard
- * — the original station#1558 M8 window, narrowed to this 1 s rather than
- * removed. The grace-elapsed branch has no test yet (station follow-up).
+ * teardown, not a delay anything normally pays.
+ *
+ * station#1569 (item 1) settled what happens when it DOES elapse. The
+ * bounded wait stays — `stopSession` must not be able to hang on an engine
+ * whose iterator never ends, and waiting forever would also leave the tool
+ * rows spinning with no terminal at all. What changed is that the
+ * `unresolved` it publishes is no longer final: the settle now remembers
+ * what it settled (`settledToolCalls`), so a `tool_result` the SDK was still
+ * holding publishes the real terminal when it drains, instead of being
+ * dropped by the replay guard. Both branches are tested — see
+ * `claude-adapter.test.ts`'s "grace" cases.
+ *
+ * The alternative — do not settle here at all and let `consumeMessages`'
+ * `finally` be the only settle — was rejected: on the engine this exists for
+ * that `finally` may never run, so the calls would get no terminal, and
+ * `session.exited` (published straight after) closes their cards client-side
+ * as "Stopped", which asserts less than the truth rather than more.
  */
 const CLAUDE_STREAM_STOP_GRACE_MS = 1_000;
 
@@ -1496,15 +1515,34 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // still-running tool card client-side (`background-tasks-store.ts`), and a
     // card closed as "Stopped" no longer accepts the honest terminal.
     await this.settleAfterStreamStops(record);
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId,
-      createdAt: new Date().toISOString(),
-      method: 'session.exited',
-      sessionId: threadId,
-      reason: 'stopped',
-    });
+    // station#1569 (item 6): the record was removed BEFORE that await, so a
+    // `startSession` for this same thread during it installs a new record and
+    // the thread is live again by the time we get here. `session.exited` is
+    // keyed by threadId, not by session record — the client reads it as "this
+    // thread's session ended" and closes the thread's still-running tool
+    // cards (`background-tasks-store.ts`) — so publishing it now would be a
+    // terminal fact about a session that is running. The stopped session's
+    // own open calls already got their honest terminal from the settle above,
+    // which is what this ordering exists to guarantee; skipping the exit here
+    // costs the caller nothing it did not just get from `session.started`.
+    // (Mirrors `acp-adapter.ts`'s `if (this.sessions.get(threadId) !== record)
+    // return;` in `stopRecord`.)
+    const restarted = this.sessions.has(threadId);
+    if (restarted) {
+      (this.options.logger ?? console).warn?.(
+        `Claude session '${threadId}' was restarted while its stop was still draining; suppressing the stale session.exited for the stopped session.`,
+      );
+    } else {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+        sessionId: threadId,
+        reason: 'stopped',
+      });
+    }
     if (record.skillsOverlayDir) {
       // archive#1174: the overlay is fully Station-owned (see
       // claude-skills-overlay.ts), so cleanup goes further than the
@@ -2116,22 +2154,45 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * hang on an engine whose iterator never ends after `close()`. The settle
    * is idempotent (it clears the map before publishing), so running it here
    * after the consumer already ran it publishes nothing.
+   *
+   * station#1569 (item 1): when the grace DOES elapse, say so. The settle
+   * that follows publishes `unresolved` for calls the engine may yet report
+   * on, and `settledToolCalls` is what lets a late `tool_result` correct it
+   * — but the operator-visible fact is that this engine did not end its
+   * iterator when asked, which is the condition the grace exists for and the
+   * one nothing would otherwise record.
    */
   private async settleAfterStreamStops(
     record: ClaudeSessionRecord,
   ): Promise<void> {
+    const graceMs =
+      this.options.streamStopGraceMs ?? CLAUDE_STREAM_STOP_GRACE_MS;
+    let graceElapsed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      let timer: ReturnType<typeof setTimeout> | undefined;
       await Promise.race([
         record.streamTask,
         new Promise<void>((resolve) => {
-          timer = setTimeout(resolve, CLAUDE_STREAM_STOP_GRACE_MS);
+          timer = setTimeout(() => {
+            graceElapsed = true;
+            resolve();
+          }, graceMs);
         }),
       ]);
-      if (timer) clearTimeout(timer);
     } catch {
       // `consumeMessages` handles its own failures; a rejection here must not
-      // turn a stop into a throw, and must not skip the settle below.
+      // turn a stop into a throw, and must not skip the settle below. The
+      // stream ending by THROWING is still the stream ending, so this is not
+      // the grace elapsing.
+    } finally {
+      // In the `finally` so a rejected `streamTask` does not leave the timer
+      // holding the loop open for the rest of the grace.
+      if (timer) clearTimeout(timer);
+    }
+    if (graceElapsed) {
+      (this.options.logger ?? console).warn?.(
+        `Claude session '${record.session.threadId}' did not end its message stream within ${graceMs}ms of close(); settling still-open tool calls as unresolved. A result that still arrives will supersede that.`,
+      );
     }
     settleUnresolvedClaudeToolCalls({
       provider: this.provider,
