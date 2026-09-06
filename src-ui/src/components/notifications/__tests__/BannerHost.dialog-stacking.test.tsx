@@ -223,22 +223,36 @@ function dockContents(surface: DockSurface) {
   return <div className="chat-dock__body">Dock contents</div>;
 }
 
-/** A real notification card in the real container that decides its layer. */
+/**
+ * A real notification card inside the real wrappers that decide whether it can
+ * be clicked at all. `.notification-container` is `pointer-events: none` and
+ * only specific descendants opt back in — `.toast-stack__item` is the one the
+ * live container wraps every transient in — so a card placed directly in the
+ * container is unhittable no matter what the stacking says. The first draft of
+ * this fixture did exactly that and reported the popover swallowing a click
+ * that nothing could have received. `ToastCard` itself is module-local to
+ * `NotificationContainer.tsx`; `NotificationCard` is the exported card with a
+ * real control, and the wrappers around it are what this measures.
+ */
 function Chrome() {
   return (
     <div className="notification-container">
-      <NotificationCard
-        notification={{
-          id: 'fixture-approval',
-          source: 'fixture',
-          category: 'approval',
-          title: 'Approval requested',
-          priority: 'high',
-          status: 'delivered',
-          createdAt: new Date(0).toISOString(),
-        }}
-        onDismiss={() => {}}
-      />
+      <div className="toast-stack" data-count={1}>
+        <div className="toast-stack__item" data-depth={0} data-front="true">
+          <NotificationCard
+            notification={{
+              id: 'fixture-approval',
+              source: 'fixture',
+              category: 'approval',
+              title: 'Approval requested',
+              priority: 'high',
+              status: 'delivered',
+              createdAt: new Date(0).toISOString(),
+            }}
+            onDismiss={() => {}}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -253,8 +267,15 @@ interface Shape {
   readonly viewport: { width: number; height: number };
   readonly critical: boolean;
   readonly docks: readonly DockSpec[];
-  /** A dialog control must be reachable where the notice host paints. */
-  readonly expectsDialogOverNotice: boolean;
+  /** Every control inside the dialog panel must hit-test to itself. */
+  readonly expectsDialogReachable: boolean;
+  /**
+   * Additionally: the notice host must overlap a dialog control, and the
+   * dialog must own those points. Only the phone shapes place the stack over
+   * the sheet — at 1440x900 the sheet is centred and the notice band is not
+   * on top of it, which is why this is per shape and not universal.
+   */
+  readonly expectsNoticeOverlap: boolean;
   /**
    * Whether the notification card's own control must hit-test to itself.
    * Recorded PER SHAPE rather than asserted universally, because the answer
@@ -274,7 +295,8 @@ const SHAPES: readonly Shape[] = [
     viewport: PHONE,
     critical: false,
     docks: [{ className: BOTTOM_DOCK, surface: 'modal' }],
-    expectsDialogOverNotice: true,
+    expectsDialogReachable: true,
+    expectsNoticeOverlap: true,
     expectsChromeReachable: false,
   },
   {
@@ -282,7 +304,8 @@ const SHAPES: readonly Shape[] = [
     viewport: PHONE,
     critical: true,
     docks: [{ className: MAXIMIZED_DOCK, surface: 'modal' }],
-    expectsDialogOverNotice: true,
+    expectsDialogReachable: true,
+    expectsNoticeOverlap: true,
     expectsChromeReachable: false,
   },
   {
@@ -290,7 +313,8 @@ const SHAPES: readonly Shape[] = [
     viewport: PHONE,
     critical: false,
     docks: [{ className: BOTTOM_DOCK, surface: 'bare-modal' }],
-    expectsDialogOverNotice: true,
+    expectsDialogReachable: true,
+    expectsNoticeOverlap: false,
     expectsChromeReachable: false,
   },
   {
@@ -301,7 +325,8 @@ const SHAPES: readonly Shape[] = [
       { className: BOTTOM_DOCK, surface: 'modal' },
       { className: BOTTOM_DOCK, surface: 'none' },
     ],
-    expectsDialogOverNotice: true,
+    expectsDialogReachable: true,
+    expectsNoticeOverlap: false,
     expectsChromeReachable: false,
   },
   {
@@ -309,7 +334,8 @@ const SHAPES: readonly Shape[] = [
     viewport: DESKTOP,
     critical: false,
     docks: [{ className: BOTTOM_DOCK, surface: 'modal' }],
-    expectsDialogOverNotice: true,
+    expectsDialogReachable: true,
+    expectsNoticeOverlap: false,
     expectsChromeReachable: false,
   },
   {
@@ -317,7 +343,8 @@ const SHAPES: readonly Shape[] = [
     viewport: DESKTOP,
     critical: false,
     docks: [{ className: BOTTOM_DOCK, surface: 'drafts' }],
-    expectsDialogOverNotice: false,
+    expectsDialogReachable: false,
+    expectsNoticeOverlap: false,
     expectsChromeReachable: true,
   },
 ];
@@ -365,6 +392,12 @@ interface Measured {
   overlayParent: string;
   overlayZIndex: string | null;
   hostZIndex: string;
+  dialogControls: {
+    control: string;
+    point: { x: number; y: number };
+    hit: string;
+    hitsItself: boolean;
+  }[];
   dialogOverlaps: {
     control: string;
     point: { x: number; y: number };
@@ -464,6 +497,10 @@ describe.skipIf(!chromiumAvailable)(
             }
           }
 
+          const dialogControls = Array.from(
+            panel?.querySelectorAll('button') ?? [],
+          ).map(hitFor);
+
           const chromeControls = Array.from(
             document.querySelectorAll('.notification-container button'),
           ).map(hitFor);
@@ -478,6 +515,7 @@ describe.skipIf(!chromiumAvailable)(
             overlayParent: describe_(overlay?.parentElement ?? null),
             overlayZIndex: overlay ? getComputedStyle(overlay).zIndex : null,
             hostZIndex: getComputedStyle(host).zIndex,
+            dialogControls,
             dialogOverlaps,
             chromeControls,
           };
@@ -520,8 +558,33 @@ describe.skipIf(!chromiumAvailable)(
       },
     );
 
-    test.each(SHAPES.filter((shape) => shape.expectsDialogOverNotice))(
-      'a dialog control is reachable where the notice host paints: $name',
+    test.each(SHAPES.filter((shape) => shape.expectsDialogReachable))(
+      'every control in the dialog hit-tests to itself: $name',
+      async (shape) => {
+        const measured = await measure(shape);
+        assertTheDockWouldStillTrapASurface(measured);
+        expect(
+          measured.dialogControls.length,
+          'the dialog rendered no control, so nothing was measured.',
+        ).toBeGreaterThan(0);
+        const unreachable = measured.dialogControls.filter(
+          (entry) => !entry.hitsItself,
+        );
+        expect(
+          unreachable,
+          `a dialog control was covered (overlay z-index ${measured.overlayZIndex}, ` +
+            `docks at ${measured.dockZIndexes.join(', ')}):\n${unreachable
+              .map(
+                (entry) =>
+                  `  ${entry.control} at (${entry.point.x}, ${entry.point.y}) hit ${entry.hit}`,
+              )
+              .join('\n')}`,
+        ).toEqual([]);
+      },
+    );
+
+    test.each(SHAPES.filter((shape) => shape.expectsNoticeOverlap))(
+      'the dialog owns the points where the notice host paints over it: $name',
       async (shape) => {
         const measured = await measure(shape);
         assertTheDockWouldStillTrapASurface(measured);
