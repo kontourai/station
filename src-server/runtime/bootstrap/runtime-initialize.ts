@@ -627,7 +627,10 @@ export async function initializeRuntime(
     homeDir: configLoader.getProjectHomeDir(),
   });
   const attachedSessionFollowService = new AttachedSessionFollowService({
-    sources: [new ClaudeTranscriptSessionSource(), new CodexRolloutSessionSource()],
+    sources: [
+      new ClaudeTranscriptSessionSource(),
+      new CodexRolloutSessionSource(),
+    ],
     eventStore: orchestrationEventStore,
     adoptionLedger,
     eventBus,

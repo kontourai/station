@@ -1334,13 +1334,11 @@ describe('AttachedSessionFollowService', () => {
       discover: vi
         .fn()
         .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
-      read: vi
-        .fn()
-        .mockResolvedValue({
-          outcome: 'ok',
-          events: [event('page-first'), event('page-second')],
-          cursor: 40,
-        }),
+      read: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        events: [event('page-first'), event('page-second')],
+        cursor: 40,
+      }),
     };
     const options = {
       sources: [source],
