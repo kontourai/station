@@ -370,6 +370,43 @@ describe('HomeView', () => {
     expect(fixtures.inventoryRefetch).toHaveBeenCalledTimes(1);
   });
 
+  // #1582 B9: a chat created and never typed into is not work. It produced a
+  // "Continue most recent work → New chat" card that a reload erased, because
+  // Home read the same unfiltered selection the inboxes do. Home takes
+  // `useOpenWorkChats`; swapping it back for `useOpenChats` reddens this.
+  test('a chat nothing has been put into produces no continue-work card', () => {
+    fixtures.chats = {
+      'claude:1788672912443': {
+        agentSlug: 'codex-agent',
+        agentName: 'Codex',
+        title: 'New chat',
+      },
+    };
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    expect(
+      screen.queryByRole('button', { name: /Continue most recent work/i }),
+    ).toBeNull();
+  });
+
+  test('the same chat produces the card once its first turn promotes it', () => {
+    // The discriminating pair: identical fixture but for the conversation id
+    // the first successful turn assigns, so the absence above is the predicate
+    // and not an empty Home.
+    fixtures.chats = {
+      'claude:1788672912443': {
+        conversationId: 'conversation-1',
+        agentSlug: 'codex-agent',
+        agentName: 'Codex',
+        title: 'New chat',
+      },
+    };
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    expect(
+      screen.getByRole('button', { name: /Continue most recent work/i })
+        .textContent,
+    ).toContain('New chat');
+  });
+
   test('orders real timestamps and focuses an active chat continuation', () => {
     fixtures.sessions = [
       {
