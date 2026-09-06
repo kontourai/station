@@ -130,24 +130,16 @@
 }
 
 .banner-host__cap--warning {
-  border-color: color-mix(
-    in srgb,
-    var(--warning-text, #fbbf24) 45%,
-    transparent
-  );
+  border-color: var(--tone-border-warning);
 }
 
 .banner-host__cap--error,
 .banner-host__cap--blocked {
-  border-color: color-mix(in srgb, var(--error-text, #f87171) 55%, transparent);
+  border-color: var(--tone-border-error);
 }
 
 .banner-host__cap--info {
-  border-color: color-mix(
-    in srgb,
-    var(--accent-primary, #3b82f6) 45%,
-    transparent
-  );
+  border-color: var(--tone-border-info);
 }
 
 .banner-host__cap:hover {
@@ -186,8 +178,7 @@
      did before this property existed. */
   height: var(--banner-natural-height, auto);
   color: var(--text-primary, #f9fafb);
-  border: 1px solid
-    color-mix(in srgb, var(--warning-text, #fbbf24) 45%, transparent);
+  border: 1px solid var(--tone-border-warning);
   border-left-width: 4px;
   border-radius: 10px;
   background: var(--bg-primary, #111827);
@@ -303,26 +294,18 @@
 }
 
 .banner-host__item--warning {
-  border-color: color-mix(
-    in srgb,
-    var(--warning-text, #fbbf24) 45%,
-    transparent
-  );
+  border-color: var(--tone-border-warning);
   background: var(--bg-primary, #111827);
 }
 
 .banner-host__item--error,
 .banner-host__item--blocked {
-  border-color: color-mix(in srgb, var(--error-text, #f87171) 55%, transparent);
+  border-color: var(--tone-border-error);
   background: var(--bg-primary, #111827);
 }
 
 .banner-host__item--info {
-  border-color: color-mix(
-    in srgb,
-    var(--accent-primary, #3b82f6) 45%,
-    transparent
-  );
+  border-color: var(--tone-border-info);
   background: var(--bg-primary, #111827);
 }
 

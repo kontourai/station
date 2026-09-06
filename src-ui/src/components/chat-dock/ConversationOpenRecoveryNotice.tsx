@@ -1,6 +1,12 @@
 export interface ConversationOpenRecoveryNoticeProps {
   title: string;
-  state: 'resolving' | 'missing-session' | 'unavailable';
+  /**
+   * A VERDICT only. `resolving` used to be a member, which is how a
+   * conversation that was merely still being read got a red "is read-only"
+   * alert on every reload; the transitional state now has its own muted line
+   * in `ChatDockBody` and never reaches this component (#1582 E3/B6).
+   */
+  state: 'missing-session' | 'unavailable';
   onRetry?: () => void;
   onStartNew?: () => void;
 }
@@ -16,11 +22,9 @@ export function ConversationOpenRecoveryNotice({
   onStartNew,
 }: ConversationOpenRecoveryNoticeProps) {
   const detail =
-    state === 'resolving'
-      ? 'Station is resolving its current session.'
-      : state === 'missing-session'
-        ? 'Its execution session is no longer available.'
-        : 'Station could not prove a writable continuation for its current session.';
+    state === 'missing-session'
+      ? 'Its execution session is no longer available.'
+      : 'Station could not prove a writable continuation for its current session.';
 
   return (
     <div className="session-history-error" role="alert">

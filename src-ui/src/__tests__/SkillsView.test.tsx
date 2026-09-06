@@ -299,11 +299,75 @@ describe('SkillsView', () => {
 
     expect(
       screen.getByText(
-        'Author workspace skills here; discover and install new skills in Registry.',
+        'Every skill Station loaded, grouped by where it came from. Author your own here; install more from Registry.',
       ),
     ).toBeTruthy();
 
     expect(screen.queryByRole('button', { name: 'Open Playbooks' })).toBeNull();
+  });
+
+  // #1582 D6. Mounted through the real view, not the row builder: the chip and
+  // the band header are rendered by `SplitPaneLayout` from `badge`/`section`,
+  // so a builder-only assertion would pass with neither on screen.
+  test('every row says which root it was loaded from, banded by source', () => {
+    localSkillsMock = [
+      { name: 'built-in-skill', source: 'flow-agents', origin: 'package' },
+      { name: 'machine-skill', source: 'local', origin: 'user' },
+      { name: 'workspace-skill', source: 'local', origin: 'project' },
+      { name: 'unrecorded-skill', source: 'local' },
+    ];
+
+    const { container } = render(<SkillsView />);
+
+    const chips = Array.from(
+      container.querySelectorAll('.skill-source-chip'),
+    ).map((chip) => chip.textContent);
+    expect(chips).toEqual([
+      'This workspace',
+      'This machine',
+      'Built in',
+      'Source unrecorded',
+    ]);
+    const headers = Array.from(
+      container.querySelectorAll('.split-pane__section-header'),
+    ).map((header) => header.textContent);
+    expect(headers).toEqual([
+      'This workspace',
+      'This machine',
+      'Built in',
+      'Source unrecorded',
+    ]);
+    // The rows themselves moved with their bands — the built-in row that was
+    // authored first is no longer first on screen.
+    const names = Array.from(
+      container.querySelectorAll('.split-pane__item-name-text'),
+    ).map((name) => name.textContent);
+    expect(names).toEqual([
+      'workspace-skill',
+      'machine-skill',
+      'built-in-skill',
+      'unrecorded-skill',
+    ]);
+  });
+
+  // The detail pane used to call anything writable "Workspace-authored skill",
+  // which is what named a machine-scoped skill a workspace one (#1582 D6).
+  test('the detail pane names the same root the list chip does', () => {
+    selectionState.selectedId = 'machine-skill';
+    localSkillsMock = [
+      {
+        name: 'machine-skill',
+        source: 'local',
+        origin: 'user',
+        installed: true,
+      },
+    ];
+    editableSkillMock = { name: 'machine-skill', body: 'do the thing' };
+
+    render(<SkillsView />);
+
+    expect(screen.queryByText('Workspace-authored skill')).toBeNull();
+    expect(screen.getAllByText('This machine').length).toBeGreaterThan(0);
   });
 
   // The Skills editor owns the whole authoring surface: the command switch,
