@@ -273,8 +273,8 @@ test('actual SDK isolates concurrent native conversations, approvals, model stat
       .map((entry) => [entry.agentSlug, entry.conversationId, entry.userId])
       .sort(),
   ).toEqual([
-    ['display-only', 'child-a', 'user-a'],
-    ['display-only', 'child-b', 'user-b'],
+    ['agent-a', 'child-a', 'user-a'],
+    ['agent-a', 'child-b', 'user-b'],
   ]);
   expect(
     seen
@@ -523,3 +523,45 @@ test('direct explicit conversations use isolated current-only SDK history and pe
     }),
   ).rejects.toThrow('canonical Agent identity');
 });
+
+test.each([
+  { agentId: 'station', expected: 'default' },
+  { agentId: undefined, expected: 'temporary-display' },
+])(
+  'temp hooks retain their actual owner: $expected',
+  async ({ agentId, expected }) => {
+    const seen: InvocationContext[] = [];
+    const agent = await new StrandsFramework().createTempAgent({
+      name: 'temporary-display',
+      agentId,
+      instructions: 'Respond.',
+      model: new FixtureModel(false, true),
+      tools: [
+        {
+          name: 'observe',
+          description: 'Observe.',
+          parameters: z.object({}),
+          execute: async () => ({ ok: true }),
+        },
+      ],
+      hooks: {
+        beforeToolCall: async (_call, invocation) => {
+          seen.push(invocation);
+          return true;
+        },
+      },
+    });
+    await consume(
+      await agent.streamText('Observe this turn.', {
+        conversationId: 'current-child',
+        userId: 'owner',
+      }),
+    );
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      agentSlug: expected,
+      conversationId: 'current-child',
+      userId: 'owner',
+    });
+  },
+);

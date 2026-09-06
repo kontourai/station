@@ -1,5 +1,8 @@
 import type { UIMessage } from 'ai';
-import { publicAgentIdFromRuntimeKey } from '../../routes/agents/runtime-agent-identity.js';
+import {
+  publicAgentIdFromRuntimeKey,
+  runtimeAgentKey,
+} from '../../routes/agents/runtime-agent-identity.js';
 /**
  * Strands Agents SDK adapter — maps Strands API to the framework-agnostic interfaces.
  *
@@ -645,7 +648,9 @@ export class StrandsFramework {
       // giving tool implementations (which may write to the bag freely)
       // nothing to spoof.
       const invocationCtx: InvocationContext = ownedInvocation ?? {
-        agentSlug: opts.name,
+        agentSlug: opts.agentId
+          ? runtimeAgentKey(publicAgentIdFromRuntimeKey(opts.agentId))
+          : opts.name,
       };
       // archive#1834: temp agents used to get NO tool gate at all — the
       // default agent (and every scheduler//invoke/CLI call riding it)
