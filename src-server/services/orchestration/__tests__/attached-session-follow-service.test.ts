@@ -1370,6 +1370,88 @@ describe('AttachedSessionFollowService', () => {
     expect(source.read).toHaveBeenCalledWith(session, 40);
   });
 
+  test.each([
+    ['provider mismatch', { provider: 'unregistered-provider' }],
+    ['thread mismatch', { threadId: 'external:claude:wrong-thread' }],
+  ])(
+    'rejects a malformed read batch with a %s without advancing its cursor',
+    async (_reason, malformedFields) => {
+      store.upsertSession({
+        provider: 'claude',
+        threadId: session.threadId,
+        status: 'ready',
+        cwd: session.cwd,
+        controlMode: 'read-only-attached',
+        attachedSource: {
+          kind: 'claude-transcript',
+          externalSessionId: session.sessionId,
+        },
+        resumeCursor: {
+          kind: 'station.attached-session-cursor/v1',
+          provider: 'claude',
+          sourceHandle: session.sourceHandle,
+          cursor: 10,
+        },
+        createdAt: session.createdAt,
+        updatedAt: session.createdAt,
+      });
+      const source: AttachedSessionSource = {
+        provider: 'claude',
+        kind: 'claude-transcript',
+        discover: vi
+          .fn()
+          .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+        read: vi
+          .fn()
+          .mockResolvedValueOnce({
+            outcome: 'ok',
+            events: [{ ...event('malformed-event'), ...malformedFields }],
+            cursor: 20,
+          })
+          .mockResolvedValueOnce({
+            outcome: 'ok',
+            events: [event('valid-event')],
+            cursor: 20,
+          }),
+      };
+      const service = new AttachedSessionFollowService({
+        sources: [source],
+        eventStore: store,
+        eventBus,
+        listProjects: () => [
+          { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+        ],
+      });
+
+      await service.pollNow();
+
+      expect(source.read).toHaveBeenNthCalledWith(1, session, 10);
+      expect(
+        store.listEvents(session.threadId).map((item) => item.id),
+      ).not.toContain('malformed-event');
+      expect(
+        store.readSessions().find((item) => item.threadId === session.threadId)
+          ?.resumeCursor,
+      ).toEqual(
+        expect.objectContaining({
+          sourceHandle: session.sourceHandle,
+          cursor: 10,
+        }),
+      );
+
+      await service.pollNow();
+
+      expect(source.read).toHaveBeenNthCalledWith(2, session, 10);
+      expect(
+        store.listEvents(session.threadId).map((item) => item.id),
+      ).toContain('valid-event');
+      expect(
+        store.readSessions().find((item) => item.threadId === session.threadId)
+          ?.resumeCursor,
+      ).toEqual(expect.objectContaining({ cursor: 20 }));
+    },
+  );
+
   test('rejects a durable transcript cursor when the opaque source handle changes', async () => {
     const firstSource: AttachedSessionSource = {
       provider: 'claude',

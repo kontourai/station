@@ -397,6 +397,17 @@ export class AttachedSessionFollowService {
     let read: AttachedSessionReadResult;
     try {
       read = await source.read(descriptor, reusableCursor);
+      if (
+        read.events.some(
+          (event) =>
+            event.provider !== source.provider ||
+            event.threadId !== descriptor.threadId,
+        )
+      ) {
+        throw new Error(
+          'Attached session source returned an out-of-scope event.',
+        );
+      }
     } catch {
       // Preserve an already durable cursor even when this observation fails.
       // A later successful poll can continue without replaying the source.
