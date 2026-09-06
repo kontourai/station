@@ -141,6 +141,16 @@ Agent-start publication to prepare. A crashed dispatch therefore needs explicit
 dispatch reconciliation, not an assumption that provider exit completed every
 other phase.
 
+At startup, the room lifecycle readiness path repairs only demonstrably
+completed dispatches. It joins the immutable session binding, a unique
+completed Task association without an active reservation, and the persisted
+provider session. It durably prepares the lifecycle publication and rechecks
+the Task association before releasing the exact dead owner's record. A live
+or unverifiable owner is never taken over. Missing, changed, corrupt or
+uncertain evidence leaves admission blocked; this path never starts a provider
+or repeats an external assignment claim. Each startup attempts at most 128
+records. Unresolved external effects still require separate reconciliation.
+
 Legacy sessions and other execution ingress still need verified scope binding.
 A move caller must not claim full home or Project quiescence from one private
 room seal: new Task creation and other home mutations require their own

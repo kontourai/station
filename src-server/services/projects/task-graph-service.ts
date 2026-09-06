@@ -2201,6 +2201,34 @@ export class TaskGraphService {
     });
   }
 
+  /** Read-only proof of a completed association, never a reservation or retry. */
+  readCompletedDispatchForRecovery(sessionId: string):
+    | {
+        task: TaskRecord;
+        dispatch: TaskDispatchRecord;
+        links: RelationGraphLink[];
+      }
+    | undefined {
+    const data = this.readStoreView();
+    const matches = data.dispatches.filter(
+      (dispatch) => dispatch.sessionId === sessionId,
+    );
+    if (matches.length !== 1) return undefined;
+    const dispatch = matches[0];
+    const task = data.tasks.find((task) => task.id === dispatch.taskId);
+    if (!task || task.dispatchReservation || task.sessionId !== sessionId)
+      return undefined;
+    return structuredClone({
+      task,
+      dispatch,
+      links: data.links.filter(
+        (link) =>
+          (link.sourceType === 'task' && link.sourceId === task.id) ||
+          (link.targetType === 'task' && link.targetId === task.id),
+      ),
+    });
+  }
+
   async readTaskGraph(taskId: string): Promise<TaskGraph | null> {
     const data = this.readStore();
     const task = data.tasks.find((item) => item.id === taskId);

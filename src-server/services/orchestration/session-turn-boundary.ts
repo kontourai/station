@@ -168,6 +168,12 @@ export interface TaskDispatchBoundaryClaim {
 }
 
 export interface SessionTurnBoundaryAuthority {
+  /** Boot composition supplies proof from graph, provider and publication owners. */
+  recoverCompletedDispatch(
+    threadId: string,
+    verify: () => Promise<boolean>,
+  ): Promise<SessionTurnBoundaryTransition>;
+
   claimTaskDispatch(
     threadId: string,
     now: string,
@@ -404,6 +410,45 @@ export function createSessionTurnBoundaryAuthority(options: {
   };
 
   return {
+    async recoverCompletedDispatch(threadId, verify) {
+      try {
+        const candidates = options.coordinator
+          .active()
+          .filter(
+            (record) =>
+              record.threadId === threadId &&
+              record.purpose === 'task-dispatch',
+          );
+        if (candidates.length !== 1) return { kind: 'stale' };
+        const candidate = candidates[0];
+        if (ownerIsLive(candidate, options.processIdentity))
+          return { kind: 'busy' };
+        if (!['invoking', 'indeterminate'].includes(candidate.state))
+          return { kind: 'stale' };
+        if (!(await verify())) return { kind: 'unavailable' };
+        const current = options.coordinator
+          .active()
+          .find((record) => record.boundaryId === candidate.boundaryId);
+        if (
+          !current ||
+          current.ownerId !== candidate.ownerId ||
+          current.threadId !== threadId ||
+          current.purpose !== 'task-dispatch' ||
+          current.state !== candidate.state ||
+          current.updatedAt !== candidate.updatedAt
+        )
+          return { kind: 'stale' };
+        if (ownerIsLive(current, options.processIdentity))
+          return { kind: 'busy' };
+        return options.coordinator.remove({
+          boundaryId: current.boundaryId,
+          ownerId: current.ownerId,
+          from: [current.state],
+        });
+      } catch {
+        return { kind: 'unavailable' };
+      }
+    },
     claimSessionStart: (threadId, now) => claimStart(threadId, now),
     claimTaskDispatch(threadId, now) {
       const owned = claimStart(threadId, now, 'task-dispatch');
