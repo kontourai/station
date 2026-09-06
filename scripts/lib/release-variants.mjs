@@ -1,8 +1,8 @@
-const TAG =
+export const RELEASE_TAG_PATTERN =
   /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$/;
 
 export function releaseVariants(tag) {
-  if (!TAG.test(tag)) {
+  if (!RELEASE_TAG_PATTERN.test(tag)) {
     throw new Error(`Invalid release artifact inventory: invalid tag ${tag}`);
   }
   const variants = [

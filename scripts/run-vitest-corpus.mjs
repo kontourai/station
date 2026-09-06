@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
-import { spawnSync as defaultSpawnSync, spawn } from 'node:child_process';
+import {
+  spawnSync as defaultSpawnSync,
+  execFileSync,
+  spawn,
+} from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -530,10 +535,52 @@ async function main() {
     registerProcessSignal(name, () => controller.abort(name)),
   );
   try {
+    const options = parseVitestCorpusArguments(process.argv.slice(2));
     const result = await runVitestCorpus({
-      ...parseVitestCorpusArguments(process.argv.slice(2)),
+      ...options,
       signal: controller.signal,
     });
+    if (options.keepGoing) {
+      const directory = resolve('.kontourai/vitest-corpus-audit');
+      mkdirSync(directory, { recursive: true });
+      const path = resolve(directory, `${Date.now()}-${process.pid}.json`);
+      writeFileSync(
+        path,
+        JSON.stringify(
+          {
+            schemaVersion: 1,
+            revision: execFileSync('git', ['rev-parse', 'HEAD'], {
+              encoding: 'utf8',
+              windowsHide: true,
+            }).trim(),
+            selection: options,
+            passed: result.passed,
+            groups: result.results.map(
+              ({
+                name,
+                passed,
+                status,
+                error,
+                cancelled,
+                outputBytes,
+                cleanup,
+              }) => ({
+                name,
+                passed,
+                status,
+                error,
+                cancelled,
+                outputBytes,
+                cleanup,
+              }),
+            ),
+          },
+          null,
+          2,
+        ),
+      );
+      process.stdout.write(`[vitest-corpus] audit matrix: ${path}\n`);
+    }
     process.exitCode = result.passed ? 0 : 1;
   } catch (error) {
     process.stderr.write(

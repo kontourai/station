@@ -36,3 +36,19 @@ test('unconfigured readers expire and do not poison a later initialization', asy
   expect(await later).toBe('https://ready.example.test');
   expect(vi.getTimerCount()).toBe(0);
 });
+
+test('pending readers observe the latest base at continuation rather than a superseded publication', async () => {
+  vi.useFakeTimers();
+  _setApiBase('');
+  const pending = _getApiBase();
+  _setApiBase('https://first.example.test');
+  _setApiBase('https://latest.example.test');
+  expect(await pending).toBe('https://latest.example.test');
+  _setApiBase('');
+  const cleared = _getApiBase();
+  _setApiBase('https://superseded.example.test');
+  _setApiBase('');
+  await Promise.resolve();
+  _setApiBase('https://restored.example.test');
+  expect(await cleared).toBe('https://restored.example.test');
+});

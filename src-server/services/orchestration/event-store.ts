@@ -4706,20 +4706,12 @@ export class EventStore {
    * payloads for rows the fold never reads. Measured on a real 51k-event/43-
    * thread store: 12.6ms -> 409ms and +212MB heap for identical output.
    *
-   * The fix: rank by `(thread_id, method)`, not `(thread_id)` alone, over
-   * ONLY {@link PROJECTION_FOLD_METHODS} — the finite set of methods any slot
-   * in the fold actually names. A thread's un-listed methods
-   * (`content.text-delta`, tool events, streamed deltas, ...) are never
-   * fetched, so a 50,000-delta thread costs the same as a two-event one.
-   * Ranking is done in a two-phase read: an inner CTE selects only `thread_id
-   * `/`method`/`sequence` (plus the implicit `rowid`) to compute
-   * `ROW_NUMBER()` per partition — a covering-index scan over
-   * `idx_events_history_projection(thread_id, method, sequence)` that never
-   * touches the `payload` column — and an outer join fetches the FULL row
-   * (payload included) only for the rows that survive `rn_desc = 1 OR
-   * rn_asc = 1`: at most two rows per (thread, method) requested. The
-   * "latest event of any method" companion query below uses the same
-   * two-phase shape over `idx_events_thread(thread_id, sequence)`.
+   * The requested thread/method matrix uses first/latest indexed row-id
+   * lookups over PROJECTION_FOLD_METHODS, then joins only the selected
+   * payloads. The latest-any companion also performs a top-one seek.
+   * Payload materialization is bounded by requested facts, not event history.
+   * Other operations (event counts and prompted-turn predicates) own their
+   * separate costs; this is not a claim that the whole request is constant-time.
    *
    * `firstTurnStartedWithPrompt`'s JSON predicate genuinely cannot skip
    * reading `payload` (it must inspect the prompt to test it), so that
@@ -4887,35 +4879,41 @@ export class EventStore {
   }
 
   /**
-   * Latest and first row per `(threadId, method)`, for every method in
-   * {@link PROJECTION_FOLD_METHODS} — the two-phase, payload-deferred ranking
-   * this method's docblock describes.
+   * First/latest indexed row-id bounds per requested thread and method.
+   * Only those payloads are materialized; history length does not determine
+   * how many rows the extrema lookup ranks or sorts.
    */
   private fetchRankedMethodFacts(
     threadIds: readonly string[],
   ): Map<string, Map<string, RankedMethodFact>> {
     const result = new Map<string, Map<string, RankedMethodFact>>();
-    const methodPlaceholders = PROJECTION_FOLD_METHODS.map(() => '?').join(
+    const methodPlaceholders = PROJECTION_FOLD_METHODS.map(() => '(?)').join(
       ', ',
     );
     for (const chunk of this.chunkArray(
       threadIds,
       EVENT_STORE_BATCH_CHUNK_SIZE,
     )) {
-      const threadPlaceholders = chunk.map(() => '?').join(', ');
+      const threadPlaceholders = chunk.map(() => '(?)').join(', ');
       const rows = this.db
         .prepare(
-          `WITH ranked AS (
-             SELECT rowid AS rid, thread_id, method,
-               ROW_NUMBER() OVER (PARTITION BY thread_id, method ORDER BY sequence DESC) AS rn_desc,
-               ROW_NUMBER() OVER (PARTITION BY thread_id, method ORDER BY sequence ASC) AS rn_asc
-             FROM orchestration_events
-             WHERE thread_id IN (${threadPlaceholders}) AND method IN (${methodPlaceholders})
-           )
-           SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.observed_at, event.sequence, event.global_sequence, ranked.rn_desc, ranked.rn_asc
-           FROM ranked
-           INNER JOIN orchestration_events AS event ON event.rowid = ranked.rid
-           WHERE ranked.rn_desc = 1 OR ranked.rn_asc = 1`,
+          `WITH requested(thread_id) AS (VALUES ${threadPlaceholders}),
+             methods(method) AS (VALUES ${methodPlaceholders}),
+             bounds AS (
+               SELECT
+                 (SELECT rowid FROM orchestration_events
+                  WHERE thread_id = requested.thread_id AND method = methods.method
+                  ORDER BY sequence DESC LIMIT 1) AS last_id,
+                 (SELECT rowid FROM orchestration_events
+                  WHERE thread_id = requested.thread_id AND method = methods.method
+                  ORDER BY sequence ASC LIMIT 1) AS first_id
+               FROM requested CROSS JOIN methods
+             )
+           SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.observed_at, event.sequence, event.global_sequence, 1 AS rn_desc, 0 AS rn_asc
+           FROM bounds JOIN orchestration_events AS event ON event.rowid = bounds.last_id
+           UNION ALL
+           SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.observed_at, event.sequence, event.global_sequence, 0 AS rn_desc, 1 AS rn_asc
+           FROM bounds JOIN orchestration_events AS event ON event.rowid = bounds.first_id`,
         )
         .all(...chunk, ...PROJECTION_FOLD_METHODS) as any[];
       for (const row of rows) {
@@ -4939,8 +4937,8 @@ export class EventStore {
 
   /**
    * Latest event of ANY method per thread — mirrors {@link latestEvent},
-   * batched. Same two-phase, payload-deferred shape over
-   * `idx_events_thread(thread_id, sequence)`.
+   * batched using one indexed top-one seek per requested thread. Payloads
+   * are read only after selecting the row id.
    */
   private fetchLatestAnyEvent(
     threadIds: readonly string[],

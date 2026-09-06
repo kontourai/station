@@ -5497,8 +5497,10 @@ describe('EventStore', () => {
         'seek-b-delta-99',
       );
       expect(rows.get('seek-absent')).toEqual([]);
-      const latest = sql.find((query) =>
-        query.includes('requested(thread_id)'),
+      const latest = sql.find(
+        (query) =>
+          query.includes('requested(thread_id)') &&
+          !query.includes('methods(method)'),
       );
       expect(latest).toBeDefined();
       const plan = database
@@ -5507,9 +5509,9 @@ describe('EventStore', () => {
       expect(
         plan.some((row) => row.detail.includes('CORRELATED SCALAR SUBQUERY')),
       ).toBe(true);
-      expect(plan.some((row) => row.detail.includes('idx_events_thread'))).toBe(
-        true,
-      );
+      expect(
+        plan.some((row) => /COVERING INDEX.*\(thread_id=\?\)/.test(row.detail)),
+      ).toBe(true);
       expect(plan.some((row) => row.detail.includes('USE TEMP B-TREE'))).toBe(
         false,
       );

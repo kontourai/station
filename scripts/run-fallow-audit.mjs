@@ -7,7 +7,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inventoryCodeHealthFiles } from './code-health-inventory.mjs';
 import {
@@ -186,7 +186,7 @@ export async function runFallowAudit(root, scope = 'changed') {
     tool: 'fallow',
     scope,
     completed: true,
-    inventory: inventoryPath,
+    inventory: inventoryPath ? relative(root, inventoryPath) : undefined,
     source_revision: execFileSync('git', ['rev-parse', 'HEAD'], {
       cwd: root,
       encoding: 'utf8',
@@ -210,7 +210,7 @@ export async function runFallowAudit(root, scope = 'changed') {
         : 'pass',
     summary,
     raw_reports: commands.map((command) =>
-      join(rawDirectory, `${command}.json`),
+      relative(root, join(rawDirectory, `${command}.json`)),
     ),
     limitations: [
       'Static candidates require caller review.',
@@ -225,7 +225,7 @@ export async function runFallowAudit(root, scope = 'changed') {
     })),
   };
   writeFileSync(artifactPath, JSON.stringify(artifact, null, 2) + '\n');
-  return { artifactPath, ...artifact };
+  return { artifactPath: relative(root, artifactPath), ...artifact };
 }
 
 if (

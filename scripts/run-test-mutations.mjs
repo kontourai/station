@@ -55,6 +55,61 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'latest-event-seek-order',
+    test: 'src-server/services/orchestration/__tests__/event-store.test.ts',
+    failure:
+      'the latest-any slot seeks once per requested thread instead of ranking history',
+    files: [
+      {
+        path: 'src-server/services/orchestration/event-store.ts',
+        change: (source) => {
+          const start = source.indexOf('  private fetchLatestAnyEvent(');
+          const end = source.indexOf('\n  /**', start);
+          if (start < 0 || end < start)
+            throw new Error('Latest-event method not found');
+          return (
+            source.slice(0, start) +
+            exactReplace(
+              source.slice(start, end),
+              'ORDER BY sequence DESC LIMIT 1',
+              'ORDER BY sequence ASC LIMIT 1',
+            ) +
+            source.slice(end)
+          );
+        },
+      },
+    ],
+  },
+  {
+    id: 'api-base-publication-race',
+    test: 'packages/sdk/src/__tests__/api-initialization.test.ts',
+    failure:
+      'pending readers observe the latest base at continuation rather than a superseded publication',
+    files: [
+      {
+        path: 'packages/sdk/src/api-core.ts',
+        change: (source) => {
+          let changed = exactReplace(
+            source,
+            'const deadline = performance.now() + 500;',
+            'const deadline = performance.now() + 500;\n  let observedBase = _apiBase;',
+          );
+          changed = exactReplace(
+            changed,
+            'const receive = () => {',
+            'const receive = () => {\n        observedBase = _apiBase;',
+          );
+          return exactReplace(
+            changed,
+            'return _apiBase;',
+            'return observedBase || _apiBase;',
+          );
+        },
+      },
+    ],
+  },
+
+  {
     id: 'monitoring-file-reads',
     test: 'src-server/runtime/conversation/__tests__/runtime-event-log.test.ts',
     failure:

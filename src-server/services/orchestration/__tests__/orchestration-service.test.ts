@@ -9828,17 +9828,17 @@ describe('OrchestrationService', () => {
         [...shapeCounts.entries()]
           .filter(([shape]) => shape.includes(needle))
           .reduce((sum, [, count]) => sum + count, 0);
-      // fetchRankedMethodFacts: the two-phase, payload-deferred ranking over
-      // PROJECTION_FOLD_METHODS.
+      // Each projection query runs once for the whole population. Method
+      // bounds and latest-any use indexed seeks rather than window ranking.
+      expect(countOfShapeContaining('methods(method) AS (VALUES')).toBe(1);
       expect(
-        countOfShapeContaining(
-          'PARTITION BY thread_id, method ORDER BY sequence DESC',
-        ),
-      ).toBe(1);
-      // fetchLatestAnyEvent: same two-phase shape, unfiltered by method (no
-      // comma before ORDER BY distinguishes it from the query above).
-      expect(
-        countOfShapeContaining('PARTITION BY thread_id ORDER BY sequence DESC'),
+        [...shapeCounts.entries()]
+          .filter(
+            ([shape]) =>
+              shape.includes('requested(thread_id)') &&
+              !shape.includes('methods(method)'),
+          )
+          .reduce((sum, [, count]) => sum + count, 0),
       ).toBe(1);
       // fetchFirstTurnStartedWithPrompt: the JSON-predicate query, still one
       // shot for the whole population.

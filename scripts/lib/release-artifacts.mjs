@@ -1,4 +1,4 @@
-import { releaseVariants } from './release-variants.mjs';
+import { RELEASE_TAG_PATTERN, releaseVariants } from './release-variants.mjs';
 
 export { releaseVariants } from './release-variants.mjs';
 
@@ -19,8 +19,6 @@ import {
   validateSbomDescriptorSet,
 } from './release-sboms.mjs';
 
-const TAG =
-  /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$/;
 const SHA = /^[0-9a-f]{40}$/;
 const CHECKSUM = /^[0-9a-f]{64}$/;
 const CONTAINER_DIGEST = /^sha256:[0-9a-f]{64}$/;
@@ -371,7 +369,7 @@ export function createReleaseInventory({
   containerDescriptor,
   dependencyLifecycle,
 }) {
-  if (!TAG.test(tag)) fail(`invalid tag ${tag}`);
+  if (!RELEASE_TAG_PATTERN.test(tag)) fail(`invalid tag ${tag}`);
   if (!SHA.test(sourceSha)) fail(`invalid source SHA ${sourceSha}`);
   const descriptorPath =
     containerDescriptor ?? join(assetsDir, 'station-container-release.json');

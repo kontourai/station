@@ -5,7 +5,7 @@ import {
 import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
 
 let _apiBase = '';
-const apiBaseWaiters = new Set<(base: string) => void>();
+const apiBaseWaiters = new Set<() => void>();
 
 export interface PluginApiIdentity {
   readonly pluginName: string;
@@ -15,7 +15,7 @@ export interface PluginApiIdentity {
 export function _setApiBase(apiBase: string) {
   _apiBase = apiBase;
   if (apiBase) {
-    for (const resolve of apiBaseWaiters) resolve(apiBase);
+    for (const resolve of apiBaseWaiters) resolve();
     apiBaseWaiters.clear();
   }
 }
@@ -40,21 +40,28 @@ export function _getPluginName(): string {
 }
 
 export async function _getApiBase(): Promise<string> {
-  if (_apiBase) return _apiBase;
-  // Publication wakes every reader without independent 10ms polling loops.
-  return new Promise<string>((resolve, reject) => {
-    const receive = (base: string) => {
-      clearTimeout(timeout);
-      resolve(base);
-    };
-    const timeout = setTimeout(() => {
-      apiBaseWaiters.delete(receive);
-      reject(
-        new Error('API base not configured. Ensure SDKProvider is mounted.'),
+  const deadline = performance.now() + 500;
+  while (!_apiBase) {
+    await new Promise<void>((resolve, reject) => {
+      const receive = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      const timeout = setTimeout(
+        () => {
+          apiBaseWaiters.delete(receive);
+          reject(
+            new Error(
+              'API base not configured. Ensure SDKProvider is mounted.',
+            ),
+          );
+        },
+        Math.max(0, deadline - performance.now()),
       );
-    }, 500);
-    apiBaseWaiters.add(receive);
-  });
+      apiBaseWaiters.add(receive);
+    });
+  }
+  return _apiBase;
 }
 
 export { apiErrorMessage } from './client/api-error-message';

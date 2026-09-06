@@ -249,6 +249,7 @@ describe('host-pressure gate membership', () => {
     ).map((lane) => lane.id);
     expect(gated).toEqual([
       'test-full',
+      'test-full-audit',
       'test-coverage',
       'verify-static',
       'verify-local',

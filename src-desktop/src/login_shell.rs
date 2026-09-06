@@ -127,10 +127,10 @@ mod tests {
         );
     }
     #[test]
-    fn bounds_unterminated_startup_output() {
+    fn bounds_startup_output_before_accepting_a_framed_path() {
         assert_eq!(
             capture_path(
-                shell("while :; do printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; done"),
+                shell("head -c 131072 /dev/zero; printf '\\036/usr/bin\\037'"),
                 Duration::from_secs(5)
             ),
             None
