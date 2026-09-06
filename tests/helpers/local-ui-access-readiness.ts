@@ -21,8 +21,9 @@ export const LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS = 20_000;
 
 /**
  * A bound on the loop itself, not a second budget — the deadline above is what
- * actually stops this wait. A host that answers `unavailable` to two
- * consecutive bootstrap requests inside that window is not restarting.
+ * actually stops this wait. Two reloads means three consecutive `unavailable`
+ * answers are needed before this wait gives up, and a host answering that way
+ * three times inside the deadline is not merely restarting.
  */
 export const MAX_HOST_RECOVERY_RELOADS = 2;
 
@@ -58,8 +59,9 @@ export type LocalUiAccessObservation = {
   /** What was on screen when the budget ran out, for the failure message. */
   pendingScreenDetail(): Promise<string>;
   /**
-   * Take the recovery screen's own offered way forward, and do not return
-   * until the screen it was on can no longer be observed.
+   * Take the recovery screen's own offered way forward. Returns once a new
+   * document is up — or once `timeoutMs` is gone, leaving the deadline to
+   * report what is still on screen.
    */
   reloadAfterHostRecovery(timeoutMs: number): Promise<void>;
   now(): number;
@@ -187,7 +189,8 @@ export async function waitForLocalUiAccessReadiness(
         // one unavailable host, twice, the second time even after arming
         // `framenavigated` — which this SPA also fires for its own
         // same-document `replaceState`). `page.reload()` resolves only once a
-        // NEW document has loaded, so there is no stale screen to re-read.
+        // NEW document has loaded, so a reload that completes leaves no stale
+        // screen to re-read.
         await hostRecoveryReload.waitFor({
           state: 'visible',
           timeout: bounded,
