@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type {
+  HomeTransferDecisionAdvanceObservation,
   HomeTransferRoomBindingObservation,
   PairedHomeIdentityObservation,
   PersonalHomeDecisionObservation,
@@ -13,13 +14,17 @@ import {
   createHomeTransferRoomBindingService,
   type HomeTransferRoomBindingServiceOptions,
 } from '../../services/orchestration/home-transfer-room-binding.js';
-import { probeHomeTransferRoom } from '../../services/orchestration/home-transfer-room-probe.js';
+import {
+  probeHomeTransferRoom,
+  readHomeTransferRoomSeal,
+} from '../../services/orchestration/home-transfer-room-probe.js';
 import { createPairedHomeTransferAuthority } from '../../services/orchestration/paired-home-transfer-authority.js';
 import type {
   PlannedHomeOwner,
   PlannedHomeTransfer,
   TransferStoreResult,
 } from '../../services/orchestration/planned-home-transfer-store.js';
+import { createRemoteHomeTransferCoordinator } from '../../services/orchestration/remote-home-transfer-coordinator.js';
 import type { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 
@@ -37,6 +42,7 @@ export function createHomeAuthorityRoutes(
   roomBindings?: {
     peers: Pick<PeerCredentialStore, 'get'>;
     probe?: HomeTransferRoomBindingServiceOptions['probe'];
+    readSeal?: typeof readHomeTransferRoomSeal;
   },
 ) {
   function projectDecision(
@@ -368,6 +374,63 @@ export function createHomeAuthorityRoutes(
       controllerDeviceId: participant.id,
     });
     return c.json(result, status(result));
+  });
+  app.post('/transfers/:operationId/advance', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    const input = await body(c.req.raw, []);
+    if (input === 'too-large') return c.json({ kind: 'invalid-request' }, 413);
+    if (!input) return c.json({ kind: 'invalid-request' }, 400);
+    const result = await decision<HomeTransferDecisionAdvanceObservation>(
+      c.req.raw,
+      async (_authority, principal, database, controllerEnvironmentId) => {
+        if (!roomBindings) return { kind: 'unavailable' };
+        const coordinator = createRemoteHomeTransferCoordinator({
+          database,
+          security,
+          controllerEnvironmentId,
+          peers: roomBindings.peers,
+          probe: roomBindings.probe,
+          readSeal: roomBindings.readSeal,
+        });
+        const advanced = await coordinator.advance(
+          principal,
+          c.req.param('operationId'),
+        );
+        if (
+          advanced.kind !== 'pending' &&
+          advanced.kind !== 'decision-committed'
+        )
+          return { kind: advanced.kind };
+        const projected = projectDecision({
+          kind: 'stored',
+          value: advanced.decision,
+        });
+        if (
+          projected.kind !== 'stored' ||
+          projected.value.kind !== 'transfer-decision'
+        )
+          return { kind: 'unavailable' };
+        const common = {
+          schemaVersion: 'station.home-transfer-decision-advance/v1' as const,
+          decision: projected.value,
+          executionAuthorityTransferred: false as const,
+          executionResumeAvailable: false as const,
+        };
+        return {
+          kind: 'stored',
+          value:
+            advanced.kind === 'pending'
+              ? { ...common, outcome: 'pending', reason: advanced.reason }
+              : { ...common, outcome: 'decision-committed' },
+        };
+      },
+    );
+    return c.json(
+      result,
+      result.kind === 'stored' && result.value.outcome === 'pending'
+        ? 202
+        : status(result),
+    );
   });
   return app;
 }

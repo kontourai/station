@@ -9,7 +9,9 @@ import type { PeerCredentialStore } from '../peers/peer-credential-store.js';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
 import {
   assertDurableHomeTransferDatabase,
+  createAuthorizedSqlitePlannedHomeTransferStore,
   type HomeTransferDurableDatabase,
+  type PlannedHomeTransfer,
 } from './planned-home-transfer-store.js';
 
 const RECORD_LIMIT_BYTES = 8 * 1024;
@@ -30,6 +32,21 @@ export interface HomeTransferRoomBinding {
 interface StoredHomeTransferRoomBinding extends HomeTransferRoomBinding {
   readonly peerFingerprint: string;
 }
+
+export interface HomeTransferBoundOwner {
+  readonly binding: HomeTransferRoomBinding;
+  readonly peerFingerprint: string;
+}
+
+export type HomeTransferOwnerResolutionResult =
+  | {
+      readonly kind: 'bound-owners';
+      readonly transfer: PlannedHomeTransfer;
+      readonly source: HomeTransferBoundOwner;
+      readonly target: HomeTransferBoundOwner;
+      readonly isCurrent: () => boolean;
+    }
+  | { readonly kind: 'denied' | 'conflict' | 'not-found' | 'unavailable' };
 
 export type HomeTransferRoomBindingResult =
   | { readonly kind: 'bound'; readonly binding: HomeTransferRoomBinding }
@@ -52,6 +69,11 @@ export interface HomeTransferRoomBindingService {
       readonly controllerDeviceId: string;
     },
   ): Promise<HomeTransferRoomBindingResult>;
+  /** Server-private operation-bound owners. Never project this capability over HTTP. */
+  resolveTransferOwners(
+    principal: RuntimeAuthenticatedRequestPrincipal,
+    operationId: string,
+  ): Promise<HomeTransferOwnerResolutionResult>;
 }
 
 export interface HomeTransferRoomBindingServiceOptions {
@@ -90,7 +112,7 @@ function identifier(value: unknown): value is string {
   );
 }
 
-function fingerprint(peer: PeerSnapshot): string {
+export function homeTransferPeerFingerprint(peer: PeerSnapshot): string {
   // Bind the complete peer-store record. Label/timestamp-only rewrites also
   // invalidate this immutable binding; there is no metadata-only loophole.
   return createHash('sha256')
@@ -109,7 +131,7 @@ function fingerprint(peer: PeerSnapshot): string {
 }
 
 function samePeer(peer: PeerSnapshot | null, expected: string): boolean {
-  return peer !== null && fingerprint(peer) === expected;
+  return peer !== null && homeTransferPeerFingerprint(peer) === expected;
 }
 
 function validObservation(
@@ -184,6 +206,27 @@ function publicBinding(
   return structuredClone(visible);
 }
 
+function boundOwner(
+  binding: StoredHomeTransferRoomBinding,
+): HomeTransferBoundOwner {
+  return Object.freeze({
+    binding: Object.freeze(publicBinding(binding)),
+    peerFingerprint: binding.peerFingerprint,
+  });
+}
+
+function frozenTransferSnapshot(
+  transfer: PlannedHomeTransfer,
+): PlannedHomeTransfer {
+  const snapshot = structuredClone(transfer);
+  Object.freeze(snapshot.intent);
+  if (snapshot.closure) {
+    Object.freeze(snapshot.closure.checkpoint);
+    Object.freeze(snapshot.closure);
+  }
+  return Object.freeze(snapshot);
+}
+
 function sameBinding(
   left: StoredHomeTransferRoomBinding,
   right: StoredHomeTransferRoomBinding,
@@ -241,6 +284,15 @@ export function createHomeTransferRoomBindingService(
       device?.revokedAt === null &&
       pairingScopeIncludes(device.scope, PAIRING_SCOPE_HOME_TRANSFER)
     );
+  }
+
+  function pairedDeviceId(homeRef: string): string | undefined {
+    const prefix = 'paired:';
+    if (!homeRef.startsWith(prefix)) return undefined;
+    const deviceId = homeRef.slice(prefix.length);
+    return identifier(deviceId) && homeRef === `${prefix}${deviceId}`
+      ? deviceId
+      : undefined;
   }
 
   function operatorCurrent(
@@ -307,7 +359,7 @@ export function createHomeTransferRoomBindingService(
       channelId: input.channelId,
       remoteTaskId: input.remoteTaskId,
     });
-    const peerFingerprint = fingerprint(snapshot);
+    const peerFingerprint = homeTransferPeerFingerprint(snapshot);
     const nonce = randomUUID();
     let raw: unknown;
     try {
@@ -576,6 +628,154 @@ export function createHomeTransferRoomBindingService(
         )
           return { kind: 'conflict' };
         return { kind: 'bound', binding: publicBinding(binding) };
+      } catch {
+        return { kind: 'unavailable' };
+      }
+    },
+
+    async resolveTransferOwners(rawPrincipal, rawOperationId) {
+      const principal = Object.freeze(structuredClone(rawPrincipal));
+      const operationId = rawOperationId;
+      if (!identifier(operationId)) return { kind: 'conflict' };
+      try {
+        const callerAuthorized = () =>
+          controllerStillFixed() &&
+          principal.authority === 'device-credential' &&
+          typeof principal.deviceId === 'string' &&
+          participantCurrent(principal, principal.deviceId) &&
+          currentParticipant(principal.deviceId);
+        const first = createAuthorizedSqlitePlannedHomeTransferStore(
+          database,
+          callerAuthorized,
+        ).resolve(tenantId, operationId);
+        if (first.kind !== 'stored') return first;
+
+        const transfer = frozenTransferSnapshot(first.value);
+        const sourceDeviceId = pairedDeviceId(transfer.intent.sourceHomeRef);
+        const targetDeviceId = pairedDeviceId(transfer.intent.targetHomeRef);
+        if (
+          !sourceDeviceId ||
+          !targetDeviceId ||
+          sourceDeviceId === targetDeviceId
+        )
+          return { kind: 'conflict' };
+        if (
+          principal.authority !== 'device-credential' ||
+          principal.deviceId !== sourceDeviceId ||
+          !participantCurrent(principal, sourceDeviceId)
+        )
+          return { kind: 'denied' };
+
+        const participantsCurrent = () =>
+          controllerStillFixed() &&
+          participantCurrent(principal, sourceDeviceId) &&
+          currentParticipant(sourceDeviceId) &&
+          currentParticipant(targetDeviceId);
+        if (!participantsCurrent()) return { kind: 'denied' };
+        const exact = createAuthorizedSqlitePlannedHomeTransferStore(
+          database,
+          participantsCurrent,
+        ).resolve(tenantId, operationId);
+        if (exact.kind !== 'stored') return exact;
+        if (JSON.stringify(exact.value) !== JSON.stringify(transfer))
+          return { kind: 'conflict' };
+
+        const sourceBinding = readBinding(
+          transfer.intent.channelId,
+          sourceDeviceId,
+        );
+        const targetBinding = readBinding(
+          transfer.intent.channelId,
+          targetDeviceId,
+        );
+        if (!sourceBinding || !targetBinding) return { kind: 'not-found' };
+        if (
+          sourceBinding.remoteEnvironmentId ===
+            targetBinding.remoteEnvironmentId ||
+          sourceBinding.channelId !== transfer.intent.channelId ||
+          targetBinding.channelId !== transfer.intent.channelId
+        )
+          return { kind: 'conflict' };
+
+        const sourcePeer = peers.get(sourceBinding.remoteEnvironmentId);
+        const targetPeer = peers.get(targetBinding.remoteEnvironmentId);
+        if (!sourcePeer || !targetPeer) return { kind: 'not-found' };
+        if (sourcePeer.apiBase === targetPeer.apiBase)
+          return { kind: 'conflict' };
+        if (
+          !pairingScopeIncludes(
+            sourcePeer.scope,
+            PAIRING_SCOPE_HOME_TRANSFER,
+          ) ||
+          !pairingScopeIncludes(targetPeer.scope, PAIRING_SCOPE_HOME_TRANSFER)
+        )
+          return { kind: 'denied' };
+        if (
+          !samePeer(sourcePeer, sourceBinding.peerFingerprint) ||
+          !samePeer(targetPeer, targetBinding.peerFingerprint)
+        )
+          return { kind: 'conflict' };
+
+        const sourceObserved = await observe(sourcePeer, {
+          channelId: sourceBinding.channelId,
+          remoteTaskId: sourceBinding.remoteTaskId,
+        });
+        if (sourceObserved.kind !== 'observed') return sourceObserved;
+        if (
+          sourceObserved.peerFingerprint !== sourceBinding.peerFingerprint ||
+          sourceObserved.observation.pairedDeviceId !==
+            sourceBinding.remotePairedDeviceId
+        )
+          return { kind: 'conflict' };
+        const targetObserved = await observe(targetPeer, {
+          channelId: targetBinding.channelId,
+          remoteTaskId: targetBinding.remoteTaskId,
+        });
+        if (targetObserved.kind !== 'observed') return targetObserved;
+        if (
+          targetObserved.peerFingerprint !== targetBinding.peerFingerprint ||
+          targetObserved.observation.pairedDeviceId !==
+            targetBinding.remotePairedDeviceId
+        )
+          return { kind: 'conflict' };
+
+        const isCurrent = () => {
+          try {
+            if (!participantsCurrent()) return false;
+            const currentSourceBinding = readBinding(
+              transfer.intent.channelId,
+              sourceDeviceId,
+            );
+            const currentTargetBinding = readBinding(
+              transfer.intent.channelId,
+              targetDeviceId,
+            );
+            return (
+              currentSourceBinding !== undefined &&
+              currentTargetBinding !== undefined &&
+              sameBinding(currentSourceBinding, sourceBinding) &&
+              sameBinding(currentTargetBinding, targetBinding) &&
+              samePeer(
+                peers.get(sourceBinding.remoteEnvironmentId),
+                sourceBinding.peerFingerprint,
+              ) &&
+              samePeer(
+                peers.get(targetBinding.remoteEnvironmentId),
+                targetBinding.peerFingerprint,
+              )
+            );
+          } catch {
+            return false;
+          }
+        };
+        if (!isCurrent()) return { kind: 'conflict' };
+        return Object.freeze({
+          kind: 'bound-owners' as const,
+          transfer,
+          source: boundOwner(sourceBinding),
+          target: boundOwner(targetBinding),
+          isCurrent,
+        });
       } catch {
         return { kind: 'unavailable' };
       }

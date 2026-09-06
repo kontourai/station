@@ -139,8 +139,31 @@ participant and peer record before returning a bound result.
 
 For the separate owner registration and prepared-operation bodies, use
 [personal decision preparation](../design/channel-home-authority.md#personal-controller-decision-preparation).
-Preparation does not yet consume these mappings to construct network coordinator
-adapters. No public source-seal, readiness, advance or commit endpoint is enabled.
+The prepared source participant can send `{}` to
+`POST /api/home-authority/transfers/:operationId/advance`. The controller builds
+its network readers only from the enrolled mappings and current peer records.
+It does not accept a URL, credential, adapter, grant or checkpoint in this request.
+
+An unsealed source returns HTTP 202 with `source-not-closed`. The source owner
+must already have produced a real closing seal for this exact operation. A
+general source-close UI/CLI is not shipped in this preview; this read-only network
+path does not create that seal. After a separate owner action closes the source
+and its state is restored, the controller reads the closing seals from both
+expected endpoints, verifies the exact identities/nonce/tuple/digest, and may
+commit the metadata decision. HTTP 200 `decision-committed` still has both
+execution flags false. The copied target stays sealed and cannot execute.
+
+The remote read-only endpoint is
+`POST /api/home-authority/rooms/:taskId/seal-observation`. Its body contains
+`channelId`, `operationId`, `sourceHomeRef`, `targetHomeRef` and `nonce`.
+It exposes the existing closing checkpoint, not message/document content.
+The controller uses it internally with an 8 KiB response ceiling and a 15-second
+whole-RPC deadline. Individual identity and seal RPCs have their own deadlines;
+a complete advance can make several calls. Lost responses are resolved by
+operation ID, not by assuming rollback.
+
+No raw closure/readiness submission, remote source-close command, target
+activation or Agent launch endpoint is enabled.
 
 Revoked participants, removed/changed peer records, failed remote authentication,
 wrong identities and corrupt storage prevent a successful binding result. Missing
@@ -157,7 +180,8 @@ From an isolated repository worktree with managed dependencies installed:
 npm run test:focused -- \
   src-server/services/orchestration/__tests__/home-transfer-room-binding.test.ts \
   src-server/services/orchestration/__tests__/home-transfer-room-probe.test.ts \
-  src-server/routes/environments/__tests__/home-authority-routes.test.ts
+  src-server/routes/environments/__tests__/home-authority-routes.test.ts \
+  src-server/routes/environments/__tests__/remote-home-transfer-decision.test.ts
 ```
 
 These tests use disposable pairing registries, external SQLite and authenticated

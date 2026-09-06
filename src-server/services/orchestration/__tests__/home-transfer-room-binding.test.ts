@@ -10,6 +10,7 @@ import {
   createHomeTransferRoomBindingService,
   type HomeTransferRoomBindingServiceOptions,
 } from '../home-transfer-room-binding.js';
+import { createAuthorizedSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
 
 const roots: string[] = [];
 const databases: DatabaseSync[] = [];
@@ -108,6 +109,122 @@ async function fixture(probe?: HomeTransferRoomBindingServiceOptions['probe']) {
     input,
     defaultProbe,
   };
+}
+
+function pairTransferDevice(
+  security: EnvironmentSecurityService,
+  name: string,
+) {
+  const offer = security.devicePairing.createOffer({
+    endpoint: 'https://controller.example.test',
+    scope: 'home:transfer',
+  });
+  const request = security.devicePairing.requestPairing({
+    requesterPosition: 'off-box',
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    deviceName: name,
+  });
+  security.devicePairing.confirmRequest(request.requestId, {
+    kind: 'presented-credential',
+  });
+  const participant = security.devicePairing.exchange({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    requestId: request.requestId,
+  });
+  return {
+    ...participant,
+    principal: {
+      kind: 'credential' as const,
+      credential: participant.credential,
+      authority: 'device-credential' as const,
+      deviceId: participant.device.id,
+      source: 'bearer' as const,
+    },
+  };
+}
+
+async function transferOwnersFixture(options?: {
+  aliasApiBase?: boolean;
+  onProbe?: () => void;
+}) {
+  const observed: Array<{
+    environmentId: string;
+    taskId: string;
+    channelId: string;
+  }> = [];
+  const f = await fixture(async (peer, input) => {
+    options?.onProbe?.();
+    observed.push({
+      environmentId: peer.environmentId,
+      taskId: input.taskId,
+      channelId: input.channelId,
+    });
+    return {
+      schemaVersion: 'station.home-transfer-room-identity/v1',
+      environmentId: peer.environmentId,
+      pairedDeviceId: `${peer.environmentId}-issued-device`,
+      taskId: input.taskId,
+      channelId: input.channelId,
+      nonce: input.nonce,
+      executionAuthorityTransferred: false,
+      executionResumeAvailable: false,
+    };
+  });
+  const target = pairTransferDevice(f.security, 'target participant');
+  await f.peers.upsert({
+    environmentId: 'target-environment',
+    apiBase: options?.aliasApiBase
+      ? 'https://remote.example.test'
+      : 'https://target.example.test',
+    scope: 'home:transfer',
+    credential: 'target-room-credential-0123456789abcdef',
+    label: 'target',
+  });
+  const database = f.open();
+  const service = createHomeTransferRoomBindingService(f.options(database));
+  expect(
+    await service.enroll(f.operator, {
+      ...f.input,
+      remoteTaskId: 'source-remote-task',
+    }),
+  ).toMatchObject({ kind: 'bound' });
+  expect(
+    await service.enroll(f.operator, {
+      channelId: f.input.channelId,
+      controllerDeviceId: target.device.id,
+      remoteEnvironmentId: 'target-environment',
+      remoteTaskId: 'target-remote-task',
+    }),
+  ).toMatchObject({ kind: 'bound' });
+  observed.splice(0);
+  const tenantId = `personal-controller:${f.security.devicePairing.environmentId()}`;
+  const store = createAuthorizedSqlitePlannedHomeTransferStore(
+    database,
+    () => true,
+  );
+  expect(
+    store.initialize({
+      tenantId,
+      channelId: f.input.channelId,
+      homeRef: `paired:${f.input.controllerDeviceId}`,
+      policyRevision: 'policy-one',
+      revision: 0,
+    }),
+  ).toMatchObject({ kind: 'stored' });
+  expect(
+    store.prepare({
+      tenantId,
+      channelId: f.input.channelId,
+      operationId: 'operation-one',
+      sourceHomeRef: `paired:${f.input.controllerDeviceId}`,
+      targetHomeRef: `paired:${target.device.id}`,
+      policyRevision: 'policy-one',
+      expectedRevision: 0,
+    }),
+  ).toMatchObject({ kind: 'stored' });
+  return { ...f, target, database, service, observed };
 }
 
 describe('home transfer room binding', () => {
@@ -414,5 +531,150 @@ describe('home transfer room binding', () => {
         },
       ),
     ).toEqual({ kind: 'denied' });
+  });
+
+  test('resolves both owners only for the exact prepared operation source', async () => {
+    const f = await transferOwnersFixture();
+    expect(
+      await f.service.resolveTransferOwners(
+        f.target.principal,
+        'operation-one',
+      ),
+    ).toEqual({ kind: 'denied' });
+    expect(
+      await f.service.resolveTransferOwners(f.operator, 'operation-one'),
+    ).toEqual({ kind: 'denied' });
+    expect(
+      await f.service.resolveTransferOwners(f.device, 'wrong-operation'),
+    ).toEqual({ kind: 'not-found' });
+
+    const result = await f.service.resolveTransferOwners(
+      f.device,
+      'operation-one',
+    );
+    expect(result).toMatchObject({
+      kind: 'bound-owners',
+      transfer: {
+        phase: 'prepared',
+        intent: {
+          operationId: 'operation-one',
+          sourceHomeRef: `paired:${f.input.controllerDeviceId}`,
+          targetHomeRef: `paired:${f.target.device.id}`,
+        },
+      },
+      source: {
+        binding: {
+          controllerDeviceId: f.input.controllerDeviceId,
+          remoteTaskId: 'source-remote-task',
+        },
+        peerFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+      target: {
+        binding: {
+          controllerDeviceId: f.target.device.id,
+          remoteTaskId: 'target-remote-task',
+        },
+        peerFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+    });
+    expect(f.observed).toEqual([
+      {
+        environmentId: 'remote-environment',
+        taskId: 'source-remote-task',
+        channelId: f.input.channelId,
+      },
+      {
+        environmentId: 'target-environment',
+        taskId: 'target-remote-task',
+        channelId: f.input.channelId,
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(/credential|apiBase/);
+    if (result.kind !== 'bound-owners') throw new Error('owners not resolved');
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(Object.isFrozen(result.transfer)).toBe(true);
+    expect(Object.isFrozen(result.transfer.intent)).toBe(true);
+    expect(Object.isFrozen(result.source)).toBe(true);
+    expect(Object.isFrozen(result.source.binding)).toBe(true);
+    expect(result.isCurrent()).toBe(true);
+  });
+
+  test('rejects two remote environment identities that alias one API origin', async () => {
+    const f = await transferOwnersFixture({ aliasApiBase: true });
+    expect(
+      await f.service.resolveTransferOwners(f.device, 'operation-one'),
+    ).toEqual({ kind: 'conflict' });
+    expect(f.observed).toEqual([]);
+  });
+
+  test('captured currentness detects peer, binding, and participant changes', async () => {
+    const peer = await transferOwnersFixture();
+    const peerResult = await peer.service.resolveTransferOwners(
+      peer.device,
+      'operation-one',
+    );
+    if (peerResult.kind !== 'bound-owners')
+      throw new Error('peer owners not resolved');
+    await peer.peers.upsert({
+      environmentId: 'target-environment',
+      apiBase: 'https://target.example.test',
+      scope: 'home:transfer',
+      credential: 'changed-target-credential-0123456789abcdef',
+      label: 'target',
+    });
+    expect(peerResult.isCurrent()).toBe(false);
+
+    const binding = await transferOwnersFixture();
+    const bindingResult = await binding.service.resolveTransferOwners(
+      binding.device,
+      'operation-one',
+    );
+    if (bindingResult.kind !== 'bound-owners')
+      throw new Error('binding owners not resolved');
+    const stored = binding.database
+      .prepare(`SELECT record_json FROM home_transfer_room_bindings
+        WHERE controller_device_id=?`)
+      .get(binding.target.device.id) as { record_json: string };
+    const changed = JSON.parse(stored.record_json) as Record<string, unknown>;
+    changed.remoteTaskId = 'changed-target-task';
+    binding.database
+      .prepare(`UPDATE home_transfer_room_bindings SET record_json=?
+        WHERE controller_device_id=?`)
+      .run(JSON.stringify(changed), binding.target.device.id);
+    expect(bindingResult.isCurrent()).toBe(false);
+
+    const participant = await transferOwnersFixture();
+    const participantResult = await participant.service.resolveTransferOwners(
+      participant.device,
+      'operation-one',
+    );
+    if (participantResult.kind !== 'bound-owners')
+      throw new Error('participant owners not resolved');
+    participant.security.devicePairing.revokeDevice(
+      participant.target.device.id,
+      'operator-credential',
+    );
+    expect(participantResult.isCurrent()).toBe(false);
+  });
+
+  test('snapshots the source principal and operation id before live probes', async () => {
+    let mutateCaller: (() => void) | undefined;
+    const f = await transferOwnersFixture({
+      onProbe: () => mutateCaller?.(),
+    });
+    const principal = { ...f.device };
+    let operationId = 'operation-one';
+    mutateCaller = () => {
+      mutateCaller = undefined;
+      Object.assign(principal, {
+        credential: 'mutated-source-credential',
+        deviceId: f.target.device.id,
+      });
+      operationId = 'mutated-operation';
+    };
+    const pending = f.service.resolveTransferOwners(principal, operationId);
+    const result = await pending;
+    expect(result.kind).toBe('bound-owners');
+    expect(f.observed).toHaveLength(2);
   });
 });

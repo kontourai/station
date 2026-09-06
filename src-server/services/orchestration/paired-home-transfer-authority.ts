@@ -7,8 +7,8 @@ import type { RuntimeAuthenticatedRequestPrincipal } from '../../security/runtim
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
 import {
   createPlannedHomeTransferCoordinator,
-  type PlannedHomeTransferCoordinatorOptions,
   type PlannedHomeTransferCoordinatorResult,
+  type PlannedHomeTransferOwners,
 } from './planned-home-transfer-coordinator.js';
 import {
   createAuthorizedSqlitePlannedHomeTransferStore,
@@ -47,10 +47,7 @@ export interface PairedHomeTransferPreparation {
 }
 
 /** Private trusted owner adapters, never decoded from HTTP or a copied manifest. */
-export type PairedHomeTransferOwners = Pick<
-  PlannedHomeTransferCoordinatorOptions,
-  'source' | 'target'
->;
+export type PairedHomeTransferOwners = PlannedHomeTransferOwners;
 
 export interface PairedHomeTransferAuthority {
   advance(
@@ -181,14 +178,18 @@ export function createPairedHomeTransferAuthority(
       };
       try {
         const actor = capturedPrincipal(principal);
-        const source = {
-          history: owners.source.history,
-          grant: { ...owners.source.grant },
-        };
-        const target = {
-          history: owners.target.history,
-          grant: { ...owners.target.grant },
-        };
+        const sourceIdentity = owners.source.ownerIdentity;
+        const targetIdentity = owners.target.ownerIdentity;
+        const ensureClosed = owners.source.ensureClosed.bind(owners.source);
+        const readSeal = owners.target.readSeal.bind(owners.target);
+        const source = Object.freeze({
+          ownerIdentity: sourceIdentity,
+          ensureClosed,
+        });
+        const target = Object.freeze({
+          ownerIdentity: targetIdentity,
+          readSeal,
+        });
         const callerAuthorized = () =>
           controllerIsCurrent() && currentTransferDevice(actor) !== undefined;
         const found = guardedStore(callerAuthorized).resolve(
