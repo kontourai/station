@@ -103,6 +103,15 @@ an authenticated SSH connection. Both requests reject HTTP redirects and share
 a ten-second request deadline. An operator must configure the actual Station
 listener; a redirecting web frontend is not accepted as that listener.
 
+The server-side SSH worker currently sends no Station application credential.
+A 401 or 403 therefore reports `station-authentication-required` and does not
+trigger managed launch. SSH access alone does not enroll that worker. Use an
+enrolled Station API connection for authenticated preparation; the
+[native SSH launcher](ssh-launched-environments.md) separately starts or reuses
+a process and completes the normal pairing exchange. Its remote install uses
+`dependencies:ci`, including the pinned pnpm lifecycle. Automatic credential
+enrollment for the server-side worker remains unimplemented.
+
 The worker's boot identity identifies an answering process. It does not prove
 persistent home ownership or grant transfer authority. The move coordinator must
 still bind a verified target to the transfer operation and recheck it before
