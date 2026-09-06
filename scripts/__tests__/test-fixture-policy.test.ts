@@ -11,6 +11,18 @@ const inspect = (source: string) => inspectBrowserFixture(source, file);
 describe('browser fixture syntax policy', () => {
   test.each([
     ['await button.click({ force: true });', 'forced-user-action'],
+    [
+      "execSync('npx tsx ../../packages/cli/src/cli.ts plugin build');",
+      'private-cli-entry',
+    ],
+    [
+      "spawn(process.execPath, ['packages/cli/src/cli.ts', 'plugin', 'build']);",
+      'private-cli-entry',
+    ],
+    [
+      "const CLI_ENTRY = join(root, 'packages/cli/src/cli.ts');",
+      'private-cli-entry',
+    ],
     ["await button.fill('x', { force: true });", 'forced-user-action'],
     ["await button.dispatchEvent('click');", 'synthetic-click'],
     [
@@ -41,6 +53,9 @@ describe('browser fixture syntax policy', () => {
     expect(
       inspect(`
       rmSync(path, {force:true});
+      readFileSync('packages/cli/src/cli.ts');
+      execSync('cat packages/cli/src/cli.ts');
+      execFile(process.execPath, ['scripts/station-cli.ts', 'plugin', 'build']);
       if (await shell.isVisible()) return;
       await page.evaluate(() => window.dispatchEvent(new MessageEvent('message')));
       page.route('**/api/projects', route => { return route.fulfill(json({success:true,data:[]})); });

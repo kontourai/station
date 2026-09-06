@@ -87,9 +87,54 @@ export function inspectBrowserFixture(source, file) {
     }
     return false;
   };
+  const containsPrivateCliPath = (node) => {
+    let found = false;
+    const scan = (child) => {
+      if (
+        ts.isStringLiteralLike(child) &&
+        /(?:^|[\\/])packages[\\/]cli[\\/]src[\\/]cli\.[cm]?[jt]s(?:\s|$)/.test(
+          child.text,
+        )
+      )
+        found = true;
+      ts.forEachChild(child, scan);
+    };
+    if (node) scan(node);
+    return found;
+  };
   const visit = (node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      /^(?:CLI_ENTRY|cliEntry)$/.test(node.name.text) &&
+      containsPrivateCliPath(node.initializer)
+    ) {
+      report(node, 'private-cli-entry');
+    }
     if (ts.isCallExpression(node)) {
       const method = nameOf(node.expression);
+      const callee =
+        method ??
+        (ts.isIdentifier(node.expression) ? node.expression.text : undefined);
+      const executable = literal(node.arguments[0]);
+      const shellLaunch =
+        ['exec', 'execSync'].includes(callee) &&
+        executable &&
+        /\b(?:node|tsx|ts-node)\s/.test(executable);
+      const nodeLaunch =
+        ['spawn', 'spawnSync', 'execFile', 'execFileSync'].includes(callee) &&
+        ((executable &&
+          /(?:^|[\\/])(?:node|tsx|ts-node|npm|npx)(?:\.exe|\.cmd)?$/.test(
+            executable,
+          )) ||
+          (node.arguments[0] &&
+            ts.isPropertyAccessExpression(node.arguments[0]) &&
+            node.arguments[0].name.text === 'execPath'));
+      if (
+        (shellLaunch || nodeLaunch) &&
+        node.arguments.some(containsPrivateCliPath)
+      )
+        report(node, 'private-cli-entry');
       if (
         ACTIONS.has(method) &&
         node.arguments.some(
@@ -258,6 +303,7 @@ export function fixturePolicyCommands(paths) {
     /^(tests\/|src-ui\/|scripts\/.*(fixture|mutation|journey))/.test(path),
   )
     ? [
+        'npm run typecheck:e2e',
         'npm run test:fixtures:guard',
         'docs/guides/testing.md#fixture-fidelity-and-test-effectiveness',
       ]

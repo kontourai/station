@@ -449,7 +449,7 @@ test.describe('success token family contrast', () => {
         document.getElementById('danger-probe-host')?.remove();
         const host = document.createElement('div');
         host.id = 'danger-probe-host';
-        host.className = containerClass;
+
         host.style.cssText =
           'position:fixed;top:0;left:0;z-index:2147483647;padding:24px;background:var(--color-bg-secondary);color:var(--text-primary)';
         host.innerHTML =
@@ -579,7 +579,7 @@ async function mountNested(
       document.getElementById('danger-probe-host')?.remove();
       const host = document.createElement('div');
       host.id = 'danger-probe-host';
-      host.className = containerClass;
+
       host.style.cssText = `position:fixed;top:0;left:0;z-index:2147483647;padding:24px;background:var(${backdropToken});color:magenta`;
       const control = document.createElement('span');
       control.setAttribute('data-testid', 'danger-probe-control');
@@ -953,7 +953,7 @@ test.describe('station#1254 — recovered surfaces and the fill ramps', () => {
         document.getElementById('danger-probe-host')?.remove();
         const host = document.createElement('div');
         host.id = 'danger-probe-host';
-        host.className = containerClass;
+
         host.style.cssText =
           'position:fixed;top:0;left:0;z-index:2147483647;padding:24px;background:var(--bg-primary);color:magenta';
         const probe = document.createElement('button');
@@ -1020,7 +1020,7 @@ test.describe('station#1254 — recovered surfaces and the fill ramps', () => {
           document.getElementById('danger-probe-host')?.remove();
           const host = document.createElement('div');
           host.id = 'danger-probe-host';
-          host.className = containerClass;
+
           host.style.cssText =
             'position:fixed;top:0;left:0;z-index:2147483647;padding:24px;background:var(--bg-primary);color:magenta';
           const probe = document.createElement('span');

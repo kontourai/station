@@ -91,12 +91,14 @@ test.describe('Survey Review Workbench plugin', () => {
       .getByRole('button', { name: 'Review request', exact: true })
       .click();
 
-    await expect(page.getByText('Trusted', { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('dialog').getByText('Trusted', { exact: true }),
+    ).toBeVisible();
     await expect(
       page.getByRole('dialog').getByText('plugin.server', { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText(/separate, host-owned review page/),
+      page.getByRole('dialog').getByText(/separate, host-owned review page/),
     ).toBeVisible();
 
     const popupPromise = page.waitForEvent('popup');
