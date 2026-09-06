@@ -3,6 +3,8 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
+import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import { expect } from '@playwright/test';
 import {
   e2eOperatorAuthorizationHeaders,
@@ -196,32 +198,42 @@ for (const runtimeFramework of ['voltagent', 'strands'] as const) {
         name: 'Native restart Project',
         workingDirectory: repository,
       });
-      await api(live, '/agents', 'POST', {
-        slug: agentSlug,
-        name: 'Native restart Agent',
-        prompt: 'Answer in one short sentence.',
-        execution: {
-          modelConnectionId: 'native-restart-model',
-          modelId: MODEL,
+      const created = await api<{ data: AgentSpec & { slug: string } }>(
+        live,
+        '/agents',
+        'POST',
+        {
+          slug: agentSlug,
+          name: 'Native restart Agent',
+          prompt: 'Answer in one short sentence.',
+          execution: {
+            modelConnectionId: 'native-restart-model',
+            modelId: MODEL,
+          },
         },
+      );
+      expect(created.data.slug).toBe(agentSlug);
+      expect(created.data.execution).toMatchObject({
+        modelConnectionId: 'native-restart-model',
+        modelId: MODEL,
       });
       await expect
         .poll(
           async () => {
             const catalog = await api<{
               catalogState?: string;
-              data: Array<{
-                slug: string;
-                available?: boolean;
-                unavailableReason?: string;
-              }>;
+              data: EnrichedAgentProjection[];
             }>(live, '/api/agents');
             const agent = catalog.data.find(
               (candidate) => candidate.slug === agentSlug,
             );
             return {
               stable: catalog.catalogState !== 'reconciling',
-              available: agent?.available,
+              present: Boolean(agent),
+              // The public catalog stamps false only for unavailable Agents;
+              // active native Agents omit the field (same as agentRunnability).
+              runnable: agent !== undefined && agent.available !== false,
+              ...(agent ? { slug: agent.slug, name: agent.name } : {}),
               ...(agent?.unavailableReason
                 ? { reason: agent.unavailableReason }
                 : {}),
@@ -229,7 +241,7 @@ for (const runtimeFramework of ['voltagent', 'strands'] as const) {
           },
           { timeout: 30_000 },
         )
-        .toMatchObject({ stable: true, available: true });
+        .toMatchObject({ stable: true, present: true, runnable: true });
       expect(await api(live, '/api/system/runtime')).toEqual({
         runtime: runtimeFramework,
       });
