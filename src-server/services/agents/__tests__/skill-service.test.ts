@@ -1212,28 +1212,45 @@ describe('SkillService', () => {
     ).toEqual(['machine-one', 'workspace-kept']);
   });
 
-  // The same defect wearing its other face: with the project root dropped, the
-  // refusal below stopped being reachable at all — a SECOND unscoped PUT on the
-  // same workspace package answered "not found" instead, because the registry
-  // no longer held it.
-  test('the unscoped-update refusal is the same on the second attempt', async () => {
+  // The same defect wearing its other face. A refusal returns BEFORE any
+  // rediscovery, so two refusals in a row prove nothing — the write that drops
+  // the project root has to be one that SUCCEEDS. Sequence: refuse the
+  // workspace package, edit a machine package (which re-discovers), then refuse
+  // the workspace package again. Unfixed, the second answer is "not found",
+  // because the registry no longer holds the package the refusal is about.
+  test('an unscoped update still refuses a workspace package after a successful write', async () => {
     seedProjectSkill('workspace-twice');
+    await service.createLocalSkill(
+      { name: 'machine-two', description: 'Mine', body: 'Body' },
+      testDir,
+    );
     await service.discoverSkills(testDir, 'demo');
 
-    const first = await service.updateLocalSkill(
+    const before = await service.updateLocalSkill(
       'workspace-twice',
       { description: 'Edited' },
       testDir,
     );
-    const second = await service.updateLocalSkill(
+    const succeeded = await service.updateLocalSkill(
+      'machine-two',
+      { description: 'Edited' },
+      testDir,
+    );
+    const after = await service.updateLocalSkill(
       'workspace-twice',
       { description: 'Edited' },
       testDir,
     );
 
-    expect(first.success).toBe(false);
-    expect(second.success).toBe(false);
-    expect(second.message).toBe(first.message);
+    expect(before.success).toBe(false);
+    expect(succeeded.success, 'the write that re-discovers did not run').toBe(
+      true,
+    );
+    expect(after.success).toBe(false);
+    expect(
+      after.message,
+      'the refusal changed after an unrelated successful write',
+    ).toBe(before.message);
   });
 
   // Review H1. The read resolves a workspace package (#1602); this write still
