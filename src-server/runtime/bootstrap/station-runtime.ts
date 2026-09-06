@@ -215,6 +215,7 @@ export async function loadStablePreToolPolicySpec(options: {
   return { spec, revision };
 }
 
+import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
 import { adoptDetectedNativeEngines } from './native-engine-adoption.js';
 import { isHostedTenantExecutionRequired } from './runtime-tenant-context.js';
 
@@ -2989,6 +2990,19 @@ export class StationRuntime {
       logger: this.logger,
       timers: this.timers,
       signal: this.nativeEngineAdoptionAbort.signal,
+    });
+
+    // station#1586 (item 6): warm the Claude executable resolution and its
+    // `claude --version` probe now, instead of inside whichever session
+    // happens to be the first in this process. Readiness is otherwise
+    // resolved only by the `/status` route, so a user who starts a session
+    // before any surface fetched status paid the probe's 10s ceiling in their
+    // first turn. Fire-and-forget, like the adoption above: the probe is
+    // memoized per `command + args`, so a session starting while this is
+    // still in flight awaits the same probe rather than spawning a second.
+    void primeEnginePrerequisites({
+      adapters: [this.claudeAdapter],
+      logger: this.logger,
     });
   }
 

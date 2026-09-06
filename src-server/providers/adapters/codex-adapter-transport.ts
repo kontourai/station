@@ -649,13 +649,13 @@ export class CodexAdapterTransport {
       // without settling left those rows running forever and made the
       // contract's "settled at session end" claim false for this path.
       //
-      // Same identity guard as the ordinary path below, for the same reason:
-      // a record this thread no longer owns must not publish terminals over
-      // its successor, and a deliberate stop has `stopSession`'s own settle.
-      if (
-        !record.stopped &&
-        this.sessions.get(record.externalThreadId) === record
-      ) {
+      // Same guard as the ordinary path below, for the same reason: a
+      // deliberate stop has `stopSession`'s own settle. station#1586 (item 3)
+      // dropped the supersession half of it at both doors — a superseded
+      // record's TOOL terminals are turn-keyed (PR #1560/#1570), so they land
+      // on the stopped session's own turn and not over its successor; only
+      // the thread-keyed facts stay withheld.
+      if (!record.stopped) {
         this.settleUnresolvedToolCalls(record, nowIso);
       }
       return;
@@ -664,9 +664,29 @@ export class CodexAdapterTransport {
       record.stopped ||
       this.sessions.get(record.externalThreadId) !== record
     ) {
-      // Deliberately no settle: `stopSession` owns the settle for a stop
-      // already in flight, and a superseded record's terminals would land on
-      // the thread its successor now owns.
+      // `stopSession` owns the settle for a stop already in flight, so a
+      // stopped record publishes nothing here.
+      //
+      // station#1586 (item 3): a SUPERSEDED record does settle its own open
+      // calls. Those calls are this record's, its process is gone, and every
+      // tool terminal carries the turnId that ISSUED the call (PR #1560) —
+      // read from the entry itself, never from whatever turn is active now —
+      // while both folds attribute by turn (PR #1570), so the row lands on
+      // the stopped session's own turn rather than on its successor's. The
+      // Claude adapter already settles this exact case for the same reason
+      // (`stopSession`'s station#1569 item 6 branch). Withholding here left
+      // the rows running forever with no terminal from any path.
+      //
+      // What stays withheld is what is genuinely thread-keyed rather than
+      // turn-keyed: `session.exited` below (a client reads it as "this
+      // thread's session ended" and closes the thread's still-running cards,
+      // which now belong to the live session) and the orphaned-turn
+      // `runtime.error` (`publishOrphanedTurnFailure` dedupes on
+      // `record.terminalPublishedForTurnId` — the superseded record's own
+      // bookkeeping — and the turn it would close is not the one in flight).
+      if (!record.stopped) {
+        this.settleUnresolvedToolCalls(record, nowIso);
+      }
       return;
     }
     this.unregisterSession(record);

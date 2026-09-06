@@ -798,6 +798,112 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
       });
     });
 
+    /**
+     * station#1586 (item 4): the fast path above the historical scan checked
+     * only the call id, so the turn rule the scan enforces did not apply to
+     * the message it checked first. With a provider that reuses call ids
+     * across turns, a terminal naming turn A settled the row sitting in the
+     * streaming (turn B) message — the same misattribution the scan refuses,
+     * reached by the one route that never consulted it.
+     */
+    describe('the streaming message obeys the turn rule too (station#1586 item 4)', () => {
+      /** turn-a holds an open call; the streaming turn-b holds a row under
+       * the SAME reused id (an `unresolved` one, the shape a stop leaves). */
+      function seedReusedIdAcrossTurns() {
+        activeChatsStore.updateChat(threadId, {
+          openTurnId: 'turn-b',
+          messages: [
+            {
+              role: 'assistant',
+              content: 'A is working.',
+              turnId: 'turn-a',
+              contentParts: [
+                {
+                  type: 'tool-invocation',
+                  toolCallId: 'tool-1',
+                  toolName: 'write_file',
+                  args: { path: 'a.txt' },
+                  state: 'running',
+                },
+              ],
+            },
+          ],
+          streamingMessage: {
+            role: 'assistant',
+            content: 'B answers.',
+            contentParts: [
+              {
+                type: 'tool-invocation',
+                toolCallId: 'tool-1',
+                toolName: 'write_file',
+                args: { path: 'b.txt' },
+                state: 'running',
+              },
+            ],
+          },
+        });
+      }
+
+      test("a result for an earlier turn does not settle the streaming turn's row", () => {
+        seedReusedIdAcrossTurns();
+
+        handleToolCompletedEvent(
+          toolCompleted({ turnId: 'turn-a', status: 'success', output: 'A' }),
+        );
+
+        // It went to the turn it names…
+        const aTools = historyParts(0).filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(aTools).toHaveLength(1);
+        expect(aTools[0]).toMatchObject({
+          state: 'completed',
+          result: 'A',
+        });
+        // …and the streaming turn's row is still waiting for its own.
+        const bTools = streamingParts().filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(bTools).toHaveLength(1);
+        expect(bTools[0]).toMatchObject({ state: 'running' });
+        expect(bTools[0]?.result).toBeUndefined();
+      });
+
+      test("a result for the open turn still settles the streaming turn's row", () => {
+        // The discriminating control: the gate is a turn contradiction, not a
+        // blanket refusal to settle the streaming message.
+        seedReusedIdAcrossTurns();
+
+        handleToolCompletedEvent(
+          toolCompleted({ turnId: 'turn-b', status: 'success', output: 'B' }),
+        );
+
+        const bTools = streamingParts().filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(bTools).toHaveLength(1);
+        expect(bTools[0]).toMatchObject({ state: 'completed', result: 'B' });
+        expect(
+          historyParts(0).filter((part) => part.type === 'tool-invocation')[0],
+        ).toMatchObject({ state: 'running' });
+      });
+
+      test('a result carrying no turn id is not a contradiction', () => {
+        // Same rule as the committed scan: a contradiction needs BOTH ids.
+        // A pre-turnId provider's result must not be pushed off the message
+        // that holds its call.
+        seedReusedIdAcrossTurns();
+
+        handleToolCompletedEvent(
+          toolCompleted({ status: 'success', output: 'no turn' }),
+        );
+
+        expect(
+          streamingParts().filter((part) => part.type === 'tool-invocation')[0],
+        ).toMatchObject({ state: 'completed', result: 'no turn' });
+      });
+    });
+
     test('a result for the streaming turn still lands on the streaming message', () => {
       seedTwoMessages('tool-1');
 

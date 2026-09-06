@@ -229,7 +229,22 @@ export function handleToolCompletedEvent(
   // wrong turn. The durable projection (`runtime-event-projection.ts`) and
   // the provenance fold (`turn-provenance-fold.ts`) both attribute by
   // `turnId`; this is the live path saying the same thing.
+  // station#1586 (item 4): the streaming message is subject to the same turn
+  // rule as every committed one. It carries no `turnId` of its own — the
+  // shell is identified by `chat.openTurnId` (archive#1410) — so the check
+  // reads that instead, and is otherwise the committed scan's rule verbatim:
+  // a contradiction needs BOTH ids present, because a row with no turn
+  // identity makes no competing claim. Without it the fast path below settled
+  // by call id alone, so a terminal naming turn A landed on the streaming
+  // turn B's row whenever a provider reuses call ids across turns — the
+  // defect the committed scan already refuses, reached by the one route that
+  // never consulted it.
+  const streamingTurnContradicts =
+    event.turnId !== undefined &&
+    chat.openTurnId !== undefined &&
+    chat.openTurnId !== event.turnId;
   if (
+    streamingTurnContradicts ||
     !holdsToolCall(
       streamingMessage.contentParts,
       event.toolCallId,
@@ -286,6 +301,14 @@ export function handleToolCompletedEvent(
     }
   }
 
+  // Last resort: the event's turn has no committed message and no row
+  // anywhere else, so the streaming shell takes it — including when
+  // `streamingTurnContradicts`, which is a disclosed gap rather than a
+  // decision (station#1586 item 4). It is reachable only for a turn this
+  // client never streamed and never received in its history, since a turn it
+  // did stream is committed and matched by the `turnId` scan above; there is
+  // nowhere else to put the row, and dropping a terminal outright would leave
+  // its call running forever.
   activeChatsStore.updateChat(event.threadId, {
     isProcessingStep: false,
     streamingMessage: {

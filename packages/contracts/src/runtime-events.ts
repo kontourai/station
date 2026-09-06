@@ -505,13 +505,17 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    * verdict will ever arrive. It is published for a tool call still open
    * when its SESSION ended, where the call's fate is genuinely unknown:
    * Station never saw a result, and cannot tell whether the tool ran. Every
-   * adapter that tracks its open calls settles them this way when a session
-   * IT STILL OWNS ends (station#1569 item 4 extended this past Claude to
-   * ACP, Codex and station-agent). What a record superseded by a restart on
-   * the same thread does is adapter-specific: Claude still settles the
-   * stopped session's own calls on their own turns (only the thread-keyed
-   * `session.exited` is withheld), while Codex publishes nothing for a
-   * superseded record. It is
+   * adapter that tracks its open calls settles them this way when its
+   * session ends (station#1569 item 4 extended this past Claude to ACP,
+   * Codex and station-agent) — including a session superseded by a restart
+   * on the same thread, whose calls settle on their OWN turns because every
+   * terminal carries the turnId that issued the call and both folds
+   * attribute by turn. What such a record withholds is only what is
+   * thread-keyed rather than turn-keyed: `session.exited`, which a client
+   * reads as "this thread's session ended" and which would close the
+   * successor's still-running cards. Claude and Codex agree on this
+   * (station#1586 item 3 removed the asymmetry; Codex previously published
+   * nothing at all for a superseded record). It is
    * NOT a failure (nothing observed the tool fail) and NOT a cancellation
    * (nobody asked for it to stop); folding it into either would be a claim
    * Station cannot support. Without it, the row simply stayed "running"

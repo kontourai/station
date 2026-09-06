@@ -127,6 +127,13 @@ interface StationAgentSessionRecord {
    * `toolSettled` reports (the same shape `approvalOpened` already uses), so
    * `mapStationAgentStreamEvent` stays a pure per-chunk translator. Settled
    * only when the SESSION ends (`stopSession`), never at a turn boundary.
+   *
+   * station#1586 (item 2): id-less calls are in here too, under the id the
+   * relay minted for them. They were excluded while an id-less start and its
+   * id-less result minted DIFFERENT ids — an entry its own result could not
+   * delete would have been settled as a false "no result was reported" — and
+   * the relay's FIFO pairing (`pendingIdlessToolCallIds`) is what removed
+   * that hazard.
    */
   openToolCalls: Map<string, { toolName: string; turnId: string }>;
 }
@@ -421,6 +428,25 @@ export function mapStationAgentStreamEvent(options: {
   turnId: string;
   publish(event: CanonicalRuntimeEvent): void;
   now?: () => Date;
+  /**
+   * station#1586 (item 2): caller-owned FIFO of the ids this relay minted for
+   * `tool-call` chunks that carried no `toolCallId` and whose id-less
+   * `tool-result` has not arrived. Owned by the caller for the same reason
+   * `openToolCalls` is — this function stays a per-chunk translator with no
+   * session record — and required rather than optional so no caller can
+   * accidentally get a `toolOpened` report for a call whose result can never
+   * be paired back to it, which is exactly the false-`unresolved` hazard
+   * station#1569 (M2) avoided by not tracking id-less calls at all.
+   *
+   * FIFO because that is the only ordering the chunks themselves support: an
+   * id-less result names nothing, so the oldest unanswered id-less call is
+   * the only defensible pairing. Concurrent id-less calls whose results
+   * arrive out of order would be paired to each other's rows — an engine
+   * that runs tools concurrently AND omits ids gives Station nothing better
+   * to go on, and the arguments/output on each row are still the engine's
+   * own.
+   */
+  pendingIdlessToolCallIds: string[];
 }): {
   outputDelta?: string;
   finishReason?: ReturnType<typeof finishReason>;
@@ -434,6 +460,15 @@ export function mapStationAgentStreamEvent(options: {
    */
   toolOpened?: { toolCallId: string; toolName: string };
   toolSettled?: { toolCallId: string };
+  /**
+   * station#1586 (item 2): this `tool-result` chunk carried no `toolCallId`
+   * and no id-less call was waiting to pair with it, so its `tool.completed`
+   * was published under a freshly minted id that no `tool.started` ever
+   * used. The row is start-less by necessity — the engine reported an
+   * outcome for a call it never identified — and this reports that rather
+   * than leaving the shape indistinguishable from a settled pair.
+   */
+  unpairedToolResult?: true;
   /**
    * archive#2649: `/chat`'s own dispatch-time context receipt, parsed
    * strictly (a malformed record is dropped whole, leaving the honest
@@ -473,7 +508,17 @@ export function mapStationAgentStreamEvent(options: {
   }
   if (event.type === 'tool-call') {
     const reportedCallId = stringField(event.toolCallId);
+    // station#1586 (item 2): an id-less chunk still gets a minted id, but the
+    // mint now happens ONCE per call and is remembered, so the matching
+    // id-less `tool-result` publishes under the SAME id instead of a second
+    // one. Before this, the pair produced two rows — a start that never
+    // finished beside a result that never started — and station#1569 (M2)
+    // had to exclude id-less calls from tracking entirely, because an entry
+    // its own result could not delete would have been settled as a false
+    // "no result was reported". Paired, the call is ordinary: tracked at the
+    // start, deleted by its result, and settled honestly if neither arrives.
     const toolCallId = reportedCallId ?? crypto.randomUUID();
+    if (!reportedCallId) options.pendingIdlessToolCallIds.push(toolCallId);
     publish({
       ...base,
       itemId: toolCallId,
@@ -482,27 +527,25 @@ export function mapStationAgentStreamEvent(options: {
       toolName: safeToolName(event),
       arguments: event.input,
     });
-    // station#1569 (M2): tracked ONLY when the chunk carried a real id. The
-    // fallback above is minted per chunk, so an id-less `tool-call` and its
-    // id-less `tool-result` mint DIFFERENT ids — the result would delete
-    // nothing, and the session-end settle would then publish `unresolved`
-    // for a call whose success it had already published under the other id.
-    // A false "no result was reported" is worse than the un-paired rows this
-    // fallback already produces (a pre-existing relay gap, unchanged here):
-    // Station cannot honestly say a call went unanswered when it cannot say
-    // which call it was.
-    return reportedCallId
-      ? {
-          toolOpened: {
-            toolCallId: reportedCallId,
-            toolName: safeToolName(event),
-          },
-        }
-      : {};
+    return {
+      toolOpened: {
+        toolCallId,
+        toolName: safeToolName(event),
+      },
+    };
   }
   if (event.type === 'tool-result') {
     const reportedCallId = stringField(event.toolCallId);
-    const toolCallId = reportedCallId ?? crypto.randomUUID();
+    // station#1586 (item 2): an id-less result claims the oldest id-less call
+    // still waiting, so the pair publishes as ONE row. With no such call
+    // waiting there is nothing to claim — the result still publishes under a
+    // fresh id (unchanged behavior: withholding an outcome the engine did
+    // report would be worse than a start-less row) and says so in
+    // `unpairedToolResult`.
+    const pairedCallId = reportedCallId
+      ? undefined
+      : options.pendingIdlessToolCallIds.shift();
+    const toolCallId = reportedCallId ?? pairedCallId ?? crypto.randomUUID();
     const error = stringField(event.error);
     // archive#3113/#3117: `event.error` reaching this relay is ALREADY the
     // safe text — both engine adapters (voltagent-adapter.ts's
@@ -537,11 +580,14 @@ export function mapStationAgentStreamEvent(options: {
                 : event.output,
           }),
     });
-    // Symmetric with the open report above: a minted id can only ever
-    // settle a call nothing tracked.
-    return reportedCallId
-      ? { toolSettled: { toolCallId: reportedCallId } }
-      : {};
+    // Symmetric with the open report above: settle the id the start was
+    // tracked under — the engine's own, or the one this relay minted for it.
+    // A result that paired with nothing settles nothing, because nothing was
+    // ever opened under the id it just published.
+    if (reportedCallId !== undefined || pairedCallId !== undefined) {
+      return { toolSettled: { toolCallId } };
+    }
+    return { unpairedToolResult: true };
   }
   if (event.type === 'tool-approval-request') {
     const requestId = stringField(event.approvalId);
@@ -1110,6 +1156,14 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     // archive#2649: /chat emits at most one context-injection frame per
     // turn; a later frame (should the route ever re-emit) supersedes.
     let contextInjection: TurnProvenanceContextInjection | undefined;
+    // station#1586 (item 2): ids this relay minted for id-less `tool-call`
+    // chunks, oldest first, so the id-less `tool-result` that follows settles
+    // the row the start opened instead of publishing a second one. Scoped to
+    // this stream — an id-less result can only belong to a call from the turn
+    // it is streaming in, and a leftover entry is simply a call that never
+    // reported, which `openToolCalls` already carries to the session-end
+    // settle under the same id.
+    const pendingIdlessToolCallIds: string[] = [];
     try {
       while (true) {
         const { done, value } = await readWithStallWatchdog(
@@ -1137,6 +1191,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
             turnId,
             publish: (next) => this.publish(next),
             now: this.options.now,
+            pendingIdlessToolCallIds,
           });
           if (mapped.approvalOpened) {
             this.trackApproval(record, turnId, mapped.approvalOpened);
@@ -1152,6 +1207,10 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           if (mapped.toolSettled) {
             record.openToolCalls.delete(mapped.toolSettled.toolCallId);
           }
+          // `mapped.unpairedToolResult` is deliberately not tracked here:
+          // nothing was ever opened under the id that result published, so
+          // there is no entry to add or delete. It is reported by the relay
+          // so the shape stays distinguishable to its callers and tests.
           outputText += mapped.outputDelta ?? '';
           resolvedFinishReason = mapped.finishReason ?? resolvedFinishReason;
           failed ||= mapped.failed === true;
