@@ -46,6 +46,21 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
 /** Repository data read directly by tests, invisible to import analysis. */
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   {
+    pattern: 'packages/sdk/src/client/**',
+    tests: ['packages/sdk/src/__tests__/client-entry-portability.test.ts'],
+    reason:
+      'portable client dependency scan reads source outside the import graph',
+  },
+  {
+    pattern: 'packages/cli/src/commands/session-client.ts',
+    tests: [
+      'packages/cli/src/__tests__/core.test.ts',
+      'packages/cli/src/__tests__/core-http.test.ts',
+    ],
+    reason:
+      'accepted-turn observation must preserve command and HTTP contracts',
+  },
+  {
     pattern: 'src-ui/src/components/modals/useNewChatSetupReturn.ts',
     tests: [
       'src-ui/src/__tests__/NewChatModalEngineChips.test.tsx',
