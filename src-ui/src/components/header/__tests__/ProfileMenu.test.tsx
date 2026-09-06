@@ -14,34 +14,55 @@
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+/**
+ * The breakpoint, flippable between renders. `useIsMobile` reads
+ * `MOBILE_MEDIA_QUERY` — the same query the CSS rule that hides this menu's
+ * trigger matches on — so driving the hook is driving the real condition.
+ */
+const harness = vi.hoisted(() => ({ isMobile: false }));
+
+vi.mock('../../../hooks/useIsMobile', () => ({
+  useIsMobile: () => harness.isMobile,
+}));
 
 import { ProfileMenu } from '../ProfileMenu';
 
-function renderMenu(
-  overrides: Partial<Parameters<typeof ProfileMenu>[0]> = {},
-) {
+function menuProps(overrides: Partial<Parameters<typeof ProfileMenu>[0]> = {}) {
   const handlers = {
     onClose: vi.fn(),
     onOpenProfile: vi.fn(),
     onOpenHelp: vi.fn(),
     onToggleSettings: vi.fn(),
   };
-  render(
-    <ProfileMenu
-      isOpen
-      isProfileActive={false}
-      isSettingsActive={false}
-      settingsShortcut="⌘,"
-      userInitials="ST"
-      {...handlers}
-      {...overrides}
-    />,
-  );
+  return {
+    handlers,
+    props: {
+      isOpen: true as boolean,
+      isProfileActive: false,
+      isSettingsActive: false,
+      settingsShortcut: '⌘,',
+      userInitials: 'ST',
+      ...handlers,
+      ...overrides,
+    },
+  };
+}
+
+function renderMenu(
+  overrides: Partial<Parameters<typeof ProfileMenu>[0]> = {},
+) {
+  const { handlers, props } = menuProps(overrides);
+  render(<ProfileMenu {...props} />);
   return handlers;
 }
 
 describe('ProfileMenu', () => {
+  beforeEach(() => {
+    harness.isMobile = false;
+  });
+
   test('carries Profile, Help and Settings, and each row runs its own command', () => {
     const handlers = renderMenu();
 
@@ -130,5 +151,39 @@ describe('ProfileMenu', () => {
     renderMenu({ isOpen: false });
 
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  /**
+   * #1552 review L4. This panel is portalled to `document.body` while its
+   * TRIGGER — the avatar — lives in `.app-toolbar__action--secondary`, which the
+   * mobile query hides (archive#3311 demoted the profile into the `⋯` menu
+   * there). Crossing the breakpoint with the menu open therefore left it
+   * floating over the app with nothing on screen that could have opened it and
+   * no trigger to return focus to.
+   *
+   * Driven by RERENDERING across the flip, not by opening at a mobile width: a
+   * resize is the case, and a mount-time-only check would pass while the live
+   * transition still stranded the panel.
+   */
+  test('closes itself when the breakpoint takes its trigger away', () => {
+    const { handlers, props } = menuProps();
+    const { rerender } = render(<ProfileMenu {...props} />);
+
+    // Precondition: still open on a fine pointer, and closing has not fired for
+    // some unrelated reason.
+    expect(
+      screen.getByRole('menu', { name: 'Profile and settings' }),
+    ).toBeTruthy();
+    expect(handlers.onClose).not.toHaveBeenCalled();
+
+    // A rerender at the SAME breakpoint must not close it either — otherwise the
+    // assertion below would pass for a menu that closes on every render.
+    rerender(<ProfileMenu {...props} />);
+    expect(handlers.onClose).not.toHaveBeenCalled();
+
+    harness.isMobile = true;
+    rerender(<ProfileMenu {...props} />);
+
+    expect(handlers.onClose).toHaveBeenCalledTimes(1);
   });
 });

@@ -595,11 +595,8 @@ describe('RegionToolbarControls', () => {
    */
   test('a displaced surface that lands hidden is described as landing hidden', () => {
     // Chat holds `right` and is SHOWN; Activity holds `bottom` and is hidden.
-    // Choosing Activity's Right segment swaps the pair, and Chat inherits
-    // `right`'s… no: Chat goes back to the region Activity vacates (`bottom`)
-    // carrying `right`'s visibility at the time of the move, which is `true`.
-    // The reverse is the hidden case: choosing CHAT's Bottom segment sends
-    // Activity to `right` with `bottom`'s visibility, which is false.
+    // Choosing CHAT's Bottom segment sends Activity to `right` carrying
+    // `bottom`'s visibility at the time of the move, which is false.
     Object.assign(harness.regions.right, { visible: true, occupant: 'chat' });
     Object.assign(harness.regions.bottom, {
       visible: false,
