@@ -193,6 +193,35 @@ async function mockRegistry(page: Page) {
     });
   }
 
+  await page.route('**/api/plugins/preview', (route) => {
+    const { registryId } = route.request().postDataJSON();
+    return route.fulfill({
+      json:
+        registryId === 'project-planner'
+          ? { valid: false, code: 'registry-plugin-not-found' }
+          : {
+              valid: true,
+              manifest: {
+                name: 'demo-layout',
+                displayName: 'Demo Layout',
+                version: '1.0.0',
+              },
+              components: [{ type: 'layout', id: 'demo' }],
+              conflicts: [],
+              contentDigest: 'sha256:demo',
+              permissions: {
+                required: [],
+                autoGranted: [],
+                pendingConsent: [],
+              },
+              dependencies: [],
+            },
+    });
+  });
+  await page.route('**/api/plugins/reload', (route) =>
+    route.fulfill({ json: { success: true } }),
+  );
+
   return { catalog, installCalls, installed, layoutStates };
 }
 
@@ -355,6 +384,9 @@ test.describe('Registry page', () => {
         .getByTestId('registry-detail')
         .getByRole('button', { name: entry.install })
         .click();
+      if (entry.tab === 'Plugins') {
+        await page.getByRole('button', { name: 'Confirm Install' }).click();
+      }
       await expect(page.getByText(`Installed ${entry.item}`)).toBeVisible();
       await expect(
         page
