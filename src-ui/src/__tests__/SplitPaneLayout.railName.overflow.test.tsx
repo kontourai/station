@@ -98,9 +98,18 @@ const STATION_AGENT_NEEDING_SETUP = {
   unavailableFix: { kind: 'models' },
 } as unknown as AgentData;
 
-function railMarkup(): string {
+/** The same agent, ready: its chip is two words and fits beside the name. */
+const READY_STATION_AGENT = {
+  slug: 'station',
+  name: 'Station',
+  engineId: 'station',
+  engineDisplayName: 'Station',
+  provenance: { origin: 'builtin' },
+} as unknown as AgentData;
+
+function railMarkup(agent: AgentData): string {
   const items = buildAgentsViewItems(
-    [STATION_AGENT_NEEDING_SETUP],
+    [agent],
     [],
     undefined,
     { onChat: () => {}, onFix: () => {} },
@@ -160,12 +169,19 @@ describe.skipIf(!chromiumAvailable)(
     });
     afterEach(() => cleanup());
 
-    async function measure(railWidth: number) {
+    async function measureReady(railWidth: number) {
+      return measure(railWidth, READY_STATION_AGENT);
+    }
+
+    async function measure(
+      railWidth: number,
+      agent: AgentData = STATION_AGENT_NEEDING_SETUP,
+    ) {
       const page = await browser.newPage({
         viewport: { width: 1440, height: 700 },
       });
       try {
-        await page.setContent(fixtureHtml(railMarkup(), railWidth));
+        await page.setContent(fixtureHtml(railMarkup(agent), railWidth));
         await page.evaluate(() => document.fonts?.ready);
         return await page.evaluate(() => {
           const box = (selector: string) => {
@@ -174,15 +190,22 @@ describe.skipIf(!chromiumAvailable)(
             const rect = element.getBoundingClientRect();
             return {
               width: rect.width,
+              height: rect.height,
               left: rect.left,
               right: rect.right,
+              top: rect.top,
+              bottom: rect.bottom,
               text: (element.textContent ?? '').trim(),
-              clipped: element.scrollWidth > element.clientWidth + 1,
+              // No tolerance. A one-pixel overflow ellipsizes on screen, and a
+              // `+ 1` slack is what let the live rail read "Stati…" while the
+              // measurement said nothing was clipped.
+              clipped: element.scrollWidth > element.clientWidth,
             };
           };
           return {
             nameText: box('.split-pane__item-name-text'),
             name: box('.split-pane__item-name'),
+            badge: box('.split-pane__item-name-badge'),
             trailing: box('.split-pane__item-trailing'),
             row: box('.split-pane__item-row'),
           };
@@ -223,6 +246,33 @@ describe.skipIf(!chromiumAvailable)(
         expect(trailing.right).toBeLessThanOrEqual(row.right + 1);
         expect(nameText.right).toBeLessThanOrEqual(trailing.left + 1);
       }
+    });
+
+    // The pixels the first version of this fix produced, and the reason the
+    // first version of this test did not see them: shrinking the badge made
+    // the pill (a `display: grid` badge whose own white-space is `normal`)
+    // wrap to three lines inside a 40px row and paint over the row below,
+    // while the name still lost its last pixel. Both are geometry the earlier
+    // assertions did not look at.
+    test('a long reason takes the line below instead of overflowing the row', async () => {
+      const { row, name, badge, nameText } = await measure(280);
+      if (!row || !name || !badge || !nameText)
+        throw new Error('the row did not render');
+      // The badge wrapped: it starts below the name's text, not beside it.
+      expect(badge.top).toBeGreaterThanOrEqual(nameText.bottom - 1);
+      // ...and the row grew to hold it rather than letting it paint outside.
+      expect(badge.bottom).toBeLessThanOrEqual(row.bottom + 1);
+      expect(name.height).toBeGreaterThanOrEqual(badge.height);
+    });
+
+    test('a short chip still sits beside the name', async () => {
+      // The wrap must be driven by the content that cannot fit, not applied to
+      // every row: a ready agent keeps its one-line row.
+      const { nameText, badge } = await measureReady(280);
+      if (!nameText || !badge) throw new Error('the ready row did not render');
+      expect(badge.left).toBeGreaterThanOrEqual(nameText.right - 1);
+      expect(badge.top).toBeLessThan(nameText.bottom);
+      expect(nameText.clipped).toBe(false);
     });
   },
 );
