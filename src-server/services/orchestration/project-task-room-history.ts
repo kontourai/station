@@ -30,6 +30,7 @@ import {
   projectTaskRoomHistoryPageRecords,
 } from '../../telemetry/metrics.js';
 import { measureBoundedJson, plainDataObject } from './bounded-json.js';
+import type { ProjectTaskRoomSourceSeal } from './project-task-room-source-seal.js';
 
 export const PROJECT_TASK_ROOM_LIMITS = Object.freeze({
   requestBytes: 48 * 1024,
@@ -96,6 +97,24 @@ export interface ProjectTaskRoomHistory extends ProjectTaskRoomAuthority {
     grant: ProjectTaskRoomGrant<'history-read'>;
     proposalId: string;
   }): Promise<ProjectTaskRoomRecord | undefined>;
+
+  sealSource(input: {
+    grant: ProjectTaskRoomGrant<'home-transfer'>;
+    operationId: string;
+    sourceHomeRef: string;
+    targetHomeRef: string;
+  }): Promise<
+    | { kind: 'sealed'; seal: ProjectTaskRoomSourceSeal }
+    | {
+        kind:
+          | 'denied'
+          | 'unavailable'
+          | 'conflict'
+          | 'publication-pending'
+          | 'execution-pending';
+      }
+  >;
+
   /** EventStore's synchronous shutdown fence; public callers use close(). */
   dispose(): void;
 }
@@ -506,6 +525,95 @@ function createProjectTaskRoomHistoryInternal(
     return deepCloneFreeze(outcome);
   }
 
+  async function sealSource({
+    grant,
+    operationId,
+    sourceHomeRef,
+    targetHomeRef,
+  }: Parameters<ProjectTaskRoomHistory['sealSource']>[0]): ReturnType<
+    ProjectTaskRoomHistory['sealSource']
+  > {
+    const operationGeneration = generation;
+    if (
+      closed ||
+      !id(operationId) ||
+      !id(sourceHomeRef) ||
+      !id(targetHomeRef) ||
+      sourceHomeRef === targetHomeRef
+    )
+      return { kind: 'unavailable' };
+    const resolved = await resolveAuthorized(grant, 'home-transfer');
+    if (!active(operationGeneration)) return { kind: 'unavailable' };
+    if (
+      resolved.kind !== 'granted' ||
+      resolved.receipt.principal.kind !== 'operator'
+    )
+      return { kind: 'denied' };
+    const stored = await totalStorage(
+      storage,
+      {
+        type: 'seal-source',
+        scope: resolved.receipt.scope,
+        channelId: channelIdFor(resolved.receipt.scope),
+        policyRevision: resolved.receipt.policyRevision,
+        authorizationId: resolved.receipt.receiptId,
+        operationId,
+        sourceHomeRef,
+        targetHomeRef,
+      },
+      async () =>
+        active(operationGeneration) &&
+        (await resolveAuthorized(grant, 'home-transfer', resolved.receipt))
+          .kind === 'granted',
+    );
+    if (!active(operationGeneration)) return { kind: 'unavailable' };
+    if (
+      isPlainOwn(stored, ['kind']) &&
+      [
+        'denied',
+        'unavailable',
+        'conflict',
+        'publication-pending',
+        'execution-pending',
+      ].includes(stored.kind as string)
+    )
+      return stored as {
+        kind:
+          | 'denied'
+          | 'unavailable'
+          | 'conflict'
+          | 'publication-pending'
+          | 'execution-pending';
+      };
+    if (
+      !isPlainOwn(stored, ['kind', 'seal']) ||
+      stored.kind !== 'sealed' ||
+      !isPlainOwn(stored.seal, [
+        'operationId',
+        'sourceHomeRef',
+        'targetHomeRef',
+        'checkpoint',
+      ]) ||
+      stored.seal.operationId !== operationId ||
+      stored.seal.sourceHomeRef !== sourceHomeRef ||
+      stored.seal.targetHomeRef !== targetHomeRef ||
+      !validCheckpoint(stored.seal.checkpoint) ||
+      stored.seal.checkpoint.channelId !== channelIdFor(resolved.receipt.scope)
+    )
+      return { kind: 'unavailable' };
+    const delivery = await resolveAuthorized(
+      grant,
+      'home-transfer',
+      resolved.receipt,
+    );
+    if (!active(operationGeneration) || delivery.kind !== 'granted')
+      return { kind: 'denied' };
+    return deepCloneFreeze(stored) as {
+      kind: 'sealed';
+      seal: ProjectTaskRoomSourceSeal;
+    };
+  }
+
   async function findByProposal({
     grant,
     proposalId,
@@ -567,7 +675,15 @@ function createProjectTaskRoomHistoryInternal(
   function dispose() {
     void close();
   }
-  return Object.freeze({ open, append, read, findByProposal, close, dispose });
+  return Object.freeze({
+    open,
+    append,
+    read,
+    sealSource,
+    findByProposal,
+    close,
+    dispose,
+  });
 }
 
 function createWorkerStorage(
@@ -962,6 +1078,7 @@ function validCapabilityReceipt(
       'message-write',
       'lifecycle-append',
       'revision-link',
+      'home-transfer',
       'agent-publish',
     ].includes(value.capability as string) &&
     (expectedCapability === undefined ||
@@ -1057,6 +1174,7 @@ function isGrant(
         'message-write',
         'lifecycle-append',
         'revision-link',
+        'home-transfer',
         'agent-publish',
       ].includes((value as any).capability) &&
       id((value as any).opaqueToken)

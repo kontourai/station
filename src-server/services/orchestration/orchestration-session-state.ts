@@ -48,6 +48,10 @@ import {
   nextTurnIdentityAnchor,
   projectSessionLifecycle,
 } from './session-lifecycle-service.js';
+import {
+  SESSION_START_INDETERMINATE_CODE,
+  SessionStartIndeterminateError,
+} from './session-turn-boundary.js';
 
 const ATTACHED_SESSION_PROJECT_SLUG_MAX_LENGTH = 512;
 /** archive#1462: bounds the candidate list replayed out of event metadata. */
@@ -1058,6 +1062,11 @@ function recoveryFailureEventId(threadId: string, message: string): string {
  * spawned 36 seconds after boot for conversations nobody had opened.
  */
 export interface RecoveredSessionStartOptions {
+  /** Production composition joins the same durable start/turn authority. */
+  invokeSessionStart?: (
+    threadId: string,
+    invoke: () => Promise<ProviderSession>,
+  ) => Promise<ProviderSession>;
   eventStore?: EventStore;
   assertAdapterReady: (
     adapter: ProviderAdapterShape,
@@ -1226,7 +1235,12 @@ export async function startRecoveredOrchestrationSession(options: {
     try {
       recovered = await withTenantExecutionContext(
         startInput.tenantExecutionContext,
-        () => adapter.startSession(startInput),
+        () =>
+          deps.invokeSessionStart
+            ? deps.invokeSessionStart(startInput.threadId, () =>
+                adapter.startSession(startInput),
+              )
+            : adapter.startSession(startInput),
       );
     } finally {
       admissionLease?.release();
@@ -1272,8 +1286,11 @@ export async function startRecoveredOrchestrationSession(options: {
           createdAt: failedAt,
           method: 'runtime.error',
           severity: 'error',
-          code: SESSION_RECOVERY_FAILED_CODE,
-          retriable: true,
+          code:
+            error instanceof SessionStartIndeterminateError
+              ? SESSION_START_INDETERMINATE_CODE
+              : SESSION_RECOVERY_FAILED_CODE,
+          retriable: !(error instanceof SessionStartIndeterminateError),
           message: `This conversation could not be reopened: ${message}`,
         },
         (warnMessage, meta) => deps.logger.warn(warnMessage, meta),

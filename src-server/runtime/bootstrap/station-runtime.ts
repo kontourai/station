@@ -3118,8 +3118,13 @@ export class StationRuntime {
                 resolveProjectWorkspace: this.resolveTaskDispatchWorkspace,
               },
               {
-                prepareAgentStarted: (result) =>
-                  this.projectTaskRoomRuntime?.prepareAgentStarted(result),
+                prepareAgentStarted: (result) => {
+                  if (!this.projectTaskRoomRuntime)
+                    throw new Error('Task room publication is not ready');
+                  return this.projectTaskRoomRuntime.prepareAgentStarted(
+                    result,
+                  );
+                },
                 // Route composition assigns this property before any user can
                 // dispatch. Read it lazily so construction order cannot invent
                 // a room or turn a provider start into a retryable failure.

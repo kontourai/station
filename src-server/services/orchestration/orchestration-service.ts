@@ -296,7 +296,11 @@ import {
 } from './session-query-module.js';
 import { SessionRecoveryCoordinator } from './session-recovery-coordinator.js';
 import { SessionTranscriptReads } from './session-transcript-reads.js';
-import { createInMemorySessionTurnBoundaryAuthority } from './session-turn-boundary.js';
+import {
+  createInMemorySessionTurnBoundaryAuthority,
+  runSessionStartWithBoundary,
+  type SessionTurnBoundaryAuthority,
+} from './session-turn-boundary.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
@@ -327,6 +331,9 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
+  /** Exact server-owned Task reservation scope; never read from public metadata. */
+  roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   executionWorkspace?: ExecutionWorkspaceBinding;
   /** Skip the modelOptions per-provider support check for this one command. */
@@ -1054,6 +1061,7 @@ export class OrchestrationService {
   readonly sessionLifecycles: SessionLifecycleModule;
   private usageTelemetry?: UsageTelemetryObserver;
   private readonly sessionExecutionCoordinator: SessionExecutionCoordinator;
+  private readonly sessionStartBoundaries: SessionTurnBoundaryAuthority;
   /** Private native-output authority; no public Session/Thread API exposes it. */
   private readonly nativeOutputGrants = createNativeOutputGrantAuthority();
   /** Pending opaque handles; durable admission occurs only at terminal append. */
@@ -1368,9 +1376,11 @@ export class OrchestrationService {
           payload,
         ),
     });
-    this.sessionExecutionCoordinator = new SessionExecutionCoordinator(
+    this.sessionStartBoundaries =
       options.eventStore?.sessionTurnBoundaryAuthority() ??
-        createInMemorySessionTurnBoundaryAuthority(),
+      createInMemorySessionTurnBoundaryAuthority();
+    this.sessionExecutionCoordinator = new SessionExecutionCoordinator(
+      this.sessionStartBoundaries,
     );
     this.turnDeduplicator =
       options.turnDeduplicator ?? options.eventStore?.createTurnDeduplicator();
@@ -2218,7 +2228,11 @@ export class OrchestrationService {
       let session: ProviderSession;
       try {
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
-          adapter.startSession(startInput),
+          runSessionStartWithBoundary(
+            this.sessionStartBoundaries,
+            startInput.threadId,
+            () => adapter.startSession(startInput),
+          ),
         );
       } finally {
         admissionLease?.release();
@@ -3803,6 +3817,22 @@ export class OrchestrationService {
             throw new Error(
               'Credential profile selection is reserved for Station-managed recovery.',
             );
+          if (internal?.roomExecutionBinding) {
+            if (this.options.requireTenantExecutionContext?.())
+              throw new Error(
+                'Room execution binding is unavailable in hosted mode.',
+              );
+            const bound = this.options.eventStore?.bindProjectTaskRoomExecution(
+              {
+                ...internal.roomExecutionBinding,
+                sessionId: input.threadId,
+              },
+            );
+            if (bound?.kind !== 'bound')
+              throw new Error(
+                'Room execution binding is unavailable; the provider was not started.',
+              );
+          }
         },
         validateReattachAgainstPersisted: (input, session) => {
           // archive#3493 residual 6: the reattach conflicts that need no
@@ -3847,8 +3877,8 @@ export class OrchestrationService {
             );
         },
         requireAdapter: (provider) => this.requireAdapter(provider),
-        materializeRestoredSession: (threadId) =>
-          this.materializeRecoveredSession(threadId),
+        materializeRestoredSession: (threadId, admission) =>
+          this.materializeRecoveredSession(threadId, admission),
         prepareStart: async (input, context, internal, adapter) => {
           if (!internal?.skipModelOptionSupportCheck) {
             const unsupported = unsupportedModelOptionKeys(
@@ -3966,7 +3996,12 @@ export class OrchestrationService {
           try {
             const invoke = () =>
               withTenantExecutionContext(context.tenantExecutionContext, () =>
-                adapter.startSession(input),
+                runSessionStartWithBoundary(
+                  this.sessionStartBoundaries,
+                  input.threadId,
+                  () => adapter.startSession(input),
+                  internal?.sessionStartAdmission,
+                ),
               );
             session = await (internal?.foregroundInvocationAdmission
               ? internal.foregroundInvocationAdmission.invoke(
@@ -4062,6 +4097,24 @@ export class OrchestrationService {
    * `ForegroundMessageIndeterminateError` handling. Never call this from a
    * route handling a client-supplied command body.
    */
+  /** Server-only Task reservation admission, before any assignment/provider effect. */
+  claimTaskDispatchBoundary(input: {
+    projectId: string;
+    taskId: string;
+    sessionId: string;
+  }): ReturnType<SessionTurnBoundaryAuthority['claimTaskDispatch']> {
+    if (
+      this.options.requireTenantExecutionContext?.() ||
+      this.options.eventStore?.bindProjectTaskRoomExecution(input).kind !==
+        'bound'
+    )
+      return { kind: 'unavailable' };
+    return this.sessionStartBoundaries.claimTaskDispatch(
+      input.sessionId,
+      new Date().toISOString(),
+    );
+  }
+
   async startSessionInternal(
     command: SessionCommand,
     context: SessionCommandContext,
@@ -6605,8 +6658,17 @@ export class OrchestrationService {
    * archive#3476: the engine-start half of recovery, shared by every caller
    * that needs a restored session to have a live engine.
    */
-  private recoveredSessionStartOptions(): RecoveredSessionStartOptions {
+  private recoveredSessionStartOptions(
+    admission?: SessionCommandInternalOptions['sessionStartAdmission'],
+  ): RecoveredSessionStartOptions {
     return {
+      invokeSessionStart: (threadId, invoke) =>
+        runSessionStartWithBoundary(
+          this.sessionStartBoundaries,
+          threadId,
+          invoke,
+          admission,
+        ),
       eventStore: this.options.eventStore,
       assertAdapterReady: (adapter, connectionId) =>
         this.assertAdapterReady(adapter, connectionId),
@@ -6676,20 +6738,23 @@ export class OrchestrationService {
    */
   private materializeRecoveredSession(
     threadId: string,
+    admission?: SessionCommandInternalOptions['sessionStartAdmission'],
   ): Promise<ProviderAdapterShape | undefined> {
     const inFlight = this.materializingSessions.get(threadId);
     if (inFlight) return inFlight;
-    const started = this.materializeRecoveredSessionOnce(threadId).finally(
-      () => {
-        this.materializingSessions.delete(threadId);
-      },
-    );
+    const started = this.materializeRecoveredSessionOnce(
+      threadId,
+      admission,
+    ).finally(() => {
+      this.materializingSessions.delete(threadId);
+    });
     this.materializingSessions.set(threadId, started);
     return started;
   }
 
   private async materializeRecoveredSessionOnce(
     threadId: string,
+    admission?: SessionCommandInternalOptions['sessionStartAdmission'],
   ): Promise<ProviderAdapterShape | undefined> {
     if (this.quarantinedThreads.has(threadId)) return undefined;
     if (this.isReadOnlyAttachedSession(threadId)) return undefined;
@@ -6710,7 +6775,7 @@ export class OrchestrationService {
       session,
       adapter,
       ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
-      options: this.recoveredSessionStartOptions(),
+      options: this.recoveredSessionStartOptions(admission),
     });
     return adapter;
   }

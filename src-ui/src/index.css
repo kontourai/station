@@ -257,6 +257,11 @@
 [data-theme="dark"] {
   --shadow-sm: 0 -2px 10px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 -4px 20px rgba(0, 0, 0, 0.3);
+  /* Menus, which open DOWNWARD. `--shadow-md` casts UPWARD (`0 -4px`) because
+     it was shaped for the bottom dock, so a menu wearing it is lit from below —
+     the #1552 review's M4. This is the value every menu in the shell used
+     before the family consolidated them. */
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
   --shadow-xl: 0 18px 40px rgba(0, 0, 0, 0.25);
 
@@ -430,6 +435,7 @@
   --overlay-modal: rgba(0, 0, 0, 0.5);
   --shadow-sm: 0 -2px 10px rgba(0, 0, 0, 0.1);
   --shadow-md: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.15);
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.2);
   --shadow-xl: 0 18px 40px rgba(0, 0, 0, 0.12);
   --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.3);
@@ -1568,6 +1574,9 @@ button:hover {
 /* The handle stays inside the direct-child dock. Its preview targets are
    separate fixed elements, so a drag never wraps, portals, or reparents the
    dock away from the shell selectors that place it. */
+/* #1552 D3: hidden until the row is engaged, same rule and same reasons as
+   `.chat-dock__active-identity-close` — see that block. This is the leading end
+   of the bar and the × is the trailing end; they appear together. */
 .chat-dock__placement-grab {
   display: inline-flex;
   width: 28px;
@@ -1582,6 +1591,28 @@ button:hover {
   color: var(--text-tertiary);
   cursor: grab;
   letter-spacing: -2px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-dock__header:hover .chat-dock__placement-grab,
+.chat-dock__header:focus-within .chat-dock__placement-grab {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* A device with no hover has no way INTO the hover state, and the dock's own
+   drag targets are the reason the grip exists. Both controls stay put there.
+   `(hover: none)` rather than the mobile breakpoint: the question is whether
+   this pointer can hover, not how wide the viewport is — and the mobile layout
+   renders `ChatDockMobileHeader` instead of this bar anyway, so the device this
+   protects is the coarse tablet in between. */
+@media (hover: none) {
+  .chat-dock__placement-grab,
+  .chat-dock__active-identity-close {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .chat-dock__placement-grab:active {
@@ -1594,6 +1625,147 @@ button:hover {
   color: var(--text-primary);
 }
 
+/* ─────────────────────────── ONE MENU PRIMITIVE ───────────────────────────
+ *
+ * #1552 D4. This shell had five independent menu vocabularies across six
+ * surfaces: the dock's `.dock-placement-menu` and its More menu (6px radius,
+ * 2px padding, 32px rows, no inset), the header's
+ * `.app-toolbar__overflow-menu` (8px radius, no padding, 44px rows, a hairline
+ * between EVERY row), the region `ToolbarMenu` (the overflow surface again,
+ * plus ruled fieldset groups), the breadcrumb's `.layout-switcher__menu` (6px
+ * radius over `6px 10px` rows with an accent-tinted active row), and `HelpMenu`,
+ * which had no class at all — every rule of it was an inline style, including
+ * its own per-row `borderBottom`. Five radii, four row heights, three divider
+ * policies, and labels that started at a different x in each.
+ *
+ * One spec now, consumed by all of them plus the avatar's new `ProfileMenu`.
+ * `.menu-surface` is the panel and `.menu-row` is a row; positioning, layer and
+ * width stay with each menu, because where a menu opens is genuinely its own
+ * business and is the one thing they do not share (see
+ * `.chat-dock__more-menu`). `src-ui/src/__tests__/menu-primitive.cascade.test.tsx`
+ * measures all SEVEN — the six above and ProfileMenu — in one real Chromium
+ * cascade.
+ *
+ * WHAT IS DELIBERATELY ABSENT: per-row dividers. A rule between every row
+ * turns a list into a ruled table in which the ONE division that carries
+ * meaning — a group boundary — reads exactly like the six that do not. Groups
+ * are separated by a gap and named by a label; nothing else is ruled.
+ *
+ * THE FOCUS RING IS NOT REDECLARED HERE. index.css's product-level
+ * `:focus-visible` rule at the top of this file already gives every button in
+ * every one of these menus the same 2px accent outline, and it is
+ * `!important` precisely so a family like this cannot quietly opt out. A
+ * `--focus-ring` token does not exist in tokens.css; adding a fifth ring
+ * declaration would be the thing this section exists to remove.
+ */
+.menu-surface {
+  display: flex;
+  flex-direction: column;
+  /* One 4px gap between groups. Rows inside a group are flush; a `.menu-group`
+     is what this gap separates, so a menu with no groups has no gaps. */
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-menu);
+}
+
+/* A group of rows under one label. `min-inline-size: 0` because a `fieldset`'s
+   default is `min-content`, which would let a long surface title widen the
+   whole menu. */
+.menu-group {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* NO rule line, by the section note above: a group is named, not fenced. The
+   inset matches `.menu-row`'s so the label sits over its rows' glyph slot
+   rather than over their labels. */
+.menu-group__label {
+  padding: var(--space-2) var(--space-6) var(--space-1);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.menu-row {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-6);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-md);
+  text-align: left;
+}
+
+/* The 16px glyph slot EVERY row reserves, whether or not it has a glyph, so a
+   menu mixing the two still aligns its labels on one x. A real element rather
+   than a `::before` on the row: a pseudo-element cannot be suppressed for the
+   rows that DO carry a glyph without `:has()`, and reserving the slot twice on
+   those rows is the misalignment this exists to prevent. Empty for a row with
+   no glyph — which is why it is `aria-hidden` at every call site: an empty
+   inline-flex box is not content. */
+.menu-row__glyph {
+  display: inline-flex;
+  width: var(--space-8);
+  height: var(--space-8);
+  flex: 0 0 var(--space-8);
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
+/* One stroke weight for every glyph in a menu row. `components/icons/Glyph`
+   already emits `stroke-width: 1.8` at `1em`; this sizes the hand-written SVGs
+   that share these rows to the same slot so the two families cannot diverge
+   visually. */
+.menu-row__glyph > svg {
+  width: var(--space-8);
+  height: var(--space-8);
+}
+
+.menu-row:hover,
+.menu-row:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.menu-row[aria-checked="true"],
+.menu-row[aria-pressed="true"],
+.menu-row[aria-current="page"],
+.menu-row--active {
+  background: var(--bg-selected);
+  color: var(--accent-primary);
+}
+
+.menu-row:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* The coarse-pointer 44px floor for `.menu-row` lives in
+   components/chat/chat.css, NOT here: `useIsMobile.test.tsx` requires every
+   `@media` condition in this ENTRY sheet to spell `MOBILE_MEDIA_QUERY`
+   byte-for-byte, and a touch-target floor is the `(pointer: coarse)` question,
+   not the mobile-layout one. The retired
+   `.dock-placement-menu__item.dock-placement-menu__item` rule that carried it
+   for one member of this family is where the shared rule now sits. */
+
 /* Opens UPWARD. The handle lives in the dock's header, and a bottom dock sits
    at the very bottom of the viewport — so `top: 100%` put the menu below the
    fold: measured at y=895 with a height of 102 in a 900px viewport, five
@@ -1601,39 +1773,20 @@ button:hover {
    non-empty box with visible CSS is visible by that definition even when it
    is off the bottom of the window, which is why an E2E assertion passed on a
    menu nobody could reach. The dock is the lowest chrome there is; there is
-   nothing below it to open into. */
+   nothing below it to open into.
+ *
+ * Visual spec (radius, padding, row height, inset, group treatment) comes from
+ * `.menu-surface` above; what is left here is where this one opens.
+ */
 .dock-placement-menu {
   position: absolute;
   z-index: var(--layer-popover);
   bottom: calc(100% + var(--space-1));
   left: var(--space-2);
-  display: flex;
   min-width: 9rem;
-  flex-direction: column;
-  padding: var(--space-1);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: var(--bg-primary);
+  /* This one opens UPWARD (see the note above), so it keeps the upward-casting
+     `--shadow-md` the family's downward default replaces. */
   box-shadow: var(--shadow-md);
-}
-
-.dock-placement-menu__item {
-  min-height: 32px;
-  padding: var(--space-1) var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-primary);
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-
-.dock-placement-menu__item:hover,
-.dock-placement-menu__item:focus-visible,
-.dock-placement-menu__item--active {
-  background: var(--bg-selected);
-  color: var(--accent-primary);
 }
 
 /* #1536 F: the dock header's More control. Same 28px square as the placement
@@ -1744,6 +1897,13 @@ button:hover {
   bottom: auto;
   left: auto;
   z-index: var(--layer-navigation);
+  /* It wears `.dock-placement-menu` for the family but does NOT open upward by
+     default: it measures the trigger and opens downward whenever there is room,
+     which is the common case, so it takes the downward shadow back. The
+     remaining case — this menu flipping upward in a short viewport and casting
+     downward — is a disclosed residue, not a new one: before the family existed
+     it cast upward in BOTH directions. */
+  box-shadow: var(--shadow-menu);
 }
 
 .chat-dock__more-backdrop {
@@ -2009,38 +2169,60 @@ button:hover {
    switcher — button-reset so it keeps the prior text-only look, plus a
    hover/focus affordance a plain link previously carried via its `--link`
    modifier (removed: every badge is activatable now, not just some). */
-/* this rendered `--accent-primary` (the same green as a
-   READY badge or a live connection dot) unconditionally — bound project or
-   none, the color never changed, so it encoded no state, only "this text is
-   clickable." Muted to the neutral status-text tone, and monospace, so the
-   badge read as a plain-text status segment (a project/path name) rather than
-   a colored label. The directory segment it used to share that segment with is
-   gone (#1536 F); the tone and family stay, because the badge still sits in a
-   row of muted status text. The click affordance survives as an underline on
-   hover/focus, same as any other text trigger in this bar. */
+/* #1552 D3: a CHIP, in the body font, with a folder glyph.
+ *
+ * It was monospace at weight 600 with an underline-on-hover — a plain-text
+ * status segment, which was right when it shared a row with a visible directory
+ * path (#1536 F removed that) and wrong afterwards: it left the dock header
+ * with two type families and made the project read as a fragment of a path
+ * rather than as the named thing you can change. The glyph carries "project",
+ * the bordered chip carries "this is a control", and the path — the reason the
+ * monospace family was ever here — is the `title`.
+ *
+ * The accent colour this rule's predecessor removed stays removed: bound or
+ * unbound, the chip is neutral, because a colour that never changes encodes no
+ * state. */
 .chat-dock__project-badge {
-  border: none;
-  border-radius: 3px;
-  padding: 0 2px;
-  background: none;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: inherit;
-  font-weight: 600;
   cursor: pointer;
-  /* #1536 F: one line, always. A long project name used to wrap this row into
-     a second line inside a bar whose height is a shared geometry token, and
-     the token then lied about it. It truncates instead; the full path (and the
-     name with it) is the button's `title`. */
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.chat-dock__project-badge:hover,
+.chat-dock__project-badge:focus-visible {
+  border-color: var(--accent-border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.chat-dock__project-badge-glyph {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+}
+/* #1536 F: one line, always. A long project name used to wrap this row into a
+   second line inside a bar whose height is a shared geometry token, and the
+   token then lied about it. It truncates instead; the full path (and the name
+   with it) is the button's `title`. */
+.chat-dock__project-badge-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.chat-dock__project-badge:hover,
-.chat-dock__project-badge:focus-visible {
-  color: var(--text-primary);
-  text-decoration: underline;
+/* No project bound: the glyph alone, and a square target for it. There is no
+   label to hold the box open, so it gets its own width. */
+.chat-dock__project-badge--unbound {
+  justify-content: center;
+  padding: 2px;
+  min-width: 22px;
 }
 .chat-dock__project-badge-clear {
   flex-shrink: 0;
@@ -3273,8 +3455,12 @@ button:hover {
      beside it read louder than the thing that distinguishes one chat from the
      next. */
   color: var(--text-primary);
-  font-size: var(--text-sm);
-  font-weight: 600;
+  /* #1552 D3: 14px at weight 500. It was 11px/600 — the smallest type in the
+     bar carrying the bar's SUBJECT, and bold to compensate, which reads as
+     shouting rather than as primacy. Size is what makes it primary; the weight
+     comes back down so the row has one emphatic thing in it, not two. */
+  font-size: var(--text-lg);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3295,12 +3481,27 @@ button:hover {
   flex: 0 100 auto;
   min-width: 48px;
   overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
+  /* #1552 D3: 12px muted, one step below the 14px title rather than two below
+     it — the token is a fact about the chat, not a footnote, and at 10px it was
+     the smallest thing in a bar that already had a legibility problem. */
+  color: var(--text-muted);
+  font-size: var(--text-base);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* #1552 D3: quiet until the row is engaged.
+ *
+ * `opacity: 0` + `pointer-events: none`, NOT `display: none` or `visibility:
+ * hidden`: the control stays in the accessibility tree and in tab order, which
+ * is the whole requirement — a destructive action that only exists on hover is
+ * unreachable to anyone who does not hover. Tabbing to it puts focus inside the
+ * header, so `:focus-within` below makes it visible before it is focusable-and-
+ * invisible; the global `:focus-visible` ring then lands on a painted control.
+ *
+ * The reveal is keyed on `.chat-dock__header`, the row, not on the identity
+ * cluster: the × and the ⋮⋮ grip at the other end of the same row appear
+ * together, so the bar has one hover state rather than two. */
 .chat-dock__active-identity-close {
   display: inline-flex;
   width: 28px;
@@ -3314,6 +3515,14 @@ button:hover {
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-dock__header:hover .chat-dock__active-identity-close,
+.chat-dock__header:focus-within .chat-dock__active-identity-close {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .chat-dock__active-identity-close:hover,
@@ -4970,12 +5179,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-secondary);
 }
 
-@media (max-width: 768px), (pointer: coarse) {
-  .choice-trigger {
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
+/* `.choice-trigger`'s coarse-pointer 44px floor lives in
+   components/chat/chat.css, beside `.menu-row`'s, and NOT here:
+   `useIsMobile.test.tsx` requires every `@media` condition in this ENTRY sheet
+   to spell `MOBILE_MEDIA_QUERY` byte-for-byte so the hook and the stylesheet
+   cannot disagree about the breakpoint, and `(max-width: 768px), (pointer:
+   coarse)` is not that constant. A touch-target floor is the `(pointer: coarse)`
+   question anyway, not the mobile-layout one. */
 
 /* Buttons */
 .button {
