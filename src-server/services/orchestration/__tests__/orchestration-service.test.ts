@@ -10044,12 +10044,18 @@ describe('OrchestrationService', () => {
           cwd: tmp,
           metadata: {
             agentId: 'reviewer',
+            agentSlug: 'reviewer',
             projectSlug: 'project-a',
-            environmentId: 'local-environment',
           },
         },
       },
       { userId: 'account-a' },
+      {
+        conversationIdentity: {
+          conversationId: 'fleet-authorized-session',
+          environmentId: 'local-environment',
+        },
+      },
     );
     // The HTTP route stamps this server-derived owner before it calls the
     // service. This unit test enters the service directly, so model that
