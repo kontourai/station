@@ -572,18 +572,12 @@ class NavigationStore {
    */
   captureLocation(): NavigationLocation {
     const params = new URLSearchParams(window.location.search);
+    let search = window.location.search;
     if (params.get('dock') !== 'open' && params.has('maximize')) {
       params.delete('maximize');
-      const search = params.toString();
-      return {
-        pathname: window.location.pathname,
-        search: search ? `?${search}` : '',
-      };
+      search = params.size ? `?${params}` : '';
     }
-    return {
-      pathname: window.location.pathname,
-      search: window.location.search,
-    };
+    return { pathname: window.location.pathname, search };
   }
 
   isCurrentLocation(location: NavigationLocation): boolean {
