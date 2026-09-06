@@ -277,3 +277,28 @@ test('unknown fields and accessor input cannot enter durable authority records',
     } as ProjectTaskRoomSourceSeal).kind,
   ).toBe('conflict');
 });
+
+test('an error after durable commit resolves without assigning a second revision', () => {
+  const { db, store } = fixture();
+  ready(store);
+  const lostAcknowledgement = createSqlitePlannedHomeTransferStore({
+    exec(sql) {
+      db.exec(sql);
+      if (sql === 'COMMIT')
+        throw new Error('Injected lost commit acknowledgement');
+    },
+    prepare: (sql) => db.prepare(sql),
+  });
+  expect(
+    lostAcknowledgement.commit(owner.tenantId, intent.operationId).kind,
+  ).toBe('unavailable');
+  const decision = stored(store.resolve(owner.tenantId, intent.operationId));
+  expect(decision).toMatchObject({ phase: 'committed', committedRevision: 1 });
+  expect(stored(store.commit(owner.tenantId, intent.operationId))).toEqual(
+    decision,
+  );
+  expect(stored(store.inspect(owner.tenantId, owner.channelId))).toMatchObject({
+    homeRef: 'target',
+    revision: 1,
+  });
+});

@@ -286,7 +286,7 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
   return {
     /** Initial administrative enrollment only; never replaces an existing owner. */
     initialize(owner: PlannedHomeOwner): TransferStoreResult<PlannedHomeOwner> {
-      return transaction(() => {
+      return transaction<PlannedHomeOwner>(() => {
         if (!ownerValid(owner) || owner.revision !== 0)
           return { kind: 'conflict' };
         const prior = readOwner(owner.tenantId, owner.channelId);
@@ -308,7 +308,7 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
       tenant: string,
       channel: string,
     ): TransferStoreResult<PlannedHomeOwner> {
-      return transaction(() => {
+      return transaction<PlannedHomeOwner>(() => {
         if (!identifier(tenant) || !identifier(channel))
           return { kind: 'conflict' };
         const value = readOwner(tenant, channel);
@@ -319,7 +319,7 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
       tenant: string,
       operation: string,
     ): TransferStoreResult<PlannedHomeTransfer> {
-      return transaction(() => {
+      return transaction<PlannedHomeTransfer>(() => {
         if (!identifier(tenant) || !identifier(operation))
           return { kind: 'conflict' };
         const value = readTransfer(tenant, operation);
@@ -329,7 +329,7 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
     prepare(
       intent: PlannedHomeTransferIntent,
     ): TransferStoreResult<PlannedHomeTransfer> {
-      return transaction(() => {
+      return transaction<PlannedHomeTransfer>(() => {
         if (!validIntent(intent)) return { kind: 'conflict' };
         const prior = readTransfer(intent.tenantId, intent.operationId);
         if (prior)
@@ -360,7 +360,7 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
       operation: string,
       closure: ProjectTaskRoomSourceSeal,
     ): TransferStoreResult<PlannedHomeTransfer> {
-      return transaction(() => {
+      return transaction<PlannedHomeTransfer>(() => {
         const value = readTransfer(tenant, operation);
         if (!value) return { kind: 'not-found' };
         if (!closureValid(closure, value.intent)) return { kind: 'conflict' };
@@ -384,7 +384,7 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
       targetHomeRef: string,
       closureDigest: string,
     ): TransferStoreResult<PlannedHomeTransfer> {
-      return transaction(() => {
+      return transaction<PlannedHomeTransfer>(() => {
         const value = readTransfer(tenant, operation);
         if (!value) return { kind: 'not-found' };
         if (
@@ -406,7 +406,7 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
       tenant: string,
       operation: string,
     ): TransferStoreResult<PlannedHomeTransfer> {
-      return transaction(() => {
+      return transaction<PlannedHomeTransfer>(() => {
         const value = readTransfer(tenant, operation);
         if (!value) return { kind: 'not-found' };
         if (value.phase === 'committed') return { kind: 'stored', value };
