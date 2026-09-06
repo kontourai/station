@@ -240,9 +240,7 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     ).toHaveLength(0);
     // And the chords moved rather than vanished — the tooltip is the channel,
     // with a real display string so this cannot pass on an empty one.
-    expect(screen.getByLabelText('Hide Chat').title).toBe(
-      'Hide Chat (⌘D)',
-    );
+    expect(screen.getByLabelText('Hide Chat').title).toBe('Hide Chat (⌘D)');
     // This describe's fixture opens maximized, so the extent control reads
     // Restore; the point is the same — its chord is in the tooltip.
     expect(screen.getByLabelText('Restore dock region size').title).toBe(

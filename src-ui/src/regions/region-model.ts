@@ -122,8 +122,7 @@ function displacementDestination(
   vacated: RegionId,
 ): DockRegionId | undefined {
   const available = (id: DockRegionId) =>
-    arrangement[id].occupant === null &&
-    surfaceMayOccupy(displacedSurface, id);
+    arrangement[id].occupant === null && surfaceMayOccupy(displacedSurface, id);
   const home = REGION_SURFACE_REGISTRY.get(displacedSurface)?.defaultRegion;
   if (home && isDockRegion(home) && available(home)) return home;
   return displacementSearchOrder(vacated).find(available);

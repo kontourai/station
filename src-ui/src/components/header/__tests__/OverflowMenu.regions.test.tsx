@@ -210,7 +210,9 @@ describe('OverflowMenu region section (#917)', () => {
   test('selecting a visible surface issues the model toggle and closes the menu', () => {
     renderMenu();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Hide Chat from the dock' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Hide Chat from the dock' }),
+    );
 
     // Hiding the folded region is the model's decision (`toggleSurface` in
     // region-model.ts); the row issues the command.
@@ -221,7 +223,9 @@ describe('OverflowMenu region section (#917)', () => {
   test('selecting an unplaced surface issues the model toggle; the coarse fold rule is the model’s', () => {
     renderMenu();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show Activity in the dock' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Show Activity in the dock' }),
+    );
 
     // Placing it in its default region and closing every other region — a
     // coarse device shows exactly one dock surface at a time — is the model's
@@ -253,7 +257,9 @@ describe('OverflowMenu region section (#917)', () => {
     harness.regions.main.occupant = 'activity';
     renderMenu();
 
-    expect(screen.queryByRole('button', { name: 'Show Activity in the dock' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Show Activity in the dock' }),
+    ).toBeNull();
     const move = screen.getByRole('button', {
       name: 'Move Activity to the dock',
     });

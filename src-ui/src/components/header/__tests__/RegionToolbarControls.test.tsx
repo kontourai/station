@@ -996,7 +996,9 @@ describe('RegionToolbarControls', () => {
     rerender(<RegionToolbarControls />);
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
     fireEvent.click(
-      screen.getByRole('menuitemcheckbox', { name: 'Show Activity in the dock' }),
+      screen.getByRole('menuitemcheckbox', {
+        name: 'Show Activity in the dock',
+      }),
     );
     expectOnlyToggle('activity', 2);
 
