@@ -405,6 +405,29 @@ async function seedStationAccess(page: Page) {
       );
       return;
     }
+    if (
+      route.request().method() === 'GET' &&
+      (path === '/api/projects/project-ui/layouts' ||
+        /^\/api\/tasks\/(?:answer-support-ui|pinned-input-ui|pinned-input-revoked)\/(?:outputs|user-input-references)$/.test(
+          path,
+        ))
+    ) {
+      await route.fulfill(json({ success: true, data: [] }));
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      /^\/api\/tasks\/pinned-input-(?:ui|revoked)\/room$/.test(path)
+    ) {
+      await route.fulfill({
+        status: 503,
+        ...json({
+          success: false,
+          error: 'Room unavailable in this input-projection fixture',
+        }),
+      });
+      return;
+    }
     if (await fulfillStationShellRead(route)) return;
     return rejectUnexpectedFixtureRequest(route);
   });

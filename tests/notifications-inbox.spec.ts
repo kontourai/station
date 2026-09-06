@@ -209,7 +209,7 @@ test.describe('Notifications hierarchy', () => {
     ).toBeVisible();
     await expect(page.getByText('Needs attention (4)')).toBeVisible();
     await expect(
-      page.getByRole('heading', { name: 'Recent activity', level: 2 }),
+      page.getByRole('heading', { name: 'Activity', level: 2 }),
     ).toBeVisible();
     const notificationsButton = page.getByRole('button', {
       name: 'Notifications (4 need attention)',
@@ -230,7 +230,7 @@ test.describe('Notifications hierarchy', () => {
     ).toBeVisible();
     await expect(
       compactNotifications.getByRole('heading', {
-        name: 'Recent activity',
+        name: 'Activity',
         level: 2,
       }),
     ).toBeVisible();

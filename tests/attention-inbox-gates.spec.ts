@@ -108,9 +108,15 @@ test.describe('Attention inbox — gate items (station#612)', () => {
     await expect(
       page.locator('.attention-item__type').filter({ hasText: /^Route back$/ }),
     ).toBeVisible();
-    await expect(page.getByText('Gate blocked', { exact: true })).toBeVisible();
     await expect(
-      page.getByText('Exception pending', { exact: true }),
+      page
+        .locator('.attention-item__type')
+        .filter({ hasText: /^Gate blocked$/ }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('.attention-item__type')
+        .filter({ hasText: /^Exception pending$/ }),
     ).toBeVisible();
     const bodyText = await page
       .locator('.notifications-page__list')

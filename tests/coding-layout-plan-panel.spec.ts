@@ -153,7 +153,7 @@ async function seedCommonRoutes(page: Page, opts: { withChat?: boolean } = {}) {
 
 async function selectWorkspacePane(page: Page, tabName: string) {
   const tab = page
-    .getByRole('tablist', { name: 'Workspace panes' })
+    .getByRole('region', { name: 'Workspace panes', exact: true })
     .getByRole('tab', { name: tabName, exact: true });
   await tab.click();
   await expect(tab).toHaveAttribute('aria-selected', 'true');
@@ -222,9 +222,12 @@ test.describe('Coding Layout Inspector — expanded (a tool configured)', () => 
   test('hosts coding and inspector surfaces as independently selectable panes', async ({
     page,
   }) => {
-    const tabs = page.getByRole('tablist', { name: 'Workspace panes' });
+    const tabs = page.getByRole('region', {
+      name: 'Workspace panes',
+      exact: true,
+    });
     await expect(
-      tabs.getByRole('tab', { name: 'pane:builtin:code:coding', exact: true }),
+      tabs.getByRole('tab', { name: 'Coding', exact: true }),
     ).toHaveAttribute('aria-selected', 'true');
     await selectWorkspacePane(page, 'Plan');
     await expect(page.locator('.workflow-plan-panel')).toBeVisible();
@@ -366,7 +369,10 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
   }) => {
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
 
-    const surfaces = page.getByRole('tablist', { name: 'Workspace panes' });
+    const surfaces = page.getByRole('region', {
+      name: 'Workspace panes',
+      exact: true,
+    });
     await expect(surfaces).toBeVisible();
     const dock = page.locator('#chat-dock');
     if (
@@ -382,7 +388,7 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
       await expect(dock).not.toHaveClass(/is-maximized/);
     }
     const work = surfaces.getByRole('tab', {
-      name: 'pane:builtin:code:coding',
+      name: 'Coding',
       exact: true,
     });
     await expect(work).toHaveAttribute('aria-selected', 'true');
@@ -394,7 +400,7 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
 
     await surfaces
       .getByRole('tab', {
-        name: 'pane:builtin:coding:file-browser',
+        name: 'Files',
         exact: true,
       })
       .click();
@@ -415,7 +421,7 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
     await page.getByRole('button', { name: 'Back to pane tabs' }).click();
     await surfaces
       .getByRole('tab', {
-        name: 'pane:builtin:coding:file-browser',
+        name: 'Files',
         exact: true,
       })
       .click();
@@ -423,7 +429,7 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
     await page.getByRole('button', { name: 'Back to pane tabs' }).click();
     await surfaces
       .getByRole('tab', {
-        name: 'pane:builtin:coding:terminal',
+        name: 'Terminal',
         exact: true,
       })
       .click();
