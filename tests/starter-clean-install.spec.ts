@@ -137,14 +137,15 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
     await expect
       .poll(
         async () => {
-          const response = await authenticatedRequest.get(
-            '/api/agents/station',
-          );
+          const response = await authenticatedRequest.get('/api/agents');
           expect(response.ok()).toBe(true);
           const catalog = await response.json();
           return (
             catalog.catalogState !== 'reconciling' &&
-            catalog.data?.available === true
+            catalog.data?.some(
+              (agent: { slug: string; available?: boolean }) =>
+                agent.slug === 'station' && agent.available === true,
+            )
           );
         },
         { timeout: 30_000 },
