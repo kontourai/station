@@ -9,7 +9,7 @@ import { usePendingRouteSurfaceId } from '../../app-shell/useRoutePending';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
-import { occupiedDockRegion } from '../../regions/region-model';
+import { occupiedRegion } from '../../regions/region-model';
 import { destinationIcon, PROJECT_SIDEBAR_NAV_GROUPS } from './nav-items';
 
 interface ProjectSidebarNavProps {
@@ -63,13 +63,25 @@ export function ProjectSidebarNav({
 
   const renderRow = (destination: DestinationDefinition) => {
     const label = destination.label();
-    const occupiedRegion =
+    // #1582 D4: a row backed by a `regionSurface` PLACES that surface; it does
+    // not navigate, and the URL is unchanged by it. So its state is "is this
+    // surface showing" (`aria-pressed`), not "is this the current page"
+    // (`aria-current`) — the audit found Home and Activity both wearing the
+    // current-page highlight at once, which claimed two current locations.
+    // Exactly one row can be current, and it is always a routed one.
+    //
+    // The occupancy read covers `main` as well as the dock regions: #928 lets
+    // Activity take the primary area, and a surface showing there is no less
+    // shown than one in a side region.
+    const placedRegion =
       destination.regionSurface && regionModel
-        ? occupiedDockRegion(regionModel.regions, destination.regionSurface)
+        ? occupiedRegion(regionModel.regions, destination.regionSurface)
         : undefined;
-    const isActive = destination.regionSurface
-      ? Boolean(occupiedRegion && regionModel?.regions[occupiedRegion].visible)
-      : activeDestination?.id === destination.id;
+    const isShown = Boolean(
+      placedRegion && regionModel?.regions[placedRegion].visible,
+    );
+    const isCurrent =
+      !destination.regionSurface && activeDestination?.id === destination.id;
     // SHELL-05: the route chunk takes ~1.4 s to arrive on a cold destination, and
     // the row the user clicked said nothing for all of it. `pendingSurfaceId`
     // is the suspended route outlet itself, not a timer started at click, and
@@ -81,10 +93,14 @@ export function ProjectSidebarNav({
       <button
         key={destination.id}
         type="button"
-        className={`sidebar__nav-btn${isActive ? ' sidebar__nav-btn--active' : ''}${
+        className={`sidebar__nav-btn${
+          isCurrent ? ' sidebar__nav-btn--active' : ''
+        }${isShown ? ' sidebar__nav-btn--shown' : ''}${
           isPending ? ' sidebar__nav-btn--pending' : ''
         }`}
         aria-busy={isPending || undefined}
+        aria-current={isCurrent ? 'page' : undefined}
+        aria-pressed={destination.regionSurface ? isShown : undefined}
         onClick={() => {
           if (destination.regionSurface) showSurface(destination.regionSurface);
           else navigate(destination.route);

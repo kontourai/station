@@ -13,6 +13,7 @@ const flagsState = vi.hoisted(() => ({ flags: new Set<string>() }));
 const regionState = vi.hoisted(() => ({
   showSurface: vi.fn(),
   activityVisible: false,
+  mainOccupant: null as string | null,
 }));
 vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () => flagsState.flags,
@@ -20,7 +21,7 @@ vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
 vi.mock('../contexts/RegionModelContext', () => ({
   useRegionModelOptional: () => ({
     regions: {
-      main: { visible: true, size: 0, occupant: null },
+      main: { visible: true, size: 0, occupant: regionState.mainOccupant },
       left: { visible: false, size: 400, occupant: null },
       right: {
         visible: regionState.activityVisible,
@@ -44,6 +45,7 @@ describe('ProjectSidebarNav', () => {
     flagsState.flags = new Set();
     regionState.showSurface.mockReset();
     regionState.activityVisible = false;
+    regionState.mainOccupant = null;
     routeTransitionStore.clearPending(routeTransitionStore.getSnapshot() ?? '');
   });
 
@@ -183,7 +185,12 @@ describe('ProjectSidebarNav', () => {
     );
   });
 
-  test('highlights Activity from visible region occupancy, independent of route', () => {
+  // #1582 D4: Activity's row places a surface — it never navigates, and the
+  // audit found it wearing the same current-page highlight as Home while the
+  // URL was unchanged, so two rows read as "you are here" at once. Its state
+  // is now `aria-pressed` plus a distinct `--shown` mark, and `aria-current`
+  // stays the exclusive property of a routed row.
+  test('marks Activity as a pressed toggle from visible region occupancy, never as the current page', () => {
     regionState.activityVisible = true;
     render(
       <ProjectSidebarNav
@@ -194,9 +201,57 @@ describe('ProjectSidebarNav', () => {
       />,
     );
 
+    const activity = screen.getByRole('button', { name: 'Activity' });
+    expect(activity.getAttribute('aria-pressed')).toBe('true');
+    expect(activity.className).toContain('sidebar__nav-btn--shown');
+    expect(activity.className).not.toContain('sidebar__nav-btn--active');
+    expect(activity.getAttribute('aria-current')).toBeNull();
+
+    // The routed row is the one that is current, and it is the only one.
+    const registry = screen.getByRole('button', { name: 'Registry' });
+    expect(registry.getAttribute('aria-current')).toBe('page');
+    expect(registry.getAttribute('aria-pressed')).toBeNull();
     expect(
-      screen.getByRole('button', { name: 'Activity' }).className,
-    ).toContain('sidebar__nav-btn--active');
+      screen
+        .getAllByRole('button')
+        .filter((button) => button.getAttribute('aria-current') === 'page'),
+    ).toHaveLength(1);
+  });
+
+  test('reports Activity as not pressed while its region is hidden', () => {
+    regionState.activityVisible = false;
+    render(
+      <ProjectSidebarNav
+        collapsed={false}
+        isMobile={false}
+        navigate={vi.fn()}
+        activePath="/registry"
+      />,
+    );
+
+    const activity = screen.getByRole('button', { name: 'Activity' });
+    expect(activity.getAttribute('aria-pressed')).toBe('false');
+    expect(activity.className).not.toContain('sidebar__nav-btn--shown');
+  });
+
+  // #928 lets Activity take the primary area. A surface showing in `main` is
+  // no less shown than one in a side region, and the row must say so — the
+  // pre-#1582 read only looked at the dock regions.
+  test('marks Activity as pressed when it occupies main', () => {
+    regionState.mainOccupant = 'activity';
+    regionState.activityVisible = false;
+    render(
+      <ProjectSidebarNav
+        collapsed={false}
+        isMobile={false}
+        navigate={vi.fn()}
+        activePath="/registry"
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Activity' }).getAttribute('aria-pressed'),
+    ).toBe('true');
   });
 
   test('shows and highlights Developer only while the developer-tools flag is enabled (station#3313)', () => {
