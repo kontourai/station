@@ -111,6 +111,14 @@ export function ProjectSidebarNav({
             // canonical deep link when no region host is mounted; the model's
             // toggle has no such fallback and would write state nothing
             // renders.
+            //
+            // From `main` this takes TWO presses, and that is the recorded
+            // rule rather than a gap here: `toggleSurface`'s `main`-occupant
+            // case (region-model.ts) relocates the surface to its
+            // `defaultRegion` VISIBLE, so a chord that "hides" a `main`
+            // occupant leaves Home behind rather than doing nothing (#1523).
+            // Press one re-docks it and the row stays pressed — truthfully,
+            // the surface is still showing; press two hides the dock region.
             if (isShown && regionModel)
               regionModel.toggleSurface(destination.regionSurface);
             else showSurface(destination.regionSurface);

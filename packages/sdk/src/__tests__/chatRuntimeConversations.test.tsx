@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { _setApiBase } from '../api-core';
 import { resolveConversationOpen } from '../conversation-open';
 import {
+  fetchConversationById,
   fetchSessionSummary,
   useConversationInventoryQuery,
   useConversationsQuery,
@@ -31,6 +32,93 @@ function successResponse(): Response {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+/**
+ * #1582: `fetchConversationById`'s `null` is the ONLY signal
+ * `useChatDockActiveChatSync` has for "this id names nothing", and it drops the
+ * `?chat=` pointer on it. It used to be returned for any `{success:false}`
+ * envelope, and the conversations route emits that shape for a 500
+ * (`conversationRouteFailure`), a 400 (reserved agent identity) and a 401 too —
+ * so a transient blip during a reload silently discarded a real conversation's
+ * pointer. `null` now means 404 and nothing else.
+ */
+describe('fetchConversationById distinguishes a miss from a failure', () => {
+  function jsonResponse(body: unknown, status: number): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  test('a 404 is a miss', async () => {
+    _setApiBase('https://station.example.test');
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(
+            { success: false, error: 'Conversation not found' },
+            404,
+          ),
+        ),
+    );
+    await expect(fetchConversationById('missing')).resolves.toBeNull();
+  });
+
+  test('a 404 with a body that is not JSON is still a miss', async () => {
+    // The status is the authority for absence, not the envelope.
+    _setApiBase('https://station.example.test');
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response('<html>not found</html>', { status: 404 }),
+        ),
+    );
+    await expect(fetchConversationById('missing')).resolves.toBeNull();
+  });
+
+  test.each([
+    [500, 'Conversation lookup exploded'],
+    [401, 'authentication required'],
+    [400, 'reserved agent identity'],
+  ])(
+    'a %i throws with its status instead of reading as a miss',
+    async (status, error) => {
+      _setApiBase('https://station.example.test');
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(jsonResponse({ success: false, error }, status)),
+      );
+      await expect(
+        fetchConversationById('real-conversation'),
+      ).rejects.toMatchObject({ status, message: error });
+    },
+  );
+
+  test('a resolved conversation is returned unchanged', async () => {
+    _setApiBase('https://station.example.test');
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(
+            { success: true, data: { id: 'c1', agentSlug: 'codex' } },
+            200,
+          ),
+        ),
+    );
+    await expect(fetchConversationById('c1')).resolves.toMatchObject({
+      id: 'c1',
+      agentSlug: 'codex',
+    });
+  });
+});
 
 describe('conversation intent summary normalization', () => {
   test('rejects hostile and unavailable conversation-open responses as typed failures', async () => {

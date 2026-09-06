@@ -423,6 +423,26 @@ export async function fetchConversationMessages(
   );
 }
 
+/**
+ * Look a conversation up by id.
+ *
+ * `null` means ONE thing: this Station has no such conversation (HTTP 404).
+ * Every other failure throws a `StationHttpError` carrying the status and the
+ * server's own message.
+ *
+ * The distinction is load-bearing rather than tidy (#1582). This used to
+ * return `null` for any `{ success: false }` envelope, and the route emits
+ * that shape for a 500 (`conversationRouteFailure`), a 400 (a reserved agent
+ * identity) and a 401 as readily as for a miss. Its one caller,
+ * `useChatDockActiveChatSync`, treats `null` as "this id names nothing" and
+ * drops the `?chat=` pointer on it — so a transient server or auth blip during
+ * a reload silently discarded a REAL conversation's pointer, the exact failure
+ * archive#1284 exists to prevent. A thrown error keeps that caller on its
+ * retry-then-reveal path, where an unresolved lookup belongs.
+ *
+ * A 404 whose body is not JSON is still a miss: the status is the authority
+ * for absence, not the envelope.
+ */
 export async function fetchConversationById(
   conversationId: string,
   apiBase?: string,
@@ -431,13 +451,17 @@ export async function fetchConversationById(
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/conversations/${encodeURIComponent(conversationId)}`,
   );
-  const result = (await response.json()) as {
-    success: boolean;
+  if (response.status === 404) return null;
+  const result = (await response.json().catch(() => null)) as {
+    success?: boolean;
     data?: ConversationLookup;
     error?: string;
-  };
-  if (!result.success) {
-    return null;
+  } | null;
+  if (!response.ok || !result?.success) {
+    throw new StationHttpError(
+      response.status,
+      apiErrorMessage(result ?? {}, 'Conversation lookup failed'),
+    );
   }
   return result.data ?? null;
 }
@@ -635,4 +659,4 @@ export function useDeleteConversationMutation(
 
 import { withNormalizedAnswerability } from '@kontourai/station-contracts/orchestration';
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch } from '../client/http';
+import { authenticatedFetch, StationHttpError } from '../client/http';

@@ -42,10 +42,12 @@ function effectiveDefaultPlaceholder(
   runtimeDefault?: string,
 ): string | undefined {
   if (definition.placeholder !== undefined) return definition.placeholder;
-  // #1582 D9: a value this host reports outranks a value written into the
-  // registry — it IS what the runtime would apply, where the static field is
-  // only what it would apply everywhere. Most fields have no runtime default
-  // and fall through unchanged.
+  // #1582 D9: a value this HOST reports is what the runtime would actually
+  // apply, where `defaultValue` is only what it would apply everywhere, so it
+  // is preferred over that. An explicit `placeholder` still wins above: it is
+  // authored copy for the field ("no cap", "leave empty to inherit"), not a
+  // claim about a value, and a host-reported string must not overwrite it.
+  // Most fields have no runtime default and fall through unchanged.
   if (runtimeDefault) return runtimeDefault;
   if (definition.defaultValue === undefined || definition.defaultValue === null)
     return undefined;

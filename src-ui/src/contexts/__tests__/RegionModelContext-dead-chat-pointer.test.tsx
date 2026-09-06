@@ -114,6 +114,7 @@ async function mountReload() {
 describe('a reload carrying a chat pointer nothing can resolve', () => {
   test('leaves the side region closed and unoccupied', async () => {
     // Exactly what the audit reload carried: an unpromoted chat's session id.
+    // `null` is now a 404 and only a 404 (see the SDK contract test).
     setUrl('/?chat=claude%3A1788672912443&dock=open');
     fetchConversationById.mockResolvedValue(null);
 
@@ -145,6 +146,28 @@ describe('a reload carrying a chat pointer nothing can resolve', () => {
         (region) => region.occupant === 'activity',
       ),
     ).toBe(false);
+  });
+
+  // #1582 M1: the same URL, the same code path, and the opposite outcome —
+  // because the SDK now separates "no such conversation" (404 -> null) from
+  // "the lookup did not answer" (anything else -> throw). Before that split
+  // the conversations route's `{success:false}` 500 arrived here as a miss and
+  // this region stayed shut on a REAL conversation's pointer, which archive#1284
+  // exists to prevent.
+  test('a lookup that fails rather than misses keeps the Activity reveal', async () => {
+    setUrl('/?chat=claude%3A1788672912443&dock=open');
+    fetchConversationById.mockRejectedValue(
+      Object.assign(new Error('Conversation lookup exploded'), { status: 500 }),
+    );
+
+    await mountReload();
+
+    await waitFor(() =>
+      expect(model?.regions.right).toMatchObject({
+        occupant: 'activity',
+        visible: true,
+      }),
+    );
   });
 
   test('still reveals Activity when the conversation exists but cannot be opened', async () => {

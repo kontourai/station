@@ -558,8 +558,9 @@ describe('useChatDockActiveChatSync', () => {
     expect(showSurface).not.toHaveBeenCalled();
   });
 
-  // station#1582: a lookup that answers "no such conversation" is the one
-  // outcome that carries no session to show. `?chat=` holds a chat's durable
+  // station#1582: a lookup that answers "no such conversation" — an HTTP 404,
+  // and since this slice ONLY a 404 (`fetchConversationById` throws for every
+  // other non-success) — is the one outcome that carries no session to show. `?chat=` holds a chat's durable
   // id (`activeChatDurableId`), which for a chat never promoted to a
   // conversation is its client session id -- and `serializeActiveChats` never
   // persists such a chat, so a reload of that URL is a guaranteed definitive
@@ -593,32 +594,48 @@ describe('useChatDockActiveChatSync', () => {
     expect(openConversation).not.toHaveBeenCalled();
   });
 
-  // archive#1284: the lookup itself throwing (e.g. a network
-  // error) is a resolution failure exactly like a definitive miss -- it
-  // must not be a silent no-op either.
-  it('reveals Activity for the session when the conversation lookup throws', async () => {
-    fetchConversationById.mockRejectedValue(new Error('network down'));
-    const setActiveSessionId = vi.fn();
+  // archive#1284: the lookup itself throwing is an UNRESOLVED pointer, not a
+  // definitive miss -- we never learned whether the conversation exists, so
+  // the reveal stands. station#1582 widened what reaches this branch: the
+  // conversations route answers a transient server fault with the same
+  // `{success:false}` envelope it uses for a miss, and the SDK now throws a
+  // `StationHttpError` for it rather than reporting the conversation absent.
+  it.each([
+    ['a network error', Object.assign(new Error('network down'), {})],
+    [
+      'a 500 from the conversations route',
+      Object.assign(new Error('Conversation lookup exploded'), { status: 500 }),
+    ],
+    [
+      'a 401 while the session re-authenticates',
+      Object.assign(new Error('authentication required'), { status: 401 }),
+    ],
+  ])(
+    'reveals Activity for the session when the lookup fails with %s',
+    async (_label, thrown) => {
+      fetchConversationById.mockRejectedValue(thrown);
+      const setActiveSessionId = vi.fn();
 
-    renderHook(() =>
-      useChatDockActiveChatSync({
-        activeChat: 'thread-network-error',
-        agentCatalogKey: '__agent:claude',
-        agentsLoaded: true,
-        apiBase: '/api',
-        sessions: [],
-        openConversation: vi.fn(),
-        setActiveSessionId,
-        updateParams,
-        showSurface,
-      }),
-    );
+      renderHook(() =>
+        useChatDockActiveChatSync({
+          activeChat: 'thread-network-error',
+          agentCatalogKey: '__agent:claude',
+          agentsLoaded: true,
+          apiBase: '/api',
+          sessions: [],
+          openConversation: vi.fn(),
+          setActiveSessionId,
+          updateParams,
+          showSurface,
+        }),
+      );
 
-    await waitFor(() =>
-      expect(showSurface).toHaveBeenCalledWith('activity', {
-        session: 'thread-network-error',
-      }),
-    );
-    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
-  });
+      await waitFor(() =>
+        expect(showSurface).toHaveBeenCalledWith('activity', {
+          session: 'thread-network-error',
+        }),
+      );
+      expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
+    },
+  );
 });

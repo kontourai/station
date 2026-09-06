@@ -259,6 +259,30 @@ describe('app-shell routing', () => {
       getParentView({ type } as unknown as Parameters<typeof getParentView>[0]),
     ).toBeNull();
   });
+  // #1582 H3 review (L3): three views moved off the old blanket-Home fallback
+  // onto a declared parent, and a tabless Registry onto none. They were part of
+  // the same change and unpinned; the connections pair now matches the siblings
+  // it belongs with rather than jumping to Home from two levels down.
+  test('getParentView declares the parents the Home fallback used to supply', () => {
+    expect(getParentView({ type: 'connections-computers' })).toEqual({
+      type: 'connections',
+    });
+    expect(
+      getParentView({ type: 'connections-engine-new', providerId: 'ollama' }),
+    ).toEqual({ type: 'connections-engines' });
+    // Its sibling, for contrast: an edit view already resolved this way.
+    expect(getParentView({ type: 'connections-engine-edit', id: 'a' })).toEqual(
+      {
+        type: 'connections-engines',
+      },
+    );
+    // Registry with no tab is a top-level destination, so it has no level up;
+    // a tab is one level inside it.
+    expect(getParentView({ type: 'registry' })).toBeNull();
+    expect(getParentView({ type: 'registry', tab: 'plugins' })).toEqual({
+      type: 'registry',
+    });
+  });
   test('resolveViewFromPath maps agent, connection, and project routes', () => {
     expect(resolveViewFromPath('/agents/new')).toEqual({ type: 'agent-new' });
     expect(resolveViewFromPath('/connections/models/demo')).toEqual({
