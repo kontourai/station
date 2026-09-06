@@ -205,6 +205,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Drives the changed-verification CLI through spawnSync against a real
   // fixture worktree to prove its dependency and selection behavior.
   'scripts/__tests__/changed-verification.test.ts',
+  // Builds a disposable diverged Git graph and runs real Git commands to
+  // distinguish candidate-only changes from base-only and direct-push ranges.
+  'scripts/__tests__/classify-ci-change.test.ts',
   // #3033: runs the pre-push UI-bundle guardrail as a real child process so
   // its exit STATUS is asserted, not just its pure decision functions — a
   // rejection path that has never executed is unproven.
