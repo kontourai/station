@@ -128,9 +128,12 @@ export function readProjectTaskRoomSourceSeal(
   scope: { projectId: string; taskId: string },
 ): unknown {
   return db
-    .prepare(`SELECT operation_id AS operationId,
-    source_home_ref AS sourceHomeRef, target_home_ref AS targetHomeRef,
-    checkpoint_json AS checkpointJson FROM project_task_room_source_seals
+    .prepare(`SELECT
+    CASE WHEN length(CAST(operation_id AS BLOB)) <= 1024 THEN operation_id END AS operationId,
+    CASE WHEN length(CAST(source_home_ref AS BLOB)) <= 1024 THEN source_home_ref END AS sourceHomeRef,
+    CASE WHEN length(CAST(target_home_ref AS BLOB)) <= 1024 THEN target_home_ref END AS targetHomeRef,
+    CASE WHEN length(CAST(checkpoint_json AS BLOB)) <= 4096 THEN checkpoint_json END AS checkpointJson
+    FROM project_task_room_source_seals
     WHERE project_id=? AND task_id=?`)
     .get(scope.projectId, scope.taskId);
 }

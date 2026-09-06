@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -1855,3 +1855,98 @@ it('proposal lookup reuses corruption refusal instead of returning unchecked ind
     await room.close();
   }
 });
+
+it('reads a copied closing seal without creating or releasing write authority', async () => {
+  const sourcePath = databasePath();
+  const source = history(sourcePath);
+  await source.open({ grant: grant('discover') });
+  expect(await source.readSourceSeal({ grant: grant('history-read') })).toEqual(
+    { kind: 'unsealed' },
+  );
+  expect((await source.append(message('before-copy'))).kind).toBe('committed');
+  const sealed = await source.sealSource({
+    grant: grant('home-transfer'),
+    ...sealIntent,
+  });
+  expect(sealed.kind).toBe('sealed');
+  await source.close();
+  const targetPath = databasePath();
+  copyFileSync(sourcePath, targetPath);
+  rmSync(sourcePath);
+  const target = history(targetPath);
+  try {
+    expect(
+      await target.readSourceSeal({ grant: grant('history-read') }),
+    ).toEqual(sealed);
+    expect(
+      await target.readSourceSeal({ grant: grant('history-read', 'denied') }),
+    ).toEqual({ kind: 'denied' });
+    expect(await target.append(message('target-has-no-authority'))).toEqual({
+      kind: 'denied',
+    });
+    expect(await target.read({ grant: grant('history-read') })).toMatchObject({
+      kind: 'available',
+      records: [{ body: { text: 'before-copy' } }],
+    });
+  } finally {
+    await target.close();
+  }
+});
+
+it('rechecks source-seal read authorization at delivery', async () => {
+  let checks = 0;
+  const source = history(undefined, {
+    capabilities: {
+      resolve: async (input) => {
+        if (input.required === 'history-read' && ++checks >= 2)
+          return { kind: 'revoked' };
+        return capabilities.resolve(input);
+      },
+    },
+  });
+  try {
+    await source.open({ grant: grant('discover') });
+    await source.sealSource({ grant: grant('home-transfer'), ...sealIntent });
+    expect(
+      await source.readSourceSeal({ grant: grant('history-read') }),
+    ).toEqual({ kind: 'denied' });
+    expect(checks).toBeGreaterThanOrEqual(2);
+  } finally {
+    await source.close();
+  }
+});
+
+it.each(['checkpoint', 'oversized', 'history'])(
+  'refuses %s corruption while retaining the source seal',
+  async (fault) => {
+    const path = databasePath();
+    const source = history(path);
+    try {
+      await source.open({ grant: grant('discover') });
+      await source.append(message('sealed-integrity'));
+      await source.sealSource({ grant: grant('home-transfer'), ...sealIntent });
+      if (fault === 'history')
+        rewriteCommittedRecord(path, 'sealed-integrity', (record) => {
+          record.body.text = 'tampered';
+        });
+      else {
+        const db = new DatabaseSync(path);
+        try {
+          db.prepare(
+            'UPDATE project_task_room_source_seals SET checkpoint_json=?',
+          ).run(fault === 'oversized' ? 'x'.repeat(65536) : '{}');
+        } finally {
+          db.close();
+        }
+      }
+      expect(
+        await source.readSourceSeal({ grant: grant('history-read') }),
+      ).toEqual({ kind: 'unavailable' });
+      expect((await source.append(message('cannot-clear-seal'))).kind).not.toBe(
+        'committed',
+      );
+    } finally {
+      await source.close();
+    }
+  },
+);

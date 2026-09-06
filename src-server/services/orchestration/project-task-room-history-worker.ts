@@ -135,6 +135,7 @@ type Request =
       channelId: string;
       proposalId: string;
     }
+  | { type: 'read-source-seal'; scope: ProjectTaskRoomScope; channelId: string }
   | { type: 'close' };
 if (
   !exactObject(workerData, [
@@ -364,6 +365,13 @@ function validRequest(value: unknown): value is Request {
   )
     return false;
   if (value.type === 'close') return exactObject(value, ['type']);
+  if (value.type === 'read-source-seal')
+    return (
+      exactObject(value, ['type', 'scope', 'channelId']) &&
+      validScope(value.scope) &&
+      typeof value.channelId === 'string' &&
+      value.channelId.length <= 256
+    );
   if (value.type === 'seal-source')
     return (
       exactObject(value, [
@@ -593,6 +601,59 @@ async function open(
       db.exec('ROLLBACK');
     } catch {}
     return { kind: 'unavailable' };
+  }
+}
+
+function inspectSourceSeal(
+  request: Extract<Request, { type: 'read-source-seal' }>,
+) {
+  db.exec('BEGIN');
+  try {
+    const room = head(request.scope);
+    if (
+      !room ||
+      room.channel_id !== request.channelId ||
+      room.project_slug !== request.scope.projectSlug
+    )
+      return { kind: 'denied' };
+    const all = db
+      .prepare(
+        'SELECT * FROM project_task_room_records WHERE channel_id=? AND epoch=? ORDER BY seq',
+      )
+      .iterate(room.channel_id, room.epoch) as IterableIterator<Row>;
+    if (!validateHistory(room, all)) return { kind: 'unavailable' };
+    const row = readProjectTaskRoomSourceSeal(db, request.scope) as
+      | {
+          operationId: unknown;
+          sourceHomeRef: unknown;
+          targetHomeRef: unknown;
+          checkpointJson: unknown;
+        }
+      | undefined;
+    if (!row) return { kind: 'unsealed' };
+    if (
+      ![row.operationId, row.sourceHomeRef, row.targetHomeRef].every(
+        (value) =>
+          typeof value === 'string' && value.length > 0 && value.length <= 256,
+      ) ||
+      row.sourceHomeRef === row.targetHomeRef ||
+      typeof row.checkpointJson !== 'string'
+    )
+      return { kind: 'unavailable' };
+    const sealedCheckpoint = JSON.parse(row.checkpointJson);
+    if (canonical(sealedCheckpoint) !== canonical(checkpoint(room)))
+      return { kind: 'unavailable' };
+    return {
+      kind: 'sealed',
+      seal: {
+        operationId: row.operationId,
+        sourceHomeRef: row.sourceHomeRef,
+        targetHomeRef: row.targetHomeRef,
+        checkpoint: sealedCheckpoint,
+      },
+    };
+  } finally {
+    db.exec('COMMIT');
   }
 }
 
@@ -1403,13 +1464,15 @@ async function handleRequest(message: unknown) {
         ? await open(message.request, Number(message.id))
         : message.request.type === 'append'
           ? await append(message.request, Number(message.id))
-          : message.request.type === 'seal-source'
-            ? await sealSource(message.request, Number(message.id))
-            : message.request.type === 'locate-proposal'
-              ? locateProposal(message.request)
-              : message.request.type === 'read'
-                ? read(message.request)
-                : { kind: 'closed' };
+          : message.request.type === 'read-source-seal'
+            ? inspectSourceSeal(message.request)
+            : message.request.type === 'seal-source'
+              ? await sealSource(message.request, Number(message.id))
+              : message.request.type === 'locate-proposal'
+                ? locateProposal(message.request)
+                : message.request.type === 'read'
+                  ? read(message.request)
+                  : { kind: 'closed' };
   } catch {
     result = { kind: 'unavailable' };
   }

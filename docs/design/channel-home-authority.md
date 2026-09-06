@@ -96,6 +96,16 @@ returns the same seal; a changed intent conflicts. History and document workers
 consult that seal inside their commit transactions. Reads and exact duplicate
 receipts remain available. There is no unseal operation.
 
+`ProjectTaskRoomHistory.readSourceSeal` lets the target inspect a copied
+closing seal using a read grant. It validates the retained history and exact
+closing checkpoint in one read transaction, bounds stored seal fields before
+loading them, and reauthorizes before returning the result. An unsealed room
+stays unsealed; corrupt or missing evidence never creates a replacement seal.
+Inspection grants no target write authority: copied sealed rooms still refuse
+new writes. A transfer coordinator must separately compare this observation
+with the authenticated source receipt and selected target identity before
+activation. No coordinator or activation endpoint is exposed by this reader.
+
 This barrier does not yet have a public runtime/HTTP caller. The supplied home
 references are intent bindings, not independently verified host identities.
 Target activation, the external authority adapter and cross-host acceptance
