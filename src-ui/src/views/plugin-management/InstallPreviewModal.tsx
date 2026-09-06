@@ -86,7 +86,7 @@ export function InstallPreviewModal({
                     }}
                   >
                     <span
-                      className={`plugins__cap plugins__cap--${component.type === 'agent' ? 'agent' : component.type === 'workspace' ? 'workspace' : component.type === 'provider' ? 'provider' : 'bundle'}`}
+                      className={`plugins__cap plugins__cap--${component.type === 'agent' ? 'agent' : component.type === 'layout' ? 'workspace' : component.type === 'provider' ? 'provider' : 'bundle'}`}
                     >
                       {component.type}
                     </span>
@@ -152,7 +152,7 @@ export function InstallPreviewModal({
                         {dependency.components.map((component) => (
                           <span
                             key={`${component.type}:${component.id}`}
-                            className={`plugins__cap plugins__cap--sm plugins__cap--${component.type === 'agent' ? 'agent' : component.type === 'workspace' ? 'workspace' : 'provider'}`}
+                            className={`plugins__cap plugins__cap--sm plugins__cap--${component.type === 'agent' ? 'agent' : component.type === 'layout' ? 'workspace' : 'provider'}`}
                           >
                             {component.type}:{component.id}
                           </span>

@@ -1,5 +1,6 @@
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import type { PluginComponent } from '@kontourai/station-contracts/plugin';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
@@ -248,13 +249,7 @@ export function registerPluginInstallRoutes(
           ...detectPluginConflicts(manifest, agentsDir, pluginsDir, logger),
           ...detectWorkspacePaneCatalogConflicts(manifest, projectHomeDir),
         ];
-        const components: Array<{
-          type: string;
-          id: string;
-          detail?: string;
-          conflict?: (typeof conflicts)[0];
-          skippable?: boolean;
-        }> = [];
+        const components: PluginComponent[] = [];
 
         for (const agent of manifest.agents || []) {
           const slug = agent.slug;

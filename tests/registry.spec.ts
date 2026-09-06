@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { DEMO_LAYOUT_PREVIEW } from './fixtures/plugin-preview';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
 import { dismissSetupLauncher } from './helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
@@ -199,23 +200,7 @@ async function mockRegistry(page: Page) {
       json:
         registryId === 'project-planner'
           ? { valid: false, code: 'registry-plugin-not-found' }
-          : {
-              valid: true,
-              manifest: {
-                name: 'demo-layout',
-                displayName: 'Demo Layout',
-                version: '1.0.0',
-              },
-              components: [{ type: 'layout', id: 'demo' }],
-              conflicts: [],
-              contentDigest: 'sha256:demo',
-              permissions: {
-                required: [],
-                autoGranted: [],
-                pendingConsent: [],
-              },
-              dependencies: [],
-            },
+          : DEMO_LAYOUT_PREVIEW,
     });
   });
   await page.route('**/api/plugins/reload', (route) =>
