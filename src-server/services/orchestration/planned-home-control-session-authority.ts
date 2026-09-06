@@ -132,6 +132,7 @@ function capabilityValid(
     identifier((value as PlannedHomeControlCapability).openId) &&
     Number.isSafeInteger((value as PlannedHomeControlCapability).generation) &&
     (value as PlannedHomeControlCapability).generation > 0 &&
+    typeof (value as PlannedHomeControlCapability).token === 'string' &&
     TOKEN.test((value as PlannedHomeControlCapability).token)
   );
 }
