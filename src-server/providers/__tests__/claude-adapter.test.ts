@@ -3722,19 +3722,21 @@ describe('ClaudeAdapter', () => {
         );
       });
 
-      test('keeps the installed CLI when it runs cleanly but reports no version', async () => {
+      test('falls back to the bundled CLI when the installed one runs cleanly but reports no version', async () => {
         const { adapter } = adapterWith({
           installedVersionOutput: 'claude: command output with no version\n',
           bundled: '2.1.224',
         });
 
-        // Exit 0 proves the binary the SDK will spawn can be spawned; only the
-        // comparison is missing.
-        expect(await startAndReadOptions(adapter)).toMatchObject({
-          pathToClaudeCodeExecutable: INSTALLED,
-        });
+        // Exit 0 proves the binary can be spawned, but the guard's rule is
+        // "never launch an OLDER Claude Code" and nothing established that
+        // this one is not (a wrapper exiting 0 without running Claude Code
+        // lands here too) -- review D1.
+        expect(await startAndReadOptions(adapter)).not.toHaveProperty(
+          'pathToClaudeCodeExecutable',
+        );
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed executable at ${INSTALLED}; it ran but reported no version, so it was not compared with the Claude Code 2.1.224 bundled with the Agent SDK.`,
+          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} ran but reported no version, so Station cannot confirm it is not older than the bundle.`,
         );
       });
 
@@ -4153,6 +4155,59 @@ describe('ClaudeAdapter', () => {
         expect(runCommand).not.toHaveBeenCalledWith(SHIM, ['--version']);
         expect(prerequisites?.[0]?.description).toBe(
           `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${NATIVE} (the Agent SDK bundles 2.1.224).`,
+        );
+      });
+
+      // #1551 review D3: the SDK spawns a `.js` entry as `node <entry>`, so the
+      // probe must too; probing `cli.js` directly can never exit 0, which
+      // would have routed every older-package install to the bundled CLI.
+      test('probes a followed cli.js entry through node and launches it', async () => {
+        const CLIJS =
+          'C:\\Users\\example\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js';
+        const runCommand = vi.fn().mockResolvedValue({
+          stdout: '2.1.261 (Claude Code)\n',
+          stderr: '',
+          code: 0,
+        });
+        mockBuildCliRuntimePrerequisites.mockResolvedValue([
+          {
+            id: 'claude-cli',
+            name: 'Claude CLI',
+            description: 'Required to launch the Claude runtime.',
+            status: 'installed',
+            category: 'required',
+          },
+        ]);
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter({
+          findBinary: async () => SHIM,
+          executablePlatform: 'win32',
+          executableFileExists: (candidate) => candidate === CLIJS,
+          runCommand,
+          readBundledVersion: () => '2.1.224',
+        });
+
+        const prerequisites = await adapter.getPrerequisites?.();
+        const sharedProbe =
+          mockBuildCliRuntimePrerequisites.mock.calls[0][0].runCommand;
+        await sharedProbe(SHIM, ['--version']);
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-1551-clijs',
+          cwd: 'C:\\workspace\\project',
+          modelId: 'claude-sonnet-4-6',
+        });
+
+        expect(runCommand).toHaveBeenCalledTimes(1);
+        expect(runCommand).toHaveBeenCalledWith(process.execPath, [
+          CLIJS,
+          '--version',
+        ]);
+        expect(mockQuery.mock.calls[0][0].options).toMatchObject({
+          pathToClaudeCodeExecutable: CLIJS,
+        });
+        expect(prerequisites?.[0]?.description).toBe(
+          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${CLIJS} (the Agent SDK bundles 2.1.224).`,
         );
       });
 

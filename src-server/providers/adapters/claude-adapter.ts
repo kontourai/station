@@ -148,6 +148,13 @@ const WINDOWS_SHIM_TARGET_SUFFIXES = [
   ['node_modules', '@anthropic-ai', 'claude-code', 'cli.js'],
 ];
 
+export type SpawnableClaudeExecutable = {
+  /** The path to hand the SDK, or `null` when Station refuses this answer. */
+  executable: string | null;
+  /** Why it was refused. `null` whenever `executable` is set. */
+  refusal: 'not-absolute' | 'unfollowable-launcher' | null;
+};
+
 /**
  * #1551: normalizes a resolver answer into something the Agent SDK can
  * actually spawn. A refused answer comes back as `executable: null` plus the
@@ -167,13 +174,6 @@ const WINDOWS_SHIM_TARGET_SUFFIXES = [
  * tests on macOS and Linux — the branch is otherwise unreachable off Windows,
  * and an unexecuted refusal path is an unproven one.
  */
-export type SpawnableClaudeExecutable = {
-  /** The path to hand the SDK, or `null` when Station refuses this answer. */
-  executable: string | null;
-  /** Why it was refused. `null` whenever `executable` is set. */
-  refusal: 'not-absolute' | 'unfollowable-launcher' | null;
-};
-
 export function resolveSpawnableClaudeExecutable(
   resolved: string,
   options: {
@@ -334,7 +334,13 @@ type ClaudeLaunchReason =
   | 'installed-version-unreadable'
   /**
    * The probe RAN cleanly but printed nothing version-shaped. Spawnability is
-   * proven; only the comparison is missing, so the installed CLI still wins.
+   * proven, but the rule this guard implements is "never launch an OLDER
+   * Claude Code", and nothing established that this one is not older (a
+   * wrapper that exits 0 without running Claude Code lands here too). The
+   * bundled copy is launched; the sentence says the installed one ran but
+   * reported no version. Uniform rule: the installed CLI wins only when
+   * Station read its version and it is not older, or when the bundle's own
+   * version could not be read.
    */
   | 'installed-version-unparsed'
   /**
@@ -402,7 +408,7 @@ function claudeExecutableSentence(
     case 'installed-version-unreadable':
       return `Station launches the ${bundled}; the installed \`claude\` at ${resolution.spawnable} did not report a version, so Station cannot confirm it runs or that it is not older than the bundle.`;
     case 'installed-version-unparsed':
-      return `Station launches the installed executable at ${resolution.spawnable}; it ran but reported no version, so it was not compared with the ${bundled}.`;
+      return `Station launches the ${bundled}; the installed \`claude\` at ${resolution.spawnable} ran but reported no version, so Station cannot confirm it is not older than the bundle.`;
     case 'bundled-unknown':
       return `Station launches the installed executable at ${resolution.spawnable}; the Claude Code version bundled with the Agent SDK could not be read, so no comparison was made (installed ${resolution.installedVersion ?? 'unknown'}).`;
     case 'not-absolute':
@@ -1561,12 +1567,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // would then be reported as this prerequisite's status. Readiness
       // measures what Station launches.
       runCommand: (command, args) =>
-        this.versionProbe(
-          command === executable.resolved && executable.spawnable
-            ? executable.spawnable
-            : command,
-          args,
-        ),
+        command === executable.resolved && executable.spawnable
+          ? this.executableVersionProbe(executable.spawnable, args)
+          : this.versionProbe(command, args),
       // The resolver's own answer, so install status keeps meaning "a
       // `claude` is on PATH" exactly as before; the sentence below reports
       // separately whether Station can hand THAT entry to the SDK.
@@ -2224,13 +2227,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // introduced by the fix -- the SDK's control protocol is versioned with
       // the CLI. Newer or equal wins; older loses.
       //
-      // The two "cannot compare" cases are NOT the same observation and do not
-      // resolve the same way. A probe that never completed cleanly is also the
-      // only spawnability signal Station has (the SDK spawns with the same
-      // no-shell mechanics), so it falls back to the bundled copy. A missing
-      // BUNDLED version, or a clean probe that simply printed no version,
-      // leaves the installed CLI in place -- "I could not look" must not
-      // silently become a downgrade.
+      // The "cannot compare" cases are NOT the same observation. A probe that
+      // never completed cleanly is also the only spawnability signal Station
+      // has (the SDK spawns with the same no-shell mechanics), so it falls
+      // back to the bundled copy; so does a clean probe that printed no
+      // version, because nothing then shows the installed copy is not older
+      // (review D1). Only a missing BUNDLED version leaves the installed CLI
+      // in place -- Station's own manifest being unreadable must not
+      // silently become a downgrade of a CLI that demonstrably runs.
       if (observed.kind === 'unreadable') {
         return {
           ...base,
@@ -2244,7 +2248,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       if (observed.kind !== 'version') {
         return {
           ...base,
-          launch: 'installed',
+          launch: 'bundled',
           reason: 'installed-version-unparsed',
         };
       }
@@ -2289,7 +2293,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private async installedClaudeVersion(
     executable: string,
   ): Promise<InstalledVersionObservation> {
-    const result = await this.versionProbe(executable, CLAUDE_VERSION_ARGS);
+    const result = await this.executableVersionProbe(
+      executable,
+      CLAUDE_VERSION_ARGS,
+    );
     if (!result || result.code !== 0) return { kind: 'unreadable' };
     const version = parseClaudeCodeVersion(
       `${result.stdout}\n${result.stderr}`,
@@ -2297,6 +2304,24 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return version
       ? { kind: 'version', version }
       : { kind: 'ran-without-version' };
+  }
+
+  /**
+   * Probe the executable Station will hand the SDK, the way the SDK spawns
+   * it: a `.js` entry (the older npm package's `cli.js`, reached through a
+   * followed Windows shim) runs as `node <entry>`, everything else directly.
+   * Probing a `.js` file directly can never succeed, so that arm would
+   * otherwise always read `unreadable` and fall back to the bundled copy
+   * (review D3). One memo entry either way, shared by readiness and the
+   * launch decision.
+   */
+  private executableVersionProbe(
+    executable: string,
+    args: string[],
+  ): Promise<CliCommandResult | null> {
+    return executable.toLowerCase().endsWith('.js')
+      ? this.versionProbe(process.execPath, [executable, ...args])
+      : this.versionProbe(executable, args);
   }
 
   /**
