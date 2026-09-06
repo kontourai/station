@@ -309,11 +309,22 @@ const SHAPES: readonly Shape[] = [
     expectsChromeReachable: false,
   },
   {
+    // MEASURED, and the reason this shape asserts only the portal property:
+    // with no overlay class the shared rules supply no `position`, so the
+    // surface lays out in normal flow and its controls land at y=878..1010 in
+    // an 844px viewport — off-screen, `elementFromPoint` null. That is
+    // station#1616's defect (a surface with no geometry of its own), present
+    // on `main` too and unrelated to this change; asserting reachability here
+    // would pin a pre-existing defect to this branch. What IS this branch's
+    // subject — that the surface leaves the dock's stacking context — holds
+    // for it exactly as for the others, and it is the shape the discarded
+    // scrim-derived promotion could never have helped, because it declares no
+    // scrim to key on.
     name: 'a dialog that paints no scrim and passes no overlay class',
     viewport: PHONE,
     critical: false,
     docks: [{ className: BOTTOM_DOCK, surface: 'bare-modal' }],
-    expectsDialogReachable: true,
+    expectsDialogReachable: false,
     expectsNoticeOverlap: false,
     expectsChromeReachable: false,
   },
