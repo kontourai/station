@@ -80,6 +80,16 @@ export function relTime(iso: string | null) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+/**
+ * An INSTANT, in the reader's own zone.
+ *
+ * #1536 R1: one convention for instants across the schedule panel — this and
+ * `CronPreview`'s occurrence list both render in the reader's zone with a short
+ * zone label, so "Next Fire" here and "Next fires" there cannot be read as
+ * disagreeing. The zone label is the part that was missing: an unlabelled local
+ * time beside a rule stated in ANOTHER zone (the schedule's) invited exactly
+ * that comparison. The RULE stays in the schedule's zone — see `cronToHuman`.
+ */
 export function localTime(iso: string | null) {
   if (!iso) return '-';
   const d = new Date(iso);
@@ -89,6 +99,7 @@ export function localTime(iso: string | null) {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    timeZoneName: 'short',
   });
 }
 

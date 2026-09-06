@@ -611,7 +611,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // waits are `until`-loops on process-table state with generous budgets, not
   // wall-clock bounds chosen on a quiet host.
   'src-server/services/ssh/__tests__/openssh-reachability.process.test.ts',
+  'src-server/services/orchestration/__tests__/planned-home-transfer-store.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts',
+  'src-server/services/ssh/__tests__/openssh-worker-probe.test.ts',
   'src-server/services/terminal/__tests__/terminal-subprocess-state.test.ts',
   'src-ui/src/contexts/__tests__/ApiBaseContext.test.tsx',
   'src-ui/src/contexts/__tests__/ApiBaseContext.no-duplicate-connection.test.tsx',
@@ -655,6 +657,16 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Chromium via `@playwright/test` to hit-test connections-flow controls
   // with and without an active banner.
   'src-ui/src/__tests__/ConnectionsSectionFrame.banner-hittest.test.tsx',
+  // #1536 E2: same shape again — launches a real Chromium via
+  // `@playwright/test` to measure the dock header's cascade-resolved
+  // identity/project-context geometry (unclipped overflow and wrapped
+  // one-line labels) at a squeezed and a comfortable width.
+  'src-ui/src/__tests__/ChatDockHeader.identityGeometry.test.tsx',
+  // #1536 B2: same shape again — launches a real Chromium via
+  // `@playwright/test` to prove the Task picker's dialog is not trapped by the
+  // animating message row it opens from (containing block and stacking
+  // context), which no jsdom assertion can observe.
+  'src-ui/src/__tests__/TaskPicker.messageStacking.test.tsx',
   // station#235: launches real Chromium against the actual compact Session
   // inventory markup and cascade-resolved CSS to measure its 390px heading
   // geometry and keyboard order. Browser launch ownership keeps it out of
