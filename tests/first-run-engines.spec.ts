@@ -1247,9 +1247,7 @@ async function openNewChatFromChrome(page: Page, chrome: NewChatChrome) {
     wideControl,
     'the phone chrome must not render a top-level New chat control',
   ).toHaveCount(0);
-  await page
-    .getByRole('button', { name: 'Chat actions', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
   // The sheet is a lazily imported chunk (`ChatDockMobileOverflowSheet`, kept
   // out of the entry bundle), so its first open is a module fetch that renders
   // nothing while it is in flight — more than Playwright's 5s expect default
@@ -1259,9 +1257,7 @@ async function openNewChatFromChrome(page: Page, chrome: NewChatChrome) {
   // The fixture's only agent is unavailable until `repair()`, so New chat has
   // no single chat-ready agent to open directly and lands on the picker —
   // an ordinary click, no event injection.
-  await sheet
-    .getByRole('menuitem', { name: 'New chat', exact: true })
-    .click();
+  await sheet.getByRole('menuitem', { name: 'New chat', exact: true }).click();
 }
 
 async function setupReturnFixture(page: Page, chrome: NewChatChrome = 'wide') {
