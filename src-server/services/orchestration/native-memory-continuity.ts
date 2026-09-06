@@ -10,6 +10,8 @@ export interface NativeMemorySessionIdentity {
   readonly userId?: string;
   readonly tenantId?: string;
   readonly projectId?: string;
+  readonly persistSession?: boolean;
+  readonly status?: string;
 }
 
 export interface NativeMemoryScope {
@@ -31,9 +33,8 @@ export interface NativeMemoryContinuityOwner {
   contextBoundaryForSuccessor(
     sessionId: string,
   ): Readonly<ConversationContextBoundaryMarker> | undefined;
-  /** Must apply the captured SessionReadScope, including to every predecessor. */
+  /** Must apply the captured SessionReadScope, including every canonical predecessor. */
   readSession(sessionId: string): Promise<NativeMemorySessionIdentity | null>;
-  /** Existing authority/turn owner; this module creates no authority of its own. */
   isAuthorityCurrent(): boolean | Promise<boolean>;
 }
 
@@ -43,9 +44,15 @@ export interface NativeMemoryContinuityBinding {
   readonly conversationId: string;
   readonly currentSessionId: string;
   readonly scope: Readonly<NativeMemoryScope>;
-  /** Existing native memory conversation IDs, oldest first, including current once. */
+  /** Existing native memory IDs, oldest first, including the current child once. */
   readonly sessionIds: readonly string[];
-  readonly cutReason: 'start' | 'empty-context' | 'identity-change';
+  /** Authorized canonical transcript prefix; never private provider memory. */
+  readonly canonicalPrefixSessionIds: readonly string[];
+  readonly cutReason:
+    | 'start'
+    | 'empty-context'
+    | 'identity-change'
+    | 'native-history-unavailable';
   isCurrent(): Promise<boolean>;
 }
 
@@ -57,7 +64,6 @@ export function isNativeMemoryContinuityBinding(
     typeof value === 'object' && value !== null && issuedBindings.has(value)
   );
 }
-
 export class NativeMemoryContinuityUnavailableError extends Error {
   readonly code = 'native_memory_continuity_unavailable';
   constructor() {
@@ -66,7 +72,6 @@ export class NativeMemoryContinuityUnavailableError extends Error {
     );
   }
 }
-
 function fail(): never {
   throw new NativeMemoryContinuityUnavailableError();
 }
@@ -80,8 +85,12 @@ function identifier(value: unknown): value is string {
 }
 function scopeSnapshot(value: NativeMemoryScope): Readonly<NativeMemoryScope> {
   if (value.provider !== 'station-agent' || !identifier(value.agentId)) fail();
-  const optional = ['connectionId', 'userId', 'tenantId', 'projectId'] as const;
-  for (const key of optional)
+  for (const key of [
+    'connectionId',
+    'userId',
+    'tenantId',
+    'projectId',
+  ] as const)
     if (value[key] !== undefined && !identifier(value[key])) fail();
   return Object.freeze({
     provider: 'station-agent',
@@ -116,8 +125,61 @@ function lineageSnapshot(value: Readonly<ConversationSessionLineage>) {
     createdAt: value.createdAt,
   };
 }
+function boundarySnapshot(
+  owner: NativeMemoryContinuityOwner,
+  row: Readonly<ConversationSessionLineage>,
+) {
+  const boundary = owner.contextBoundaryForSuccessor(row.sessionId);
+  if (!boundary) return null;
+  if (
+    boundary.conversationId !== row.conversationId ||
+    boundary.successorSessionId !== row.sessionId ||
+    boundary.predecessorSessionId !== row.predecessorSessionId ||
+    !identifier(boundary.boundaryId) ||
+    !['reserved', 'claimed', 'consumed', 'failed'].includes(boundary.status) ||
+    !['continue-from-history', 'empty-next-cold-start'].includes(
+      boundary.policy,
+    )
+  )
+    fail();
+  // Claim completion does not change the history decision. Immutable identity,
+  // cancellation, indeterminate outcome and policy replacement do change it.
+  return {
+    boundaryId: boundary.boundaryId,
+    conversationId: boundary.conversationId,
+    successorSessionId: boundary.successorSessionId,
+    predecessorSessionId: boundary.predecessorSessionId,
+    policy: boundary.policy,
+    actorId: boundary.actorId,
+    idempotencyKey: boundary.idempotencyKey,
+    createdAt: boundary.createdAt,
+  };
+}
+function identitySnapshot(
+  value: NativeMemorySessionIdentity,
+  sessionId: string,
+): NativeMemorySessionIdentity {
+  if (
+    value.sessionId !== sessionId ||
+    !identifier(value.provider) ||
+    (value.persistSession !== undefined &&
+      typeof value.persistSession !== 'boolean')
+  )
+    fail();
+  return {
+    sessionId,
+    provider: value.provider,
+    connectionId: value.connectionId,
+    agentId: value.agentId,
+    userId: value.userId,
+    tenantId: value.tenantId,
+    projectId: value.projectId,
+    persistSession: value.persistSession === false ? false : undefined,
+    status: value.status === 'dead' ? 'dead' : undefined,
+  };
+}
 
-/** Resolve only immutable lineage facts and authorized identities. No history is copied or written. */
+/** Resolve existing lineage and authorized identities. No history is copied or written. */
 export async function captureNativeMemoryContinuity(
   input: {
     readonly currentSessionId: string;
@@ -155,91 +217,69 @@ export async function captureNativeMemoryContinuity(
         fail();
       ids.add(row.sessionId);
     }
-    const sessionIds: string[] = [];
-    const identities: NativeMemorySessionIdentity[] = [];
-    const boundaries: unknown[] = [];
-    const visitedBoundaryRows: Readonly<ConversationSessionLineage>[] = [];
-    let cutReason: NativeMemoryContinuityBinding['cutReason'] = 'start';
+    // An empty boundary applies across harnesses, not just within the native leg.
+    let start = 0;
+    let reset = false;
+    const boundaries: ReturnType<typeof boundarySnapshot>[] = [];
     for (let index = lineage.length - 1; index >= 0; index--) {
-      const row = lineage[index];
-      const observed = await owner.readSession(row.sessionId);
-      if (
-        !observed ||
-        observed.sessionId !== row.sessionId ||
-        !(await owner.isAuthorityCurrent())
-      )
-        fail();
-      const identity = {
-        sessionId: observed.sessionId,
-        provider: observed.provider,
-        connectionId: observed.connectionId,
-        agentId: observed.agentId,
-        userId: observed.userId,
-        tenantId: observed.tenantId,
-        projectId: observed.projectId,
-      };
-      identities.push(identity);
+      const boundary = boundarySnapshot(owner, lineage[index]);
+      boundaries.unshift(boundary);
+      if (boundary?.policy === 'empty-next-cold-start') {
+        start = index;
+        reset = true;
+        break;
+      }
+    }
+    const relevant = lineage.slice(start);
+    const observedCurrent = await owner.readSession(currentSessionId);
+    if (!observedCurrent) fail();
+    const currentIdentity = identitySnapshot(observedCurrent, currentSessionId);
+    if (!sameScope(currentIdentity, scope)) fail();
+    const previous = await Promise.all(
+      relevant.slice(0, -1).map(async (row) => {
+        const observed = await owner.readSession(row.sessionId);
+        if (!observed) fail();
+        return identitySnapshot(observed, row.sessionId);
+      }),
+    );
+    const identities = [...previous, currentIdentity];
+    if (!(await owner.isAuthorityCurrent())) fail();
+    let nativeStart = identities.length - 1;
+    let cutReason: NativeMemoryContinuityBinding['cutReason'] = reset
+      ? 'empty-context'
+      : 'start';
+    for (let index = identities.length - 2; index >= 0; index--) {
+      const identity = identities[index];
       if (!sameScope(identity, scope)) {
-        if (index === lineage.length - 1) fail();
         cutReason = 'identity-change';
         break;
       }
-      sessionIds.push(row.sessionId);
-      visitedBoundaryRows.push(row);
-      const boundary = owner.contextBoundaryForSuccessor(row.sessionId);
-      if (boundary) {
-        if (
-          boundary.conversationId !== conversationId ||
-          boundary.successorSessionId !== row.sessionId ||
-          boundary.predecessorSessionId !== row.predecessorSessionId ||
-          !identifier(boundary.boundaryId) ||
-          !['reserved', 'claimed', 'consumed', 'failed'].includes(
-            boundary.status,
-          ) ||
-          !['continue-from-history', 'empty-next-cold-start'].includes(
-            boundary.policy,
-          )
-        )
-          fail();
-        // Claim completion does not change the history decision. Cancellation,
-        // indeterminate outcome, a replacement marker or changed policy does.
-        boundaries.push({
-          boundaryId: boundary.boundaryId,
-          successorSessionId: boundary.successorSessionId,
-          predecessorSessionId: boundary.predecessorSessionId,
-          policy: boundary.policy,
-        });
-        if (boundary.policy === 'empty-next-cold-start') {
-          cutReason = 'empty-context';
-          break;
-        }
+      if (identity.persistSession === false || identity.status === 'dead') {
+        cutReason = 'native-history-unavailable';
+        break;
       }
+      nativeStart = index;
     }
-    if (!(await owner.isAuthorityCurrent())) fail();
-    const latestBoundaries = visitedBoundaryRows.flatMap((row) => {
-      const boundary = owner.contextBoundaryForSuccessor(row.sessionId);
-      if (!boundary) return [];
-      if (
-        !['reserved', 'claimed', 'consumed', 'failed'].includes(boundary.status)
-      )
-        fail();
-      return [
-        {
-          boundaryId: boundary.boundaryId,
-          successorSessionId: boundary.successorSessionId,
-          predecessorSessionId: boundary.predecessorSessionId,
-          policy: boundary.policy,
-        },
-      ];
-    });
+    const latestBoundaries = relevant.map((row) =>
+      boundarySnapshot(owner, row),
+    );
     if (JSON.stringify(boundaries) !== JSON.stringify(latestBoundaries)) fail();
     const latest = owner
       .conversationSessions(conversationId)
       .map(lineageSnapshot);
-    if (JSON.stringify(lineage) !== JSON.stringify(latest)) fail();
+    const latestCurrent = owner.conversationForSession(currentSessionId);
+    if (
+      !latestCurrent ||
+      JSON.stringify(lineageSnapshot(latestCurrent)) !== JSON.stringify(last) ||
+      JSON.stringify(lineage) !== JSON.stringify(latest)
+    )
+      fail();
     return {
       conversationId,
-      sessionIds: sessionIds.reverse(),
+      sessionIds: relevant.slice(nativeStart).map((row) => row.sessionId),
+      canonicalPrefixSessionIds: relevant
+        .slice(0, nativeStart)
+        .map((row) => row.sessionId),
       cutReason,
       fingerprint: JSON.stringify({
         lineage,
@@ -257,6 +297,9 @@ export async function captureNativeMemoryContinuity(
       currentSessionId,
       scope,
       sessionIds: Object.freeze(snapshot.sessionIds),
+      canonicalPrefixSessionIds: Object.freeze(
+        snapshot.canonicalPrefixSessionIds,
+      ),
       cutReason: snapshot.cutReason,
       async isCurrent() {
         try {

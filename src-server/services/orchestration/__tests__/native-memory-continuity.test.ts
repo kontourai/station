@@ -77,6 +77,7 @@ test('same-engine native history preserves every chronological segment and curre
     f.owner,
   );
   expect(binding.sessionIds).toEqual(['a', 'b', 'c']);
+  expect(binding.canonicalPrefixSessionIds).toEqual([]);
   expect(binding.currentSessionId).toBe('c');
   expect(binding.cutReason).toBe('start');
   expect(await binding.isCurrent()).toBe(true);
@@ -127,6 +128,7 @@ test.each([
     );
     expect(binding.sessionIds).toEqual(['c']);
     expect(binding.cutReason).toBe('identity-change');
+    expect(binding.canonicalPrefixSessionIds).toEqual(['a', 'b']);
   },
 );
 
@@ -208,5 +210,83 @@ test('request identity is captured before the first await and malformed predeces
   expect(binding.currentSessionId).toBe('c');
   expect(binding.scope.agentId).toBe('agent-a');
   f.lineage[2].predecessorSessionId = 'a';
+  expect(await binding.isCurrent()).toBe(false);
+});
+
+test('a foreign handoff prefix survives later native children but never crosses an earlier empty reset', async () => {
+  const f = fixture();
+  f.sessions.set('b', { ...f.sessions.get('b')!, provider: 'claude-code' });
+  f.boundaries.set('b', f.boundary('empty-next-cold-start'));
+  f.denied.add('a'); // Outside the empty boundary: must not be read.
+  const first = await captureNativeMemoryContinuity(
+    { currentSessionId: 'c', scope: f.scope },
+    f.owner,
+  );
+  expect(first.canonicalPrefixSessionIds).toEqual(['b']);
+  expect(first.sessionIds).toEqual(['c']);
+  f.lineage.push({
+    conversationId: 'conversation',
+    sessionId: 'd',
+    ordinal: 3,
+    predecessorSessionId: 'c',
+    createdAt: 'later',
+  });
+  f.sessions.set('d', { sessionId: 'd', ...f.scope });
+  const next = await captureNativeMemoryContinuity(
+    { currentSessionId: 'd', scope: f.scope },
+    f.owner,
+  );
+  expect(next.canonicalPrefixSessionIds).toEqual(['b']);
+  expect(next.sessionIds).toEqual(['c', 'd']);
+  expect(Object.isFrozen(next.canonicalPrefixSessionIds)).toBe(true);
+  f.denied.add('b');
+  expect(await next.isCurrent()).toBe(false);
+});
+
+test.each([{ persistSession: false }, { status: 'dead' }])(
+  'unbacked native predecessor %j uses canonical context, never private native history',
+  async (change) => {
+    const f = fixture();
+    f.sessions.set('b', { ...f.sessions.get('b')!, ...change });
+    const binding = await captureNativeMemoryContinuity(
+      { currentSessionId: 'c', scope: f.scope },
+      f.owner,
+    );
+    expect(binding.sessionIds).toEqual(['c']);
+    expect(binding.canonicalPrefixSessionIds).toEqual(['a', 'b']);
+    expect(binding.cutReason).toBe('native-history-unavailable');
+  },
+);
+
+test('boundary identity changes inside the canonical prefix invalidate the whole read capability', async () => {
+  const f = fixture();
+  f.sessions.set('b', { ...f.sessions.get('b')!, provider: 'codex' });
+  f.boundaries.set('b', f.boundary('continue-from-history'));
+  const binding = await captureNativeMemoryContinuity(
+    { currentSessionId: 'c', scope: f.scope },
+    f.owner,
+  );
+  f.boundaries.get('b')!.boundaryId = 'replacement-boundary';
+  expect(await binding.isCurrent()).toBe(false);
+  f.boundaries.get('b')!.boundaryId = 'boundary-b';
+  const read = f.owner.readSession;
+  f.owner.readSession = async (id) => {
+    const result = await read(id);
+    if (id === 'a') f.boundaries.get('b')!.conversationId = 'foreign';
+    return result;
+  };
+  expect(await binding.isCurrent()).toBe(false);
+});
+
+test('normal ready/running status progress does not revoke a native history capability', async () => {
+  const f = fixture();
+  f.sessions.set('c', { ...f.sessions.get('c')!, status: 'ready' });
+  const binding = await captureNativeMemoryContinuity(
+    { currentSessionId: 'c', scope: f.scope },
+    f.owner,
+  );
+  f.sessions.set('c', { ...f.sessions.get('c')!, status: 'running' });
+  expect(await binding.isCurrent()).toBe(true);
+  f.sessions.set('b', { ...f.sessions.get('b')!, status: 'dead' });
   expect(await binding.isCurrent()).toBe(false);
 });
