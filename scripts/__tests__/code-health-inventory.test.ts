@@ -36,3 +36,27 @@ test('refuses paths outside the declared repository', () => {
     inventoryCodeHealthFiles('/tmp/project', ['../private.ts']),
   ).toThrow('leaves');
 });
+
+test('keeps launchers, generated native entrypoints, and unfamiliar files visible', () => {
+  const root = mkdtempSync(join(tmpdir(), 'code-health-kinds-'));
+  roots.push(root);
+  writeFileSync(join(root, 'station'), '#!/bin/sh\nexit 0\n');
+  writeFileSync(join(root, 'main.mm'), 'int main() { return 0; }');
+  writeFileSync(join(root, 'unknown.artifact'), Buffer.from([0, 1, 2]));
+  const result = inventoryCodeHealthFiles(root, [
+    'station',
+    'main.mm',
+    'unknown.artifact',
+  ]);
+  expect(result.files).toHaveLength(3);
+  expect(result.files.find((file) => file.path === 'station')).toMatchObject({
+    kind: 'launcher',
+    binary: false,
+  });
+  expect(result.files.find((file) => file.path === 'main.mm')).toMatchObject({
+    kind: 'native',
+  });
+  expect(
+    result.files.find((file) => file.path === 'unknown.artifact'),
+  ).toMatchObject({ kind: 'other', binary: true });
+});

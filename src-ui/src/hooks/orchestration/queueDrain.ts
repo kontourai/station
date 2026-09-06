@@ -144,6 +144,7 @@ export function drainQueuedMessageOnTurnCompleted(
     dispatchForeground({
       apiBase,
       sessionId: threadId,
+      clientTurnId: clientId,
       agentSlug: current.agentSlug,
       projectSlug: continueUnbound ? undefined : current.projectSlug,
       model: current.model,

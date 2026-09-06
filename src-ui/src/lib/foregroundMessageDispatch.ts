@@ -24,7 +24,7 @@ export async function dispatchForeground(input: {
   ambientContext?: string;
   clientTurnId: string;
   automaticBackground?: boolean;
-  signal: AbortSignal;
+  signal?: AbortSignal;
 }) {
   const resolved = resolveTurnModel(input);
   const defaultRequested = resolved.kind === 'engine-selected';

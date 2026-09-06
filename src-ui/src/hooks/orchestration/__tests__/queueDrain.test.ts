@@ -148,6 +148,9 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
       'environment',
     );
     const state = activeChatsStore.getSnapshot()[threadId];
+    expect(sendExecutionMessageMock.mock.calls[0][1].clientTurnId).toBe(
+      state.messages?.[state.messages.length - 1].clientId,
+    );
     expect(state.status).toBe('sending');
     expect(state.messages?.[state.messages.length - 1]).toMatchObject({
       role: 'user',

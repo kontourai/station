@@ -6,7 +6,11 @@ const KINDS = new Map([
   ...['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'].map(
     (ext) => [ext, 'javascript-typescript'],
   ),
-  ...['.rs', '.swift', '.kt'].map((ext) => [ext, 'native']),
+  ...['.rs', '.swift', '.kt', '.c', '.cpp', '.h', '.m', '.mm'].map((ext) => [
+    ext,
+    'native',
+  ]),
+  ...['.html', '.vue', '.svelte'].map((ext) => [ext, 'markup']),
   ...['.sh', '.ps1'].map((ext) => [ext, 'shell']),
   ...['.css', '.scss'].map((ext) => [ext, 'styles']),
   ...['.json', '.yaml', '.yml', '.toml'].map((ext) => [ext, 'configuration']),
@@ -16,8 +20,7 @@ const KINDS = new Map([
 export function inventoryCodeHealthFiles(root, paths) {
   const files = [];
   for (const path of [...new Set(paths)].sort()) {
-    const kind = KINDS.get(extname(path));
-    if (!kind) continue;
+    let kind = KINDS.get(extname(path)) ?? 'other';
     const target = resolve(root, path);
     const inside = relative(resolve(root), target);
     if (
@@ -56,13 +59,26 @@ export function inventoryCodeHealthFiles(root, paths) {
       continue;
     }
     const bytes = readFileSync(target);
+    if (kind === 'other' && bytes[0] === 35 && bytes[1] === 33)
+      kind = 'launcher';
+    if (
+      ['Dockerfile', 'Containerfile', 'justfile', 'Makefile'].includes(
+        path.split('/').pop(),
+      )
+    )
+      kind = 'configuration';
+    const binary = bytes.includes(0);
     files.push({
       path,
       kind,
       status: 'inventoried',
+      binary,
+      mode: info.mode,
       sha256: createHash('sha256').update(bytes).digest('hex'),
       bytes: bytes.length,
-      lines: bytes.reduce((sum, byte) => sum + (byte === 10 ? 1 : 0), 0),
+      lines: binary
+        ? undefined
+        : bytes.reduce((sum, byte) => sum + (byte === 10 ? 1 : 0), 0),
       test:
         /(__tests__\/|\.(test|spec)\.)/.test(path) || path.startsWith('tests/'),
     });

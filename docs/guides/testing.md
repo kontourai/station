@@ -4,7 +4,8 @@
 
 `npm run audit:code-health` runs the installed Fallow version's full dead-code,
 complexity, and duplication analyses. It also records a byte-hashed inventory
-of tracked and unignored code/configuration, including native files. The normal
+of the tracked and unignored tree, including extensionless launchers and native
+entrypoints. Unrecognized files remain visible instead of being silently excluded. The normal
 `npm run fallow:audit` command is a changed-file review, not a full-tree audit.
 
 `npm run test:full:audit` is the coordinated full-corpus diagnostic that continues
