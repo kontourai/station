@@ -9,7 +9,11 @@ import type {
 } from '@kontourai/station-contracts/project-task-room';
 import { afterEach, expect, test } from 'vitest';
 import { EventStore } from '../event-store.js';
-import { createPlannedHomeTransferCoordinator } from '../planned-home-transfer-coordinator.js';
+import { createPlannedHomeAdmissionStore } from '../planned-home-admission-store.js';
+import {
+  createLocalProjectTaskRoomTransferOwners,
+  createPlannedHomeTransferCoordinator,
+} from '../planned-home-transfer-coordinator.js';
 import {
   createSqlitePlannedHomeTransferStore,
   type PlannedHomeTransferStore,
@@ -101,12 +105,16 @@ function rootPath(): string {
   return root;
 }
 
-function decisionStore(root: string): PlannedHomeTransferStore {
+function decisionStore(
+  root: string,
+  beforePrepare?: (database: DatabaseSync) => void,
+): PlannedHomeTransferStore {
   const database = new DatabaseSync(join(root, 'controller.sqlite'));
   databases.push(database);
   database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL');
   const store = createSqlitePlannedHomeTransferStore(database);
   expect(store.initialize(owner)).toMatchObject({ kind: 'stored' });
+  beforePrepare?.(database);
   expect(store.prepare(intent)).toMatchObject({
     kind: 'stored',
     value: { phase: 'prepared' },
@@ -128,8 +136,10 @@ function coordinator(
   return createPlannedHomeTransferCoordinator({
     store,
     tenantId,
-    source: { history: source, grant: grant('home-transfer') },
-    target: { history: target, grant: grant('history-read') },
+    ...createLocalProjectTaskRoomTransferOwners({
+      source: { history: source, grant: grant('home-transfer') },
+      target: { history: target, grant: grant('history-read') },
+    }),
   });
 }
 
@@ -142,11 +152,24 @@ const message = (proposalId: string) => ({
   },
 });
 
-test('seals the real source, waits for a real restored target, then commits without granting execution', async () => {
+test('seals the real source, waits for restored target and settled admission, then commits without granting execution', async () => {
   const root = rootPath();
   const sourcePath = join(root, 'source.sqlite');
   const targetPath = join(root, 'target.sqlite');
-  const store = decisionStore(root);
+  const admission = {
+    tenantId,
+    channelId,
+    admissionId: 'execution-1',
+    ownerRevision: 0,
+    homeRef: sourceHomeRef,
+    kind: 'execution' as const,
+    intentDigest: 'd'.repeat(64),
+  };
+  let admissions!: ReturnType<typeof createPlannedHomeAdmissionStore>;
+  const store = decisionStore(root, (database) => {
+    admissions = createPlannedHomeAdmissionStore(database, () => true);
+    expect(admissions.begin(admission).kind).toBe('stored');
+  });
   const source = room(sourcePath);
   const unavailableTarget = room(targetPath);
   await source.history.open({ grant: grant('discover') });
@@ -183,11 +206,22 @@ test('seals the real source, waits for a real restored target, then commits with
 
   const restoredSource = room(sourcePath);
   const restoredTarget = room(targetPath);
-  const committed = await coordinator(
+  const driver = coordinator(
     store,
     restoredSource.history,
     restoredTarget.history,
-  ).advance(operationId);
+  );
+  expect(await driver.advance(operationId)).toMatchObject({
+    kind: 'pending',
+    reason: 'admission-pending',
+    decision: { phase: 'target-ready' },
+    executionAuthorityTransferred: false,
+    executionResumeAvailable: false,
+  });
+  expect(
+    admissions.finish({ ...admission, receiptDigest: 'e'.repeat(64) }).kind,
+  ).toBe('stored');
+  const committed = await driver.advance(operationId);
   expect(committed).toMatchObject({
     kind: 'decision-committed',
     decision: { phase: 'committed', committedRevision: 1 },
@@ -333,12 +367,12 @@ test.each(['publication-pending', 'execution-pending'] as const)(
       store,
       tenantId,
       source: {
-        history: { sealSource: async () => ({ kind: reason }) },
-        grant: grant('home-transfer'),
+        ownerIdentity: {},
+        ensureClosed: async () => ({ kind: reason }),
       },
       target: {
-        history: { readSourceSeal: async () => ({ kind: 'unsealed' }) },
-        grant: grant('history-read'),
+        ownerIdentity: {},
+        readSeal: async () => ({ kind: 'unsealed' }),
       },
     }).advance(operationId);
     expect(result).toMatchObject({
@@ -355,6 +389,49 @@ test.each(['publication-pending', 'execution-pending'] as const)(
   },
 );
 
+test('keeps a read-only unsealed source prepared without recording closure', async () => {
+  const root = rootPath();
+  const durable = decisionStore(root);
+  let closureWrites = 0;
+  let observedIntent: unknown;
+  const store: PlannedHomeTransferStore = {
+    ...durable,
+    async recordClosure(...args) {
+      closureWrites += 1;
+      return durable.recordClosure(...args);
+    },
+  };
+  const result = await createPlannedHomeTransferCoordinator({
+    store,
+    tenantId,
+    source: {
+      ownerIdentity: {},
+      ensureClosed: async (persistedIntent) => {
+        observedIntent = persistedIntent;
+        return { kind: 'unsealed' };
+      },
+    },
+    target: {
+      ownerIdentity: {},
+      readSeal: async () => ({ kind: 'unavailable' }),
+    },
+  }).advance(operationId);
+  expect(observedIntent).toEqual(intent);
+  expect(Object.isFrozen(observedIntent)).toBe(true);
+  expect(closureWrites).toBe(0);
+  expect(result).toMatchObject({
+    kind: 'pending',
+    reason: 'source-not-closed',
+    decision: { phase: 'prepared' },
+    executionAuthorityTransferred: false,
+    executionResumeAvailable: false,
+  });
+  expect(await durable.resolve(tenantId, operationId)).toMatchObject({
+    kind: 'stored',
+    value: { phase: 'prepared' },
+  });
+});
+
 test('returns denied when captured source authority is revoked', async () => {
   const root = rootPath();
   const store = decisionStore(root);
@@ -369,11 +446,13 @@ test('returns denied when captured source authority is revoked', async () => {
     await createPlannedHomeTransferCoordinator({
       store,
       tenantId,
-      source: { history: source.history, grant: grant('home-transfer') },
-      target: {
-        history: { readSourceSeal: async () => ({ kind: 'unsealed' }) },
-        grant: grant('history-read'),
-      },
+      ...createLocalProjectTaskRoomTransferOwners({
+        source: { history: source.history, grant: grant('home-transfer') },
+        target: {
+          history: { readSourceSeal: async () => ({ kind: 'unsealed' }) },
+          grant: grant('history-read'),
+        },
+      }),
     }).advance(operationId),
   ).toMatchObject({
     kind: 'denied',
