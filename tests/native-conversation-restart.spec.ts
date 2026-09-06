@@ -71,8 +71,19 @@ async function api<T>(
     ...(data === undefined ? {} : { body: JSON.stringify(data) }),
     signal: AbortSignal.timeout(30_000),
   });
-  expect(response.ok, `${method} ${path}: HTTP ${response.status}`).toBe(true);
-  return (await response.json()) as T;
+  const body = await response.json();
+  // Keep only the bounded error fields from this controlled API exchange;
+  // credentials, request headers, and full runtime records are never logged.
+  const error = JSON.stringify({
+    code: body?.code ?? body?.error?.code,
+    message:
+      typeof body?.error === 'string' ? body.error : body?.error?.message,
+  }).slice(0, 2_000);
+  expect(
+    response.ok,
+    `${method} ${path}: HTTP ${response.status} ${error}`,
+  ).toBe(true);
+  return body as T;
 }
 async function completed(
   live: LiveStation,
@@ -189,7 +200,36 @@ for (const runtimeFramework of ['voltagent', 'strands'] as const) {
         slug: agentSlug,
         name: 'Native restart Agent',
         prompt: 'Answer in one short sentence.',
+        execution: {
+          modelConnectionId: 'native-restart-model',
+          modelId: MODEL,
+        },
       });
+      await expect
+        .poll(
+          async () => {
+            const catalog = await api<{
+              catalogState?: string;
+              data: Array<{
+                slug: string;
+                available?: boolean;
+                unavailableReason?: string;
+              }>;
+            }>(live, '/api/agents');
+            const agent = catalog.data.find(
+              (candidate) => candidate.slug === agentSlug,
+            );
+            return {
+              stable: catalog.catalogState !== 'reconciling',
+              available: agent?.available,
+              ...(agent?.unavailableReason
+                ? { reason: agent.unavailableReason }
+                : {}),
+            };
+          },
+          { timeout: 30_000 },
+        )
+        .toMatchObject({ stable: true, available: true });
       expect(await api(live, '/api/system/runtime')).toEqual({
         runtime: runtimeFramework,
       });
