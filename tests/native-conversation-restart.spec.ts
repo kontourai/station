@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -213,6 +213,12 @@ for (const { runtimeFramework, origin } of restartProfiles) {
       const agentSlug = 'native-restart-agent';
       const lifecycle = { runtimeFramework, deterministicReadiness: false };
       const requests: ModelRequest[] = [];
+      const evidenceRoot = join(
+        '.kontourai/native-context-browser',
+        basename(process.env.STATION_E2E_OUTPUT_DIR ?? 'manual'),
+        `${runtimeFramework}-${origin}`,
+      );
+      mkdirSync(evidenceRoot, { recursive: true });
       await createRepository(repository, 'native-restart');
       await startStation(live, true, lifecycle);
       // Persist the boot selection through the real config owner. A feature
@@ -225,6 +231,10 @@ for (const { runtimeFramework, origin } of restartProfiles) {
           mkdirSync(testInfo.outputDir, { recursive: true });
           writeFileSync(
             testInfo.outputPath('model-requests.json'),
+            JSON.stringify(requests, null, 2),
+          );
+          writeFileSync(
+            join(evidenceRoot, 'model-requests.json'),
             JSON.stringify(requests, null, 2),
           );
         },
