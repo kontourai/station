@@ -12,23 +12,36 @@ const buffer: TelemetryEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 const FLUSH_INTERVAL = 10_000;
 const MAX_BUFFERED_EVENTS = 1000;
+let flushInFlight: Promise<void> | null = null;
 
-async function flush() {
-  if (buffer.length === 0) return;
+function flush(): Promise<void> {
+  if (flushInFlight) return flushInFlight;
+  if (buffer.length === 0) return Promise.resolve();
   const events = buffer.splice(0);
-  try {
-    const apiBase = await _getApiBase();
-    await fetch(`${apiBase}/api/telemetry/events`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        [STATION_PLUGIN_HEADER]: _getPluginName(),
-      },
-      body: JSON.stringify({ events }),
-    });
-  } catch {
-    /* best-effort */
-  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
+  flushInFlight = (async () => {
+    try {
+      const apiBase = await _getApiBase();
+      await fetch(`${apiBase}/api/telemetry/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          [STATION_PLUGIN_HEADER]: _getPluginName(),
+        },
+        body: JSON.stringify({ events }),
+        signal: controller.signal,
+      });
+    } catch {
+      /* best-effort diagnostics */
+    } finally {
+      clearTimeout(timeout);
+    }
+  })().finally(() => {
+    flushInFlight = null;
+    if (buffer.length) scheduleFlush();
+  });
+  return flushInFlight;
 }
 
 function scheduleFlush() {

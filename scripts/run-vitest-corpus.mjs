@@ -15,6 +15,7 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
+import { FULL_REGRESSION_PHASES } from './verification-lanes.mjs';
 import {
   discoverVitestResourceGroups,
   ORDINARY_MAX_WORKERS,
@@ -175,6 +176,7 @@ export function runWindowsSerializedCorpus({
   root = process.cwd(),
   spawnSync = defaultSpawnSync,
   signal,
+  timeoutMs,
   groupName,
   shard,
   groups,
@@ -205,6 +207,7 @@ export function runWindowsSerializedCorpus({
     encoding: 'utf8',
     windowsHide: true,
     maxBuffer: OUTPUT_LIMIT_BYTES,
+    ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
   });
   const stdout = result.stdout ?? '';
   const stderr = result.stderr ?? '';
@@ -221,6 +224,9 @@ export function runWindowsSerializedCorpus({
       selected?.resultName ?? selected?.name ?? 'windows-serialized-fallback',
     status: result.status,
     passed: result.status === 0 && !error,
+    ...(result.signal || result.error?.code === 'ETIMEDOUT'
+      ? { cancelled: true }
+      : {}),
     error: error ? String(error.message ?? error) : null,
     stdout,
     stderr,
@@ -458,16 +464,41 @@ export async function runVitestCorpus({
       return { passed: false, results };
     }
     const files = groupFiles(resolvedGroups, descriptor.name);
-    const result =
-      platform === 'win32'
-        ? runWindowsSerialized({
-            root,
-            signal,
-            groupName: descriptor.name,
-            shard: descriptor.shard,
-            groups: resolvedGroups,
-          })
-        : await runGroup(descriptor, files, { root, signal });
+    const phase = FULL_REGRESSION_PHASES.find(
+      (entry) =>
+        entry.id === `test-full-${descriptor.resultName ?? descriptor.name}`,
+    );
+    if (keepGoing && !phase)
+      throw new Error('Audit group has no declared execution budget');
+    const groupController = keepGoing ? new AbortController() : null;
+    const abortGroup = () => groupController?.abort(signal?.reason);
+    signal?.addEventListener('abort', abortGroup, { once: true });
+    const timer = groupController
+      ? setTimeout(
+          () => groupController.abort('group execution deadline'),
+          phase.timeoutMs,
+        )
+      : null;
+    let result;
+    try {
+      result =
+        platform === 'win32'
+          ? runWindowsSerialized({
+              root,
+              signal: groupController?.signal ?? signal,
+              groupName: descriptor.name,
+              shard: descriptor.shard,
+              groups: resolvedGroups,
+              ...(keepGoing ? { timeoutMs: phase.timeoutMs } : {}),
+            })
+          : await runGroup(descriptor, files, {
+              root,
+              signal: groupController?.signal ?? signal,
+            });
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+      signal?.removeEventListener('abort', abortGroup);
+    }
     results.push(result);
     onResult?.(result);
     if (

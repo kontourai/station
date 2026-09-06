@@ -9,7 +9,9 @@ entrypoints. Unrecognized files remain visible instead of being silently exclude
 `npm run fallow:audit` command is a changed-file review, not a full-tree audit.
 
 `npm run test:full:audit` is the coordinated full-corpus diagnostic that continues
-after independent assertion failures. It retains a failing verdict and stops on
+after independent assertion failures. It has a 60-minute aggregate execution
+budget and retains the existing cataloged per-group budgets; individual test
+timeouts are unchanged. It retains a failing verdict and stops on
 cancellation, truncated output, or unsafe process cleanup. The ordinary
 `npm run test:full` retains its fail-fast behavior. Neither is promotion evidence.
 

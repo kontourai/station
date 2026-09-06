@@ -354,7 +354,7 @@ export const LANES = Object.freeze([
     completion: false,
     diagnostic: true,
     weight: 80,
-    timeoutMs: 20 * 60_000,
+    timeoutMs: 60 * 60_000,
     ownedOutputs: Object.freeze(['packages/cli/dist/']),
     manifest: MANIFEST_NONE,
     trigger: 'repository-wide diagnostic audit',

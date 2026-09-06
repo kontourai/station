@@ -31,3 +31,35 @@ test('bounds a telemetry burst while keeping one scheduled flush', async () => {
     ),
   ).toEqual(['after-flush']);
 });
+
+test('coalesces flushes, aborts a stalled request, and retains the next batch', async () => {
+  vi.useFakeTimers();
+  _setApiBase('https://telemetry.example.test');
+  let signal: AbortSignal | undefined;
+  const fetch = vi
+    .fn()
+    .mockImplementationOnce((_url: string, init: RequestInit) => {
+      signal = init.signal as AbortSignal;
+      return new Promise((_resolve, reject) =>
+        signal!.addEventListener('abort', () => reject(new Error('aborted'))),
+      );
+    })
+    .mockResolvedValue({ ok: true });
+  vi.stubGlobal('fetch', fetch);
+  telemetry.track('first');
+  const first = telemetry.flush();
+  await vi.advanceTimersByTimeAsync(0);
+  telemetry.track('next');
+  const joined = telemetry.flush();
+  expect(fetch).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(5000);
+  await Promise.all([first, joined]);
+  expect(signal?.aborted).toBe(true);
+  await telemetry.flush();
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(
+    JSON.parse(fetch.mock.calls[1][1].body).events.map(
+      (event: { event: string }) => event.event,
+    ),
+  ).toEqual(['next']);
+});

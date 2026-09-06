@@ -1977,4 +1977,5 @@ failed or malformed reads instead of reporting an empty history.
 API-base initialization wakes pending callers when configuration is published,
 with the existing 500 ms failure bound; later reads observe the latest configured
 base. Best-effort SDK telemetry retains at most 1,000 events per flush interval
-and drops additional events in that interval. It is not an accounting ledger.
+and drops additional events in that interval. Flushes are single-flight with a
+five-second request timeout. It is not an accounting ledger.
