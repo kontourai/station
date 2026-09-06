@@ -329,3 +329,39 @@ test('authorizing a full native history grows linearly with its Session count', 
   expect(small).toBeGreaterThan(0);
   expect(large).toBeLessThanOrEqual(small * 2.2);
 });
+
+test('lost current-child memory refuses instead of manufacturing an empty history', async () => {
+  const f = await fixture();
+  await f.adapter.addMessage(
+    text('current-prior', 'assistant', 'Current child already had history'),
+    'owner',
+    'c',
+  );
+  const history = await f.companion();
+  await f.adapter.deleteConversation('c');
+  await expect(history.read(f.adapter, 'owner', 'c')).rejects.toMatchObject({
+    code: 'native_memory_continuity_unavailable',
+  });
+});
+
+test('only owner-certified first use allows an absent current-child record', async () => {
+  const f = await fixture();
+  await f.adapter.deleteConversation('c');
+  const history = createNativeMemoryHistoryCompanion({
+    binding: await f.capture(),
+    allowMissingCurrentRecord: true,
+    readCanonicalSession: async () => [
+      text('foreign-prefix', 'assistant', 'Earlier authorized context'),
+    ],
+  });
+  expect(
+    (await history.read(f.adapter, 'owner', 'c')).map((message) => message.id),
+  ).toEqual([
+    'foreign-prefix',
+    'first-user',
+    'first-answer',
+    'second-user',
+    'second-answer',
+  ]);
+  expect(await f.adapter.getConversation('c')).toBeNull();
+});

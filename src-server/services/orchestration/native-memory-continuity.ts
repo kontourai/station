@@ -9,7 +9,9 @@ export interface NativeMemorySessionIdentity {
   readonly agentId?: string;
   readonly userId?: string;
   readonly tenantId?: string;
-  readonly projectId?: string;
+  readonly projectSlug?: string;
+  readonly cwd?: string;
+  readonly environmentId?: string;
   readonly persistSession?: boolean;
   readonly status?: string;
 }
@@ -20,7 +22,9 @@ export interface NativeMemoryScope {
   readonly agentId: string;
   readonly userId?: string;
   readonly tenantId?: string;
-  readonly projectId?: string;
+  readonly projectSlug?: string;
+  readonly cwd?: string;
+  readonly environmentId?: string;
 }
 
 export interface NativeMemoryContinuityOwner {
@@ -91,7 +95,9 @@ function scopeSnapshot(value: NativeMemoryScope): Readonly<NativeMemoryScope> {
     'connectionId',
     'userId',
     'tenantId',
-    'projectId',
+    'projectSlug',
+    'cwd',
+    'environmentId',
   ] as const)
     if (value[key] !== undefined && !identifier(value[key])) fail();
   return Object.freeze({
@@ -102,7 +108,13 @@ function scopeSnapshot(value: NativeMemoryScope): Readonly<NativeMemoryScope> {
       : {}),
     ...(value.userId !== undefined ? { userId: value.userId } : {}),
     ...(value.tenantId !== undefined ? { tenantId: value.tenantId } : {}),
-    ...(value.projectId !== undefined ? { projectId: value.projectId } : {}),
+    ...(value.projectSlug !== undefined
+      ? { projectSlug: value.projectSlug }
+      : {}),
+    ...(value.cwd !== undefined ? { cwd: value.cwd } : {}),
+    ...(value.environmentId !== undefined
+      ? { environmentId: value.environmentId }
+      : {}),
   });
 }
 function sameScope(
@@ -115,7 +127,9 @@ function sameScope(
     value.connectionId === scope.connectionId &&
     value.userId === scope.userId &&
     value.tenantId === scope.tenantId &&
-    value.projectId === scope.projectId
+    value.projectSlug === scope.projectSlug &&
+    value.cwd === scope.cwd &&
+    value.environmentId === scope.environmentId
   );
 }
 function lineageSnapshot(value: Readonly<ConversationSessionLineage>) {
@@ -175,7 +189,9 @@ function identitySnapshot(
     agentId: value.agentId,
     userId: value.userId,
     tenantId: value.tenantId,
-    projectId: value.projectId,
+    projectSlug: value.projectSlug,
+    cwd: value.cwd,
+    environmentId: value.environmentId,
     persistSession: value.persistSession === false ? false : undefined,
     status: value.status === 'dead' ? 'dead' : undefined,
   };

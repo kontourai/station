@@ -41,6 +41,8 @@ function selectMessages(messages: UIMessage[], options?: GetMessagesOptions) {
 /** Reads existing records in lineage order; history options apply to the composed prompt. */
 export function createNativeMemoryHistoryCompanion(input: {
   binding: NativeMemoryContinuityBinding;
+  /** Captured before this dispatch: no earlier native turn used the current child. */
+  allowMissingCurrentRecord?: boolean;
   /** Canonical, authorized user/assistant projection for an earlier harness leg. */
   readCanonicalSession(sessionId: string): Promise<UIMessage[]>;
 }): NativeMemoryHistoryCompanion {
@@ -91,7 +93,11 @@ export function createNativeMemoryHistoryCompanion(input: {
         let stored: UIMessage[];
         if (segment.native) {
           const record = await adapter.getConversation(segment.sessionId);
-          if (!record && segment.sessionId === binding.currentSessionId)
+          if (
+            !record &&
+            segment.sessionId === binding.currentSessionId &&
+            input.allowMissingCurrentRecord === true
+          )
             stored = [];
           else {
             if (

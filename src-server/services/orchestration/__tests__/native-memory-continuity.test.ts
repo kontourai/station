@@ -15,7 +15,9 @@ function fixture() {
     agentId: 'agent-a',
     userId: 'user-a',
     tenantId: 'tenant-a',
-    projectId: 'project-a',
+    projectSlug: 'project-a',
+    cwd: '/workspace/a',
+    environmentId: 'environment-a',
   };
   const lineage: ConversationSessionLineage[] = ['a', 'b', 'c'].map(
     (sessionId, ordinal) => ({
@@ -116,7 +118,9 @@ test.each([
   { connectionId: 'connection-other' },
   { userId: 'user-other' },
   { tenantId: 'tenant-other' },
-  { projectId: 'project-other' },
+  { projectSlug: 'project-other' },
+  { cwd: '/workspace/other' },
+  { environmentId: 'environment-other' },
 ])(
   'identity transition %j cannot borrow predecessor native memory',
   async (change) => {

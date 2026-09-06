@@ -6792,12 +6792,12 @@ export class OrchestrationService {
     const store = this.options.eventStore;
     if (!store || !isSessionReadAuthority(authority))
       throw new NativeMemoryContinuityUnavailableError();
-    const readIdentity = async (
-      id: string,
-    ): Promise<NativeMemorySessionIdentity | null> => {
-      const detail = await this.readSession(id, authority);
+    const projectIdentity = (
+      detail: OrchestrationSessionDetail | null,
+    ): NativeMemorySessionIdentity | null => {
       if (!detail) return null;
       const { session } = detail;
+      const id = session.threadId;
       const metadata = this.readLatestSessionStartMetadata(id, detail.events);
       return {
         sessionId: session.threadId,
@@ -6805,10 +6805,9 @@ export class OrchestrationService {
         agentId: session.assignedAgentSlug,
         userId: this.sessionAuthz.sessionOwnerUserId(id),
         tenantId: session.tenantExecutionContext?.tenantId,
-        projectId:
-          typeof metadata?.projectId === 'string'
-            ? metadata.projectId
-            : undefined,
+        projectSlug: session.projectSlug,
+        cwd: session.cwd,
+        environmentId: session.environmentId,
         connectionId:
           typeof metadata?.connectionId === 'string'
             ? metadata.connectionId
@@ -6817,7 +6816,10 @@ export class OrchestrationService {
         persistSession: session.persistSession,
       };
     };
-    const current = await readIdentity(threadId);
+    const readIdentity = async (id: string) =>
+      projectIdentity(await this.readSession(id, authority));
+    const initialDetail = await this.readSession(threadId, authority);
+    const current = projectIdentity(initialDetail);
     if (current?.provider !== 'station-agent' || !current.agentId)
       throw new NativeMemoryContinuityUnavailableError();
     const binding = await captureNativeMemoryContinuity(
@@ -6842,6 +6844,10 @@ export class OrchestrationService {
     );
     return createNativeMemoryHistoryCompanion({
       binding,
+      allowMissingCurrentRecord:
+        initialDetail?.events.every(
+          (event) => event.method !== 'turn.started',
+        ) === true,
       readCanonicalSession: async (id) => {
         if (!this.sessionAuthz.canReadSession(id, authority))
           throw new NativeMemoryContinuityUnavailableError();

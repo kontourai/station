@@ -97,6 +97,7 @@ import { recoverCompletedTaskDispatches } from '../completed-task-dispatch-recov
 import { canResolveConversationContinuation } from '../conversation-lineage.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
+import * as nativeMemoryContinuity from '../native-memory-continuity.js';
 import {
   AdoptionContinuationInProgressError,
   OrchestrationCommandDispatchError,
@@ -10008,6 +10009,10 @@ describe('OrchestrationService', () => {
   });
 
   test('binds an authorized Station-agent turn correlation before crossing the internal chat relay', async () => {
+    const captureMemory = vi.spyOn(
+      nativeMemoryContinuity,
+      'captureNativeMemoryContinuity',
+    );
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response('data: [DONE]\n\n', {
         status: 200,
@@ -10036,7 +10041,12 @@ describe('OrchestrationService', () => {
         input: {
           threadId: 'fleet-authorized-session',
           provider: 'station-agent',
-          metadata: { agentId: 'reviewer' },
+          cwd: '/fixture/workspace',
+          metadata: {
+            agentId: 'reviewer',
+            projectSlug: 'project-a',
+            environmentId: 'local-environment',
+          },
         },
       },
       { userId: 'account-a' },
@@ -10065,6 +10075,13 @@ describe('OrchestrationService', () => {
         },
       },
       { userId: 'account-a' },
+      {
+        nativeMemoryReadAuthority: sessionReadAuthorityFromRequest(
+          'account-a',
+          undefined,
+          undefined,
+        ),
+      },
     );
     const redelivery = await stationService.dispatch(
       {
@@ -10076,6 +10093,13 @@ describe('OrchestrationService', () => {
         },
       },
       { userId: 'account-a' },
+      {
+        nativeMemoryReadAuthority: sessionReadAuthorityFromRequest(
+          'account-a',
+          undefined,
+          undefined,
+        ),
+      },
     );
 
     const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<
@@ -10101,6 +10125,16 @@ describe('OrchestrationService', () => {
     expect(correlation?.correlationId).toMatch(/^fleet:[0-9a-f]{64}$/u);
     expect(redelivery.turnId).toBe(turn.turnId);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(captureMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: expect.objectContaining({
+          projectSlug: 'project-a',
+          cwd: '/fixture/workspace',
+          environmentId: 'local-environment',
+        }),
+      }),
+      expect.anything(),
+    );
     expect(JSON.stringify(headers)).not.toContain('private prompt');
   });
 
