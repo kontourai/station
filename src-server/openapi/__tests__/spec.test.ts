@@ -60,9 +60,9 @@ describe('buildOpenApiSpec', () => {
       '/api/plugins/{name}/update',
       '/api/plugins/{name}/recover',
     ]) {
-      expect(spec.paths[path]!.post!.responses['409']!.description).toMatch(
-        /trust/i,
-      );
+      expect(spec.paths[path]!.post!.responses).toMatchObject({
+        409: { description: expect.stringMatching(/trust/i) },
+      });
     }
   });
 
