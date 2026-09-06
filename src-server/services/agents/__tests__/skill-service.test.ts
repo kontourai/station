@@ -33,14 +33,15 @@ const mockConfigLoader = {
   // Writes the real `skill.json` the loader would, so tests that read the
   // install record back (origin, legacyIds) exercise the same bytes production
   // does rather than a stub that records a call and persists nothing.
+  // `<home>/skills/<name>`, ALWAYS — what the real `saveSkillConfig` does, which
+  // resolves by name with no slug. This stub used to write to `config.path`
+  // instead, so a scoped write appeared to put its record beside its body here
+  // while production split the package across two roots (#1582 D6 wrote it that
+  // way because the split was the only way to reach the project root at all;
+  // #1619 made the production path directory-addressed, so the stub can stop
+  // compensating and the split becomes visible to every test in this file).
   saveSkill: vi.fn(async (name: string, config: unknown) => {
-    // The record goes where the writer said it goes. `projectLocalSkillPublication`
-    // puts the resolved package directory on `config.path`, which is
-    // `<home>/projects/<slug>/skills/<name>` for a project-scoped write — a stub
-    // that always wrote `<home>/skills/<name>` could not exercise that root at
-    // all (#1582 D6). Unscoped writes land in exactly the same place as before.
-    const dir =
-      (config as { path?: string }).path ?? join(testDir, 'skills', name);
+    const dir = join(testDir, 'skills', name);
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, 'skill.json'),
