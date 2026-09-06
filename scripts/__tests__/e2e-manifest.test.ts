@@ -187,9 +187,12 @@ describe('e2e manifest', () => {
       'tests/cross-runtime-chat-switching.spec.ts': expect.any(String),
       'tests/daily-driver-scenarios.spec.ts': expect.any(String),
       'tests/daily-driver-switching.spec.ts': expect.any(String),
-      // M3: read-only against the shared instance; its only write is the
-      // browser context's own ambient dock document in localStorage.
+      // #1541: the two placement specs are read-only against the shared
+      // instance; their only writes are their own browser context's
+      // localStorage — the `regionArrangement` device setting and the
+      // dock-chrome settings a region write mirrors.
       'tests/activity-pane.spec.ts': expect.any(String),
+      'tests/project-architecture.spec.ts': expect.any(String),
     });
     expect(new Set(classified).size).toBe(classified.length);
     expect(new Set(classified)).toEqual(new Set(productSpecs));

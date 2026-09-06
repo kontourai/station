@@ -68,6 +68,12 @@ export interface ClientRequestOptions {
   /** Origin the credential belongs to. Credentials are never sent elsewhere. */
   credentialOrigin?: string;
   authentication?: 'required' | 'omit';
+  /** Require a matching bearer credential or current authenticated host transport. */
+  requireCredential?: boolean;
+  /** Identity probes must not follow a response to another listener. */
+  redirect?: 'error';
+  /** Optional byte ceiling for a GET response body. */
+  maxResponseBytes?: number;
   /**
    * Per-call request deadline in milliseconds. `null` (or `0`) opts the call
    * out of the host-configured default — use it for streams and long polls
@@ -200,6 +206,7 @@ async function fetchWithDeadline(
   const signal = init?.signal
     ? AbortSignal.any([init.signal, deadline])
     : deadline;
+  signal.throwIfAborted();
   // `fetch` defaults an init without a method to GET, so reading GET here is a
   // derivation of what was actually sent, not a stand-in for an unknown.
   const method =
@@ -597,6 +604,15 @@ function resolveRequestHeaders(
   opts?: ClientRequestOptions,
 ): Record<string, string> | undefined {
   const headers = withClientOriginHeaders(opts?.headers) ?? {};
+  if (
+    opts?.requireCredential &&
+    (opts.authentication === 'omit' ||
+      new Headers(headers).has('Authorization'))
+  ) {
+    throw new Error(
+      'Enrolled requests require SDK-owned credential attachment',
+    );
+  }
   if (opts?.authentication === 'omit') {
     return Object.keys(headers).length > 0 ? headers : undefined;
   }
@@ -620,6 +636,20 @@ function resolveRequestHeaders(
     throw new StationCredentialConflictError(url);
   }
   const source = explicit ?? configured;
+  if (
+    opts?.requireCredential &&
+    (!source ||
+      !sameOrigin(url, source.origin) ||
+      (!source.credential &&
+        !(
+          configured?.transport &&
+          configured.transportBindingIsCurrent?.() === true
+        )))
+  ) {
+    throw new Error(
+      'An enrolled Station credential for this target is required',
+    );
+  }
   if (
     source?.credential &&
     sameOrigin(url, source.origin) &&
@@ -931,7 +961,13 @@ export async function getJson(
   opts?: ClientRequestOptions,
 ): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
-  const init: RequestInit = { method: 'GET' };
+  const maximum = requestOptions?.maxResponseBytes;
+  if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum < 1))
+    throw new Error('Invalid response byte limit');
+  const init: RequestInit = {
+    method: 'GET',
+    ...(requestOptions?.redirect ? { redirect: requestOptions.redirect } : {}),
+  };
   if (requestOptions?.signal) init.signal = requestOptions.signal;
   const configured = await resolveRequestCredential(requestOptions);
   const assertAuthority = bindRequestAuthority(url, requestOptions, configured);
@@ -970,9 +1006,17 @@ export async function getJson(
     requestOptions,
     assertAuthority,
   );
+  const result =
+    maximum === undefined
+      ? response
+      : (await import('./bounded-response')).boundResponse(
+          response,
+          maximum,
+          assertAuthority,
+        );
   return needsAuthorityGuard(url, requestOptions, configured)
-    ? guardResponseAuthority(response, assertAuthority)
-    : response;
+    ? guardResponseAuthority(result, assertAuthority)
+    : result;
 }
 
 /**

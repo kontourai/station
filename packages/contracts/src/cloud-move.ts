@@ -68,6 +68,19 @@ export interface WorkspacePackageVerification extends WorkspacePackageReceipt {
   executableModeVerification: 'passed' | 'unavailable-on-windows';
 }
 
+/** Observation of an enrolled process, never a transferable ownership grant. */
+export interface CloudMoveTargetObservation {
+  schemaVersion: 'station.cloud-target-observation/v1';
+  targetOrigin: string;
+  environmentId: string;
+  instanceId: string;
+  bootId: string;
+  sha: string;
+  observedAt: string;
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+}
+
 /** Controller-local enrollment observation, never a lease or physical-home proof. */
 export interface PairedHomeIdentityObservation {
   schemaVersion: 'station.paired-home-identity/v1';
