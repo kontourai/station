@@ -177,19 +177,26 @@ export async function waitForLocalUiAccessReadiness(
         return `"${(await gate.innerText()).trim().slice(0, 200)}"`;
       },
       reloadAfterHostRecovery: async (budgetMs) => {
-        // Arm the navigation wait BEFORE the click. `window.location.reload()`
-        // does not tear the current document down synchronously, so the screen
-        // that prompted this reload keeps rendering for a moment afterwards —
-        // re-observing it there spends a second reload on an answer already
-        // acted on (observed live: two reloads for one unavailable host).
-        const navigated = page
-          .waitForEvent('framenavigated', {
-            predicate: (frame) => frame === page.mainFrame(),
-            timeout: Math.max(1, budgetMs),
-          })
+        const bounded = Math.max(1, budgetMs);
+        // The recovery screen promises a way forward, so require it to be
+        // there — then take it with the navigation primitive rather than the
+        // click. `window.location.reload()` does not tear the current document
+        // down synchronously, so the click returns while the screen that
+        // prompted it is still rendered, and re-observing there spends a second
+        // reload on an answer already acted on (observed live: two reloads for
+        // one unavailable host, twice, the second time even after arming
+        // `framenavigated` — which this SPA also fires for its own
+        // same-document `replaceState`). `page.reload()` resolves only once a
+        // NEW document has loaded, so there is no stale screen to re-read.
+        await hostRecoveryReload.waitFor({
+          state: 'visible',
+          timeout: bounded,
+        });
+        await page
+          .reload({ waitUntil: 'domcontentloaded', timeout: bounded })
+          // A reload that overran the budget is not this helper's message to
+          // write: fall through and let the deadline report what is on screen.
           .catch(() => undefined);
-        await hostRecoveryReload.click();
-        await navigated;
       },
       now: () => Date.now(),
     },
