@@ -9,6 +9,14 @@ import {
  * this long before the Station-owned UI proxy answered
  * `{"ready":false,"status":"unavailable"}` (station#1617). It is the slowest real
  * dependency of everything below.
+ *
+ * A SAMPLE, not a bound, and the name says so on purpose: the UI proxy's own
+ * upstream timeout is 30 s (`proxyToBackend` in
+ * `packages/cli/src/commands/lifecycle.ts`), so one request can legitimately take
+ * far longer and the budget below would then under-cover by roughly 4x. #1654
+ * masks that today — a proxy timeout answers 504, which the ladder classifies as
+ * a refusal and exits on the first attempt — so a 30 s attempt is not reachable
+ * until #1654 is fixed. #1661 owns the choice this then forces.
  */
 const OBSERVED_SLOW_IDENTITY_ANSWER_MS = 6_600;
 /** The navigation's module graph and the gate's first render. */
@@ -33,6 +41,12 @@ const GATE_DIRECTED_RELOAD_ALLOWANCE_MS = 2_000;
  * worst case, a host that stays away, take longer to reach it. Budget for the
  * worst case: a full ladder on the first page, the reload, and one more answer
  * on the reloaded page.
+ *
+ * NOTE FOR CALLERS: this now EXCEEDS `playwright.config.ts`'s 30 s default
+ * per-test timeout, so a test that spends the whole budget dies as a bare test
+ * timeout — naming nothing, which is the exact failure this helper exists to
+ * replace with a sentence. Any caller must raise its own `test.setTimeout` above
+ * this value plus whatever the rest of its journey needs.
  */
 export const LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS =
   NAVIGATION_AND_RENDER_ALLOWANCE_MS +

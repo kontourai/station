@@ -1,16 +1,40 @@
 /** @vitest-environment jsdom */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH } from '@kontourai/station-contracts/environment-security';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { type ReactNode, StrictMode, useEffect } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { LocalUiSessionGate } from '../components/LocalUiSessionGate';
 import { ApiBaseProvider } from '../contexts/ApiBaseContext';
-import { resetLocalUiBootstrapForTests } from '../lib/local-ui-bootstrap';
+import { DEGRADED_QUERY_TIMEOUT_MS } from '../hooks/useDegradedQueryState';
+import {
+  recheckLocalUiSessionAfterPairing,
+  resetLocalUiBootstrapForTests,
+} from '../lib/local-ui-bootstrap';
 import {
   LOCAL_UI_SESSION_ATTEMPT_LIMIT,
+  LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS,
   LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS,
 } from '../lib/local-ui-session-retry';
 import { PlatformBootstrap } from '../platform/PlatformProfileContext';
+
+vi.mock('../components/GuidedConnect', () => ({
+  GuidedConnect: ({
+    onSessionEstablished,
+  }: {
+    onSessionEstablished?: () => void;
+  }) => (
+    <button type="button" onClick={onSessionEstablished}>
+      Complete pairing
+    </button>
+  ),
+}));
 
 /**
  * #1639: one failed identity read used to strand the page. The gate rendered
@@ -42,18 +66,24 @@ function ProtectedDataProbe({ onMount }: { onMount: () => void }) {
   return <div>Protected application mounted</div>;
 }
 
+const API_BASE = 'http://127.0.0.1:42693';
+const UI_BOOTSTRAP_URL = `${API_BASE}${PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH}`;
+const IDENTITY_URL = `${API_BASE}/api/system/identity`;
+
 function renderGate(children: ReactNode) {
   return render(
     <StrictMode>
       <PlatformBootstrap>
         <ApiBaseProvider>
-          <LocalUiSessionGate apiBase="http://127.0.0.1:42693">
-            {children}
-          </LocalUiSessionGate>
+          <LocalUiSessionGate apiBase={API_BASE}>{children}</LocalUiSessionGate>
         </ApiBaseProvider>
       </PlatformBootstrap>
     </StrictMode>,
   );
+}
+
+function requestedUrls(fetchMock: { mock: { calls: unknown[][] } }): string[] {
+  return fetchMock.mock.calls.map(([url]) => String(url));
 }
 
 /** Long enough for the whole ladder plus scheduling, and no longer. */
@@ -69,6 +99,11 @@ afterEach(() => {
   resetLocalUiBootstrapForTests();
   window.history.replaceState(null, '', '/');
   vi.restoreAllMocks();
+  // `restoreAllMocks` does not undo `stubGlobal`, so without this the `location`
+  // snapshot one test installs stays frozen for every later test in the file —
+  // which would silently make the `replaceState` above invisible, and a test that
+  // sets a `#station-ui-bootstrap` fragment read no token at all.
+  vi.unstubAllGlobals();
 });
 
 describe('LocalUiSessionGate bounded host retry (#1639)', () => {
@@ -178,9 +213,10 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
 
     renderGate(<div>Protected application mounted</div>);
 
-    await screen.findByRole('heading', {
-      name: 'Connect to your Station host',
-    });
+    // The access-required screen. Its real pairing copy is pinned by
+    // `LocalUiSessionGate.test.tsx`; `GuidedConnect` is stubbed here so a test
+    // below can take the pairing-success path the real component cannot reach.
+    await screen.findByRole('button', { name: 'Complete pairing' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     // The discriminating wait: a ladder that retried every failure would have
@@ -189,5 +225,160 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
     await settleForLongerThanTheLadder();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/attempt/i)).toBeNull();
+  });
+
+  test('the degraded window explains the wait and names the retry running under it', async () => {
+    // The one pending treatment no other test in this file reaches: every other
+    // resolution here settles inside ~1.75 s and the degraded window is 8 s, so
+    // deleting the attempt sentence from THIS branch failed nothing.
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockImplementationOnce(() => Promise.resolve(unavailable()))
+        // Attempt 2 never answers, so the ladder is still mid-flight when the
+        // degraded window opens — the state a stranded user actually reads.
+        .mockImplementation(() => new Promise<Response>(() => {}));
+      const reload = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      vi.stubGlobal('location', { ...window.location, reload });
+
+      renderGate(<div>Protected application mounted</div>);
+
+      // Let attempt 1's answer land and the backoff be scheduled.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(
+        screen.getByText(
+          new RegExp(`attempt 2 of ${LOCAL_UI_SESSION_ATTEMPT_LIMIT}`, 'i'),
+        ),
+      ).toBeTruthy();
+      // Still inside the loading window: no claim that anything is wrong yet.
+      expect(screen.queryByRole('alert')).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS[0],
+        );
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(DEGRADED_QUERY_TIMEOUT_MS);
+      });
+
+      // Both sentences, together: the wait is over its window AND the page says
+      // which attempt is still out. Neither replaces the other.
+      expect(screen.getByRole('alert').textContent).toContain(
+        'taking longer than expected',
+      );
+      expect(
+        screen.getByText(
+          new RegExp(`attempt 2 of ${LOCAL_UI_SESSION_ATTEMPT_LIMIT}`, 'i'),
+        ),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(reload).toHaveBeenCalledTimes(1);
+      // The bound is not spent by the degraded timer: attempt 2 is still the one
+      // in flight, and no third request was made on its behalf.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a resolution after a spent launcher token retries the host without re-posting the exchange', async () => {
+    // The reachable end of the constraint the ladder is built around: the
+    // launcher-token exchange is one-shot per page, so a resolution that runs
+    // AFTER a token was spent must read identity and retry that — never re-POST
+    // a token this page has already used.
+    window.location.hash = `#station-ui-bootstrap=${'a'.repeat(43)}`;
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      String(url) === UI_BOOTSTRAP_URL
+        ? // The exchange is refused, which spends the token and strips the
+          // fragment on the way to the access screen.
+          Promise.resolve(new Response('{}', { status: 401 }))
+        : Promise.resolve(unavailable()),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderGate(<div>Protected application mounted</div>);
+
+    const pair = await screen.findByRole('button', {
+      name: 'Complete pairing',
+    });
+    expect(requestedUrls(fetchMock)).toEqual([UI_BOOTSTRAP_URL]);
+    expect(window.location.hash).toBe('');
+
+    // Pairing succeeds, so the gate discards the cached refusal and resolves
+    // again — this time reaching the identity read, with the token already gone.
+    fireEvent.click(pair);
+
+    await screen.findByRole(
+      'heading',
+      { name: 'Reconnecting to this Station' },
+      { timeout: PAST_THE_LADDER_MS },
+    );
+    expect(requestedUrls(fetchMock)).toEqual([
+      UI_BOOTSTRAP_URL,
+      ...Array.from(
+        { length: LOCAL_UI_SESSION_ATTEMPT_LIMIT },
+        () => IDENTITY_URL,
+      ),
+    ]);
+  });
+
+  test('a resolution superseded mid-backoff abandons its remaining attempts', async () => {
+    // Not reachable through the UI — the gate offers no pairing control while a
+    // resolution is pending — so this drives `recheckLocalUiSessionAfterPairing`
+    // directly, the same seam the gate calls on pairing success. Without the
+    // generation guard the abandoned ladder keeps fetching and keeps writing the
+    // module-level attempt counter the live ladder is being read from.
+    //
+    // The hold is a FLAG, not a call index: `mockImplementationOnce` would have
+    // handed the superseding ladder's first request the held answer meant for the
+    // superseded one, and hung the test rather than testing anything.
+    let holdRequests = true;
+    const heldAttempts: Array<(response: Response) => void> = [];
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.resolve(unavailable()))
+      .mockImplementation(() =>
+        holdRequests
+          ? new Promise<Response>((resolve) => {
+              heldAttempts.push(resolve);
+            })
+          : Promise.resolve(unavailable()),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderGate(<div>Protected application mounted</div>);
+    await screen.findByText(
+      new RegExp(`attempt 2 of ${LOCAL_UI_SESSION_ATTEMPT_LIMIT}`, 'i'),
+      undefined,
+      { timeout: PAST_THE_LADDER_MS },
+    );
+    // Attempt 2 is in flight and held: this ladder is now mid-ladder, which is
+    // the only state in which being superseded costs anything.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2), {
+      timeout: PAST_THE_LADDER_MS,
+    });
+    expect(heldAttempts).toHaveLength(1);
+    holdRequests = false;
+
+    await expect(recheckLocalUiSessionAfterPairing(API_BASE)).resolves.toEqual({
+      kind: 'host-unavailable',
+    });
+    // Two from the superseded ladder, a full ladder from the superseding one.
+    const spent = 2 + LOCAL_UI_SESSION_ATTEMPT_LIMIT;
+    expect(spent).toBe(5);
+    expect(fetchMock).toHaveBeenCalledTimes(spent);
+
+    // The superseded ladder finally gets its answer. It must read it and stop,
+    // not climb the two rungs it still has.
+    heldAttempts[0]?.(unavailable());
+    await settleForLongerThanTheLadder();
+    expect(fetchMock).toHaveBeenCalledTimes(spent);
   });
 });

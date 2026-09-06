@@ -24,6 +24,13 @@ export type LocalUiSessionResolution =
 let identityAttempt = 1;
 const attemptListeners = new Set<() => void>();
 
+/**
+ * Bumped whenever the memoized resolution is discarded, so a ladder that is
+ * mid-backoff at that moment can tell it has been superseded and stop. Read
+ * after every `await` inside `resolveLocalUiSession`.
+ */
+let resolutionGeneration = 0;
+
 export function getLocalUiSessionAttempt(): number {
   return identityAttempt;
 }
@@ -126,15 +133,27 @@ async function readLocalUiIdentity(
  *    stranded the way #1639 describes. Splitting a retryable transport failure
  *    out of that class is #1654.
  *
- * Only the identity read is inside the ladder. The launcher-token exchange must
- * stay outside it: `captureLocalUiBootstrapToken` latches `captured` and strips
- * the fragment on first read, so a second pass through the exchange would find
- * no token and resolve an unauthenticated browser instead.
+ * Only the identity read is inside the ladder, and the launcher-token exchange
+ * must stay outside it. Two independent mechanisms hold that today — the loop's
+ * shape here, and `captureLocalUiBootstrapToken` latching `captured` and
+ * stripping the fragment on first read — so a ladder that DID re-enter the
+ * exchange would find no token, fall through to the identity read, and behave
+ * exactly as it does now. What it must never do is re-POST a token this page has
+ * already spent. Because either mechanism alone is sufficient, no single change
+ * to one of them is observable; `LocalUiSessionGate.hostRetry.test.tsx` pins the
+ * reachable end of it (a consumed token, an unavailable host, the ladder
+ * running, the exchange POSTed once) and records the mutation that does red it.
  */
 export function resolveLocalUiSession(
   apiBase: string,
 ): Promise<LocalUiSessionResolution> {
   sessionResolution ??= (async () => {
+    // A pairing recheck or a test reset replaces the memoized promise while this
+    // ladder may still be mid-backoff. Nobody awaits a superseded resolution, so
+    // its remaining attempts would spend requests for no reader and its
+    // `setIdentityAttempt` writes would clobber the live ladder's counter — the
+    // gate reads ONE module-level attempt, not one per resolution.
+    const generation = resolutionGeneration;
     setIdentityAttempt(1);
     try {
       if (await bootstrapLocalUiSession(apiBase)) {
@@ -143,6 +162,8 @@ export function resolveLocalUiSession(
       for (let retry = 0; ; retry += 1) {
         const resolution = await readLocalUiIdentity(apiBase);
         if (resolution.kind !== 'host-unavailable') return resolution;
+        // Superseded: answer whatever the last real observation was and stop.
+        if (generation !== resolutionGeneration) return resolution;
         const retryIn = LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS[retry];
         // The bound: the ladder is out of delays, so this answer is the one the
         // gate renders. Reaching it means the host answered `unavailable`
@@ -150,6 +171,7 @@ export function resolveLocalUiSession(
         if (retryIn === undefined) return resolution;
         setIdentityAttempt(retry + 2);
         await delay(retryIn);
+        if (generation !== resolutionGeneration) return resolution;
       }
     } catch (error) {
       return {
@@ -170,11 +192,13 @@ export function recheckLocalUiSessionAfterPairing(
   apiBase: string,
 ): Promise<LocalUiSessionResolution> {
   sessionResolution = undefined;
+  resolutionGeneration += 1;
   return resolveLocalUiSession(apiBase);
 }
 
 export function resetLocalUiBootstrapForTests(): void {
   captured = false;
   sessionResolution = undefined;
+  resolutionGeneration += 1;
   setIdentityAttempt(1);
 }
