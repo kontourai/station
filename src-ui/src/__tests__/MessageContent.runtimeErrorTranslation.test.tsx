@@ -82,3 +82,21 @@ describe('MessageContent projected runtime-error translation (#765 A1)', () => {
     expect(container.textContent).not.toMatch(/engine session was lost/i);
   });
 });
+
+test('a failed engine turn preserves its refusal without claiming the session was lost', async () => {
+  const message =
+    "API Error: Opus 5 (1M context)'s safeguards flagged this message.";
+  const { container } = renderPart({
+    type: 'text',
+    content: `⚠️ ${message}`,
+    runtimeError: true,
+    runtimeErrorCode: 'engine-turn-failed',
+  });
+  await waitFor(() =>
+    expect(container.textContent).toContain('This turn did not complete'),
+  );
+  expect(container.textContent).toContain(message);
+  expect(container.textContent).not.toMatch(
+    /engine session was lost|fresh engine session|send your message again/i,
+  );
+});
