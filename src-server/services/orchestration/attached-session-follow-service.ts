@@ -387,7 +387,7 @@ export class AttachedSessionFollowService {
     } catch {
       // Preserve an already durable cursor even when this observation fails.
       // A later successful poll can continue without replaying the source.
-      this.persistAttachedSession(descriptor, priorCursor?.cursor);
+      this.persistAttachedSession(source, descriptor, priorCursor?.cursor);
       attachedSessionDiscovery.add(1, {
         source: sourceLabel(source),
         outcome: 'unknown_source',
@@ -404,7 +404,7 @@ export class AttachedSessionFollowService {
     // the opaque offset together with the discovery snapshot's opaque handle;
     // a moved/replaced source gets a different handle and safely restarts from
     // its bounded recent window (archive#1997).
-    this.persistAttachedSession(descriptor, read.cursor);
+    this.persistAttachedSession(source, descriptor, read.cursor);
     // Legacy rows and a source whose opaque handle changed still replay one
     // bounded transcript window. Discard durable ids with one indexed read per
     // batch instead of making each duplicate enter appendEventIfAbsent's
@@ -533,11 +533,12 @@ export class AttachedSessionFollowService {
   }
 
   private persistAttachedSession(
+    source: AttachedSessionSource,
     descriptor: AttachedSessionDescriptor,
     cursor?: AttachedSessionCursor,
   ): void {
     const attached = {
-      kind: 'claude-transcript',
+      kind: source.kind,
       externalSessionId: descriptor.sessionId,
     };
     const session = {
@@ -1148,7 +1149,7 @@ function isContainedBy(candidate: string, root: string): boolean {
 }
 
 function sourceLabel(source: AttachedSessionSource): string {
-  return source.provider === 'claude' ? 'claude-transcript' : 'unknown';
+  return source.kind;
 }
 
 function rememberEvent(
