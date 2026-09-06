@@ -574,28 +574,14 @@ export function unsupportedModelOptionError(
 export const APPROVAL_ESCALATION_REQUIRES_RESTART_CODE =
   'approval-escalation-requires-restart';
 
-/**
- * `RuntimeErrorEvent.code` published when a provider adapter's own
- * STRUCTURED result signals that the underlying engine binding can never
- * make progress again (archive#1827) — e.g. the Claude Agent SDK's `result`
- * message reporting `is_error: true` for a `--resume`d session whose native
- * transcript no longer exists ("No conversation found with session ID:
- * ..."). Classified from the SDK's own structured `is_error` flag, never
- * from parsing the engine's English — see `claude-result-outcome.ts`. The
- * raw engine text still rides in the event's `message` (for a details
- * disclosure); this code is what the recovery path and the UI act on.
- *
- * Distinct from `SESSION_RECOVERY_FAILED_CODE`
- * (`orchestration-session-state.ts`, archive#1090): that code marks a
- * session `status: 'error'` and KEEPS replaying it on every boot, because
- * the failure is a config problem a person can fix (an ACP connection's
- * changed args, a missing credential) — the same binding may work again
- * once they do. This code marks a session `status: 'dead'` and STOPS
- * replaying it: the specific engine-side binding this session held is gone,
- * and no config change brings back that exact transcript. Starting a fresh
- * session for the same chat is the only way forward.
- */
+/** A provider explicitly disproved the exact native binding being resumed. */
 export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
+
+/**
+ * A provider reported a failed query/turn without disproving its native binding.
+ * This is not a completed turn, a retry instruction, or a resumability claim.
+ */
+export const ENGINE_TURN_FAILED_CODE = 'engine-turn-failed';
 
 /**
  * Whether Station owns an orchestration session or only follows it.

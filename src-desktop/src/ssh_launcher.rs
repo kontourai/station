@@ -148,9 +148,9 @@ fn node_satisfies(version: &str, requirement: &str) -> bool {
         .split('.')
         .next()
         .and_then(|v| v.parse::<u64>().ok());
-    // "24.x" is an exact-major pin, not a floor: npm's engine-strict install
-    // rejects node 26 against it, so a >= probe here green-lights a launch
-    // that npm ci then kills (observed live on the first fleet dogfood).
+    // "24.x" is an exact-major pin, not a floor. Managed dependency
+    // installation enforces that range, so a >= probe would admit a
+    // remote runtime that the installation contract then rejects.
     if let Some(major) = requirement
         .trim()
         .strip_suffix(".x")
@@ -372,7 +372,10 @@ fn execute(
         set_phase(&state, &id, LaunchPhase::Installing);
         checked_run(
             runner.as_ref(),
-            ssh_args(&request.target, &["npm", "--prefix", CHECKOUT, "ci"]),
+            ssh_args(
+                &request.target,
+                &["npm", "--prefix", CHECKOUT, "run", "dependencies:ci"],
+            ),
         )?;
         set_phase(&state, &id, LaunchPhase::Starting);
         // Pin BOTH ports: the default UI port (3000) is reserved for the
@@ -743,6 +746,10 @@ mod tests {
     #[test]
     fn execute_uses_forward_and_payload_only_argv_contracts() {
         let request = request();
+        let expected_install = ssh_args(
+            &request.target,
+            &["npm", "--prefix", CHECKOUT, "run", "dependencies:ci"],
+        );
         let mut outputs = successful_prefix(&request, output(false, "not listening"));
         outputs.extend([
             output(true, ""),
@@ -758,6 +765,7 @@ mod tests {
         )
         .unwrap();
         let calls = runner.calls();
+        assert!(calls.iter().any(|(_, args)| args == &expected_install));
         let forward = calls
             .iter()
             .find(|(_, args)| args.iter().any(|arg| arg == "-L"))

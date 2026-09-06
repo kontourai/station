@@ -1,6 +1,7 @@
 import {
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
+  ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
 import {
@@ -322,10 +323,11 @@ export function handleRuntimeErrorEvent(
   // reported symptom) — translate it through the same table
   // `ChatDockBody`'s marker rendering already uses, instead of showing the
   // engine's raw prose as if it were an ordinary reply. Every other
-  // `runtime.error` (no code, or a different code) keeps today's exact raw
+  // `runtime.error` without either supported code keeps today's exact raw
   // `event.message` display — unchanged.
   const translation =
-    event.code === ENGINE_SESSION_BINDING_DEAD_CODE
+    event.code === ENGINE_SESSION_BINDING_DEAD_CODE ||
+    event.code === ENGINE_TURN_FAILED_CODE
       ? translateChatError({ message: event.message, code: event.code })
       : undefined;
   const errorPartPrefix = translation
