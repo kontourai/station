@@ -1161,9 +1161,22 @@ describe('ProjectLayoutRenderer', () => {
       'project-uuid',
       'c'.repeat(32),
     )!;
-    // An occurrence the catalog calls available and this build cannot render:
-    // no builtin renderer for its descriptor, and no trusted plugin layout
-    // (the mock below). Its card still offers Open, which is the whole point.
+    // An occurrence the catalog calls available that this build cannot render.
+    // The mechanism is the MISSING BUILTIN RENDERER:
+    // `getBuiltinWorkspacePaneRenderer` has nothing for this synthetic plugin
+    // descriptor. The trusted-plugin half of that condition never runs — the
+    // entry carries no `selectedRenderer`, so `trustedPluginLayout` is already
+    // `null` from the `selectedRenderer?.renderer.kind === 'plugin-component'`
+    // guard before `resolveClientTrustedPluginLayout` would be consulted (the
+    // test below asserts the mock is not called).
+    //
+    // The fixture is necessarily synthetic: the real resolver cannot emit this
+    // pair. `resolveWorkspacePaneAvailability` returns
+    // `temporarily-unavailable`/`unsupported` for any `input.renderer !==
+    // 'present'` (`packages/contracts/src/workspace-pane-availability.ts`), so
+    // a live catalog never offers Open for an occurrence with no client
+    // renderer. The branch is a defence against a catalog that disagrees with
+    // this build, and this is the only way to reach it.
     const unrenderableDescriptor = {
       version: '1.0',
       id: 'pane:plugin%3Aunrenderable:main',
@@ -1182,6 +1195,9 @@ describe('ProjectLayoutRenderer', () => {
       stateKey: 'state:plugin:project-uuid:unrenderable',
       boundContext: { projectId: 'project-uuid' },
     } as any;
+    // Reset only, so the fixture does not inherit the placed-plugin component
+    // another test in this file installs. It is NOT what makes the entry
+    // unrenderable — see above.
     trustedPluginLayoutMock.mockReturnValue(undefined);
     catalogMock.mockReturnValue({
       projectId: 'project-uuid',
@@ -1289,15 +1305,19 @@ describe('ProjectLayoutRenderer', () => {
       hostProps.onOpenActionChange({ open });
       hostProps.onOpenCatalog({ type: 'add', targetGroupId: 'root' });
     });
-    // The catalog offered an available occurrence whose renderer this build
-    // does not resolve — neither a builtin nor a trusted plugin layout (the
-    // fixture's own mock). The card said "available" and the click was real,
-    // so it gets a sentence rather than the silent return it used to take.
+    // The catalog offered an available occurrence with no builtin renderer in
+    // this build. The card said "available" and the click was real, so it gets
+    // a sentence rather than the silent return it used to take.
     const dialog = screen.getByRole('dialog', { name: 'Add workspace pane' });
+    trustedPluginLayoutMock.mockClear();
     fireEvent.click(
       within(dialog).getByRole('button', { name: 'Open Unrenderable pane' }),
     );
     expect(open).not.toHaveBeenCalled();
+    // Pins the mechanism the comment names: the trusted-plugin resolver is
+    // never reached for an entry with no `selectedRenderer`, so this test
+    // cannot silently start passing for the other half of the condition.
+    expect(trustedPluginLayoutMock).not.toHaveBeenCalled();
     expect(
       within(dialog).getByRole('alert', {
         name: 'Workspace pane could not open',
