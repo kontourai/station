@@ -1,7 +1,7 @@
-import { dismissSetupLauncher } from './helpers/orchestration';
 import { createHmac } from 'node:crypto';
 import { buildStationProofMessage } from '@kontourai/station-contracts';
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { dismissSetupLauncher } from './helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 const ENVIRONMENT_ID = 'env-e2e-stable-301';
@@ -20,8 +20,6 @@ const STATUS_READY = {
     detected: { ollama: false, bedrock: false },
   },
 };
-
-
 
 /**
  * Per-connection actions (Edit/Check/Forget) live behind a "More actions"
