@@ -39,6 +39,7 @@ import type {
   ProviderAdapterShape,
   ProviderAdoptionHooks,
   ProviderInterruptTurnResult,
+  ProviderNativeSessionIdentity,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
@@ -226,7 +227,9 @@ class FakeAdapter implements ProviderAdapterShape {
         maxEntries?: number;
       }) => Promise<Array<{ id: string; name: string; originalId: string }>>
     >();
-  readonly nativeSessionIdentity = vi.fn((cursor: unknown) => {
+  readonly nativeSessionIdentity = vi.fn<
+    (cursor: unknown) => ProviderNativeSessionIdentity | undefined
+  >((cursor) => {
     if (typeof cursor === 'string') return { sessionId: cursor };
     if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) {
       return undefined;
@@ -234,7 +237,11 @@ class FakeAdapter implements ProviderAdapterShape {
     const value = cursor as Record<string, unknown>;
     const sessionId = value.claudeSessionId ?? value.codexThreadId;
     return typeof sessionId === 'string'
-      ? { sessionId, affinity: value.sourceAffinity }
+      ? {
+          sessionId,
+          affinity:
+            value.sourceAffinity as ProviderNativeSessionIdentity['affinity'],
+        }
       : undefined;
   });
 
