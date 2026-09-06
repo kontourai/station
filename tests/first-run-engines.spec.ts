@@ -363,10 +363,14 @@ function engineRow(page: Page, engineId: string) {
  * at the route, exactly like the engine mix, the agent catalog and the
  * first-run record above.
  */
-function disclosureInventory(acknowledged: boolean) {
+function disclosureInventory(acknowledged: boolean, telemetryEnabled = true) {
   return {
     acknowledged,
     inventoryRevision: 'rev-e2e',
+    // #1582 A3: the step's summary and its two button labels are derived from
+    // these, not asserted, so the fixture has to carry them.
+    endpointConfigured: false,
+    telemetryEnabled,
     events: {
       station_started: {
         description: 'Station completed startup.',
@@ -378,7 +382,10 @@ function disclosureInventory(acknowledged: boolean) {
 
 async function pinTelemetryDisclosure(
   page: Page,
-  { acknowledged }: { acknowledged: boolean },
+  {
+    acknowledged,
+    telemetryEnabled = true,
+  }: { acknowledged: boolean; telemetryEnabled?: boolean },
 ) {
   const acknowledgements: string[] = [];
   let current = acknowledged;
@@ -394,7 +401,7 @@ async function pinTelemetryDisclosure(
         contentType: 'application/json',
         body: JSON.stringify({
           success: true,
-          data: disclosureInventory(current),
+          data: disclosureInventory(current, telemetryEnabled),
         }),
       });
     },
@@ -414,7 +421,7 @@ async function pinTelemetryDisclosure(
         contentType: 'application/json',
         body: JSON.stringify({
           success: true,
-          data: disclosureInventory(true),
+          data: disclosureInventory(true, telemetryEnabled),
         }),
       });
     },
@@ -917,8 +924,18 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     // The inventory itself, in the chapter's own dialog — same copy as the
     // standalone modal, because it is the same component.
     await expect(page.getByText('What Station sends')).toBeVisible();
-    await expect(disclosureStep(page)).toContainText('station_started');
-    await expect(page.getByText('Step 1 of 3')).toBeVisible();
+    // #1582 A3: one derived sentence leads, and the generated schema is
+    // behind "See exactly what is sent" rather than filling the first screen
+    // a person ever sees.
+    await expect(
+      page.getByText(
+        'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+      ),
+    ).toBeVisible();
+    await expect(page.getByText('station_started')).toBeHidden();
+    await disclosureStep(page).getByText('See exactly what is sent').click();
+    await expect(page.getByText('station_started')).toBeVisible();
+    await expect(page.getByText('Step 1 of 4')).toBeVisible();
     // THE DEFECT THIS CLOSES: exactly one overlay, and the engines step is
     // behind the disclosure rather than beside it.
     await expect(standaloneModal(page)).toHaveCount(0);
@@ -931,44 +948,88 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     });
 
     await disclosureStep(page)
-      .getByRole('button', { name: 'I understand' })
+      .getByRole('button', { name: 'Keep usage telemetry on' })
       .click();
 
     // The receipt is written through the same endpoint the modal uses, and
     // only then does the run move on.
     await expect.poll(() => acknowledgements.length).toBe(1);
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
-    await expect(page.getByText('Step 2 of 3')).toBeVisible();
+    await expect(page.getByText('Step 2 of 4')).toBeVisible();
     await expect(disclosureStep(page)).toHaveCount(0);
     await expect(standaloneModal(page)).toHaveCount(0);
   });
 
-  test('"Not now" on the disclosure writes no receipt and still moves the run on', async ({
+  test('"Turn it off" writes the setting Settings reads, then the receipt, then moves on', async ({
     page,
   }) => {
+    // #1582 A3 replaced "I understand"/"Not now" with the two decisions the
+    // screen can actually make. This is the one with a side effect, end to
+    // end: the PUT the Settings row uses, then the receipt, then the step.
+    // The old case here asserted that "Not now" moved the run on, which
+    // #765 B1 had already made wrong — the exit that decides nothing is the
+    // dialog's close, and it is asserted below.
     await patchExternalEngines(page, ENGINE_MIX);
     await pinAgentCatalog(page);
     const configWrites = await pinFirstRun(page, { status: 'pending' });
     const acknowledgements = await pinTelemetryDisclosure(page, {
       acknowledged: false,
     });
+    const settingWrites: Record<string, unknown>[] = [];
+    await page.route(
+      (url) => url.pathname.endsWith(APP_CONFIG_PATH_SUFFIX),
+      async (route) => {
+        const request = route.request();
+        if (request.method() !== 'PUT') {
+          await route.fallback();
+          return;
+        }
+        settingWrites.push(request.postDataJSON() as Record<string, unknown>);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, data: {} }),
+        });
+      },
+    );
 
     await page.goto('/');
     await expect(disclosureStep(page)).toBeVisible({ timeout: 20_000 });
-    await disclosureStep(page).getByRole('button', { name: 'Not now' }).click();
+    await disclosureStep(page)
+      .getByRole('button', { name: 'Turn it off' })
+      .click();
 
+    await expect
+      .poll(() => settingWrites)
+      .toEqual([{ telemetryEnabled: false }]);
+    await expect.poll(() => acknowledgements.length).toBe(1);
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
-    await expect(page.getByText('Step 2 of 3')).toBeVisible();
-    expect(acknowledgements).toEqual([]);
-    // And declining the disclosure is not declining the RUN: nothing was
-    // recorded about first run either.
+    await expect(page.getByText('Step 2 of 4')).toBeVisible();
+    // Deciding the disclosure is not deciding the RUN.
     expect(firstRunWrites(configWrites)).toEqual([]);
+  });
 
-    // The standalone modal stays down for this page — the same page-lifetime
-    // dismissal its own "Not now" performs — and re-offers on the next load,
-    // which is where a home that is no longer `pending` gets asked again.
+  test('closing the run over the disclosure decides nothing (#765 B1)', async ({
+    page,
+  }) => {
+    await patchExternalEngines(page, ENGINE_MIX);
+    await pinAgentCatalog(page);
+    await pinFirstRun(page, { status: 'pending' });
+    const acknowledgements = await pinTelemetryDisclosure(page, {
+      acknowledged: false,
+    });
+
+    await page.goto('/');
+    await expect(disclosureStep(page)).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: 'Close setup' }).click();
+
+    // No receipt, no advance, and the standalone modal stays down for this
+    // page rather than re-offering the disclosure that was just closed.
+    expect(acknowledgements).toEqual([]);
+    await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
+    await expect(disclosureStep(page)).toHaveCount(0);
     await expect(standaloneModal(page)).toHaveCount(0);
+    await expect(page.getByTestId('first-run-home-card')).toBeVisible();
   });
 
   test('a pending home is offered no modal anywhere, not just on Home', async ({
@@ -1065,9 +1126,10 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
     await expect(standaloneModal(page)).toHaveCount(0);
     await expect(page.locator('.responsive-surface-overlay')).toHaveCount(1);
-    // An acknowledged home has nothing to disclose, so this run is two steps
-    // and says two, rather than promising a step that is not coming.
-    await expect(page.getByText('Step 1 of 2')).toBeVisible();
+    // An acknowledged home has nothing to disclose, so the disclosure step is
+    // not promised — the run is the engines step, the engine role this home
+    // has not answered, and About you.
+    await expect(page.getByText('Step 1 of 3')).toBeVisible();
   });
 });
 
