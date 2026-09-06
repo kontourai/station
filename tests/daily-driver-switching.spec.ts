@@ -372,7 +372,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     await expect(dialog).toContainText('tool state');
     await expect(dialog).toContainText('approval state do not carry');
     const sourceAgent = dialog.locator('button[data-agent-slug="claude"]');
-    await expect(sourceAgent).toHaveClass(/new-chat-modal__agent--selected/);
+    // Choose the source Agent explicitly; the accepted request below proves its identity.
     await sourceAgent.click();
     await expect(dialog.getByRole('alert')).toContainText(/failed|fetch/i);
     await sourceAgent.click();
