@@ -2202,9 +2202,7 @@ export class TaskGraphService {
   }
 
   /** Read-only proof of a completed association, never a reservation or retry. */
-  readCompletedDispatchForRecovery(
-    sessionId: string,
-  ):
+  readCompletedDispatchForRecovery(sessionId: string):
     | {
         task: TaskRecord;
         dispatch: TaskDispatchRecord;
