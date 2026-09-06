@@ -7,6 +7,30 @@ const read = (fixtures: Record<string, string>) => (file: string) =>
   fixtures[file] ?? '';
 
 describe('repo docs hygiene', () => {
+  it('does not mistake a settings filename for a private DNS suffix while retaining real local hosts', () => {
+    expect(
+      findingsFor(
+        ['docs/settings.md'],
+        read({
+          'docs/settings.md':
+            'Use `.claude/settings.local.json` and `config.internal.json`.',
+        }),
+      ).size,
+    ).toBe(0);
+    for (const host of [
+      'printer.local',
+      'printer.local.',
+      'https://service.internal:8443/',
+      'host.home.arpa',
+    ]) {
+      const { failures } = evaluate({
+        byFile: findingsFor(['docs/host.md'], read({ 'docs/host.md': host })),
+        grandfathered: [],
+      });
+      expect(failures.join('\n')).toContain('private-hostname');
+    }
+  });
+
   it('flags a real machine name, path, and mailbox in a non-grandfathered doc', () => {
     const byFile = findingsFor(
       ['docs/new.md'],
