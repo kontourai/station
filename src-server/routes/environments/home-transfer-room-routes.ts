@@ -50,7 +50,10 @@ export function createHomeTransferRoomRoutes(options: {
             typeof value === 'string' &&
             value.length > 0 &&
             Buffer.byteLength(value) <= 256 &&
-            !/[\u0000-\u001f\u007f]/u.test(value),
+            !Array.from(value).some((character) => {
+              const code = character.charCodeAt(0);
+              return code < 32 || code === 127;
+            }),
         )
       )
         return c.json({ kind: 'invalid-request' }, 400);

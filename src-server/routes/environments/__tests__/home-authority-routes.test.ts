@@ -323,6 +323,16 @@ test('room probes require real transfer pairing and return only the bound identi
   expect(
     (await post(paired.credential, { ...input, tenantId: 'forged' })).status,
   ).toBe(400);
+  for (const nonce of [
+    'bad\nnonce',
+    String.fromCharCode(0),
+    String.fromCharCode(127),
+  ]) {
+    expect((await post(paired.credential, { ...input, nonce })).status).toBe(
+      400,
+    );
+  }
+  expect(probe).not.toHaveBeenCalled();
   const response = await post(paired.credential, input);
   expect(response.status).toBe(200);
   expect(response.headers.get('cache-control')).toBe('no-store');
