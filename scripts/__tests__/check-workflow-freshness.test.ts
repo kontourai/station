@@ -377,18 +377,21 @@ describe('GitHub API collection', () => {
     GITHUB_REPOSITORY: 'kontourai/station',
   };
 
+  // Typed as the real `fetch` so the stub cannot drift from the signature the
+  // production path actually calls.
   function stubFetch(routes: Record<string, unknown>) {
     const calls: string[] = [];
-    const impl = async (url: string) => {
+    const impl = (async (input: string | URL | Request) => {
+      const url = String(input);
       calls.push(url);
       const body = Object.entries(routes).find(([fragment]) =>
         url.includes(fragment),
       )?.[1];
       if (body === undefined) {
-        return { ok: false, status: 404, json: async () => ({}) };
+        return { ok: false, status: 404, json: async () => ({}) } as Response;
       }
-      return { ok: true, status: 200, json: async () => body };
-    };
+      return { ok: true, status: 200, json: async () => body } as Response;
+    }) as typeof fetch;
     return { impl, calls };
   }
 
@@ -427,10 +430,15 @@ describe('GitHub API collection', () => {
     expect(collected.runs).toHaveLength(3);
     expect(Object.keys(collected.jobsByRunId)).toEqual(['12']);
 
-    // And the collected shape feeds the evaluator directly.
+    // And the collected shape feeds the evaluator directly — the seam between
+    // the two halves, which nothing else exercises.
     expect(
       evaluateWorkflowFreshness({
-        ...collected,
+        runs: collected.runs as unknown[],
+        jobsByRunId: collected.jobsByRunId as Record<
+          string,
+          { conclusion?: unknown }[]
+        >,
         maxAgeMs: 36 * HOUR,
         now: NOW,
       }).fresh,
@@ -465,14 +473,14 @@ describe('GitHub API collection', () => {
   });
 
   test('the request carries the API version and bearer token', async () => {
-    const seen: Record<string, unknown>[] = [];
-    const impl = async (
-      _url: string,
-      init: { headers: Record<string, string> },
+    const seen: unknown[] = [];
+    const impl = (async (
+      _input: string | URL | Request,
+      init?: RequestInit,
     ) => {
-      seen.push(init.headers);
-      return { ok: true, status: 200, json: async () => ({}) };
-    };
+      seen.push(init?.headers);
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    }) as typeof fetch;
     await fetchJson('https://api.github.com/x', 'secret-token', impl);
     expect(seen[0]).toMatchObject({
       accept: 'application/vnd.github+json',
