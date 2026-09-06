@@ -51,3 +51,13 @@ export interface DevicePresentation {
   /** What the host machine calls itself. Never guessed from the request. */
   hostName: string;
 }
+
+/** Disclosure from this home, not a certificate of transferred execution authority. */
+export type HomeRecoveryDisclosure =
+  | { kind: 'not-restored' | 'unavailable' }
+  | {
+      kind: 'recovered-from-copy';
+      recoveryId: string;
+      snapshotCreatedAt: string;
+      authorityTransferred: false;
+    };

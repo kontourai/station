@@ -10,7 +10,7 @@ import {
 import { useProjectWorkspacePanesQuery } from '@kontourai/station-sdk/workspace-pane';
 import { useMemo, useSyncExternalStore } from 'react';
 import { isDistinctFrameOrigin } from '../components/mcp-ui/frameOrigin';
-import { useConfig } from '../contexts/ConfigContext';
+import { useConfig, useConfigSettled } from '../contexts/ConfigContext';
 import { pluginRegistry } from '../core/PluginRegistry';
 import {
   type PlatformProfile,
@@ -96,6 +96,56 @@ export function clientWorkspacePaneRendererPresence(
     : 'missing';
 }
 
+/**
+ * Whether the client facts renderer selection reads have SETTLED — and
+ * deliberately not "do we have them".
+ *
+ * #1536 H1-1: this was `config === null`, and `useConfig()` returns null for a
+ * FAILED `/api/config` read exactly as it does for one in flight
+ * (`ConfigContext.useConfigSnapshot`). The app's query defaults are
+ * `retry: 1` with no refetch on mount or focus (`main.tsx`), so a failed config
+ * read never retries on its own — every plugin-component and mcp-tool-ui pane
+ * would have read "Loading…" forever, with the "Check again" action REMOVED
+ * because a pending presentation withholds it. A settled failure has to fall
+ * back to the real reason and its retry: it is an answer, not a wait.
+ *
+ * `configSettled` is `ConfigContext.useConfigSettled()` (`!isFetching`), which
+ * is true for an errored read — so an error can only reach the `false` branch
+ * here. `configLoaded` is there for the restored-but-revalidating case: the
+ * persisted snapshot is data renderer selection can legitimately read, so
+ * having it means nothing is pending even while a revalidation is in flight.
+ */
+export function workspacePaneRendererFactsPending(input: {
+  pluginRegistryLoading: boolean;
+  /** A config document is readable — restored or freshly fetched. */
+  configLoaded: boolean;
+  /** The config query has answered, successfully OR with an error. */
+  configSettled: boolean;
+}): boolean {
+  if (input.pluginRegistryLoading) return true;
+  return !input.configLoaded && !input.configSettled;
+}
+
+/**
+ * Whether this descriptor's renderer selection reads a client fact that may not
+ * have settled yet.
+ *
+ * A `plugin-component` is present only once its bundle registers a trusted
+ * layout, and an `mcp-tool-ui` only while app config admits the MCP host — both
+ * arrive after first paint. A `builtin-component`'s presence is a static
+ * canonical-registry check and a `standard-data` view is decided by the
+ * instance's own bound contribution: neither can be "not known yet", so
+ * neither may claim to be still loading.
+ */
+function rendererSelectionReadsUnsettledFacts(
+  descriptor: WorkspacePaneDescriptor,
+): boolean {
+  return [
+    descriptor.renderer.kind,
+    descriptor.alternativeRenderer?.renderer.kind,
+  ].some((kind) => kind === 'plugin-component' || kind === 'mcp-tool-ui');
+}
+
 function unavailableUntilCatalogIsResolved(): PaneAvailability {
   return {
     state: 'unsupported',
@@ -116,6 +166,14 @@ export function resolveWorkspacePaneCatalogPresentation(
   mcpAppsEnabled = true,
   pluginFramesEnabled = false,
   rendererGate: 'remote-isolation' | null = null,
+  /**
+   * The client facts renderer selection reads — the plugin registry's bundles
+   * and app config — have not settled. A renderer that is not registered YET
+   * is indistinguishable here from one that is gone, so without this the
+   * resolver reported `renderer: 'missing'` during every cold load and each
+   * plugin pane spent seconds claiming to be "Temporarily unavailable".
+   */
+  rendererFactsPending = false,
 ): ResolvedWorkspacePaneCatalog {
   const availabilityByDescriptor = new Map<
     WorkspacePaneDescriptor['id'],
@@ -191,6 +249,16 @@ export function resolveWorkspacePaneCatalogPresentation(
       ...(rendererGate && descriptor.renderer.kind === 'plugin-component'
         ? { rendererGate }
         : {}),
+      // Only where the renderer is not selected AND its selection actually
+      // depends on a fact still arriving. A descriptor whose renderer resolved
+      // does not become "pending" because some OTHER pane's bundle is slow, and
+      // a built-in that is genuinely absent from the canonical registry is not
+      // waiting for anything.
+      ...(rendererFactsPending &&
+      rendererSelection.state !== 'selected' &&
+      rendererSelectionReadsUnsettledFacts(descriptor)
+        ? { rendererResolution: 'pending' as const }
+        : {}),
       clientRendererPresence,
       ...(rendererSelection.state === 'selected'
         ? { selectedRenderer: rendererSelection.candidate }
@@ -223,6 +291,7 @@ export function useResolvedWorkspacePaneCatalog(projectSlug: string) {
   });
   const profile = usePlatformProfile();
   const config = useConfig();
+  const configSettled = useConfigSettled();
   // The registry is populated asynchronously after the pane catalog may have
   // resolved. Its settled load status is the notification boundary that makes
   // newly registered (including isolated remote) layouts selectable.
@@ -242,10 +311,17 @@ export function useResolvedWorkspacePaneCatalog(projectSlug: string) {
       config?.mcpUiHost !== false,
       isDistinctFrameOrigin(config?.pluginFrameOrigin),
       rendererGateFromPluginRegistryLoadStatus(pluginRegistryLoadStatus),
+      workspacePaneRendererFactsPending({
+        pluginRegistryLoading: pluginRegistryLoadStatus.state === 'loading',
+        configLoaded: config !== null,
+        configSettled,
+      }),
     );
   }, [
+    config,
     config?.mcpUiHost,
     config?.pluginFrameOrigin,
+    configSettled,
     facts,
     pluginRegistryLoadStatus,
     profile,

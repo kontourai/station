@@ -6,6 +6,7 @@ export interface ProjectTaskRoomSourceSeal {
   sourceHomeRef: string;
   targetHomeRef: string;
   checkpoint: ProjectTaskRoomCheckpoint;
+  workingStateDigest: string;
 }
 
 interface SealDatabase {
@@ -23,6 +24,10 @@ export function initializeProjectTaskRoomSourceSeals(db: SealDatabase): void {
     operation_id TEXT NOT NULL, source_home_ref TEXT NOT NULL,
     target_home_ref TEXT NOT NULL, checkpoint_json TEXT NOT NULL,
     PRIMARY KEY(project_id, task_id)
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS project_task_room_seal_state (
+    project_id TEXT NOT NULL, task_id TEXT NOT NULL, working_state_digest TEXT NOT NULL,
+    PRIMARY KEY(project_id,task_id)
   )`);
   db.exec(`CREATE TABLE IF NOT EXISTS project_task_room_execution_bindings (
     session_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, task_id TEXT NOT NULL
@@ -128,9 +133,14 @@ export function readProjectTaskRoomSourceSeal(
   scope: { projectId: string; taskId: string },
 ): unknown {
   return db
-    .prepare(`SELECT operation_id AS operationId,
-    source_home_ref AS sourceHomeRef, target_home_ref AS targetHomeRef,
-    checkpoint_json AS checkpointJson FROM project_task_room_source_seals
+    .prepare(`SELECT
+    CASE WHEN length(CAST(operation_id AS BLOB)) <= 1024 THEN operation_id END AS operationId,
+    CASE WHEN length(CAST(source_home_ref AS BLOB)) <= 1024 THEN source_home_ref END AS sourceHomeRef,
+    CASE WHEN length(CAST(target_home_ref AS BLOB)) <= 1024 THEN target_home_ref END AS targetHomeRef,
+    CASE WHEN length(CAST(checkpoint_json AS BLOB)) <= 4096 THEN checkpoint_json END AS checkpointJson
+    , (SELECT CASE WHEN length(working_state_digest)=64 THEN working_state_digest END
+       FROM project_task_room_seal_state d WHERE d.project_id=s.project_id AND d.task_id=s.task_id) AS workingStateDigest
+    FROM project_task_room_source_seals s
     WHERE project_id=? AND task_id=?`)
     .get(scope.projectId, scope.taskId);
 }
@@ -151,4 +161,7 @@ export function persistProjectTaskRoomSourceSeal(
     seal.targetHomeRef,
     JSON.stringify(seal.checkpoint),
   );
+  db.prepare(
+    'INSERT INTO project_task_room_seal_state(project_id,task_id,working_state_digest) VALUES(?,?,?)',
+  ).run(scope.projectId, scope.taskId, seal.workingStateDigest);
 }

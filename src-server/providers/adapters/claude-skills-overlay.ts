@@ -141,8 +141,12 @@ export interface SweepStaleSkillOverlaysInput {
    * removal), so this grace window is generous rather than racing a
    * still-starting session the way the shorter, contention-driven
    * sweepStaleManifests grace window does for a SHARED workspace cwd
-   * (an overlay directory is never shared between sessions, so there is no
-   * equivalent race to guard against -- only whether this session is still live).
+   * (an overlay directory is never shared between two DIFFERENT session ids,
+   * so there is no equivalent race to guard against -- only whether this
+   * session is still live). It IS shared across a restart on the same
+   * session id, since the path is derived from that id alone: stopSession
+   * skips its own cleanup when the thread has been retaken (station#1573),
+   * and this sweep's isLiveSessionId check covers the same case here.
    */
   staleAfterMs?: number;
   homeDir?: string;

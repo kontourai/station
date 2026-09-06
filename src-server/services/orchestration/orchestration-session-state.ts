@@ -286,6 +286,18 @@ export function buildOrchestrationSessionSummary(options: {
   answerability: SessionAnswerabilityObservation;
   /** Process-local watchdog observation; never reconstructed from event time. */
   turnProgress?: TurnProgressObservation;
+  /**
+   * The CONVERSATION's first prompted turn, supplied only when this thread is a
+   * continuation child (`EventStore.conversationRootFirstPromptedTurn`).
+   *
+   * #1536 B4: a continuation mints a new thread, so `events` here begin at the
+   * SECOND thing the person said — and `displayTitle` renamed the conversation
+   * on every turn, on every surface that titles a session from it. Passed as an
+   * event rather than a string so it goes through `extractDisplayTitle` like
+   * any other: one normalization, so a child and its root cannot render the
+   * same prompt two different ways.
+   */
+  conversationFirstPromptedTurn?: CanonicalRuntimeEvent;
 }): OrchestrationSessionSummary {
   const base = options.loaded ?? options.persisted;
   if (!base) {
@@ -301,7 +313,12 @@ export function buildOrchestrationSessionSummary(options: {
   const modelLaunchPlan = extractModelLaunchPlan(events);
   const reportedModel = extractReportedModel(events);
   const conversationIdentity = extractConversationIdentity(events);
-  const displayTitle = extractDisplayTitle(events) ?? delegation?.title;
+  const displayTitle =
+    (options.conversationFirstPromptedTurn
+      ? extractDisplayTitle([options.conversationFirstPromptedTurn])
+      : undefined) ??
+    extractDisplayTitle(events) ??
+    delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
   const controlMode = base.controlMode ?? 'station-owned';
   const {

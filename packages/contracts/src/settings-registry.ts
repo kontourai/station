@@ -496,6 +496,10 @@ export const INTERNAL_APP_CONFIG_FIELDS = [
   'mcpUiFrameOrigin',
   'pluginFrameOrigin',
   'managedChatOrchestration',
+  // #1582 D9: runtime-derived on GET only — the shell this host would try
+  // first when `terminalShell` is unset. It is the DEFAULT for a registered
+  // setting, never a setting of its own, so it must not be writable.
+  'defaultTerminalShell',
 ] as const satisfies readonly (keyof AppConfig)[];
 
 type RegisteredKey = (typeof APP_SETTINGS_REGISTRY)[number]['key'];

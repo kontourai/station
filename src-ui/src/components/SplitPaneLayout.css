@@ -380,14 +380,62 @@
   min-width: 0;
 }
 
+/*
+ * #1582 D10: the name line is a flex row of two boxes that WRAP, not one text
+ * run that truncates.
+ *
+ * The badge used to be concatenated into the same `text-overflow: ellipsis`
+ * box as the name, so the two shared ONE truncation and the pill decided where
+ * the name got cut — the Agents rail showed "Station…", a seven-character
+ * name, beside a detail pane wide enough to print a sentence. Widening the
+ * rail does not fix it: `agentReadinessState` prints the server's reason
+ * VERBATIM ("Needs: no enabled LLM provider connection is configured."), so
+ * the pill's width is the server's to choose and it can spend any width the
+ * rail is given.
+ *
+ * Shrinking the badge instead was measured and is not enough either: the pill
+ * is a `display: grid` badge whose own `white-space` is `normal`, so squeezing
+ * it makes it WRAP — three lines tall inside a 40px row, overflowing onto the
+ * row below — while the name still lost its last pixel to the shared line.
+ *
+ * So the badge wraps to its own line rather than competing for the name's.
+ * A short chip ("READY") still sits beside the name because it fits at its
+ * base size; a full sentence does not fit at any width and takes the line
+ * below, where the row grows to hold it. The name is never the thing that
+ * gives way, and nothing is clipped to say so.
+ */
 .split-pane__item-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
+  line-height: 1.15;
+}
+
+.split-pane__item-name-text {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.15;
+}
+
+/*
+ * `white-space: normal` so the sentence wraps INSIDE its own box rather than
+ * running past the rail: the pill sets its own value, and inheriting `nowrap`
+ * from the line above would make a long reason overflow instead of wrapping.
+ */
+.split-pane__item-name-badge {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
 }
 
 .split-pane__item--selected .split-pane__item-name,

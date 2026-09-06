@@ -1496,10 +1496,21 @@ export class OrchestrationService {
         return { persisted, loaded };
       },
       projectConversation: ({ persisted, loaded }, events) => {
+        const summaryThreadId = persisted?.threadId ?? loaded?.threadId ?? '';
+        // See `listSessionReadModel`: a continuation child folds only its own
+        // events, which start at the second prompt.
+        const conversationFirstPromptedTurn = summaryThreadId
+          ? this.options.eventStore?.conversationRootFirstPromptedTurn(
+              summaryThreadId,
+            )?.payload
+          : undefined;
         const session = buildOrchestrationSessionSummary({
           persisted,
           loaded,
           events: [...events],
+          ...(conversationFirstPromptedTurn
+            ? { conversationFirstPromptedTurn }
+            : {}),
           turnProgress: this.turnProgress.read(
             persisted?.threadId ?? loaded?.threadId ?? '',
           ),
@@ -2794,6 +2805,14 @@ export class OrchestrationService {
     const eventCountByThread =
       eventStore?.countEventsByThreads(readableThreadIds) ??
       new Map<string, number>();
+    // #1536 B4: batched beside the two reads above, never per row — a
+    // continuation child's own events begin at the SECOND prompt, so without
+    // the conversation's own first prompted turn every surface that titles a
+    // session from `displayTitle` renamed the conversation each turn.
+    const conversationFirstPromptedTurnByThread =
+      eventStore?.conversationRootFirstPromptedTurnForThreads(
+        readableThreadIds,
+      ) ?? new Map<string, PersistedRuntimeEvent>();
     return readableThreadIds
       .map((threadId) => {
         // archive#1867: summary facts are queried by their load-bearing
@@ -2809,12 +2828,17 @@ export class OrchestrationService {
         const eventCount = eventCountByThread.get(threadId) ?? 0;
         const persisted = persistedByThread.get(threadId);
         const loaded = this.sessionReadModel.get(threadId);
+        const conversationFirstPromptedTurn =
+          conversationFirstPromptedTurnByThread.get(threadId)?.payload;
         return buildOrchestrationSessionSummary({
           persisted,
           loaded,
           events: events.map((event) => event.payload),
           eventCount,
           turnProgress: this.turnProgress.read(threadId),
+          ...(conversationFirstPromptedTurn
+            ? { conversationFirstPromptedTurn }
+            : {}),
           answerability: this.observeAnswerability(
             threadId,
             (loaded ?? persisted)?.provider,
@@ -3037,12 +3061,21 @@ export class OrchestrationService {
     );
 
     const recovery = this.recoveryCoordinator?.latestProjection(threadId);
+    // See `listSessionReadModel`: a continuation child folds only its own
+    // events, which start at the second prompt.
+    const conversationFirstPromptedTurn =
+      this.options.eventStore?.conversationRootFirstPromptedTurn(
+        threadId,
+      )?.payload;
     return {
       session: buildOrchestrationSessionSummary({
         persisted,
         loaded,
         events,
         turnProgress: this.turnProgress.read(threadId),
+        ...(conversationFirstPromptedTurn
+          ? { conversationFirstPromptedTurn }
+          : {}),
         answerability: this.observeAnswerability(
           threadId,
           (loaded ?? persisted)?.provider,

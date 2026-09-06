@@ -917,6 +917,169 @@ describe('StationAgentAdapter', () => {
     expect((await adapter.listSessions())[0]?.status).toBe('ready');
   });
 
+  /**
+   * station#1569 (item 4): this adapter had NO tool-call state — the SSE
+   * relay is a stateless per-chunk translator — so a call whose stream was
+   * abandoned (a stop aborts the controller, and `consumeChatStream`'s
+   * aborted branch returns silently by design) left a row running forever
+   * with no terminal from any path.
+   */
+  describe('open tool calls at session end (station#1569 item 4)', () => {
+    /** A session with a live turn whose stream stays open, so a `tool-call`
+     * chunk can be delivered without a matching `tool-result`. */
+    async function sessionWithOpenToolCall(threadId: string) {
+      const encoder = new TextEncoder();
+      let streamController!: ReadableStreamDefaultController<Uint8Array>;
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              streamController = controller;
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      );
+      const adapter = new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:3141',
+        hasAgent: () => true,
+        ...approvalDeps(),
+        fetch: fetchMock,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        threadId,
+        provider: 'station-agent',
+        metadata: { agentId: 'reviewer' },
+      });
+      const turn = await adapter.sendTurn({
+        threadId,
+        input: 'Use the repository tool',
+      });
+      streamController.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({
+            type: 'tool-call',
+            toolCallId: 'call-open',
+            toolName: 'repo_write',
+            input: { path: 'README.md' },
+          })}\n\n`,
+        ),
+      );
+      // session.started, session.configured, session.state-changed,
+      // turn.started, tool.started
+      const opened = await nextEvents(iterator, 5);
+      expect(opened.at(-1)).toMatchObject({
+        method: 'tool.started',
+        toolCallId: 'call-open',
+      });
+      return { adapter, iterator, encoder, streamController, turn };
+    }
+
+    test('stopSession settles them as unresolved, on their own turn, before session.exited', async () => {
+      const { adapter, iterator, turn } = await sessionWithOpenToolCall(
+        'task-stop-open-tool',
+      );
+
+      await adapter.stopSession('task-stop-open-tool');
+
+      const [settled, exited] = await nextEvents(iterator, 2);
+      expect(settled).toMatchObject({
+        method: 'tool.completed',
+        toolCallId: 'call-open',
+        toolName: 'repo_write',
+        status: 'unresolved',
+        turnId: turn.turnId,
+        output:
+          'No result was reported before the session ended; whether the tool ran is unknown.',
+      });
+      expect(exited).toMatchObject({ method: 'session.exited' });
+    });
+
+    test('an id-less chunk pair is never settled as unresolved', async () => {
+      // station#1569 (M2): the relay mints a fallback id per chunk, so an
+      // id-less start and its id-less result carry DIFFERENT ids. Tracking
+      // the start would leave an entry its own result can never delete, and
+      // the settle would then publish "no result was reported" for a call
+      // whose success it had already published.
+      const encoder = new TextEncoder();
+      let streamController!: ReadableStreamDefaultController<Uint8Array>;
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              streamController = controller;
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      );
+      const adapter = new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:3141',
+        hasAgent: () => true,
+        ...approvalDeps(),
+        fetch: fetchMock,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        threadId: 'task-idless-tool',
+        provider: 'station-agent',
+        metadata: { agentId: 'reviewer' },
+      });
+      await adapter.sendTurn({
+        threadId: 'task-idless-tool',
+        input: 'Use the repository tool',
+      });
+      for (const chunk of [
+        { type: 'tool-call', toolName: 'repo_write', input: {} },
+        { type: 'tool-result', toolName: 'repo_write', output: 'written' },
+      ]) {
+        streamController.enqueue(
+          encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
+        );
+      }
+      // session.started, session.configured, session.state-changed,
+      // turn.started, tool.started, tool.completed
+      const seen = await nextEvents(iterator, 6);
+      expect(seen.at(-1)).toMatchObject({
+        method: 'tool.completed',
+        status: 'success',
+      });
+
+      await adapter.stopSession('task-idless-tool');
+
+      // Straight to the exit: no fabricated `unresolved` in between.
+      const [next] = await nextEvents(iterator, 1);
+      expect(next).toMatchObject({ method: 'session.exited' });
+    });
+
+    test('a call that already reported is not settled again', async () => {
+      // The discriminating control: the settle publishes for calls still
+      // open, not for every call the session ran.
+      const { adapter, iterator, encoder, streamController } =
+        await sessionWithOpenToolCall('task-stop-closed-tool');
+
+      streamController.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({
+            type: 'tool-result',
+            toolCallId: 'call-open',
+            toolName: 'repo_write',
+            output: 'written',
+          })}\n\n`,
+        ),
+      );
+      expect(await nextEvents(iterator, 1)).toMatchObject([
+        { method: 'tool.completed', status: 'success' },
+      ]);
+
+      await adapter.stopSession('task-stop-closed-tool');
+
+      const [next] = await nextEvents(iterator, 1);
+      expect(next).toMatchObject({ method: 'session.exited' });
+    });
+  });
+
   test('routes scoped approvals through the shared registry and remembers allow-for-session', async () => {
     const eventBus = new EventBus();
     const approvalRegistry = new ApprovalRegistry(
