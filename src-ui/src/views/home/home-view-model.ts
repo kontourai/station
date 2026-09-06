@@ -826,9 +826,23 @@ export function buildActiveChatTaskItems({
   agents,
   sessions = [],
   resolveModelLabel = defaultResolveModelLabel,
+  onlyWork = false,
 }: {
   chats: Record<string, ChatUIState>;
   agents: AgentSummary[];
+  /**
+   * #1582 B9: drop chats nothing has been put into (`activeChatHasWork`).
+   *
+   * OFF by default, and the default is the load-bearing half: an inbox lists
+   * the chats OPEN IN THIS TAB, and a chat the user is looking at has to be in
+   * it whether or not it has been typed into yet. Filtering here unconditionally
+   * made a just-created chat vanish from the dock's own list — caught by
+   * `tests/cross-runtime-chat-switching.spec.ts`, not by any unit test.
+   *
+   * Home's "Continue most recent work" card is the surface that means WORK, so
+   * it is the one that opts in (`useOpenWorkChats`).
+   */
+  onlyWork?: boolean;
   /**
    * Optional: when a chat correlates with an orchestration session, that
    * session's `hasActiveTurn` fold decides whether the chat is "Running".
@@ -859,12 +873,7 @@ export function buildActiveChatTaskItems({
     }
   }
   const items = Object.entries(chats)
-    // #1582 B9: a chat nothing has been put into is not open work. Counting
-    // one produced "1 open chat" and a "Continue most recent work" card that
-    // a reload erased, because only the store's WRITE path had a predicate and
-    // this read had none. `activeChatHasWork` is defined next to that write
-    // predicate and composed from it, so the two cannot drift apart.
-    .filter(([, chat]) => activeChatHasWork(chat))
+    .filter(([, chat]) => !onlyWork || activeChatHasWork(chat))
     .map<MergeItem>(([id, chat]) => {
       const agentLabel = safeAgentLabel({
         slug: chat.agentSlug,

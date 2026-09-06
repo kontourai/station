@@ -1,17 +1,26 @@
 /**
  * @vitest-environment jsdom
  *
- * #1582 B9: an empty, just-created chat counted as "1 open chat" and produced
- * a "Continue most recent work" card. After a reload both were gone — so it
- * was never work.
+ * #1582 B9: an empty, just-created chat produced a "Continue most recent work
+ * → New chat" card on Home. After a reload it was gone — so it was never work.
+ * What survives a reload is decided by the store's own write path
+ * (`serializeActiveChats`); Home's card read the raw live map, unfiltered.
  *
- * The two answers came from two different places. What survives a reload is
- * decided by the store's own write path (`serializeActiveChats`); what the
- * count and the card render was the raw live map, unfiltered. They now share
- * one predicate, and this file drives the REAL store through the real creation
- * and promotion calls rather than hand-building chat maps, because the point
- * is that the map the count reads and the map the store writes are the same
- * map.
+ * There are two questions here and they have different answers, which is why
+ * there are two selectors over one predicate:
+ *
+ * - the dock inbox and the sidebar's mini-inbox list the chats OPEN IN THIS
+ *   TAB, and a chat the user is looking at belongs in both whatever it holds;
+ * - Home names WORK.
+ *
+ * Filtering both at once is not hypothetical: the first cut of this fix did,
+ * and a just-created chat vanished from the dock's own list — caught by
+ * `tests/cross-runtime-chat-switching.spec.ts` in the PR smoke suite, by no
+ * unit test, and by nothing in this file until the inbox case below was added.
+ *
+ * This drives the REAL store through the real creation and promotion calls
+ * rather than hand-building chat maps, because the point is that the map these
+ * selectors read and the map the store writes are the same map.
  */
 
 import { beforeEach, describe, expect, test } from 'vitest';
@@ -19,11 +28,22 @@ import { serializeActiveChats } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { openChatsStore } from '../contexts/open-chats-store';
 import type { AgentSummary } from '../types';
+import { buildActiveChatTaskItems } from '../views/home/home-view-model';
 
 const AGENTS = [{ slug: 'claude', name: 'Claude Code' }] as AgentSummary[];
 
+/** What an inbox lists: every chat open in this tab. */
 function openChatCount(): number {
   return openChatsStore.select(AGENTS).length;
+}
+
+/** What Home names: the chats that are work (`useOpenWorkChats`'s selection). */
+function workChatCount(): number {
+  return buildActiveChatTaskItems({
+    chats: activeChatsStore.getSnapshot(),
+    agents: AGENTS,
+    onlyWork: true,
+  }).length;
 }
 
 function survivesReloadCount(): number {
@@ -49,8 +69,10 @@ describe('what counts as an open chat', () => {
     expect(Object.keys(activeChatsStore.getSnapshot())).toContain(
       'claude:1788672912443',
     );
-    expect(openChatCount()).toBe(0);
+    expect(workChatCount()).toBe(0);
     expect(survivesReloadCount()).toBe(0);
+    // ...and it is still IN the inbox, because the user is looking at it.
+    expect(openChatCount()).toBe(1);
   });
 
   test('the same chat becomes open work once its first turn promotes it', () => {
@@ -64,7 +86,7 @@ describe('what counts as an open chat', () => {
       'conversation-1',
     );
 
-    expect(openChatCount()).toBe(1);
+    expect(workChatCount()).toBe(1);
     expect(survivesReloadCount()).toBe(1);
   });
 
@@ -88,13 +110,13 @@ describe('what counts as an open chat', () => {
       ],
     });
 
-    expect(openChatCount()).toBe(1);
+    expect(workChatCount()).toBe(1);
     expect(survivesReloadCount()).toBe(1);
   });
 
   // The property the fix is FOR, over a map holding all three shapes at once:
   // the two readings agree, whatever is in the store.
-  test('the open-chat count equals what survives a reload', () => {
+  test('the work count equals what survives a reload, while the inbox lists them all', () => {
     const metadata = {
       agentSlug: 'claude',
       agentName: 'Claude Code',
@@ -106,7 +128,9 @@ describe('what counts as an open chat', () => {
     activeChatsStore.initChat('claude:another-draft', metadata);
 
     expect(Object.keys(activeChatsStore.getSnapshot())).toHaveLength(3);
-    expect(openChatCount()).toBe(survivesReloadCount());
-    expect(openChatCount()).toBe(1);
+    expect(workChatCount()).toBe(survivesReloadCount());
+    expect(workChatCount()).toBe(1);
+    // The regression the PR smoke suite caught: an inbox drops nothing.
+    expect(openChatCount()).toBe(3);
   });
 });

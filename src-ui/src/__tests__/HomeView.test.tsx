@@ -57,9 +57,13 @@ const fixtures = vi.hoisted(() => ({
     | undefined,
 }));
 
-vi.mock('../contexts/open-chats-store', () => ({
-  useOpenChats: () =>
-    Object.entries(fixtures.chats).map(([id, chat]: [string, any]) => ({
+vi.mock('../contexts/open-chats-store', async () => {
+  // #1582 B9: the work selector shares the store's own predicate rather than
+  // restating it, so this double cannot disagree with production about which
+  // chats Home may name.
+  const { activeChatHasWork } = await import('../contexts/active-chats-state');
+  const map = (entries: [string, any][]) =>
+    entries.map(([id, chat]: [string, any]) => ({
       id: chat.conversationId ?? id,
       chatSessionId: id,
       kind: 'chat',
@@ -73,16 +77,25 @@ vi.mock('../contexts/open-chats-store', () => ({
         ...(chat.messages ?? []).map((message: any) => message.timestamp ?? 0),
       ),
       lifecycleLabel: chat.status === 'sending' ? 'Running' : 'Recent',
-    })),
-  openChatsStore: {
-    focus: vi.fn(),
-    openCollection: vi.fn(),
-    registerNavigation: ({ focus }: any) => {
-      openChatsStore.focus = focus;
-      return vi.fn();
+    }));
+  return {
+    useOpenChats: () => map(Object.entries(fixtures.chats) as [string, any][]),
+    useOpenWorkChats: () =>
+      map(
+        (Object.entries(fixtures.chats) as [string, any][]).filter(([, chat]) =>
+          activeChatHasWork(chat),
+        ),
+      ),
+    openChatsStore: {
+      focus: vi.fn(),
+      openCollection: vi.fn(),
+      registerNavigation: ({ focus }: any) => {
+        openChatsStore.focus = focus;
+        return vi.fn();
+      },
     },
-  },
-}));
+  };
+});
 
 vi.mock('@kontourai/station-sdk', () => ({
   // archive#3122: Home resolves its Workspace Pane renderer through
