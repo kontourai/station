@@ -43,13 +43,23 @@ const INVENTORY = join(ROOT, 'docs/ui/accent-foreground-exceptions.json');
  * `FullScreenLoader` is rendered by `PlatformProfileContext` — so its rules
  * land in the same built stylesheets as src-ui's; four white-on-accent rules
  * were live in the entry stylesheet while this gate reported the class clean.
- * `examples/` is deliberately absent: those are standalone demo apps, not
- * surfaces this product renders.
+ * Most of `examples/` is deliberately absent: those are standalone demo apps,
+ * not surfaces this product renders. The three STARTER plugins are the
+ * exception — `examples/registry/manifest.json` publishes them, Station
+ * installs them, and their layouts render inside the shell, so their CTA is a
+ * surface this product paints. All three shipped `color: var(--accent-contrast,
+ * #fff)` on an `--accent-primary` fill; `--accent-contrast` is defined nowhere
+ * in this repo, so the fallback won and the label rendered white at 1.62:1 —
+ * the exact pair measured in this file's opening paragraph, in the one part of
+ * `examples/` the gate could not see (#1582 G9).
  */
 const SOURCE_ROOTS = [
   'src-ui/src',
   'packages/connect/src/react',
   'packages/sdk/src',
+  'examples/getting-started-starter/src',
+  'examples/coding-starter/src',
+  'examples/knowledge-docs-starter/src',
 ];
 
 /** Fill tokens whose contrast partner is derived at runtime. */
