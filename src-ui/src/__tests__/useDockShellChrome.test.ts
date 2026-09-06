@@ -187,7 +187,7 @@ describe('useDockShellChrome', () => {
           onRenderedRegionGeometryChange: onGeometryChange,
         }),
       );
-      expect(onGeometryChange).toHaveBeenCalledWith(null, {
+      expect(onGeometryChange).toHaveBeenCalledWith('bottom', {
         size: 320,
         width: null,
       });
@@ -205,14 +205,14 @@ describe('useDockShellChrome', () => {
       );
       onGeometryChange.mockClear();
       act(() => result.current.setLiveDragHeight(512));
-      expect(onGeometryChange).toHaveBeenCalledWith(null, {
+      expect(onGeometryChange).toHaveBeenCalledWith('bottom', {
         size: 512,
         width: null,
       });
 
       onGeometryChange.mockClear();
       act(() => result.current.setLiveDragHeight(null));
-      expect(onGeometryChange).toHaveBeenCalledWith(null, {
+      expect(onGeometryChange).toHaveBeenCalledWith('bottom', {
         size: 320,
         width: null,
       });
