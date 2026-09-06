@@ -154,7 +154,7 @@ test.describe
 
     test('shows an actual server refusal before an explicit successful Join', async ({
       page,
-    }, testInfo) => {
+    }) => {
       await page.goto(`${live.ui}/#station-ui-bootstrap=${bootstrapToken}`);
       await page.evaluate(() =>
         localStorage.setItem('station:onboarding-setup-dismissed', '1'),
