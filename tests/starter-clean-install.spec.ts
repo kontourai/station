@@ -106,6 +106,10 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
     await expect(resumedEngines).toBeVisible({ timeout: 20_000 });
     await resumedEngines.getByRole('button', { name: 'Continue' }).click();
     await page
+      .getByTestId('engine-picker')
+      .getByRole('button', { name: 'Use this engine', exact: true })
+      .click();
+    await page
       .getByTestId('first-run-about-you')
       .getByRole('button', { name: 'Start your first chat' })
       .click();
