@@ -1,16 +1,10 @@
 /* ── Project Page ──────────────────────────────────────────────── */
 
-.project-page {
-  height: 100%;
-  overflow-y: auto;
-  background: var(--bg-primary);
-}
-
-.project-page__inner {
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 2.5rem 2rem 3rem;
-}
+/* The page FRAME `.project-page` / `.project-page__inner` lives in
+ * `project-page-frame.css`, which `ProjectPage.tsx` imports alongside this
+ * file. Two routes render that frame and only one imported this stylesheet;
+ * see that file's header (#1636). This file owns the project page's own
+ * content and nothing that another route renders. */
 
 /* ── Header ─────────────────────────────────────────────────────── */
 
@@ -1499,12 +1493,6 @@
   margin-bottom: 8px;
 }
 
-.project-page__modal-description {
-  margin: 0 0 16px;
-  color: var(--text-muted);
-  font-size: var(--text-base);
-}
-
 .project-page__modal-cancel {
   margin-top: 14px;
   text-align: right;
@@ -1527,11 +1515,6 @@
   .project-page__add-btn,
   .project-page__ns-tab {
     min-width: 44px;
-  }
-
-  /* Tighter gutters so content does not overflow narrow screens */
-  .project-page__inner {
-    padding: 1.5rem 1rem 2rem;
   }
 
   /* Header stays a row: Settings collapses to an icon-only button pinned
