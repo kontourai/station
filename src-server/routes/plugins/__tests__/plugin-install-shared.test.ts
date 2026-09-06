@@ -1856,7 +1856,7 @@ describe('installPluginFromSource', () => {
       getPluginRegistryProviders.mockReturnValue([]);
       mkdirSync(source);
       writeFileSync(join(source, 'plugin.json'), sourceManifest);
-      const selected = journal.currentInstallation('signed-tools');
+      let selected = journal.currentInstallation('signed-tools');
       expect(selected.state).toBe('observed');
       if (selected.state !== 'observed')
         throw new Error('Expected selected installation');
@@ -1953,16 +1953,125 @@ describe('installPluginFromSource', () => {
         expect(applied).toHaveBeenCalledTimes(applicationsBeforeReplacement);
       }
       replacementBuildSpy.mockRestore();
+      // A runtime failure after verified selection is indeterminate: retain
+      // pending code and original data; only a fresh recovery may publish ready.
+      writeFileSync(
+        registryPath,
+        JSON.stringify({
+          version: 1,
+          plugins: [{ id: 'signed-tools', source, claim: signedClaim }],
+        }),
+      );
+      const previousSelection = selected.installation;
+      const retainedManifest = readFileSync(
+        join(installed.root, 'plugin.json'),
+      );
+      const failureConsent = await approvedConsent(source, root);
+      const failureApp = createRegistryRoutes(
+        loader,
+        async () => {},
+        undefined,
+        undefined,
+        {
+          ...installDeps,
+          applyConfigurationMutation: async (operation) => {
+            await operation(() => {});
+            const duringFailure = journal.currentInstallation('signed-tools');
+            expect(duringFailure.state).toBe('observed');
+            if (duringFailure.state !== 'observed')
+              throw new Error('Missing verified pending installation');
+            expect(journal.activationState(duringFailure.installation)).toBe(
+              'pending',
+            );
+            expect(
+              journal.registryAcquisition(duringFailure.installation),
+            ).toMatchObject({
+              state: 'observed',
+              receipt: { signer: { keyId: 'primary' } },
+            });
+            throw new Error(
+              'Controlled runtime activation failure after verified selection',
+            );
+          },
+        },
+      );
+      const failureBuildSpy = vi
+        .spyOn(pluginBundles, 'buildPlugin')
+        .mockImplementation(async () => installDeps.buildPlugin());
+      let failedResponse: Response;
+      try {
+        failedResponse = await failureApp.request(
+          'http://localhost/plugins/install',
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              id: 'signed-tools',
+              consent: {
+                ...failureConsent,
+                registryTrustRevision: preview.registryTrustRevision,
+              },
+            }),
+          },
+        );
+      } finally {
+        failureBuildSpy.mockRestore();
+      }
+      expect(failedResponse.status).toBe(500);
+      expect(await failedResponse.json()).toMatchObject({ success: false });
+      const failedSelection = journal.currentInstallation('signed-tools');
+      if (failedSelection.state !== 'observed')
+        throw new Error('Expected retained pending failure');
+      expect(failedSelection.installation.incarnation).not.toBe(
+        previousSelection.incarnation,
+      );
+      expect(failedSelection.installation.dataScope).toBe(
+        previousSelection.dataScope,
+      );
+      expect(journal.admissionOpen(failedSelection.installation)).toBe(false);
+      expect(journal.admissionOpen(previousSelection)).toBe(false);
+      expect(readFileSync(join(installed.root, 'plugin.json'))).toEqual(
+        retainedManifest,
+      );
+      expect(
+        readFileSync(join(installed.dataRoot, 'retained-state.txt'), 'utf8'),
+      ).toBe('keep this data');
+      expect(readPluginGrantState(root, 'signed-tools').recorded).toEqual(
+        grantsBeforeReplacement.recorded,
+      );
+      const failedPreview = await previewInstalledPluginRecovery(
+        'signed-tools',
+        installDeps,
+      );
+      await recoverInstalledPlugin('signed-tools', installDeps, {
+        recoveryRevision: failedPreview.recoveryRevision,
+        consent: {
+          kind: 'operator-decision',
+          grantRevision: failedPreview.grantRevision,
+          registryTrustRevision: failedPreview.registryTrustRevision,
+          contentDigest: failedPreview.contentDigest,
+          permissions: failedPreview.permissions.required,
+          dependencies: [],
+        },
+      });
+      selected = journal.currentInstallation('signed-tools');
+      if (selected.state !== 'observed')
+        throw new Error('Expected recovered failure');
+      expect(selected.installation.dataScope).toBe(previousSelection.dataScope);
+      expect(journal.admissionOpen(selected.installation)).toBe(true);
+      expect(
+        readFileSync(join(installed.dataRoot, 'retained-state.txt'), 'utf8'),
+      ).toBe('keep this data');
       getPluginRegistryProviders.mockReturnValue([]);
       expect(JSON.stringify(receipt)).not.toContain(registryPath);
       expect(JSON.stringify(receipt)).not.toContain('BEGIN PUBLIC KEY');
-      expect(installDeps.buildPlugin).toHaveBeenCalledTimes(1);
+      expect(installDeps.buildPlugin).toHaveBeenCalledTimes(2);
       rmSync(join(root, 'config', 'registry-installs.json'), { force: true });
       await expect(
         installPluginFromSource(source, [], installDeps, { consent }),
       ).rejects.toThrow('trust continuity');
       expect(journal.currentInstallation('signed-tools')).toEqual(selected);
-      expect(installDeps.buildPlugin).toHaveBeenCalledTimes(1);
+      expect(installDeps.buildPlugin).toHaveBeenCalledTimes(2);
       expect(journal.admissionOpen(selected.installation)).toBe(true);
       const reserved = journal.reserve(selected.installation, 'probe');
       expect(reserved.state).toBe('reserved');
@@ -1996,7 +2105,7 @@ describe('installPluginFromSource', () => {
       await expect(
         installPluginFromSource(source, [], installDeps, { consent }),
       ).rejects.toMatchObject({ reason: 'receipt-unavailable' });
-      expect(installDeps.buildPlugin).toHaveBeenCalledTimes(1);
+      expect(installDeps.buildPlugin).toHaveBeenCalledTimes(2);
     },
   );
 
