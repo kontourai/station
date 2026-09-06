@@ -9249,6 +9249,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 /* Project above, chat name below — the hierarchy reads parent → child, and it
    is what the old standalone project-context row used to carry. */
+.chat-dock__mobile-project,
 .chat-dock__mobile-identity {
   flex: 1 1 auto;
   display: flex;
@@ -9269,6 +9270,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   text-align: left;
 }
 
+.chat-dock__mobile-project {
+  flex: 0 1 34%;
+}
+
+.chat-dock__mobile-project-lines,
 .chat-dock__mobile-identity-lines {
   display: flex;
   flex: 0 1 auto;
@@ -9284,6 +9290,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   background: var(--bg-hover);
 }
 
+.chat-dock__mobile-project-caption,
 .chat-dock__mobile-eyebrow {
   max-width: 100%;
   overflow: hidden;
@@ -9296,6 +9303,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   white-space: nowrap;
 }
 
+.chat-dock__mobile-project-name,
 .chat-dock__mobile-title {
   display: flex;
   align-items: center;
@@ -9308,6 +9316,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   line-height: 1.2;
 }
 
+.chat-dock__mobile-project-name {
+  display: block;
+}
+
+.chat-dock__mobile-project-name,
 .chat-dock__mobile-title-text {
   overflow: hidden;
   text-overflow: ellipsis;

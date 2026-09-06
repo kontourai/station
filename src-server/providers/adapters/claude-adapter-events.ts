@@ -201,11 +201,17 @@ export interface ClaudeMessageState {
    */
   activeTasks?: Map<string, ClaudeActiveTask>;
   /**
-   * `toolCallId → toolName` for top-level assistant `tool_use` blocks whose
-   * `tool_result` has not arrived yet. Doubles as the replay guard: a
-   * `tool_result` for an untracked id (e.g. resume replay) is ignored.
+   * `toolCallId → { toolName, turnId }` for top-level assistant `tool_use`
+   * blocks whose `tool_result` has not arrived yet. Doubles as the replay
+   * guard: a `tool_result` for an untracked id (e.g. resume replay) is
+   * ignored. `turnId` is the dispatched turn the call belongs to, so a late
+   * result (a stopped turn's, or a backgrounded Task's) lands on the turn
+   * that issued the call rather than on whichever turn is active. Entries
+   * are only ever settled by their own result or by the SDK's deferral
+   * report above — never by a turn ending, which would falsely settle a
+   * backgrounded Task that legitimately outlives its turn.
    */
-  activeToolCalls?: Map<string, string>;
+  activeToolCalls?: Map<string, ClaudeActiveToolCall>;
   /**
    * archive#1827: set when a `result` message classified `terminal`
    * (`classifyClaudeResultOutcome`) has already been published as a
@@ -711,7 +717,7 @@ export function mapClaudeSdkMessage({
       // on its own, because a `tool.completed` naming a placeholder tool is a
       // worse record than one fewer event.
       const deferredToolName = deferred
-        ? (record.activeToolCalls?.get(deferred.id) ?? deferred.name)
+        ? (record.activeToolCalls?.get(deferred.id)?.toolName ?? deferred.name)
         : undefined;
       if (deferred && deferredToolName) {
         record.activeToolCalls?.delete(deferred.id);
@@ -813,7 +819,10 @@ export function mapClaudeSdkMessage({
       if (!record.activeToolCalls) {
         record.activeToolCalls = new Map();
       }
-      record.activeToolCalls.set(toolUse.id, toolUse.name);
+      record.activeToolCalls.set(toolUse.id, {
+        toolName: toolUse.name,
+        turnId: record.activeTurnId,
+      });
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -852,15 +861,20 @@ export function mapClaudeSdkMessage({
       };
       const toolCallId = toolResult.tool_use_id;
       if (typeof toolCallId !== 'string') continue;
-      const toolName = record.activeToolCalls?.get(toolCallId);
-      if (!toolName) continue;
+      const tracked = record.activeToolCalls?.get(toolCallId);
+      if (!tracked) continue;
+      const toolName = tracked.toolName;
       record.activeToolCalls?.delete(toolCallId);
       publish({
         eventId: crypto.randomUUID(),
         provider,
         threadId: record.session.threadId,
         createdAt,
-        turnId: record.activeTurnId,
+        // The turn that issued the tool_use, not whichever turn is active
+        // now: a stopped turn's delayed result must not land on its
+        // successor (the #921 window), or the provenance fold sees a start
+        // without a completion on one turn and the reverse on the other.
+        turnId: tracked.turnId ?? record.activeTurnId,
         itemId: toolCallId,
         method: 'tool.completed',
         toolCallId,
@@ -886,6 +900,11 @@ export function mapClaudeSdkMessage({
       message: message.error,
     });
   }
+}
+
+interface ClaudeActiveToolCall {
+  toolName: string;
+  turnId?: string;
 }
 
 function clearClaudeDispatchedTurn(record: ClaudeMessageState): void {

@@ -81,7 +81,12 @@ interface ToolbarMenuRow {
   label: string;
   /** `RegisteredSurface.icon`, for the row's 16px glyph slot. */
   icon: string;
-  checked: boolean;
+  /**
+   * Present for a Show/Hide toggle; ABSENT for a one-shot command — the
+   * "Move <title> to the dock" row a surface occupying `main` gets (#1523),
+   * which has no checked state to claim.
+   */
+  checked?: boolean;
   onSelect: () => void;
 }
 
@@ -196,7 +201,16 @@ function ToolbarMenuSurface({
   );
 }
 
-/** The folded device's flat Show/Hide list — one row per dock surface. */
+/**
+ * The folded device's flat list — one row per dock surface.
+ *
+ * Two row shapes, and the difference is #1523's: a surface in a dock region
+ * gets a Show/Hide TOGGLE, while one occupying `main` gets a one-shot "Move
+ * <title> to the dock" command, because a dock toggle can neither show it where
+ * it already is nor hide the always-visible primary area. The role follows the
+ * shape — `menuitemcheckbox` only where there is a checked state to report — so
+ * the row never announces a state it does not have.
+ */
 function FoldedRegionMenu({
   items,
   onClose,
@@ -211,8 +225,12 @@ function FoldedRegionMenu({
           key={item.key}
           type="button"
           className="menu-row"
-          role="menuitemcheckbox"
-          aria-checked={item.checked}
+          {...(item.checked === undefined
+            ? { role: 'menuitem' as const }
+            : {
+                role: 'menuitemcheckbox' as const,
+                'aria-checked': item.checked,
+              })}
           onClick={() => {
             item.onSelect();
             onClose();

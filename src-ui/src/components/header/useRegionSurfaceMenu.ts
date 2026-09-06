@@ -46,7 +46,13 @@ export interface RegionSurfaceMenuItem {
    * later registry entry would break silently.
    */
   icon: string;
-  checked: boolean;
+  /**
+   * Present for a Show/Hide toggle row (whether the surface is the dock's
+   * visible one); absent for a one-shot command row (`Move <title> to the
+   * dock`), which has no checked state to claim. Each host renders the two
+   * with the roles its container allows.
+   */
+  checked?: boolean;
   onSelect: () => void;
 }
 
@@ -137,25 +143,23 @@ export interface RegionSurfaceMenu {
 }
 
 /**
- * The one implementation of "toggle this surface's region" and of the folded
- * menu built on it, shared by the toolbar controls (which register the
- * keyboard chords, render the fine pointer's per-region buttons, and still own
- * the folded menu on a coarse device too wide to count as mobile) and by the
- * `⋯` overflow menu (which owns those rows on a phone since #917 moved them
- * out of the toolbar row).
+ * The folded region menu and the surface toggle its rows and the chords
+ * issue, shared by the toolbar controls (which register the keyboard chords,
+ * render the fine pointer's per-region buttons, and still own the folded menu
+ * on a coarse device too wide to count as mobile) and by the `⋯` overflow
+ * menu (which owns those rows on a phone since #917 moved them out of the
+ * toolbar row).
  *
- * It lives here rather than in either consumer because the coarse branch is
- * subtle — an occupied-but-not-folded surface is SHOWN alone rather than
- * hidden — and a second copy would drift from this one silently.
- *
- * It decides only whether the surface is being shown or hidden. Showing is
- * the model's own `showSurface`, called directly; this hook does not take
- * `useShowSurface`'s no-host navigation fallback, so a chord issued while no
- * region host is registered (a Chat workspace layout) mutates the model and
- * renders nothing, as it did before. Where an unplaced surface lands, when it
- * may take a free region rather than evict an occupant, and how a coarse
- * device folds the other regions are the model's placement rules, and this
- * used to carry its own copy of them, which drifted twice in one epic (#1420).
+ * It decides nothing about placement. `toggleSurface` is the model's own
+ * command (`RegionModelContext.toggleSurface`, backed by `toggleSurface` in
+ * region-model.ts): what a dock occupant's toggle does, how a coarse device
+ * folds, and where a `main` occupant goes are all decided there, once. This
+ * hook used to carry its own copy of the show/hide half of those rules, which
+ * drifted from the model twice in one epic (#1420), and then could not see
+ * that a surface occupying `main` is neither shown nor hidden by a dock
+ * toggle (#1523). It also does not take `useShowSurface`'s no-host navigation
+ * fallback: a chord issued while no region host is registered (a Chat
+ * workspace layout) mutates the model and renders nothing, as it did before.
  *
  * Must be called under a `RegionModelProvider`; a consumer that can render
  * outside one gates on `useRegionModelOptional` first, the way
@@ -169,26 +173,8 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
   const bottomOnly = available.length === 1;
 
   const toggleSurface = useCallback(
-    (surface: RegisteredSurface) => {
-      const occupied = occupiedDockRegion(regions, surface.id);
-      if (!occupied) {
-        model.showSurface(surface.id);
-        return;
-      }
-      if (bottomOnly) {
-        if (
-          occupied === foldedDockRegion(regions, lastShownRegion) &&
-          regions[occupied].visible
-        ) {
-          model.setRegion(occupied, { visible: false });
-        } else {
-          model.showSurface(surface.id);
-        }
-        return;
-      }
-      model.setRegion(occupied, { visible: !regions[occupied].visible });
-    },
-    [bottomOnly, lastShownRegion, model, regions],
+    (surface: RegisteredSurface) => model.toggleSurface(surface.id),
+    [model],
   );
 
   const surfaceList = [...surfaces.values()].filter((surface) =>
@@ -329,6 +315,18 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
     toggleSurface,
     menuItems: bottomOnly
       ? surfaceList.map((surface) => {
+          // A surface occupying `main` is not a dock toggle: "Show" would
+          // reveal it where it already is (nothing happens) and "Hide" has no
+          // meaning for the always-visible primary area. Its row names what
+          // the toggle does — return it to the dock (#1523).
+          if (occupiedRegion(regions, surface.id) === 'main') {
+            return {
+              key: surface.id,
+              label: `Move ${surface.title} to the dock`,
+              icon: surface.icon,
+              onSelect: () => toggleSurface(surface),
+            };
+          }
           const occupied = occupiedDockRegion(regions, surface.id);
           // The surface is shown only when it IS the folded region — the one
           // visible dock a coarse device has — not merely when its own region

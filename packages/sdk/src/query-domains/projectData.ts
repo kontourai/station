@@ -31,6 +31,14 @@ export type GitStatusResult =
       ahead: number;
       behind: number;
       /**
+       * Whether this checkout has anywhere to push (#1536 G5). Three states,
+       * never two: `unknown` is a read that could not answer, and a surface
+       * that folded it into `absent` would disable Push on no evidence — the
+       * distinction `checkout-remote-reader.ts` exists to keep. Optional only
+       * because an older server does not send it, which reads as unknown.
+       */
+      remote?: 'present' | 'absent' | 'unknown';
+      /**
        * The git repository root containing the queried path (symlink-resolved
        * via `git --show-toplevel`). Lets clients map an arbitrary file path to
        * its owning repo for multi-repo workspaces.

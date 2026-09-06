@@ -125,6 +125,8 @@ export function useHeaderViewModel({
     goHome: () => showSurface('home'),
     openProfile: () => {
       if (currentView?.type === 'profile') {
+        // A toggle's return: back to `/` and whatever occupies `main`, not
+        // Home by name — that is `goHome`'s meaning, not this one's (#1523).
         navigate('/');
       } else {
         onNavigate({ type: 'profile' });

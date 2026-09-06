@@ -12,7 +12,7 @@ interface ChatDockActiveIdentityProps {
   agent?: AgentData;
   /**
    * Human label for the model this chat runs, from
-   * `effectiveChatModelId` + `modelDisplayLabel` — the same two derivations
+   * `effectiveChatModelId` + `modelIdentityLabel` — the same two derivations
    * the composer's model pill uses. `null`/absent when no model was reported;
    * the header then names none rather than inventing one.
    */
