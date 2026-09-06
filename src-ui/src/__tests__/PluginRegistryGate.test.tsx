@@ -127,40 +127,46 @@ describe('PluginRegistryGate', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  test('keeps a bundle-load failure non-dismissible with its retry action until a successful retry recovers it', async () => {
-    mocks.reload
-      .mockImplementationOnce(async () => {
-        setLoadStatus('degraded', ['broken-layout'], 'bundle-load-failure');
-        return 'degraded';
-      })
-      .mockImplementationOnce(async () => {
-        setLoadStatus('ready');
-        return 'ready';
+  test.each([false, true])(
+    'keeps bundle-load failure visible until retry succeeds (remote consent: %s)',
+    async (consented) => {
+      setRemotePluginBundlesAllowed('local-station', mocks.apiBase, consented);
+      mocks.reload
+        .mockImplementationOnce(async () => {
+          setLoadStatus('degraded', ['broken-layout'], 'bundle-load-failure');
+          return 'degraded';
+        })
+        .mockImplementationOnce(async () => {
+          setLoadStatus('ready');
+          return 'ready';
+        });
+
+      render(
+        <>
+          <PluginRegistryGate>
+            <main>Station shell</main>
+          </PluginRegistryGate>
+          <BannerHost />
+        </>,
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole('alert').textContent).toMatch(/broken-layout/),
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Dismiss notice' }),
+      ).toBeNull();
+      expect(bannerStore.getSnapshot()[0]).toMatchObject({
+        dismissible: false,
+        actions: [{ label: 'Retry extensions' }],
       });
 
-    render(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
-    );
+      fireEvent.click(screen.getByRole('button', { name: 'Retry extensions' }));
 
-    await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toMatch(/broken-layout/),
-    );
-    expect(screen.queryByRole('button', { name: 'Dismiss notice' })).toBeNull();
-    expect(bannerStore.getSnapshot()[0]).toMatchObject({
-      dismissible: false,
-      actions: [{ label: 'Retry extensions' }],
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Retry extensions' }));
-
-    await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
-  });
+      await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    },
+  );
 
   test('reloads on reconnect even when the outage-era attempt has not settled yet', async () => {
     // The reconnect can land while the offline attempt is still in flight.

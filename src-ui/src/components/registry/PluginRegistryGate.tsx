@@ -125,7 +125,7 @@ export function PluginRegistryBootstrap() {
     }
     if (loadStatus.state === 'loading') return;
 
-    if (allowRemoteBundles) {
+    if (allowRemoteBundles && loadStatus.failure === 'remote-isolation') {
       bannerStore.dismiss(BANNER_IDS.pluginRegistry);
       return;
     }
