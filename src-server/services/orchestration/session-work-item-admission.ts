@@ -272,7 +272,17 @@ export function createSessionWorkItemAdmissionRegistry(
         completion.status !== 'success'
           ? completion.status === 'cancelled'
             ? ('cancelled' as const)
-            : ('failed' as const)
+            : // station#1558 (fix round, L10): `'unresolved'` lands here as
+              // `failed`, which is not what Station observed. This
+              // vocabulary has no member for "no outcome was ever
+              // reported", and the only consumer
+              // (`event-store.ts`'s `takeSessionWorkItemAdmission`) reads
+              // `kind` and `claim` and discards `reason` entirely — so the
+              // word never reaches a reader today. Widening the union for a
+              // value nothing consumes would be ceremony; if `reason` ever
+              // becomes observable, this is the branch that has to gain a
+              // member first.
+              ('failed' as const)
           : !isCurrent(entry.current)
             ? ('authority-lost' as const)
             : undefined;

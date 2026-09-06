@@ -413,6 +413,50 @@ describe('TurnProvenanceCard', () => {
     expect(valueFor('Tools')).toBe('read_file, bash (1 failed) — and 3 more');
   });
 
+  // station#1558 (fix round, L11): the per-tool line annotated failures and
+  // cancellations and said nothing about an unresolved call, so a tool whose
+  // only anomaly was "no outcome was ever observed" read as clean. It must
+  // also never join the "failed" count — that word names something Station
+  // saw happen.
+  it('annotates unresolved calls on the tool line, separately from failures', () => {
+    render(
+      <TurnProvenanceCard
+        provenance={envelope({
+          tools: {
+            state: 'observed',
+            value: {
+              uses: [
+                {
+                  name: 'read_file',
+                  started: 1,
+                  succeeded: 0,
+                  failed: 0,
+                  cancelled: 0,
+                  unresolved: 1,
+                },
+                {
+                  name: 'bash',
+                  started: 2,
+                  succeeded: 0,
+                  failed: 1,
+                  cancelled: 0,
+                  unresolved: 1,
+                },
+              ],
+              omittedNames: 0,
+            },
+            observedFrom: [{ eventId: 'e6', method: 'tool.completed' }],
+          },
+        })}
+      />,
+    );
+    expand();
+
+    expect(valueFor('Tools')).toBe(
+      'read_file (1 unresolved), bash (1 failed, 1 unresolved)',
+    );
+  });
+
   // drill-down into the existing trust surface, only when a reference exists.
   it('links to the referenced trust report, naming the exact bundle', () => {
     render(
@@ -614,6 +658,40 @@ describe('TurnProvenanceCard', () => {
     );
     const badge = container.querySelector('.turn-provenance__badge');
     expect(badge?.textContent).toBe('1 tool call unresolved');
+  });
+
+  // station#1558: the same finding, reached from the OTHER direction — the
+  // call now settles with an explicit `unresolved` terminal, so `started`
+  // and the observed outcomes balance and the derived gap is zero. Counting
+  // only the derived gap would silently drop the finding the moment the
+  // adapter started reporting it.
+  it('badges a turn whose tool call settled as unresolved, without double counting it', () => {
+    const { container } = render(
+      <TurnProvenanceCard
+        provenance={envelope({
+          tools: {
+            state: 'observed',
+            value: {
+              uses: [
+                {
+                  name: 'bash',
+                  started: 1,
+                  succeeded: 0,
+                  failed: 0,
+                  cancelled: 0,
+                  unresolved: 1,
+                },
+              ],
+              omittedNames: 0,
+            },
+            observedFrom: [{ eventId: 'e9', method: 'tool.completed' }],
+          },
+        })}
+      />,
+    );
+    const badge = container.querySelector('.turn-provenance__badge');
+    expect(badge?.textContent).toBe('1 tool call unresolved');
+    expect(badge?.textContent).not.toMatch(/tool issue/);
   });
 
   // --- archive#1802: the four row kinds must be checkably distinct ---

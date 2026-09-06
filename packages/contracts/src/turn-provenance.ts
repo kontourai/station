@@ -193,6 +193,17 @@ export interface TurnProvenanceToolUse {
   failed: number;
   /** `tool.completed` events with `status: 'cancelled'`. */
   cancelled: number;
+  /**
+   * `tool.completed` events with `status: 'unresolved'` (station#1558) —
+   * the session ended with the call still open, so no result can ever
+   * arrive. Counted apart from `failed` and `cancelled` because Station
+   * observed neither a failure nor a stop, only the absence of an outcome.
+   *
+   * Optional: envelopes assembled before station#1558 carry no such count,
+   * and a reader must treat its absence as "not observed", never as zero
+   * observed unresolved calls. Read it as `use.unresolved ?? 0`.
+   */
+  unresolved?: number;
 }
 
 /**
@@ -493,7 +504,11 @@ function isToolSummaryValue(value: unknown): boolean {
         typeof use.started === 'number' &&
         typeof use.succeeded === 'number' &&
         typeof use.failed === 'number' &&
-        typeof use.cancelled === 'number',
+        typeof use.cancelled === 'number' &&
+        // station#1558: absent on every envelope written before that change,
+        // so absence must stay readable — present-but-malformed still
+        // rejects the whole envelope, exactly like the fields above.
+        (use.unresolved === undefined || typeof use.unresolved === 'number'),
     ) &&
     typeof value.omittedNames === 'number'
   );
