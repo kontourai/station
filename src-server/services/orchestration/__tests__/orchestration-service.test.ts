@@ -879,6 +879,53 @@ describe('OrchestrationService', () => {
       });
       try {
         if (!uncertain) {
+          const binding =
+            restarted.readProjectTaskRoomExecutionBinding(sessionId)!;
+          const association =
+            graph.readCompletedDispatchForRecovery(sessionId)!;
+          const session = restarted.readSessionByThread(sessionId)!;
+          const prepare = vi.spyOn(room, 'prepareAgentStarted');
+          const faults = [
+            () =>
+              vi
+                .spyOn(restarted, 'readProjectTaskRoomExecutionBinding')
+                .mockReturnValueOnce({
+                  ...binding,
+                  projectId: 'wrong-project',
+                }),
+            () =>
+              vi
+                .spyOn(graph, 'readCompletedDispatchForRecovery')
+                .mockReturnValueOnce({
+                  ...association,
+                  dispatch: { ...association.dispatch, taskId: 'wrong-task' },
+                }),
+            () =>
+              vi
+                .spyOn(restarted, 'readSessionByThread')
+                .mockReturnValueOnce({ ...session, provider: 'codex' }),
+          ];
+          for (const inject of faults) {
+            const fault = inject();
+            try {
+              expect(
+                await recoverCompletedTaskDispatches({
+                  eventStore: restarted,
+                  taskGraph: graph,
+                  room,
+                }),
+              ).toEqual({ recovered: 0, unresolved: 1 });
+              expect(prepare).not.toHaveBeenCalled();
+              expect(
+                restarted
+                  .sessionTurnBoundaryAuthority()
+                  .hasPossibleEffect(sessionId),
+              ).toEqual({ kind: 'available', active: true });
+            } finally {
+              fault.mockRestore();
+            }
+          }
+          prepare.mockRestore();
           const unavailable = await recoverCompletedTaskDispatches({
             eventStore: restarted,
             taskGraph: graph,
