@@ -120,6 +120,29 @@ describe('usage-stats', () => {
     expect(updatedStats.totalTokens).toBe(3);
   });
 
+  it.each([0, 0.2])(
+    'records a first measured cost %s without inventing an earlier unknown',
+    (cost) => {
+      const params = {
+        usage: { inputTokens: 1, outputTokens: 2 },
+        toolCallCount: 0,
+        modelId: 'model',
+        cost,
+      };
+      const first = buildConversationStatsUpdate(params);
+      expect(first.updatedStats.estimatedCost).toBe(cost);
+      expect(first.modelStats.model?.estimatedCost).toBe(cost);
+      const unknown = buildConversationStatsUpdate({ ...params, cost: null });
+      const later = buildConversationStatsUpdate({
+        ...params,
+        existingStats: unknown.updatedStats,
+        existingModelStats: unknown.modelStats,
+      });
+      expect(later.updatedStats.estimatedCost).toBeNull();
+      expect(later.modelStats.model?.estimatedCost).toBeNull();
+    },
+  );
+
   it('extracts text content from supported message shapes', () => {
     expect(
       getMessageTextContent({

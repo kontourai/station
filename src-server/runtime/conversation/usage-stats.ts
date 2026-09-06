@@ -250,6 +250,13 @@ export function buildConversationStatsUpdate({
   const stats = existingStats ?? createEmptyConversationStats();
   const currentModelStats =
     existingModelStats[modelId] ?? createEmptyConversationStats();
+  // A first recorded cost starts its aggregate. An existing unknown cost
+  // must remain unknown; a later priced turn cannot reconstruct it.
+  const priorCost = existingStats === undefined ? 0 : stats.estimatedCost;
+  const priorModelCost =
+    existingModelStats[modelId] === undefined
+      ? 0
+      : currentModelStats.estimatedCost;
   const inputTokens = getUsageInputTokens(usage);
   const outputTokens = getUsageOutputTokens(usage);
   const systemPromptTokens = fixedTokens?.systemPromptTokens ?? 0;
@@ -283,9 +290,7 @@ export function buildConversationStatsUpdate({
     turns: stats.turns + 1,
     toolCalls: stats.toolCalls + toolCallCount,
     estimatedCost:
-      cost !== null && stats.estimatedCost !== null
-        ? stats.estimatedCost + cost
-        : null,
+      cost !== null && priorCost !== null ? priorCost + cost : null,
     tokenBreakdown: {
       systemPromptTokens,
       mcpServerTokens,
@@ -330,9 +335,7 @@ export function buildConversationStatsUpdate({
     turns: currentModelStats.turns + 1,
     toolCalls: currentModelStats.toolCalls + toolCallCount,
     estimatedCost:
-      cost !== null && currentModelStats.estimatedCost !== null
-        ? currentModelStats.estimatedCost + cost
-        : null,
+      cost !== null && priorModelCost !== null ? priorModelCost + cost : null,
     tokenBreakdown: updatedStats.tokenBreakdown,
   };
 
