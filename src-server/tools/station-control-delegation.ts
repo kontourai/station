@@ -72,6 +72,7 @@ import {
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
+import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
   delegatedTaskFollowUps,
   delegatedTaskInterrupts,
@@ -3214,7 +3215,7 @@ export async function delegateTask(
     );
     if (started.status === 'indeterminate') {
       throw new Error(
-        `${started.message} Session ${started.session.threadId} may already be running; do not retry automatically.`,
+        `${started.message} Session ${started.session?.threadId ?? sessionId} may already be running; do not retry automatically.`,
       );
     }
     if (started.status !== 'accepted') {
@@ -3646,6 +3647,8 @@ export async function executeExecutionTargetMessage(
         },
       );
       if (started.status === 'indeterminate') {
+        if (!started.session)
+          throw new SessionStartIndeterminateError(started, started.message);
         throw new ForegroundMessageIndeterminateError(
           {
             code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,

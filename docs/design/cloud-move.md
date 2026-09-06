@@ -97,6 +97,11 @@ remaining identity integration and browser acceptance requirements.
 
 ## Remaining implementation sequence
 
+The [channel home authority design](channel-home-authority.md) specifies the
+write barriers, conditional ownership transition and cross-process failure
+evidence required for the handoff step. Its storage adapter alone does not
+provide execution fencing.
+
 1. Validate the selected provider preparation and boot in an explicitly selected
    cloud test account/region/budget. AWS template qualification and GCP host
    qualification retain separate evidence. Prove private access, image identity, persistence, cost

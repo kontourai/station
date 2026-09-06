@@ -5,7 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectTaskRoomAuthority } from '@kontourai/station-contracts/project-task-room';
 import { PROJECT_TASK_ROOM_LIVE_HEARTBEAT_INTERVAL_MS } from '@kontourai/station-contracts/project-task-room-browser';
-import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import type {
+  TaskDispatchResult,
+  TaskRecord,
+} from '@kontourai/station-contracts/task-graph';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   DEFAULT_LIVE_WORK_BOUNDS,
@@ -182,6 +185,9 @@ function fixture(
     hosted?: boolean;
     revoked?: boolean;
     receipt?: 'duplicate' | 'missing';
+    agentLifecycle?: ConstructorParameters<
+      typeof ProjectTaskRoomRuntime
+    >[0]['working']['agentLifecycle'];
     revisionEvidence?: ConstructorParameters<
       typeof ProjectTaskRoomRuntime
     >[0]['revisionEvidence'];
@@ -312,7 +318,7 @@ function fixture(
               : { kind: 'unavailable' as const },
       privateSnapshot: async ({ scope }) =>
         new SharedWorkingState({ scope }).snapshot(),
-      agentLifecycle: async () => 'stored' as const,
+      agentLifecycle: options.agentLifecycle ?? (async () => 'stored' as const),
       readAgentLifecycles: async () => [],
       removeAgentLifecycle: async () => 'removed' as const,
       watch: () => {
@@ -347,6 +353,55 @@ function fixture(
 }
 
 describe('ProjectTaskRoomRuntime', () => {
+  test.each(['stored', 'unavailable'] as const)(
+    'agent publication preparation requires the actual %s persistence result',
+    async (outcome) => {
+      const write = vi.fn(async () => outcome);
+      const { runtime } = fixture({ agentLifecycle: write });
+      const result: TaskDispatchResult = {
+        task: { ...task, agentId: 'agent', sessionId: 'agent-session' },
+        dispatch: {
+          id: 'dispatch',
+          taskId: task.id,
+          sessionId: 'agent-session',
+          provider: 'codex',
+          outcome: 'started',
+          createdAt: task.createdAt,
+          sourceSurface: 'test',
+        },
+        session: {
+          threadId: 'agent-session',
+          provider: 'codex',
+          status: 'ready',
+          createdAt: task.createdAt,
+          updatedAt: task.updatedAt,
+        },
+        links: [],
+      };
+      try {
+        if (outcome === 'stored')
+          await expect(
+            runtime.prepareAgentStarted(result),
+          ).resolves.toBeUndefined();
+        else
+          await expect(runtime.prepareAgentStarted(result)).rejects.toThrow(
+            'could not be stored',
+          );
+        expect(write).toHaveBeenCalledTimes(1);
+        write.mockClear();
+        const withoutAgent = {
+          ...result,
+          task: { ...task, sessionId: 'agent-session' },
+        };
+        await runtime.prepareAgentStarted(withoutAgent);
+        await runtime.publishAgentStarted(withoutAgent);
+        expect(write).not.toHaveBeenCalled();
+      } finally {
+        await runtime.close();
+      }
+    },
+  );
+
   test.each([
     'committed',
     'duplicate',
