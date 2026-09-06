@@ -290,20 +290,22 @@ describe.skipIf(!chromiumAvailable)(
     test.each(DESKTOP_WIDTHS)(
       'the session title keeps at least one glyph while the agent name yields, at %ipx',
       async (width) => {
-        // #1536 L9/L10. The layout lets the agent name and model ellipsise as a
-        // last resort so nothing paints outside its box, but the TITLE is the
-        // part that yields FIRST (`flex-shrink: 4`) — so the risk this pins is
-        // the fix trading an overprint for an invisible title. One glyph is the
-        // floor: an ellipsis alone still says "there is a title here, truncated",
-        // which a zero-width box does not.
+        // #1536 L9/L10, under #1536 F's yield order: the engine token gives way
+        // first, then the agent name, and the TITLE yields LAST — it is the row's
+        // subject. (This originally read the other way round, off a
+        // `flex-shrink: 4` on the title that F's measurement superseded and the
+        // reconciliation deleted.) So the risk this pins is no longer "the title
+        // was traded away first"; it is that a title which yields last can still
+        // reach zero once everything ahead of it has already collapsed. One glyph
+        // is the floor: an ellipsis alone still says "there is a title here,
+        // truncated", which a zero-width box does not.
         //
-        // ACCEPTED TRADE, measured: at 320px the title is squeezed to 4px —
-        // under one glyph. That width is below the dock's own breakpoint, where
-        // the shell renders `ChatDockMobileHeader` instead, so no reader meets
-        // this header there; 320px keeps its place in the overflow assertions
-        // above (where it is the only width that makes the constraint bite) and
-        // is deliberately excluded here rather than driving a `min-width` floor
-        // this component does not need.
+        // Only the two desktop widths are driven here. Narrower than these the
+        // identity row is `ChatDockActiveIdentity.overflow.test.tsx`'s subject,
+        // not this file's — it measures real dock widths down to 260px (below
+        // `MIN_DOCK_WIDTH`) and owns where each token starts truncating. 320px
+        // keeps its place in the overflow assertions above, where it is the only
+        // width that makes the containment constraint bite.
         const measurements = await measure(width);
         const title = measurements.find(
           (m) => m.selector === '.chat-dock__active-identity-title',
