@@ -26,6 +26,11 @@ import { renderWithIsolatedConnections as render } from '../../../__tests__/rend
 const updateConfig = vi.fn();
 const recordFirstRunDecision = vi.fn();
 const materializeEngineAgent = vi.fn();
+// A DISTINCT spy, not a second reference to the one above: #1559 gave the
+// detected-but-unconnected rows their own server path, and sharing one spy
+// would make "connected then materialized" and "materialized" indistinguishable
+// to any assertion here.
+const connectAndMaterializeEngine = vi.fn();
 const configValue: {
   firstRun?: FirstRunState;
   userProfile?: unknown;
@@ -69,6 +74,14 @@ vi.mock('../../../contexts/AgentsContext', () => ({
 vi.mock('@kontourai/station-sdk', () => ({
   useMaterializeEngineAgentMutation: () => ({
     mutateAsync: materializeEngineAgent,
+  }),
+  // #1559 added a second enable path (connect an ACP engine that is detected but
+  // not yet a connection, then materialize it) and taught its own
+  // `EnginesStep.test.tsx` about it, but not this suite — which renders the same
+  // `FirstRunEnginesChapter` and so calls the same hook. Unmocked, the chapter
+  // threw on render and took 36 of this file's 47 tests with it.
+  useConnectAndMaterializeEngineMutation: () => ({
+    mutateAsync: connectAndMaterializeEngine,
   }),
   useDevicePresentation: () => undefined,
 }));
@@ -138,13 +151,19 @@ vi.mock('../../../hooks/useSystemStatus', () => ({
 }));
 vi.mock('../../EnginePicker', () => ({
   EnginePicker: ({
+    eyebrow,
+    title,
     onChosen,
     onDismiss,
   }: {
+    eyebrow?: string;
+    title?: string;
     onChosen: () => void;
     onDismiss: () => void;
   }) => (
     <div data-testid="engine-picker">
+      <div>{eyebrow}</div>
+      <div>{title}</div>
       <button type="button" onClick={onChosen}>
         Use selected engine
       </button>
@@ -155,7 +174,11 @@ vi.mock('../../EnginePicker', () => ({
   ),
 }));
 
-import { FirstRunHomeChapter } from '../FirstRunHomeChapter';
+import {
+  FirstRunHomeChapter,
+  firstRunStepCounterLabel,
+  planFirstRunChapterSteps,
+} from '../FirstRunHomeChapter';
 import { firstRunStore } from '../first-run-store';
 
 const READY_CODEX = {
@@ -995,4 +1018,74 @@ describe('leaving during personalization save', () => {
       }
     },
   );
+});
+
+/**
+ * #1536 A8: four modals numbered as three. The run showed "Step 1 of 3",
+ * "Step 2 of 3", an unnumbered "Choose what powers Station", then
+ * "Step 3 of 3" — so the one screen with no number read as something that had
+ * escaped the wizard.
+ */
+describe('the engine-role screen is a counted step of the run', () => {
+  test('plans it only when the role is unanswered', () => {
+    expect(
+      planFirstRunChapterSteps({
+        disclosureOutstanding: true,
+        engineRoleUnanswered: true,
+      }),
+    ).toEqual(['disclosure', 'engines', 'engine-role', 'about-you']);
+    expect(
+      planFirstRunChapterSteps({
+        disclosureOutstanding: false,
+        engineRoleUnanswered: false,
+      }),
+    ).toEqual(['engines', 'about-you']);
+  });
+
+  test('says nothing rather than "Step 0 of N" for a step this run is not showing', () => {
+    expect(
+      firstRunStepCounterLabel(['engines', 'about-you'], 'engine-role'),
+    ).toBeUndefined();
+  });
+
+  test('counts every screen the run shows, and numbers the role screen among them', async () => {
+    disclosureState.outstanding = true;
+    configValue.builtinAgentEngineConnectionId = undefined;
+    engineState.engines = [];
+    render(<FirstRunHomeChapter />);
+
+    expect(screen.getByText('Step 1 of 4')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'I understand' }));
+    expect(screen.getByText('Step 2 of 4')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    const picker = await screen.findByTestId('engine-picker');
+    // The screen that used to carry a decorative eyebrow and no number.
+    expect(picker.textContent).toContain('Step 3 of 4');
+    expect(picker.textContent).toContain('Choose what powers Station');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Use selected engine' }),
+    );
+    expect(screen.getByText('Step 4 of 4')).toBeTruthy();
+  });
+
+  test('stops counting the role screen when the role is answered mid-run', async () => {
+    disclosureState.outstanding = false;
+    configValue.builtinAgentEngineConnectionId = undefined;
+    engineState.engines = [];
+    render(<FirstRunHomeChapter />);
+
+    // Planned as three: engines, engine-role, about-you.
+    expect(screen.getByText('Step 1 of 3')).toBeTruthy();
+    // Settings in another tab answers the role while this run is open.
+    configValue.builtinAgentEngineConnectionId = 'codex';
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.queryByTestId('engine-picker')).toBeNull();
+    expect(screen.getByTestId('first-run-about-you')).toBeTruthy();
+    // Not "Step 3 of 3" over a run that only ever showed two screens.
+    expect(screen.getByText('Step 2 of 2')).toBeTruthy();
+  });
 });

@@ -6676,14 +6676,23 @@ export class EventStore {
           createdAt: session.createdAt,
         });
       }
+      // #1536 B4: `conversationId` is the ROOT thread for a continuation
+      // child, so writing this session's `createdAt` here stamped the child's
+      // start time onto the conversation — every continuation made the
+      // conversation look newly created, and `MIN(created_at)` in
+      // `listConversationHistoryPage` returned the LATEST child's time
+      // (measured: root 17:14:40 read back as the child's 17:14:45). A
+      // conversation's creation time is its earliest Session's; only
+      // `updated_at` moves forward.
       this.db
         .prepare(
           `UPDATE orchestration_conversation_history
-         SET tenant_id = ?, created_at = ?, updated_at = ?
+         SET tenant_id = ?, created_at = MIN(COALESCE(created_at, ?), ?), updated_at = ?
          WHERE thread_id = ?`,
         )
         .run(
           session.tenantExecutionContext?.tenantId ?? null,
+          session.createdAt,
           session.createdAt,
           session.updatedAt,
           conversationId,
@@ -6816,6 +6825,76 @@ export class EventStore {
     sessionId: string,
   ): Readonly<ConversationSessionLineage> | undefined {
     return this.conversationSessionLineage.sessionForExecution(sessionId);
+  }
+
+  /**
+   * The conversation's OWN first prompted turn, when the thread asked about is
+   * a continuation child rather than the conversation's root Session.
+   *
+   * #1536 B4: a continuation mints a new thread (`<root>:session:<uuid>`), and
+   * `buildOrchestrationSessionSummary` folds one thread's events — so the
+   * child's `displayTitle` was the second thing the person said, and every
+   * surface that titles a session from it (Home's "Continue most recent work",
+   * the dock rail, the open-chats list) renamed the conversation each turn.
+   *
+   * `undefined` for a root thread: it already folds its own first turn, and
+   * returning it here would make two paths answer one question.
+   *
+   * Derived at read time on purpose, which is also what makes it retroactive: a
+   * conversation recorded before this existed gets the right title on its next
+   * read. The stored projection rows are NOT repaired — see the migration note
+   * in `projectConversationHistoryEvent` (#1536 L6).
+   */
+  conversationRootFirstPromptedTurn(
+    threadId: string,
+  ): PersistedRuntimeEvent | undefined {
+    const lineage =
+      this.conversationSessionLineage.sessionForExecution(threadId);
+    if (!lineage?.predecessorSessionId) return undefined;
+    if (lineage.conversationId === threadId) return undefined;
+    return this.firstTurnStartedWithPrompt(lineage.conversationId);
+  }
+
+  /**
+   * Batched {@link conversationRootFirstPromptedTurn}. Two chunked queries for
+   * the whole set — never one per row: the callers are the session-list reads
+   * archive#4466 batched for exactly this reason, and a per-thread lineage
+   * lookup inside those `.map()`s would restore the cost it removed.
+   */
+  conversationRootFirstPromptedTurnForThreads(
+    threadIds: readonly string[],
+  ): Map<string, PersistedRuntimeEvent> {
+    const result = new Map<string, PersistedRuntimeEvent>();
+    const unique = [...new Set(threadIds)];
+    if (unique.length === 0) return result;
+    const rootByThread = new Map<string, string>();
+    for (const chunk of this.chunkArray(unique, EVENT_STORE_BATCH_CHUNK_SIZE)) {
+      const placeholders = chunk.map(() => '?').join(', ');
+      const rows = this.db
+        .prepare(
+          `SELECT session_id, conversation_id
+           FROM orchestration_conversation_sessions
+           WHERE session_id IN (${placeholders})
+             AND predecessor_session_id IS NOT NULL
+             AND conversation_id <> session_id`,
+        )
+        .all(...chunk) as Array<{
+        session_id: string;
+        conversation_id: string;
+      }>;
+      for (const row of rows) {
+        rootByThread.set(row.session_id, row.conversation_id);
+      }
+    }
+    if (rootByThread.size === 0) return result;
+    const firstByRoot = this.fetchFirstTurnStartedWithPrompt([
+      ...new Set(rootByThread.values()),
+    ]);
+    for (const [threadId, root] of rootByThread) {
+      const event = firstByRoot.get(root);
+      if (event) result.set(threadId, event);
+    }
+    return result;
   }
 
   reserveNextConversationSession(input: {
@@ -10187,6 +10266,51 @@ export class EventStore {
       persisted?.tenant_execution_context,
     );
     const prompt = event.method === 'turn.started' ? event.prompt : undefined;
+    // #1536 B4: a continuation child Session is a new thread with its own
+    // history row, and its first prompted turn is the SECOND thing the person
+    // said — so titling that row from this thread alone renamed the
+    // conversation on every continuation.
+    //
+    // NOT MIGRATED, deliberately (#1536 L6): rows written before this change
+    // keep the title they were given, and a conversation row whose `created_at`
+    // was stamped by a child's upsert keeps that time until some later upsert
+    // rewrites it. Reads are correct going forward — `listConversationHistoryPage`
+    // prefers the root's title regardless — but an existing conversation's
+    // recorded creation time stays wrong, because `MIN(created_at)` over rows
+    // that are already wrong is still wrong. Repairing them needs a backfill
+    // against the lineage table, which is a migration and not this projection's
+    // job. The conversation's title belongs to
+    // its ROOT Session. `listConversationHistoryPage`'s `root_title` window
+    // already prefers the root when reading a whole conversation; this makes
+    // the row itself right, so a direct reader of one row cannot disagree with
+    // the list, and the window stays a second line of defence rather than the
+    // only one.
+    //
+    // #1536 L5: both reads are skipped unless they can change the outcome — a
+    // row that already has a title keeps it (the title is write-once here), and
+    // an event that carries no prompt has none to write. That leaves the lineage
+    // lookup and the root read on a thread's FIRST prompted turn only, not on
+    // every appended event.
+    const needsTitle =
+      !existing?.title &&
+      typeof prompt === 'string' &&
+      prompt.trim().length > 0;
+    const lineage = needsTitle
+      ? this.conversationSessionLineage.sessionForExecution(event.threadId)
+      : undefined;
+    const inheritedTitle =
+      lineage?.predecessorSessionId && lineage.conversationId !== event.threadId
+        ? ((
+            this.db
+              .prepare(
+                `SELECT title FROM orchestration_conversation_history
+                 WHERE thread_id = ?`,
+              )
+              .get(lineage.conversationId) as
+              | { title?: string | null }
+              | undefined
+          )?.title ?? undefined)
+        : undefined;
     const agentSlug =
       existing?.agent_slug ??
       (typeof metadata?.agentSlug === 'string'
@@ -10225,9 +10349,10 @@ export class EventStore {
         tenant?.tenantId ?? existing?.tenant_id ?? null,
         agentSlug ?? null,
         projectSlug ?? null,
-        typeof prompt === 'string' && prompt.trim()
-          ? prompt.trim().slice(0, 80)
-          : null,
+        inheritedTitle ??
+          (typeof prompt === 'string' && prompt.trim()
+            ? prompt.trim().slice(0, 80)
+            : null),
         messageCount,
         existing?.created_at ?? persisted?.created_at ?? event.createdAt,
         event.createdAt,

@@ -10,6 +10,7 @@ import {
   SchedulerStorageCorruptError,
   SchedulerStorageUnavailableError,
 } from '../../../services/scheduling/scheduler-ledger.js';
+import { SchedulerScheduleInvalidError } from '../../../services/scheduling/scheduler-service.js';
 
 const metricMocks = vi.hoisted(() => ({ schedulerJobRunsAdd: vi.fn() }));
 
@@ -265,6 +266,58 @@ describe('Scheduler Routes', () => {
     expect(Array.isArray(body.data)).toBe(true);
     expect(body.data.length).toBeGreaterThan(0);
   });
+
+  test('GET /jobs/preview-schedule forwards the timezone the expression is written in', async () => {
+    // #1536 D1: without it the service evaluates the expression as UTC, so a
+    // preview of a zoned job returns different instants from the ones it fires
+    // at — the Add Job form showed "Tue 2:00 AM MDT" for a Mon 8:00 AM MDT job.
+    const { app, svc } = setup();
+    await app.request(
+      '/jobs/preview-schedule?cron=0+8+*+*+1-5&count=3&timezone=Australia%2FBrisbane',
+    );
+    expect(svc.previewSchedule).toHaveBeenCalledWith(
+      '0 8 * * 1-5',
+      3,
+      'Australia/Brisbane',
+    );
+  });
+
+  test('GET /jobs/preview-schedule omits the timezone when none is asked for', async () => {
+    // Absent stays absent rather than becoming the server's own zone: the
+    // scheduler treats an unzoned schedule as UTC and the preview must agree.
+    const { app, svc } = setup();
+    await app.request('/jobs/preview-schedule?cron=0+8+*+*+1-5');
+    expect(svc.previewSchedule).toHaveBeenCalledWith(
+      '0 8 * * 1-5',
+      5,
+      undefined,
+    );
+  });
+
+  test.each([
+    ['an unknown IANA zone', 'cron=0+8+*+*+1-5&timezone=Mars%2FOlympus'],
+    ['a cron field out of range', 'cron=0+99+*+*+*'],
+  ])(
+    'GET /jobs/preview-schedule answers 400 for %s, not 500',
+    async (_label, query) => {
+      // #1536 R3: `nextOccurrences` throws a RangeError on an unknown zone, and
+      // the route reported it as a 500 — an operator's typo presented as a
+      // server fault. The real service validates; only the mock is replaced
+      // here, so the STATUS MAPPING is what this exercises.
+      const { app, svc } = setup();
+      svc.previewSchedule = vi
+        .fn()
+        .mockRejectedValue(
+          new SchedulerScheduleInvalidError('Invalid schedule: bad zone'),
+        );
+
+      const res = await app.request(`/jobs/preview-schedule?${query}`);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { success: boolean; error: string };
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('Invalid schedule');
+    },
+  );
 
   test('GET /jobs/preview-schedule returns 400 without cron', async () => {
     const { app } = setup();

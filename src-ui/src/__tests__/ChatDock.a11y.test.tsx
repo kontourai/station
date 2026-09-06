@@ -184,8 +184,19 @@ describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site
     // dockProjectMatchesActiveSession") would miss the SAME suppression
     // reintroduced via an inline comparison instead of that name — this
     // does not, because any extra gating changes the matched text.
+    // #1536 G6 moved the DIRECTORY's shape out of the JSX and into
+    // `resolveDockProjectContextDirectory`, so the inline ternary this pin used
+    // to match no longer exists at the call site. The property it protected is
+    // unchanged and is pinned in two halves: the prop is the derivation and
+    // nothing else, and the derivation is fed `scopedProjectSlug` /
+    // `sessionDisplayCwd` under those names — so any re-gating either appears
+    // here (the prop stops being a bare identifier) or inside the derivation,
+    // which `chat-dock-utils.test.ts` covers behaviourally, including the
+    // discriminating case: a session that belongs to a DIFFERENT project than
+    // the badge still reports its own directory.
+    expect(source).toMatch(/workingDirectory=\{dockProjectContextDirectory\}/);
     expect(source).toMatch(
-      /workingDirectory=\{\s*scopedProjectSlug\s*\?\s*null\s*:\s*sessionDisplayCwd\s*\}/,
+      /resolveDockProjectContextDirectory\(\{\s*scopedProjectSlug,\s*sessionDisplayCwd,/,
     );
     // #1536 F: the coding layout is no longer a prop of the project-context
     // row (its start-truncated path segment, which carried the link, left the

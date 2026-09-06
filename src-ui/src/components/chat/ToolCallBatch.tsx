@@ -97,6 +97,16 @@ export function ToolCallBatch<P extends ToolCallLike>({
               : `${group.failedCount} failed`}
           </span>
         )}
+        {/* station#1569 (item 3): the verb alone can only decline to claim
+            completion — it cannot say HOW MANY of these calls may never have
+            run. Same disclosure duty as the failure count beside it. */}
+        {group.unresolvedCount > 0 && (
+          <span className="tool-call-batch__unresolved">
+            {group.unresolvedCount === 1
+              ? '1 with no result'
+              : `${group.unresolvedCount} with no result`}
+          </span>
+        )}
         <span className="tool-call-batch__chevron" aria-hidden="true">
           ›
         </span>
