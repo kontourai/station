@@ -356,7 +356,7 @@ test('provider-managed project ignores a stale unsupported project model even wh
 
   await page.locator('.new-chat-modal__agent', { hasText: 'Station' }).click();
   const activeModel = page.locator('.chat-input__model-btn');
-  await expect(activeModel).toContainText('Local Ollama');
+  await expect(activeModel).toHaveAccessibleName(/Model: Local Ollama/);
   await expect(activeModel).toContainText('Llama 3.2');
   await activeModel.click();
   const picker = page.getByRole('dialog', { name: 'Choose model' });
@@ -934,7 +934,7 @@ test('OpenCode exposes live model switching in chat at 390x844', async ({
   await page.locator('.new-chat-modal__agent', { hasText: 'OpenCode' }).click();
 
   const activeModel = page.locator('.chat-input__model-btn');
-  await expect(activeModel).toContainText('OpenCode');
+  await expect(activeModel).toHaveAccessibleName(/Model: OpenCode/);
   await expect(activeModel).toContainText('Big Pickle');
   // Glossary vocabulary only (docs/design/chat-composer.md §3.3) — the
   // internal 'runtime' source label renders as "reported by app", not the

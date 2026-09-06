@@ -245,7 +245,7 @@ export function startingPoint(
 ): Locator {
   const label = {
     model: /^Run it on Station/,
-    cli: /^Wrap an installed agent CLI/,
+    cli: /^Run it on another engine/,
     copy: /^Copy an existing agent/,
   }[which];
   return page.getByRole('button', { name: label });

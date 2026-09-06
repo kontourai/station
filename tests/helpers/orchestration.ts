@@ -5,6 +5,14 @@ import {
 } from './current-station-contract';
 import { placeSurfaceThroughLayoutPicker } from './region-placement';
 
+type ConversationLookupFixture = {
+  id: string;
+  currentSessionId: string;
+  agentSlug: string;
+  projectSlug?: string;
+  title?: string;
+};
+
 const E2E_ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
 const emittedOrchestrationEvents = new WeakMap<
   Page,
@@ -758,16 +766,7 @@ export async function seedOrchestrationRoutes(
       updatedAt: string;
       messageCount?: number;
     }>;
-    conversationLookups?: Record<
-      string,
-      {
-        id: string;
-        currentSessionId: string;
-        agentSlug: string;
-        projectSlug?: string;
-        title?: string;
-      }
-    >;
+    conversationLookups?: Record<string, ConversationLookupFixture>;
   },
 ): Promise<void> {
   await installMockOrchestrationEventWindow(page);
@@ -795,8 +794,14 @@ export async function seedOrchestrationRoutes(
   const providerSummaries =
     options?.providerSummaries ?? DEFAULT_PROVIDER_SUMMARIES;
   const conversations = options?.conversations ?? DEFAULT_CONVERSATIONS;
-  const conversationLookups =
+  const conversationLookups: Record<string, ConversationLookupFixture> =
     options?.conversationLookups ?? DEFAULT_CONVERSATION_LOOKUPS;
+  if (!conversationSessionReaders.has(page)) {
+    await installMockOrchestrationConversationEventWindow(page, (id) => {
+      const conversation = conversationLookups[id];
+      return conversation ? [conversation.currentSessionId] : [];
+    });
+  }
 
   await Promise.all([
     page.route('**/.well-known/station/v1', (r) =>
@@ -924,18 +929,7 @@ export async function seedOrchestrationRoutes(
       const parts = url.pathname.split('/').filter(Boolean);
       const conversationId =
         (parts.at(-1) === 'open' ? parts.at(-2) : parts.at(-1)) ?? '';
-      const conversation = (
-        conversationLookups as Record<
-          string,
-          {
-            id: string;
-            currentSessionId: string;
-            agentSlug: string;
-            projectSlug?: string;
-            title?: string;
-          }
-        >
-      )[conversationId];
+      const conversation = conversationLookups[conversationId];
       if (parts.at(-1) === 'open' && conversation) {
         const inventory = conversations.find(
           (candidate) => candidate.id === conversationId,

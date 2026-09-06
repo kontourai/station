@@ -1,6 +1,5 @@
 /** Serial live-plugin proof: published Builder artifacts remain unchanged by viewing. */
 
-import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -19,7 +18,10 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
-import { installPluginWithConsent } from './helpers/install-plugin';
+import {
+  buildExamplePlugin,
+  installPluginWithConsent,
+} from './helpers/install-plugin';
 import { dismissSetupLauncher } from './helpers/orchestration';
 
 const projectDir = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -119,11 +121,7 @@ test.describe('Builder Delivery Viewer plugin', () => {
   // tsx/esbuild cache. Budget the hook to cover its own declared build cap.
   test.beforeAll(async () => {
     test.setTimeout(180_000);
-    execSync('npx tsx ../../packages/cli/src/cli.ts plugin build', {
-      cwd: pluginDir,
-      timeout: 120_000,
-      windowsHide: true,
-    });
+    buildExamplePlugin(pluginDir, 120_000);
     await remove();
     workspace = mkdtempSync(join(tmpdir(), 'builder-viewer-e2e-'));
     const artifact = join(workspace, '.kontourai', 'flow-agents', 'demo');

@@ -7,7 +7,6 @@
  * workspace.
  */
 
-import { execSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -15,7 +14,10 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
-import { installPluginWithConsent } from './helpers/install-plugin';
+import {
+  buildExamplePlugin,
+  installPluginWithConsent,
+} from './helpers/install-plugin';
 
 const __filename = fileURLToPath(import.meta.url);
 const PROJECT_DIR = join(dirname(__filename), '..');
@@ -49,10 +51,7 @@ test.describe('Survey Review Workbench plugin', () => {
   test.beforeAll(async () => {
     // Build the plugin bundle (installs plugin-local deps, incl.
     // @kontourai/survey) the same way plugin-system.spec.ts builds demo-layout.
-    execSync('npx tsx ../../packages/cli/src/cli.ts plugin build', {
-      cwd: PLUGIN_DIR,
-      timeout: 120_000,
-    });
+    buildExamplePlugin(PLUGIN_DIR, 120_000);
 
     await deletePlugin();
     await deleteProject();

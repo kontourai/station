@@ -92,7 +92,7 @@ test.describe('First-run zero-provider chat rescue (#191 R1)', () => {
     // archive#3764: `ChatDockBody` mounts `ChatEmptyState` in the empty-
     // transcript filler archive#2467's chunk split left behind, so the guided rescue
     // is reachable without the heavy transcript chunk.
-    await page.goto('/projects/dev/layouts/code?dock=open&chat=session-1');
+    await page.goto('/projects/dev/layouts/code?dock=open&chat=conv-1');
 
     // An established saved Station does not repeat setup when its model
     // inventory is empty. Recovery belongs to the active chat surface.

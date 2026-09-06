@@ -467,6 +467,16 @@ describe('startup-heavy non-overlap', () => {
   // every heavy pair sums PAST the default is the structural non-overlap proof,
   // independent of the scheduler's completion order. This is the invariant the
   // android weight exists to satisfy.
+  it('keeps the production performance reference apart from every other browser bucket', () => {
+    const reference = bucketByName('smoke-live');
+    for (const other of BUCKETS.filter((bucket) => bucket !== reference)) {
+      expect(
+        reference.weight + other.weight,
+        `reference overlaps ${other.name}`,
+      ).toBeGreaterThan(DEFAULT_E2E_CAPACITY);
+    }
+  });
+
   it('weights every startup-heavy pair past the default capacity', () => {
     const heavy = BUCKETS.filter((b) => STARTUP_HEAVY.has(b.name));
     // Guard against the heavy set drifting silently from the manifest.

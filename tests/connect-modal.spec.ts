@@ -1,4 +1,3 @@
-import { dismissSetupLauncher } from './helpers/orchestration';
 /**
  * E2E: Connection Manager Modal
  *
@@ -14,6 +13,7 @@ import { dismissSetupLauncher } from './helpers/orchestration';
  */
 import { expect, type Locator, test } from '@playwright/test';
 import { requireE2EOperatorCredential } from './helpers/e2e-operator-credential';
+import { dismissSetupLauncher } from './helpers/orchestration';
 
 /**
  * Per-connection actions (Edit/Check/Forget) live behind a "More actions"
@@ -140,7 +140,9 @@ test.describe('Connection Manager Modal', () => {
     ).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.getByText('Dev Server').first()).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /^Manage Stations.*Dev Server/ }),
+    ).toBeVisible();
     await expect(
       page.getByRole('status').filter({
         hasText: 'Loading connection recovery…',

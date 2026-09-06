@@ -19,6 +19,9 @@ export default defineConfig({
   timeout: 30_000,
   use: {
     baseURL,
+    // Missing controls should fail independently of a live-provider test's
+    // much longer execution budget. Slower actions can opt in explicitly.
+    actionTimeout: 15_000,
     headless: true,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',

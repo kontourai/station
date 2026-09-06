@@ -19,6 +19,7 @@ import {
   performanceReportReceipt,
   referenceEvaluatorExitFailure,
 } from '../scripts/interactive-workspace-performance.mjs';
+import { INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS } from '../scripts/verification-lanes.mjs';
 import { WORK_BOARD_200_PIN_MIX } from '../src-ui/src/performance/work-board-performance-bridge';
 import { readE2EOperatorCredential } from './helpers/e2e-operator-credential';
 import {
@@ -471,10 +472,10 @@ test.describe
   .serial('Interactive workspace production bridge (#2892)', () => {
     test.setTimeout(
       ONE_HOUR_REFERENCE_ENABLED
-        ? 90 * 60 * 1000
+        ? INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS.oneHour
         : WORK_BOARD_REFERENCE_ENABLED
-          ? 80 * 60 * 1000
-          : 3_300_000,
+          ? INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS.workBoard
+          : INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS.default,
     );
 
     test('executes isolated real Station targets and aggregates one build receipt', async ({

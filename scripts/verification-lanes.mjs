@@ -171,6 +171,13 @@ export const FULL_REGRESSION_TIMEOUT_MS = FULL_REGRESSION_PHASES.reduce(
  * coordinator schedules it, whether its receipt is completion evidence, and
  * how the policy gate describes it.
  */
+// The reference test and its containing lane consume the same budgets.
+export const INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS = Object.freeze({
+  default: 55 * 60_000,
+  oneHour: 90 * 60_000,
+  workBoard: 80 * 60_000,
+});
+
 export const LANE_CLASSES = Object.freeze({
   /** The one canonical completion gate (full-regression only). */
   COMPLETION: 'completion',
@@ -428,7 +435,11 @@ export const LANES = Object.freeze([
     completion: false,
     diagnostic: true,
     weight: 100,
-    timeoutMs: 45 * 60_000,
+    // Includes a 55-minute reference test (90 minutes when its long profile
+    // is selected), plus the other browser buckets and owned teardown.
+    timeoutMs:
+      Math.max(...Object.values(INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS)) +
+      30 * 60_000,
     ownedOutputs: Object.freeze([
       'dist-server-e2e-*/',
       'dist-ui-e2e-*/',

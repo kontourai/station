@@ -4,6 +4,7 @@ import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
+  installMockOrchestrationConversationEventWindow,
   installMockOrchestrationEventWindow,
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
@@ -137,6 +138,10 @@ async function seedRuntimeRoutes(
         mutable: false,
         answerability: { answerable: true },
       })),
+  );
+
+  await installMockOrchestrationConversationEventWindow(page, (id) =>
+    runtimeInventory.some((entry) => entry.id === id) ? [id] : [],
   );
 
   await Promise.all([
@@ -290,6 +295,19 @@ async function seedRuntimeRoutes(
       const payload = route.request().postDataJSON() as ExecutionRequest;
       commandBodies.push(payload);
       const conversationId = payload.conversationId ?? 'runtime-conversation';
+      if (!runtimeInventory.some((entry) => entry.id === conversationId)) {
+        runtimeInventory.push({
+          id: conversationId,
+          source: 'runtime',
+          agentSlug: payload.target?.agent ?? 'claude',
+          title: payload.message ?? 'Runtime conversation',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          messageCount: 1,
+          mutable: false,
+          answerability: { answerable: true },
+        });
+      }
       await route.fulfill(
         json(
           foregroundMessageReceiptEnvelope({
@@ -327,10 +345,34 @@ async function seedRuntimeRoutes(
           }),
         );
       }
-      const conversationId = url.pathname.split('/').filter(Boolean).pop();
+      const parts = url.pathname.split('/').filter(Boolean);
+      const isOpen = parts.at(-1) === 'open';
+      const conversationId = decodeURIComponent(
+        (isOpen ? parts.at(-2) : parts.at(-1)) ?? '',
+      );
       const conversation = runtimeInventory.find(
         (entry) => entry.id === conversationId,
       );
+      if (isOpen && conversation) {
+        return route.fulfill(
+          json({
+            success: true,
+            data: {
+              status: 'resolved',
+              conversation,
+              currentSessionId: conversation.id,
+              transcript: {
+                available: true,
+                owner: 'runtime',
+                messageCount: conversation.messageCount,
+              },
+              canContinue: true,
+              answerability: { answerable: true },
+              recoveryActions: [],
+            },
+          }),
+        );
+      }
       return route.fulfill(
         conversation
           ? json({ success: true, data: conversation })
@@ -880,11 +922,14 @@ test.describe('Built-in runtime chat workflows', () => {
       name: '1 pending approval',
     });
     await expect(approvalQueue).toBeVisible({ timeout: 10_000 });
-    const allowOnce = page.getByRole('button', { name: 'Allow Once' });
+    const approvalPanel = page.getByTestId('approval-queue-panel');
+    const allowOnce = approvalPanel.getByRole('button', { name: 'Allow Once' });
     await expect(allowOnce).toBeHidden();
     await approvalQueue.click();
     await expect(allowOnce).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Deny' })).toBeVisible();
+    await expect(
+      approvalPanel.getByRole('button', { name: 'Deny' }),
+    ).toBeVisible();
 
     // Approving must dispatch a respondToRequest command with the accept
     // decision and the originating requestId, mirroring how the other tests
