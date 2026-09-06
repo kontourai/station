@@ -1,15 +1,5 @@
 import { createHash } from 'node:crypto';
-import {
-  closeSync,
-  constants,
-  existsSync,
-  fstatSync,
-  lstatSync,
-  opendirSync,
-  openSync,
-  readSync,
-  realpathSync,
-} from 'node:fs';
+import { existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -22,6 +12,8 @@ import type {
   AttachedSessionSourceOutcome,
   AttachedSessionUsageAccumulator,
 } from './attached-session-source.js';
+
+import { readLeadingLine, readWindow } from './transcript-file-io.js';
 
 const DEFAULT_MAX_CANDIDATES = 128;
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
@@ -814,46 +806,6 @@ function opaqueHandle(path: string): string {
 export function claudeAttachedThreadId(sessionId: string): string {
   const digest = createHash('sha256').update(sessionId).digest('hex');
   return `external:claude:${digest.slice(0, 32)}`;
-}
-
-function readLeadingLine(
-  path: string,
-  maxLineBytes: number,
-): string | null | undefined {
-  const content = readWindow(path, 0, maxLineBytes + 1);
-  const newline = content.indexOf(0x0a);
-  if (newline < 0 && content.length > maxLineBytes) return null;
-  const end = newline < 0 ? content.length : newline;
-  return content.subarray(0, end).toString('utf8').trim() || undefined;
-}
-
-function readWindow(path: string, offset: number, length: number): Buffer {
-  // O_NOFOLLOW plus the descriptor identity check closes final-component swaps.
-  // Replacing a parent directory after discovery remains a local-trust residual
-  // on platforms without openat-style directory handles.
-  const before = lstatSync(path);
-  if (!before.isFile() || before.isSymbolicLink()) {
-    throw new Error('Transcript source is not a regular file.');
-  }
-  const descriptor = openSync(
-    path,
-    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
-  );
-  try {
-    const opened = fstatSync(descriptor);
-    if (
-      !opened.isFile() ||
-      opened.dev !== before.dev ||
-      opened.ino !== before.ino
-    ) {
-      throw new Error('Transcript source changed during secure open.');
-    }
-    const content = Buffer.alloc(length);
-    const bytesRead = readSync(descriptor, content, 0, length, offset);
-    return content.subarray(0, bytesRead);
-  } finally {
-    closeSync(descriptor);
-  }
 }
 
 function isInside(root: string, candidate: string): boolean {

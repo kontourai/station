@@ -397,6 +397,9 @@ export class AttachedSessionFollowService {
     let read: AttachedSessionReadResult;
     try {
       read = await source.read(descriptor, reusableCursor);
+      if (!validAttachedSessionCursor(read.cursor)) {
+        throw new Error('Attached session source returned an invalid cursor.');
+      }
       if (
         read.events.some(
           (event) =>
@@ -418,19 +421,10 @@ export class AttachedSessionFollowService {
       });
       return;
     }
-    state.cursors.set(sourceCursorKey(source), {
-      provider: source.provider,
-      sourceKind: source.kind,
-      sourceHandle: descriptor.sourceHandle,
-      cursor: read.cursor,
-    });
-    // The source cursor used to be process-local. A cold restart therefore
-    // reparsed every bounded transcript page from every attached session,
-    // repeatedly issuing indexed duplicate lookups until it caught up. Persist
-    // the opaque offset together with the discovery snapshot's opaque handle;
-    // a moved/replaced source gets a different handle and safely restarts from
-    // its bounded recent window (archive#1997).
-    this.persistAttachedSession(source, descriptor, read.cursor);
+    // Persist attachment metadata before importing, but advance neither durable
+    // nor in-memory progress until the whole page is stored. An interrupted
+    // page then replays through existing event-id deduplication without loss.
+    this.persistAttachedSession(source, descriptor, reusableCursor);
     // Legacy rows and a source whose opaque handle changed still replay one
     // bounded transcript window. Discard durable ids with one indexed read per
     // batch instead of making each duplicate enter appendEventIfAbsent's
@@ -463,6 +457,13 @@ export class AttachedSessionFollowService {
         await yieldEventLoop();
       }
     }
+    this.persistAttachedSession(source, descriptor, read.cursor);
+    state.cursors.set(sourceCursorKey(source), {
+      provider: source.provider,
+      sourceKind: source.kind,
+      sourceHandle: descriptor.sourceHandle,
+      cursor: read.cursor,
+    });
   }
 
   private followState(
@@ -703,11 +704,56 @@ function validAttachedSessionCursor(
       value.usageAggregationVersion === 1) &&
     (value.usageDeferred === undefined ||
       typeof value.usageDeferred === 'boolean') &&
+    validSourceCursorState(value.sourceState) &&
     validUsageAccumulator(value.usage) &&
     (value.turnId === undefined ||
       value.usage === undefined ||
       (value.usage as { turnId: string }).turnId === value.turnId)
   );
+}
+
+/** Bound opaque source codec state without teaching the follower provider formats. */
+function validSourceCursorState(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  let values = 0;
+  let bytes = 0;
+  const visit = (entry: unknown, depth: number): boolean => {
+    if (++values > 1024 || depth > 8) return false;
+    if (entry === null || typeof entry === 'boolean') {
+      bytes += 5;
+      return true;
+    }
+    if (typeof entry === 'number') {
+      bytes += 24;
+      return Number.isFinite(entry);
+    }
+    if (typeof entry === 'string') {
+      bytes += Buffer.byteLength(entry, 'utf8') * 6 + 2;
+      return bytes <= 128 * 1024;
+    }
+    if (!entry || typeof entry !== 'object') return false;
+    if (Array.isArray(entry)) {
+      if (entry.length > 1024) return false;
+      bytes += entry.length + 2;
+      return entry.every((item) => visit(item, depth + 1));
+    }
+    if (
+      Object.getPrototypeOf(entry) !== Object.prototype &&
+      Object.getPrototypeOf(entry) !== null
+    )
+      return false;
+    const keys = Object.keys(entry);
+    if (keys.length > 128) return false;
+    bytes += keys.length * 3 + 2;
+    return keys.every(
+      (key) =>
+        key.length <= 128 &&
+        visit(key, depth + 1) &&
+        visit((entry as Record<string, unknown>)[key], depth + 1),
+    );
+  };
+  return visit(value, 0) && bytes <= 128 * 1024;
 }
 
 function validUsageAccumulator(value: unknown): boolean {
