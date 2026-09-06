@@ -1,4 +1,8 @@
-import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
+import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  type ConnectionConfig,
+  EXECUTION_MODE,
+} from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
   conversationQueries,
@@ -2970,6 +2974,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             modelsLoading,
             modelsStale,
             canModelSelect: chatInput.canModelSelect,
+            catalogConnectionId:
+              activeSession.executionMode === EXECUTION_MODE.STATION
+                ? undefined
+                : chatEngineConnection?.id,
+            catalogProvider:
+              activeSession.executionMode === EXECUTION_MODE.STATION
+                ? 'station-agent'
+                : resolveEngineCapabilityMatrix(
+                    chatEngineConnection?.id,
+                    chatEngineConnection,
+                  ).engineId,
             agents,
           }}
           pending={null}

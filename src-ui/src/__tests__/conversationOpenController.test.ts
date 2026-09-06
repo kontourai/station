@@ -189,6 +189,7 @@ test('same-child deliberate model intent waits for capability evidence and survi
       sessionId: 'conversation-749:child:2',
       agentId: conversation.agentSlug,
       provider: 'codex',
+      engineConnectionId: 'codex-connection',
       model: 'current-model',
     },
   };
@@ -197,6 +198,7 @@ test('same-child deliberate model intent waits for capability evidence and survi
     currentSessionId: resolution.currentSessionId,
     agentSlug: conversation.agentSlug,
     provider: 'codex',
+    agentConnectionId: 'codex-connection',
     requestedModel: 'chosen-model',
     requestedProviderOptions: { reasoningEffort: 'high' },
     input: 'draft',
@@ -207,6 +209,8 @@ test('same-child deliberate model intent waits for capability evidence and survi
   expect(conversationCanMutate({ ...previous, ...pending })).toBe(false);
   const valid = conversationOpenPatch(resolution, previous, {
     validModelIds: ['chosen-model'],
+    provider: 'codex',
+    engineConnectionId: 'codex-connection',
     providerOptions: { effort: 'high' },
   });
   expect(valid).toMatchObject({
@@ -240,4 +244,46 @@ test('a changed child from an older server cannot retain writable predecessor id
   expect(actual.requestedModel).toBeNull();
   expect(actual.input).toBe('draft');
   expect(conversationCanMutate(actual)).toBe(false);
+});
+
+test('same-child stale connection cannot validate a model using another connection catalog', () => {
+  const resolution: ConversationOpenResolution = {
+    ...resolved(),
+    execution: {
+      sessionId: 'conversation-749:child:2',
+      agentId: conversation.agentSlug,
+      provider: 'codex',
+      engineConnectionId: 'connection-new',
+      model: 'retained-current',
+    },
+  };
+  const previous = {
+    conversationId: conversation.id,
+    currentSessionId: resolution.currentSessionId,
+    agentSlug: conversation.agentSlug,
+    provider: 'codex',
+    agentConnectionId: 'connection-old',
+    requestedModel: 'old-only-model',
+    input: 'draft',
+  };
+  const patch = conversationOpenPatch(resolution, previous, {
+    validModelIds: ['old-only-model'],
+    provider: 'codex',
+    engineConnectionId: 'connection-old',
+  });
+  expect(patch).toMatchObject({
+    agentConnectionId: 'connection-new',
+    requestedModel: null,
+    requestedProviderOptions: {},
+  });
+  const wrongCatalog = conversationOpenPatch(
+    resolution,
+    { ...previous, agentConnectionId: 'connection-new' },
+    {
+      validModelIds: ['old-only-model'],
+      provider: 'codex',
+      engineConnectionId: 'connection-old',
+    },
+  );
+  expect(wrongCatalog.requestedModel).toBeNull();
 });

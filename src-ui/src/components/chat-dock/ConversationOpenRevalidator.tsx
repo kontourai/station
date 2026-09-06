@@ -15,6 +15,8 @@ export interface ConversationOpenRevalidatorProps {
   modelsLoading?: boolean;
   modelsStale?: boolean;
   canModelSelect?: boolean;
+  catalogProvider?: string;
+  catalogConnectionId?: string;
   agents?: readonly { slug: string; name?: string }[];
 }
 
@@ -28,6 +30,8 @@ export function ConversationOpenRevalidator({
   modelsLoading,
   modelsStale,
   canModelSelect,
+  catalogProvider,
+  catalogConnectionId,
   agents,
 }: ConversationOpenRevalidatorProps) {
   useEffect(() => {
@@ -46,7 +50,9 @@ export function ConversationOpenRevalidator({
           previous?.currentSessionId === resolution.currentSessionId &&
           (!resolution.execution ||
             (previous.agentSlug === resolution.execution.agentId &&
-              previous.provider === resolution.execution.provider));
+              previous.provider === resolution.execution.provider &&
+              previous.agentConnectionId ===
+                resolution.execution.engineConnectionId));
         // Do not discard a deliberate choice merely because its catalog is still loading.
         if (sameChild && previous?.requestedModel && modelsLoading) return;
         const models =
@@ -66,6 +72,8 @@ export function ConversationOpenRevalidator({
           sessionId,
           controller.conversationOpenPatch(resolution, previous, {
             validModelIds: models.map((model) => model.id),
+            provider: catalogProvider,
+            engineConnectionId: catalogConnectionId,
             providerOptions: selected
               ? sanitizeRuntimeOptionsForModel(
                   selected,
@@ -98,6 +106,8 @@ export function ConversationOpenRevalidator({
     modelsLoading,
     modelsStale,
     canModelSelect,
+    catalogProvider,
+    catalogConnectionId,
     agents,
   ]);
 

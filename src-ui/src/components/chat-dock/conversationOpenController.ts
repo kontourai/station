@@ -41,6 +41,8 @@ export function conversationOpenPatch(
   previous?: Partial<ChatUIState>,
   choice?: {
     validModelIds?: readonly string[];
+    provider?: string;
+    engineConnectionId?: string;
     providerOptions?: Record<string, unknown>;
     agentName?: string;
   },
@@ -54,7 +56,8 @@ export function conversationOpenPatch(
         resolved.currentSessionId ||
         (execution &&
           (previous.agentSlug !== execution.agentId ||
-            previous.provider !== execution.provider))),
+            previous.provider !== execution.provider ||
+            previous.agentConnectionId !== execution.engineConnectionId))),
   );
   const unknownReplacement = changedChild && !execution;
   const pendingChoice = Boolean(
@@ -63,12 +66,20 @@ export function conversationOpenPatch(
       previous?.requestedModel &&
       choice?.validModelIds === undefined,
   );
+  const catalogMatchesExecution = Boolean(
+    execution &&
+      choice?.provider === execution.provider &&
+      choice.engineConnectionId === execution.engineConnectionId &&
+      (execution.engineConnectionId !== undefined ||
+        execution.provider === 'station-agent'),
+  );
   const keepRequested =
     !changedChild &&
     Boolean(
       previous?.requestedModel &&
         (pendingChoice ||
-          choice?.validModelIds?.includes(previous.requestedModel)),
+          (catalogMatchesExecution &&
+            choice?.validModelIds?.includes(previous.requestedModel))),
     );
   const executionPatch: Partial<ChatUIState> = execution
     ? {
