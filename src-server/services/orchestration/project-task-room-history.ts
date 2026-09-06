@@ -258,7 +258,7 @@ function createProjectTaskRoomHistoryInternal(
           return deepCloneFreeze(outcome);
         }
         const { scope, policyRevision } = finalAuthorization.receipt;
-        const channelId = channelIdFor(scope);
+        const channelId = projectTaskRoomChannelId(scope);
         const stored = await totalStorage(
           storage,
           {
@@ -368,7 +368,9 @@ function createProjectTaskRoomHistoryInternal(
             const semantic = {
               schemaVersion: 'station.project-task-room-proposal-semantics/v1',
               scope: finalAuthorization.receipt.scope,
-              channelId: channelIdFor(finalAuthorization.receipt.scope),
+              channelId: projectTaskRoomChannelId(
+                finalAuthorization.receipt.scope,
+              ),
               epoch: 0,
               proposalId: intent.proposalId,
               occurredAt: intent.occurredAt,
@@ -489,7 +491,7 @@ function createProjectTaskRoomHistoryInternal(
         const stored = await totalStorage(storage, {
           type: 'read',
           scope: resolved.receipt.scope,
-          channelId: channelIdFor(resolved.receipt.scope),
+          channelId: projectTaskRoomChannelId(resolved.receipt.scope),
           ...(cursor ? { cursor } : {}),
           limit: Math.min(limit ?? 50, PROJECT_TASK_ROOM_LIMITS.pageRecords),
           pageBytes: PROJECT_TASK_ROOM_LIMITS.pageBytes - 4_096,
@@ -515,7 +517,7 @@ function createProjectTaskRoomHistoryInternal(
         else if (
           isReadStorage(stored, {
             scope: resolved.receipt.scope,
-            channelId: channelIdFor(resolved.receipt.scope),
+            channelId: projectTaskRoomChannelId(resolved.receipt.scope),
             cursor,
             receipt: resolved.receipt,
           })
@@ -545,7 +547,7 @@ function createProjectTaskRoomHistoryInternal(
     const stored = await totalStorage(storage, {
       type: 'read-source-seal',
       scope: resolved.receipt.scope,
-      channelId: channelIdFor(resolved.receipt.scope),
+      channelId: projectTaskRoomChannelId(resolved.receipt.scope),
     });
     const delivery = await resolveAuthorized(
       grant,
@@ -576,7 +578,8 @@ function createProjectTaskRoomHistoryInternal(
       typeof stored.seal.workingStateDigest !== 'string' ||
       !/^[a-f0-9]{64}$/.test(stored.seal.workingStateDigest) ||
       !validCheckpoint(stored.seal.checkpoint) ||
-      stored.seal.checkpoint.channelId !== channelIdFor(resolved.receipt.scope)
+      stored.seal.checkpoint.channelId !==
+        projectTaskRoomChannelId(resolved.receipt.scope)
     )
       return { kind: 'unavailable' };
     return deepCloneFreeze(stored) as {
@@ -614,7 +617,7 @@ function createProjectTaskRoomHistoryInternal(
       {
         type: 'seal-source',
         scope: resolved.receipt.scope,
-        channelId: channelIdFor(resolved.receipt.scope),
+        channelId: projectTaskRoomChannelId(resolved.receipt.scope),
         policyRevision: resolved.receipt.policyRevision,
         authorizationId: resolved.receipt.receiptId,
         operationId,
@@ -661,7 +664,8 @@ function createProjectTaskRoomHistoryInternal(
       typeof stored.seal.workingStateDigest !== 'string' ||
       !/^[a-f0-9]{64}$/.test(stored.seal.workingStateDigest) ||
       !validCheckpoint(stored.seal.checkpoint) ||
-      stored.seal.checkpoint.channelId !== channelIdFor(resolved.receipt.scope)
+      stored.seal.checkpoint.channelId !==
+        projectTaskRoomChannelId(resolved.receipt.scope)
     )
       return { kind: 'unavailable' };
     const delivery = await resolveAuthorized(
@@ -691,7 +695,7 @@ function createProjectTaskRoomHistoryInternal(
     const located = await totalStorage(storage, {
       type: 'locate-proposal',
       scope: resolved.receipt.scope,
-      channelId: channelIdFor(resolved.receipt.scope),
+      channelId: projectTaskRoomChannelId(resolved.receipt.scope),
       proposalId,
     });
     if (
@@ -1692,7 +1696,7 @@ function isWellFormed(value: string) {
     value,
   );
 }
-function channelIdFor(scope: ProjectTaskRoomScope) {
+export function projectTaskRoomChannelId(scope: ProjectTaskRoomScope) {
   return `project-task:${sha(`${scope.projectId}\u0000${scope.taskId}`)}`;
 }
 function sha(value: string) {
