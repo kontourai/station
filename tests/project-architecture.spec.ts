@@ -6,11 +6,19 @@
  *
  * Uses page.route to mock API responses for isolation from backend state.
  */
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import {
   CODING_STARTER_CATALOG,
   ORGANIZATION_LAYOUT_CATALOG,
 } from './fixtures/project-layout-catalog';
+import {
+  chatDockShell,
+  documentFitsViewportWidth,
+  expectBoxWithinViewport,
+  placeSurfaceThroughLayoutPicker,
+  showRegionThroughOverflowMenu,
+  surfaceDockShell,
+} from './helpers/region-placement';
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -256,102 +264,6 @@ async function openCustomizationNavigation(page: Page) {
   }
   await expect(customize).toHaveAttribute('aria-expanded', 'true');
   return navigation;
-}
-
-/**
- * A dock region's shell, identified by the surface occupying it (#928): one
- * `DockShell` mounts per occupied dock region and takes its accessible name
- * from its occupant — "Dock" for Chat, the registered surface title for
- * anything else — while `chat-dock--<region>` on the same element names the
- * region it renders in. Chat's shell also carries `id="chat-dock"`.
- *
- * These two facts together are how a test reads the live arrangement out of
- * the DOM instead of out of the model: which surface holds which region, and
- * how many dock shells exist at all.
- */
-function chatDockShell(page: Page) {
-  return page.locator('#chat-dock');
-}
-
-function surfaceDockShell(page: Page, title: string) {
-  return page.locator(`.chat-dock[aria-label="${title}"]`);
-}
-
-/**
- * Places a surface through the header's Layout picker — the shell's public
- * placement route on a fine pointer since #1552 D2 (`RegionToolbarControls`,
- * `useRegionSurfaceMenu`): one `role="group"` panel of per-surface
- * `radiogroup` rows, each row a segmented choice over the regions that
- * surface declares plus `Hidden`.
- *
- * The post-condition is read after REOPENING the panel, because choosing a
- * segment closes it: the assertion then sees a segment whose pressed state
- * was freshly derived from the arrangement, not the DOM it just clicked. A
- * segment's accessible name is just the region label — the displacement note
- * beside it is a `hidden` span reached through `aria-describedby`, which the
- * name computation excludes — so `exact` matching is safe.
- */
-async function placeSurfaceThroughLayoutPicker(
-  page: Page,
-  surfaceTitle: string,
-  regionLabel: string,
-) {
-  const openPicker = async () => {
-    await page
-      .getByRole('button', { name: 'Layout regions', exact: true })
-      .click();
-    const picker = page.getByRole('group', { name: 'Layout regions' });
-    await expect(picker).toBeVisible();
-    return picker;
-  };
-  const segment = (picker: Locator) =>
-    picker
-      .getByRole('radiogroup', { name: `${surfaceTitle} placement` })
-      .getByRole('radio', { name: regionLabel, exact: true });
-
-  await segment(await openPicker()).click();
-  const reopened = await openPicker();
-  await expect(
-    segment(reopened),
-    `${surfaceTitle}'s ${regionLabel} segment is not pressed after choosing it, so the shell did not place it there`,
-  ).toHaveAttribute('aria-checked', 'true');
-  // Leave the shell as it was found: the panel is portalled over the app and
-  // its dismiss backdrop covers the viewport.
-  await page.keyboard.press('Escape');
-  await expect(reopened).toBeHidden();
-}
-
-/**
- * The phone's region route (#917): a coarse pointer narrow enough to be
- * mobile renders no region control in the toolbar row at all — the width
- * budget could not hold one — so the Show/Hide rows live in the `⋯` overflow
- * menu, and `useRegionSurfaceMenu` decides that, not the toolbar.
- *
- * Asserting the row is absent before the menu opens is what keeps this a
- * drive of that route rather than of some other surface that happens to carry
- * the same label. That guard is also the reason this is only good for a SHOW
- * row: once a surface is docked, its own `ChatDockHeader` renders a
- * `Hide <surface>` button, so the hide label is legitimately ambiguous and
- * belongs to whichever control the journey means to press.
- */
-async function showRegionThroughOverflowMenu(page: Page, row: string) {
-  const control = page.getByRole('button', { name: row, exact: true });
-  await expect(
-    control,
-    `"${row}" is reachable without opening the ⋯ menu, so this is not the phone's region route`,
-  ).toHaveCount(0);
-  const overflow = page.getByRole('button', { name: 'More actions' });
-  await expect(overflow).toBeVisible();
-  await overflow.click();
-  await expect(control).toBeVisible();
-  await control.click();
-}
-
-/** Whether the document fits its own viewport widthwise. */
-function documentFitsViewportWidth(page: Page) {
-  return page.evaluate(
-    () => document.documentElement.scrollWidth <= window.innerWidth,
-  );
 }
 
 test.describe('Project Sidebar', () => {
@@ -1136,7 +1048,6 @@ test.describe('Ambient chat dock host at 390x844', () => {
   test('gives the one phone dock slot to a placed pane and returns it to Chat when hidden', async ({
     page,
   }) => {
-    const viewport = page.viewportSize();
     await expect(page.locator('.chat-dock')).toHaveCount(1);
     await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
 
@@ -1153,16 +1064,11 @@ test.describe('Ambient chat dock host at 390x844', () => {
       await documentFitsViewportWidth(page),
       'a docked non-chat pane must not push the phone document sideways',
     ).toBe(true);
-    const bounds = await surfaceDockShell(page, 'Activity').boundingBox();
-    expect(bounds, 'the docked pane must have a rendered box').not.toBeNull();
-    expect(
-      [bounds?.x, (bounds?.x ?? 0) + (bounds?.width ?? 0)],
-      'the docked pane must sit within the phone viewport horizontally',
-    ).toEqual([0, viewport?.width]);
-    expect(
-      (bounds?.y ?? 0) + (bounds?.height ?? 0),
-      'the docked pane must end within the phone viewport vertically',
-    ).toBeLessThanOrEqual(viewport?.height ?? 0);
+    await expectBoxWithinViewport(
+      page,
+      surfaceDockShell(page, 'Activity'),
+      'the docked pane',
+    );
 
     // Hidden through the docked pane's OWN header control, which is what a
     // phone user reaches for and which writes the region's visibility
