@@ -246,6 +246,12 @@ describe('CI verification workflow contracts', () => {
       '.github/workflows/backlog-priority-policy.yml',
       '.github/workflows/android-test.yml',
       '.github/workflows/dependency-advisory.yml',
+      // #1645: the gallery gate's liveness check. It fails when
+      // nightly-gallery has not CONCLUDED SUCCESS inside its window, which is
+      // the one signal a `cancelled` run cannot produce — the gate spent eight
+      // days queued and never-assigned, and nothing here noticed because
+      // `cancelled` never matches this workflow's `failure` guard.
+      '.github/workflows/gallery-freshness.yml',
     ];
     const intendedTargetNames = intendedTargetFiles.map((targetFile) => {
       const target = workflowDocuments.find(({ file }) => file === targetFile)
@@ -531,12 +537,6 @@ describe('CI verification workflow contracts', () => {
         new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
       ),
     ).toHaveLength(2);
-    expect(
-      workflow('nightly-gallery.yml').match(
-        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
-      ),
-    ).toHaveLength(1);
-
     for (const name of [
       'android-test.yml',
       'build-android.yml',
@@ -544,6 +544,14 @@ describe('CI verification workflow contracts', () => {
       'nightly.yml',
       'publish-packages.yml',
       'backlog-priority-policy.yml',
+      // #1645: the gallery capture moved to a digest-pinned Playwright
+      // container on a hosted runner, so it no longer reserves half of
+      // desktop-win for up to its owner lifetime. It held `lease-weight: "5"`
+      // of 10 capacity units while never once reaching a runner.
+      'nightly-gallery.yml',
+      // Its liveness check reads the Actions API and deliberately never
+      // touches the fleet whose silence it exists to notice.
+      'gallery-freshness.yml',
     ]) {
       expect(workflow(name), name).not.toContain('physical-host-capacity@');
     }
@@ -606,15 +614,28 @@ describe('CI verification workflow contracts', () => {
     expect(gallery).toContain("- cron: '30 7 * * *'");
     expect(gallery).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(gallery).toContain(`group: nightly-gallery-\${{ github.ref }}`);
-    expect(gallery).toContain('cancel-in-progress: true');
+    // #1645: NOT cancel-in-progress. Two daily runs are 24h apart, so nothing
+    // legitimately cancels its predecessor — and while this job could not
+    // reach a runner at all, that setting is what converted four of six
+    // consecutive stalls into a fresh-looking `cancelled` run.
+    expect(gallery).toContain('cancel-in-progress: false');
     expect(gallery).toContain("if: github.event_name != 'pull_request'");
-    expect(gallery).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
+    // #1645: a digest-pinned Playwright container on a hosted runner, not the
+    // fleet. The comparator hashes a decoded RGBA buffer with no threshold, so
+    // the baseline is bound to whichever renderer produced it — and the
+    // fleet's kontour-linux runner is a WSL2 instance in a shared developer
+    // desktop whose system libraries and fonts are unmanaged and unpinnable.
+    // A digest rather than the `v1.62.1-noble` tag: a rebuilt base image
+    // published under the same tag is a different renderer wearing the same
+    // name. Bump it in lockstep with `@playwright/test`.
+    expect(gallery).toContain('runs-on: ubuntu-22.04');
+    expect(gallery).toMatch(
+      /image: mcr\.microsoft\.com\/playwright:v[\d.]+-\w+@sha256:[0-9a-f]{64}$/m,
     );
-    expect(gallery).toContain('runner-preflight@');
-    expect(gallery).toContain('physical-host-capacity@');
-    expect(gallery).toContain('lease-weight: "5"');
-    expect(gallery).toContain('owner-lifetime-seconds: "7800"');
+    expect(gallery).not.toContain('runs-on: [self-hosted');
+    // runner-preflight reports the capabilities of a SELF-HOSTED runner; it
+    // has nothing to assert about a hosted container.
+    expect(gallery).not.toContain('runner-preflight@');
     expect(runBodies).toContain(
       'node scripts/run-e2e-coverage.mjs --only=screenshot',
     );
@@ -1034,6 +1055,12 @@ describe('CI verification workflow contracts', () => {
       'nightly.yml',
       'publish-packages.yml',
       'backlog-priority-policy.yml',
+      // #1645: the gallery capture and its liveness check both belong on
+      // hosted runners now — the capture because an exact-pixel baseline needs
+      // a renderer pinned by digest, the check because a watcher must not be
+      // silenceable by the conditions it watches for.
+      'nightly-gallery.yml',
+      'gallery-freshness.yml',
     ];
     for (const name of linuxWorkflows) {
       const source = workflow(name);
@@ -1052,9 +1079,6 @@ describe('CI verification workflow contracts', () => {
       'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]',
     );
     expect(workflow('ci-extended.yml')).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
-    );
-    expect(workflow('nightly-gallery.yml')).toContain(
       'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
     );
     const recovery = workflow('recover-terminal-capacity-owner.yml');

@@ -436,31 +436,18 @@ describe('workflow wiring', () => {
   });
 
   /**
-   * main-health.yml matches a watched workflow by its exact `name`, so the two
-   * sides have to be equal strings — not merely similar ones. An earlier
-   * version of this test asserted `toContain('- Gallery freshness')` and a
-   * fault injection walked straight through it: `- Gallery freshnesss`
-   * contains that substring, so the typo passed while main-health would have
-   * watched nothing and the tracker half of this design would be silently
-   * dead. Both names are parsed and compared for identity instead.
+   * That main-health.yml actually watches this workflow is asserted by
+   * `ci-workflow-contract.test.ts` ("tracks and closes one attributed issue per
+   * red main-only workflow"), which derives each watched NAME from its target
+   * workflow file and compares the sets for equality. That is the right home
+   * and the stronger check, so this file deliberately does not restate it — an
+   * earlier draft here did, as `toContain('- Gallery freshness')`, and a fault
+   * injection walked straight through it: `- Gallery freshnesss` contains that
+   * substring, so a typo that would leave main-health watching nothing passed.
+   * A second copy of a governance assertion is a drift risk on top of being
+   * weaker; `actionlint-gate.mjs` carries the same warning about a constant
+   * that was restated in two test files and diverged.
    */
-  test('main-health watches the freshness workflow by its exact name', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { JSON_SCHEMA, load } = await import('js-yaml');
-    const parse = (path: string) =>
-      load(readFileSync(path, 'utf8'), { schema: JSON_SCHEMA }) as {
-        name?: unknown;
-        on?: { workflow_run?: { workflows?: unknown } };
-      };
-
-    const freshnessName = parse('.github/workflows/gallery-freshness.yml').name;
-    const watched = parse('.github/workflows/main-health.yml').on?.workflow_run
-      ?.workflows;
-
-    expect(freshnessName).toBe('Gallery freshness');
-    expect(Array.isArray(watched)).toBe(true);
-    expect(watched as unknown[]).toContain(freshnessName);
-  });
 
   test('the gallery gate keeps a stalled run visible and pins its renderer by digest', async () => {
     const { readFileSync } = await import('node:fs');
