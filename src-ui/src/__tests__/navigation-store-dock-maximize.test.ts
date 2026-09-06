@@ -190,4 +190,171 @@ describe('navigationStore dock maximize memory', () => {
       expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
     });
   });
+
+  // station#1613: `useChatDockActiveChatSync`'s `clearDeadChatPointer` closes
+  // the dock with a direct `updateParams({ chat: null, dock: null })`, not via
+  // `setDockState`. On a reload of a maximized chat whose session was never
+  // persisted that left `maximize=true` beside a closed dock — the exact pair
+  // archive#795 refuses. The invariant now sits in `updateParams`, where every
+  // writer passes, so this block drives `updateParams` directly.
+  describe('updateParams applies the closed-dock invariant (#1613)', () => {
+    test('a dock: null write from an open+maximized dock clears maximize from the URL and keeps the memory', () => {
+      navigationStore.setDockState(true, true);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+      expect(navigationStore.lastDockMaximized).toBe(true);
+
+      navigationStore.updateParams({ chat: null, dock: null });
+
+      const after = navigationStore.getSnapshot();
+      expect(after.isDockOpen).toBe(false);
+      expect(after.isDockMaximized).toBe(false);
+      expect(new URLSearchParams(window.location.search).has('maximize')).toBe(
+        false,
+      );
+      expect(navigationStore.lastDockMaximized).toBe(true);
+    });
+
+    test('the #1613 reload shape (?chat=<never-persisted>&dock=open&maximize=true) closes to a plain closed dock', () => {
+      // A direct load, not a setDockState call: the memory is set by
+      // commitState's parse, the same way production reaches this state.
+      window.history.replaceState(
+        {},
+        '',
+        '/?chat=never-persisted&dock=open&maximize=true',
+      );
+      navigationStore.navigate('/', {});
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+
+      // Exactly what clearDeadChatPointer writes.
+      navigationStore.updateParams({ chat: null, dock: null });
+
+      const after = navigationStore.getSnapshot();
+      expect(after.activeChat).toBeNull();
+      expect(after.isDockOpen).toBe(false);
+      expect(after.isDockMaximized).toBe(false);
+      expect(window.location.search).not.toContain('maximize');
+      expect(navigationStore.lastDockMaximized).toBe(true);
+    });
+
+    test('a dock: "open" write does not clear maximize', () => {
+      navigationStore.setDockState(true, true);
+
+      navigationStore.updateParams({ dock: 'open' });
+
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+      expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+        'true',
+      );
+    });
+
+    test('an unrelated param write does not clear maximize', () => {
+      navigationStore.setDockState(true, true);
+
+      navigationStore.updateParams({ fontSize: '16' });
+
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+      expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+        'true',
+      );
+      expect(new URLSearchParams(window.location.search).get('fontSize')).toBe(
+        '16',
+      );
+    });
+
+    test('navigate applies the same invariant: dock and maximize are both shell-scoped, so a close carries neither across a route change', () => {
+      // `dock` and `maximize` are both in SHELL_SCOPED_QUERY_PARAMS, so a
+      // route change preserves them together — a navigation that closes the
+      // dock would leave `maximize` behind exactly as the direct write did.
+      navigationStore.setDockState(true, true);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+
+      navigationStore.navigate('/projects', { dock: null });
+
+      const after = navigationStore.getSnapshot();
+      expect(after.isDockOpen).toBe(false);
+      expect(after.isDockMaximized).toBe(false);
+      expect(new URLSearchParams(window.location.search).has('maximize')).toBe(
+        false,
+      );
+      expect(navigationStore.lastDockMaximized).toBe(true);
+    });
+
+    test("a destination's own maximize=true does not survive a navigate that closes the dock", () => {
+      // `navigate` copies the destination route's query first and applies the
+      // structured `params` argument after, so the normalization is what the
+      // URL ends on.
+      navigationStore.setDockState(true, true);
+
+      navigationStore.navigate('/projects?maximize=true', { dock: null });
+
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
+      expect(new URLSearchParams(window.location.search).has('maximize')).toBe(
+        false,
+      );
+    });
+
+    test('a location carrying maximize without dock=open still equals itself, and equals the restore that drops the param', () => {
+      // A `?maximize=true` link with no `dock=open` is the one route into that
+      // pair that no writer normalizes (#1613). A return trip that also closes
+      // the dock goes back through a writer, so the param is gone on the way
+      // home. `canonicalSearch` drops it on BOTH sides of the comparison; the
+      // capture itself records the URL verbatim.
+      window.history.replaceState({}, '', '/?maximize=true&fontSize=16');
+      navigationStore.navigate('/', {});
+
+      const captured = navigationStore.captureLocation();
+
+      expect(captured.search).toContain('maximize=true');
+      expect(captured.search).toContain('fontSize=16');
+      expect(navigationStore.isCurrentLocation(captured)).toBe(true);
+
+      // What the restore lands on: same location, param normalized away.
+      window.history.replaceState({}, '', '/?fontSize=16');
+      navigationStore.navigate('/', {});
+      expect(navigationStore.isCurrentLocation(captured)).toBe(true);
+    });
+
+    test('an open dock keeps maximize significant to the comparison', () => {
+      navigationStore.setDockState(true, true);
+      const captured = navigationStore.captureLocation();
+      expect(captured.search).toContain('maximize=true');
+      expect(navigationStore.isCurrentLocation(captured)).toBe(true);
+
+      // Restoring the dock to docked is a real difference, not a normalized one.
+      navigationStore.setDockState(true, false);
+      expect(navigationStore.isCurrentLocation(captured)).toBe(false);
+    });
+
+    test('navigate carrying an open dock across a route change keeps maximize', () => {
+      navigationStore.setDockState(true, true);
+
+      navigationStore.navigate('/projects');
+
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+    });
+
+    test('a clearDeadChatPointer-shaped write leaves params it did not name alone', () => {
+      window.history.replaceState(
+        {},
+        '',
+        '/?chat=dead&dock=open&maximize=true&fontSize=16&conversation=conv-1',
+      );
+      navigationStore.navigate('/', {});
+
+      navigationStore.updateParams({ chat: null, dock: null });
+
+      const search = new URLSearchParams(window.location.search);
+      expect(search.has('chat')).toBe(false);
+      expect(search.has('dock')).toBe(false);
+      expect(search.has('maximize')).toBe(false);
+      expect(search.get('fontSize')).toBe('16');
+      expect(search.get('conversation')).toBe('conv-1');
+      expect(navigationStore.getSnapshot().activeConversation).toBe('conv-1');
+      expect(navigationStore.getSnapshot().fontSize).toBe(16);
+    });
+  });
 });
