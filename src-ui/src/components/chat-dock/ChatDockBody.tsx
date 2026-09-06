@@ -340,6 +340,9 @@ export function ChatDockBody({
   const stt = useSTT();
   const tts = useTTS();
   const { getComposedContext } = useMessageContext();
+  // A reopened conversation retains the admission decision that opened this
+  // tab. Provider/model availability today cannot convert a recovery view
+  // into a writable continuation of a different child session.
   const openPhase = conversationOpenPhase(activeSession);
   // Split deliberately. `resolvingOpen` blocks the same writes `readOnlyOpen`
   // does — you cannot send into a conversation whose continuation is unproven —
@@ -523,9 +526,6 @@ export function ChatDockBody({
     return chatInput.handleSend(undefined, undefined, { ambientContext });
   }, [getComposedContext, chatInput]);
   const isExecutionActive = isSessionExecutionActive(activeSession);
-  // A reopened conversation retains the admission decision that opened this
-  // tab. Provider/model availability today cannot convert a recovery view
-  // into a writable continuation of a different child session.
 
   // TTS readback when streaming ends
   const prevStatusRef = useRef(isExecutionActive);
