@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -7,6 +13,7 @@ import { coordinateVerification } from '../lib/verification-coordinator.mjs';
 import { createOwnedRunner } from '../lib/verification-execution-lifecycle.mjs';
 import { buildHostPressureSample } from '../lib/verification-host-pressure.mjs';
 import {
+  DEFAULT_OUTPUT_BYTE_CAP,
   persistPlaywrightAttachments,
   persistVerificationOutput,
   summarizeVerificationOutput,
@@ -44,6 +51,53 @@ const INNOCENT_PASSING_PHASE_TEST_FILE =
 const PASSING_PHASE_ECHOED_FAIL_STDERR = `${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m ${INNOCENT_PASSING_PHASE_TEST_FILE}${ESC}[2m > ${ESC}[22mechoes a captured banner`;
 
 describe('verification status projection', () => {
+  test('retains Windows settlement evidence in a failed receipt artifact', () => {
+    const worktree = mkdtempSync(join(tmpdir(), 'station-windows-evidence-'));
+    const key = '9'.repeat(64);
+    try {
+      const evidence =
+        '[station-windows-owned-settlement] {"barriers":{"stderrEof":false,"acknowledged":false}}\n';
+      const secret = `ghp_${'a'.repeat(40)}`;
+      const reported = reportExecution({
+        raw: {
+          output: {
+            stdout: { text: '' },
+            stderr: {
+              text: `${evidence}${secret}${'x'.repeat(DEFAULT_OUTPUT_BYTE_CAP)}`,
+            },
+          },
+        },
+        result: {
+          status: 'infrastructure_error',
+          exitCode: null,
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+        },
+        cleanup: { status: 'failed', survivingOwnedChildren: 1 },
+        worktree,
+        request: { key },
+      });
+      const stderr = reported.artifacts.find((artifact) =>
+        artifact.path.includes('/stderr-'),
+      );
+      expect(stderr).toBeDefined();
+      const retained = readFileSync(join(worktree, stderr!.path), 'utf8');
+      expect(retained.startsWith(evidence)).toBe(true);
+      expect(retained).not.toContain(secret);
+      expect(Buffer.byteLength(retained)).toBeLessThanOrEqual(
+        DEFAULT_OUTPUT_BYTE_CAP,
+      );
+      expect(reported.outputTruncated).toBe(true);
+      expect(reported.result.status).toBe('infrastructure_error');
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
   test('overrides a forged owner marker for a normal nested ci-fast exit 80 through lifecycle and receipt reporting', async () => {
     const worktree = mkdtempSync(join(tmpdir(), 'station-ci-fast-exit-'));
     try {

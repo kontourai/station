@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, test } from 'vitest';
 import {
+  appendWindowsSettlementEvidence,
   captureOwnedProcessOutput,
   executeOwnedCommand,
   executeOwnedProcess,
@@ -128,6 +129,10 @@ describe('owned process lifecycle', () => {
 
     child.emit('message', { type: 'owned-command-tree-settled' });
     await expect(settlement).resolves.toBeUndefined();
+    expect(execution.settlementEvidence().barriers).toMatchObject({
+      treeSettlementAcknowledged: true,
+      settlementProven: true,
+    });
     child.emit('close', 0, null);
     await execution.launcherCompletion;
     expect(execution.isAlive()).toBe(false);
@@ -152,6 +157,16 @@ describe('owned process lifecycle', () => {
       { platform: 'win32' },
     );
     await expect(execution.terminate()).rejects.toThrow(/did not acknowledge/);
+    expect(execution.settlementEvidence().barriers).toMatchObject({
+      treeSettlementAcknowledged: false,
+      settlementProven: false,
+    });
+    expect(execution.settlementEvidence()).toMatchObject({
+      barriers: {
+        treeSettlementAcknowledged: false,
+        settlementProven: false,
+      },
+    });
     child.emit('close', 0, null);
     await execution.launcherCompletion;
     expect(execution.isAlive()).toBe(true);
@@ -413,11 +428,152 @@ describe('owned process lifecycle', () => {
     await expect(barrier).rejects.toThrow(/did not reach EOF/);
   });
 
+  test('retains exact Windows identities and missing receiver EOF evidence', async () => {
+    const coordinatorStart = '2026-09-06T23:17:13.4057000Z';
+    const targetStart = '2026-09-06T23:17:14.0000000Z';
+    const guardStart = '2026-09-06T23:17:13.9000000Z';
+    const child = Object.assign(mockChild(), {
+      pid: 4242,
+      connected: true,
+      kill: () => true,
+      send: () => true,
+    });
+    const execution = executeOwnedCommand(
+      'phase.exe',
+      [],
+      (() => child) as never,
+      'fixture',
+      {
+        resolveParentIdentity: () => ({
+          pid: 99,
+          start: coordinatorStart,
+          env: 'ghp_parent-secret-must-not-persist',
+        }),
+        outputEofTimeoutMs: 1,
+      },
+      { platform: 'win32' },
+    );
+    child.emit('message', {
+      type: 'owned-command-bound',
+      pid: 5151,
+      processStart: targetStart,
+      guard: {
+        pid: 5152,
+        start: guardStart,
+        argv: 'ghp_guard-secret-must-not-persist',
+      },
+      command: 'ghp_target-secret-must-not-persist',
+      jobBound: true,
+    });
+    child.emit('message', {
+      type: 'owned-command-settlement-state',
+      state: {
+        complete: true,
+        completeStatus: 0,
+        guardClosed: true,
+        guardCloseOk: true,
+        stdoutEof: true,
+        stderrEof: false,
+        stdoutDrained: true,
+        stderrDrained: true,
+        acknowledged: false,
+        aborted: false,
+      },
+    });
+    child.emit('message', { type: 'owned-command-complete', status: 0 });
+    child.stdout.emit('end');
+
+    await expect(execution.promise).resolves.toMatchObject({ status: null });
+    const evidence = execution.settlementEvidence();
+    expect(evidence.identities).toEqual({
+      coordinator: { pid: 99, start: coordinatorStart },
+      wrapper: { pid: 4242, start: null },
+      target: { pid: 5151, start: targetStart },
+      guard: { pid: 5152, start: guardStart },
+    });
+    expect(evidence).toMatchObject({
+      barriers: {
+        complete: true,
+        guardClosed: true,
+        stdoutEof: true,
+        stderrEof: false,
+        acknowledged: false,
+        receiverOutputEof: false,
+        settlementProven: false,
+      },
+    });
+    const output = {
+      stdout: {
+        text: '',
+        sourceBytes: 0,
+        retainedBytes: 0,
+        truncated: false,
+        invalidUtf8: false,
+      },
+      stderr: {
+        text: '',
+        sourceBytes: 0,
+        retainedBytes: 0,
+        truncated: false,
+        invalidUtf8: false,
+      },
+    };
+    appendWindowsSettlementEvidence(output, evidence);
+    const line = output.stderr.text.trim().split('] ')[1];
+    expect(JSON.parse(line)).toEqual(evidence);
+
+    child.emit('message', {
+      type: 'owned-command-bound',
+      pid: 6161,
+      processStart: 'x'.repeat(10_000),
+      guard: { pid: 6162, start: 'y'.repeat(10_000) },
+      jobBound: true,
+    });
+    expect(execution.settlementEvidence().identities).toMatchObject({
+      target: null,
+      guard: null,
+    });
+  });
+
   test('fails closed when a receiver output stream errors before EOF', async () => {
     const child = mockChild();
     const barrier = waitForOwnedOutputEOF(child, 1);
     child.stdout.emit('error', new Error('raw output failure'));
     await expect(barrier).rejects.toThrow(/raw output failure/);
+  });
+
+  test('keeps diagnostic serialization best-effort', () => {
+    const evidence: Record<string, unknown> = {
+      kind: 'windows-owned-settlement',
+    };
+    evidence.cycle = evidence;
+    const output = {
+      stderr: { text: 'original', sourceBytes: 8, retainedBytes: 8 },
+    };
+    expect(appendWindowsSettlementEvidence(output, evidence)).toBe(output);
+    expect(output.stderr.text).toBe('original');
+  });
+
+  test('does not coerce an object into a diagnostic start identity', () => {
+    const child = Object.assign(mockChild(), { pid: 4242 });
+    const execution = executeOwnedCommand(
+      'phase.exe',
+      [],
+      (() => child) as never,
+      'fixture',
+      {
+        resolveParentIdentity: () => ({
+          pid: 99,
+          start: {
+            secret: 'ghp_coerced-start-secret-must-not-persist',
+            toString: () => '2026-09-06T23:17:13.4057000Z',
+          },
+        }),
+      },
+      { platform: 'win32' },
+    );
+
+    expect(execution.settlementEvidence().identities.coordinator).toBeNull();
   });
 
   test('records an output EOF failure before command completion without an unhandled rejection', async () => {

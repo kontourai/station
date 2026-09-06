@@ -7,7 +7,10 @@ import {
   createWindowsOwnedProtocol,
   MAX_WINDOWS_GUARD_RECORD_BYTES,
 } from './lib/windows-owned-protocol.mjs';
-import { createWindowsOwnedSettlement } from './lib/windows-owned-settlement.mjs';
+import {
+  createWindowsOwnedSettlement,
+  publishWindowsOwnedSettlementState,
+} from './lib/windows-owned-settlement.mjs';
 
 function fail(message) {
   process.send?.({
@@ -95,6 +98,7 @@ if (command) {
   const settlement = createWindowsOwnedSettlement({
     onComplete: finishSuccessfulSettlement,
     onAbortSettled: finishAbortSettlement,
+    onState: (state) => publishWindowsOwnedSettlementState(process, state),
   });
   const abort = (error) => {
     settlement.abort();

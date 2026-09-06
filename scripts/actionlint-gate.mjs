@@ -317,6 +317,17 @@ export const CODEQL_ANALYZE_ACTION =
   'github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938';
 export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
+export const WINDOWS_PR_EVIDENCE_UPLOAD_ACTION =
+  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
+const WINDOWS_PR_WORKFLOW = '.github/workflows/windows-pr-verification.yml';
+const WINDOWS_PR_JOB = 'windows-pr-portable';
+const WINDOWS_PR_EVIDENCE_UPLOAD_NAME =
+  'Upload Windows portable verification evidence';
+const WINDOWS_PR_EVIDENCE_ARTIFACT_NAME =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  'windows-portable-verification-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}';
+const WINDOWS_PR_EVIDENCE_PATHS =
+  '.kontourai/verification-receipts/\n.kontourai/verification-output/\n';
 const DEPENDENCY_REVIEW_CANDIDATE_GUARD = `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`;
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
 const DEPENDENCY_REVIEW_MERGE_GROUP_GUARD = `\${{ github.event_name == 'merge_group' }}`;
@@ -897,6 +908,34 @@ function hasOnlyReadContentsPermission(permissions) {
     !Array.isArray(permissions) &&
     Object.keys(permissions).length === 1 &&
     permissions.contents === 'read'
+  );
+}
+
+function isExactWindowsPrEvidenceUpload(file, jobId, step) {
+  if (
+    file !== WINDOWS_PR_WORKFLOW ||
+    jobId !== WINDOWS_PR_JOB ||
+    step?.name !== WINDOWS_PR_EVIDENCE_UPLOAD_NAME ||
+    step?.if !== 'always()' ||
+    step?.uses !== WINDOWS_PR_EVIDENCE_UPLOAD_ACTION
+  )
+    return false;
+  const topLevelKeys = Object.keys(step).sort();
+  const withKeys = Object.keys(step.with ?? {}).sort();
+  return (
+    JSON.stringify(topLevelKeys) ===
+      JSON.stringify(['if', 'name', 'uses', 'with']) &&
+    JSON.stringify(withKeys) ===
+      JSON.stringify([
+        'if-no-files-found',
+        'include-hidden-files',
+        'name',
+        'path',
+      ]) &&
+    step.with.name === WINDOWS_PR_EVIDENCE_ARTIFACT_NAME &&
+    step.with.path === WINDOWS_PR_EVIDENCE_PATHS &&
+    step.with['include-hidden-files'] === true &&
+    step.with['if-no-files-found'] === 'warn'
   );
 }
 
@@ -1813,6 +1852,7 @@ function baseControlledPrWorkflowFindings(file, document) {
           file === '.github/workflows/build-ios.yml' &&
           step.uses.startsWith('actions/upload-artifact@')
         ) &&
+        !isExactWindowsPrEvidenceUpload(file, jobId, step) &&
         !(
           file === SECURITY_ANALYSIS_WORKFLOW &&
           jobId === SECURITY_ANALYSIS_CODEQL_JOB &&

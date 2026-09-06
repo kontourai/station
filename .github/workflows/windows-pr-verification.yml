@@ -48,6 +48,17 @@ jobs:
       - name: Run bounded Windows portable floor
         run: npm run test:windows:portable
 
+      - name: Upload Windows portable verification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-portable-verification-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          path: |
+            .kontourai/verification-receipts/
+            .kontourai/verification-output/
+          include-hidden-files: true
+          if-no-files-found: warn
+
       - name: Compile desktop Rust tests
         shell: pwsh
         run: |

@@ -3,6 +3,7 @@ import {
   CI_FAST_OWNER_INFRASTRUCTURE_PREFIX,
 } from '../run-ci-fast.mjs';
 import {
+  appendWindowsSettlementEvidence,
   captureOwnedProcessOutput,
   executeOwnedCommand,
   terminateSuiteExecution,
@@ -181,11 +182,16 @@ export function createOwnedRunner({
     abortSignal?.addEventListener('abort', () => void cancel(), { once: true });
     const result = await execution.promise;
     const captured = output.finish();
+    const capturedWithSettlementEvidence = () =>
+      appendWindowsSettlementEvidence(
+        captured,
+        execution.settlementEvidence?.(),
+      );
     if (captured.invalidUtf8)
       return {
         status: null,
         error: new Error('verification output was not valid UTF-8'),
-        output: captured,
+        output: capturedWithSettlementEvidence(),
         cleanup: { status: 'failed', survivingOwnedChildren: 0 },
       };
     const cleanup = cleanupPromise
@@ -197,13 +203,13 @@ export function createOwnedRunner({
       return {
         status: null,
         error: new Error('owned verification process survived cleanup'),
-        output: captured,
+        output: capturedWithSettlementEvidence(),
         cleanup: { status: 'failed', survivingOwnedChildren: 1 },
       };
     if (cleanup?.errors.length)
       return {
         ...result,
-        output: captured,
+        output: capturedWithSettlementEvidence(),
         cleanup: { status: 'failed', survivingOwnedChildren: 0 },
       };
     const ciFastInfrastructure =
@@ -220,7 +226,7 @@ export function createOwnedRunner({
             ...(infrastructureCause ? { infrastructureCause } : {}),
           }
         : {}),
-      output: captured,
+      output: capturedWithSettlementEvidence(),
       cleanup: {
         status: cleanup ? 'passed' : 'not_required',
         survivingOwnedChildren: 0,
