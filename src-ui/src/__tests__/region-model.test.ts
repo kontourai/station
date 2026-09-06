@@ -254,6 +254,7 @@ describe('region model', () => {
       expect(toggled.arrangement.main).toEqual({
         visible: true,
         size: 0,
+        maximized: false,
         occupant: null,
       });
       // Chat's dock placement is untouched by a relocation into another region.
