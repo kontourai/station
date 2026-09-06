@@ -3010,7 +3010,7 @@ GET /scheduler/status
 
 ### Preview Cron Schedule
 ```http
-GET /scheduler/jobs/preview-schedule?cron=<expr>&count=5
+GET /scheduler/jobs/preview-schedule?cron=<expr>&count=5&timezone=<iana>
 ```
 
 Returns the next N scheduled run times for a cron expression.
@@ -3018,6 +3018,10 @@ Returns the next N scheduled run times for a cron expression.
 **Query Parameters**:
 - `cron`: Cron expression (required)
 - `count`: Number of upcoming runs to return (default: `5`)
+- `timezone`: IANA zone the expression is written in (optional). Omitted means
+  UTC, which is how the scheduler evaluates a schedule with no zone — so a
+  preview of a ZONED job must send this or it describes different instants from
+  the ones the job will fire at.
 
 **Response**:
 ```json

@@ -971,6 +971,7 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
     // deterministic E2E payload cannot answer a different device class from
     // the real one.
     const devicePresentation = resolveDevicePresentation(c.req.raw);
+    const homeRecovery = deps.getHomeRecovery?.();
     const e2eReady = process.env.STATION_E2E_SYSTEM_STATUS_READY === '1';
     const e2eFirstRun = process.env.STATION_E2E_FIRST_RUN === '1';
     const build = e2eReady ? E2E_BUILD_PROVENANCE : readBuildProvenance();
@@ -988,6 +989,7 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
         },
       });
       return c.json({
+        ...(homeRecovery ? { homeRecovery } : {}),
         prerequisites: [],
         prerequisitesState: 'ready',
         acp: {
@@ -1158,6 +1160,7 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
       source: 'system-status',
     });
     return c.json({
+      ...(homeRecovery ? { homeRecovery } : {}),
       prerequisites,
       prerequisitesState: discovery.state,
       acp: {

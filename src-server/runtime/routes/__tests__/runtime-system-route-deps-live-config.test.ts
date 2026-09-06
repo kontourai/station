@@ -1,3 +1,12 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  createStationHomeBackup,
+  restoreStationHomeBackup,
+  STATION_HOME_RECOVERY_RECORD,
+} from '@kontourai/station-shared/station-home-archive';
+import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 /**
  * Delta2 review H2 — the PRODUCTION wiring of the managed-chat binding.
  *
@@ -129,4 +138,36 @@ describe('system route deps read the live app config', () => {
       (deps.getAppConfig() as { defaultModel?: string }).defaultModel,
     ).toBe('qwen3');
   });
+});
+
+test('runtime status reads restored-home provenance and never exposes backup paths or digests', () => {
+  const root = mkdtempSync(join(tmpdir(), 'station-recovery-status-'));
+  try {
+    const source = join(root, 'source');
+    ensureStationHomeSchemaSync(source);
+    const backup = createStationHomeBackup({
+      homeDir: source,
+      outputDir: join(root, 'backup'),
+      now: () => '2026-09-05T00:00:00.000Z',
+    });
+    const restored = restoreStationHomeBackup({
+      homeDir: join(root, 'target'),
+      backupDir: backup.backupDir,
+      confirm: true,
+    });
+    const { context } = contextWithConfig({});
+    context.configLoader.getProjectHomeDir = () => restored.homeDir;
+    const deps = createRuntimeSystemRouteDeps(context);
+    expect(deps.getHomeRecovery()).toEqual({
+      kind: 'recovered-from-copy',
+      recoveryId: restored.recovery.recoveryId,
+      snapshotCreatedAt: '2026-09-05T00:00:00.000Z',
+      authorityTransferred: false,
+    });
+    expect(JSON.stringify(deps.getHomeRecovery())).not.toContain(root);
+    writeFileSync(join(restored.homeDir, STATION_HOME_RECOVERY_RECORD), '{}');
+    expect(deps.getHomeRecovery()).toEqual({ kind: 'unavailable' });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

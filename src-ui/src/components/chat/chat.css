@@ -489,7 +489,14 @@
   min-width: 116px;
   font-size: var(--text-base);
   font-weight: 500;
-  text-align: center;
+  /* #1536 C3: END, not centre. The reserved width above exists so a state
+     flip cannot shift the controls after it — but centring the label inside
+     that reservation left ~23px of empty box between "Connected" and the
+     "· Default" that follows, so the separator read as leading the identity
+     with nothing on its left. Aligning to the end keeps the reservation and
+     puts its slack between the status dot and the label, where it separates a
+     glyph from its text rather than splitting one sentence in two. */
+  text-align: end;
   white-space: nowrap;
 }
 
@@ -526,10 +533,15 @@
 }
 
 /* Presentational "State · Name · Note" separators; kept out of the text
-   content so the accessible name and tests read clean strings. */
-.app-toolbar__conn-name::before,
-.app-toolbar__conn-note::before {
-  content: "· ";
+   content so the accessible name and tests read clean strings.
+   #1536 C3: each is attached to the part BEFORE it and printed only when a
+   part actually FOLLOWS, so the dot can never appear with nothing on its
+   left. `:has()` cannot see `display: none`, so every breakpoint that hides a
+   following part suppresses these too — see the mobile block below. */
+.app-toolbar__conn-state:has(+ .app-toolbar__conn-name)::after,
+.app-toolbar__conn-state:has(+ .app-toolbar__conn-note)::after,
+.app-toolbar__conn-name:has(+ .app-toolbar__conn-note)::after {
+  content: " · ";
 }
 
 /* Inside a `.menu-row__glyph` the chip takes the family's 16px slot rather than
@@ -1916,6 +1928,19 @@
   .app-toolbar__conn-name,
   .app-toolbar__conn-note {
     display: none;
+  }
+  /* The parts those separators lead into are gone here, and `:has()` cannot
+     see `display: none` — so without this the state would print a trailing
+     "· " with nothing after it: the same defect facing the other way. The
+     selectors mirror the base rule's exactly: a media query adds no
+     specificity, and `:has(+ …)` outweighs a bare class, so a shorter
+     selector here would silently lose. `index.css` carries the same
+     breakpoint and the same `display: none`; this file owns the separators,
+     and it cascades after that one (station#3766). */
+  .app-toolbar__conn-state:has(+ .app-toolbar__conn-name)::after,
+  .app-toolbar__conn-state:has(+ .app-toolbar__conn-note)::after,
+  .app-toolbar__conn-name:has(+ .app-toolbar__conn-note)::after {
+    content: none;
   }
   /* archive#3311: the toolbar chip stays compact on mobile — dot only while
      healthy; the state text appears exactly when it carries news

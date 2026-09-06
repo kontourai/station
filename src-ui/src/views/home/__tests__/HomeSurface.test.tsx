@@ -67,9 +67,16 @@ function model(overrides: Record<string, unknown> = {}) {
 function renderHome(
   overrides: Record<string, unknown> = {},
   onNavigate = vi.fn(),
+  continuation: Parameters<typeof HomeSurface>[0]['continuation'] = null,
 ) {
   const m = model(overrides);
-  render(<HomeSurface model={m} continuation={null} onNavigate={onNavigate} />);
+  render(
+    <HomeSurface
+      model={m}
+      continuation={continuation}
+      onNavigate={onNavigate}
+    />,
+  );
   return { model: m, onNavigate };
 }
 
@@ -87,6 +94,35 @@ describe('HomeSurface composition', () => {
       screen.getByRole('heading', { name: 'What do you want to work on?' }),
     ).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Work actions' })).toBeTruthy();
+  });
+
+  // #1582 E5: the card named the project by its SLUG while the sidebar named
+  // the same project by its name on the same screen. A `NavigationView` only
+  // carries a slug, so the name comes from the catalog record keyed by it.
+  test('the last-project card names the project the way the sidebar does', () => {
+    renderHome({}, vi.fn(), { type: 'project', slug: 'station' });
+    const card = screen.getByRole('button', { name: /Open last project/ });
+    expect(card.textContent).toContain('Station');
+    expect(card.textContent).not.toContain('station');
+  });
+
+  test('a layout continuation is named by its project, not its project slug', () => {
+    renderHome({}, vi.fn(), {
+      type: 'layout',
+      projectSlug: 'station',
+      layoutSlug: 'coding',
+    });
+    const card = screen.getByRole('button', { name: /Open last project/ });
+    expect(card.textContent).toContain('Station');
+    expect(card.textContent).not.toContain('station');
+  });
+
+  test('a project the catalog no longer holds keeps its slug as the only handle', () => {
+    // The section renders a skeleton until the catalog settles, so an
+    // unmatched slug here means the project is gone — not that it is loading.
+    renderHome({}, vi.fn(), { type: 'project', slug: 'retired-project' });
+    const card = screen.getByRole('button', { name: /Open last project/ });
+    expect(card.textContent).toContain('retired-project');
   });
 
   test('the start card names the agent it can actually open on', () => {

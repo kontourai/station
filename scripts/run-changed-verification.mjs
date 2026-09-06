@@ -820,10 +820,27 @@ export function runChangedVerification(
     nextCommands: nextCommands(selection),
     executed: [],
   };
-  // A deferred or escalated lane is the whole checkpoint. Never run a small
-  // subset beside it and imply that it was adequate for the changed surface.
-  if (!explain && selection.lanes.length === 0) {
-    result.executed = runVitest(root, run, selection, {
+  // Broad import expansion remains deferred. Explicit, existing test targets
+  // still provide bounded diagnostic failures; passing them cannot complete
+  // the deferred obligations. Never truncate a selection into a green claim.
+  const executionSelection =
+    selection.lanes.length === 0
+      ? selection
+      : {
+          ...selection,
+          relatedPaths: [],
+          tests:
+            selection.tests.length <= 32
+              ? selection.tests.filter((entry) =>
+                  pathExists(resolve(root, entry.path)),
+                )
+              : [],
+        };
+  if (
+    !explain &&
+    (executionSelection.tests.length || executionSelection.relatedPaths.length)
+  ) {
+    result.executed = runVitest(root, run, executionSelection, {
       vitestPath,
       beforeCleanup(executions) {
         result.executed = executions;
@@ -854,21 +871,23 @@ export function runChangedVerification(
     (execution) => execution.exitCode !== 0 && !execution.infrastructureError,
   );
   const infrastructureError = counts.infrastructureErrors > 0;
-  const parserError = counts.parserErrors > 0 || counts.executed === 0;
-  const status = deferred
-    ? 'provisional'
-    : infrastructureError
-      ? 'infrastructure_error'
-      : parserError
-        ? 'parser_error'
-        : failed || childFailed
-          ? 'failed'
+  const parserError =
+    counts.parserErrors > 0 || (!deferred && counts.executed === 0);
+  const status = infrastructureError
+    ? 'infrastructure_error'
+    : parserError
+      ? 'parser_error'
+      : failed || childFailed
+        ? 'failed'
+        : deferred
+          ? 'provisional'
           : 'completed';
-  const receiptExitCode = deferred
-    ? null
-    : status === 'completed'
-      ? 0
-      : result.executed.at(-1).exitCode || 1;
+  const receiptExitCode =
+    status === 'provisional'
+      ? null
+      : status === 'completed'
+        ? 0
+        : result.executed.at(-1)?.exitCode || 1;
   const { contents, artifact } = selectionArtifact({
     ...result,
     receipt: { status, exitCode: receiptExitCode, counts },
@@ -906,7 +925,13 @@ export function runChangedVerification(
   return {
     ...result,
     receipt,
-    exitCode: explain ? 0 : deferred ? 3 : receipt.terminal.passed ? 0 : 1,
+    exitCode: explain
+      ? 0
+      : status === 'provisional'
+        ? 3
+        : receipt.terminal.passed
+          ? 0
+          : 1,
   };
 }
 if (
