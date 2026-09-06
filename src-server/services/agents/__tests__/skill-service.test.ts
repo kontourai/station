@@ -1270,8 +1270,102 @@ describe('SkillService', () => {
     );
     await service.discoverSkills(testDir);
 
-    await expect(service.getSkill('renamed')).rejects.toThrow(
-      "Skill 'renamed' not found",
+    const detail = await service.getSkill('renamed');
+
+    // The package answers — it exists, and #1614 is that a package on disk is
+    // an answer — but NOT with the other skill's identity.
+    expect(detail.body).toBe('Body');
+    expect(detail.description).toBe('Copied and renamed');
+    expect(detail.source).toBeUndefined();
+    expect(detail.installedAt).toBeUndefined();
+    expect(detail.legacyIds).toBeUndefined();
+    expect(detail.path).toBe(dir);
+    expect(detail.installRecordDiagnostic).toContain("claims 'origin-skill'");
+    // …and neither does the listing, which used to read the same bytes without
+    // the claim check and hand out the other skill's source and version.
+    const listed = service.listSkills()[0];
+    expect(listed.source).toBeUndefined();
+    expect(listed.legacyIds).toBeUndefined();
+    expect(listed.path).toBe(dir);
+    // The clinching one: that skill's legacy id no longer resolves to this
+    // package, so a caller holding it is not silently handed the wrong skill.
+    expect(
+      service.resolveSkillName('11111111-2222-3333-4444-555555555555'),
+    ).toBeUndefined();
+  });
+
+  // #1614. The package the listing has always answered for and the detail
+  // refused: a `SKILL.md` authored by hand, with no `skill.json` beside it.
+  test('a hand-authored package with no install record has a detail read', async () => {
+    const dir = join(testDir, 'skills', 'hand-authored');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      '---\nname: hand-authored\ndescription: Written by hand\ntags:\n  - mine\n---\nHand-written body',
+      'utf-8',
+    );
+    await service.discoverSkills(testDir);
+
+    const detail = await service.getSkill('hand-authored');
+
+    expect(detail.body).toBe('Hand-written body');
+    expect(detail.description).toBe('Written by hand');
+    expect(detail.tags).toEqual(['mine']);
+    expect(detail.path).toBe(dir);
+    // Derived from the ROOT it sits in, exactly as the listing derives it and
+    // exactly as a workspace package derives `project` from its root.
+    expect(detail.origin).toBe('user');
+    // NOTHING states where it came from, so nothing is claimed.
+    expect(detail.source).toBeUndefined();
+    expect(detail.installedAt).toBeUndefined();
+    expect(detail.version).toBeUndefined();
+    expect(detail.provenance).toBeUndefined();
+    expect(detail.installRecordDiagnostic).toContain('no install record');
+    // The declarations DID come from SKILL.md, which is a different fact and
+    // keeps its own field — the reason these are two fields and not one.
+    expect(detail.declarationsDiagnostic).toBeUndefined();
+    // And the list says the same things about the same package.
+    expect(service.listSkills()[0]).toMatchObject({
+      name: 'hand-authored',
+      description: 'Written by hand',
+      origin: 'user',
+      path: dir,
+    });
+  });
+
+  test('a hand-authored package under the project root reads as project', async () => {
+    const dir = join(testDir, 'projects', 'demo', 'skills', 'workspace-hand');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      '---\nname: workspace-hand\ndescription: Workspace, by hand\n---\nBody',
+      'utf-8',
+    );
+    await service.discoverSkills(testDir, 'demo');
+
+    const detail = await service.getSkill('workspace-hand');
+
+    expect(detail.origin).toBe('project');
+    expect(detail.path).toBe(dir);
+    expect(detail.source).toBeUndefined();
+    expect(detail.installRecordDiagnostic).toContain('no install record');
+  });
+
+  // The one case that genuinely has nothing to answer from: the registry
+  // remembers a package whose body has since gone, and no record ever existed.
+  test('neither a record nor a body is still not found', async () => {
+    const dir = join(testDir, 'skills', 'vanished');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      '---\nname: vanished\ndescription: Here for now\n---\nBody',
+      'utf-8',
+    );
+    await service.discoverSkills(testDir);
+    rmSync(join(dir, 'SKILL.md'));
+
+    await expect(service.getSkill('vanished')).rejects.toThrow(
+      "Skill 'vanished' not found",
     );
   });
 

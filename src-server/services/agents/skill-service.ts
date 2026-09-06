@@ -230,11 +230,33 @@ export interface SkillListing {
 /**
  * `getSkill`'s answer: the install record, plus what the declarations on disk
  * actually DO and — when they could not be read at all — why.
+ *
+ * `source` and `installedAt` are OPTIONAL here where `SkillConfigRecord` makes
+ * them required, because a package can be discovered without ever having been
+ * installed — a `SKILL.md` authored by hand, or dropped into a workspace — and
+ * for that package nothing states where it came from or when it arrived
+ * (#1614). The alternative was answering `'local'`, which is a value nothing
+ * derives asserted about an install that never happened. Absent says the true
+ * thing; `installRecordDiagnostic` says why it is absent.
  */
-export interface SkillDetail extends SkillConfig {
+export interface SkillDetail
+  extends Omit<SkillConfig, 'source' | 'installedAt'> {
+  /** Absent when no install record claims this package. */
+  source?: SkillConfig['source'];
+  /** Absent when no install record claims this package. */
+  installedAt?: string;
   commandDiagnostic?: string;
   /** Present only when `command`/`variables` did not come from `SKILL.md`. */
   declarationsDiagnostic?: string;
+  /**
+   * Why this answer carries no install record, when it carries none.
+   *
+   * A SEPARATE field from `declarationsDiagnostic`, deliberately: the two facts
+   * are independent and co-occur. A package can lack an install record AND have
+   * its `command`/`variables` come from somewhere other than its `SKILL.md`, and
+   * one field cannot say both without the name becoming a lie for one of them.
+   */
+  installRecordDiagnostic?: string;
 }
 
 /**
@@ -638,14 +660,27 @@ export class SkillService {
         if (existsSync(skillJsonPath)) {
           try {
             const config = JSON.parse(readFileSync(skillJsonPath, 'utf-8'));
-            source = config.source;
-            path = config.path;
-            version = config.version ?? version;
-            provenance = config.provenance;
-            legacyIds = readSkillLegacyIds(config.legacyIds);
-            recordedOrigin = readSkillOrigin(config.origin);
+            // THE SAME rule the detail read applies: a record answers only for
+            // the name it claims. Without this the listing reported another
+            // skill's source, version and provenance for a copied-and-renamed
+            // package — and fed its `legacyIds` into `rebuildLegacyIdIndex`,
+            // so that skill's ids resolved here (#1614, and the same class as
+            // #1602's disowned-record case).
+            if (skillRecordClaimsName(config, skill.name)) {
+              source = config.source;
+              path = config.path;
+              version = config.version ?? version;
+              provenance = config.provenance;
+              legacyIds = readSkillLegacyIds(config.legacyIds);
+              recordedOrigin = readSkillOrigin(config.origin);
+            }
           } catch {}
         }
+        // The directory the package was FOUND in, when no record states one. A
+        // path is a fact about a package that exists, so the listing and the
+        // detail (which derives the same fallback) cannot disagree about where
+        // a recordless package sits.
+        path ??= dirname(skill.location);
       }
       return {
         skill,
@@ -709,6 +744,16 @@ export class SkillService {
       // that is what used to collapse the two into `user` (#1582 D6).
       if (home && location.startsWith(join(home, 'projects') + sep))
         return 'project';
+      // …and its pair. `user` and `project` differ ONLY in which writable root
+      // holds the package (`recordedOriginAgainstPath` says exactly that), so
+      // the machine root reads as `user` for the same reason the project root
+      // reads as `project`. Without this, only the project half was derivable
+      // from a path and a package with no record — which is every hand-authored
+      // one — reported no origin at all in `<home>/skills` while its workspace
+      // twin reported `project` (#1614). A record's own `source` still answers
+      // below for everything discovery never found.
+      if (home && location.startsWith(join(home, 'skills') + sep))
+        return 'user';
     }
     if (source === 'registry') return 'registry';
     if (source === 'plugin') return 'plugin';
@@ -926,7 +971,21 @@ export class SkillService {
         ...(variables.length > 0 ? { variables } : {}),
       };
     }
-    const config = await this.loadInstallRecord(name, registered?.location);
+    // A package DISCOVERY found answers from its own directory; a name
+    // discovery never saw can only be the install record resolved by name,
+    // which is `configLoader`'s derivation and throws when there is none.
+    const located = registered?.location;
+    const { record, absence } = located
+      ? await this.loadInstallRecord(name, located)
+      : { record: await this.configLoader.loadSkill(name), absence: undefined };
+    // THE PACKAGE ON DISK IS AN ANSWER, WITH OR WITHOUT A RECORD (#1614).
+    // `listSkills()` has always answered for a discovered package that nothing
+    // installed — deriving `origin` from its location and leaving the install
+    // fields undefined — while this read threw `Skill '<name>' not found` for
+    // the same name, so the pane 404'd on a skill the list showed. The identity
+    // fields stay ABSENT rather than invented; `installRecordDiagnostic` says
+    // which absence this is.
+    const config: SkillConfig | undefined = record;
     // The body DISCOVERY found, when it found one. `config.path` is the
     // record's own claim about where its package sits, which is the right
     // answer only when there is nothing better — a record whose path has gone
@@ -934,14 +993,19 @@ export class SkillService {
     // file is (and a project-scoped record written by an older build carries a
     // path nobody re-derives). Same directory as the record above, so the two
     // halves of this answer cannot come from two different packages.
-    const skillPath = registered?.location ?? join(config.path, 'SKILL.md');
+    const skillPath = located ?? join((config as SkillConfig).path, 'SKILL.md');
+    if (!config && !existsSync(skillPath)) {
+      // Neither a record nor a body: there is nothing left to answer FROM. The
+      // registry entry is a memory of a file that has since gone.
+      throw new Error(`Skill '${name}' not found`);
+    }
     if (!existsSync(skillPath)) {
       // The mirror is the ONLY thing left to read, so say so. A silent
       // fallback is what let a `command` deleted from SKILL.md keep answering
       // from a stale install record while the listing said it was gone
       // (review finding 5).
       return this.fromInstallRecordOnly(
-        config,
+        config as SkillConfig,
         `SKILL.md is missing at ${skillPath}; command and variables are shown from the install record and may be stale`,
       );
     }
@@ -963,39 +1027,58 @@ export class SkillService {
         readSkillVariables(frontmatter.variables),
       );
       return {
+        // The record's fields when there is one; `name` and `path` are derived
+        // from the package itself when there is not, because both are facts
+        // about a directory that exists rather than claims a record makes.
         ...config,
+        name: config?.name ?? name,
+        path: config?.path ?? dirname(skillPath),
         body,
-        description: properties.description ?? config.description,
+        description: properties.description ?? config?.description,
         tags: Array.isArray(frontmatter.tags)
           ? (frontmatter.tags as string[])
-          : config.tags,
+          : config?.tags,
         category:
           typeof frontmatter.category === 'string'
             ? frontmatter.category
-            : config.category,
+            : config?.category,
         agent:
           typeof frontmatter.agent === 'string'
             ? frontmatter.agent
-            : config.agent,
+            : config?.agent,
         global:
           typeof frontmatter.global === 'boolean'
             ? frontmatter.global
-            : config.global,
-        provenance: config.provenance,
+            : config?.global,
+        provenance: config?.provenance,
         command: resolved.command,
         commandDiagnostic: resolved.commandDiagnostic,
         variables: variables.length > 0 ? variables : undefined,
-        legacyIds: readSkillLegacyIds(config.legacyIds),
+        legacyIds: readSkillLegacyIds(config?.legacyIds),
         origin:
           this.recordedOriginAgainstPath(
-            readSkillOrigin(config.origin),
+            readSkillOrigin(config?.origin),
             skillPath,
-          ) ?? this.deriveOrigin(skillPath, config.source),
+          ) ?? this.deriveOrigin(skillPath, config?.source),
+        ...(absence
+          ? {
+              installRecordDiagnostic: `Shown from the package on disk: ${absence}, so its source, version, install date and provenance are unknown.`,
+            }
+          : {}),
       };
     } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      if (!config) {
+        // No record to fall back to and a body that will not parse: there is
+        // nothing this read can answer FROM. Say which failure it was rather
+        // than reporting the package as absent, which it is not.
+        throw new Error(
+          `Skill '${name}' could not be read: no install record sits beside it and ${skillPath} could not be parsed (${reason})`,
+        );
+      }
       return this.fromInstallRecordOnly(
         config,
-        `SKILL.md at ${skillPath} could not be parsed (${error instanceof Error ? error.message : String(error)}); command and variables are shown from the install record and may be stale`,
+        `SKILL.md at ${skillPath} could not be parsed (${reason}); command and variables are shown from the install record and may be stale`,
       );
     }
   }
@@ -1689,6 +1772,12 @@ export class SkillService {
       name: next.name,
       description: next.description,
       source: 'local',
+      // A package discovery found but nothing installed carries no
+      // `installedAt` (#1614), and the record being written here is the first
+      // one it has ever had — so this stamps when STATION first recorded the
+      // package, which for a package it did not install is the only install
+      // date that exists. An existing record's own date is never overwritten.
+      installedAt: current.installedAt ?? new Date().toISOString(),
       path: nextDir,
       body: next.body,
       tags: next.tags,
@@ -1860,27 +1949,26 @@ export class SkillService {
    */
   private async loadInstallRecord(
     name: string,
-    location: string | undefined,
-  ): Promise<SkillConfig> {
-    if (location) {
-      const recordPath = this.installRecordPath(location);
-      if (existsSync(recordPath)) {
-        const record = JSON.parse(
-          await readFile(recordPath, 'utf-8'),
-        ) as SkillConfig;
-        // A record answers only for the name it CLAIMS — the same rule
-        // `loadSkillConfig` applies to the record it resolves by path, shared
-        // rather than restated (see its docblock for what a disowned record
-        // hands a caller).
-        if (skillRecordClaimsName(record, name)) return record;
-      }
-      // Discovery found this package, so its own directory is the only place
-      // its record can be. A record next door under a name-derived path is
-      // another package's, and a disowned one is nobody's — both are the
-      // recordless case (#1614), which is what this says.
-      throw new Error(`Skill '${name}' not found`);
+    location: string,
+  ): Promise<{ record?: SkillConfig; absence?: string }> {
+    const recordPath = this.installRecordPath(location);
+    if (!existsSync(recordPath)) {
+      return {
+        absence: `no install record sits beside this package at ${dirname(location)}`,
+      };
     }
-    return this.configLoader.loadSkill(name);
+    const record = JSON.parse(
+      await readFile(recordPath, 'utf-8'),
+    ) as SkillConfig;
+    // A record answers only for the name it CLAIMS — the same rule
+    // `loadSkillConfig` applies to the record it resolves by path, shared
+    // rather than restated (see its docblock for what a disowned record hands
+    // a caller). A disowned record is not this package's record, and saying
+    // WHICH of the two absences this is costs one string.
+    if (skillRecordClaimsName(record, name)) return { record };
+    return {
+      absence: `the install record at ${recordPath} claims '${String(record.name)}', not '${name}'`,
+    };
   }
 
   private getScriptToolDefs(
