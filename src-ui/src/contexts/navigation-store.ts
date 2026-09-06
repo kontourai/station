@@ -163,8 +163,9 @@ class NavigationStore {
   /**
    * The most recently observed `true` value of `isDockMaximized`, kept
    * independent of the URL's `maximize` param itself. A closed dock always
-   * has `maximize` cleared from the URL (`setDockState`'s own invariant,
-   * archive#795) — a closed-and-still-maximized dock renders as a blank
+   * has `maximize` cleared from the URL (`updateParams` deletes it on every
+   * `dock: null` write — the archive#795 invariant, moved there from
+   * `setDockState` by station#1613) — a closed-and-still-maximized dock renders as a blank
    * full-height shell both in the desktop right-side-panel layout AND on
    * mobile (index.css's `@media (max-width: 768px)` `.chat-dock.is-maximized`
    * rule matches on `is-maximized` alone and forces `height` with
@@ -179,9 +180,10 @@ class NavigationStore {
    * it back to `false`, on a caller's explicit non-maximized open/close.
    * Restore paths that mean "reopen exactly as it was" (not "the user just
    * asked for a specific size") read this instead of the momentarily-cleared
-   * `isDockMaximized` snapshot — every close (including the task switcher's)
-   * must still go through `setDockState` so the invariant above holds
-   * unconditionally.
+   * `isDockMaximized` snapshot. A close written through `updateParams`
+   * directly (not via `setDockState`) clears the URL flag but leaves this
+   * field as it was, because nothing in `updateParams` or `commitState`
+   * assigns it `false`.
    */
   lastDockMaximized = false;
   private layoutTabMemory: Record<string, string> = readLayoutTabMemory();
@@ -708,12 +710,26 @@ class NavigationStore {
     this.isNavigating = false;
   }
 
+  /**
+   * A closed dock is never maximized (archive#795): a write that sets `dock`
+   * to `null` also deletes `maximize`, whatever the caller passed for it.
+   * This is the one place every URL writer passes (`setDockState`,
+   * `collapseMaximizedDock`, and direct callers such as
+   * `useChatDockActiveChatSync`'s `clearDeadChatPointer`, station#1613), so
+   * the invariant is applied here rather than remembered per call site.
+   * `lastDockMaximized` is not touched by this normalization: `commitState`
+   * only ever moves it to `true`, and `setDockState` is the only path that
+   * moves it to `false`, so a close routed through here keeps whatever
+   * memory the earlier maximized commit set.
+   */
   updateParams(params: Record<string, string | null>) {
     const url = new URL(window.location.href);
     const prev = url.search;
     const currentHash = url.hash;
+    const normalizedParams =
+      params.dock === null ? { ...params, maximize: null } : params;
 
-    Object.entries(params).forEach(([key, value]) => {
+    Object.entries(normalizedParams).forEach(([key, value]) => {
       if (value === null) {
         url.searchParams.delete(key);
       } else {
@@ -845,10 +861,14 @@ class NavigationStore {
    * `is-maximized` are independent CSS classes and the maximized rule wins on
    * height with `!important`, so the pair renders as a full-height dock with
    * an emptied body — a blank shell covering the app. Callers used to have to
-   * remember this individually and one of them didn't, so the invariant lives
-   * here rather than at each call site. Reopening still restores the previous
-   * size: that is carried by the persisted `station.chatDock.snap`, not by
-   * this flag.
+   * remember this individually and one of them didn't, so the invariant was
+   * moved here; a second caller then wrote `dock: null` through
+   * `updateParams` directly and skipped it (station#1613), so it now lives in
+   * `updateParams` itself, which every close passes through. This method
+   * still computes `params.maximize = null` for a close so its own intent
+   * reads locally, and `updateParams` deletes `maximize` on any `dock: null`
+   * write regardless. Reopening still restores the previous size: that is
+   * carried by the persisted `station.chatDock.snap`, not by this flag.
    */
   setDockState(open: boolean, maximized?: boolean) {
     const params: Record<string, string | null> = {

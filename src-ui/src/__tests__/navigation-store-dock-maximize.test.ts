@@ -190,4 +190,97 @@ describe('navigationStore dock maximize memory', () => {
       expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
     });
   });
+
+  // station#1613: `useChatDockActiveChatSync`'s `clearDeadChatPointer` closes
+  // the dock with a direct `updateParams({ chat: null, dock: null })`, not via
+  // `setDockState`. On a reload of a maximized chat whose session was never
+  // persisted that left `maximize=true` beside a closed dock — the exact pair
+  // archive#795 refuses. The invariant now sits in `updateParams`, where every
+  // writer passes, so this block drives `updateParams` directly.
+  describe('updateParams applies the closed-dock invariant (#1613)', () => {
+    test('a dock: null write from an open+maximized dock clears maximize from the URL and keeps the memory', () => {
+      navigationStore.setDockState(true, true);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+      expect(navigationStore.lastDockMaximized).toBe(true);
+
+      navigationStore.updateParams({ chat: null, dock: null });
+
+      const after = navigationStore.getSnapshot();
+      expect(after.isDockOpen).toBe(false);
+      expect(after.isDockMaximized).toBe(false);
+      expect(new URLSearchParams(window.location.search).has('maximize')).toBe(
+        false,
+      );
+      expect(navigationStore.lastDockMaximized).toBe(true);
+    });
+
+    test('the #1613 reload shape (?chat=<never-persisted>&dock=open&maximize=true) closes to a plain closed dock', () => {
+      // A direct load, not a setDockState call: the memory is set by
+      // commitState's parse, the same way production reaches this state.
+      window.history.replaceState(
+        {},
+        '',
+        '/?chat=never-persisted&dock=open&maximize=true',
+      );
+      navigationStore.navigate('/', {});
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+
+      // Exactly what clearDeadChatPointer writes.
+      navigationStore.updateParams({ chat: null, dock: null });
+
+      const after = navigationStore.getSnapshot();
+      expect(after.activeChat).toBeNull();
+      expect(after.isDockOpen).toBe(false);
+      expect(after.isDockMaximized).toBe(false);
+      expect(window.location.search).not.toContain('maximize');
+      expect(navigationStore.lastDockMaximized).toBe(true);
+    });
+
+    test('a dock: "open" write does not clear maximize', () => {
+      navigationStore.setDockState(true, true);
+
+      navigationStore.updateParams({ dock: 'open' });
+
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+      expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+        'true',
+      );
+    });
+
+    test('an unrelated param write does not clear maximize', () => {
+      navigationStore.setDockState(true, true);
+
+      navigationStore.updateParams({ fontSize: '16' });
+
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+      expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+        'true',
+      );
+      expect(new URLSearchParams(window.location.search).get('fontSize')).toBe(
+        '16',
+      );
+    });
+
+    test('a clearDeadChatPointer-shaped write leaves params it did not name alone', () => {
+      window.history.replaceState(
+        {},
+        '',
+        '/?chat=dead&dock=open&maximize=true&fontSize=16&conversation=conv-1',
+      );
+      navigationStore.navigate('/', {});
+
+      navigationStore.updateParams({ chat: null, dock: null });
+
+      const search = new URLSearchParams(window.location.search);
+      expect(search.has('chat')).toBe(false);
+      expect(search.has('dock')).toBe(false);
+      expect(search.has('maximize')).toBe(false);
+      expect(search.get('fontSize')).toBe('16');
+      expect(search.get('conversation')).toBe('conv-1');
+      expect(navigationStore.getSnapshot().activeConversation).toBe('conv-1');
+      expect(navigationStore.getSnapshot().fontSize).toBe(16);
+    });
+  });
 });
