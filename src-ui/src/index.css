@@ -1449,53 +1449,80 @@ button:hover {
     var(--ease-standard);
 }
 
-/* #1638: a dock HOSTING a modal surface participates at that surface's own
- * layer.
+/* #1638: a dock hosting a MODAL surface participates at that surface's layer.
  *
- * `.chat-dock` is `position: fixed` with a z-index, so it is a stacking
- * context — and `ChatDock.tsx` renders `ChatDockModalStack` inside it. Every
- * dock dialog (New Chat, the task switcher, the model picker, the overflow
- * sheet) therefore paints at whatever the DOCK's z-index is, however loudly
- * `.responsive-surface-overlay` declares `z-index: var(--layer-dialog)
- * !important`. `--layer-dialog` on a dock-mounted dialog was a number nothing
- * could honour.
+ * A dock is a stacking context — `position: fixed` with `z-index:
+ * var(--layer-dock)` on mobile, and `position: relative` in the desktop region
+ * grid (`.app__main > [data-region="bottom"]` and its left/right siblings)
+ * keeping the same z-index. Either way `ChatDock.tsx` renders
+ * `ChatDockModalStack` INSIDE it, so every dock dialog paints at whatever the
+ * DOCK's z-index is, however loudly `.responsive-surface-overlay` declares
+ * `z-index: var(--layer-dialog) !important`. `--layer-dialog` on a dock-mounted
+ * dialog was a number nothing could honour.
  *
- * Two rules put chrome above that trapped dialog, and both were reachable on
- * a phone:
- * - `BannerHost.css` raises the notice to `--layer-dock + 1` wherever the
- *   dock leaves no column to inset into (a bottom dock on desktop, EVERY dock
- *   mode on mobile), so 9201 beat the dialog's effective 9200;
- * - the mobile `.app__main > .chat-dock.is-maximized` rule below drops the
+ * Two rules put chrome above that trapped dialog, and a phone reaches both:
+ * - `BannerHost.css` raises the notice to `--layer-dock + 1` wherever the dock
+ *   leaves no column to inset into (a bottom dock on desktop, EVERY dock mode
+ *   on mobile), so 9201 beat the dialog's effective 9200;
+ * - the mobile `.app__main > .chat-dock.is-maximized` rule below drops a
  *   maximized dock to `--layer-sticky + 1` (101) to keep its Restore control
- *   above sticky toolbar descendants — so the notice's own `--layer-notice`
- *   (9000) beat a maximized dock's dialog by nine thousand, and #920's
- *   critical card beat it too.
+ *   above sticky toolbar descendants — so a maximized dock's dialog lost to
+ *   the plain `--layer-notice` (9000) as well, and to #920's critical card.
+ *   The phone dock maximizes itself, which is the state #1638 was reported in.
  *
  * Measured live at 390x844 on a temp-home instance with two real notices up
  * and the New Chat sheet open: host `z-index: 9201`, overlay `z-index: 10000`
  * with `section.chat-dock` (fixed, 9200) as its nearest stacking-context
  * ancestor, and `document.elementFromPoint(195, 160)` — the centre of the
  * sheet's search input — returning `button.banner-host__cap`. Playwright
- * refused the click with `banner-host ... intercepts pointer events`, which
- * is #1638.
+ * refused the click with `banner-host ... intercepts pointer events`.
  *
- * Fixing it here rather than in the notice keeps ONE rule for a family of
- * possible offenders (the notice, a toast, the mobile nav — anything the
- * shell paints above the dock) and keeps working whatever the dock's own
- * z-index happens to be in a given state, which is the part the first attempt
- * at this fix got wrong: it lowered the notice to `--layer-notice` and a
- * maximized dock still sat at 101 underneath it.
+ * ONLY MODAL SURFACES, hence `:not([data-anchored])`. `ResponsiveDialogSurface`
+ * stamps `data-anchored` on the DESKTOP-POPOVER shape, which is fixed-inset for
+ * stacking escape and click-away but carries NO scrim (see
+ * `.composer-popover-overlay[data-anchored]` in `chat.css`), and seven
+ * dock-internal consumers use it — the composer actions menu, the model
+ * picker, the mode sheet, the project switcher, the mobile header's menu,
+ * background tasks, inbox rows. Promoting for those broke a contract
+ * `NotificationContainer.css` states in its own comment: notifications stay
+ * reachable above the dock, and only dialogs and system blockers supersede
+ * them. Measured with a right dock and the composer "+" menu open: a 9400
+ * toast stayed fully VISIBLE while its button hit-tested to the popover's
+ * overlay. A scrim-less popover is not a dialog and does not take the layer.
+ *   Residue: `data-anchored` is written from a layout-effect measurement, so
+ *   an anchored popover is unflagged for its first paint, and the documented
+ *   `anchorRef.current === null` fallback (an un-anchored, scrim-less desktop
+ *   overlay) never gets the attribute at all. Both fall back to promoting,
+ *   which is the pre-#1638 behaviour of this rule and not the notice defect.
  *
- * `:has()` on `.app__main` rather than on `.chat-dock` itself is deliberate:
- * it is the specificity (0,4,0) that beats the maximized rule's (0,3,0)
- * regardless of source order, so this cannot be silently undone by a later
- * dock rule moving above it. `BannerHost.dialog-stacking.test.tsx` measures
- * the resolved z-index in both dock shapes rather than trusting that.
+ * THE HOSTING DOCK ONLY, hence `>` from `.app__main` to `.chat-dock` with the
+ * `:has()` hung off the dock itself. `RegionShells` mounts one shell per
+ * occupied region, all direct children of `.app__main`, so a `:has()` on
+ * `.app__main` promoted every sibling dock — a dialog-free Activity dock's own
+ * opaque background then covered the toast the hosting dock's dialog did not.
+ * The fourth specificity unit that still beats the maximized rule's (0,3,0)
+ * comes from `:not([data-anchored])` inside the `:has()`, not from the
+ * ancestor; `BannerHost.dialog-stacking.test.tsx` measures the resolved
+ * z-index in every shape rather than trusting that arithmetic.
  *
- * The dock's own chrome rides up with it. That is invisible and inert: the
- * surface renders a full-viewport scrim inside the same stacking context and
- * is `aria-modal`, so what a user can see or press while it is open is the
- * dialog either way.
+ * The hosting dock's own chrome rides up with it, which is inert for a modal:
+ * the surface renders a full-viewport scrim inside the same stacking context
+ * and is `aria-modal`, so what a user can see or press while it is open is the
+ * dialog. Exactly `--layer-dialog` and not a value above it, so a dock dialog
+ * ranks with every other dialog rather than over them — with one consequence
+ * worth knowing: `ShortcutsCheatsheet` mounts as a direct `.app__main` child
+ * BEFORE `RegionShells`, so if it is open at the same time as a dock dialog
+ * the two tie at 10000 and the dock wins on DOM order.
+ *
+ * WHY HERE AND NOT A PORTAL. Portaling `ChatDockModalStack` to `document.body`
+ * is this repo's other answer to a surface trapped in the wrong stacking
+ * context — `ConfirmModal`, `PluginModalStack` and `DelegationLauncher`
+ * (#1180) already take it — and it would need no z-index rule and promote
+ * nothing. It is deliberately not taken HERE: it moves focus containment,
+ * click-away and anchored-popover positioning for every dock surface at once,
+ * which is a larger change than the reported defect, and this rule is measured
+ * in six shapes. Recorded as the better end state, not as an unconsidered
+ * alternative.
  *
  * `--layer-dialog` and not the overlay's own declared layer: the one
  * `layer="system"` consumer (`views/plugin-management/PluginModalStack.tsx`)
@@ -1504,7 +1531,7 @@ button:hover {
  * dock it lands on the dialog layer rather than its own — still above the
  * chrome that reported this, and a residue to fix at that point, not
  * machinery to build for a caller that does not exist. */
-.app__main:has(> .chat-dock .responsive-surface-overlay) > .chat-dock {
+.app__main > .chat-dock:has(.responsive-surface-overlay:not([data-anchored])) {
   z-index: var(--layer-dialog);
 }
 
