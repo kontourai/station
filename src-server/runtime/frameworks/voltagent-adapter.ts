@@ -25,6 +25,10 @@ import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { createPromptOnlyMemoryView } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { resolveMaxSteps } from '../../constants.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
+import {
+  publicAgentIdFromRuntimeKey,
+  runtimeAgentKey,
+} from '../../routes/agents/runtime-agent-identity.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
@@ -1062,7 +1066,9 @@ export class VoltAgentFramework {
       ...(opts.hooks
         ? {
             hooks: createVoltAgentLifecycleHooks(
-              opts.name,
+              opts.agentId
+                ? runtimeAgentKey(publicAgentIdFromRuntimeKey(opts.agentId))
+                : opts.name,
               conformAgentHooks('voltagent', opts.hooks),
             ),
           }
