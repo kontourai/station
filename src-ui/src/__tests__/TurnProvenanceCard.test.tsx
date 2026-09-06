@@ -216,17 +216,11 @@ describe('TurnProvenanceCard', () => {
   });
 
   // the sharp one.
-  it('shows missing usage, routing receipt, sources, and trust report as named gaps, never 0 (AC2)', () => {
+  it('shows missing usage and tools as named gaps, never 0 (AC2)', () => {
     render(<TurnProvenanceCard provenance={envelope()} />);
     expand();
 
-    const gapLabels = [
-      'Usage',
-      'Routing receipt',
-      'Sources',
-      'Trust report',
-      'Tools',
-    ];
+    const gapLabels = ['Usage', 'Tools'];
     for (const label of gapLabels) {
       expect(valueFor(label)).toMatch(
         /^Not (reported by this engine|captured by Station yet)$/,
@@ -239,6 +233,27 @@ describe('TurnProvenanceCard', () => {
     expect(
       screen.getByText('Usage').closest('dl')?.textContent ?? '',
     ).not.toContain('tokens');
+  });
+
+  // #1536 B3: the no-omission rule still binds — every Station-backlog slot
+  // is NAMED — but as one sentence rather than a row each repeating one fact
+  // under a heading that had already said it.
+  it('names every Station-backlog slot in one sentence, not a row each', () => {
+    const { container } = render(
+      <TurnProvenanceCard provenance={envelope()} />,
+    );
+    expand();
+
+    const sentence = container.querySelector('.turn-provenance__not-captured');
+    expect(sentence?.textContent).toBe(
+      'Routing receipt, sources and trust report are not captured by Station yet.',
+    );
+    // Said once, not four times.
+    expect(
+      (container.textContent ?? '').split('not captured by Station yet')
+        .length - 1,
+    ).toBe(1);
+    expect(screen.queryByText('Not yet captured by Station')).toBeNull();
   });
 
   it('never renders an unreported tool count as "0 tools" (AC2)', () => {
@@ -611,24 +626,17 @@ describe('TurnProvenanceCard', () => {
     // in the checkable facts list.
     const toolsValue = screen.getByText('Tools').nextElementSibling;
     expect(toolsValue?.className).toContain('turn-provenance__value--absence');
-    expect(toolsValue?.className).not.toContain(
-      'turn-provenance__value--not-captured',
-    );
-    expect(toolsValue?.closest('.turn-provenance__facts--backlog')).toBeNull();
+    // Review L1: `--value--not-captured` no longer exists, so asserting its
+    // absence proved nothing. What discriminates is that this row is IN the
+    // checkable facts and the backlog sentence is not a row at all.
+    expect(toolsValue?.closest('.turn-provenance__facts')).toBeTruthy();
 
-    // "Routing receipt" is Station's own gap and is demoted to its own
-    // section, under its own heading, with a different class.
-    expect(screen.getByText('Not yet captured by Station')).toBeTruthy();
-    const receiptValue = screen.getByText('Routing receipt').nextElementSibling;
-    expect(receiptValue?.className).toContain(
-      'turn-provenance__value--not-captured',
-    );
-    expect(receiptValue?.className).not.toContain(
-      'turn-provenance__value--absence',
-    );
-    expect(
-      receiptValue?.closest('.turn-provenance__facts--backlog'),
-    ).toBeTruthy();
+    // "Routing receipt" is Station's own gap and is demoted out of the
+    // checkable facts entirely, into the collapsed backlog sentence (#1536 B3).
+    expect(screen.queryByText('Routing receipt')).toBeNull();
+    const backlog = screen.getByText(/Routing receipt, sources and trust/);
+    expect(backlog.className).toContain('turn-provenance__not-captured');
+    expect(backlog.closest('.turn-provenance__facts')).toBeNull();
   });
 
   it('renders an earned claim with its own class, distinct from either gap kind', () => {
@@ -649,9 +657,6 @@ describe('TurnProvenanceCard', () => {
     expect(usageValue?.className).toContain('turn-provenance__value--earned');
     expect(usageValue?.className).not.toContain(
       'turn-provenance__value--absence',
-    );
-    expect(usageValue?.className).not.toContain(
-      'turn-provenance__value--not-captured',
     );
   });
 

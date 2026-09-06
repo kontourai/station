@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const harness = vi.hoisted(() => ({
   regions: {
-    main: { visible: true, size: 0, occupant: null },
+    main: { visible: true, size: 0, occupant: null as string | null },
     left: { visible: false, size: 400, occupant: null },
     right: { visible: false, size: 400, occupant: null },
     bottom: { visible: true, size: 320, occupant: 'chat' },
@@ -22,6 +22,7 @@ const harness = vi.hoisted(() => ({
   setRegion: vi.fn(),
   placeSurface: vi.fn(),
   showSurface: vi.fn(),
+  toggleSurface: vi.fn(),
   bottomOnly: true,
   isMobile: true,
   hasRegionModel: true,
@@ -42,6 +43,7 @@ vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
     setRegion: harness.setRegion,
     placeSurface: harness.placeSurface,
     showSurface: harness.showSurface,
+    toggleSurface: harness.toggleSurface,
   });
   return {
     ...actual,
@@ -89,6 +91,11 @@ function renderMenu() {
 
 describe('OverflowMenu region section (#917)', () => {
   beforeEach(() => {
+    Object.assign(harness.regions.main, {
+      visible: true,
+      size: 0,
+      occupant: null,
+    });
     Object.assign(harness.regions.left, {
       visible: false,
       size: 400,
@@ -107,6 +114,7 @@ describe('OverflowMenu region section (#917)', () => {
     harness.setRegion.mockReset();
     harness.placeSurface.mockReset();
     harness.showSurface.mockReset();
+    harness.toggleSurface.mockReset();
     harness.bottomOnly = true;
     harness.isMobile = true;
     harness.hasRegionModel = true;
@@ -190,34 +198,40 @@ describe('OverflowMenu region section (#917)', () => {
     expect(screen.getByRole('button', { name: 'Connections' })).toBeTruthy();
   });
 
-  test('selecting a visible surface hides its region and closes the menu', () => {
+  /** The row issued the model's toggle for `surfaceId`, and nothing else. */
+  const expectOnlyToggle = (surfaceId: string) => {
+    expect(harness.toggleSurface).toHaveBeenCalledTimes(1);
+    expect(harness.toggleSurface).toHaveBeenCalledWith(surfaceId);
+    expect(harness.placeSurface).not.toHaveBeenCalled();
+    expect(harness.setRegion).not.toHaveBeenCalled();
+    expect(harness.showSurface).not.toHaveBeenCalled();
+  };
+
+  test('selecting a visible surface issues the model toggle and closes the menu', () => {
     renderMenu();
 
     fireEvent.click(screen.getByRole('button', { name: 'Hide Chat' }));
 
-    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
-      visible: false,
-    });
+    // Hiding the folded region is the model's decision (`toggleSurface` in
+    // region-model.ts); the row issues the command.
+    expectOnlyToggle('chat');
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  test('selecting an unplaced surface asks the model to show it; the coarse fold rule is the model\u2019s', () => {
+  test('selecting an unplaced surface issues the model toggle; the coarse fold rule is the model’s', () => {
     renderMenu();
 
     fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
 
     // Placing it in its default region and closing every other region — a
     // coarse device shows exactly one dock surface at a time — is the model's
-    // `showSurface` (`showSurfaceAlone` in region-model.ts). The row issues
-    // that one command and places nothing itself (#1420).
-    expect(harness.showSurface).toHaveBeenCalledTimes(1);
-    expect(harness.showSurface).toHaveBeenCalledWith('activity');
-    expect(harness.placeSurface).not.toHaveBeenCalled();
-    expect(harness.setRegion).not.toHaveBeenCalled();
+    // (`toggleSurface` → `showSurface` → `showSurfaceAlone`, region-model.ts).
+    // The row issues that one command and places nothing itself (#1420).
+    expectOnlyToggle('activity');
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  test('a hidden surface reads as unchecked and its row shows it again', () => {
+  test('a hidden surface reads as unchecked and its row issues the same toggle', () => {
     harness.regions.bottom.visible = false;
     renderMenu();
 
@@ -226,8 +240,29 @@ describe('OverflowMenu region section (#917)', () => {
     });
     expect(showChat.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(showChat);
-    // Placed but not the folded region: shown, via the model, not hidden.
-    expect(harness.showSurface).toHaveBeenCalledWith('chat');
-    expect(harness.setRegion).not.toHaveBeenCalled();
+    expectOnlyToggle('chat');
+  });
+
+  /**
+   * #1523: a surface occupying `main` is neither shown nor hidden by a dock
+   * toggle, so its row says what the toggle does — return it to the dock — and
+   * claims no pressed state. `Show Activity` here would reveal it where it
+   * already is, and the tap would read as nothing happening.
+   */
+  test('a surface occupying main gets a Move row, not a Show toggle', () => {
+    harness.regions.main.occupant = 'activity';
+    renderMenu();
+
+    expect(screen.queryByRole('button', { name: 'Show Activity' })).toBeNull();
+    const move = screen.getByRole('button', {
+      name: 'Move Activity to the dock',
+    });
+    expect(move.hasAttribute('aria-pressed')).toBe(false);
+    expect(screen.getByRole('group', { name: 'Regions' }).contains(move)).toBe(
+      true,
+    );
+    fireEvent.click(move);
+    expectOnlyToggle('activity');
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

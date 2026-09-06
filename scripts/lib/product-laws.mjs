@@ -8,9 +8,10 @@ export const PRODUCT_LAW_FAMILIES = Object.freeze([
   'approvals',
   'home-role-recovery',
   'release-stage-truth',
+  'mobile-context',
 ]);
-export const MAX_PRODUCT_LAWS = 5;
-export const MAX_PRODUCT_LAW_FILES = 5;
+export const MAX_PRODUCT_LAWS = 6;
+export const MAX_PRODUCT_LAW_FILES = 6;
 export const PRODUCT_LAW_OBSERVATION_TIMEOUT_MS = 30_000;
 export const PRODUCT_LAW_OBSERVATION_TIMEOUT_ENV =
   'PRODUCT_LAW_OBSERVATION_TIMEOUT_MS';

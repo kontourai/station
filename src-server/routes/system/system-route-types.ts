@@ -79,6 +79,10 @@ export interface SystemStatusDeps {
       enabled: boolean;
     }>
   >;
+  /** Detected local-command Engine registry entries not yet connected. */
+  listDetectedACPRegistryEntries?: () => Promise<
+    Array<{ id: string; name: string }>
+  >;
   eventBus?: {
     emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
   };

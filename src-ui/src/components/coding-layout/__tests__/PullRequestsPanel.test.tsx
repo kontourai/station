@@ -301,4 +301,42 @@ describe('PullRequestsPanel', () => {
     );
     expect(screen.queryByText('Ship repository PR actions')).toBeNull();
   });
+  /**
+   * #1536 G5: an ordinary local repository is not a failure. It rendered a
+   * warning-triangle "Pull requests unavailable" card, presented identically
+   * to a forge that refused, and the panel cannot tell the two apart by
+   * reading the sentence — the server's own cause classifies it.
+   */
+  describe('a checkout with no remote', () => {
+    test('states the fact quietly, with no alert and no warning card', () => {
+      contextQuery.data = {
+        available: false,
+        reason: 'Checkout has no remote',
+        cause: 'no-remote',
+      };
+      render(<PullRequestsPanel projectSlug="station" />);
+
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(screen.queryByText('Pull requests unavailable')).toBeNull();
+      expect(screen.getByText('Pull requests need a remote')).toBeTruthy();
+      expect(
+        screen.getByText(/This checkout has no remote configured/),
+      ).toBeTruthy();
+    });
+
+    test('a reason with no cause is still a failure, not a quiet state', () => {
+      // Same sentence, no cause: an older server, or a genuinely different
+      // problem. Classifying by prose is what this must never do.
+      contextQuery.data = {
+        available: false,
+        reason: 'Checkout has no remote',
+      };
+      render(<PullRequestsPanel projectSlug="station" />);
+
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Checkout has no remote',
+      );
+      expect(screen.queryByText('Pull requests need a remote')).toBeNull();
+    });
+  });
 });

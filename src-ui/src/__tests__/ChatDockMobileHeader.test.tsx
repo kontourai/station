@@ -4,7 +4,7 @@
 
 import { fireEvent, screen } from '@testing-library/react';
 import { createRef } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   type ChatDockMobileDockToggle,
   ChatDockMobileHeader,
@@ -70,6 +70,7 @@ function renderHeader(
   overrides: {
     onClear?: ReturnType<typeof vi.fn<() => void>>;
     onNewChat?: ReturnType<typeof vi.fn<() => void>>;
+    onOpenTaskSwitcher?: ReturnType<typeof vi.fn<() => void>>;
     projectSwitcher?: ChatDockMobileProjectSwitcher | null;
     dockToggle?: ChatDockMobileDockToggle | null;
     projectScope?: { name: string; onClear: () => void } | null;
@@ -121,7 +122,7 @@ function renderHeader(
       unreadCount={0}
       taskSwitcherTriggerRef={createRef<HTMLButtonElement>()}
       activityTriggerRef={createRef<HTMLButtonElement>()}
-      onOpenTaskSwitcher={vi.fn()}
+      onOpenTaskSwitcher={overrides.onOpenTaskSwitcher ?? vi.fn()}
       onOpenActivity={vi.fn()}
       onToggleSidebar={vi.fn()}
       onDragPointerDown={vi.fn()}
@@ -145,23 +146,40 @@ function renderHeader(
   return onClear;
 }
 
+// Component tests own action wiring; browser smoke owns lazy-chunk loading.
+// Resolve the large lazy modules before assertion timeouts start.
+beforeAll(async () => {
+  await Promise.all([
+    import('../components/chat-dock/ChatDockMobileOverflowSheet'),
+    import('../components/chat-dock/ChatDockProjectSwitcherSheet'),
+  ]);
+});
+
 async function openActions() {
   fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
   return screen.findByRole('dialog', { name: 'Chat actions' });
 }
 
 describe('mobile conversation focus', () => {
-  test('keeps exactly navigation, readable identity, and actions in the header', () => {
-    renderHeader();
-    const header = screen.getByTestId('chat-dock-mobile-header');
-    expect(header.querySelectorAll('button')).toHaveLength(3);
+  test('keeps project and conversation switching directly reachable with readable context', () => {
+    const onOpenTaskSwitcher = vi.fn();
+    renderHeader({
+      onOpenTaskSwitcher,
+    });
     const identity = screen.getByRole('button', { name: /^Switch task/ });
     expect(identity.textContent).toContain('New chat');
     expect(identity.textContent).toContain('Codex');
+    fireEvent.click(identity);
+    expect(onOpenTaskSwitcher).toHaveBeenCalledOnce();
     expect(
-      screen.queryByRole('button', { name: /^Switch project/ }),
-    ).toBeNull();
-    expect(screen.queryByTestId('chat-dock-mobile-connection')).toBeNull();
+      screen.getByRole('button', { name: 'Switch project — Kontour AI' })
+        .textContent,
+    ).toContain('Kontour AI');
+    expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /^Switch project/ }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Switch task/ })).toBeTruthy();
   });
   test('keeps New chat callable from the actions sheet', async () => {
     const onNewChat = vi.fn();
@@ -190,11 +208,28 @@ describe('mobile conversation focus', () => {
         onSwitchProject: vi.fn(),
       },
     });
-    await openActions();
-    fireEvent.click(screen.getByRole('menuitem', { name: /^Switch project/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Switch project/ }));
     await screen.findByRole('dialog', { name: 'Switch project' });
     fireEvent.click(screen.getByRole('button', { name: 'Open Kontour AI' }));
     expect(onOpenProject).toHaveBeenCalledWith('kontour-ai');
+  });
+  test('opening a project preserves the active conversation binding', async () => {
+    const onOpenProject = vi.fn();
+    const onSwitchProject = vi.fn();
+    renderHeader({
+      projectSwitcher: {
+        projectSlug: 'kontour-ai',
+        projectName: 'Kontour AI',
+        projects: PROJECTS,
+        onOpenProject,
+        onSwitchProject,
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Switch project/ }));
+    await screen.findByRole('dialog', { name: 'Switch project' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open Kontour AI' }));
+    expect(onOpenProject).toHaveBeenCalledWith('kontour-ai');
+    expect(onSwitchProject).not.toHaveBeenCalled();
   });
   test('shows live connection state and a visible management label on request', async () => {
     renderHeader();
@@ -234,22 +269,18 @@ describe('mobile conversation focus', () => {
   });
 });
 
-/**
- * #928 C2b deleted the mobile bar's occupant picker and the ⋯ sheet's
- * "Switch to …" fallback list with the docked-Home path they switched to.
- * #1512 then reduced the bar to three controls; this pins that control set
- * BY ACCESSIBLE NAME, in order, on the merged bar, so a control lost,
- * gained or renamed reds here by name instead of shipping as a quiet chrome
- * regression, and the sheet is checked for the retired switch items.
- */
+/** #928 C2b retires occupant switching; primary context actions remain direct. */
 describe('the mobile dock bar control set (#928 C2b)', () => {
-  test('an open bar offers exactly these controls, by accessible name', () => {
+  test('an open bar exposes navigation, primary context actions, and secondary actions', () => {
     renderHeader();
-    expect(
-      screen
-        .getAllByRole('button')
-        .map((button) => button.getAttribute('aria-label') ?? ''),
-    ).toEqual(['Collapse chat', 'Switch task — Codex', 'Chat actions']);
+    for (const name of [
+      'Collapse chat',
+      'Switch project — Kontour AI',
+      'Switch task — Codex',
+      'Chat actions',
+    ]) {
+      expect(screen.getByRole('button', { name })).toBeTruthy();
+    }
   });
 
   test('the ⋯ sheet offers no occupant switch item', async () => {

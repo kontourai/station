@@ -976,6 +976,155 @@ describe('claude-adapter-events — thinking/status notifications', () => {
 });
 
 describe('claude-adapter-events — top-level tool_use / tool_result mapping', () => {
+  // Turn-scoped tracking: a tool call belongs to the turn that issued it.
+  test("a stopped turn's open tool call is left tracked and its late result lands on the stopped turn", () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-a',
+      dispatchedTurnId: 'turn-a',
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-a', name: 'Bash', input: {} },
+          ],
+        },
+        uuid: 'u-a-1',
+        session_id: 's-1',
+      } as any,
+    });
+    // Stop arrives, then a newer turn dispatches before A's delayed error
+    // result lands (the #921 sequence).
+    record.interruptingTurnId = 'turn-a';
+    record.activeTurnId = 'turn-b';
+    record.dispatchedTurnId = 'turn-b';
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        result: 'interrupted',
+        num_turns: 1,
+        stop_reason: null,
+        usage: { input_tokens: 1, output_tokens: 0 },
+        uuid: 'u-a-2',
+        session_id: 's-1',
+      } as any,
+    });
+    // No synthetic completion: a backgrounded Task on the stopped turn may
+    // legitimately still finish, and the fold has no honest status for an
+    // outcome Station did not observe (station#1558).
+    expect(publish.mock.calls.map(([e]) => e.method)).toEqual([
+      'tool.started',
+      'token-usage.updated',
+    ]);
+    expect(record.activeToolCalls?.size).toBe(1);
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-a', content: 'late' },
+          ],
+        },
+        uuid: 'u-a-3',
+        session_id: 's-1',
+      } as any,
+    });
+    expect(publish.mock.calls[2][0]).toMatchObject({
+      method: 'tool.completed',
+      turnId: 'turn-a',
+      toolCallId: 'toolu-a',
+      status: 'success',
+    });
+    expect(record.activeToolCalls?.size).toBe(0);
+  });
+
+  test("an older turn's delayed real tool_result lands on the turn that issued the call", () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-old',
+      dispatchedTurnId: 'turn-old',
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-old', name: 'Read', input: {} },
+          ],
+        },
+        uuid: 'u-o-1',
+        session_id: 's-1',
+      } as any,
+    });
+    record.activeTurnId = 'turn-next';
+    record.dispatchedTurnId = 'turn-next';
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        num_turns: 1,
+        stop_reason: 'end_turn',
+        result: 'done',
+        usage: { input_tokens: 1, output_tokens: 1 },
+        uuid: 'u-o-2',
+        session_id: 's-1',
+      } as any,
+    });
+    // The next turn's completion leaves the older call alone.
+    expect(publish.mock.calls.map(([e]) => e.method)).toEqual([
+      'tool.started',
+      'token-usage.updated',
+      'turn.completed',
+    ]);
+    expect(record.activeToolCalls?.size).toBe(1);
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-old', content: 'late' },
+          ],
+        },
+        uuid: 'u-o-3',
+        session_id: 's-1',
+      } as any,
+    });
+    expect(publish.mock.calls[3][0]).toMatchObject({
+      method: 'tool.completed',
+      turnId: 'turn-old',
+      toolCallId: 'toolu-old',
+      status: 'success',
+    });
+    expect(record.activeToolCalls?.size).toBe(0);
+  });
+
   test('assistant tool_use blocks map to tool.started; matching tool_result maps to tool.completed', () => {
     const publish = vi.fn();
     const record = makeRecord();

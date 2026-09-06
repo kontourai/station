@@ -95,6 +95,14 @@ function makeService(opts: {
   getUserId?: () => string;
   /** #765 D5: the pairing service's current request list. */
   pairingRequests?: unknown[];
+  /**
+   * #1536 D8: what stands between Station's own Agent and running. A function
+   * lets a test change the requirement between reads (review M2).
+   */
+  stationSetupRequirement?:
+    | { agentSlug: string; agentName: string; reason: string }
+    | null
+    | (() => { agentSlug: string; agentName: string; reason: string } | null);
 }) {
   const {
     notifications = [],
@@ -107,6 +115,7 @@ function makeService(opts: {
     acknowledgementStore,
     getUserId,
     pairingRequests,
+    stationSetupRequirement,
   } = opts;
   // Production receives a complete registry dependency. Keep older fixtures
   // terse while supplying its harmless personal-mode default explicitly.
@@ -143,6 +152,12 @@ function makeService(opts: {
     pairingRequests
       ? () => ({ listRequests: () => pairingRequests as never })
       : undefined,
+    stationSetupRequirement === undefined
+      ? undefined
+      : async () =>
+          typeof stationSetupRequirement === 'function'
+            ? stationSetupRequirement()
+            : stationSetupRequirement,
   );
 }
 
@@ -2531,6 +2546,160 @@ describe('device pairing requests need attention (#765 D5)', () => {
         acknowledgedAt: expect.any(String),
       }),
     ]);
+  });
+});
+
+/**
+ * #1536 D8. The inbox read "All caught up · Nothing needs you right now" on
+ * a fresh home whose New Chat picker, one surface away, marked the Station
+ * row "Needs: No enabled LLM provider connection is configured."
+ */
+describe('Station cannot run its own Agent (#1536 D8)', () => {
+  const requirement = {
+    agentSlug: 'station',
+    agentName: 'Station',
+    reason: 'No enabled LLM provider connection is configured.',
+  };
+
+  test("projects the requirement, in the picker's own sentence", async () => {
+    const service = makeService({ stationSetupRequirement: requirement });
+
+    const result = await service.list();
+
+    expect(result.pendingCount).toBe(1);
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'setup-incomplete:model-connection:station',
+        kind: 'setup-incomplete',
+        title: 'Station cannot run yet',
+        body: 'No enabled LLM provider connection is configured.',
+        openHref: '/connections/models',
+        source: { requirement: 'model-connection', agentSlug: 'station' },
+      }),
+    ]);
+  });
+
+  test('projects nothing once the Agent resolves', async () => {
+    const service = makeService({ stationSetupRequirement: null });
+
+    await expect(service.list()).resolves.toEqual({
+      items: [],
+      pendingCount: 0,
+    });
+  });
+
+  test('is unavailable, not assumed, when no resolver is wired', async () => {
+    const service = makeService({});
+
+    await expect(service.list()).resolves.toEqual({
+      items: [],
+      pendingCount: 0,
+    });
+  });
+
+  /**
+   * Review M1: "Dismiss all" mapped every item to the acknowledge route, and
+   * the row only came back because its `updatedAt` moved on the next read — an
+   * accident, not a refusal.
+   */
+  test('cannot be acknowledged away, because it is still true afterwards', async () => {
+    const acked = new Map<string, string>();
+    const service = makeService({
+      stationSetupRequirement: requirement,
+      acknowledgementStore: {
+        getMany: (userId, conversationIds) =>
+          new Map(
+            conversationIds.flatMap((conversationId) => {
+              const version = acked.get(`${userId}:${conversationId}`);
+              return version === undefined
+                ? []
+                : [[conversationId, version] as const];
+            }),
+          ),
+        acknowledge: ({ userId, conversationId, updatedAt }) => {
+          acked.set(`${userId}:${conversationId}`, updatedAt);
+        },
+      },
+    });
+
+    expect(
+      await service.acknowledge('setup-incomplete:model-connection:station'),
+    ).toBe(false);
+    expect(acked.size).toBe(0);
+    const result = await service.list();
+    expect(result.pendingCount).toBe(1);
+    expect(result.items[0]?.acknowledgedAt).toBeUndefined();
+  });
+
+  /**
+   * Review M2: a read-time stamp made this row outrank every live approval on
+   * every read — an artefact of the timestamp, not a priority anyone chose —
+   * and made acknowledgement versioning meaningless.
+   */
+  test('says since when it has been true, not when the projection last looked', async () => {
+    const service = makeService({ stationSetupRequirement: requirement });
+
+    const first = (await service.list()).items[0];
+    await new Promise((settle) => setTimeout(settle, 3));
+    const second = (await service.list()).items[0];
+
+    expect(second?.updatedAt).toBe(first?.updatedAt);
+    expect(second?.createdAt).toBe(first?.createdAt);
+  });
+
+  test('a changed requirement is a new observation', async () => {
+    let current = requirement;
+    const service = makeService({
+      stationSetupRequirement: () => current,
+    });
+
+    const before = (await service.list()).items[0]?.updatedAt;
+    current = {
+      ...requirement,
+      reason:
+        'Multiple enabled LLM provider connections require an explicit default.',
+    };
+    await new Promise((settle) => setTimeout(settle, 3));
+    const after = (await service.list()).items[0];
+
+    expect(after?.body).toContain('explicit default');
+    expect(after?.updatedAt).not.toBe(before);
+  });
+
+  test('sorts below a live approval, whatever the clock says', async () => {
+    const older = new Date(Date.parse(now) - 3_600_000).toISOString();
+    const service = makeService({
+      stationSetupRequirement: requirement,
+      notifications: [registryApproval({ createdAt: older, updatedAt: older })],
+      sessions: [baseSession({ threadId: 'conversation-1' })],
+      approvalRegistry: { has: () => true },
+    });
+
+    const { items } = await service.list();
+
+    // A live approval an hour old still leads a standing notice observed now.
+    expect(items.map((item) => item.kind)).toEqual([
+      'approval',
+      'setup-incomplete',
+    ]);
+  });
+
+  test('host model configuration is not projected to a hosted tenant read', async () => {
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [{ id: 'alpha', authority: 'alpha.example.test' }],
+    });
+    const service = makeService({ stationSetupRequirement: requirement });
+
+    const result = await service.list(
+      sessionReadAuthorityFromRequest(
+        'alpha',
+        { tenantId: registry.tenants[0].id },
+        registry,
+      ),
+    );
+
+    expect(result.items).toEqual([]);
   });
 });
 
