@@ -29,23 +29,10 @@ import {
  * evidence is the captured request body, not the response text. Both turns'
  * distinct prompts and the (identical) reply render in the transcript too.
  *
- * RED BY DESIGN, proving #574: turn 2's captured request is missing
- * turn 1's exchange entirely for this Station/model-engine agent. Quarantined
- * in tests/e2e-manifest.mjs so this doesn't red
- * verify:e2e:full — it re-enters a running bucket once #574 is fixed.
- *
- * The mechanism: `conversation-lineage.ts`'s
- * `continuationLaunchContext` — it OMITS `transcriptSeed` (the prior-turn
- * text a resumed session would otherwise be re-primed with) whenever the
- * session already carries a `resumeCursor` for the SAME execution identity,
- * on the assumption that the provider's own resume mechanism remembers the
- * prior turns via that cursor instead. For this Station/model-engine agent
- * path, that assumption doesn't hold: VoltAgent's own memory is keyed on the
- * SESSION id, and turn 2 dispatches under a NEWLY MINTED session id (not the
- * one the cursor/history belongs to) — so VoltAgent's memory lookup for that
- * new id finds nothing, and neither mechanism (the omitted transcriptSeed,
- * nor VoltAgent's session-keyed memory) actually carries turn 1's exchange
- * into turn 2's request. #574 has the full trace.
+ * Regression for #574: Station's metadata-only resume cursor cannot stand
+ * in for prompt history when the next turn owns a new execution Session.
+ * Native history must reach the model through its authorized memory owner;
+ * prior user/assistant roles and structured native records stay intact.
  */
 
 const FIXTURE_CONNECTION_ID = 'e2e-multi-turn-context-fixture';

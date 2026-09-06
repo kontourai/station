@@ -479,9 +479,8 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "station#4537 item 3: multi-turn context retention, UNCOVERED anywhere per the flow-coverage audit. RED BY DESIGN, not spec rot — the source of truth here is the spec itself, and the spec disproves coverage rather than proving it: it sends two real turns through POST /api/orchestration/chat into a real local model server and reads the ollama-fixture onChat capture hook, and turn 2's own captured request body is missing turn 1's prompt and reply entirely (a server-side context read, not a client-side replay — the fixture answers identically both times, so the discriminating evidence is the captured request, not the response text). Quarantined rather than left in a running bucket: a spec that is supposed to fail cannot sit in smoke-live/verify:e2e:full without permanently redding the gate. It re-enters a running bucket once #574 (the defect it proves) is fixed.",
+      'Regression #574: two real Station-native turns reach a local model server. The first turn must have a persisted terminal event; the second model request must contain the original user message and assistant reply, not merely render a client-side transcript. Uses ordinary Agent/Chat controls and retains actual model-request evidence.',
     exceptions: [],
-    replacement: '#574',
   },
   {
     path: 'tests/agents-new-cli-turn.spec.ts',
