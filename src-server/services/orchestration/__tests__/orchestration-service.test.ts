@@ -3532,7 +3532,7 @@ describe('OrchestrationService', () => {
       { isCurrent: () => true },
     )!;
     const scope = authority.bindNativeCall(grant, 'native-deferred-call')!;
-    privateService.nativeOutputTurnGenerations.set(
+    privateService.nativeTurnGenerations.set(
       'native-deferred-thread',
       'native-deferred-turn',
     );
@@ -10041,7 +10041,7 @@ describe('OrchestrationService', () => {
         input: {
           threadId: 'fleet-authorized-session',
           provider: 'station-agent',
-          cwd: '/fixture/workspace',
+          cwd: tmp,
           metadata: {
             agentId: 'reviewer',
             projectSlug: 'project-a',
@@ -10129,7 +10129,7 @@ describe('OrchestrationService', () => {
       expect.objectContaining({
         scope: expect.objectContaining({
           projectSlug: 'project-a',
-          cwd: '/fixture/workspace',
+          cwd: tmp,
           environmentId: 'local-environment',
         }),
       }),
