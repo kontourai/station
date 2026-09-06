@@ -127,3 +127,16 @@ export interface HomeTransferRoomIdentityObservation {
   executionAuthorityTransferred: false;
   executionResumeAvailable: false;
 }
+
+/** Operator-approved personal mapping, revalidated against a live remote probe. */
+export interface HomeTransferRoomBindingObservation {
+  schemaVersion: 'station.home-transfer-room-binding/v1';
+  channelId: string;
+  controllerEnvironmentId: string;
+  controllerDeviceId: string;
+  remoteEnvironmentId: string;
+  remoteTaskId: string;
+  remotePairedDeviceId: string;
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+}

@@ -194,6 +194,59 @@ describe('PeerCredentialStore (station#1123 slice 2)', () => {
     expect(await store.remove('environment-peer-b')).toBe(false);
   });
 
+  test.each([
+    ['returns false', () => false],
+    [
+      'throws',
+      () => {
+        throw new Error('revoked');
+      },
+    ],
+  ])(
+    'rejects an authorizer that %s under the mutation lock without changing peer bytes',
+    async (_label, authorize) => {
+      const root = home();
+      const store = new PeerCredentialStore(root);
+      await store.upsert(input('environment-existing'));
+      const file = storedPeerFile(root);
+      const before = readFileSync(file, 'utf8');
+
+      await expect(
+        store.upsert(input('environment-new'), authorize),
+      ).rejects.toThrow('Peer credential mutation is not authorized');
+      await expect(
+        store.remove('environment-existing', authorize),
+      ).rejects.toThrow('Peer credential mutation is not authorized');
+
+      expect(readFileSync(file, 'utf8')).toBe(before);
+      expect(
+        new PeerCredentialStore(root).get('environment-existing'),
+      ).not.toBeNull();
+      expect(new PeerCredentialStore(root).get('environment-new')).toBeNull();
+    },
+  );
+
+  test.each([
+    ['false', false],
+    ['null', null],
+  ])(
+    'rejects an explicitly supplied non-function %s guard without persisting a peer',
+    async (_label, authorize) => {
+      const root = home();
+      const store = new PeerCredentialStore(root);
+
+      await expect(
+        store.upsert(
+          input('environment-not-authorized'),
+          authorize as unknown as () => boolean,
+        ),
+      ).rejects.toThrow('Peer credential mutation is not authorized');
+
+      expect(store.list()).toEqual([]);
+      expect(existsSync(storedPeerFile(root))).toBe(false);
+    },
+  );
+
   test('re-reads under the mutation lock so a stale upsert cannot restore a removed credential', async () => {
     const root = home();
     const original = new PeerCredentialStore(root);

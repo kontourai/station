@@ -1149,6 +1149,7 @@ export function configureRuntimeRoutes(
         context.configLoader.getProjectHomeDir(),
         process.env[HOME_AUTHORITY_DATABASE_ENV],
       ),
+      { peers: peerCredentialStore },
     ),
   );
   // Shared resolver keeps project and Registry catalog projections identical.
@@ -2902,12 +2903,16 @@ export function configureRuntimeRoutes(
   // rather than a second file read.
   context.app.route(
     '/api/environments/peers',
-    createPeerCredentialRoutes(peerCredentialStore, (environmentId) =>
-      context.sshEnvironmentService
-        .list()
-        .some(
-          (environment) => environment.profile.environmentId === environmentId,
-        ),
+    createPeerCredentialRoutes(
+      peerCredentialStore,
+      (environmentId) =>
+        context.sshEnvironmentService
+          .list()
+          .some(
+            (environment) =>
+              environment.profile.environmentId === environmentId,
+          ),
+      isRequestPrincipalCurrent,
     ),
   );
   // station#1423: the operator's own answer-share management family. The base

@@ -242,10 +242,10 @@ strings are nonempty, bounded to 256 bytes, and cannot contain control character
 
 This observation proves the selected authenticated endpoint resolved that room;
 it is not hardware attestation or evidence that credentials were never copied.
-The controller still needs to persist an operator-approved participant-to-room
-mapping, derive its URL and credential from the server-owned peer store, validate
-the expected nonce/environment/device/channel, and recheck that binding before
-any seal/advance call. Merely obtaining a successful observation does not enroll
+The [controller enrollment guide](../guides/home-transfer-controller.md) describes
+the implemented operator-approved participant-to-room mapping, server-owned peer
+lookup, nonce/environment/device/channel validation and live rechecks. Network
+seal/advance adapters still need to consume those bindings before use. Merely obtaining a successful observation does not enroll
 a target or authorize coordinator adapters.
 
 Tests cover real pairing/HTTP enforcement, revocation during lookup, exact-body
