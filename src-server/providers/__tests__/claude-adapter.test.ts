@@ -1800,6 +1800,64 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test.each([true, false])(
+    'a provider refusal emits one failed-turn error with wrapper=%s and leaves native binding status unknown',
+    async (throwsWrapper) => {
+      const failureText =
+        "API Error: Opus 5 (1M context)'s safeguards flagged this message. Details: [reasoning_extraction]";
+      mockQuery.mockReturnValue({
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: 'result',
+            subtype: 'success',
+            is_error: true,
+            result: failureText,
+            stop_reason: null,
+            usage: { input_tokens: 1, output_tokens: 0 },
+            uuid: 'refused-result',
+            session_id: 'native-refused',
+          };
+          if (throwsWrapper)
+            throw new Error(
+              `Claude Code returned an error result: ${failureText}`,
+            );
+        },
+        interrupt: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn(),
+      });
+      const adapter = new ClaudeAdapter();
+      const events: any[] = [];
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'refused-turn',
+        resumeCursor: 'last-known-native',
+      });
+      await vi.waitFor(async () =>
+        expect((await adapter.listSessions())[0]?.status).toBe('error'),
+      );
+      await adapter.stopAll();
+      await drain;
+      const failures = events.filter(
+        (event) => event.method === 'runtime.error',
+      );
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toMatchObject({
+        code: 'engine-turn-failed',
+        retriable: false,
+        message: failureText,
+      });
+      expect(events.some((event) => event.method === 'turn.completed')).toBe(
+        false,
+      );
+      expect(
+        failures.some((event) => event.code === 'engine-session-binding-dead'),
+      ).toBe(false);
+    },
+  );
+
   /**
    * archive#1827. Reproduces the ticket's exact live shape: the SDK
    * delivers a `result` message with `is_error: true` (the STRUCTURED
@@ -1807,8 +1865,7 @@ describe('ClaudeAdapter', () => {
    * normal message stream, and only THEN the underlying `claude` CLI
    * process exits and the SDK's own query iterator re-throws the SAME
    * failure text wrapped as a generic Error (`Query`'s `lastErrorResultText`
-   * mechanism in `@anthropic-ai/claude-agent-sdk`'s `sdk.mjs`, cited in
-   * `claude-result-outcome.ts`'s doc comment). Before this fix, that shape
+   * mechanism in `@anthropic-ai/claude-agent-sdk`'s `sdk.mjs`). Before this fix, that shape
    * published the raw text as `turn.completed` (folding an error into what
    * looked like a completed reply) and then published it a SECOND time,
    * unclassified, from the generic catch — exactly the "shown twice, then
@@ -3369,6 +3426,7 @@ describe('ClaudeAdapter', () => {
       });
       controlled.push({
         type: 'result',
+        is_error: false,
         result: 'hi',
         stop_reason: 'end_turn',
         usage: { input_tokens: 1, output_tokens: 1 },
@@ -3388,6 +3446,7 @@ describe('ClaudeAdapter', () => {
 
       controlled.push({
         type: 'result',
+        is_error: false,
         result: 'bye',
         stop_reason: 'end_turn',
         usage: { input_tokens: 1, output_tokens: 1 },

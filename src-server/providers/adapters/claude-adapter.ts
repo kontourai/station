@@ -562,7 +562,8 @@ type ClaudeSessionRecord = {
    * (`claude-adapter-events.ts`) — same object at runtime, declared here too
    * so `consumeMessages`' catch can read it. See that field's docblock.
    */
-  terminalResultObserved?: boolean;
+  terminalResultObserved?: 'failed' | 'binding-dead';
+  attemptedResumeCursor?: string;
 };
 
 function adoptionTitle(threadId: string): string {
@@ -1083,6 +1084,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
     const record: ClaudeSessionRecord = {
       session,
+      attemptedResumeCursor:
+        typeof input.resumeCursor === 'string' ? input.resumeCursor : undefined,
       promptQueue,
       query: sdkQuery,
       pendingRequests: new Map(),
@@ -2293,7 +2296,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         return;
       }
       // archive#1827: once `mapMessage` has already published a structured
-      // `runtime.error` for a `terminal`-classified `result` message
+      // `runtime.error` for a failed `result` message
       // (`classifyClaudeResultOutcome`, `claude-adapter-events.ts`), the SDK
       // re-throws the SAME underlying failure a moment later as a generic
       // wrapped Error when the `claude` CLI process exits (its own
@@ -2303,9 +2306,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // again" shape this ticket exists to fix — skip it here; the
       // structured event already told the caller everything this generic
       // catch would, and (unlike this catch) also carried the terminal
-      // classification the recovery path acts on.
+      // query-versus-binding classification.
       if (record.terminalResultObserved) {
-        record.session.status = 'dead';
+        record.session.status =
+          record.terminalResultObserved === 'binding-dead' ? 'dead' : 'error';
         return;
       }
       const detail = error instanceof Error ? error.message : String(error);
