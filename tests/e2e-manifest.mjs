@@ -319,6 +319,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/accessibility-core.spec.ts',
     'tests/status-token-contrast.spec.ts',
     'tests/text-ramp-contrast.spec.ts',
+    'tests/overlay-elevation-tokens.spec.ts',
     'tests/builtin-runtime-workflow.spec.ts',
     'tests/pending-message-queue.spec.ts',
     'tests/skills.spec.ts',
@@ -805,6 +806,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Composited two-theme contrast for the neutral text ramp (primary/secondary/tertiary) and the two shared chrome rules that carry it — .engine-chip__pill, which failed 1.4.3 at 10px in both themes (station#3140), and .button--link, pinned while passing because its 0.17 light-theme margin rests on a vendor brand token this repo does not own. Each probe mounts the real shipped class against a sentinel host colour, so a rule that stops matching fails instead of passing by inheriting body copy.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/overlay-elevation-tokens.spec.ts',
+    bucket: 'product',
+    surface: 'Core accessibility',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Resolves --radius-overlay / --elevation-overlay on the document with NO data-theme attribute — the default the shell serves — and mounts the four entry-stylesheet rules that read them. #1637 declared both inside [data-theme="light"] under a comment saying no per-theme override was needed, so on the default theme both resolved to the empty string and every Dialog panel, the command palette, .modal-dialog, .agent-selector__menu, .toast and the ACP add dialog rendered square and flat. Each alias is compared against the kit token as resolved in the same document, so the kit stays free to retune the value while an alias that resolves to nothing still fails; each probe carries a painted-surface guard so a renamed class cannot pass by reporting the same 0px/none the defect produced.',
     exceptions: [],
   },
   {
