@@ -1144,6 +1144,59 @@ describe('the engine-role screen is a counted step of the run', () => {
     expect(screen.getByText('Step 4 of 4')).toBeTruthy();
   });
 
+  test.each([
+    ['the header close', 'Close setup'],
+    ['Escape', null],
+  ] as const)(
+    '#1582 A5: %s on the role step defers the whole run, like every other step',
+    async (_label, closeLabel) => {
+      // A DISCLOSED BEHAVIOUR CHANGE, and the only test that executes it.
+      // The role screen used to be a second overlay whose own × called
+      // `onDismiss` and went on to About you; as a step of THIS dialog its
+      // close is the run's close, so it writes `skipped` and leaves the Home
+      // card offering the run — the same contract steps 1, 2 and 4 have. Its
+      // own named controls ("Decide later" / "Got it") still advance, which
+      // the counter test above exercises.
+      disclosureState.outstanding = false;
+      configValue.builtinAgentEngineConnectionId = undefined;
+      engineState.engines = [];
+      render(<FirstRunHomeChapter />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await screen.findByTestId('engine-picker');
+
+      await act(async () => {
+        if (closeLabel) {
+          fireEvent.click(screen.getByRole('button', { name: closeLabel }));
+          return;
+        }
+        // Escape is a React `onKeyDown` on the surface's PANEL, so it has to
+        // be pressed from inside the dialog to reach it — which is where a
+        // keyboard user is, and (after #1582 L2) where focus actually sits
+        // once a step swaps. Dispatching on `document` reaches nothing.
+        const focused = document.activeElement as HTMLElement;
+        expect(
+          document.querySelector('.first-run-chapter')?.contains(focused),
+          'focus was not inside the dialog to press Escape from',
+        ).toBe(true);
+        fireEvent.keyDown(focused, { key: 'Escape', code: 'Escape' });
+      });
+
+      expect(recordFirstRunDecision).toHaveBeenCalledWith({
+        status: 'skipped',
+      });
+      expect(
+        screen.queryByTestId('engine-picker'),
+        'the role step survived the run being closed',
+      ).toBeNull();
+      expect(
+        screen.queryByTestId('first-run-about-you'),
+        'closing the role step advanced the run instead of deferring it',
+      ).toBeNull();
+      expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
+    },
+  );
+
   test('the shared header prints the title the role step actually rendered', async () => {
     // #1582 A5 moved the role screen inside this dialog, so the header is the
     // only title on screen — and "Choose what powers Station" over a panel

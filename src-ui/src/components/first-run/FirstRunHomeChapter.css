@@ -81,6 +81,14 @@
   font-size: var(--font-size-sm, 13px);
 }
 
+/* The step region's own focus ring — it takes focus when a step swaps, so it
+   has to show where focus went, exactly as the engines report's does
+   (`EnginesStep.css`). */
+.first-run-chapter__step:focus-visible {
+  outline: 2px solid var(--color-accent, var(--color-primary));
+  outline-offset: 2px;
+}
+
 .first-run-chapter__actions {
   display: flex;
   align-items: center;

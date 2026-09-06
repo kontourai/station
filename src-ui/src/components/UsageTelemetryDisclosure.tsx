@@ -368,10 +368,13 @@ export function usageTelemetryDecisionLabels(enabled: boolean): {
  * THE SETTINGS TOGGLE IS THE SOURCE OF TRUTH. Both actions write and read
  * `telemetryEnabled` through the same `PUT /config/app` the Settings row
  * uses (`views/settings/StationConfigSection.tsx`), so this screen cannot
- * record a preference Settings does not show. "Keep" writes nothing — the
- * state it names is already the case — and only acknowledges; the changing
- * action writes first and acknowledges only once the write has landed, so a
- * refused write can never be reported as a saved choice.
+ * record a preference Settings does not show. "Keep" usually writes nothing
+ * — the state it names is already the case — unless the ENVIRONMENT is the
+ * only thing holding that state, in which case it records it, because a
+ * decision resting on `STATION_TELEMETRY_ENABLED` alone disappears the day
+ * that variable does. The changing action always writes, and either action
+ * acknowledges only once its write has landed, so a refused write can never
+ * be reported as a saved choice.
  *
  * Chrome (scrim, focus trap, header, step count) belongs to
  * `FirstRunHomeChapter`'s dialog; this owns the summary, the inventory and

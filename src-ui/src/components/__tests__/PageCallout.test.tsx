@@ -105,6 +105,123 @@ describe('the tone scale is shared with banners, not copied', () => {
   });
 });
 
+/**
+ * The classes C4 deleted, and every shape that still applies one.
+ *
+ * A BARE TOKEN inside any string literal, not a `className=` attribute: Biome
+ * wraps a long class list onto its own lines, so the shape `StarterWorkCard`
+ * itself used —
+ *
+ *   className={[
+ *     'starter-work-card',
+ *   ].join(' ')}
+ *
+ * has the attribute and the class on different lines, and an attribute-anchored
+ * pattern sees neither. The same blindness covers `clsx('starter-work-card')`,
+ * a `const CARD = 'starter-work-card'` indirection, and a ternary — the first
+ * version of this used `[^=]*?` between the attribute and the name, which a
+ * `===` inside the ternary terminates.
+ *
+ * Element and modifier forms count too (`__title`, `--loading`, `-btn`): the
+ * rules that styled them are just as gone.
+ *
+ * `data-testid` is NOT a class. The browser journeys find these surfaces by
+ * `data-testid="starter-work-card"` and friends, deliberately unchanged, so a
+ * line carrying one is skipped whole.
+ */
+const RETIRED_CALLOUT_CLASSES = [
+  'starter-work-card',
+  'first-run-home-card',
+  'project-page__chat-cta',
+] as const;
+
+const RETIRED_TOKEN = `(?<![\\w-])(?:${RETIRED_CALLOUT_CLASSES.join('|')})[\\w-]*`;
+/** A bare token inside a string literal, wherever the literal sits. */
+const APPLIED_IN_SOURCE = new RegExp(`['"\`][^'"\`]*${RETIRED_TOKEN}`);
+/** A selector, including its element and modifier forms. */
+const DECLARED_IN_CSS = new RegExp(`\\.${RETIRED_TOKEN}`);
+
+function retiredCalloutClassOnLine(
+  line: string,
+  kind: 'source' | 'css',
+): boolean {
+  const trimmed = line.trim();
+  // Whole-line comments only: the primitive's own source and stylesheet
+  // explain by name which rules they carried over.
+  if (
+    trimmed.startsWith('//') ||
+    trimmed.startsWith('*') ||
+    trimmed.startsWith('/*')
+  )
+    return false;
+  if (kind === 'source' && line.includes('data-testid=')) return false;
+  return kind === 'css'
+    ? DECLARED_IN_CSS.test(line)
+    : APPLIED_IN_SOURCE.test(line);
+}
+
+describe('the retired-class matcher sees the shapes that actually occur', () => {
+  // The matcher is the whole guard, and a guard whose rejection path has
+  // never run is unproven — so it is fed the shapes before it is pointed at
+  // the tree.
+  test.each([
+    ['a single-line attribute', `<div className="starter-work-card">`],
+    [
+      'a Biome-wrapped class array (the shape this card really used)',
+      `    'starter-work-card',`,
+    ],
+    ['a helper call', `className={clsx('starter-work-card', x)}`],
+    ['a const indirection', `const CARD = 'starter-work-card';`],
+    [
+      'a ternary whose condition contains ===',
+      `className={mode === 'a' ? 'starter-work-card' : ''}`,
+    ],
+    // Backticks as the delimiter; the interpolation a real one would carry
+    // is left out because it is a `${` inside a plain string here, which the
+    // repo's own lint rule reads as a mistake.
+    ['a template literal', 'className={`starter-work-card`}'],
+    ['an element form', `<p className="starter-work-card__title">`],
+    ['a modifier form', `className="starter-work-card--loading"`],
+    ['the project CTA button form', `className="project-page__chat-cta-btn"`],
+    ['the first-run card body', `className="first-run-home-card__body"`],
+  ])('catches %s', (_label, line) => {
+    expect(retiredCalloutClassOnLine(line, 'source')).toBe(true);
+  });
+
+  test.each([
+    ['a test id', `<div data-testid="starter-work-card">`],
+    [
+      'a test id beside a live class',
+      `<div data-testid="starter-work-card" className="page-callout">`,
+    ],
+    ['a line comment', `// starter-work-card is gone`],
+    ['a block comment body', ` * .starter-work-card--loading, which found it`],
+    ['an unrelated class', `className="page-callout page-callout--info"`],
+    ['a longer unrelated token', `className="x-starter-work-cardigan"`],
+  ])('does not catch %s', (_label, line) => {
+    expect(retiredCalloutClassOnLine(line, 'source')).toBe(false);
+  });
+
+  test.each([
+    ['a base selector', `.starter-work-card {`],
+    ['an element selector', `.starter-work-card__title {`],
+    ['a modifier selector', `.starter-work-card--loading > .skeleton-block {`],
+    ['a nested selector', `  .project-page__chat-cta-text strong {`],
+    ['a media-query body', `  .project-page__chat-cta {`],
+  ])('catches %s in a stylesheet', (_label, line) => {
+    expect(retiredCalloutClassOnLine(line, 'css')).toBe(true);
+  });
+
+  test('does not catch a stylesheet comment naming a carried-over rule', () => {
+    expect(
+      retiredCalloutClassOnLine(
+        ' * `.starter-work-card--loading`, which found it).',
+        'css',
+      ),
+    ).toBe(false);
+  });
+});
+
 describe('the cards C4 replaced leave nothing behind', () => {
   /**
    * The defect this exists for, found in review: `HomeView.css` deleted
@@ -114,17 +231,7 @@ describe('the cards C4 replaced leave nothing behind', () => {
    * their row layout, and the skeleton-collapse fix came back. A deleted rule
    * with a live consumer is invisible to every per-component test, because
    * each one still renders exactly what its author wrote.
-   *
-   * A structural rule, checked structurally: no source names a class no
-   * stylesheet defines. Comment lines are excluded — the primitive's own CSS
-   * explains which rules it carried over by name.
    */
-  const RETIRED = [
-    'starter-work-card',
-    'first-run-home-card',
-    'project-page__chat-cta',
-  ];
-
   function sourceFiles(directory: string): string[] {
     return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
       const path = resolve(directory, entry.name);
@@ -133,35 +240,23 @@ describe('the cards C4 replaced leave nothing behind', () => {
     });
   }
 
-  test.each(RETIRED)('nothing renders or styles %s any more', (name) => {
-    // CLASS uses only. `data-testid="starter-work-card"` and friends are
-    // deliberately unchanged — the browser journeys find these surfaces by
-    // them, and a test id is not a style.
-    const styled = new RegExp(`\\.${name}(?![\\w-])`);
-    const applied = new RegExp(`(className|class)\\s*=[^=]*?${name}(?![\\w-])`);
+  test('nothing applies or declares a class C4 deleted', () => {
     const offenders: string[] = [];
     for (const file of sourceFiles(resolve(HERE, '../..'))) {
       // Tests still name these classes, on purpose: they are what proves the
-      // migration happened.
+      // migration happened, and the fixtures above are made of them.
       if (file.includes('__tests__')) continue;
-      const isStylesheet = file.endsWith('.css');
+      const kind = file.endsWith('.css') ? 'css' : 'source';
       for (const [index, line] of readFileSync(file, 'utf8')
         .split('\n')
         .entries()) {
-        const trimmed = line.trim();
-        if (
-          trimmed.startsWith('//') ||
-          trimmed.startsWith('*') ||
-          trimmed.startsWith('/*')
-        )
-          continue;
-        if (isStylesheet ? styled.test(line) : applied.test(line))
+        if (retiredCalloutClassOnLine(line, kind))
           offenders.push(`${file.split('/src-ui/')[1]}:${index + 1}`);
       }
     }
     expect(
       offenders,
-      `${name} was deleted from the stylesheets but is still applied here`,
+      'a class C4 deleted from the stylesheets is still applied here',
     ).toEqual([]);
   });
 });
