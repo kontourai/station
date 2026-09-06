@@ -29,6 +29,7 @@ import {
 } from '../WorkspacePaneHostOpenContext';
 import { workspacePaneHostTabIdentity } from '../workspacePaneHostIdentity';
 import type { WorkspacePaneHostLockManager } from '../workspacePaneHostLease';
+import type { WorkspacePaneHostOpenOutcome } from '../workspacePaneHostOpenOutcome';
 import { WorkspacePaneHostRuntime } from '../workspacePaneHostRuntime';
 import {
   persistWorkspacePaneHost,
@@ -798,14 +799,14 @@ test('layout catalog placement opens through the controller as the sole document
   });
   onDocumentChange.mockClear();
 
-  let opened: boolean | undefined;
+  let opened: WorkspacePaneHostOpenOutcome | undefined;
   act(() => {
     opened = hostOpen?.open(four, undefined, {
       type: 'add',
       targetGroupId: 'right',
     });
   });
-  expect(opened).toBe(true);
+  expect(opened).toEqual({ ok: true });
   await act(async () => {
     await Promise.resolve();
   });
@@ -825,7 +826,7 @@ test('layout catalog placement opens through the controller as the sole document
       placement: 'after',
     });
   });
-  expect(opened).toBe(true);
+  expect(opened).toEqual({ ok: true });
   await act(async () => {
     await Promise.resolve();
   });
@@ -840,6 +841,71 @@ test('layout catalog placement opens through the controller as the sole document
       }),
     }),
   );
+});
+
+/**
+ * #1596. Drives the real controller — no mock of `open` — for the two refusals
+ * only the controller can produce, and pairs each with an open that succeeds
+ * under the same host so a refusal-shaped constant would not satisfy it.
+ */
+test('answers a refused open with the reason the controller derived', async () => {
+  let hostOpen: WorkspacePaneHostOpenAction | null = null;
+  let outcome: WorkspacePaneHostOpenOutcome | undefined;
+
+  // `lockManager={null}` is the production "no Web Locks" path: the host runs
+  // read-only and never holds the layout's persistence lease.
+  const readOnly = render(
+    <WorkspacePaneHost
+      document={singlePaneHostDocument('no-lease-host', one)}
+      lockManager={null}
+      onOpenActionChange={(action) => {
+        hostOpen = action;
+      }}
+      renderPane={(pane) => <div>{pane.descriptorId} content</div>}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(within(readOnly.container).getByRole('status').textContent).toContain(
+    'cannot be saved right now',
+  );
+  act(() => {
+    outcome = hostOpen?.open(two);
+  });
+  expect(outcome).toEqual({ ok: false, reason: 'no-lease' });
+  expect(within(readOnly.container).getAllByRole('tab')).toHaveLength(1);
+  readOnly.unmount();
+
+  const admitting = render(
+    <WorkspacePaneHost
+      document={singlePaneHostDocument('admission-host', one)}
+      admitOpenInstance={(instance) => instance.instanceId !== two.instanceId}
+      onOpenActionChange={(action) => {
+        hostOpen = action;
+      }}
+      renderPane={(pane) => <div>{pane.descriptorId} content</div>}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  act(() => {
+    outcome = hostOpen?.open(two);
+  });
+  expect(outcome).toEqual({ ok: false, reason: 'refused' });
+  act(() => {
+    outcome = hostOpen?.open(three);
+  });
+  expect(outcome).toEqual({ ok: true });
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(
+    within(admitting.container)
+      .getAllByRole('tab')
+      .map((tab) => tab.textContent),
+  ).toEqual(['One', 'Three']);
 });
 
 test('focuses an existing pane without admitting a duplicate instance', async () => {
@@ -860,13 +926,13 @@ test('focuses an existing pane without admitting a duplicate instance', async ()
   });
   onDocumentChange.mockClear();
 
-  let duplicate = true;
+  let duplicate: WorkspacePaneHostOpenOutcome | undefined;
   let focused = false;
   act(() => {
-    duplicate = hostOpen?.open(two) ?? true;
+    duplicate = hostOpen?.open(two);
     focused = hostOpen?.focusExisting?.(two.instanceId) ?? false;
   });
-  expect(duplicate).toBe(false);
+  expect(duplicate).toEqual({ ok: false, reason: 'already-open' });
   expect(focused).toBe(true);
   await act(async () => {
     await new Promise<void>((resolve) =>
@@ -1312,13 +1378,13 @@ test('production host sink orders an opened occurrence before its ready callback
   });
   sink.events.splice(0);
 
-  let opened = false;
+  let opened: WorkspacePaneHostOpenOutcome | undefined;
   await act(async () => {
-    opened = host?.open(two) ?? false;
+    opened = host?.open(two);
     await Promise.resolve();
     await Promise.resolve();
   });
-  expect(opened).toBe(true);
+  expect(opened).toEqual({ ok: true });
   const afterOpen = lifecycleEventNames(sink);
   expect(afterOpen.indexOf('opened')).toBeGreaterThanOrEqual(0);
   expect(afterOpen.indexOf('ready')).toBeGreaterThan(
@@ -1790,7 +1856,7 @@ test.each(['false', 'throw'] as const)(
       preview.stateKey,
       state,
     );
-    let opened: boolean | undefined;
+    let opened: WorkspacePaneHostOpenOutcome | undefined;
     function Opener() {
       const host = useWorkspacePaneHostOpenAction();
       return (
@@ -1823,7 +1889,7 @@ test.each(['false', 'throw'] as const)(
       screen.getByRole('button', { name: 'Rejected prepared open' }),
     );
 
-    expect(opened).toBe(false);
+    expect(opened).toEqual({ ok: false, reason: 'not-persisted' });
     expect(readFilePreviewPaneState(first, preview.stateKey)).toBeNull();
     expect(screen.getAllByRole('tab')).toHaveLength(1);
     mounted.unmount();
@@ -1872,7 +1938,7 @@ test('host rollback failure still rolls state back and cannot admit on remount',
     preview.stateKey,
     state,
   );
-  let opened: boolean | undefined;
+  let opened: WorkspacePaneHostOpenOutcome | undefined;
   function Opener() {
     const host = useWorkspacePaneHostOpenAction();
     return (
@@ -1902,7 +1968,7 @@ test('host rollback failure still rolls state back and cannot admit on remount',
   );
   fireEvent.click(screen.getByRole('button', { name: 'Fail host rollback' }));
 
-  expect(opened).toBe(false);
+  expect(opened).toEqual({ ok: false, reason: 'not-persisted' });
   expect(readFilePreviewPaneState(storage, preview.stateKey)).toBeNull();
   expect(
     (

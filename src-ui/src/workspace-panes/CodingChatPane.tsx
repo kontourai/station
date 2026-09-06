@@ -53,7 +53,7 @@ export function CodingChatPane({
           instance.stateKey,
           state,
         ),
-      )
+      ).ok
     ) {
       updateParams(clearOpenFilePreviewIntent());
     }

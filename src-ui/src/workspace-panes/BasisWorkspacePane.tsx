@@ -72,7 +72,7 @@ export function BasisWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
             type="button"
             className="button button--secondary button--small"
             onClick={() => {
-              setPortableError(!host?.open(portable.instance));
+              setPortableError(host?.open(portable.instance).ok !== true);
             }}
           >
             Open portable MCP App

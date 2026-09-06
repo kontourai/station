@@ -92,6 +92,10 @@ import type { WorkspacePaneHostOpenAction } from '../workspace-panes/WorkspacePa
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspace-panes/workspacePaneAvailabilityPresentation';
 import { presentWorkspacePaneAvailability } from '../workspace-panes/workspacePaneAvailabilityPresentation';
 import { isWorkspacePaneInstanceOwnedByProject } from '../workspace-panes/workspacePaneHostAdmission';
+import {
+  describeWorkspacePaneOpenRefusal,
+  type WorkspacePaneHostOpenRefusal,
+} from '../workspace-panes/workspacePaneHostOpenOutcome';
 import { WorkspacePaneHostRuntime } from '../workspace-panes/workspacePaneHostRuntime';
 import { createWorkspacePaneOperationalEventContext } from '../workspace-panes/workspacePaneOperationalEvents';
 import { resolveClientTrustedPluginLayout } from '../workspace-panes/workspacePaneRendererSelection';
@@ -392,9 +396,20 @@ function BuiltinCodingLayoutHost({
     projectSlug,
     layoutSlug: layout.id,
   });
-  const hostOpen = useRef<WorkspacePaneHostOpenAction | null>(null);
+  /**
+   * State, not a ref (#1596): the pane picker is a control that belongs to the
+   * host, so whether a host is mounted has to be renderable. As a ref its
+   * nullness was invisible, and `hostOpen.current?.open(...)` completed the
+   * picker's Open click with no modal closed and nothing said.
+   */
+  const [hostOpen, setHostOpen] = useState<WorkspacePaneHostOpenAction | null>(
+    null,
+  );
   const [catalogRequest, setCatalogRequest] =
     useState<WorkspacePaneHostCatalogRequest | null>(null);
+  /** The reason the last picker selection did not open, or null. */
+  const [openRefusal, setOpenRefusal] =
+    useState<WorkspacePaneHostOpenRefusal | null>(null);
   const [hostInstanceIds, setHostInstanceIds] = useState<ReadonlySet<string>>();
   /**
    * Stable sink, and a set identity that moves only when its membership does.
@@ -567,15 +582,37 @@ function BuiltinCodingLayoutHost({
     document: WorkspacePaneHostDocumentV1;
   } | null>(null);
   const captureHostOpen = useCallback(
-    (action: WorkspacePaneHostOpenAction | null) => {
-      hostOpen.current = action;
+    (action: WorkspacePaneHostOpenAction | null) => setHostOpen(action),
+    [],
+  );
+  /**
+   * The picker cannot outlive the host it was opened from. Its only entry point
+   * is that host's command menu, and the host publishes `null` from the same
+   * effect cleanup that runs when it unmounts — so withdrawing the picker is
+   * the honest answer, rather than reporting a refusal for a click that has
+   * nowhere to land.
+   */
+  useEffect(() => {
+    if (hostOpen) return;
+    setCatalogRequest(null);
+    setOpenRefusal(null);
+  }, [hostOpen]);
+  /** A fresh request is a fresh attempt; it does not inherit the last refusal. */
+  const requestCatalog = useCallback(
+    (request: WorkspacePaneHostCatalogRequest) => {
+      setOpenRefusal(null);
+      setCatalogRequest(request);
     },
     [],
   );
   const openCatalogEntry = useCallback(
     (entry: WorkspacePaneAvailabilityCatalogEntry) => {
+      // Neither of these can be true while a card's Open button is on screen:
+      // the picker only renders with a request, and only an available entry
+      // that carries an instance renders Open at all.
       if (
         !catalogRequest ||
+        !hostOpen ||
         !entry.instance ||
         entry.availability.state !== 'available'
       ) {
@@ -604,15 +641,26 @@ function BuiltinCodingLayoutHost({
         ) &&
           (!trustedPluginLayout || !catalog.projectSlug))
       ) {
+        // This build has no renderer for the selection the catalog offered.
+        // Reported as a refusal because the card said "available" and the
+        // click was real, even though the card's own availability normally
+        // withholds Open first.
+        setOpenRefusal('refused');
         return;
       }
-      if (
-        hostOpen.current?.open(resolved.instance, undefined, catalogRequest)
-      ) {
+      const outcome = hostOpen.open(
+        resolved.instance,
+        undefined,
+        catalogRequest,
+      );
+      if (outcome.ok) {
+        setOpenRefusal(null);
         setCatalogRequest(null);
+        return;
       }
+      setOpenRefusal(outcome.reason);
     },
-    [catalog.entries, catalog.projectSlug, catalogRequest],
+    [catalog.entries, catalog.projectSlug, catalogRequest, hostOpen],
   );
   const codingOccurrence = catalog.entries.find(
     (candidate) =>
@@ -1009,7 +1057,7 @@ function BuiltinCodingLayoutHost({
         runtime={workspacePaneRuntime.current}
         compact={compact}
         onDocumentChange={handleHostDocumentChange}
-        onOpenCatalog={setCatalogRequest}
+        onOpenCatalog={requestCatalog}
         onOpenActionChange={captureHostOpen}
         popOut={popOut}
         operationalEventContext={operationalEventContext}
@@ -1199,7 +1247,13 @@ function BuiltinCodingLayoutHost({
       />
       <ProjectWorkspacePaneModal
         show={catalogRequest !== null}
-        onClose={() => setCatalogRequest(null)}
+        notice={
+          openRefusal ? describeWorkspacePaneOpenRefusal(openRefusal) : null
+        }
+        onClose={() => {
+          setCatalogRequest(null);
+          setOpenRefusal(null);
+        }}
         entries={catalog.entries}
         loading={catalog.isLoading}
         error={catalog.isError}

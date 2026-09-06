@@ -86,6 +86,20 @@ function rollbackPreparedOpen(
 }
 
 /**
+ * Why a prepared open did not produce a next state. Each value names the
+ * branch that produced it — `already-open` and `refused` are decided before
+ * anything is written, `not-persisted` only after a write was attempted and
+ * rolled back — so a caller reporting one is reporting what happened rather
+ * than a guess (#1596).
+ */
+export type WorkspacePaneHostPrepareOpenResult =
+  | { readonly ok: true; readonly state: WorkspacePaneHostState }
+  | {
+      readonly ok: false;
+      readonly reason: 'already-open' | 'refused' | 'not-persisted';
+    };
+
+/**
  * Stages host persistence before the caller writes pane state, and rolls both
  * back on failure. Keeping this transaction pure of React state makes its
  * ordering testable independently of host rendering.
@@ -107,14 +121,14 @@ export function prepareWorkspacePaneHostOpen({
     WorkspacePaneHostAction,
     { type: 'add-existing-instance' } | { type: 'split' }
   >;
-}): WorkspacePaneHostState | null {
+}): WorkspacePaneHostPrepareOpenResult {
   const before = state.document;
   if (
     before.instances.some(
       (candidate) => candidate.instanceId === instance.instanceId,
     )
   )
-    return null;
+    return { ok: false, reason: 'already-open' };
   const nextState = reduceWorkspacePaneHost(
     state,
     action ?? { type: 'add-existing-instance', instance },
@@ -126,22 +140,23 @@ export function prepareWorkspacePaneHostOpen({
       (candidate) => candidate.instanceId === instance.instanceId,
     )
   )
-    return null;
+    // The host document model declined the placement; nothing was written.
+    return { ok: false, reason: 'refused' };
   try {
     if (
       !persistWorkspacePaneHost(storage, next) ||
       !registerLiveWorkspacePaneHostDocument(storage, owner, next)
     ) {
       rollbackPreparedOpen(storage, owner, before, preparation);
-      return null;
+      return { ok: false, reason: 'not-persisted' };
     }
     if (!(preparation?.prepare() ?? true)) {
       rollbackPreparedOpen(storage, owner, before, preparation);
-      return null;
+      return { ok: false, reason: 'not-persisted' };
     }
-    return nextState;
+    return { ok: true, state: nextState };
   } catch {
     rollbackPreparedOpen(storage, owner, before, preparation);
-    return null;
+    return { ok: false, reason: 'not-persisted' };
   }
 }

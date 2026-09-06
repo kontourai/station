@@ -10,6 +10,7 @@ import {
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { WorkspacePaneHostOpenContext } from '../WorkspacePaneHostOpenContext';
+import { WORKSPACE_PANE_OPENED } from '../workspacePaneHostOpenOutcome';
 
 vi.mock('../ConnectedStationBasisPane', () => ({
   ConnectedStationBasisPane: ({ scope }: { scope: unknown }) => (
@@ -79,7 +80,7 @@ describe('BasisWorkspacePane', () => {
   });
 
   test('issues the exact portable MCP App occurrence through the current host', () => {
-    const open = vi.fn(() => true);
+    const open = vi.fn(() => WORKSPACE_PANE_OPENED);
     const instance = createDirectAnswerBasisPaneInstance(
       'project-canonical',
       'session-a',
