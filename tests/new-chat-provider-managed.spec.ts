@@ -724,18 +724,24 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installVisualViewportFixture(page);
-  await seedRoutes(page, {
-    runtimeConnections: Array.from({ length: 12 }, (_, index) =>
-      agentConnectionFixture({
-        id: `runtime-${index}`,
-        type: `runtime-${index}`,
-        name: `Runtime ${index}`,
-        description: `Connected coding runtime ${index}`,
-        config: { executionClass: 'external' },
-        runtimeCatalog: { source: 'live', models: [], builtInModels: [] },
-      }),
-    ),
-  });
+  await seedRoutes(page);
+  await page.route('**/api/agents', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: [
+          ...AGENTS,
+          ...Array.from({ length: 12 }, (_, index) => ({
+            ...AGENTS[0],
+            slug: `saved-agent-${index}`,
+            name: `Saved agent ${index}`,
+            engineDefault: false,
+            description: `Distinct saved agent ${index}`,
+          })),
+        ],
+      },
+    }),
+  );
   await page.addInitScript(() => localStorage.removeItem('recentAgents'));
   await page.goto('/?dock=open');
   await openNewChatForViewport(page);

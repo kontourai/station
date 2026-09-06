@@ -1,3 +1,4 @@
+import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
@@ -1585,6 +1586,28 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
+  await page.route('**/api/tasks*', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          json: {
+            success: true,
+            data: [
+              {
+                id: 'touch-target-task',
+                projectId: 'p-default',
+                title: 'Review merge queue',
+                description: '',
+                priority: 'normal',
+                status: 'todo',
+                createdBy: 'fixture',
+                createdAt: '2026-08-25T12:00:00.000Z',
+                updatedAt: '2026-08-25T12:00:00.000Z',
+              } satisfies TaskRecord,
+            ],
+          },
+        })
+      : rejectUnexpectedFixtureRequest(route),
+  );
   const touchTurns = buildLongSessionTurns({
     threadId: 'touch-target-conversation',
     provider: 'station-agent',

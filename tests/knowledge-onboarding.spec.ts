@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openHeaderSettings } from './helpers/orchestration';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -165,23 +166,7 @@ test.describe('Knowledge onboarding (product, mocked)', () => {
     await page.goto('/');
 
     await expect(page.getByTestId('knowledge-nudge')).toHaveCount(0);
-    const settings = page.getByTitle(/Settings/);
-    await expect(settings).toBeVisible({ timeout: 10_000 });
-    const bounds = await settings.boundingBox();
-    expect(bounds).not.toBeNull();
-    expect(
-      await page.evaluate(
-        ({ x, y }) =>
-          Boolean(
-            document.elementFromPoint(x, y)?.closest('[title*="Settings"]'),
-          ),
-        {
-          x: (bounds?.x ?? 0) + (bounds?.width ?? 0) / 2,
-          y: (bounds?.y ?? 0) + (bounds?.height ?? 0) / 2,
-        },
-      ),
-    ).toBe(true);
-    await settings.click();
+    await openHeaderSettings(page);
     await expect(page).toHaveURL(/\/settings/);
   });
 

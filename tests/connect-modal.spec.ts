@@ -342,12 +342,14 @@ test.describe('Connection Manager Modal', () => {
       page.getByRole('button', { name: /^Manage Stations/ }),
     ).toHaveCount(1);
 
-    // Maximized mobile dock: the app toolbar is genuinely hidden
-    // (`app__main--mobile-dock-fullscreen`), and the dock header's own
-    // connection control must still be the one surviving control — that is
-    // the entire reason it exists (station#3297).
+    // Fullscreen keeps message context primary. Station management moves into
+    // the mobile chat actions sheet, where exactly one control remains reachable.
     await page.goto('/?dock=open&maximize=true');
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
+    await page
+      .getByTestId('chat-dock-mobile-header')
+      .getByRole('button', { name: 'Chat actions', exact: true })
+      .click();
     const survivor = page.getByRole('button', { name: /^Manage Stations/ });
     await expect(survivor).toHaveCount(1);
     await expect(survivor).toHaveAttribute(
