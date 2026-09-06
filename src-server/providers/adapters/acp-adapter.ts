@@ -2063,6 +2063,15 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
       if (this.sessions.get(threadId) !== record) return;
       this.sessions.delete(threadId);
+      // station#1569 (item 4): this is a session ending — the child is gone
+      // and a replacement one starts below with its own supervisor — so the
+      // calls this one still has open can never report. Unlike the stop path
+      // (`prepareRecordForStop` → `dispose`), nothing settled them here at
+      // all: they were abandoned mid-flight and left running forever in every
+      // client. Before `session.exited`, which closes their cards as
+      // "Stopped" (`background-tasks-store.ts`) and would take the honest
+      // terminal with it.
+      record.toolUpdateSupervisor.settleUnresolvedAtSessionEnd();
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
