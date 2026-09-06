@@ -75,19 +75,15 @@ beforeEach(() => {
   mockConfigLoader.loadSkill.mockReset();
   // Reads the real `skill.json` when one exists, so the install-record
   // fallback path is exercised against the same bytes `saveSkill` wrote rather
-  // than an invented shape.
+  // than an invented shape — and REFUSES when one does not, which is what
+  // production does: `loadSkillConfig` throws `Skill '<name>' not found` for a
+  // missing `<home>/skills/<name>/skill.json`. It used to answer a fabricated
+  // config instead, which is why the project-scoped detail read (#1602) looked
+  // like a wrong origin here while production 404'd the pane outright.
   mockConfigLoader.loadSkill.mockImplementation(async (name: string) => {
     const configPath = join(testDir, 'skills', name, 'skill.json');
-    if (existsSync(configPath)) {
-      return JSON.parse(readFileSync(configPath, 'utf-8'));
-    }
-    return {
-      name,
-      description: '',
-      source: 'local',
-      installedAt: '',
-      path: join(testDir, 'skills', name),
-    };
+    if (!existsSync(configPath)) throw new Error(`Skill '${name}' not found`);
+    return JSON.parse(readFileSync(configPath, 'utf-8'));
   });
   service = new SkillService(mockConfigLoader as any, mockLogger);
 });
@@ -1002,18 +998,100 @@ describe('SkillService', () => {
     expect(service.listSkills()[0].origin).toBe('project');
   });
 
-  // The same correction at the DETAIL fold, which is a second reader of the
-  // same field and is where the two diverge if only one is fixed. Asserted in
-  // the negative direction, on the machine root, because that is the direction
-  // this harness can supply: `ConfigLoader.loadSkill` resolves
-  // `<home>/skills/<name>` with NO project slug (`loadSkillConfig` ->
-  // `resolveSkillDirectory(projectHomeDir, name)`), so for a project-scoped
-  // skill `getSkill` THROWS `Skill '<name>' not found` — `loadSkillConfig`
-  // raises on the missing path and the call sits outside `getSkill`'s try, so
-  // it never reaches `fromInstallRecordOnly` either. Pre-existing and outside
-  // this change; filed as #1602. What is asserted here is that the correction
-  // runs at this fold and does not over-correct a genuinely machine-wide skill
-  // into a workspace one.
+  // #1602. THE detail read for a skill that exists only under the project
+  // root. `ConfigLoader.loadSkill` resolves `<home>/skills/<name>` with no
+  // project slug (`loadSkillConfig` -> `resolveSkillDirectory(home, name)`), so
+  // this read used to raise `Skill '<name>' not found` — outside `getSkill`'s
+  // try, so it never reached `fromInstallRecordOnly` either — and the route
+  // answered 404 for a name the listing shows. `getSkill` now resolves the
+  // record beside the body discovery found.
+  test('a project-only skill has a detail read, from its own record', async () => {
+    const dir = join(testDir, 'projects', 'demo', 'skills', 'workspace-only');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      '---\nname: workspace-only\ndescription: Workspace copy\ntags:\n  - scoped\n---\nWorkspace body',
+      'utf-8',
+    );
+    // The shape a workspace package on disk actually has: its own record,
+    // beside its own body, recording the pre-`project` `user` origin every
+    // writer stamped (see the correction above).
+    writeFileSync(
+      join(dir, 'skill.json'),
+      JSON.stringify({
+        name: 'workspace-only',
+        description: 'Workspace copy',
+        source: 'local',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        path: dir,
+        origin: 'user',
+      }),
+      'utf-8',
+    );
+    await service.discoverSkills(testDir, 'demo');
+
+    const detail = await service.getSkill('workspace-only');
+
+    expect(detail.origin).toBe('project');
+    expect(detail.path).toBe(dir);
+    expect(detail.body).toBe('Workspace body');
+    expect(detail.tags).toEqual(['scoped']);
+    // Its own `SKILL.md` was read, so nothing is being shown from a stale
+    // mirror — the install-record-only answer is what this used to degrade to
+    // once the throw was gone.
+    expect(detail.declarationsDiagnostic).toBeUndefined();
+    // The list already knew all of this; the point is that the detail no longer
+    // knows less than the list.
+    expect(service.listSkills()[0]).toMatchObject({
+      name: 'workspace-only',
+      origin: 'project',
+      path: dir,
+    });
+  });
+
+  // #1602 precedence, PINNED rather than changed. `discoverSkills` scans the
+  // project root FIRST and `<home>/skills` after it, and a later registration
+  // wins the name — so a name present in both roots is the machine-wide
+  // package, in the listing and now in the detail read that resolves from the
+  // same location.
+  test('a name in both roots reads as the machine-wide package', async () => {
+    await service.createLocalSkill(
+      { name: 'dup', description: 'Machine copy', body: 'Machine body' },
+      testDir,
+    );
+    const projectDir = join(testDir, 'projects', 'demo', 'skills', 'dup');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, 'SKILL.md'),
+      '---\nname: dup\ndescription: Workspace copy\n---\nWorkspace body',
+      'utf-8',
+    );
+    writeFileSync(
+      join(projectDir, 'skill.json'),
+      JSON.stringify({
+        name: 'dup',
+        description: 'Workspace copy',
+        source: 'local',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        path: projectDir,
+        origin: 'user',
+      }),
+      'utf-8',
+    );
+    await service.discoverSkills(testDir, 'demo');
+
+    const detail = await service.getSkill('dup');
+
+    expect(detail.description).toBe('Machine copy');
+    expect(detail.body).toBe('Machine body');
+    expect(detail.path).toBe(join(testDir, 'skills', 'dup'));
+    expect(detail.origin).toBe('user');
+  });
+
+  // The same `user` -> `project` correction at the DETAIL fold, which is a
+  // second reader of the same field and is where the two diverge if only one is
+  // fixed. Asserted here in the negative direction: the correction must not
+  // over-correct a genuinely machine-wide skill into a workspace one.
   test('the detail fold leaves a machine-wide user record alone', async () => {
     await service.createLocalSkill(
       { name: 'machine-wide', description: 'Mine', body: 'Body' },
@@ -1031,11 +1109,12 @@ describe('SkillService', () => {
     expect((await service.getSkill('machine-wide')).origin).toBe('user');
   });
 
-  // Delta-review L3. The write path corrects the record too. Reaching it needs
-  // the one shape that exists: a project-scoped package whose NAME also exists
-  // machine-wide, because `updateLocalSkill` opens with `getSkill(name)` and
-  // that read resolves without the slug (#1602) — without the machine copy it
-  // throws before any write. Disclosed: no route passes a slug today
+  // Delta-review L3. The write path corrects the record too. The shape here is
+  // a project-scoped package whose NAME also exists machine-wide, which is what
+  // `updateLocalSkill`'s opening `getSkill(name)` used to need to resolve at all
+  // (#1602 — now fixed, so a project-only package reaches this heal too; kept
+  // as written because the duplicate-name case is the one that pins which
+  // record the read picks). Disclosed: no route passes a slug today
   // (`routes/agents/skills.ts:185` calls `updateLocalSkill(name, updates,
   // getProjectHomeDir())`), so this heal is reachable from the service only.
   test('updating a project-scoped skill heals a stale user record', async () => {
@@ -1256,9 +1335,30 @@ describe('SkillService', () => {
     for (const name of ['zebra-skill', 'alpha-skill']) {
       const dir = join(testDir, 'skills', name);
       mkdirSync(dir, { recursive: true });
+      // Hand-authored BODIES, because the write path refuses the second claim
+      // outright (`assertSkillCommandAllowed`) — a clash only exists on disk.
       writeFileSync(
         join(dir, 'SKILL.md'),
         `---\nname: ${name}\ndescription: D\ncommand:\n  enabled: true\n  name: "ship"\n---\nBody`,
+      );
+      // …each with the install record a real package has, so the detail
+      // assertion below has a record to read. Disclosed, and not this test's
+      // subject: a DISCOVERED package with no `skill.json` at all has no detail
+      // read in either root — `getSkill` has no record beside the body and
+      // `configLoader.loadSkill` has none to re-derive, so the pane 404s for a
+      // name the list shows. Same class as #1602, in the recordless direction;
+      // filed as #1614. This harness used to answer a fabricated config there,
+      // which is what made that gap invisible.
+      writeFileSync(
+        join(dir, 'skill.json'),
+        JSON.stringify({
+          name,
+          description: 'D',
+          source: 'local',
+          installedAt: '2026-01-01T00:00:00.000Z',
+          path: dir,
+        }),
+        'utf-8',
       );
     }
     await service.discoverSkills(testDir);

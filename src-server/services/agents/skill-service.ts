@@ -633,7 +633,7 @@ export class SkillService {
             version = JSON.parse(readFileSync(metaPath, 'utf-8')).version;
           } catch {}
         }
-        const skillJsonPath = join(dirname(skill.location), 'skill.json');
+        const skillJsonPath = this.installRecordPath(skill.location);
         if (existsSync(skillJsonPath)) {
           try {
             const config = JSON.parse(readFileSync(skillJsonPath, 'utf-8'));
@@ -925,8 +925,15 @@ export class SkillService {
         ...(variables.length > 0 ? { variables } : {}),
       };
     }
-    const config = await this.configLoader.loadSkill(name);
-    const skillPath = join(config.path, 'SKILL.md');
+    const config = await this.loadInstallRecord(name, registered?.location);
+    // The body DISCOVERY found, when it found one. `config.path` is the
+    // record's own claim about where its package sits, which is the right
+    // answer only when there is nothing better — a record whose path has gone
+    // stale, or which never carried one, is not the authority on where the
+    // file is (and a project-scoped record written by an older build carries a
+    // path nobody re-derives). Same directory as the record above, so the two
+    // halves of this answer cannot come from two different packages.
+    const skillPath = registered?.location ?? join(config.path, 'SKILL.md');
     if (!existsSync(skillPath)) {
       // The mirror is the ONLY thing left to read, so say so. A silent
       // fallback is what let a `command` deleted from SKILL.md keep answering
@@ -981,9 +988,8 @@ export class SkillService {
         origin:
           this.recordedOriginAgainstPath(
             readSkillOrigin(config.origin),
-            registered?.location ?? skillPath,
-          ) ??
-          this.deriveOrigin(registered?.location ?? skillPath, config.source),
+            skillPath,
+          ) ?? this.deriveOrigin(skillPath, config.source),
       };
     } catch (error) {
       return this.fromInstallRecordOnly(
@@ -1756,6 +1762,46 @@ export class SkillService {
         location.startsWith(source.root),
       ) ?? null
     );
+  }
+
+  /** THE one place a discovered skill's install record is located: beside its body. */
+  private installRecordPath(location: string): string {
+    return join(dirname(location), 'skill.json');
+  }
+
+  /**
+   * The install record behind a DETAIL read, resolved from where discovery
+   * found the skill rather than re-derived from its name.
+   *
+   * `configLoader.loadSkill(name)` resolves `<home>/skills/<name>` with no
+   * project slug (`loadSkillConfig` -> `resolveSkillDirectory(home, name)`),
+   * so a skill that lives only under `<home>/projects/<slug>/skills/<name>`
+   * never reached its own record: `getSkill` threw `Skill '<name>' not found`
+   * for a name `listSkills()` shows, and the detail pane 404'd (#1602). The
+   * registry already holds the location the discovery walk used, and
+   * `skillRecords()` reads the record from exactly that directory — this is
+   * the same read through the same `installRecordPath`, so the listing and the
+   * detail cannot disagree about which record a name has.
+   *
+   * PRECEDENCE IS DISCOVERY'S, UNCHANGED. `discoverSkills` scans the project
+   * root first and `<home>/skills` after it, and a later registration wins the
+   * name, so a skill present in both roots resolves to the machine-wide
+   * package here exactly as it does in the listing.
+   *
+   * The name never becomes a path here: `location` came from scanning the
+   * filesystem, not from a caller. A skill discovery never saw at all — its
+   * `SKILL.md` is missing, so this answer is the record alone — still resolves
+   * through `configLoader`, which asserts the name and owns that derivation.
+   */
+  private async loadInstallRecord(
+    name: string,
+    location: string | undefined,
+  ): Promise<SkillConfig> {
+    const recordPath = location ? this.installRecordPath(location) : undefined;
+    if (recordPath && existsSync(recordPath)) {
+      return JSON.parse(await readFile(recordPath, 'utf-8')) as SkillConfig;
+    }
+    return this.configLoader.loadSkill(name);
   }
 
   private getScriptToolDefs(
