@@ -7,9 +7,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
 import { EventStore } from '../../orchestration/event-store.js';
+import { AgentPluginLoader } from '../agent-plugin-loader.js';
 import { computePluginContentDigest } from '../plugin-content-integrity.js';
 import {
   captureLocalPluginInstallation,
@@ -42,11 +43,19 @@ function collisionFixture() {
       version: '1.0.0',
     }),
   );
-  const original = { a: Buffer.from('x\0b\0file\0y'), 'plugin.json': manifest };
+  const skill = Buffer.from(
+    '---\nname: review\ndescription: Review retained content.\n---\nUse retained source evidence.\n',
+  );
+  const original = {
+    a: Buffer.from('x\0b\0file\0y'),
+    'plugin.json': manifest,
+    'skills/review/SKILL.md': skill,
+  };
   const replacement = {
     a: Buffer.from('x'),
     b: Buffer.from('y'),
     'plugin.json': manifest,
+    'skills/review/SKILL.md': skill,
   };
   // Regression-only reproduction of the retired format; never a production fallback.
   const legacy = (files: Record<string, Buffer>) => {
@@ -59,8 +68,10 @@ function collisionFixture() {
   expect(legacy(replacement)).toBe(oldDigest);
   const source = join(root, 'source');
   mkdirSync(source);
-  for (const [path, bytes] of Object.entries(replacement))
+  for (const [path, bytes] of Object.entries(replacement)) {
+    mkdirSync(dirname(join(source, path)), { recursive: true });
     writeFileSync(join(source, path), bytes);
+  }
   return { root, source, oldDigest, replacement };
 }
 
@@ -69,8 +80,10 @@ test('legacy bound approvals are withheld under v2 without rewriting grants or d
   const plugins = join(f.root, 'plugins'),
     installed = join(plugins, 'framing-fixture');
   mkdirSync(installed, { recursive: true });
-  for (const [path, bytes] of Object.entries(f.replacement))
+  for (const [path, bytes] of Object.entries(f.replacement)) {
+    mkdirSync(dirname(join(installed, path)), { recursive: true });
     writeFileSync(join(installed, path), bytes);
+  }
   const grantsPath = join(f.root, 'plugin-grants.json');
   const grants = JSON.stringify({
     'framing-fixture': {
@@ -128,6 +141,28 @@ test('a legacy managed-journal digest cannot admit retained runtime code and is 
   expect(
     capturePluginRuntimeArtifact(plugins, 'framing-fixture', journal),
   ).not.toBeNull();
+  const loader = new AgentPluginLoader({
+    projectHomeDir: f.root,
+    journal: () => journal,
+  });
+  expect(loader.listInstalled()[0]?.skills.map((skill) => skill.name)).toEqual([
+    'review',
+  ]);
+  expect(loader.skillSources()[0]?.isCurrent?.()).toBe(true);
+  const skillSource = loader.skillSources()[0]!;
+  const skillPath = join(
+    capture.root.packageRoot,
+    'skills',
+    'review',
+    'SKILL.md',
+  );
+  const originalSkill = readFileSync(skillPath);
+  writeFileSync(
+    skillPath,
+    '---\nname: review\ndescription: Changed without approval.\n---\nChanged content.\n',
+  );
+  expect(skillSource.isCurrent?.()).toBe(false);
+  writeFileSync(skillPath, originalSkill);
   // Simulate a record produced by the previous binary, preserving physical code/data.
   const legacy = journal.recordInstallation({
     pluginId: 'framing-fixture',
@@ -148,6 +183,9 @@ test('a legacy managed-journal digest cannot admit retained runtime code and is 
   expect(
     capturePluginRuntimeArtifact(plugins, 'framing-fixture', journal),
   ).toBeNull();
+  expect(loader.listInstalled()).toEqual([]);
+  expect(loader.skillSources()[0]?.excludeOnly).toBe(true);
+  expect(loader.skillSources()[0]?.isCurrent?.()).toBe(false);
   expect(journal.currentInstallation('framing-fixture')).toEqual({
     state: 'observed',
     installation: legacy.installation,
