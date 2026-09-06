@@ -183,6 +183,47 @@ function renderForkModal(
   return onSelect;
 }
 
+test('late project context preserves the preferred fork Agent', () => {
+  selectionModelState.agents = [
+    { ...AGENT, slug: 'other', name: 'Other' },
+    AGENT,
+  ];
+  const props = {
+    agents: selectionModelState.agents,
+    activeProjectSlug: 'dev',
+    onSelect: vi.fn(),
+    onClose: vi.fn(),
+    mode: {
+      kind: 'fork' as const,
+      preferredAgentSlug: 'assistant',
+      sourceModel: 'historical-source-model',
+      disclosure: 'Fork independently',
+    },
+  };
+  const view = render(<NewChatModal {...props} projects={[]} />);
+  const source = () =>
+    document.querySelector('button[data-agent-slug="assistant"]')!;
+  expect(source().className).toContain('new-chat-modal__agent--selected');
+  view.rerender(
+    <NewChatModal
+      {...props}
+      projects={[
+        {
+          id: 'dev',
+          slug: 'dev',
+          name: 'Dev',
+          description: '',
+          workingDirectory: '/workspace/dev',
+          hasWorkingDirectory: true,
+          layoutCount: 0,
+          hasKnowledge: false,
+        },
+      ]}
+    />,
+  );
+  expect(source().className).toContain('new-chat-modal__agent--selected');
+});
+
 function clickAgent(slug: string) {
   // Two buttons carry the agent's accessible name (the row and its model
   // configurator); target the row by its slug attribute.
