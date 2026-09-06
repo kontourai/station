@@ -1360,7 +1360,7 @@ describe('projectRuntimeEventsToMessages', () => {
       const aTools = toolPartsOf(turnA);
       expect(aTools).toHaveLength(1);
       expect(aTools[0]).toMatchObject({ toolCallId: 'call-1', state: 'call' });
-      expect(aTools[0]!.result).toBeUndefined();
+      expect(aTools[0]).not.toHaveProperty('result');
     });
 
     // Fix round (M3): a reused call id must not evict the earlier turn's
