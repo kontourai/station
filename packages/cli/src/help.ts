@@ -889,6 +889,15 @@ const VERBS: Record<string, VerbSpec> = {
         (operation) => operation !== 'list',
       ),
     ],
+    detail: [
+      'station schedule preview <cron> [count] [--timezone=<iana>]',
+      '',
+      'preview evaluates the expression in --timezone; omitted means UTC,',
+      'which is how the scheduler treats a schedule with no zone. A local',
+      'weekday rule has no correct fixed-UTC spelling, so pass the zone the',
+      'expression is written in or the instants will not be the ones it fires',
+      'at.',
+    ],
   },
   runs: {
     group: 'Core Workspace',

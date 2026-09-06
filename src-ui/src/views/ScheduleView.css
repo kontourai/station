@@ -658,6 +658,16 @@
   color: var(--error-text);
   margin-top: 0.25rem;
 }
+/* The Agent-catalog read's own retry, inline in the field's error line. */
+.schedule__field-retry {
+  border: none;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .schedule__field input,
 .schedule__field textarea,
 .schedule__field select {
@@ -1160,6 +1170,17 @@
 
 .agent-picker__option--selected {
   background: var(--bg-highlight);
+}
+
+/* An eligible Agent that cannot run right now stays visible and refuses the
+   click, because its reason is the only thing that says what to fix. */
+.agent-picker__option:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.agent-picker__option-reason {
+  color: var(--warning-text);
 }
 
 .agent-picker__option:hover:not(.agent-picker__option--selected) {

@@ -221,10 +221,17 @@ export function ScheduleJobsTable({
                       <div>{formatSchedule(schedule)}</div>
                       {schedule.kind === 'cron' && (
                         <div className="schedule__cron-human-inline">
-                          {cronToHuman(
-                            schedule.expr,
-                            job.nextRun ? new Date(job.nextRun) : undefined,
-                          ) || ''}
+                          {/* #1536 D1/R1: this is the RULE, so it reads in the
+                              zone the expression is written in — not the
+                              reader's offset applied to a UTC assumption. The
+                              "Next Fire" column is an INSTANT and reads in the
+                              reader's zone with a short zone label
+                              (`localTime`), which is the panel's one convention
+                              for instants. Two kinds of fact, each labelled, so
+                              neither is mistaken for the other. */}
+                          {cronToHuman(schedule.expr, {
+                            timezone: schedule.timezone,
+                          }) || ''}
                         </div>
                       )}
                     </td>
