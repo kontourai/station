@@ -339,6 +339,23 @@ export const LANES = Object.freeze([
       'Full static Vitest pass (trigger: diagnostic). Scope: the resource-profiled Vitest corpus plus the serialized dogfood-reconcile corpus. The package bundle group mutates packages/cli/dist/. Evidence: diagnostic. Invalidation: command-only.',
   }),
   Object.freeze({
+    id: 'test-full-audit',
+    command: 'npm run test:full:audit',
+    publicScript: 'test:full:audit',
+    privateScript: 'test:full:audit:raw',
+    class: LANE_CLASSES.INTEGRATION,
+    completion: false,
+    diagnostic: true,
+    weight: 80,
+    timeoutMs: 20 * 60_000,
+    ownedOutputs: Object.freeze(['packages/cli/dist/']),
+    manifest: MANIFEST_NONE,
+    trigger: 'repository-wide diagnostic audit',
+    scope: 'complete Vitest corpus, retaining independent failures',
+    description:
+      'Diagnostic keep-going corpus. Assertion failures remain failures; cancellation and unsafe cleanup stop the run.',
+  }),
+  Object.freeze({
     id: 'test-coverage',
     command: 'npm run test:coverage',
     publicScript: 'test:coverage',

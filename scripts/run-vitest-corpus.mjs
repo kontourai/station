@@ -416,7 +416,7 @@ export function emitResult(result) {
   }
 }
 
-/** Fail fast, preserving the historical test:full behavior after a failure. */
+/** Default fail-fast; audits can collect independent failures without claiming a pass. */
 export async function runVitestCorpus({
   root = process.cwd(),
   groups,
@@ -427,6 +427,7 @@ export async function runVitestCorpus({
   onResult = emitResult,
   groupName,
   shard,
+  keepGoing = false,
 } = {}) {
   if (signal?.aborted) {
     const result = terminalFailure(
@@ -464,12 +465,32 @@ export async function runVitestCorpus({
         : await runGroup(descriptor, files, { root, signal });
     results.push(result);
     onResult?.(result);
-    if (!result.passed) return { passed: false, results };
+    if (
+      !result.passed &&
+      (!keepGoing || result.cancelled || result.error || result.status !== 1)
+    ) {
+      return { passed: false, results };
+    }
   }
-  return { passed: results.length === descriptors.length, results };
+  return {
+    passed:
+      results.length === descriptors.length &&
+      results.every((result) => result.passed),
+    results,
+  };
 }
 
 export function parseVitestCorpusArguments(args) {
+  if (args.includes('--keep-going')) {
+    if (args.filter((argument) => argument === '--keep-going').length !== 1)
+      throw new Error('usage: --keep-going may be supplied once');
+    return {
+      ...parseVitestCorpusArguments(
+        args.filter((argument) => argument !== '--keep-going'),
+      ),
+      keepGoing: true,
+    };
+  }
   if (args.length === 0) return {};
   if (args.length > 2)
     throw new Error(

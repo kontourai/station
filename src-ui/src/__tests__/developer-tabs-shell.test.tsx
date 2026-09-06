@@ -156,6 +156,8 @@ describe('Developer tabs render exactly one h1 (station#2645)', () => {
       expect(h1s.length).toBe(1);
       expect(h1s[0].textContent).toBe(name);
       expect(h1s[0].classList.contains('page__title')).toBe(true);
+      if (name === 'Telemetry')
+        expect(screen.getByTestId('embedded-view')).toBeTruthy();
       // The tab body itself contributes none.
       expect(container.querySelectorAll('.page-frame__body h1').length).toBe(0);
     });

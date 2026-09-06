@@ -581,3 +581,45 @@ describe('Vitest corpus runner', () => {
     expect(result.results).toHaveLength(14);
   });
 });
+
+it('audit mode runs every independent group and retains every failure', async () => {
+  const calls: string[] = [];
+  const result = await runVitestCorpus({
+    groups: GROUPS,
+    platform: 'linux',
+    keepGoing: true,
+    onResult: () => {},
+    runGroup: async (group) => {
+      calls.push(group.resultName ?? group.name);
+      const failed = ['ordinary-1-of-8', 'process-heavy'].includes(
+        group.resultName ?? group.name,
+      );
+      return { name: group.name, passed: !failed, status: failed ? 1 : 0 };
+    },
+  });
+  expect(calls).toContain('dogfood-reconcile');
+  expect(result.results.filter((row) => !row.passed)).toHaveLength(2);
+  expect(result.passed).toBe(false);
+});
+it('audit mode stops on unsafe cleanup or cancellation', async () => {
+  const result = await runVitestCorpus({
+    groups: GROUPS,
+    platform: 'linux',
+    keepGoing: true,
+    onResult: () => {},
+    runGroup: async (group) => ({
+      name: group.name,
+      passed: false,
+      status: 1,
+      error: 'owned child did not settle',
+    }),
+  });
+  expect(result.results).toHaveLength(1);
+  expect(result.passed).toBe(false);
+  expect(parseVitestCorpusArguments(['--keep-going'])).toEqual({
+    keepGoing: true,
+  });
+  expect(() =>
+    parseVitestCorpusArguments(['--keep-going', '--keep-going']),
+  ).toThrow(/usage/);
+});

@@ -182,6 +182,8 @@
     "test:load-reliability": "node scripts/run-load-reliability.mjs",
     "test:timing-reliability": "node scripts/run-timing-reliability.mjs",
     "test:full": "node scripts/run-verification.mjs request test-full",
+    "test:full:audit": "node scripts/run-verification.mjs request test-full-audit",
+    "test:full:audit:raw": "node scripts/run-vitest-corpus.mjs --keep-going",
     "test:full:raw": "node scripts/run-vitest-corpus.mjs",
     "test:full:ordinary:1:raw": "node scripts/run-vitest-corpus.mjs --group=ordinary --shard=1/8",
     "test:full:ordinary:2:raw": "node scripts/run-vitest-corpus.mjs --group=ordinary --shard=2/8",

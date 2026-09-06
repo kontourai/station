@@ -179,6 +179,7 @@ describe('lane catalog identity', () => {
       'test-changed',
       'prepush',
       'test-full',
+      'test-full-audit',
       'test-coverage',
       'verify-static',
       'verify-local',

@@ -7,6 +7,11 @@ complexity, and duplication analyses. It also records a byte-hashed inventory
 of tracked and unignored code/configuration, including native files. The normal
 `npm run fallow:audit` command is a changed-file review, not a full-tree audit.
 
+`npm run test:full:audit` is the coordinated full-corpus diagnostic that continues
+after independent assertion failures. It retains a failing verdict and stops on
+cancellation, truncated output, or unsafe process cleanup. The ordinary
+`npm run test:full` retains its fail-fast behavior. Neither is promotion evidence.
+
 Read `.kontourai/veritas/external/fallow-audit.json` and its linked raw reports.
 A missing metric or incomplete tool invocation is an error, never zero findings.
 The inventory does not follow symbolic links. Analyzer configuration, supported
@@ -599,6 +604,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `test-changed` | `npm run test:changed` | per-edit local feedback | Vitest related imports + dynamic-boundary edges | changed-scope selector | diagnostic | test-impact manifest |
 | `prepush` | `npm run test:prepush` | pre-push / focused floor | prepare:verify-static + prepush test tier | focused floor | diagnostic | prepush test-group manifest |
 | `test-full` | `npm run test:full` | diagnostic full corpus | resource-profiled Vitest corpus + dogfood-reconcile | static / integration | diagnostic | command only |
+| `test-full-audit` | `npm run test:full:audit` | repository-wide diagnostic audit | complete Vitest corpus, retaining independent failures | static / integration | diagnostic | command only |
 | `test-coverage` | `npm run test:coverage` | explicit coverage / risk | serialized coverage corpus + dogfood-reconcile | static / integration | diagnostic | command only |
 | `verify-static` | `npm run verify:static` | diagnostic static gate | node-runtime, naming, UI-contract, platform, workflow ratchets, lint, typecheck | static / integration | diagnostic | command only |
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
