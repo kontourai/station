@@ -3,29 +3,6 @@
   display: inline-flex;
 }
 
-.layout-switcher__trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  color: var(--text-primary);
-  font-size: var(--text-md);
-  cursor: pointer;
-}
-
-.layout-switcher__trigger:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-primary);
-}
-
-.layout-switcher__chevron {
-  font-size: 9px;
-  color: var(--text-muted);
-}
-
 .layout-switcher__icon {
   font-size: var(--text-md);
 }

@@ -243,6 +243,10 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   retries: 0,
   isolation: 'temp-home-and-dynamic-loopback-ports',
   flakePolicy: 'fail-and-fix-no-retry',
+  requiredObservations: [320, 390, 412].map((width) => ({
+    path: 'tests/cross-runtime-chat-switching.spec.ts',
+    title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
+  })),
   journeys: [
     {
       path: 'tests/csp-shell.spec.ts',
@@ -293,8 +297,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'browser-local page.route mocks installed through tests/helpers/daily-driver-shell.ts; no live-instance or child-process resources',
     'tests/activity-pane.spec.ts':
       'read-only against the isolated temp-home instance; the only write is this browser context’s own ambient dock document in localStorage, and every journey ends with the slot returned to Chat',
-    'tests/dock-occupant-picker.spec.ts':
-      'read-only against the isolated temp-home instance; the only writes are this browser context’s own ambient dock document in localStorage and a browser-local config/app route mock pinning the first-run fact',
   },
   parallelSafe: [
     'tests/toolbar-reachability.spec.ts',
@@ -353,7 +355,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/root-route-restore.spec.ts',
     'tests/task-first-home.spec.ts',
     'tests/activity-pane.spec.ts',
-    'tests/dock-occupant-picker.spec.ts',
     'tests/connections-sections.spec.ts',
     'tests/connections-computers-ssh.spec.ts',
   ],
@@ -668,16 +669,6 @@ export const e2eManifest = [
     primary: true,
     rationale:
       "Epic station#4142 M3 (station#3193): /?surface=activity is the canonical DEEP LINK to the Activity Workspace Pane — the sessions surface reached through the pane path, which is what puts a real 'Dock this pane' in the page header's actions slot. station#928 retired the /activity route in favour of this link; the redirect that keeps stored links working is unit-covered, and this journey drives the destination. The journey docks Activity into the ambient slot (the dock-slot section labeled 'Activity dock'), proves the choice survives a reload through the persisted ambient document (localStorage carries pane:builtin:activity), and returns the slot to Chat from the dock-slot header, with Chat back as a direct shell child. Every assertion names an affordance that must exist, so the deep link silently ceasing to produce the pane occurrence fails by name. Desktop plus a 390x844 isMobile variant asserting no horizontal document scroll before and after docking and a 44px return-to-Chat target.",
-    exceptions: [],
-  },
-  {
-    path: 'tests/dock-occupant-picker.spec.ts',
-    bucket: 'product',
-    surface: 'Activity',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      "Epic station#4142 M5 (station#4090): the dock-slot header's fixed return-to-Chat action is replaced by an occupant picker whose menu is the ambient admission DERIVATION ({Chat, Home, Activity}, by descriptor name, current occupant checked), and route placements render an away state while their pane occupies the dock. The journeys pin the transition most likely to be wrong (choosing Activity clears the Home away state on `/`), the 'Bring it back here' return path (route pane back, dock back to Chat), the menu opening UPWARD within the viewport on a bottom dock (measured box — Playwright calls an off-screen menu visible), and a 390x844 isMobile variant asserting no horizontal scroll and 44px trigger/menu-item tap targets. Every assertion names an affordance that must exist, so a curated menu, a resurrected fixed Chat action, or a stuck away state fails by name.",
     exceptions: [],
   },
   {

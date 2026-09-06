@@ -2093,7 +2093,14 @@ async function main() {
 
     const retries =
       suite === 'pr-smoke' ? PR_BROWSER_SMOKE_CONTRACT.retries : 0;
-    const reporter = process.env.PW_REPORTER || 'line';
+    const criticalSmoke =
+      suite === 'pr-smoke' &&
+      !grep &&
+      specs.length === PR_BROWSER_SMOKE_CONTRACT.journeys.length;
+    const reporter = [
+      process.env.PW_REPORTER || 'line',
+      ...(criticalSmoke ? ['./scripts/critical-browser-reporter.mjs'] : []),
+    ].join(',');
     const phases =
       suite === 'product'
         ? getProductE2EExecutionPhases(specs)
@@ -2148,6 +2155,13 @@ async function main() {
             ...establishedUserPlaywrightEnv(suite),
             CLAUDE_CONFIG_DIR: claudeConfigDir,
             STATION_E2E_UI_DIR: join(process.cwd(), `dist-ui-${instance}`),
+            STATION_CRITICAL_BROWSER_REPORT: criticalSmoke
+              ? join(
+                  process.cwd(),
+                  '.kontourai/browser-evidence',
+                  `${instance}.json`,
+                )
+              : undefined,
             STATION_E2E_OUTPUT_DIR: outputRoot,
           },
         },

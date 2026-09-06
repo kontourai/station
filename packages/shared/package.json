@@ -45,6 +45,7 @@
     "./portability": "./src/portability.ts",
     "./ports": "./src/ports.ts",
     "./redaction": "./src/redaction.ts",
+    "./tool-request-preview": "./src/tool-request-preview.ts",
     "./return-focus": "./src/return-focus.ts",
     "./temp-dir": "./src/temp-dir.ts",
     "./fs-windows-compat": "./src/fs-windows-compat.ts",

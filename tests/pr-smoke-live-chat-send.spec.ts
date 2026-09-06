@@ -1,6 +1,7 @@
 import type { Server } from 'node:http';
 import {
   ensureChatDockOpen,
+  waitForAgentRemoved,
   waitForDispatchThroughCapacityRetries,
   waitForSeededAgent,
 } from './helpers/agents-journey';
@@ -74,22 +75,34 @@ test.describe('pr-smoke live chat send', () => {
   let seededAgentSlug = '';
 
   test.afterEach(async ({ authenticatedRequest }) => {
-    if (seededAgentSlug) {
-      await authenticatedRequest.delete(
-        `/agents/${encodeURIComponent(seededAgentSlug)}`,
+    const removedSlug = seededAgentSlug;
+    try {
+      if (removedSlug) {
+        const removal = await authenticatedRequest.delete(
+          `/agents/${encodeURIComponent(removedSlug)}`,
+        );
+        expect(removal.ok() || removal.status() === 404).toBe(true);
+      }
+      const connectionRemoval = await authenticatedRequest.delete(
+        `/api/connections/${FIXTURE_CONNECTION_ID}`,
       );
+      expect(connectionRemoval.ok() || connectionRemoval.status() === 404).toBe(
+        true,
+      );
+      await setConnectionsEnabled(
+        authenticatedRequest,
+        suspended.splice(0),
+        true,
+      );
+      // Accepted writes can precede catalog reconciliation. Settle this owned
+      // fixture before the next live-UI test inherits the shared Station.
+      if (removedSlug)
+        await waitForAgentRemoved(authenticatedRequest, removedSlug);
+    } finally {
       seededAgentSlug = '';
+      await closeFixtureServer(fixtureServer);
+      fixtureServer = null;
     }
-    await authenticatedRequest.delete(
-      `/api/connections/${FIXTURE_CONNECTION_ID}`,
-    );
-    await setConnectionsEnabled(
-      authenticatedRequest,
-      suspended.splice(0),
-      true,
-    );
-    await closeFixtureServer(fixtureServer);
-    fixtureServer = null;
   });
 
   test('a real turn round-trips through POST /api/orchestration/chat into a real model server', async ({

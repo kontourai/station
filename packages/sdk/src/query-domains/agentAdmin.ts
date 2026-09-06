@@ -31,7 +31,10 @@ import {
   useApiQuery,
 } from '../query-core';
 import { agentQueries, isAgentToolsActivatingError } from '../queryFactories';
-import { useTemplatesQuery as useWorkspaceTemplatesQuery } from './acpWorkspace';
+import {
+  connectAndMaterializeACPRegistryEngine,
+  useTemplatesQuery as useWorkspaceTemplatesQuery,
+} from './acpWorkspace';
 
 export type { AgentCreateResult } from '../client/agents';
 
@@ -204,6 +207,27 @@ export function useMaterializeEngineAgentMutation(
     onError: (error, variables) => {
       options?.onError?.(error as Error, variables);
     },
+  });
+}
+
+/** Connect a detected local Engine registry entry, then return its Agent receipt. */
+export function useConnectAndMaterializeEngineMutation(
+  options?: MutationOptions<
+    { data: unknown; created: boolean; warnings?: string[] },
+    string
+  >,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: connectAndMaterializeACPRegistryEngine,
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({ queryKey: ['system-status'] });
+      options?.onSuccess?.(data, variables);
+    },
+    onError: (error, variables) =>
+      options?.onError?.(error as Error, variables),
   });
 }
 

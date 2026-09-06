@@ -754,6 +754,9 @@ class NavigationStore {
     if (slug) {
       this.navigate(`/agents/${slug}`);
     } else {
+      // Clearing the agent returns to `/` and whatever occupies `main` —
+      // not Home by name, which is the region model's `showSurface('home')`
+      // and out of a store's reach (#1523).
       this.navigate('/');
     }
   }
@@ -761,6 +764,8 @@ class NavigationStore {
   setLayoutTab(layoutSlug: string, tabId: string | null) {
     const { selectedProject } = this.state;
     if (!selectedProject) {
+      // No project to route into: fall back to `/`'s occupant, whatever it
+      // is. Same meaning as `setAgent(null)` above (#1523).
       this.navigate('/');
       return;
     }

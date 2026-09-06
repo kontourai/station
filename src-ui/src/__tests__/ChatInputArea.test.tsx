@@ -245,7 +245,7 @@ describe('ChatInputArea', () => {
     expect(props.onInputChange).not.toHaveBeenCalled();
   });
 
-  test('exposes named Agent and Model dialog controls and supports keyboard activation', () => {
+  test('shows selector values while retaining named controls and keyboard activation', () => {
     const onOpenAgentHandoff = vi.fn();
     const agentHandoffTriggerRef = createRef<HTMLButtonElement>();
     renderChatInputArea({
@@ -258,17 +258,17 @@ describe('ChatInputArea', () => {
     const agent = screen.getByRole('button', {
       name: 'Agent: Codex reviewer. Change Agent',
     });
-    expect(agent.textContent).toContain('Agent');
-    expect(agent.textContent).toContain('Codex reviewer');
-    expect(agent.textContent).toContain('⌄');
+    expect(agent.textContent).toBe('Codex reviewer');
+    expect(agent.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    expect(agent.title).toBe('Agent: Codex reviewer. Change Agent');
     expect(agentHandoffTriggerRef.current).toBe(agent);
     expect(agent.getAttribute('aria-haspopup')).toBe('dialog');
     expect(
       screen.getByRole('button', { name: /^Model:/ }).textContent,
-    ).toContain('Model');
+    ).not.toContain('Model');
     expect(
-      screen.getByRole('button', { name: /^Model:/ }).textContent,
-    ).toContain('⌄');
+      screen.getByRole('button', { name: /^Model:/ }).getAttribute('title'),
+    ).toMatch(/^Model:/);
     agent.focus();
     // Browsers synthesize an untrusted click for keyboard activation of a
     // native button; detail=0 distinguishes that path from pointer input.
@@ -290,7 +290,9 @@ describe('ChatInputArea', () => {
     expect(agent.getAttribute('aria-disabled')).toBe('true');
     agent.focus();
     expect(document.activeElement).toBe(agent);
-    expect(agent.title).toBe('Wait for the current turn to finish.');
+    expect(agent.title).toBe(
+      'Agent: Codex reviewer. Wait for the current turn to finish.',
+    );
     fireEvent.click(agent);
     expect(document.activeElement).toBe(agent);
   });
@@ -407,12 +409,52 @@ describe('ChatInputArea', () => {
     });
     expect(modelButton.getAttribute('aria-label')).toContain('OpenCode');
     expect(modelButton.getAttribute('aria-label')).toContain('Big Pickle');
-    expect(modelButton.textContent).toContain('OpenCode');
-    expect(modelButton.textContent).toContain('Big Pickle');
+    expect(modelButton.title).toContain('OpenCode');
+    expect(modelButton.textContent).toBe('Big Pickle');
     // The source moved from a second visible line into the accessible name:
     // that subline is what made this pill two rows tall on a phone, and the
     // override state stays visible via the pill's own variant class.
     expect(modelButton.getAttribute('aria-label')).toContain('agent default');
+  });
+
+  // #1536 B5: the pill is an identity surface. The engine catalog publishes
+  // its default alias as "Default (recommended)" — right on an option, and on
+  // this pill it told the owner nothing while the dock header, Home and the
+  // sidebar named the same session something else.
+  test('names the engine default "Default", keeping the catalog option copy for the accessible name', () => {
+    renderChatInputArea({
+      modelProviderLabel: 'Claude Code',
+      currentModel: 'default',
+      agentDefaultModel: 'default',
+      availableModels: [{ id: 'default', name: 'Default (recommended)' }],
+    });
+
+    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    expect(modelButton.textContent).toContain('Default');
+    expect(modelButton.textContent).not.toContain('recommended');
+    // Nothing is lost: the catalog's own option name still reaches assistive
+    // tech through the accessible name.
+    expect(modelButton.getAttribute('aria-label')).toContain(
+      'Default (recommended)',
+    );
+  });
+
+  test('shows the concrete model an engine default resolved to', () => {
+    renderChatInputArea({
+      currentModel: 'default',
+      agentDefaultModel: 'default',
+      availableModels: [
+        {
+          id: 'default',
+          name: 'Default (recommended)',
+          resolvedModel: 'claude-opus-5',
+        },
+        { id: 'claude-opus-5', name: 'Opus 5', originalId: 'claude-opus-5' },
+      ],
+    });
+
+    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    expect(modelButton.textContent).toContain('Opus 5');
   });
 
   test('offers the model and effort picker without exposing unknown telemetry or "runtime" vocabulary', () => {
@@ -707,7 +749,7 @@ describe('ChatInputArea', () => {
       screen.queryByRole('button', { name: 'Enable full access' }),
     ).toBeNull();
     expect(
-      screen.getByRole('button', { name: /^Approval mode: Ask every time\./ }),
+      screen.getByRole('button', { name: /^Approval mode: Ask first\./ }),
     ).toBeTruthy();
     expect(onApprovalModeChange).not.toHaveBeenCalled();
   });

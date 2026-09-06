@@ -5,6 +5,12 @@ export interface ExternalEngineReadinessProjection {
   engineId: EngineId;
   name: string;
   engineConnectionId?: EngineConnectionId;
+  /**
+   * Registry entry Station can connect on the host after the user chooses it.
+   * Present only for a detected, not-yet-connected Engine; it is not a
+   * connection identity and must not be used as one before installation.
+   */
+  registryEntryId?: string;
   detected: boolean;
   ready: boolean;
   source: string | null;
@@ -12,7 +18,8 @@ export interface ExternalEngineReadinessProjection {
     | 'sign_in_required'
     | 'missing_prerequisites'
     | 'cannot_verify'
-    | 'disabled';
+    | 'disabled'
+    | 'not_connected';
 }
 
 /**

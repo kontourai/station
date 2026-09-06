@@ -25,6 +25,7 @@ const sdkMocks = vi.hoisted(() => ({
 
 const navigationMocks = vi.hoisted(() => ({
   navigate: vi.fn(),
+  showSurface: vi.fn(),
 }));
 
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -35,6 +36,13 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     navigate: navigationMocks.navigate,
   }),
+}));
+
+// #1523: the post-delete landing is the Home surface, revealed through the
+// region command hook, which needs a `RegionModelProvider` this harness does
+// not mount.
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => navigationMocks.showSurface,
 }));
 
 vi.mock('../hooks/useCloseShortcut', () => ({
@@ -184,6 +192,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     sdkMocks.environments = [];
     sdkMocks.environmentsError = false;
     navigationMocks.navigate.mockClear();
+    navigationMocks.showSurface.mockClear();
   });
 
   test('renders through the canonical page-layout root and keeps project settings reachable', () => {
@@ -396,6 +405,22 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       'Station connection was interrupted',
     );
     expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(navigationMocks.navigate).not.toHaveBeenCalled();
+    expect(navigationMocks.showSurface).not.toHaveBeenCalled();
+  });
+
+  test('a deleted project lands on the Home surface by name, not on whatever occupies main (#1523)', async () => {
+    renderProjectSettings();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Project' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() =>
+      expect(navigationMocks.showSurface).toHaveBeenCalledWith('home'),
+    );
+    expect(sdkMocks.deleteProject).toHaveBeenCalledWith('demo');
+    // The project is gone, so there is no "back": Home is meant, and a bare
+    // `navigate('/')` would show `main`'s occupant instead.
     expect(navigationMocks.navigate).not.toHaveBeenCalled();
   });
 
