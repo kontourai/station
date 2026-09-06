@@ -2,8 +2,9 @@
 
 > Status: staged implementation under [#495](https://github.com/kontourai/station/issues/495)
 > and [#580](https://github.com/kontourai/station/issues/580). The initial slice
-> implements a read-only setup preview and AWS template preparation. It does
-> not provision an account, copy setup, enroll credentials, move execution,
+> implements a read-only setup preview, AWS template preparation, and encrypted
+> [Git workspace copies](../guides/workspace-packages.md). It does
+> not provision an account, copy a complete setup, enroll credentials, move execution,
 > or provide a one-click UI. Those are required follow-through, not completed
 > features. The existing private-cloud design remains a single-host baseline.
 
@@ -46,6 +47,15 @@ same narrow preparation contract; registering one does not grant access to
 credentials or execution. Configuration cannot bypass the source and target
 ownership requirements. CloudFormation completion is not application readiness.
 
+## GCP development profile
+
+The `gcp-compute` preview reuses the same bounded inventory and non-transfer
+contract for `e2-micro`, `e2-small`, and `e2-medium`. It does not inspect cloud
+credentials, billing, quotas, or target readiness. GCP template generation is
+not implemented; use the [operator-run development recipe](../../deploy/gcp-dev/README.md)
+for an isolated persistent test host. Provider selection never turns preparation
+into permission to move a home or resume work.
+
 ## AWS development template
 
 Preparation requires an explicit region, instance type, digest-pinned public
@@ -73,10 +83,28 @@ throttle. The 1-GiB `t3.micro` memory budget is not qualified for Station plus
 agent tools. Inspect bootstrap logs and actual container health before using
 the environment; template validation does not prove boot or runtime readiness.
 
+## Initial enrollment decision
+
+The first cloud release uses the existing owner-approved Station pairing flow.
+The operator approves a browser through Station; cloud IAM membership, matching
+email addresses, or a shared signing key do not create application membership.
+Company SSO is deferred to an explicit identity-provider integration. This choice
+does not authorize automatic operator-token injection into browsers or settle
+multi-human membership. The existing pairing lifecycle owns credential custody,
+expiry, replay refusal and revocation. Automatic bootstrap remains outside this
+initial path; [#1513](https://github.com/kontourai/station/issues/1513) tracks the
+remaining identity integration and browser acceptance requirements.
+
 ## Remaining implementation sequence
 
-1. Validate the generated template and boot in an explicitly selected AWS test
-   account/region/budget. Prove private access, image identity, persistence, cost
+The [channel home authority design](channel-home-authority.md) specifies the
+write barriers, conditional ownership transition and cross-process failure
+evidence required for the handoff step. Its storage adapter alone does not
+provide execution fencing.
+
+1. Validate the selected provider preparation and boot in an explicitly selected
+   cloud test account/region/budget. AWS template qualification and GCP host
+   qualification retain separate evidence. Prove private access, image identity, persistence, cost
    visibility, and recovery. Retain portable evidence without credentials.
 2. Add consistent setup packaging and target application. Reuse the existing
    home maintenance and backup primitives where their contracts apply, and the
@@ -87,7 +115,10 @@ the environment; template validation does not prove boot or runtime readiness.
    portable material through an authenticated encrypted mechanism; OS-keychain,
    device-bound, and unsupported engine credentials require sign-in. Never
    include credential payloads in ordinary export documents or templates.
-4. Add the UI to the same operation contract: preview, cost/compatibility review,
+4. Resolve [cloud principal/enrollment authority](https://github.com/kontourai/station/issues/1513)
+   before adding automatic bootstrap. Cloud IAM, host-admin access, and shared
+   signing material do not by themselves define a Station browser principal.
+   Add the UI to the same operation contract: preview, cost/compatibility review,
    target preparation, setup transfer, sign-in, verification, and continuation.
    The first authorized setup may need decisions; a repeat move can be simpler.
 5. Implement durable ownership transfer and supported session continuation.
@@ -99,7 +130,9 @@ the environment; template validation does not prove boot or runtime readiness.
    revocation, plugin lifecycle races, and move-back. Measure real continuation
    with a supported agent before advertising unattended running work.
 
-An account/region/budget decision and real AWS evidence remain outstanding.
+Real AWS qualification remains outstanding. The GCP development profile has a
+separate operator-run qualification path; neither provider can claim a complete
+setup transfer or execution handoff from a healthy empty target.
 The initial preview/template slice must not close #495 or claim live migration.
 
 ## External-team delivery

@@ -1,3 +1,4 @@
+import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
 import type {
   ApprovalAttentionItem,
   AttentionItem,
@@ -23,9 +24,13 @@ import {
 } from '@kontourai/station-sdk';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
-import { useApiBase } from '../../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../../contexts/ApiBaseContext';
 import {
   attentionKindLabel,
+  isAcknowledgeableAttentionItem,
   isApprovalLivePending,
   sessionFailedIdentity,
   sessionFailureCause,
@@ -36,6 +41,8 @@ import {
   navigateToAttentionTarget,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
+import { LazyBoundary } from '../LazyBoundary';
+import { SkeletonList } from '../state';
 import './AttentionCard.css';
 import {
   ACKNOWLEDGE_ATTENTION_ACTION,
@@ -82,7 +89,13 @@ export function AttentionCard({
         </time>
       </header>
       <AttentionAction item={item} />
-      {item.kind !== 'approval' && <DismissAttentionItem item={item} />}
+      {/* #1536 D8: a standing notice is not dismissible — acknowledging the
+          only row that says why chat cannot start would leave the inbox
+          claiming nothing needs you while it still does. One predicate, shared
+          with "Dismiss all" and with the server's own refusal. */}
+      {item.kind !== 'approval' && isAcknowledgeableAttentionItem(item) && (
+        <DismissAttentionItem item={item} />
+      )}
     </article>
   );
 }
@@ -119,11 +132,25 @@ function SessionFailedDetail({ item }: { item: SessionFailedAttentionItem }) {
 function AttentionAction({ item }: { item: AttentionItem }) {
   switch (item.kind) {
     case 'approval':
-      return <ApprovalActions item={item} />;
+      return item.requestReference ? (
+        <ExactRequestAction
+          reference={item.requestReference}
+          openHref={item.openHref}
+        />
+      ) : (
+        <ApprovalActions item={item} />
+      );
     case 'needs_input':
       return <NeedsInputAction item={item} />;
     case 'review_pending':
-      return <OpenSessionAction item={item} />;
+      return item.requestReference ? (
+        <ExactRequestAction
+          reference={item.requestReference}
+          openHref={item.openHref}
+        />
+      ) : (
+        <OpenSessionAction item={item} />
+      );
     case 'session-failed':
       return <SessionFailedAction item={item} />;
     case 'gate-route-back':
@@ -133,7 +160,71 @@ function AttentionAction({ item }: { item: AttentionItem }) {
       return <GateExceptionAction item={item} />;
     case 'device-pairing':
       return <DevicePairingActions item={item} />;
+    // #1536 D8: the requirement's own route out. No secondary action —
+    // the item resolves by configuring a connection, not by answering here.
+    case 'setup-incomplete':
+      return <OpenModelConnectionsLink href={item.openHref} />;
   }
+}
+
+const loadRequestInspection = () =>
+  import('./RequestInspectionDialog').then((module) => ({
+    default: module.RequestInspectionDialog,
+  }));
+
+function ExactRequestAction({
+  reference,
+  openHref,
+}: {
+  reference: AttentionRequestReference;
+  openHref?: string;
+}) {
+  const authority = useHostRequestAuthorityScope();
+  const [selected, setSelected] = useState<{
+    reference: AttentionRequestReference;
+    authority: NonNullable<typeof authority>;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (
+      selected &&
+      (authority?.authorityKey !== selected.authority.authorityKey ||
+        !selected.authority.isCurrent())
+    )
+      setSelected(null);
+  }, [authority, selected]);
+  return (
+    <>
+      <button
+        type="button"
+        className="attention-item__action attention-item__action--primary"
+        onClick={() => {
+          if (!authority?.isCurrent()) {
+            setError('Reconnect to inspect this request.');
+            return;
+          }
+          setError(null);
+          setSelected({ reference: { ...reference }, authority });
+        }}
+      >
+        Inspect request
+      </button>
+      {error ? <p role="alert">{error}</p> : null}
+      {selected ? (
+        <LazyBoundary
+          load={loadRequestInspection}
+          componentProps={{
+            ...selected,
+            openHref,
+            onClose: () => setSelected(null),
+          }}
+          pending={
+            <SkeletonList count={1} label="Opening request inspection" />
+          }
+        />
+      ) : null}
+    </>
+  );
 }
 
 /**
@@ -663,6 +754,14 @@ function OpenFlowConsoleLink({ href }: { href: string }) {
   return (
     <a className="attention-open-link" href={href}>
       Open flow console
+    </a>
+  );
+}
+
+function OpenModelConnectionsLink({ href }: { href: string }) {
+  return (
+    <a className="attention-open-link" href={href}>
+      Open model connections
     </a>
   );
 }

@@ -243,6 +243,10 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   retries: 0,
   isolation: 'temp-home-and-dynamic-loopback-ports',
   flakePolicy: 'fail-and-fix-no-retry',
+  requiredObservations: [320, 390, 412].map((width) => ({
+    path: 'tests/cross-runtime-chat-switching.spec.ts',
+    title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
+  })),
   journeys: [
     {
       path: 'tests/csp-shell.spec.ts',
@@ -293,8 +297,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'browser-local page.route mocks installed through tests/helpers/daily-driver-shell.ts; no live-instance or child-process resources',
     'tests/activity-pane.spec.ts':
       'read-only against the isolated temp-home instance; the only write is this browser context’s own ambient dock document in localStorage, and every journey ends with the slot returned to Chat',
-    'tests/dock-occupant-picker.spec.ts':
-      'read-only against the isolated temp-home instance; the only writes are this browser context’s own ambient dock document in localStorage and a browser-local config/app route mock pinning the first-run fact',
   },
   parallelSafe: [
     'tests/toolbar-reachability.spec.ts',
@@ -353,7 +355,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/root-route-restore.spec.ts',
     'tests/task-first-home.spec.ts',
     'tests/activity-pane.spec.ts',
-    'tests/dock-occupant-picker.spec.ts',
     'tests/connections-sections.spec.ts',
     'tests/connections-computers-ssh.spec.ts',
   ],
@@ -380,6 +381,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // Creates and repairs one invalid plugin directory in the runner-owned
     // temporary home, then removes it and reloads before yielding the server.
     'tests/plugin-rejection-visibility.spec.ts',
+    // Seeds exact historical/current-child events only in the managed temporary home.
+    'tests/workspace-search-exact-message.spec.ts',
     'tests/plugin-system.spec.ts',
     'tests/plugin-dependency-lifecycle.spec.ts',
     'tests/survey-review-workbench.spec.ts',
@@ -388,6 +391,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/external-session-follow.spec.ts',
     'tests/builder-delivery-viewer.spec.ts',
     'tests/meeting-notes.spec.ts',
+    'tests/learning-source.spec.ts',
     'tests/knowledge-library.spec.ts',
     // Both drive the REAL API and mutate shared instance state — the agents
     // lane disables every LLM connection to prove the empty case, the skills
@@ -580,6 +584,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/workspace-search-exact-message.spec.ts',
+    bucket: 'product',
+    surface: 'Workspace search',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real runner-owned EventStore, authenticated runtime and browser: exact historical Session/event selection, old target outside newest history window, canonical text pagination and keyboard focus without current-child substitution or parallel legacy search.',
+    exceptions: [],
+  },
+  {
     path: 'tests/dialog-return-focus.spec.ts',
     bucket: 'product',
     surface: 'Core accessibility',
@@ -655,16 +669,6 @@ export const e2eManifest = [
     primary: true,
     rationale:
       "Epic station#4142 M3 (station#3193): /?surface=activity is the canonical DEEP LINK to the Activity Workspace Pane — the sessions surface reached through the pane path, which is what puts a real 'Dock this pane' in the page header's actions slot. station#928 retired the /activity route in favour of this link; the redirect that keeps stored links working is unit-covered, and this journey drives the destination. The journey docks Activity into the ambient slot (the dock-slot section labeled 'Activity dock'), proves the choice survives a reload through the persisted ambient document (localStorage carries pane:builtin:activity), and returns the slot to Chat from the dock-slot header, with Chat back as a direct shell child. Every assertion names an affordance that must exist, so the deep link silently ceasing to produce the pane occurrence fails by name. Desktop plus a 390x844 isMobile variant asserting no horizontal document scroll before and after docking and a 44px return-to-Chat target.",
-    exceptions: [],
-  },
-  {
-    path: 'tests/dock-occupant-picker.spec.ts',
-    bucket: 'product',
-    surface: 'Activity',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      "Epic station#4142 M5 (station#4090): the dock-slot header's fixed return-to-Chat action is replaced by an occupant picker whose menu is the ambient admission DERIVATION ({Chat, Home, Activity}, by descriptor name, current occupant checked), and route placements render an away state while their pane occupies the dock. The journeys pin the transition most likely to be wrong (choosing Activity clears the Home away state on `/`), the 'Bring it back here' return path (route pane back, dock back to Chat), the menu opening UPWARD within the viewport on a bottom dock (measured box — Playwright calls an off-screen menu visible), and a 390x844 isMobile variant asserting no horizontal scroll and 44px trigger/menu-item tap targets. Every assertion names an affordance that must exist, so a curated menu, a resurrected fixed Chat action, or a stuck away state fails by name.",
     exceptions: [],
   },
   {
@@ -1393,7 +1397,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "#304 regression guard: the dock project-context path's rtl start-truncation must not bidi-reorder leading `~`/`/` glyphs; asserts per-character visual order via Range rects, which only a real browser can see.",
+      "#304 successor guard: the dock project-context row's start-truncated path segment is retired (#1536 F), so its rtl bidi-reordering failure mode is unreachable; this now proves the working directory arrives whole and in its resolved form (`~` or absolute) in the channel that carries it — the project badge's tooltip — and that the retired segment is absent rather than hidden, neither of which a jsdom test can see.",
     exceptions: [],
   },
   {
@@ -1544,6 +1548,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'K5 meeting-notes plugin (mocked /api/knowledge/* routes, mirroring knowledge-onboarding.spec.ts): capture writes a raw transcript record then a provenance-linked compiled record, the Library graph pane renders fixture nodes/edges with a selection detail panel, and the Ask pane returns provenance-linked answer cards plus the honest NO_EMBEDDER_ERROR state.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/learning-source.spec.ts',
+    bucket: 'product',
+    surface: 'Knowledge',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real managed personal root and canonical record APIs, local UI-credential source inspection on desktop/mobile, source-only semantics, and replacement-root refusal; no route mocks or external provider.',
     exceptions: [],
   },
   {

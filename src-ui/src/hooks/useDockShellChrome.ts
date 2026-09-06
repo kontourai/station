@@ -90,7 +90,15 @@ export interface DockShellChrome {
   availableDockSlotPlacements: readonly DockMode[];
   effectiveDockSlotPlacement: DockMode;
   surfaceShortcutId: string;
+  /** Any dock occupant may maximize its region (#928 slice iii). */
   canMaximize: boolean;
+  /**
+   * Whether this instance registers `dock.maximize`. The chord acts on the
+   * registering shell's region only (the registry is last-register-wins and
+   * `DockShell` registers from the shell holding Chat), so a shell that does
+   * not own it must not advertise ⌘M beside its maximize control.
+   */
+  ownsMaximizeShortcut: boolean;
   applyDockSnap: (next: DockSnap) => void;
   commitDesktopBottomHeight: (height: number) => void;
   commitDockPlacement: (mode: DockMode) => void;
@@ -226,12 +234,16 @@ export function useDockShellChrome({
     regionModel && readerRegion
       ? regionModel.regions[readerRegion].visible
       : isDockOpen;
-  // Navigation's `isDockMaximized` is chat's flag (its mirror writes it from
-  // chat's region), so a shell holding another occupant must not read it —
-  // per-region maximize state arrives with the next surface (#928).
   const shellOccupant =
     regionId && regionModel ? regionModel.regions[regionId].occupant : 'chat';
-  const effectiveIsDockMaximized = shellOccupant === 'chat' && isDockMaximized;
+  // Maximize is the REGION's attribute (#928 slice iii, #1385): every shell
+  // reads its own region, whatever it holds. Navigation's `isDockMaximized`
+  // is Chat's mirror of it (the provider writes it from Chat's region), read
+  // only by the model-less mount, where it is all there is.
+  const effectiveIsDockMaximized =
+    regionModel && readerRegion
+      ? regionModel.regions[readerRegion].maximized
+      : isDockMaximized;
   const {
     available: availableDockSlotPlacements,
     effective: effectiveDockSlotPlacement,
@@ -285,11 +297,27 @@ export function useDockShellChrome({
     setActiveProjectSlug,
   ]);
 
+  // A region's persisted size renders (#928 D, closes #1380): with a region
+  // model, the shell's own region seeds the dimension measured along its
+  // edge — height for `bottom`, width for a side — and the legacy keys seed
+  // only the other dimension and the model-less mount. Drag release still
+  // writes the region's size (`setIsDragging` below), and the provider's
+  // mirror keeps Chat's legacy keys in step.
+  const seededRegion =
+    regionModel && readerRegion ? regionModel.regions[readerRegion] : null;
   const [dockHeight, setDockHeightState] = useState(() =>
-    clampDockHeight(settings.chatDockHeight),
+    clampDockHeight(
+      seededRegion && readerRegion === 'bottom'
+        ? seededRegion.size
+        : settings.chatDockHeight,
+    ),
   );
   const [dockWidth, setDockWidthState] = useState(() =>
-    clampDockWidth(settings.chatDockWidth),
+    clampDockWidth(
+      seededRegion && readerRegion !== 'bottom'
+        ? seededRegion.size
+        : settings.chatDockWidth,
+    ),
   );
   const dockHeightRef = useRef(dockHeight);
   const dockWidthRef = useRef(dockWidth);
@@ -346,15 +374,18 @@ export function useDockShellChrome({
     return parseInt(raw, 10) || DOCK_COLLAPSED_HEIGHT;
   }, [isMobile]);
 
+  // Open and maximize are written to the shell's region; the provider's
+  // mirror carries Chat's into navigation. Only the model-less mount writes
+  // navigation directly.
   const setShellDockState = useCallback(
     (open: boolean, maximized: boolean) => {
-      if (regionId && regionModel && shellOccupant !== 'chat') {
-        regionModel.setRegion(regionId, { visible: open });
+      if (regionModel && readerRegion) {
+        regionModel.setRegion(readerRegion, { visible: open, maximized });
         return;
       }
       setDockState(open, maximized);
     },
-    [regionId, regionModel, setDockState, shellOccupant],
+    [readerRegion, regionModel, setDockState],
   );
 
   const applyDockSnap = useCallback(
@@ -424,6 +455,18 @@ export function useDockShellChrome({
   // rare edge case. `focusSession`'s `setDockState(true, lastDockMaximized)`
   // is what actually restores Full later — this is the one caller that must
   // leave `lastDockMaximized` alone.
+  //
+  // With a region model the region's `maximized` is what renders, so it is
+  // restored here too. THE PAIRING IS LOAD-BEARING: for Chat, the region
+  // restore must be accompanied by `collapseMaximizedDock`. The provider's
+  // mirror writes a maximize change only when navigation disagrees with it
+  // (RegionModelContext.tsx); with the URL param already cleared here, the
+  // region's clear is not re-written, and `lastDockMaximized` is left alone.
+  // A region-only restore would reach `setDockState(true, false)` through
+  // the mirror and clobber the memory this method exists to keep (the order
+  // of the two calls within this handler is not what protects it — React
+  // commits both before the mirror effect runs). A non-chat region has no
+  // navigation mirror and only its region to restore.
   const restoreDockToDocked = useCallback(() => {
     const reconciled = snapAfterNavigationRestore(dockSnap);
     if (reconciled) {
@@ -431,12 +474,16 @@ export function useDockShellChrome({
       if (shellOccupant === 'chat') writeDockSnap(reconciled);
     }
     setDockHeight(previousDockHeight);
-    collapseMaximizedDock();
+    if (shellOccupant === 'chat') collapseMaximizedDock();
+    if (regionModel && readerRegion)
+      regionModel.setRegion(readerRegion, { maximized: false });
   }, [
     dockSnap,
     previousDockHeight,
     setDockHeight,
     collapseMaximizedDock,
+    readerRegion,
+    regionModel,
     shellOccupant,
   ]);
 
@@ -565,7 +612,10 @@ export function useDockShellChrome({
 
   // Maximize remains region chrome. The visibility shortcut is registered by
   // `RegionToolbarControls` from the surface registry's metadata, outside all
-  // surface renderers.
+  // surface renderers. The chord acts on the region of the shell that
+  // registered it (`DockShell`: the one holding Chat, since the registry is
+  // last-register-wins); with one region maximized at a time, maximizing it
+  // restores any other (`updateRegion`).
   useKeyboardShortcut(
     'dock.maximize',
     'm',
@@ -574,12 +624,12 @@ export function useDockShellChrome({
     useCallback(() => {
       if (effectiveIsDockMaximized) {
         setDockHeight(previousDockHeight);
-        setDockState(previousDockOpen, false);
+        setShellDockState(previousDockOpen, false);
       } else {
         setPreviousDockHeight(dockHeight);
         setPreviousDockOpen(readerIsDockOpen);
         setDockHeight(window.innerHeight - toolbarHeight);
-        setDockState(true, true);
+        setShellDockState(true, true);
       }
     }, [
       effectiveIsDockMaximized,
@@ -587,7 +637,7 @@ export function useDockShellChrome({
       readerIsDockOpen,
       previousDockHeight,
       previousDockOpen,
-      setDockState,
+      setShellDockState,
       setDockHeight,
       toolbarHeight,
     ]),
@@ -622,9 +672,10 @@ export function useDockShellChrome({
     effectiveDockSlotPlacement,
     surfaceShortcutId:
       (shellOccupant
-        ? regionModel?.surfaces.get(shellOccupant)?.shortcut.id
+        ? regionModel?.surfaces.get(shellOccupant)?.shortcut?.id
         : undefined) ?? 'dock.toggle',
-    canMaximize: shellOccupant === 'chat',
+    canMaximize: shellOccupant !== null,
+    ownsMaximizeShortcut: registersDockShortcuts,
     applyDockSnap,
     commitDesktopBottomHeight,
     commitDockPlacement,

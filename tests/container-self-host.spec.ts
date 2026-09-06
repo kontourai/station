@@ -20,6 +20,17 @@ test('container serves one authenticated origin with writable Git workspace and 
   if (!baseURL || !credential || !workspace) {
     throw new Error('container smoke environment is incomplete');
   }
+  const anonymous = await browser.newContext();
+  const refused = await anonymous.request.post(`${baseURL}/api/projects`, {
+    data: {
+      name: 'Must not exist',
+      slug: 'unauthorized-import',
+      workingDirectory: workspace,
+    },
+  });
+  expect([401, 403]).toContain(refused.status());
+  await anonymous.close();
+
   const context = await browser.newContext({
     extraHTTPHeaders: { Authorization: `Bearer ${credential}` },
   });
@@ -30,6 +41,8 @@ test('container serves one authenticated origin with writable Git workspace and 
     async ({ expectPersisted, workspace }) => {
       let projectStatus: number | null = null;
       let createStatus: number | null = null;
+      let duplicateStatus: number | null = null;
+      let createdProjectId: string | null = null;
       if (!expectPersisted) {
         const project = await fetch('/api/projects', {
           method: 'POST',
@@ -44,6 +57,17 @@ test('container serves one authenticated origin with writable Git workspace and 
         if (!project.ok) {
           throw new Error(`project creation failed: ${project.status}`);
         }
+        createdProjectId = (await project.json()).data.id;
+        const duplicate = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Replacement must not win',
+            slug: 'container-self-host',
+            workingDirectory: '/different-workspace',
+          }),
+        });
+        duplicateStatus = duplicate.status;
         const created = await fetch('/api/coding/files/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -69,11 +93,17 @@ test('container serves one authenticated origin with writable Git workspace and 
       const createdFile = await fetch(
         `/api/coding/files/content?path=${encodeURIComponent(workspace)}&file=container-created.txt`,
       );
+      const changes = await fetch(
+        `/api/coding/files/content?path=${encodeURIComponent(workspace)}&file=changes.txt`,
+      );
       const gitStatus = await fetch(
         `/api/coding/git/status?path=${encodeURIComponent(workspace)}`,
       );
       return {
         createStatus,
+        createdProjectId,
+        duplicateStatus,
+        changes: { status: changes.status, body: await changes.json() },
         createdFile: {
           status: createdFile.status,
           body: await createdFile.json(),
@@ -90,6 +120,18 @@ test('container serves one authenticated origin with writable Git workspace and 
 
   expect(result.projectStatus).toBe(expectPersisted ? null : 201);
   expect(result.createStatus).toBe(expectPersisted ? null : 200);
+  expect(result.duplicateStatus).toBe(expectPersisted ? null : 409);
+  if (!expectPersisted) {
+    expect(result.createdProjectId).toBeTruthy();
+    expect(result.storedProject.body.data.id).toBe(result.createdProjectId);
+  }
+  expect(result.changes).toEqual({
+    status: 200,
+    body: {
+      success: true,
+      data: { path: 'changes.txt', content: 'working\n' },
+    },
+  });
   expect(result.createdFile).toEqual({
     status: 200,
     body: {

@@ -62,7 +62,9 @@ references, and measure recovery time and recoverable data loss.
 
 ## First cloud target: AWS
 
-AWS is the selected first cloud target. Start with one small EC2 instance for a
+AWS remains the first planned commercial deployment profile. A [private GCP
+development recipe](../../deploy/gcp-dev/README.md) supports testing in an
+existing Google Cloud organization while keeping the same portability boundaries. Start with one small EC2 instance for a
 persistent private development environment, using the existing local storage
 contracts. The larger service mapping below is an evolution target, not a
 prerequisite for testing, a provisioned deployment, or a claim that Station
@@ -252,3 +254,5 @@ Measure the distinction with external-team outcomes: time to first successful
 integration, repeatability from a clean environment, upgrade effort, restore
 results, and operator time. A maintained example and tested compatibility are
 more useful than an integration claim that depends on private setup knowledge.
+
+For a provider-independent checkout copy, use [Workspace packages](workspace-packages.md). This preserves supported staged and working bytes while target Project registration, sign-in, and execution remain explicit steps.

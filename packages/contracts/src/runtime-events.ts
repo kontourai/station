@@ -496,7 +496,52 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   itemId: string;
   toolCallId: string;
   toolName: string;
-  status: 'success' | 'error' | 'cancelled';
+  /**
+   * The observed outcome of the call.
+   *
+   * Three of these assert what happened: `success` and `error` are the
+   * engine's own verdict, and `cancelled` is a stop Station or the user
+   * asked for. `unresolved` (station#1558) asserts the opposite — that no
+   * verdict will ever arrive. It is published for a tool call still open
+   * when its SESSION ended, where the call's fate is genuinely unknown:
+   * Station never saw a result, and cannot tell whether the tool ran. Every
+   * adapter that tracks its open calls settles them this way when a session
+   * IT STILL OWNS ends (station#1569 item 4 extended this past Claude to
+   * ACP, Codex and station-agent). What a record superseded by a restart on
+   * the same thread does is adapter-specific: Claude still settles the
+   * stopped session's own calls on their own turns (only the thread-keyed
+   * `session.exited` is withheld), while Codex publishes nothing for a
+   * superseded record. It is
+   * NOT a failure (nothing observed the tool fail) and NOT a cancellation
+   * (nobody asked for it to stop); folding it into either would be a claim
+   * Station cannot support. Without it, the row simply stayed "running"
+   * forever.
+   *
+   * **Compatibility.** A client built before this member sees an
+   * unrecognised string, and the two folds degrade differently. Neither
+   * degrades *silently* only in the sense that the event's `output` carries
+   * the explicit prose "No result was reported before the session ended;
+   * whether the tool ran is unknown." — the enum itself is read wrongly in
+   * both, and in one of them the row makes a positive claim:
+   * - the durable projection (`runtime-event-projection.ts`) tested
+   *   `status === 'error'` / `=== 'cancelled'` and fell through to
+   *   `state: 'result'` with the sentence as the row's `result`. In an older
+   *   `ToolCallDisplay` that combination satisfies `completedSuccessfully`
+   *   (`state === 'result'`, no error, not cancelled), so the row renders
+   *   the past-tense label with NO badge at all, and expanding it prints the
+   *   status footer "Success". An older rehydrated transcript therefore
+   *   presents an unresolved call as a successful one whose output happens
+   *   to be that sentence;
+   * - the live handler (`streamHandlers.ts`) mapped anything that was
+   *   neither `success` nor `cancelled` to `state: 'error'`, so an older
+   *   live client renders it as a failure carrying the same sentence.
+   *
+   * So the sentence, not the enum, is the only thing an older client gets
+   * right, and a reader has to open the row to find it. That asymmetry is
+   * the reason the text is written to stand alone. Publishers must not use
+   * this status for any other situation.
+   */
+  status: 'success' | 'error' | 'cancelled' | 'unresolved';
   output?: unknown;
   error?: string;
   /** See {@link ToolProgressEvent.outputReceipt}. */

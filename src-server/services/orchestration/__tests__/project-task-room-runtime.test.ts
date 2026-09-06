@@ -1,11 +1,18 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ProjectTaskRoomAuthority } from '@kontourai/station-contracts/project-task-room';
+import type {
+  ProjectTaskRoomAuthority,
+  ProjectTaskRoomGrant,
+  ProjectTaskRoomGrantKind,
+} from '@kontourai/station-contracts/project-task-room';
 import { PROJECT_TASK_ROOM_LIVE_HEARTBEAT_INTERVAL_MS } from '@kontourai/station-contracts/project-task-room-browser';
-import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import type {
+  TaskDispatchResult,
+  TaskRecord,
+} from '@kontourai/station-contracts/task-graph';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   DEFAULT_LIVE_WORK_BOUNDS,
@@ -47,6 +54,137 @@ afterEach(() => {
   vi.restoreAllMocks();
   for (const directory of directories.splice(0))
     rmSync(directory, { recursive: true, force: true });
+});
+
+test('a source room seal refuses writes from an independently running old process', {
+  timeout: 30000,
+}, async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'station-source-process-'));
+  directories.push(directory);
+  const path = join(directory, 'orchestration.sqlite');
+  const scope = {
+    projectId: 'source-project',
+    projectSlug: 'source-project',
+    taskId: 'source-task',
+  };
+  const childSource = `
+    import { EventStore } from './src-server/services/orchestration/event-store.ts';
+    const scope = ${JSON.stringify(scope)};
+    const grant = capability => Object.freeze({schemaVersion:'station.project-task-room-grant/v1',capability,opaqueToken:'test'});
+    const store = new EventStore(process.argv[1]);
+    const room = store.createProjectTaskRoomHistory({capabilities:{resolve:async({required})=>({kind:'granted',receipt:{
+      receiptId:'process-test-'+required,capability:required,scope,
+      principal:{kind:'operator',operatorId:'operator',deviceId:'device'},policyRevision:'process-test'
+    }})}});
+    const append = id => room.append({grant:grant('message-write'),intent:{proposalId:id,
+      occurredAt:'2026-09-05T00:00:00.000Z',body:{kind:'human-message',text:id}}});
+    await room.open({grant:grant('discover')});
+    const first = await append('before-seal');
+    let sequence = Promise.resolve();
+    process.on('message', message => { sequence=sequence.then(async()=>{
+      if(message==='close') { await room.close(); store.close(); process.disconnect(); return; }
+      const result=await append(message);
+      process.send({kind:result.kind,pid:process.pid});
+    }); });
+    process.send({kind:first.kind,pid:process.pid});
+  `;
+  const child = spawn(
+    process.execPath,
+    ['--import', 'tsx', '--input-type=module', '-e', childSource, path],
+    {
+      cwd: process.cwd(),
+      windowsHide: true,
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    },
+  );
+  let stderr = '';
+  child.stderr?.on('data', (chunk) => {
+    stderr = (stderr + chunk.toString()).slice(-4096);
+  });
+  const messages: unknown[] = [];
+  let deliver: ((value: unknown) => void) | undefined;
+  child.on('message', (value) => {
+    if (deliver) {
+      const next = deliver;
+      deliver = undefined;
+      next(value);
+    } else messages.push(value);
+  });
+  const exited = new Promise<void>((resolve) =>
+    child.once('close', () => resolve()),
+  );
+  const next = () =>
+    new Promise<unknown>((resolve, reject) => {
+      if (messages.length) {
+        resolve(messages.shift());
+        return;
+      }
+      const timer = setTimeout(() => {
+        deliver = undefined;
+        reject(new Error(`Child response missing: ${stderr}`));
+      }, 10000);
+      deliver = (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      };
+    });
+  let store: EventStore | undefined;
+  let room: ReturnType<EventStore['createProjectTaskRoomHistory']> | undefined;
+  try {
+    expect(await next()).toEqual({ kind: 'committed', pid: child.pid });
+    expect(child.pid).not.toBe(process.pid);
+    store = new EventStore(path);
+    room = store.createProjectTaskRoomHistory({
+      capabilities: {
+        resolve: async ({ required }) => ({
+          kind: 'granted',
+          receipt: {
+            receiptId: `process-test-${required}`,
+            capability: required,
+            scope,
+            principal: {
+              kind: 'operator',
+              operatorId: 'operator',
+              deviceId: 'device',
+            },
+            policyRevision: 'process-test',
+          },
+        }),
+      },
+    });
+    const grant = <K extends ProjectTaskRoomGrantKind>(capability: K) =>
+      Object.freeze({
+        schemaVersion: 'station.project-task-room-grant/v1',
+        capability,
+        opaqueToken: 'test',
+      }) as ProjectTaskRoomGrant<K>;
+    expect(
+      await room.sealSource({
+        grant: grant('home-transfer'),
+        operationId: 'cross-process-transfer',
+        sourceHomeRef: 'source',
+        targetHomeRef: 'target',
+      }),
+    ).toMatchObject({
+      kind: 'sealed',
+      seal: { checkpoint: { throughSeq: 1 } },
+    });
+    child.send('after-seal');
+    expect(await next()).toEqual({ kind: 'denied', pid: child.pid });
+    child.send('second-attempt');
+    expect(await next()).toEqual({ kind: 'denied', pid: child.pid });
+    expect(await room.read({ grant: grant('history-read') })).toMatchObject({
+      kind: 'available',
+      records: [{ body: { text: 'before-seal' } }],
+    });
+  } finally {
+    if (child.connected) child.send('close');
+    const kill = setTimeout(() => child.kill('SIGKILL'), 5000);
+    await exited;
+    clearTimeout(kill);
+    await room?.close();
+    store?.close();
+  }
 });
 
 function hardExitRoomRuntime(
@@ -182,6 +320,12 @@ function fixture(
     hosted?: boolean;
     revoked?: boolean;
     receipt?: 'duplicate' | 'missing';
+    agentLifecycle?: ConstructorParameters<
+      typeof ProjectTaskRoomRuntime
+    >[0]['working']['agentLifecycle'];
+    revisionEvidence?: ConstructorParameters<
+      typeof ProjectTaskRoomRuntime
+    >[0]['revisionEvidence'];
     corruptRecovery?: boolean;
     revokeAfterRecoveryCheckpoint?: boolean;
     revokeOnRecoveryWrite?: number;
@@ -256,6 +400,9 @@ function fixture(
     projectForId: (id) =>
       id === task.projectId ? { id, slug: 'project' } : undefined,
     history: () => room,
+    ...(options.revisionEvidence
+      ? { revisionEvidence: options.revisionEvidence }
+      : {}),
     working: {
       read: async () => {
         if (options.revokeAfterWorkingRead) revoked = true;
@@ -306,7 +453,7 @@ function fixture(
               : { kind: 'unavailable' as const },
       privateSnapshot: async ({ scope }) =>
         new SharedWorkingState({ scope }).snapshot(),
-      agentLifecycle: async () => 'stored' as const,
+      agentLifecycle: options.agentLifecycle ?? (async () => 'stored' as const),
       readAgentLifecycles: async () => [],
       removeAgentLifecycle: async () => 'removed' as const,
       watch: () => {
@@ -341,6 +488,155 @@ function fixture(
 }
 
 describe('ProjectTaskRoomRuntime', () => {
+  test.each(['stored', 'unavailable'] as const)(
+    'agent publication preparation requires the actual %s persistence result',
+    async (outcome) => {
+      const write = vi.fn(async () => outcome);
+      const { runtime } = fixture({ agentLifecycle: write });
+      const result: TaskDispatchResult = {
+        task: { ...task, agentId: 'agent', sessionId: 'agent-session' },
+        dispatch: {
+          id: 'dispatch',
+          taskId: task.id,
+          sessionId: 'agent-session',
+          provider: 'codex',
+          outcome: 'started',
+          createdAt: task.createdAt,
+          sourceSurface: 'test',
+        },
+        session: {
+          threadId: 'agent-session',
+          provider: 'codex',
+          status: 'ready',
+          createdAt: task.createdAt,
+          updatedAt: task.updatedAt,
+        },
+        links: [],
+      };
+      try {
+        if (outcome === 'stored')
+          await expect(
+            runtime.prepareAgentStarted(result),
+          ).resolves.toBeUndefined();
+        else
+          await expect(runtime.prepareAgentStarted(result)).rejects.toThrow(
+            'could not be stored',
+          );
+        expect(write).toHaveBeenCalledTimes(1);
+        write.mockClear();
+        const withoutAgent = {
+          ...result,
+          task: { ...task, sessionId: 'agent-session' },
+        };
+        await runtime.prepareAgentStarted(withoutAgent);
+        await runtime.publishAgentStarted(withoutAgent);
+        expect(write).not.toHaveBeenCalled();
+      } finally {
+        await runtime.close();
+      }
+    },
+  );
+
+  test.each([
+    'committed',
+    'duplicate',
+    'throwing-observer',
+    'revoked-subscriber',
+  ] as const)(
+    'gives %s document delivery an event-loop turn before synchronous evidence validation',
+    async (mode) => {
+      const order: string[] = [];
+      let armed = false;
+      let revoked = false;
+      const { runtime } = fixture({
+        ...(mode === 'duplicate' ? { receipt: 'duplicate' } : {}),
+        requestAuthority: {
+          resolve: async (request) => {
+            const deviceId = request.headers.get('x-room-device') ?? 'writer';
+            return revoked && deviceId === 'subscriber'
+              ? { kind: 'revoked' }
+              : {
+                  kind: 'granted',
+                  operatorId: 'operator-1',
+                  deviceId,
+                  policyRevision: 'pairing-v1',
+                };
+          },
+        },
+        revisionEvidence: {
+          available: () => {
+            if (armed) {
+              order.push('evidence-validation');
+              // Model the actual synchronous ledger restore, without making
+              // elapsed time itself the assertion or weakening validation.
+              const until = performance.now() + 30;
+              while (performance.now() < until) {}
+            }
+            return false;
+          },
+          recordPublication: () => ({ kind: 'unavailable' }),
+          links: { resolve: async () => ({ kind: 'unavailable' }) },
+          close: () => {},
+        },
+      });
+      const writer = new Request('http://station', {
+        headers: { 'x-room-device': 'writer' },
+      });
+      const subscription = await runtime.subscribe({
+        taskId: task.id,
+        request: new Request('http://station', {
+          headers: { 'x-room-device': 'subscriber' },
+        }),
+        emit: (event) => {
+          if (!armed) return;
+          const type = (event as { type?: unknown }).type;
+          if (type !== 'document' && type !== 'terminal') return;
+          order.push(String(type));
+          setImmediate(() => order.push('delivery-turn'));
+          if (mode === 'throwing-observer') throw new Error('observer failed');
+        },
+      });
+      if (subscription.kind !== 'subscribed')
+        throw new Error('expected subscription');
+      subscription.activate();
+      try {
+        const plan =
+          mode === 'duplicate'
+            ? {
+                kind: 'planned' as const,
+                intentId: 'persisted-plan',
+                digest: 'a'.repeat(64),
+              }
+            : await runtime.editPlan({
+                taskId: task.id,
+                request: writer,
+                intentId: 'publication-priority',
+                desiredText: 'next',
+                selection: { anchor: 4, focus: 4 },
+              });
+        if (plan.kind !== 'planned') throw new Error('expected plan');
+        armed = true;
+        revoked = mode === 'revoked-subscriber';
+        const result = await runtime.submitBatch({
+          taskId: task.id,
+          request: writer,
+          intentId: plan.intentId,
+          intentDigest: plan.digest,
+        });
+        expect(result.kind).toBe(
+          mode === 'duplicate' ? 'duplicate' : 'committed',
+        );
+        expect(order).toEqual([
+          mode === 'revoked-subscriber' ? 'terminal' : 'document',
+          'delivery-turn',
+          'evidence-validation',
+        ]);
+      } finally {
+        subscription.unsubscribe();
+        await runtime.close();
+      }
+    },
+  );
   test('liveActivity: deterministically scans a bounded room prefix and caps authorized rooms', () => {
     const entries = Array.from(
       { length: LIVE_ACTIVITY_MAX_ROOM_SCAN + 12 },

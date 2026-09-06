@@ -3,16 +3,26 @@ import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { dismissSetupLauncher } from './helpers/orchestration';
 
 /**
- * archive#304 regression: the chat dock's project-context row truncates long working
- * directories from the start via a `direction: rtl` parent span. Without bidi
- * isolation, leading neutral characters (`~`, `/`) are visually reordered to
- * the end of the span — `~/dev/github/kontourai` rendered as
- * `/dev/github/~kontourai`, a literal tilde spliced mid-path.
+ * archive#304 regression, re-homed by #1536 F.
  *
- * jsdom cannot see bidi reordering (the DOM text is unchanged), so the
- * assertion lives at the browser seam: per-character Range rects must be
- * monotonically left-to-right. Verified to FAIL against a build carrying the
- * defect.
+ * The dock's project-context row USED to render the working directory as a
+ * visible segment truncated from the start via a `direction: rtl` parent span,
+ * and without bidi isolation its leading neutral characters (`~`, `/`) were
+ * visually reordered to the end — `~/dev/github/kontourai` rendered as
+ * `/dev/github/~kontourai`, a literal tilde spliced mid-path. This spec's
+ * per-glyph Range probe was the only place that could see it, since the DOM
+ * text is unchanged by bidi reordering.
+ *
+ * That segment is gone: on a 110-character worktree path it left the
+ * conversation title beside it about one character wide, so the row is the
+ * project's NAME and its branch, and the path is the badge's `title` (plus
+ * "Copy project path" in the dock header's More menu). A tooltip has no rtl
+ * truncation and no bidi container, so #304's failure mode is not merely
+ * untested here — it is unreachable. What still needs proving is that the path
+ * ARRIVES, whole and in order, in the channel that now carries it: the
+ * resolution behind it (station#1146's session-cwd, the `~` form vs an absolute
+ * one) is exactly as before, and a tooltip that dropped or mangled it would be
+ * invisible to every jsdom test.
  */
 
 const json = (body: unknown) => ({
@@ -166,51 +176,29 @@ async function mockShell(page: Page) {
   await page.route('**/events', (route) => route.abort());
 }
 
-interface GlyphProbe {
-  text: string;
-  lefts: number[];
-}
-
-async function probeParentGlyphs(page: Page): Promise<GlyphProbe> {
-  return page.evaluate(() => {
-    const parent = document.querySelector<HTMLElement>(
-      '.chat-dock__project-dir-parent',
-    )!;
-    const walker = document.createTreeWalker(parent, NodeFilter.SHOW_TEXT);
-    const node = walker.nextNode() as Text;
-    const text = node.textContent ?? '';
-    const lefts: number[] = [];
-    for (let i = 0; i < text.length; i++) {
-      const range = document.createRange();
-      range.setStart(node, i);
-      range.setEnd(node, i + 1);
-      lefts.push(range.getBoundingClientRect().left);
-    }
-    return { text, lefts };
-  });
-}
-
-function expectMonotonicLeftToRight({ text, lefts }: GlyphProbe) {
-  for (let i = 1; i < lefts.length; i++) {
-    expect(
-      lefts[i],
-      `glyph "${text[i]}" (index ${i}) of "${text}" must render right of "${text[i - 1]}"`,
-    ).toBeGreaterThan(lefts[i - 1]);
-  }
+async function bindChatToProject(page: Page, project: string): Promise<void> {
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event('station:open-new-chat')),
+  );
+  const modal = page.getByRole('dialog', { name: 'New Chat' });
+  await expect(modal).toBeVisible({ timeout: 15_000 });
+  await page.locator('.new-chat-modal__context-button').click();
+  await page.locator(`[data-context-value="${project}"]`).click();
+  await modal.locator('[data-agent-slug="claude"]').first().click();
 }
 
 for (const scenario of [
   {
     label: 'home-relative (~) path keeps its tilde at the start',
     project: 'home-proj',
+    name: 'Home Project',
     expected: '~/dev/github/kontourai',
-    parent: '~/dev/github/',
   },
   {
-    label: 'absolute path outside $HOME stays absolute and ordered',
+    label: 'absolute path outside $HOME stays absolute',
     project: 'abs-proj',
+    name: 'Abs Project',
     expected: '/opt/tools/depot',
-    parent: '/opt/tools/',
   },
 ]) {
   test(`project context: ${scenario.label}`, async ({ page }) => {
@@ -222,26 +210,25 @@ for (const scenario of [
 
     // Bind a chat to the scenario's project so the dock renders its
     // project-context row.
-    await page.evaluate(() =>
-      window.dispatchEvent(new Event('station:open-new-chat')),
+    await bindChatToProject(page, scenario.project);
+    await expect(page.getByRole('dialog', { name: 'New Chat' })).toBeHidden();
+
+    const badge = page.locator('.chat-dock__project-badge');
+    await expect(badge).toBeVisible({ timeout: 15_000 });
+    // The row names the project, and only the project.
+    await expect(badge).toHaveText(scenario.name);
+    await expect(page.locator('.chat-dock__project-context')).toHaveText(
+      scenario.name,
     );
-    const modal = page.getByRole('dialog', { name: 'New Chat' });
-    await expect(modal).toBeVisible({ timeout: 15_000 });
-    await page.locator('.new-chat-modal__context-button').click();
-    await page.locator(`[data-context-value="${scenario.project}"]`).click();
-    await modal.locator('[data-agent-slug="claude"]').first().click();
-    await expect(modal).toBeHidden();
-
-    const dir = page.locator('.chat-dock__project-dir');
-    await expect(dir).toBeVisible({ timeout: 15_000 });
-    // DOM order (jsdom-equivalent): the full path is intact as text.
-    await expect(dir).toHaveText(scenario.expected);
-
-    // Visual order (the actual archive#304 failure mode): every parent-path glyph
-    // renders strictly left-to-right despite the rtl truncation container.
-    const probe = await probeParentGlyphs(page);
-    expect(probe.text).toBe(scenario.parent);
-    expectMonotonicLeftToRight(probe);
+    // The path arrives whole in the channel that carries it now — same string,
+    // same `~` or absolute form, no truncation and no reordering possible.
+    await expect(badge).toHaveAttribute(
+      'title',
+      `${scenario.name} — ${scenario.expected}`,
+    );
+    // And the retired segment is really gone rather than merely hidden: a
+    // `display: none` span would still satisfy the assertions above.
+    await expect(page.locator('.chat-dock__project-dir')).toHaveCount(0);
   });
 }
 
@@ -254,25 +241,25 @@ test('project-context clicks do not toggle the dock (#1064)', async ({
   await page.goto('/?dock=open');
   await dismissSetupLauncher(page);
 
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event('station:open-new-chat')),
-  );
-  const modal = page.getByRole('dialog', { name: 'New Chat' });
-  await expect(modal).toBeVisible({ timeout: 15_000 });
-  await page.locator('.new-chat-modal__context-button').click();
-  await page.locator('[data-context-value="home-proj"]').click();
-  await modal.locator('[data-agent-slug="claude"]').first().click();
+  await bindChatToProject(page, 'home-proj');
 
-  const dir = page.locator('.chat-dock__project-dir');
-  await expect(dir).toBeVisible({ timeout: 15_000 });
+  // #1536 F: the row's interactive element is the project badge — the path
+  // segment that used to carry the coding-layout link is retired, and the badge
+  // is what opens the project switcher.
+  const badge = page.locator('.chat-dock__project-badge');
+  await expect(badge).toBeVisible({ timeout: 15_000 });
   const dock = page.locator('.chat-dock');
   const before = (await dock.boundingBox())?.height ?? 0;
   expect(before).toBeGreaterThan(100);
 
   // archive#1064 folded this row into the dock header, whose own onClick toggles the
   // dock. Without stopPropagation on the context's handlers, every attempt to
-  // open the coding layout or switch project also collapsed/expanded the dock.
-  await dir.click();
+  // switch project also collapsed/expanded the dock.
+  await badge.click();
   await page.waitForTimeout(500);
   expect((await dock.boundingBox())?.height ?? 0).toBe(before);
+  // The click did what it is for, so this is not passing on an inert element.
+  await expect(
+    page.getByRole('dialog', { name: 'Switch project' }),
+  ).toBeVisible({ timeout: 10_000 });
 });

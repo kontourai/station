@@ -32,3 +32,38 @@ export interface CloudMovePreview {
   blockers: string[];
   warnings: string[];
 }
+
+export interface WorkspacePackageReceipt {
+  schemaVersion: 'station.workspace-package-receipt/v1';
+  head: string;
+  branch: string | null;
+  fileCount: number;
+  indexEntryCount: number;
+  untrackedIgnoredFiles: 'omitted';
+  gitHistory: 'HEAD-ancestry-only';
+  otherRefs: 'omitted';
+  capture: 'source-quiescence-required';
+  sourceGitConfiguration: 'content-policy-only';
+  executionAuthorityTransferred: false;
+  credentialEnrollment: 'not-performed';
+}
+
+export interface WorkspacePackageInspection extends WorkspacePackageReceipt {
+  files: Array<{
+    path: string;
+    bytes: number;
+    executable: boolean;
+    sha256: string;
+  }>;
+  gitObjectValidation: 'performed-during-import';
+}
+
+export interface WorkspacePackageVerification extends WorkspacePackageReceipt {
+  workspace: string;
+  verified: true;
+  verification: 'HEAD-branch-index-policy-working-files';
+  packageSha256: string;
+  verifiedAt: string;
+  gitObjectValidation: 'performed-in-isolated-import';
+  executableModeVerification: 'passed' | 'unavailable-on-windows';
+}

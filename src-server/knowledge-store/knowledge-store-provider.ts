@@ -16,7 +16,6 @@ import type {
   CreateInput,
   KitLink,
   KnowledgeAdapterDescriptor,
-  KnowledgeRootScope,
   KnowledgeStoreAdapter,
   KnowledgeStoreProvider as KnowledgeStoreProviderContract,
   KnowledgeStoreRoot,
@@ -89,10 +88,6 @@ type RecordsChangedListener = (event: {
   recordIds: string[];
 }) => void;
 
-function scopeLabel(scope: KnowledgeRootScope): 'personal' | 'project' {
-  return scope.kind;
-}
-
 export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   private readonly registry = new KnowledgeAdapterRegistry();
   private readonly adapterInstances = new Map<string, KnowledgeStoreAdapter>();
@@ -145,7 +140,7 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
     await this.persistence.saveKnowledgeStoreRoot(root);
     observeRootOperation({
       op: 'create',
-      scope: scopeLabel(root.scope),
+      scope: root.scope.kind,
     });
     return root;
   }
@@ -156,7 +151,7 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
     this.adapterInstances.delete(rootId);
     observeRootOperation({
       op: 'remove',
-      scope: root ? scopeLabel(root.scope) : 'unknown',
+      scope: root ? root.scope.kind : 'unknown',
     });
   }
 
@@ -215,7 +210,7 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   // ── Record access — thin delegation to the root's adapter instance ────
 
   /**
-   * Owner-only source observation. No runtime/HTTP/UI composition exists yet;
+   * Construction-free source observation with a captured production host policy;
    * absent host policy denies even localhost and registered-root requests.
    */
   observeExactRecord(
@@ -297,6 +292,7 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
         if (record.id !== recordId) return { state: 'corrupt' };
         outcome = {
           state: 'observed',
+          kind: 'source-only',
           source: {
             rootId,
             recordId,

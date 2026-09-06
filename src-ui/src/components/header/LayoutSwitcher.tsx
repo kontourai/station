@@ -2,6 +2,7 @@ import { useProjectLayoutsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { Button } from '../Button';
+import { ArrowDownGlyph } from '../icons/Glyph';
 import { describeReadFailure, Empty, ErrorState } from '../state';
 import './LayoutSwitcher.css';
 
@@ -44,7 +45,7 @@ export function LayoutSwitcher({
     <span className="layout-switcher">
       <button
         type="button"
-        className="layout-switcher__trigger"
+        className="choice-trigger layout-switcher__trigger"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Switch layout"
@@ -54,7 +55,7 @@ export function LayoutSwitcher({
           <span className="layout-switcher__icon">{current.icon}</span>
         )}
         <span className="layout-switcher__label">{label}</span>
-        <span className="layout-switcher__chevron">▾</span>
+        <ArrowDownGlyph className="choice-caret" />
       </button>
 
       {open && (
@@ -65,7 +66,10 @@ export function LayoutSwitcher({
             aria-label="Close layout menu"
             onClick={() => setOpen(false)}
           />
-          <div className="layout-switcher__menu" role="menu">
+          {/* #1552 D4: the shell's one menu primitive. This menu had its own
+              6px radius, 4px padding, `6px 10px` rows and accent-tinted active
+              row — a fifth vocabulary beside the four the D4 sweep names. */}
+          <div className="menu-surface layout-switcher__menu" role="menu">
             {layoutsError ? (
               <ErrorState
                 variant="compact"
@@ -87,18 +91,25 @@ export function LayoutSwitcher({
                 key={l.slug}
                 type="button"
                 role="menuitem"
-                className={`layout-switcher__item${
-                  l.slug === layoutSlug ? ' layout-switcher__item--active' : ''
-                }`}
+                className="menu-row"
+                // The current layout, from the route rather than from a second
+                // stored flag — and painted by `.menu-row[aria-current]`'s own
+                // rule, so the pressed look and the announced state are one fact.
+                {...(l.slug === layoutSlug
+                  ? { 'aria-current': 'page' as const }
+                  : {})}
                 onClick={() => {
                   setOpen(false);
                   if (l.slug !== layoutSlug) setLayout(projectSlug, l.slug);
                 }}
               >
-                {l.icon && (
-                  <span className="layout-switcher__icon">{l.icon}</span>
-                )}
-                <span className="layout-switcher__item-label">{l.name}</span>
+                <span className="menu-row__glyph" aria-hidden="true">
+                  {l.icon}
+                </span>
+                {/* No wrapper span: `.layout-switcher__item-label` had no rule of
+                    its own even before D4, and `.menu-row`'s flex line lays the
+                    text out directly. */}
+                {l.name}
               </button>
             ))}
           </div>

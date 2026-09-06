@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
 import { DockShell } from '../components/chat-dock/DockShell';
 import { LazyBoundary } from '../components/LazyBoundary';
+import { PageFrame, type PageFrameSpec } from '../components/page-frame';
 import { SkeletonBlock } from '../components/Skeleton';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import {
@@ -14,8 +15,8 @@ import {
 } from '../contexts/RegionModelContext';
 import { reportRegionClearance } from '../regions/region-clearance';
 import {
-  type DockRegionId,
   REGION_SURFACE_REGISTRY,
+  type RegionId,
 } from '../regions/region-model';
 import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
 
@@ -24,7 +25,20 @@ const loadActivityWorkspacePane = () =>
     ({ ActivityWorkspacePane }) => ({ default: ActivityWorkspacePane }),
   );
 
-export function ActivityRegionShell({ regionId }: { regionId: DockRegionId }) {
+/**
+ * Activity in `main` (#928 C2a): the sessions surface is a split pane, so it
+ * takes the same frame the retired `/activity` route had (`SPLIT_PANE` in
+ * `page-frame-registry.ts`), with the surface's registered title. No dock
+ * chrome — there is no region to hide, resize or move.
+ */
+const ACTIVITY_MAIN_FRAME: PageFrameSpec = {
+  title: REGION_SURFACE_REGISTRY.get('activity')?.title,
+  width: 'full',
+  body: 'fill',
+  flush: true,
+};
+
+export function ActivityRegionShell({ regionId }: { regionId: RegionId }) {
   const { apiBase } = useApiBase();
   const model = useRegionModel();
   const { consumeSurfaceIntent } = model;
@@ -76,6 +90,28 @@ export function ActivityRegionShell({ regionId }: { regionId: DockRegionId }) {
     }),
     [apiBase, intent, clearIntentFocus],
   );
+  const pane = (
+    <ActivityWorkspacePaneBindingProvider binding={binding}>
+      <LazyBoundary
+        load={loadActivityWorkspacePane}
+        componentProps={{
+          descriptor: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+          instance: WORKSPACE_ACTIVITY_PANE_INSTANCE,
+        }}
+        pending={<SkeletonBlock count={3} label="Loading Activity" />}
+      />
+    </ActivityWorkspacePaneBindingProvider>
+  );
+  if (regionId === 'main') {
+    return (
+      <PageFrame
+        spec={ACTIVITY_MAIN_FRAME}
+        routeIdentity="region:main:activity"
+      >
+        {pane}
+      </PageFrame>
+    );
+  }
   return (
     <DockShell
       regionId={regionId}
@@ -87,6 +123,8 @@ export function ActivityRegionShell({ regionId }: { regionId: DockRegionId }) {
             regionVisible={chrome.isDockOpen}
             shellMaximized={chrome.isDockMaximized}
             canMaximize={chrome.canMaximize}
+            showMaximizeShortcut={chrome.ownsMaximizeShortcut}
+            restoreSnap={chrome.dockSnap}
             surfaceShortcutId={chrome.surfaceShortcutId}
             surfaceTitle={REGION_SURFACE_REGISTRY.get('activity')?.title}
             isDragging={chrome.isDragging}
@@ -95,18 +133,7 @@ export function ActivityRegionShell({ regionId }: { regionId: DockRegionId }) {
             effectiveDockSlotPlacement={chrome.effectiveDockSlotPlacement}
             onDockPlacementChange={chrome.commitDockPlacement}
           />
-          <div className="dock-slot__body">
-            <ActivityWorkspacePaneBindingProvider binding={binding}>
-              <LazyBoundary
-                load={loadActivityWorkspacePane}
-                componentProps={{
-                  descriptor: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-                  instance: WORKSPACE_ACTIVITY_PANE_INSTANCE,
-                }}
-                pending={<SkeletonBlock count={3} label="Loading Activity" />}
-              />
-            </ActivityWorkspacePaneBindingProvider>
-          </div>
+          <div className="dock-slot__body">{pane}</div>
         </>
       )}
     </DockShell>

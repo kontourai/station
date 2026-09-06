@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-09-05T20-15-40-523Z-bbf78cb1560a",
+  "kind": "policy-change",
+  "actor": {
+    "id": "codex",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson@kontourai.io",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-09-05T20:15:40.523Z",
+  "repoStandardsHash": "sha256:2b48874e05b19ae6c7609101d57c69e8f0ac7700478332b6538b24aefff2b007",
+  "repoMapHash": "sha256:eb1b06dc0af935b7b01aac450cafaa2c77da36fd003cb671ebbfa831280fbb09",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-09-04T22-25-09-761Z-a9b129258e00",
+  "validUntilDays": 90,
+  "notes": "Implement owner-approved #1540: add Guide-level file context for primary mobile project/conversation actions. Existing standards are retained byte-for-byte. Product-law observations and required CI browser evidence enforce behavior; test-change heuristics stay advisory.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-09-04T22-25-09-761Z-a9b129258e00",
+    "approvalRef": "chat:01a071b9-a932-7ad3-a4ca-b9f41d3c8baa:user-do-your-recommendations",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-09-05T20-15-40-523Z-bbf78cb1560a",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "e22a030c953d7acf18ae8828bd2689c2e9104cecd307b407f4fec68f4e241bf3",
+        "validUntil": "2026-12-04T20:15:40.523Z"
+      },
+      "createdAt": "2026-09-05T20:15:40.523Z",
+      "updatedAt": "2026-09-05T20:15:40.523Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-09-05T20-15-40-523Z-bbf78cb1560a",
+      "claimId": "veritas.attestation.policy-change-2026-09-05T20-15-40-523Z-bbf78cb1560a",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Implement owner-approved #1540: add Guide-level file context for primary mobile project/conversation actions. Existing standards are retained byte-for-byte. Product-law observations and required CI browser evidence enforce behavior; test-change heuristics stay advisory.",
+      "observedAt": "2026-09-05T20:15:40.523Z",
+      "collectedBy": "codex",
+      "integrityRef": "e22a030c953d7acf18ae8828bd2689c2e9104cecd307b407f4fec68f4e241bf3",
+      "metadata": {
+        "actor": {
+          "id": "codex",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-09-05T20:15:40.523Z",
+        "validUntil": "2026-12-04T20:15:40.523Z",
+        "contentHash": "e22a030c953d7acf18ae8828bd2689c2e9104cecd307b407f4fec68f4e241bf3"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-09-05T20-15-40-523Z-bbf78cb1560a.verified",
+      "claimId": "veritas.attestation.policy-change-2026-09-05T20-15-40-523Z-bbf78cb1560a",
+      "status": "verified",
+      "actor": "codex",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-09-05T20-15-40-523Z-bbf78cb1560a"
+      ],
+      "createdAt": "2026-09-05T20:15:40.523Z",
+      "verifiedAt": "2026-09-05T20:15:40.523Z"
+    }
+  }
+}

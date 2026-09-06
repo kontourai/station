@@ -23,8 +23,8 @@
  * 3. **HOW IT ENDS.** "Not now" is a decision and is written down, so the
  *    chapter does not re-open by itself; Home keeps a card offering it until
  *    it is completed. Completing it writes the same durable fact and hands off
- *    to the tour (`FirstRunFlow`), which is the one part of the guided run
- *    that is genuinely cross-route by design.
+ *    to New Chat, or to the tour when explicitly chosen. New Chat owns
+ *    readiness, Agent/Model selection, and the current workspace context.
  */
 
 import type { UserProfileSettings } from '@kontourai/station-contracts/user-profile';
@@ -178,6 +178,14 @@ export function FirstRunHomeChapter() {
   const [steps, setSteps] = useState<ChapterStep[]>(CHAPTER_STEPS);
   const [step, setStep] = useState<ChapterStep>('engines');
   const [saving, setSaving] = useState(false);
+  const completionInFlight = useRef(false);
+  const completionGeneration = useRef(0);
+  useEffect(
+    () => () => {
+      completionGeneration.current += 1;
+    },
+    [],
+  );
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // Opening decides the run's shape ONCE, from an answered disclosure query.
@@ -308,6 +316,7 @@ export function FirstRunHomeChapter() {
   const decided = useRef(false);
 
   const defer = useCallback(() => {
+    completionGeneration.current += 1;
     // Closing the run while the DISCLOSURE step is in front of the reader is
     // the same decision as that step's own "Not now", and must leave the same
     // record. Without it, the `skipped` write below flips the home off
@@ -349,6 +358,7 @@ export function FirstRunHomeChapter() {
    * stays on offer until it genuinely finishes.
    */
   const giveUp = useCallback(() => {
+    completionGeneration.current += 1;
     firstRunStore.defer();
     setOpen(false);
     if (decided.current) return;
@@ -357,20 +367,18 @@ export function FirstRunHomeChapter() {
     writeStatus('skipped');
   }, [config?.firstRun?.status, writeStatus]);
 
-  const complete = useCallback(() => {
-    decided.current = true;
-    // Persist the hand-off before navigation. If the page reloads between the
-    // config write and the tour event, FirstRunFlow resumes at the tour rather
-    // than reopening this chapter from step one.
-    firstRunStore.enterChapter('tour');
-    setOpen(false);
-    writeStatus('completed');
-    // The tour is the one cross-route part of the guided run, and it is that
-    // by design — it anchors coachmarks over real surfaces. `FirstRunFlow`
-    // still owns it; this is the same event the command palette's "Take the
-    // tour" action dispatches.
-    requestFirstRunTour();
-  }, [writeStatus]);
+  const complete = useCallback(
+    (destination: 'chat' | 'tour') => {
+      decided.current = true;
+      if (destination === 'tour') firstRunStore.enterChapter('tour');
+      else firstRunStore.finish();
+      setOpen(false);
+      writeStatus('completed');
+      if (destination === 'tour') requestFirstRunTour();
+      else window.dispatchEvent(new Event('station:open-new-chat'));
+    },
+    [writeStatus],
+  );
 
   const continueToAboutYou = useCallback(() => {
     firstRunStore.enterChapter('about-you');
@@ -440,29 +448,35 @@ export function FirstRunHomeChapter() {
               initial={config?.userProfile}
               saving={saving}
               error={saveError}
-              onSave={async (profile: UserProfileSettings) => {
-                // `updateConfig` is `mutateAsync` and REJECTS on failure.
-                // Finishing without awaiting it would silently discard the
-                // profile the card had just promised to save.
+              onComplete={async (
+                profile: UserProfileSettings | undefined,
+                destination: 'chat' | 'tour',
+              ) => {
+                // Both exits save intentional answers before navigation. The
+                // ref also guards two activations before React disables them.
+                if (completionInFlight.current) return;
+                completionInFlight.current = true;
+                const generation = ++completionGeneration.current;
                 setSaving(true);
                 setSaveError(null);
                 try {
-                  await updateConfig({ userProfile: profile });
+                  if (profile) await updateConfig({ userProfile: profile });
+                  // A close, Back, or route unmount during the write cancels
+                  // navigation, even when those answers are successfully saved.
+                  if (generation !== completionGeneration.current) return;
+                  complete(destination);
                 } catch (error) {
+                  if (generation !== completionGeneration.current) return;
                   setSaveError(
                     error instanceof Error
                       ? `Station could not save your answers: ${error.message}`
                       : 'Station could not save your answers.',
                   );
-                  return;
                 } finally {
+                  completionInFlight.current = false;
                   setSaving(false);
                 }
-                complete();
               }}
-              // Deliberately writes no profile at all — not an empty one.
-              // Absent is what makes the server inject nothing.
-              onSkip={complete}
             />
           )}
         </ResponsiveDialogSurface>

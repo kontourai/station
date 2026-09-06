@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import App from '../App';
 import { bannerStore } from '../contexts/banner-store';
 import { openChatsStore } from '../contexts/open-chats-store';
+import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
 
 vi.mock('../contexts/open-chats-store', () => ({
@@ -187,9 +188,11 @@ vi.mock('../app-shell/AppViewContent', () => ({
   AppViewContent: ({
     currentView,
     onNavigate,
+    onShowHome,
   }: {
     currentView: unknown;
     onNavigate: (view: unknown) => void;
+    onShowHome: () => void;
   }) => (
     <>
       {/* Mirrors the real component's structure: the route body sits inside a
@@ -206,6 +209,11 @@ vi.mock('../app-shell/AppViewContent', () => ({
       )}
       <button type="button" onClick={() => onNavigate({ type: 'schedule' })}>
         Go to Schedule
+      </button>
+      {/* The real not-found view's "Go home" (`AppViewContent.test.tsx` pins
+          that it calls `onShowHome`); this fixture reads what App hands it. */}
+      <button type="button" onClick={onShowHome}>
+        Go home
       </button>
     </>
   ),
@@ -258,6 +266,14 @@ vi.mock('../components/chat-dock/ChatDock', () => ({
 }));
 vi.mock('../components/CommandPalette', () => ({
   CommandPalette: () => null,
+}));
+// #928 C2a: the Activity shell is what `main` renders when Activity occupies
+// it. Stubbed: its content (the sessions surface) is not this route's
+// subject; WHICH shell the outlet mounts, and with which region, is.
+vi.mock('../app-shell/ActivityRegionShell', () => ({
+  ActivityRegionShell: ({ regionId }: { regionId: string }) => (
+    <div data-testid="activity-region-shell">{regionId}</div>
+  ),
 }));
 vi.mock('../components/header/Header', () => ({ Header: () => null }));
 vi.mock('../components/notifications/ConnectionBannerSource', () => ({
@@ -346,6 +362,7 @@ function resetHooks() {
   setLayout.mockClear();
   showToast.mockClear();
   chatControllerAction.mockClear();
+  vi.mocked(useKeyboardShortcut).mockClear();
 }
 
 describe('App home route resolution', () => {
@@ -559,6 +576,96 @@ describe('App home route resolution', () => {
     placeSurface: vi.fn(),
   });
 
+  /**
+   * #1385 review: the mobile full-screen predicate reads the shell a coarse
+   * device RENDERS — the folded dock region (`foldedDockRegion`, the same
+   * expression `RegionShells` mounts by) — whatever its occupant, matching
+   * its own docblock ("any occupant, not just Chat"). Navigation's flags are
+   * absent from this file's mock, so a predicate reading them cannot pass
+   * these; one reading Chat's region alone cannot pass the Activity case.
+   */
+  describe('the mobile full-screen dock follows the rendered shell (#1385)', () => {
+    const MOBILE_MEDIA_QUERY =
+      '(max-width: 768px), (max-height: 540px) and (pointer: coarse)';
+    const appMain = () => document.querySelector('.app__main');
+    const fullscreenClass = 'app__main--mobile-dock-fullscreen';
+
+    function installMobileViewport() {
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: query === MOBILE_MEDIA_QUERY,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }));
+    }
+
+    test.each([
+      {
+        name: 'Activity maximized as the folded occupant',
+        regions: {
+          ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+          right: {
+            visible: true,
+            size: 400,
+            occupant: 'activity',
+            maximized: true,
+          },
+        },
+        lastShownRegion: 'right' as const,
+        fullscreen: true,
+      },
+      {
+        name: 'Chat maximized as the folded occupant (unchanged behaviour)',
+        regions: {
+          ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+          bottom: {
+            visible: true,
+            size: 320,
+            occupant: 'chat',
+            maximized: true,
+          },
+        },
+        lastShownRegion: 'bottom' as const,
+        fullscreen: true,
+      },
+      {
+        name: 'Activity shown but not maximized',
+        regions: {
+          ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+          right: {
+            visible: true,
+            size: 400,
+            occupant: 'activity',
+            maximized: false,
+          },
+        },
+        lastShownRegion: 'right' as const,
+        fullscreen: false,
+      },
+    ])('$name', async ({ regions, lastShownRegion, fullscreen }) => {
+      installMobileViewport();
+      try {
+        hooks.regionModel = {
+          ...regionModelStub(),
+          regions,
+          lastShownRegion,
+        };
+
+        render(<App />);
+        await act(async () => undefined);
+
+        expect(appMain()).not.toBeNull();
+        expect(appMain()?.classList.contains(fullscreenClass)).toBe(fullscreen);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+
   test('registers a region surface host on Home', async () => {
     hooks.regionModel = regionModelStub();
 
@@ -566,6 +673,267 @@ describe('App home route resolution', () => {
     await act(async () => undefined);
 
     expect(registerRegionSurfaceHost).toHaveBeenCalled();
+  });
+
+  /**
+   * #928 C2a: `/` renders the `main` region's occupant, and with the default
+   * arrangement (Home in `main`) that is the Home route. What these prove is
+   * the outlet's STRUCTURE under the region model — the route body is the
+   * direct child of `main#station-main > .content-view`, with no shell
+   * wrapper around it, and each of the Home route's four states still
+   * reaches `/`. They do not compare against the pre-C2a tree: that tree is
+   * gone from this branch, so "identical to base" is a claim only a
+   * cross-tree capture could make. The no-model mount is asserted against
+   * the same structure, which is what "the shell adds nothing" reduces to.
+   *
+   * `HomeView`'s own root (`section.home-view`) is inside the mocked
+   * `AppViewContent` here and is pinned by `HomeView.test.tsx`.
+   */
+  const outlet = () =>
+    document.querySelector('main#station-main > .content-view');
+
+  test('the default arrangement renders the Home route body as the direct child of the outlet', async () => {
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.layouts = {
+      data: [{ slug: 'code' }],
+      isLoading: false,
+      isError: false,
+    };
+    expect(DEFAULT_DEVICE_REGION_ARRANGEMENT.main.occupant).toBe('home');
+
+    for (const regionModel of [null, regionModelStub()]) {
+      hooks.regionModel = regionModel;
+      const rendered = render(<App />);
+      await act(async () => undefined);
+
+      const content = outlet();
+      expect(content).not.toBeNull();
+      // The mocked `AppViewContent` renders two siblings (the route body and
+      // its navigation fixture button); the route body comes first, with no
+      // element between the outlet and it.
+      const body = screen.getByTestId('app-view-content');
+      expect(body.parentElement).toBe(content);
+      expect(content?.firstElementChild).toBe(body);
+      expect(body.textContent).toBe('{"type":"home"}');
+      expect(screen.queryByTestId('activity-region-shell')).toBeNull();
+      expect(navigate).not.toHaveBeenCalled();
+      rendered.unmount();
+    }
+  });
+
+  test('the pending skeleton renders at / under the default arrangement', async () => {
+    hooks.projects = { data: [], isLoading: true, isError: false };
+    hooks.regionModel = regionModelStub();
+
+    render(<App />);
+    await act(async () => undefined);
+
+    const status = screen.getByRole('status', {
+      name: /loading your workspace/i,
+    });
+    expect(status.closest('main#station-main > .content-view')).toBe(outlet());
+    expect(screen.queryByTestId('app-view-content')).toBeNull();
+  });
+
+  test('the host-unavailable state renders at / under the default arrangement', async () => {
+    connectionState.status = 'error';
+    hooks.projects = { data: [], isLoading: false, isError: true };
+    hooks.regionModel = regionModelStub();
+
+    render(<App />);
+    await act(async () => undefined);
+
+    const unavailable = screen.getByText(
+      'This Station is unavailable right now',
+    );
+    expect(unavailable.closest('main#station-main > .content-view')).toBe(
+      outlet(),
+    );
+    expect(screen.queryByTestId('app-view-content')).toBeNull();
+  });
+
+  test('the error state renders at / under the default arrangement', async () => {
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.layouts = { data: [], isLoading: false, isError: true };
+    hooks.regionModel = regionModelStub();
+
+    render(<App />);
+    await act(async () => undefined);
+
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain(
+      "Station could not load the first project's layouts.",
+    );
+    expect(alert.closest('main#station-main > .content-view')).toBe(outlet());
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects'] });
+  });
+
+  test('with Activity in main, / renders the Activity shell for main and not Home', async () => {
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.regionModel = {
+      ...regionModelStub(),
+      regions: {
+        ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        main: { visible: true, size: 0, occupant: 'activity' },
+      },
+    };
+
+    render(<App />);
+    await act(async () => undefined);
+
+    const shell = await screen.findByTestId('activity-region-shell');
+    expect(shell.textContent).toBe('main');
+    expect(shell.closest('main#station-main')).not.toBeNull();
+    expect(screen.queryByTestId('app-view-content')).toBeNull();
+    expect(screen.queryByRole('status', { name: /loading/i })).toBeNull();
+  });
+
+  test('a main occupant with no registered shell (a retired id) renders Home, not a blank outlet', async () => {
+    // Orchestrator fault injection on the C2a branch: replacing the
+    // `MainRegionSurface` fallback with `() => null` stayed green, so the
+    // stale-id branch had no test. A persisted arrangement (slice D) can
+    // name a surface a later build no longer registers; the outlet must
+    // fall back to Home rather than render nothing.
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.regionModel = {
+      ...regionModelStub(),
+      regions: {
+        ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        main: { visible: true, size: 0, occupant: 'retired-surface' },
+      },
+    };
+
+    render(<App />);
+    await act(async () => undefined);
+
+    const body = await screen.findByTestId('app-view-content');
+    expect(body.closest('main#station-main')).not.toBeNull();
+    expect(screen.queryByTestId('activity-region-shell')).toBeNull();
+  });
+
+  test('a routed view renders on another route while main keeps its occupant', async () => {
+    window.history.replaceState({}, '', '/plugins');
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    const stub = {
+      ...regionModelStub(),
+      setRegion: vi.fn(),
+      regions: {
+        ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        main: { visible: true, size: 0, occupant: 'activity' },
+      },
+    };
+    hooks.regionModel = stub;
+
+    render(<App />);
+    await act(async () => undefined);
+
+    expect(screen.getByTestId('app-view-content').textContent).toBe(
+      '{"type":"plugins"}',
+    );
+    expect(screen.queryByTestId('activity-region-shell')).toBeNull();
+    // Ignored, not cleared: App writes nothing to the model on a route change.
+    expect(stub.placeSurface).not.toHaveBeenCalled();
+    expect(stub.setRegion).not.toHaveBeenCalled();
+    expect(stub.regions.main.occupant).toBe('activity');
+
+    // Coming back to `/` shows the kept occupant.
+    await act(async () => {
+      window.history.pushState({}, '', '/');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(await screen.findByTestId('activity-region-shell')).toBeTruthy();
+    expect(screen.queryByTestId('app-view-content')).toBeNull();
+  });
+
+  /**
+   * #1523. Since `/` renders `main`'s occupant, "go to `/`" and "show Home"
+   * are different intents, and App holds one producer of each. Both are
+   * driven with Activity in `main` — the arrangement where the two diverge.
+   */
+  const activityInMain = () => ({
+    ...regionModelStub(),
+    regions: {
+      ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      main: { visible: true, size: 0, occupant: 'activity' },
+    },
+  });
+
+  test('the not-found view’s Go home reveals the Home surface, not whatever occupies main', async () => {
+    window.history.replaceState({}, '', '/nowhere');
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.regionModel = activityInMain();
+
+    render(<App />);
+    await act(async () => undefined);
+    expect(screen.getByTestId('app-view-content').textContent).toContain(
+      '"type":"not-found"',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go home' }));
+
+    // Home BY NAME: the Home surface is placed in `main` (the model navigates
+    // to `/` itself). A bare `navigate('/')` would have shown Activity.
+    expect(showSurface).toHaveBeenCalledTimes(1);
+    expect(showSurface).toHaveBeenCalledWith('home');
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test('the settings toggle’s return goes to the outlet, whatever occupies main, and NOT to the Home surface', async () => {
+    window.history.replaceState({}, '', '/settings');
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.regionModel = activityInMain();
+
+    render(<App />);
+    await act(async () => undefined);
+    expect(screen.getByTestId('app-view-content').textContent).toContain(
+      '"type":"settings"',
+    );
+
+    // ⌘, is registered through `useKeyboardShortcut` (mocked here); the last
+    // registration holds the handler closed over the current view.
+    const registration = vi
+      .mocked(useKeyboardShortcut)
+      .mock.calls.filter(([id]) => id === 'app.settings')
+      .at(-1);
+    if (!registration) throw new Error('app.settings chord not registered');
+    const handler = registration[4] as () => void;
+    act(() => {
+      handler();
+    });
+
+    // A toggle returns to where the user was — `/` and its occupant,
+    // Activity here — so it must not route through the Home reveal.
+    expect(navigate).toHaveBeenCalledWith('/');
+    expect(showSurface).not.toHaveBeenCalled();
   });
 
   test('registers no region surface host for a full-screen chat layout', async () => {

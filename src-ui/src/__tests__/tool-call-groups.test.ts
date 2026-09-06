@@ -1,3 +1,4 @@
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { describe, expect, test } from 'vitest';
 import {
   classifyToolName,
@@ -220,6 +221,187 @@ describe('groupToolCallParts', () => {
     ];
     const [group] = groupToolCallParts(parts) as ToolCallGroup[];
     expect(group.summary).toBe('Running npm run build…');
+  });
+
+  // station#1558 (fix round, M6): the collapsed header is what a reader sees
+  // first, and it used to say "Ran npm test" for a call whose session ended
+  // before it reported — contradicting the row it expands into, which
+  // `ToolCallDisplay` already refuses to put in the past tense.
+  test('a solo unresolved call keeps the bare verb, not the past tense', () => {
+    const parts = [
+      toolCall({
+        toolCallId: 'solo',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+        state: 'unresolved',
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(group.summary).toBe('Run npm test');
+    // Not running either: no ellipsis, no failure claim.
+    expect(group.inProgress).toBe(false);
+    expect(group.failedCount).toBe(0);
+  });
+
+  // station#1569 (item 3): the same defect one level up. The BATCH header
+  // derived its verb from `inProgress` alone, so a run containing an
+  // unresolved call still read "Ran 2 commands" — past tense for work that
+  // may never have happened, contradicting the very rows it expands into.
+  describe('a batch containing an unresolved call (station#1569 item 3)', () => {
+    const unresolvedBatch = (extra: Partial<ToolCallLike> = {}) => [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+        state: 'completed',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'npm run build' },
+        state: 'unresolved',
+        ...extra,
+      }),
+    ];
+
+    test('takes the bare verb, never the past tense', () => {
+      const [group] = groupToolCallParts(unresolvedBatch()) as ToolCallGroup[];
+      expect(group.summary).toBe('Run 2 commands');
+      expect(group.unresolvedCount).toBe(1);
+      // Not a failure claim either: nothing observed the tool fail.
+      expect(group.failedCount).toBe(0);
+    });
+
+    test('counts every unresolved call in the run', () => {
+      const [group] = groupToolCallParts([
+        toolCall({ toolCallId: 'a', toolName: 'Bash', state: 'unresolved' }),
+        toolCall({ toolCallId: 'b', toolName: 'Read', state: 'unresolved' }),
+        toolCall({ toolCallId: 'c', toolName: 'Read', state: 'completed' }),
+      ]) as ToolCallGroup[];
+      expect(group.unresolvedCount).toBe(2);
+      expect(group.calls.map((call) => call.unresolved)).toEqual([
+        true,
+        true,
+        false,
+      ]);
+    });
+
+    test('does not claim flight either when a sibling call is still running', () => {
+      const [group] = groupToolCallParts([
+        toolCall({ toolCallId: 'a', toolName: 'Bash', state: 'running' }),
+        toolCall({ toolCallId: 'b', toolName: 'Bash', state: 'unresolved' }),
+      ]) as ToolCallGroup[];
+      // "Running 2 commands…" would be as false for the unresolved call as
+      // "Ran" was; the bare verb is the only form true of both, and the
+      // ellipsis (which means "still going") is dropped with it.
+      expect(group.summary).toBe('Run 2 commands');
+      expect(group.inProgress).toBe(true);
+      expect(group.unresolvedCount).toBe(1);
+    });
+
+    test('leaves an ordinary finished batch in the past tense', () => {
+      // The discriminating control: the bare verb is conditional on an
+      // unresolved call being present, not the new default.
+      const [group] = groupToolCallParts([
+        toolCall({ toolCallId: 'a', toolName: 'Bash', state: 'completed' }),
+        toolCall({ toolCallId: 'b', toolName: 'Bash', state: 'completed' }),
+      ]) as ToolCallGroup[];
+      expect(group.summary).toBe('Ran 2 commands');
+      expect(group.unresolvedCount).toBe(0);
+    });
+
+    /**
+     * station#1569 (H1): the composition the reviewer caught. The header
+     * counts what the FOLD produced, so a fold that left the stale
+     * `unresolved` row standing beside the real result made this read
+     * "Run 2 commands · 1 with no result" for one call that succeeded.
+     * Driven through the real projection rather than a hand-written part —
+     * a literal `state: 'completed'` would only assert the classifier's own
+     * `===`, and could not have caught this.
+     */
+    test('does not count a row the real result superseded', () => {
+      const base = {
+        provider: 'claude',
+        threadId: 't1',
+        createdAt: '2026-09-05T00:00:00.000Z',
+      };
+      const messages = projectRuntimeEventsToMessages([
+        { ...base, eventId: 'e1', method: 'turn.started', turnId: 'turn-a' },
+        {
+          ...base,
+          eventId: 'e2',
+          method: 'tool.started',
+          turnId: 'turn-a',
+          itemId: 'i1',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          arguments: { command: 'npm test' },
+        },
+        {
+          ...base,
+          eventId: 'e3',
+          method: 'tool.completed',
+          turnId: 'turn-a',
+          itemId: 'i1',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          status: 'unresolved',
+          output:
+            'No result was reported before the session ended; whether the tool ran is unknown.',
+        },
+        {
+          ...base,
+          eventId: 'e4',
+          method: 'tool.completed',
+          turnId: 'turn-a',
+          itemId: 'i1',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          status: 'success',
+          output: 'real output',
+        },
+        {
+          ...base,
+          eventId: 'e5',
+          method: 'turn.completed',
+          turnId: 'turn-a',
+          finishReason: 'stop',
+        },
+      ] as never);
+
+      const assistant = messages.find(
+        (message) => message.role === 'assistant',
+      )!;
+      const [group] = groupToolCallParts(
+        assistant.parts as unknown as ToolCallLike[],
+      ) as ToolCallGroup[];
+      expect(group.unresolvedCount).toBe(0);
+      expect(group.summary).toBe('Ran npm test');
+    });
+
+    test('a mixed-kind batch takes the bare verb in every segment', () => {
+      const [group] = groupToolCallParts([
+        toolCall({
+          toolCallId: 'a',
+          toolName: 'Read',
+          args: { file_path: '/repo/a.ts' },
+          state: 'completed',
+        }),
+        toolCall({
+          toolCallId: 'b',
+          toolName: 'Read',
+          args: { file_path: '/repo/b.ts' },
+          state: 'completed',
+        }),
+        toolCall({
+          toolCallId: 'c',
+          toolName: 'Bash',
+          args: { command: 'npm test' },
+          state: 'unresolved',
+        }),
+      ]) as ToolCallGroup[];
+      expect(group.summary).toBe('Read 2 files, run 1 command');
+    });
   });
 
   test('extracts a truncated command label for exec calls', () => {

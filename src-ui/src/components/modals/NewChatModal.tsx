@@ -1,7 +1,6 @@
 import { useMaterializeEngineAgentMutation } from '@kontourai/station-sdk';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
-import { navigationStore } from '../../contexts/navigation-store';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -26,6 +25,7 @@ import {
 import { HomeFolderLabel } from '../HomeFolderLabel';
 import { AgentIcon } from '../icons/AgentIcon';
 import {
+  ArrowDownGlyph,
   EngineGlyph,
   FolderGlyph,
   GlobeGlyph,
@@ -52,6 +52,10 @@ import {
   scheduleSelectedAgentVisibility,
   splitCwdBreadcrumb,
 } from './new-chat-modal-utils';
+import {
+  type NewChatSetupAuthority,
+  useNewChatSetupReturn,
+} from './useNewChatSetupReturn';
 
 const SessionModelPicker = React.lazy(() =>
   import('../session/SessionModelPicker').then((module) => ({
@@ -89,6 +93,7 @@ interface NewChatModalProps {
   onClose: () => void;
   draftContext?: CodingChatContextDraft | null;
   mode?: NewChatModalMode;
+  requestAuthority?: NewChatSetupAuthority;
 }
 
 /** "Global" sentinel for the context picker */
@@ -100,9 +105,14 @@ export function NewChatModal({
   onClose,
   draftContext = null,
   mode,
+  requestAuthority,
 }: NewChatModalProps) {
   const isMobile = useIsMobile();
   const [agentSearch, setAgentSearch] = useState('');
+  const preservedAgentSlug = useRef<string | undefined>(undefined);
+  const preserveSetupContext = useRef(false);
+  const [returnedFromSetup, setReturnedFromSetup] = useState(false);
+  const [admissionError, setAdmissionError] = useState<unknown>(undefined);
   const [selectedAgentIndex, setSelectedAgentIndex] = useState(0);
   const [selectedContext, setSelectedContext] = useState<string>(() =>
     resolveNewChatInitialContext(activeProjectSlug, projects),
@@ -162,6 +172,12 @@ export function NewChatModal({
     acpConnections = [],
     runtimeLoading,
     modelsLoading,
+    runtimeFetching = false,
+    modelsFetching = false,
+    setupFetching = false,
+    projectCatalogResolved = true,
+    setupError,
+    refreshSetup,
     runtimeError,
     modelsError,
     refetchAgentConnections,
@@ -180,6 +196,7 @@ export function NewChatModal({
     selectedContext,
     contextSearch,
     agentSearch,
+    revalidateSelection: returnedFromSetup,
   });
   const {
     isGlobal,
@@ -193,6 +210,86 @@ export function NewChatModal({
     scopedAgents = [],
     compatibilityMessage,
   } = viewModel;
+  const setupReturn = useNewChatSetupReturn({
+    authority: requestAuthority,
+    onCancel: onClose,
+    revalidate: async () => {
+      if (refreshSetup) await refreshSetup();
+      else
+        await Promise.allSettled([
+          refetchAgentConnections?.(),
+          refetchModelConnections?.(),
+        ]);
+    },
+    onResume: (error) => {
+      setAdmissionError(error);
+      setReturnedFromSetup(true);
+      const slug = preservedAgentSlug.current;
+      const index = slug
+        ? flatList.findIndex((agent) => agent.slug === slug)
+        : -1;
+      setSelectedAgentIndex(index);
+      if (slug && index < 0)
+        setSelectFeedback(
+          'The Agent you selected is no longer available here. Choose an available Agent to continue.',
+        );
+      if (
+        selectedContext !== GLOBAL_CONTEXT &&
+        !projects.some((project) => project.slug === selectedContext)
+      ) {
+        setSelectFeedback(
+          'The workspace you selected is no longer available. Choose a workspace to continue.',
+        );
+      }
+    },
+  });
+  const beginSetup = (path: string, agentSlug?: string) => {
+    if (!setupReturn.begin(path)) {
+      setSelectFeedback('Reconnect to this Station before opening setup.');
+      return;
+    }
+    preservedAgentSlug.current =
+      agentSlug ?? flatList[selectedAgentIndex]?.slug;
+    preserveSetupContext.current = true;
+    contextSelectionTouchedRef.current = true;
+    setContextOpen(false);
+    setModelPickerAgent(null);
+  };
+  const checkingSetup =
+    returnedFromSetup && (setupFetching || runtimeFetching || modelsFetching);
+  const returnError = returnedFromSetup
+    ? (admissionError ?? setupError ?? runtimeError ?? modelsError)
+    : undefined;
+  useEffect(() => {
+    if (
+      !returnedFromSetup ||
+      checkingSetup ||
+      setupError ||
+      runtimeError ||
+      modelsError
+    )
+      return;
+    const slug = preservedAgentSlug.current;
+    if (!slug) return;
+    const index = flatList.findIndex((agent) => agent.slug === slug);
+    if (index !== selectedAgentIndex) {
+      setSelectedAgentIndex(index);
+      if (index < 0)
+        setSelectFeedback(
+          'The Agent you selected is no longer available here. Choose an available Agent to continue.',
+        );
+    }
+  }, [
+    checkingSetup,
+    returnedFromSetup,
+    setupError,
+    selectedAgentIndex,
+    flatList,
+    modelsError,
+    runtimeError,
+    setSelectFeedback,
+  ]);
+
   // A fork starts on the current Agent even when recency would normally put
   // another row first. The user may still choose any other eligible row.
   useEffect(() => {
@@ -252,8 +349,12 @@ export function NewChatModal({
   }, [contextOpen, isMobile]);
 
   useEffect(() => {
-    setSelectedDraftContextIds(
-      draftContext?.items.map((item) => item.id) || [],
+    setSelectedDraftContextIds((current) =>
+      preserveSetupContext.current
+        ? current.filter((id) =>
+            draftContext?.items.some((item) => item.id === id),
+          )
+        : draftContext?.items.map((item) => item.id) || [],
     );
   }, [draftContext]);
 
@@ -262,6 +363,13 @@ export function NewChatModal({
       (project) => project?.slug === selectedContext,
     );
     if (selectedContext !== GLOBAL_CONTEXT && !selectedProjectStillExists) {
+      if (preserveSetupContext.current) {
+        if (returnedFromSetup && projectCatalogResolved)
+          setSelectFeedback(
+            'The workspace you selected is no longer available. Choose a workspace to continue.',
+          );
+        return;
+      }
       setSelectedContext(
         resolveNewChatInitialContext(activeProjectSlug, projects),
       );
@@ -281,12 +389,32 @@ export function NewChatModal({
         setSelectedAgentIndex(0);
       }
     }
-  }, [activeProjectSlug, projects, selectedContext]);
+  }, [
+    activeProjectSlug,
+    projects,
+    selectedContext,
+    returnedFromSetup,
+    projectCatalogResolved,
+    setSelectFeedback,
+  ]);
 
   const materializeEngineAgent = useMaterializeEngineAgentMutation();
 
   const handleSelect = (agent: AgentData) => {
     if (mode?.pending) return;
+    if (checkingSetup) {
+      setSelectFeedback('Wait for connections to finish checking.');
+      return;
+    }
+    if (
+      returnedFromSetup &&
+      (admissionError || setupError || runtimeError || modelsError)
+    ) {
+      setSelectFeedback(
+        'Connections could not be rechecked. Retry before starting a chat.',
+      );
+      return;
+    }
     // Keyboard selection (Enter on the filtered list) reaches here with no
     // availability filter, so this must speak rather than return silently —
     // the pointer path never arrives (the row button is disabled).
@@ -322,6 +450,22 @@ export function NewChatModal({
     const initialMessage = buildCodingChatInitialMessage(draftItems);
     const defaultEffectiveModel = defaultEffectiveModelForAgent(agent);
     const choice = modelChoices[modelChoiceKey(agent)];
+    if (
+      returnedFromSetup &&
+      choice?.modelId &&
+      !modelsForAgent(agent).some(
+        (model) =>
+          model.id === choice.modelId &&
+          model.available !== false &&
+          (!choice.providerId || model.providerId === choice.providerId),
+      )
+    ) {
+      setSelectFeedback(
+        'The Model you selected is no longer available. Choose a Model to continue.',
+      );
+      setModelPickerAgent(agent);
+      return;
+    }
     const isPreferredForkAgent =
       mode?.kind === 'fork' && agent.slug === mode.preferredAgentSlug;
     const sessionModel =
@@ -542,6 +686,8 @@ export function NewChatModal({
     }
   };
 
+  if (setupReturn.suspended) return null;
+
   return (
     <ResponsiveDialogSurface
       ariaLabel={mode?.kind === 'fork' ? 'Fork from here' : 'New Chat'}
@@ -549,7 +695,7 @@ export function NewChatModal({
       panelClassName="new-chat-modal"
       initialFocusRef={agentInputRef}
       initialFocusPolicy="desktop"
-      onClose={onClose}
+      onClose={setupReturn.close}
     >
       <div className="new-chat-modal__header">
         <div className="new-chat-modal__title-row">
@@ -609,7 +755,7 @@ export function NewChatModal({
                 }
               />
             )}
-            <span className="new-chat-modal__chevron">▾</span>
+            <ArrowDownGlyph className="choice-caret" />
           </button>
 
           {contextOpen && !isMobile && (
@@ -623,6 +769,7 @@ export function NewChatModal({
                 selectedContext={selectedContext}
                 onSelectContext={(value) => {
                   contextSelectionTouchedRef.current = true;
+                  preservedAgentSlug.current = undefined;
                   setSelectedContext(value);
                   setContextOpen(false);
                   setSelectedAgentIndex(0);
@@ -663,6 +810,7 @@ export function NewChatModal({
                     selectedContext={selectedContext}
                     onSelectContext={(value) => {
                       contextSelectionTouchedRef.current = true;
+                      preservedAgentSlug.current = undefined;
                       setSelectedContext(value);
                       setContextOpen(false);
                       setSelectedAgentIndex(0);
@@ -681,16 +829,19 @@ export function NewChatModal({
           placeholder="Search agents..."
           value={agentSearch}
           onChange={(e) => {
+            preservedAgentSlug.current = undefined;
             setAgentSearch(e.target.value);
             setSelectedAgentIndex(0);
           }}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') {
+              preservedAgentSlug.current = undefined;
               e.preventDefault();
               setSelectedAgentIndex((p) =>
                 Math.min(p + 1, flatList.length - 1),
               );
             } else if (e.key === 'ArrowUp') {
+              preservedAgentSlug.current = undefined;
               e.preventDefault();
               setSelectedAgentIndex((p) => Math.max(p - 1, 0));
             } else if (
@@ -765,18 +916,35 @@ export function NewChatModal({
             <div className="new-chat-modal__loading">
               <SkeletonList count={4} label="Loading agents" />
             </div>
-          ) : runtimeError || modelsError ? (
+          ) : returnError || runtimeError || modelsError ? (
             // archive#771: a settled error here used to fall straight
             // through to "Nothing to chat with yet" — indistinguishable from
             // a host with no connections at all.
             <ErrorState
               variant="compact"
-              title="Couldn't load engines or models"
-              description={describeReadFailure(runtimeError ?? modelsError)}
+              title={
+                returnError
+                  ? "Couldn't recheck chat setup"
+                  : "Couldn't load engines or models"
+              }
+              description={describeReadFailure(
+                returnError ?? runtimeError ?? modelsError,
+              )}
               action={
                 <button
                   type="button"
                   onClick={() => {
+                    if (returnedFromSetup) {
+                      if (!setupReturn.retry())
+                        setSelectFeedback(
+                          'Reconnect to this Station before checking setup.',
+                        );
+                      return;
+                    }
+                    if (refreshSetup) {
+                      void refreshSetup().catch(() => undefined);
+                      return;
+                    }
                     if (runtimeError) void refetchAgentConnections?.();
                     if (modelsError) void refetchModelConnections?.();
                   }}
@@ -794,83 +962,110 @@ export function NewChatModal({
                 <button
                   type="button"
                   className="new-chat-modal__setup-action"
-                  onClick={() => {
-                    onClose();
-                    navigationStore.navigate('/connections');
-                  }}
+                  onClick={() => beginSetup('/connections')}
                 >
                   Set up Connections
                 </button>
               }
             />
           ))}
-        {groups.map((group, gi) => (
-          <React.Fragment key={group.label}>
-            <div
-              className={`new-chat-modal__group-label ${group.glyph === 'plug' ? 'new-chat-modal__group-label--acp' : ''} ${
-                // The rule between groups was an inline border; it is a class
-                // now so the header's hairline is declared beside the row
-                // hairlines it has to line up with.
-                gi > 0 ? 'new-chat-modal__group-label--divided' : ''
-              }`.trim()}
-            >
-              {group.icon || contextGlyph(group.glyph)} {group.label}
-            </div>
-            {group.agents.map((agent) => {
-              const idx = flatList.indexOf(agent);
-              const enable = resolveNewChatAgentEnable(agent);
-              const fixRoute = agentFixRoute(agent);
-              return (
-                <AgentRow
-                  key={agent.slug}
-                  agent={agent}
-                  isSelected={idx === selectedAgentIndex}
-                  selectedRef={
-                    idx === selectedAgentIndex ? selectedAgentRef : undefined
-                  }
-                  onSelect={() => handleSelect(agent)}
-                  onHover={() => setSelectedAgentIndex(idx)}
-                  modelLabel={modelFor(agent).label}
-                  modelUnavailable={
-                    modelsForAgent(agent).length === 0 && !modelsLoading
-                  }
-                  onOpenModel={() => setModelPickerAgent(agent)}
-                  interactionDisabled={mode?.pending}
-                  fixDisabled={
-                    fixRoute === 'enable' && enable ? enableInFlight : undefined
-                  }
-                  onFix={(route) => {
-                    // Only the server's `engine-disabled` repair may enable
-                    // an alias. Broken and missing connections arrive as
-                    // their own unavailableFix kinds and route below.
-                    if (route === 'enable' && enable) {
-                      if (!enableInFlight) void handleEnable(agent);
-                      return;
-                    }
-                    // Close before routing so the picker cannot obscure the
-                    // server-selected repair destination.
-                    onClose();
-                    if (route === 'edit') {
-                      navigationStore.navigate(
-                        `/agents/${encodeURIComponent(agent.slug)}`,
+        {checkingSetup ? (
+          <SkeletonList count={1} label="Checking connections" />
+        ) : null}
+        {flatList.length > 0 && returnError ? (
+          <ErrorState
+            variant="compact"
+            title="Couldn't recheck chat setup"
+            description={describeReadFailure(returnError)}
+            action={
+              <button
+                type="button"
+                onClick={() => {
+                  if (returnedFromSetup) {
+                    if (!setupReturn.retry())
+                      setSelectFeedback(
+                        'Reconnect to this Station before checking setup.',
                       );
-                    } else {
-                      // Connections sections are canonical paths, not a
-                      // `?section=` selection on the hub. The latter is
-                      // normalized away and silently lands on whichever
-                      // section the hub last remembered.
-                      navigationStore.navigate(
-                        route === 'models'
-                          ? '/connections/models'
-                          : '/connections/engines',
-                      );
+                    return;
+                  }
+                  if (refreshSetup) {
+                    void refreshSetup().catch(() => undefined);
+                    return;
+                  }
+                  if (runtimeError) void refetchAgentConnections?.();
+                  if (modelsError) void refetchModelConnections?.();
+                }}
+              >
+                Retry connections
+              </button>
+            }
+          />
+        ) : null}
+        {!admissionError &&
+          groups.map((group, gi) => (
+            <React.Fragment key={group.label}>
+              <div
+                className={`new-chat-modal__group-label ${group.glyph === 'plug' ? 'new-chat-modal__group-label--acp' : ''} ${
+                  // The rule between groups was an inline border; it is a class
+                  // now so the header's hairline is declared beside the row
+                  // hairlines it has to line up with.
+                  gi > 0 ? 'new-chat-modal__group-label--divided' : ''
+                }`.trim()}
+              >
+                {group.icon || contextGlyph(group.glyph)} {group.label}
+              </div>
+              {group.agents.map((agent) => {
+                const idx = flatList.indexOf(agent);
+                const enable = resolveNewChatAgentEnable(agent);
+                const fixRoute = agentFixRoute(agent);
+                return (
+                  <AgentRow
+                    key={agent.slug}
+                    agent={agent}
+                    isSelected={idx === selectedAgentIndex}
+                    selectedRef={
+                      idx === selectedAgentIndex ? selectedAgentRef : undefined
                     }
-                  }}
-                />
-              );
-            })}
-          </React.Fragment>
-        ))}
+                    onSelect={() => handleSelect(agent)}
+                    onHover={() => {
+                      if (!checkingSetup) {
+                        preservedAgentSlug.current = undefined;
+                        setSelectedAgentIndex(idx);
+                      }
+                    }}
+                    modelLabel={modelFor(agent).label}
+                    modelUnavailable={
+                      modelsForAgent(agent).length === 0 && !modelsLoading
+                    }
+                    onOpenModel={() => setModelPickerAgent(agent)}
+                    interactionDisabled={mode?.pending || checkingSetup}
+                    fixDisabled={
+                      fixRoute === 'enable' && enable
+                        ? enableInFlight
+                        : undefined
+                    }
+                    onFix={(route) => {
+                      // Only the server's `engine-disabled` repair may enable
+                      // an alias. Broken and missing connections arrive as
+                      // their own unavailableFix kinds and route below.
+                      if (route === 'enable' && enable) {
+                        if (!enableInFlight) void handleEnable(agent);
+                        return;
+                      }
+                      beginSetup(
+                        route === 'edit'
+                          ? `/agents/${encodeURIComponent(agent.slug)}`
+                          : route === 'models'
+                            ? '/connections/models'
+                            : '/connections/engines',
+                        agent.slug,
+                      );
+                    }}
+                  />
+                );
+              })}
+            </React.Fragment>
+          ))}
       </div>
       {modelPickerAgent && (
         <div

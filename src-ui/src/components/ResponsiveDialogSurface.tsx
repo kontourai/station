@@ -180,6 +180,8 @@ export function ResponsiveDialogSurface({
 }: ResponsiveDialogSurfaceProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement[]>([]);
+  const capturedReturnFocus = useRef(false);
+  const restoreFrame = useRef<number | null>(null);
   const onCloseRef = useRef(onClose);
   const dialogHistoryId = useId();
   const visualViewport = useMobileVisualViewport();
@@ -243,7 +245,10 @@ export function ResponsiveDialogSurface({
   }, [anchorRef, isMobile]);
 
   useLayoutEffect(() => {
-    returnFocusRef.current = captureReturnFocus(returnFocusTarget);
+    if (!capturedReturnFocus.current) {
+      returnFocusRef.current = captureReturnFocus(returnFocusTarget);
+      capturedReturnFocus.current = true;
+    }
     const focusInitial =
       initialFocusPolicy === 'always' ||
       (initialFocusPolicy === 'desktop' && !isMobile);
@@ -260,9 +265,14 @@ export function ResponsiveDialogSurface({
   // (archive#1206, #1245). The panel node is read at mount, not in the cleanup:
   // React nulls refs as it tears the tree down.
   useEffect(() => {
+    // StrictMode replays effect cleanup while the dialog remains mounted.
+    // Cancel that provisional restore before it can pull focus out of the
+    // live dialog. A real unmount still schedules the normal return path.
+    if (restoreFrame.current !== null)
+      cancelAnimationFrame(restoreFrame.current);
     const panel = panelRef.current;
     return () => {
-      restoreReturnFocus(returnFocusRef.current, panel);
+      restoreFrame.current = restoreReturnFocus(returnFocusRef.current, panel);
     };
   }, []);
 

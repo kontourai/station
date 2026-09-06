@@ -19,9 +19,10 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/acp` | ACP connection config and ACP connection status values |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
+| `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
-| `@kontourai/station-contracts/cloud-move` | Read-only cloud preparation target, inventory, and unavailable-transfer projection |
+| `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
@@ -92,3 +93,13 @@ built-in scheduler now emits.
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.
+
+### Source-only learning inspection
+
+`LearningSourceObservation` on the `learning-review` subpath is a separate,
+source-only outcome. An observed record exposes its exact registered store and
+record IDs, source fields and provenance, plus a Station observation digest/time.
+It supplies no candidate kind, deployment scope, owner projection identity,
+promotion verdict, or effect result. Generic record `active` is not learning
+activation. All restricted/unavailable/refused outcomes omit source identity.
+The full `LearningReviewProjection` lifecycle contract is unchanged.

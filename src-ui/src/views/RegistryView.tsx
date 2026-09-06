@@ -25,6 +25,8 @@ import {
 } from '../components/registry/RegistryLayoutActions';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { useToast } from '../contexts/ToastContext';
+import { useShowSurface } from '../contexts/useShowSurface';
 import { usePermissions } from '../core/PermissionManager';
 import { pluginRegistry } from '../core/PluginRegistry';
 import {
@@ -53,6 +55,9 @@ export function RegistryView({
   initialTab?: RegistryCatalogTab;
 } = {}) {
   const { navigate } = useNavigation();
+  const { showToast } = useToast();
+  // #928 C2a: "Open a Project" means Home by name; reveal the surface.
+  const showSurface = useShowSurface();
   const { isTauri } = usePlatformProfile();
   const { apiBase } = useApiBase();
   const { activeConnection } = useConnections();
@@ -218,6 +223,14 @@ export function RegistryView({
     item: RegistryItem,
     itemId: string,
     isInstalled: boolean,
+    /**
+     * How the outcome is reported. The default is the page's inline row; a
+     * plugin install passes the shared toast instead (#1536 G7) — a grey
+     * inline bar reading "Installed Getting Started Starter" sat directly
+     * above the catalog and read as another result rather than as the answer
+     * to what had just been asked for.
+     */
+    reportSuccess?: () => void,
   ) => ({
     onError: (error: Error) => setMessage(error.message),
     onSuccess: () => {
@@ -227,9 +240,13 @@ export function RegistryView({
         next.set(installationKey, !isInstalled);
         return next;
       });
-      setMessage(
-        `${isInstalled ? 'Removed' : 'Installed'} ${item.displayName || itemId}`,
-      );
+      if (reportSuccess) {
+        reportSuccess();
+      } else {
+        setMessage(
+          `${isInstalled ? 'Removed' : 'Installed'} ${item.displayName || itemId}`,
+        );
+      }
       void refetchInstalled().finally(() => {
         setInstallationOverrides((current) => {
           const next = new Map(current);
@@ -343,7 +360,41 @@ export function RegistryView({
       }
     }
     setPluginInstallPreview(null);
-    const baseCallbacks = actionCallbacks(tab, item, itemId, false);
+    // The installed plugin's own name, which is what selects it in Plugins —
+    // a registry id is only the catalog's handle for it.
+    const installedPluginName = data.manifest?.name;
+    // The preview's own component list is what the modal just showed the
+    // operator, and the server derives it from the staged manifest — so the
+    // offer to place a layout is made exactly when a layout was reviewed.
+    const addsLayout = data.components.some(
+      (component) => component.type === 'layout',
+    );
+    const baseCallbacks = actionCallbacks(tab, item, itemId, false, () => {
+      setMessage(null);
+      showToast(
+        `Installed ${displayName}`,
+        undefined,
+        undefined,
+        // Review L7: named for what it DOES. It navigates to the installed
+        // plugin's detail page, where "What it adds" carries the action that
+        // actually places the layout (and adds it outright when there is only
+        // one project); calling it "Add to project" promised an add this button
+        // does not perform.
+        addsLayout && installedPluginName
+          ? [
+              {
+                label: 'Open plugin',
+                variant: 'primary' as const,
+                onClick: () =>
+                  navigate(
+                    `/plugins/${encodeURIComponent(installedPluginName)}`,
+                  ),
+              },
+            ]
+          : undefined,
+        'success',
+      );
+    });
     const callbacks = {
       onError: baseCallbacks.onError,
       onSuccess: async (result: unknown) => {
@@ -486,7 +537,7 @@ export function RegistryView({
           },
           manageSkills: () => navigate('/guidance?tab=skills'),
           managePlugins: () => navigate('/plugins'),
-          openProjects: () => navigate('/'),
+          openProjects: () => showSurface('home'),
           retryInstalled: () => {
             void refetchInstalled();
           },

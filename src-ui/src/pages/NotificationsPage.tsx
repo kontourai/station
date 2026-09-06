@@ -20,9 +20,11 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { useAttentionInbox } from '../hooks/useAttentionInbox';
 import {
   countPendingAttention,
+  isAcknowledgeableAttentionItem,
   pendingAttentionItems,
 } from '../utils/attention';
 import { errorText } from '../utils/errorText';
+import { notificationCategoryLabel } from '../utils/notificationLabels';
 import '../views/page-layout.css';
 import './NotificationsPage.css';
 import { Button } from '../components/Button';
@@ -33,7 +35,6 @@ import {
   isNotificationHistoryDateRangeValid,
   type NotificationHistoryFilters,
   notificationHistoryCategories,
-  notificationHistoryCategoryLabel,
   readNotificationHistoryFilters,
   writeNotificationHistoryFilters,
 } from './notificationHistoryFilters';
@@ -115,10 +116,14 @@ export function NotificationsPage() {
     // all, then report only what actually failed, with a count so the user
     // knows the batch was partial rather than lost.
     mutationFn: async () => {
+      // #1536 D8 review M1: a standing notice is not one of these. It is
+      // still true after the dismissal, the server refuses its
+      // acknowledgement, and posting one anyway would report a failure for
+      // every batch that contained it.
       const outcomes = await Promise.allSettled(
-        attentionItems.map((item) =>
-          acknowledgeAttentionItem(item.id, apiBase),
-        ),
+        attentionItems
+          .filter(isAcknowledgeableAttentionItem)
+          .map((item) => acknowledgeAttentionItem(item.id, apiBase)),
       );
       const failures = outcomes.filter(
         (outcome) => outcome.status === 'rejected',
@@ -377,7 +382,7 @@ function NotificationHistoryFilterBar({
                     })
                   }
                 >
-                  {notificationHistoryCategoryLabel(category)}
+                  {notificationCategoryLabel(category)}
                 </button>
               );
             })}

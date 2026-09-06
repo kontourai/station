@@ -29,11 +29,10 @@ describe('ChatDock activity region', () => {
   test('keeps the named dock root, every passive reset modality, and shortcut focus wiring together', () => {
     const onActivity = vi.fn();
     const onFocusWithinChange = vi.fn();
-    // The ambient host publishes the slot's placement and size for whichever
-    // occupant holds it (archive#3929), so it reads navigation. Mounting the
-    // REAL provider rather than mocking it keeps this a test of the host
-    // rather than of a stand-in. Device settings need no provider — they come
-    // from a store.
+    // The ambient host publishes the slot's placement and size
+    // (archive#3929), so it reads navigation. Mounting the REAL provider
+    // rather than mocking it keeps this a test of the host rather than of a
+    // stand-in. Device settings need no provider — they come from a store.
     const { container } = render(
       // `DockShell` (archive#4460) registers `dock.toggle`/`dock.maximize`
       // through the real `useKeyboardShortcut`, which needs this provider —
@@ -65,7 +64,7 @@ describe('ChatDock activity region', () => {
     // The real ambient host stays chromeless, so `DockShell` (archive#4460)
     // not this boundary — is the shell's direct child, and the CSS child
     // combinators keep THAT as their target (it carries the `.chat-dock`
-    // class every occupant now shares). The boundary is a descendant of it.
+    // class). The boundary is a descendant of it.
     const shellRoot = container.firstElementChild;
     expect(shellRoot?.className).toContain('chat-dock');
     expect(shellRoot?.contains(pane)).toBe(true);
@@ -138,9 +137,9 @@ function extractBalancedBody(source: string, anchor: string): string {
 }
 
 /**
- * archive#4525/archive#4524: `AmbientChatDockProjectBinding.test.tsx`
+ * archive#4525/archive#4524: `DockShellProjectBinding.test.tsx`
  * proves the fix's foundation (DockShell-owned chrome state survives the
- * real occupant-switch/remount mechanics) through the REAL host, and
+ * real remount mechanics) through the REAL shell, and
  * `chat-dock-utils.test.ts` table-tests every piece of the actual
  * project-binding LOGIC as pure functions
  * (`resolveDockBadgeProjectName`/`resolveSessionProjectMismatchLabel`/
@@ -188,9 +187,25 @@ describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site
     expect(source).toMatch(
       /workingDirectory=\{\s*scopedProjectSlug\s*\?\s*null\s*:\s*sessionDisplayCwd\s*\}/,
     );
+    // #1536 F: the coding layout is no longer a prop of the project-context
+    // row (its start-truncated path segment, which carried the link, left the
+    // conversation title about one character). It is an "Open code layout" row
+    // of the dock header's More menu, and BOTH halves of the retired link's gate
+    // move with it — they are different things and the row is wrong without
+    // either. The project is the SESSION's own, never the badge's (this
+    // ruling); `scopedProjectSlug` suppresses the row, exactly as it suppressed
+    // the prop, because a project chat-scope filter has never shown
+    // session-specific facts.
     expect(source).toMatch(
-      /codingLayoutSlug=\{\s*scopedProjectSlug\s*\?\s*null\s*:\s*\(sessionCodingLayout\?\.slug\s*\?\?\s*null\)\s*\}/,
+      /!scopedProjectSlug && sessionCodingLayout && activeSession\?\.projectSlug/,
     );
+    expect(source).toMatch(/label: 'Open code layout'/);
+    // And it navigates with the SESSION's slug, not the badge's bound project —
+    // the exact substitution station#4525 review HIGH-2 caught once already.
+    expect(source).toMatch(
+      /handleOpenLayout\(\s*activeSession\.projectSlug as string,\s*sessionCodingLayout\.slug,/,
+    );
+    expect(source).not.toMatch(/handleOpenLayout\(\s*dockProjectSlug[\s,)]/);
     expect(source).toMatch(
       /gitStatus=\{\s*scopedProjectSlug\s*\?\s*undefined\s*:\s*gitStatus\s*\}/,
     );

@@ -11,14 +11,25 @@ export interface RegionState {
   visible: boolean;
   size: number;
   occupant: string | null;
+  /**
+   * Whether this region is expanded over the workspace (#928 slice iii,
+   * #1385). An attribute of the REGION, not of its occupant: the shell reads
+   * it for any occupant, and navigation's `maximize` param is Chat's mirror
+   * of it, never its source. `updateRegion` keeps the invariants — at most
+   * one region is maximized, `main` never is, and a hidden or empty region
+   * never is — and `placeSurface` clears it on both ends of a move, so a
+   * relocation can never carry a maximize into the region it enters.
+   */
+  maximized: boolean;
 }
 export type RegionArrangement = Record<RegionId, RegionState>;
 
 export const DEFAULT_DEVICE_REGION_ARRANGEMENT: RegionArrangement = {
-  main: { visible: true, size: 0, occupant: null },
-  left: { visible: false, size: 400, occupant: null },
-  right: { visible: false, size: 400, occupant: null },
-  bottom: { visible: false, size: 320, occupant: 'chat' },
+  // `main` is always visible and Home is its default occupant (#928 C2a).
+  main: { visible: true, size: 0, occupant: 'home', maximized: false },
+  left: { visible: false, size: 400, occupant: null, maximized: false },
+  right: { visible: false, size: 400, occupant: null, maximized: false },
+  bottom: { visible: false, size: 320, occupant: 'chat', maximized: false },
 };
 
 type DockSeedSettings = Pick<
@@ -33,6 +44,33 @@ export function occupiedDockRegion(
   surfaceId: string,
 ): DockRegionId | undefined {
   return DOCK_REGION_IDS.find((id) => arrangement[id].occupant === surfaceId);
+}
+
+/** The region (dock or `main`) holding a surface, if any. */
+export function occupiedRegion(
+  arrangement: RegionArrangement,
+  surfaceId: string,
+): RegionId | undefined {
+  return REGION_IDS.find((id) => arrangement[id].occupant === surfaceId);
+}
+
+export function isDockRegion(id: RegionId): id is DockRegionId {
+  return (DOCK_REGION_IDS as readonly RegionId[]).includes(id);
+}
+
+/**
+ * Whether a surface declares `regionId` among the regions it may occupy
+ * (`RegisteredSurface.regions`). A surface the registry does not know — a
+ * test fixture, a pane a later slice registers at runtime — may take a dock
+ * region and never `main`: the primary area is only ever handed to a surface
+ * that declared it, so an undeclared id cannot displace Home by accident.
+ */
+export function surfaceMayOccupy(
+  surfaceId: string,
+  regionId: RegionId,
+): boolean {
+  const surface = REGION_SURFACE_REGISTRY.get(surfaceId);
+  return surface ? surface.regions.includes(regionId) : isDockRegion(regionId);
 }
 
 export function firstFreeDockRegion(
@@ -124,66 +162,121 @@ export function syncRegionArrangementFromDock(
     : next;
 }
 
+/**
+ * Place `surfaceId` in `regionId`, honouring the surface's declared regions
+ * (`surfaceMayOccupy`; an ineligible placement returns the arrangement
+ * unchanged — the toolbar never offers one, this is the backstop) and vacating
+ * whichever region the surface came from.
+ *
+ * What happens to the region's previous occupant depends on the target:
+ *
+ * - into a dock region, the displaced surface relocates — back into the
+ *   region the incoming surface vacated when it may occupy it (a swap), else
+ *   into the first free dock region, else it is unplaced;
+ * - into `main`, the displaced surface is UNPLACED, never relocated. `main`
+ *   is the primary area: replacing what it shows must not spawn a dock panel
+ *   the user did not ask for (#928 C2a, owner decision).
+ *
+ * `main` is always visible; the `visible` argument only applies to a dock
+ * region.
+ */
 export function placeSurface(
   arrangement: RegionArrangement,
   surfaceId: string,
   regionId: RegionId,
   visible = true,
 ): RegionArrangement {
+  if (!surfaceMayOccupy(surfaceId, regionId)) return arrangement;
   const previousRegion = REGION_IDS.find(
     (id) => id !== regionId && arrangement[id].occupant === surfaceId,
   );
   const displacedSurface = arrangement[regionId].occupant;
-  const next = updateRegion(arrangement, regionId, {
+  // A relocation never carries a maximize (#1385): the region a surface
+  // enters and the region it leaves both come out restored, whatever either
+  // was before. The one #1385 saw — Chat maximized in `bottom`, Activity
+  // swapped in, Chat's shell re-propped to `right` still full-width over the
+  // Activity shell the user had just asked for — is a maximize that was the
+  // occupant's flag surviving a move; as the region's attribute it is written
+  // out here.
+  let next = updateRegion(arrangement, regionId, {
     occupant: surfaceId,
-    visible,
+    visible: regionId === 'main' || visible,
+    maximized: false,
   });
   if (previousRegion) {
-    return updateRegion(next, previousRegion, {
-      occupant: displacedSurface,
-      visible:
-        displacedSurface === null ? false : arrangement[regionId].visible,
+    // An emptied dock region hides; an emptied `main` stays visible (the
+    // outlet treats a null occupant as Home).
+    next = updateRegion(next, previousRegion, {
+      occupant: null,
+      visible: previousRegion === 'main',
+      maximized: false,
     });
   }
-  if (displacedSurface !== null && displacedSurface !== surfaceId) {
-    const freeRegion = firstFreeDockRegion(
-      next,
-      DOCK_REGION_IDS.includes(regionId as DockRegionId)
-        ? (regionId as DockRegionId)
-        : 'bottom',
-    );
-    if (freeRegion) {
-      return updateRegion(next, freeRegion, {
-        occupant: displacedSurface,
-        visible: arrangement[regionId].visible,
-      });
-    }
+  if (displacedSurface === null || displacedSurface === surfaceId) return next;
+  if (regionId === 'main') return next;
+  const displacedVisible = arrangement[regionId].visible;
+  if (
+    previousRegion &&
+    previousRegion !== 'main' &&
+    surfaceMayOccupy(displacedSurface, previousRegion)
+  ) {
+    return updateRegion(next, previousRegion, {
+      occupant: displacedSurface,
+      visible: displacedVisible,
+      maximized: false,
+    });
+  }
+  const freeRegion = firstFreeDockRegion(next, regionId);
+  if (freeRegion && surfaceMayOccupy(displacedSurface, freeRegion)) {
+    return updateRegion(next, freeRegion, {
+      occupant: displacedSurface,
+      visible: displacedVisible,
+      maximized: false,
+    });
   }
   return next;
 }
 
+/**
+ * Make a surface visible where it is, or place it where it belongs. A surface
+ * already in a region (dock or `main`) is revealed there; an unplaced one
+ * goes to `main` when that is its target, else to its preferred free dock
+ * region.
+ */
 export function revealSurface(
   arrangement: RegionArrangement,
   surfaceId: string,
-  preferred: DockRegionId,
-): { arrangement: RegionArrangement; region: DockRegionId } {
-  const occupied = occupiedDockRegion(arrangement, surfaceId);
+  preferred: RegionId,
+): { arrangement: RegionArrangement; region: RegionId } {
+  const occupied = occupiedRegion(arrangement, surfaceId);
   if (occupied) {
     return {
       arrangement: updateRegion(arrangement, occupied, { visible: true }),
       region: occupied,
     };
   }
+  if (preferred === 'main') {
+    return {
+      arrangement: placeSurface(arrangement, surfaceId, 'main'),
+      region: 'main',
+    };
+  }
   const region = firstFreeDockRegion(arrangement, preferred) ?? preferred;
   return { arrangement: placeSurface(arrangement, surfaceId, region), region };
 }
 
+/**
+ * The coarse-device reveal: the revealed dock region becomes the only visible
+ * one. A reveal into `main` folds nothing — `main` is not a dock region, and
+ * the dock's fold state is the user's, not this surface's.
+ */
 export function showSurfaceAlone(
   arrangement: RegionArrangement,
   surfaceId: string,
-  preferred: DockRegionId,
-): { arrangement: RegionArrangement; region: DockRegionId } {
+  preferred: RegionId,
+): { arrangement: RegionArrangement; region: RegionId } {
   const revealed = revealSurface(arrangement, surfaceId, preferred);
+  if (revealed.region === 'main') return revealed;
   let next = revealed.arrangement;
   for (const id of DOCK_REGION_IDS) {
     if (id !== revealed.region)
@@ -192,21 +285,105 @@ export function showSurfaceAlone(
   return { arrangement: next, region: revealed.region };
 }
 
+export interface DockMirrorDiff {
+  placement?: DockRegionId;
+  visible?: boolean;
+  /**
+   * Chat's maximize, for navigation's `maximize` param and
+   * `lastDockMaximized`. Emitted only when Chat's region is visible after the
+   * change and its `maximized` differs from before — an explicit maximize or
+   * restore. A hide is not a maximize change even though the region's flag
+   * clears with it: the provider's `setDockState(false, …)` forwards the
+   * flag the region closed FROM (archive#945), so a remembered Full survives
+   * the close. A non-chat region's maximize is never mirrored.
+   */
+  maximized?: boolean;
+  size?: Partial<Record<RegionId, number>>;
+}
+
+/**
+ * What a surface's toggle (its chord, or its row in the folded Regions menu)
+ * does, decided from the arrangement alone (#1523; #1420 wanted no placement
+ * rule left in the toolbar):
+ *
+ * - `arrangement`: the toggle resolved to a state write — a dock occupant
+ *   hidden or revealed in place, or a `main` occupant relocated to its
+ *   `defaultRegion`. `shownRegion` names the dock region that became visible,
+ *   for the fold's `lastShownRegion`, or null when something was hidden.
+ * - `show`: the toggle means "show it", and the model's own `showSurface`
+ *   owns that (where an unplaced surface lands, the coarse show-alone fold,
+ *   the `main` navigation).
+ * - `none`: nothing to do — a `main` occupant whose default IS `main` (Home).
+ */
+export type SurfaceToggle =
+  | {
+      kind: 'arrangement';
+      arrangement: RegionArrangement;
+      shownRegion: DockRegionId | null;
+    }
+  | { kind: 'show' }
+  | { kind: 'none' };
+
+/**
+ * Resolve a surface's toggle. Occupying a dock region toggles that region's
+ * visibility, with the coarse rule kept from the folded menu: on a
+ * bottom-only device the surface is HIDDEN only when it is the folded region
+ * (the one visible dock such a device has); any other placed-but-not-showing
+ * surface is shown alone instead. Occupying `main` moves the surface to its
+ * `defaultRegion` when that is a dock region — visible, and folded alone on a
+ * coarse device — so a chord that "hides" a `main` occupant leaves Home
+ * behind (an emptied `main` reads as Home) rather than doing nothing.
+ * Unplaced means show.
+ */
+export function toggleSurface(
+  arrangement: RegionArrangement,
+  surfaceId: string,
+  defaultRegion: RegionId,
+  options: { lastShownRegion: RegionId | null; bottomOnly: boolean },
+): SurfaceToggle {
+  const occupied = occupiedRegion(arrangement, surfaceId);
+  if (!occupied) return { kind: 'show' };
+  if (occupied === 'main') {
+    if (!isDockRegion(defaultRegion)) return { kind: 'none' };
+    let next = placeSurface(arrangement, surfaceId, defaultRegion, true);
+    if (options.bottomOnly) {
+      for (const id of DOCK_REGION_IDS) {
+        if (id !== defaultRegion)
+          next = updateRegion(next, id, { visible: false });
+      }
+    }
+    return {
+      kind: 'arrangement',
+      arrangement: next,
+      shownRegion: defaultRegion,
+    };
+  }
+  if (options.bottomOnly) {
+    const folded = foldedDockRegion(arrangement, options.lastShownRegion);
+    if (occupied === folded && arrangement[occupied].visible) {
+      return {
+        kind: 'arrangement',
+        arrangement: updateRegion(arrangement, occupied, { visible: false }),
+        shownRegion: null,
+      };
+    }
+    return { kind: 'show' };
+  }
+  const visible = !arrangement[occupied].visible;
+  return {
+    kind: 'arrangement',
+    arrangement: updateRegion(arrangement, occupied, { visible }),
+    shownRegion: visible ? occupied : null,
+  };
+}
+
 export function dockMirrorDiff(
   previous: RegionArrangement,
   next: RegionArrangement,
-): {
-  placement?: DockRegionId;
-  visible?: boolean;
-  size?: Partial<Record<RegionId, number>>;
-} {
+): DockMirrorDiff {
   const previousPlacement = chatRegion(previous);
   const placement = chatRegion(next);
-  const result: {
-    placement?: DockRegionId;
-    visible?: boolean;
-    size?: Partial<Record<RegionId, number>>;
-  } = {};
+  const result: DockMirrorDiff = {};
   if (placement !== previousPlacement && placement) {
     result.placement = placement;
     result.size = { [placement]: next[placement].size };
@@ -217,8 +394,17 @@ export function dockMirrorDiff(
   const previousVisible = previousPlacement
     ? previous[previousPlacement].visible
     : false;
+  const previousMaximized = previousPlacement
+    ? previous[previousPlacement].maximized
+    : false;
   if (placement && next[placement].visible !== previousVisible)
     result.visible = next[placement].visible;
+  if (
+    placement &&
+    next[placement].visible &&
+    next[placement].maximized !== previousMaximized
+  )
+    result.maximized = next[placement].maximized;
   const sizes: Partial<Record<RegionId, number>> = {};
   for (const id of DOCK_REGION_IDS)
     if (next[id].occupant === 'chat' && next[id].size !== previous[id].size)
@@ -241,8 +427,14 @@ export interface RegisteredSurface {
   id: string;
   title: string;
   icon: string;
-  shortcut: SurfaceShortcut;
-  defaultRegion: DockRegionId;
+  /** The toggle chord, where the surface has one. Home has none. */
+  shortcut?: SurfaceShortcut;
+  /**
+   * Where this surface may be placed. `placeSurface` refuses anything else;
+   * the region toolbar offers a surface only for the regions it declares.
+   */
+  regions: readonly RegionId[];
+  defaultRegion: RegionId;
   /** Repository-relative renderer source, used by the architecture ratchet. */
   sourceFile: string;
 }
@@ -266,6 +458,14 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     title: 'Chat',
     icon: 'chat',
     shortcut: { id: 'dock.toggle', key: 'd', modifiers: ['cmd'] },
+    // Dock regions only for now. Chat's `main` placement would be a
+    // projectless full-screen `ChatWorkspacePane`, a mount no entry point has
+    // ever made: the full-screen placement is layout-bound (`layoutSlug` is
+    // required for cross-project routing), owns its own dock-shortcut
+    // registration, and `App.tsx` treats a full-screen Chat as owning the
+    // whole viewport (no region host). Declaring `main` here without that
+    // mount would advertise a placement the outlet cannot render (#928 C2a).
+    regions: DOCK_REGION_IDS,
     defaultRegion: 'bottom',
     sourceFile: 'src-ui/src/components/chat-dock/ChatDock.tsx',
   },
@@ -278,22 +478,64 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
       key: 'a',
       modifiers: ['cmd', 'shift'],
     },
+    regions: REGION_IDS,
     defaultRegion: 'right',
     sourceFile: 'src-ui/src/views/activity/ActivityWorkspacePane.tsx',
   },
+  {
+    // Home is a surface whose only placement is the primary area: its default
+    // region is `main` and it declares no other, so no dock control ever
+    // offers it and a dock swap can never carry it out of `main` (#928 C2a).
+    // No chord: the destination registry has no Home shortcut and this slice
+    // invents none.
+    id: 'home',
+    title: 'Home',
+    icon: 'home',
+    regions: ['main'],
+    defaultRegion: 'main',
+    sourceFile: 'src-ui/src/views/home/HomeSurface.tsx',
+  },
 ]);
 
+function regionStatesEqual(a: RegionState, b: RegionState): boolean {
+  return (
+    a.visible === b.visible &&
+    a.size === b.size &&
+    a.occupant === b.occupant &&
+    a.maximized === b.maximized
+  );
+}
+
+/**
+ * Apply `patch` to one region, holding the maximize invariants for the whole
+ * arrangement (#928 slice iii): `main` is never maximized, a hidden or empty
+ * region is never maximized (the region-level form of "a closed dock is never
+ * maximized", archive#795 — `is-collapsed` and `is-maximized` together render
+ * a blank full-height shell), and at most one region is maximized at a time,
+ * so maximizing one restores every other. Returns the same reference when
+ * nothing changes.
+ */
 export function updateRegion(
   arrangement: RegionArrangement,
   id: RegionId,
   patch: Partial<RegionState>,
 ): RegionArrangement {
+  const merged: RegionState = { ...arrangement[id], ...patch };
   if (
-    Object.entries(patch).every(
-      ([key, value]) => arrangement[id][key as keyof RegionState] === value,
-    )
+    merged.maximized &&
+    (id === 'main' || !merged.visible || merged.occupant === null)
   ) {
-    return arrangement;
+    merged.maximized = false;
   }
-  return { ...arrangement, [id]: { ...arrangement[id], ...patch } };
+  let next = regionStatesEqual(arrangement[id], merged)
+    ? arrangement
+    : { ...arrangement, [id]: merged };
+  if (merged.maximized) {
+    for (const other of REGION_IDS) {
+      if (other !== id && next[other].maximized) {
+        next = { ...next, [other]: { ...next[other], maximized: false } };
+      }
+    }
+  }
+  return next;
 }

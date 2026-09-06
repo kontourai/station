@@ -7,6 +7,10 @@ import {
   type AgentSpec,
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
+import type {
+  AttentionRequestInspection,
+  AttentionRequestReference,
+} from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
@@ -221,6 +225,7 @@ import {
   normalizeOmittedModelId,
 } from './model-launch-planning.js';
 import {
+  projectRequestAnswerability,
   type RequestReplayOutcome,
   type SessionAnswerabilityObservation,
 } from './open-requests.js';
@@ -237,6 +242,10 @@ import {
 } from './orchestration-session-state.js';
 import { type OrchestrationStreamPresenceSubject } from './orchestration-stream-presence.js';
 import { type RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
+import {
+  inspectRequestEvent,
+  RequestEventGuardError,
+} from './request-inspection.js';
 import { servingInstanceIdentity } from './serving-instance.js';
 import { sessionAgentStartUnavailableReason } from './session-agent-resolution.js';
 import { SessionAuthorization } from './session-authorization.js';
@@ -278,7 +287,11 @@ import {
 } from './session-query-module.js';
 import { SessionRecoveryCoordinator } from './session-recovery-coordinator.js';
 import { SessionTranscriptReads } from './session-transcript-reads.js';
-import { createInMemorySessionTurnBoundaryAuthority } from './session-turn-boundary.js';
+import {
+  createInMemorySessionTurnBoundaryAuthority,
+  runSessionStartWithBoundary,
+  type SessionTurnBoundaryAuthority,
+} from './session-turn-boundary.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
@@ -309,6 +322,9 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
+  /** Exact server-owned Task reservation scope; never read from public metadata. */
+  roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /** Skip the modelOptions per-provider support check for this one command. */
   skipModelOptionSupportCheck?: boolean;
@@ -1020,6 +1036,7 @@ export class OrchestrationService {
   readonly sessionLifecycles: SessionLifecycleModule;
   private usageTelemetry?: UsageTelemetryObserver;
   private readonly sessionExecutionCoordinator: SessionExecutionCoordinator;
+  private readonly sessionStartBoundaries: SessionTurnBoundaryAuthority;
   /** Private native-output authority; no public Session/Thread API exposes it. */
   private readonly nativeOutputGrants = createNativeOutputGrantAuthority();
   /** Pending opaque handles; durable admission occurs only at terminal append. */
@@ -1334,9 +1351,11 @@ export class OrchestrationService {
           payload,
         ),
     });
-    this.sessionExecutionCoordinator = new SessionExecutionCoordinator(
+    this.sessionStartBoundaries =
       options.eventStore?.sessionTurnBoundaryAuthority() ??
-        createInMemorySessionTurnBoundaryAuthority(),
+      createInMemorySessionTurnBoundaryAuthority();
+    this.sessionExecutionCoordinator = new SessionExecutionCoordinator(
+      this.sessionStartBoundaries,
     );
     this.turnDeduplicator =
       options.turnDeduplicator ?? options.eventStore?.createTurnDeduplicator();
@@ -2184,7 +2203,11 @@ export class OrchestrationService {
       let session: ProviderSession;
       try {
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
-          adapter.startSession(startInput),
+          runSessionStartWithBoundary(
+            this.sessionStartBoundaries,
+            startInput.threadId,
+            () => adapter.startSession(startInput),
+          ),
         );
       } finally {
         admissionLease?.release();
@@ -3246,6 +3269,71 @@ export class OrchestrationService {
   // bodies live in SessionEventReads (session-event-reads.ts). Flat
   // same-named forwarders keep the test Proxy's authority injection (T3)
   // and the per-method initialize() latch (T9) exactly as the bodies had.
+  inspectAttentionRequest(
+    reference: AttentionRequestReference,
+    authority: SessionReadScope,
+  ): AttentionRequestInspection | null {
+    this.initialize();
+    let persisted: ProviderSession | undefined;
+    try {
+      persisted = this.options.eventStore?.readSessionByThread(
+        reference.threadId,
+      );
+    } catch {
+      return null;
+    }
+    if (persisted)
+      this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
+    const session = this.sessionReadModel.get(reference.threadId) ?? persisted;
+    if (
+      !session ||
+      !this.sessionAuthz.canReadSession(reference.threadId, authority)
+    )
+      return null;
+    // Establish the exact bounded record before any additional lifecycle facts.
+    const inspected = inspectRequestEvent(
+      this.options.eventStore,
+      reference,
+      session.provider,
+    );
+    if (inspected.state !== 'open') return inspected;
+    let answerability: ReturnType<typeof projectRequestAnswerability>;
+    try {
+      answerability = projectRequestAnswerability({
+        ...this.observeAnswerability(
+          reference.threadId,
+          session.provider,
+          new Date().toISOString(),
+        ),
+        lifecycleState: projectSessionLifecycle({
+          session,
+          events:
+            this.options.eventStore
+              ?.listSessionProjectionEvents(reference.threadId, {
+                requestId: reference.requestId,
+              })
+              .map((event) => event.payload) ?? [],
+        }).lifecycleState,
+      });
+    } catch {
+      return {
+        state: 'unavailable',
+        reference,
+        message: 'This request could not be verified.',
+      };
+    }
+    return {
+      ...inspected,
+      answerability,
+      canRespond:
+        answerability.answerable &&
+        this.options.adapterRegistry.get(session.provider) !== undefined &&
+        !this.quarantinedThreads.has(reference.threadId) &&
+        !this.isReadOnlyAttachedSession(reference.threadId) &&
+        !this.isPeerDelegationActivityRecord(reference.threadId),
+    };
+  }
+
   readRequestOutcome(
     threadId: string,
     requestId: string,
@@ -3693,6 +3781,22 @@ export class OrchestrationService {
             throw new Error(
               'Credential profile selection is reserved for Station-managed recovery.',
             );
+          if (internal?.roomExecutionBinding) {
+            if (this.options.requireTenantExecutionContext?.())
+              throw new Error(
+                'Room execution binding is unavailable in hosted mode.',
+              );
+            const bound = this.options.eventStore?.bindProjectTaskRoomExecution(
+              {
+                ...internal.roomExecutionBinding,
+                sessionId: input.threadId,
+              },
+            );
+            if (bound?.kind !== 'bound')
+              throw new Error(
+                'Room execution binding is unavailable; the provider was not started.',
+              );
+          }
         },
         validateReattachAgainstPersisted: (input, session) => {
           // archive#3493 residual 6: the reattach conflicts that need no
@@ -3737,8 +3841,8 @@ export class OrchestrationService {
             );
         },
         requireAdapter: (provider) => this.requireAdapter(provider),
-        materializeRestoredSession: (threadId) =>
-          this.materializeRecoveredSession(threadId),
+        materializeRestoredSession: (threadId, admission) =>
+          this.materializeRecoveredSession(threadId, admission),
         prepareStart: async (input, context, internal, adapter) => {
           if (!internal?.skipModelOptionSupportCheck) {
             const unsupported = unsupportedModelOptionKeys(
@@ -3854,7 +3958,12 @@ export class OrchestrationService {
           try {
             const invoke = () =>
               withTenantExecutionContext(context.tenantExecutionContext, () =>
-                adapter.startSession(input),
+                runSessionStartWithBoundary(
+                  this.sessionStartBoundaries,
+                  input.threadId,
+                  () => adapter.startSession(input),
+                  internal?.sessionStartAdmission,
+                ),
               );
             session = await (internal?.foregroundInvocationAdmission
               ? internal.foregroundInvocationAdmission.invoke(
@@ -3949,6 +4058,24 @@ export class OrchestrationService {
    * `ForegroundMessageIndeterminateError` handling. Never call this from a
    * route handling a client-supplied command body.
    */
+  /** Server-only Task reservation admission, before any assignment/provider effect. */
+  claimTaskDispatchBoundary(input: {
+    projectId: string;
+    taskId: string;
+    sessionId: string;
+  }): ReturnType<SessionTurnBoundaryAuthority['claimTaskDispatch']> {
+    if (
+      this.options.requireTenantExecutionContext?.() ||
+      this.options.eventStore?.bindProjectTaskRoomExecution(input).kind !==
+        'bound'
+    )
+      return { kind: 'unavailable' };
+    return this.sessionStartBoundaries.claimTaskDispatch(
+      input.sessionId,
+      new Date().toISOString(),
+    );
+  }
+
   async startSessionInternal(
     command: SessionCommand,
     context: SessionCommandContext,
@@ -3975,6 +4102,8 @@ export class OrchestrationService {
        * keeps working; the emitted event simply carries no `principal`.
        */
       principal?: PrincipalRef;
+      /** Captured HTTP principal liveness; never supplied by the command body. */
+      requestCurrent?: () => boolean;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -4033,6 +4162,7 @@ export class OrchestrationService {
        * keeps working; the emitted event simply carries no `principal`.
        */
       principal?: PrincipalRef;
+      requestCurrent?: () => boolean;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -5066,6 +5196,56 @@ export class OrchestrationService {
             adapters: this.options.adapterRegistry.list(),
           });
           this.assertAdapterCurrent(adapter);
+          if (command.expectedRequestEventId !== undefined) {
+            if (context?.requestCurrent && !context.requestCurrent())
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'Request authority changed before the decision.',
+              );
+            // Adapter resolution can await. Recheck authorization and the exact
+            // current request immediately before its synchronous adapter handoff.
+            if (
+              context?.userId !== undefined &&
+              !this.sessionAuthz.canReadSessionForCommand(
+                command.threadId,
+                context.userId,
+                context.tenantExecutionContext,
+              )
+            )
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'This request is no longer available to you.',
+              );
+            const inspected = this.inspectAttentionRequest(
+              {
+                threadId: command.threadId,
+                requestId: command.requestId,
+                requestEventId: command.expectedRequestEventId,
+              },
+              INTERNAL_SESSION_READ_SCOPE,
+            );
+            if (!inspected || inspected.state === 'unavailable') {
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'This request could not be verified. Inspect it again before responding.',
+              );
+            }
+            if (inspected.state !== 'open')
+              throw new RequestEventGuardError(
+                'request_event_changed',
+                inspected.message,
+              );
+            if (inspected.provider !== adapter.provider)
+              throw new RequestEventGuardError(
+                'request_event_changed',
+                'The request engine changed. Inspect the current request before responding.',
+              );
+            if (!inspected.canRespond)
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'This session cannot currently answer the request.',
+              );
+          }
           await adapter.respondToRequest(
             command.threadId,
             command.requestId,
@@ -5159,7 +5339,8 @@ export class OrchestrationService {
           error instanceof SessionEndedError ||
           // archive#3493 fix round: a Stop refused because the session is
           // still starting is a refusal to act, not a failed action.
-          error instanceof SessionStopWhileStartingError
+          error instanceof SessionStopWhileStartingError ||
+          error instanceof RequestEventGuardError
             ? ('rejected' as const)
             : ('failed' as const),
       };
@@ -5176,7 +5357,8 @@ export class OrchestrationService {
         // deliberately — widening which codes leak through this seam is a
         // separate, per-code decision.
         error instanceof SessionEndedError ||
-          error instanceof SessionStopWhileStartingError
+          error instanceof SessionStopWhileStartingError ||
+          error instanceof RequestEventGuardError
           ? error.code
           : undefined,
       );
@@ -6398,8 +6580,17 @@ export class OrchestrationService {
    * archive#3476: the engine-start half of recovery, shared by every caller
    * that needs a restored session to have a live engine.
    */
-  private recoveredSessionStartOptions(): RecoveredSessionStartOptions {
+  private recoveredSessionStartOptions(
+    admission?: SessionCommandInternalOptions['sessionStartAdmission'],
+  ): RecoveredSessionStartOptions {
     return {
+      invokeSessionStart: (threadId, invoke) =>
+        runSessionStartWithBoundary(
+          this.sessionStartBoundaries,
+          threadId,
+          invoke,
+          admission,
+        ),
       eventStore: this.options.eventStore,
       assertAdapterReady: (adapter, connectionId) =>
         this.assertAdapterReady(adapter, connectionId),
@@ -6469,20 +6660,23 @@ export class OrchestrationService {
    */
   private materializeRecoveredSession(
     threadId: string,
+    admission?: SessionCommandInternalOptions['sessionStartAdmission'],
   ): Promise<ProviderAdapterShape | undefined> {
     const inFlight = this.materializingSessions.get(threadId);
     if (inFlight) return inFlight;
-    const started = this.materializeRecoveredSessionOnce(threadId).finally(
-      () => {
-        this.materializingSessions.delete(threadId);
-      },
-    );
+    const started = this.materializeRecoveredSessionOnce(
+      threadId,
+      admission,
+    ).finally(() => {
+      this.materializingSessions.delete(threadId);
+    });
     this.materializingSessions.set(threadId, started);
     return started;
   }
 
   private async materializeRecoveredSessionOnce(
     threadId: string,
+    admission?: SessionCommandInternalOptions['sessionStartAdmission'],
   ): Promise<ProviderAdapterShape | undefined> {
     if (this.quarantinedThreads.has(threadId)) return undefined;
     if (this.isReadOnlyAttachedSession(threadId)) return undefined;
@@ -6503,7 +6697,7 @@ export class OrchestrationService {
       session,
       adapter,
       ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
-      options: this.recoveredSessionStartOptions(),
+      options: this.recoveredSessionStartOptions(admission),
     });
     return adapter;
   }

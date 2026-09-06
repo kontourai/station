@@ -124,6 +124,15 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     reason: 'workflow files are governed as repository data',
   }),
   Object.freeze({
+    pattern: '.github/workflows/publish-release.yml',
+    tests: Object.freeze([
+      'scripts/__tests__/release-availability-driver.test.ts',
+      'scripts/__tests__/release-availability.test.ts',
+    ]),
+    reason:
+      'release availability reads the terminal workflow topology directly',
+  }),
+  Object.freeze({
     pattern: '.github/labels.json',
     tests: Object.freeze([
       'scripts/__tests__/label-manifest.test.ts',

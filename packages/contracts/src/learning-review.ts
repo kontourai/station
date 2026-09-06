@@ -163,3 +163,47 @@ export interface LearningReviewProjection {
   readonly effect: LearningReviewStage<LearningReviewEffect>;
   readonly retirement: LearningReviewStage<LearningReviewRetirement>;
 }
+
+/** Read-only source inspection; no candidate, deployment scope, or learning activation is implied. */
+export type LearningSourceObservation =
+  | {
+      state: 'observed';
+      kind: 'source-only';
+      source: {
+        rootId: string;
+        recordId: string;
+        adapterId: 'kit-default-store';
+        type: string;
+        title: string;
+        category: string;
+        body: string;
+        provenance: {
+          agent: string;
+          source_ids?: string[];
+          session_id?: string;
+          note?: string;
+        };
+        created_at: string;
+        updated_at: string;
+        /** Omitted source status stays omitted; it is never learning activation. */
+        status?: 'active' | 'implemented' | 'retired';
+      };
+      observation: {
+        observedAt: string;
+        contentDigest: string;
+        ownerRevision: 'unknown';
+        consistency: 'non-atomic';
+        transactionState: 'unknown';
+      };
+    }
+  | {
+      state:
+        | 'restricted'
+        | 'unsupported'
+        | 'missing'
+        | 'busy'
+        | 'corrupt'
+        | 'unavailable'
+        | 'invalid-input'
+        | 'over-budget';
+    };

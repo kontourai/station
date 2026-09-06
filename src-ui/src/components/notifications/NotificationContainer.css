@@ -156,6 +156,14 @@
   white-space: pre-line;
 }
 
+/* #1545: the tool-call preview is a command or a path — monospace so an
+   operator can read it exactly, and `overflow-wrap: anywhere` so a long path
+   wraps inside the card instead of widening it. */
+.toast-card__detail--tool {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  overflow-wrap: anywhere;
+}
+
 .toast-card__conversation {
   align-items: center;
   gap: 6px;

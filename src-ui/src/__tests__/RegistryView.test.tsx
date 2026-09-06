@@ -257,7 +257,14 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 
 const navigateMock = vi.fn();
+const showSurfaceMock = vi.fn();
 const platformProfile = vi.hoisted(() => ({ isTauri: false }));
+
+// #928 C2a: "Open a Project to Add Layout" means Home by name and reveals
+// the Home surface through the shared command hook.
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceMock,
+}));
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
@@ -267,6 +274,12 @@ vi.mock('../contexts/NavigationContext', () => ({
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://127.0.0.1:3141' }),
+}));
+
+const showToastMock = vi.fn();
+
+vi.mock('../contexts/ToastContext', () => ({
+  useToast: () => ({ showToast: showToastMock }),
 }));
 
 vi.mock('../platform/PlatformProfileContext', () => ({
@@ -310,6 +323,7 @@ afterEach(() => {
   requestInstallConsent.mockClear();
   requestInstallConsent.mockResolvedValue(true);
   navigateMock.mockReset();
+  showToastMock.mockReset();
   emptyTabs.clear();
   stalledInstalledTabs.clear();
   staleAfterMutationTabs.clear();
@@ -324,6 +338,34 @@ afterEach(() => {
   };
   pluginRegistryListeners.clear();
 });
+
+/**
+ * #1536 G7. A plugin install is confirmed by the shared toast, carrying the
+ * route to the one thing left to do — placing the layout the operator just
+ * reviewed. It used to be a grey inline `page__message` row directly above the
+ * catalog, which read as another search result rather than as the answer.
+ *
+ * Review L7: the action is named for what it does. It opens the plugin's
+ * detail page, where the add actually happens; "Add to project" promised an
+ * add this button never performed.
+ */
+function expectInstalledToast(message: string, pluginName: string) {
+  expect(screen.queryByText(message)).toBeNull();
+  const lastCall = showToastMock.mock.calls.at(-1);
+  expect(lastCall, 'no toast was shown').toBeDefined();
+  const [text, , , actions, tone] = lastCall as [
+    string,
+    unknown,
+    unknown,
+    Array<{ label: string; onClick: () => void }> | undefined,
+    string,
+  ];
+  expect(text).toBe(message);
+  expect(tone).toBe('success');
+  expect(actions?.map((action) => action.label)).toEqual(['Open plugin']);
+  actions?.[0].onClick();
+  expect(navigateMock).toHaveBeenCalledWith(`/plugins/${pluginName}`);
+}
 
 describe('RegistryView', () => {
   test('updates the URL when switching Registry tabs', () => {
@@ -610,7 +652,12 @@ describe('RegistryView', () => {
           tab: tabKey,
         }),
       );
-      expect(screen.getByText(`Installed ${itemLabel}`)).toBeTruthy();
+      if (tabKey === 'plugins') {
+        expectInstalledToast(`Installed ${itemLabel}`, itemId);
+      } else {
+        expect(screen.getByText(`Installed ${itemLabel}`)).toBeTruthy();
+        expect(showToastMock).not.toHaveBeenCalled();
+      }
 
       rerender(<RegistryView />);
       const installedDetail = screen.getByTestId('registry-detail');
@@ -620,7 +667,9 @@ describe('RegistryView', () => {
             name: 'Open a Project to Add Layout',
           }),
         );
-        expect(navigateMock).toHaveBeenCalledWith('/');
+        // #928 C2a: Home is revealed as a surface, not navigated to.
+        expect(showSurfaceMock).toHaveBeenCalledWith('home');
+        expect(navigateMock).not.toHaveBeenCalledWith('/');
         expect(
           within(installedDetail).getByRole('button', {
             name: 'Manage Plugin',
@@ -782,13 +831,36 @@ describe('RegistryView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     const installedDetail = screen.getByTestId('registry-detail');
-    expect(screen.getByText('Installed Demo Layout')).toBeTruthy();
+    expectInstalledToast('Installed Demo Layout', 'demo-layout');
     expect(
       within(installedDetail).getByRole('button', {
         name: 'Open a Project to Add Layout',
       }),
     ).toBeTruthy();
     expect(screen.getAllByText('Installed').length).toBeGreaterThan(0);
+  });
+
+  test('"Open a Project to Add Layout" reveals the Home surface instead of navigating to / (#928 C2a)', () => {
+    staleAfterMutationTabs.add('plugins');
+    previewResults.set('demo-layout', validDemoPreview());
+    navigateMock.mockClear();
+    showSurfaceMock.mockClear();
+
+    render(<RegistryView initialTab="plugins" />);
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Open a Project to Add Layout',
+      }),
+    );
+
+    expect(showSurfaceMock).toHaveBeenCalledWith('home');
+    expect(navigateMock).not.toHaveBeenCalledWith('/');
   });
 
   test('reconciles an optimistic install against contradictory fresh server state', async () => {
@@ -804,7 +876,7 @@ describe('RegistryView', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
-    expect(screen.getByText('Installed Demo Layout')).toBeTruthy();
+    expectInstalledToast('Installed Demo Layout', 'demo-layout');
     await waitFor(() =>
       expect(
         within(screen.getByTestId('registry-detail')).getByRole('button', {
@@ -833,6 +905,32 @@ describe('RegistryView', () => {
     expect(mutationCalls).toEqual([]);
   });
 
+  test('a plugin that contributes no layout is confirmed with nothing to place (#1536 G7)', () => {
+    previewResults.set('demo-layout', {
+      ...validDemoPreview(),
+      components: [{ type: 'provider', id: 'llm' }],
+    });
+    render(<RegistryView initialTab="plugins" />);
+
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
+
+    // The action is derived from what the preview actually reviewed, so an
+    // "Add to project" that could not lead anywhere is not offered.
+    const [text, , , actions] = showToastMock.mock.calls.at(-1) as [
+      string,
+      unknown,
+      unknown,
+      unknown,
+    ];
+    expect(text).toBe('Installed Demo Layout');
+    expect(actions).toBeUndefined();
+  });
+
   test('keeps installed plugin removal reachable through the full lifecycle', () => {
     previewResults.set('demo-layout', validDemoPreview());
     render(<RegistryView initialTab="plugins" />);
@@ -840,7 +938,7 @@ describe('RegistryView', () => {
     const detail = screen.getByTestId('registry-detail');
     fireEvent.click(within(detail).getByRole('button', { name: 'Install' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
-    expect(screen.getByText('Installed Demo Layout')).toBeTruthy();
+    expectInstalledToast('Installed Demo Layout', 'demo-layout');
 
     fireEvent.click(
       within(detail).getByRole('button', { name: 'Remove Plugin' }),
@@ -852,7 +950,7 @@ describe('RegistryView', () => {
 
     fireEvent.click(within(detail).getByRole('button', { name: 'Install' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
-    expect(screen.getByText('Installed Demo Layout')).toBeTruthy();
+    expectInstalledToast('Installed Demo Layout', 'demo-layout');
     expect(mutationCalls).toEqual([
       expect.objectContaining({
         id: 'demo-layout',
@@ -869,28 +967,23 @@ describe('RegistryView', () => {
   });
 
   /**
-   * #765 D1. The agents tab is where a JSON-manifest registry lists its
-   * plugins today, and installing one there used to land a tree whose bundle
-   * was never built — every declared layout component then rendered
-   * "Unsupported layout tab" while the install reported success. A plugin id
-   * now installs from its preview with the operator's decision attached, and
-   * the client plugin registry reloads so the new components register without
-   * a page reload.
+   * #765 D1. An id the preview endpoint resolves as a PLUGIN installs from its
+   * preview with the operator's decision attached, and the client plugin
+   * registry reloads so the new components register without a page reload.
+   * Installing one through the provider's raw tree copy used to land a tree
+   * whose bundle was never built — every declared layout component then
+   * rendered "Unsupported layout tab" while the install reported success.
+   *
+   * Review L6: this ran on the AGENTS tab, because a JSON-manifest registry
+   * used to list its plugins there. #1536 D2 ended that — each surface now
+   * browses its own kind — so the plugin install path is exercised where
+   * plugins actually appear. The agents-tab fallback for an id the preview
+   * does NOT resolve is pinned separately, above.
    */
-  test('installs an agents-tab registry plugin from its preview with the operator decision attached', () => {
-    previewResults.set('agent-two', {
-      ...validDemoPreview(),
-      manifest: {
-        name: 'agent-two',
-        displayName: 'Agent Two',
-        version: '1.0.0',
-      },
-    });
-    render(<RegistryView />);
+  test('installs a registry plugin from its preview with the operator decision attached', () => {
+    previewResults.set('demo-layout', validDemoPreview());
+    render(<RegistryView initialTab="plugins" />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'View Agent Two details' }),
-    );
     fireEvent.click(
       within(screen.getByTestId('registry-detail')).getByRole('button', {
         name: 'Install',
@@ -905,9 +998,9 @@ describe('RegistryView', () => {
 
     expect(mutationCalls).toEqual([
       {
-        id: 'agent-two',
+        id: 'demo-layout',
         action: 'install',
-        tab: 'agents',
+        tab: 'plugins',
         consent: {
           permissions: ['navigation.dock'],
           contentDigest: 'sha256:demo',
@@ -916,7 +1009,7 @@ describe('RegistryView', () => {
         skip: [],
       },
     ]);
-    expect(screen.getByText('Installed Agent Two')).toBeTruthy();
+    expectInstalledToast('Installed Demo Layout', 'demo-layout');
     expect(pluginRegistryReload).toHaveBeenCalled();
   });
 

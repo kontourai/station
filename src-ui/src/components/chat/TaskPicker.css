@@ -13,6 +13,11 @@
   text-align: left;
   white-space: nowrap;
 }
+.message.user .task-picker__trigger,
+.message.user .task-picker__status {
+  color: inherit;
+}
+
 .task-picker__trigger:focus-visible,
 .task-picker__task:focus-visible,
 .task-picker__search:focus-visible {

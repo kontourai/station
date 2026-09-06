@@ -336,6 +336,66 @@ describe('projectRuntimeEventsToMessages', () => {
   // the parity between the live and rehydrated paths is pinned in both
   // directions rather than just the live side. Cancelling is a correct
   // user-initiated outcome, not a failure — `isError` must stay false.
+  // station#1558: the third terminal shape. `success`/`error`/`cancelled` all
+  // assert what happened; `unresolved` asserts that nothing ever will.
+  it('marks an unresolved tool call as unresolved — neither error nor cancelled', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'r-unresolved', prompt: 'run it' }),
+      ev({
+        method: 'tool.started',
+        itemId: 'i1',
+        toolCallId: 'c-unresolved',
+        toolName: 'Bash',
+      }),
+      ev({
+        method: 'tool.completed',
+        itemId: 'i1',
+        toolCallId: 'c-unresolved',
+        toolName: 'Bash',
+        status: 'unresolved',
+        output:
+          'No result was reported before the session ended; whether the tool ran is unknown.',
+      }),
+      ev({
+        method: 'turn.completed',
+        turnId: 'r-unresolved',
+        finishReason: 'stop',
+      }),
+    ]);
+
+    const tool = messages[1]!.parts.find(
+      (part) => part.type === 'tool-invocation',
+    )!;
+    expect(tool.state).toBe('unresolved');
+    expect(tool.isError).toBe(false);
+    expect(tool.cancelled).toBe(false);
+    expect(tool.result).toBe(
+      'No result was reported before the session ended; whether the tool ran is unknown.',
+    );
+  });
+
+  it('marks an unresolved tool call through the no-captured-start replay-gap branch too', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'r-gap', prompt: 'run it' }),
+      ev({
+        method: 'tool.completed',
+        itemId: 'i1',
+        toolCallId: 'c-gap',
+        toolName: 'Bash',
+        status: 'unresolved',
+        output: 'No result was reported before the session ended.',
+      }),
+      ev({ method: 'turn.completed', turnId: 'r-gap', finishReason: 'stop' }),
+    ]);
+
+    const tool = messages[1]!.parts.find(
+      (part) => part.type === 'tool-invocation',
+    )!;
+    expect(tool.state).toBe('unresolved');
+    expect(tool.isError).toBe(false);
+    expect(tool.cancelled).toBe(false);
+  });
+
   it('marks a cancelled tool as cancelled, not error, and keeps isError false', () => {
     const messages = projectRuntimeEventsToMessages([
       ev({ method: 'turn.started', turnId: 'r1' }),
@@ -1152,6 +1212,696 @@ describe('projectRuntimeEventsToMessages', () => {
       ]);
 
       expect(messages).toHaveLength(0);
+    });
+  });
+  // station#1558 Part A: a `tool.completed` names the turn that issued the
+  // call (`turnId`, PR #1560). The fold must honour that name instead of the
+  // stream position it happens to arrive at.
+  describe('late tool results fold onto the turn that issued the call (station#1558)', () => {
+    const lateResultStream = (terminal: 'turn.aborted' | 'turn.completed') => [
+      ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+      ev({
+        method: 'tool.started',
+        itemId: 'i1',
+        turnId: 'turn-a',
+        toolCallId: 'call-1',
+        toolName: 'Bash',
+        arguments: { command: 'sleep 5' },
+      }),
+      ev(
+        terminal === 'turn.aborted'
+          ? { method: 'turn.aborted', turnId: 'turn-a', reason: 'stopped' }
+          : {
+              method: 'turn.completed',
+              turnId: 'turn-a',
+              finishReason: 'stop',
+            },
+      ),
+      ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+      ev({ method: 'content.text-delta', itemId: 'i2', delta: 'B answers.' }),
+      ev({
+        method: 'tool.completed',
+        itemId: 'i1',
+        turnId: 'turn-a',
+        toolCallId: 'call-1',
+        toolName: 'Bash',
+        status: 'success',
+        output: 'late output',
+        eventId: 'late-result',
+      }),
+      ev({ method: 'turn.completed', turnId: 'turn-b', finishReason: 'stop' }),
+    ];
+
+    const toolPartsOf = (message: { parts: Array<{ type: string }> }) =>
+      message.parts.filter((part) => part.type === 'tool-invocation');
+
+    it("resolves a stopped turn's call on that turn, leaving the next turn without a tool row", () => {
+      const messages = projectRuntimeEventsToMessages(
+        lateResultStream('turn.aborted'),
+      );
+
+      const turnA = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-a',
+      )!;
+      const turnB = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-b',
+      )!;
+      const aTools = toolPartsOf(turnA);
+      expect(aTools).toHaveLength(1);
+      expect(aTools[0]).toMatchObject({
+        toolCallId: 'call-1',
+        state: 'result',
+        result: 'late output',
+        sourceEventId: 'late-result',
+      });
+      expect(toolPartsOf(turnB)).toHaveLength(0);
+    });
+
+    it("resolves a completed turn's call on that turn, leaving the next turn without a tool row", () => {
+      const messages = projectRuntimeEventsToMessages(
+        lateResultStream('turn.completed'),
+      );
+
+      const turnA = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-a',
+      )!;
+      const turnB = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-b',
+      )!;
+      const aTools = toolPartsOf(turnA);
+      expect(aTools).toHaveLength(1);
+      expect(aTools[0]).toMatchObject({
+        toolCallId: 'call-1',
+        state: 'result',
+        result: 'late output',
+      });
+      expect(toolPartsOf(turnB)).toHaveLength(0);
+    });
+
+    // Fix round (M2): matching the call id is not enough — the event names
+    // the turn it belongs to, and a carried row on a DIFFERENT turn must not
+    // absorb it.
+    it('does not settle a carried row when the completion names another turn', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+        ev({
+          method: 'tool.started',
+          itemId: 'i1',
+          turnId: 'turn-a',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-a',
+          finishReason: 'stop',
+        }),
+        ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+        ev({ method: 'content.text-delta', itemId: 'i2', delta: 'B answers.' }),
+        // Names turn B, reuses A's call id. Settling A's row here would put
+        // B's result on A's turn and leave B with none.
+        ev({
+          method: 'tool.completed',
+          itemId: 'i1',
+          turnId: 'turn-b',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          status: 'success',
+          output: 'B result',
+          eventId: 'b-result',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-b',
+          finishReason: 'stop',
+        }),
+      ]);
+
+      const turnA = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-a',
+      )!;
+      const turnB = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-b',
+      )!;
+      const bTools = toolPartsOf(turnB);
+      expect(bTools).toHaveLength(1);
+      expect(bTools[0]).toMatchObject({
+        toolCallId: 'call-1',
+        result: 'B result',
+        sourceEventId: 'b-result',
+      });
+      // A's own row is untouched — still awaiting the result it was promised.
+      const aTools = toolPartsOf(turnA);
+      expect(aTools).toHaveLength(1);
+      expect(aTools[0]).toMatchObject({ toolCallId: 'call-1', state: 'call' });
+      expect(aTools[0]).not.toHaveProperty('result');
+    });
+
+    // Fix round (M3): a reused call id must not evict the earlier turn's
+    // carried row, or that turn's own late result appends a duplicate and the
+    // original row reads "running" forever.
+    it('keeps an earlier turn settleable after a later turn reuses its call id', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+        ev({
+          method: 'tool.started',
+          itemId: 'i1',
+          turnId: 'turn-a',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+        }),
+        ev({ method: 'turn.aborted', turnId: 'turn-a', reason: 'stopped' }),
+        ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+        ev({
+          method: 'tool.started',
+          itemId: 'i2',
+          turnId: 'turn-b',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+        }),
+        ev({
+          method: 'tool.completed',
+          itemId: 'i2',
+          turnId: 'turn-b',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          status: 'success',
+          output: 'B result',
+          eventId: 'b-result',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-b',
+          finishReason: 'stop',
+        }),
+        ev({ method: 'turn.started', turnId: 'turn-c', prompt: 'third' }),
+        ev({ method: 'content.text-delta', itemId: 'i3', delta: 'C answers.' }),
+        // A's own delayed result, arriving two turns later.
+        ev({
+          method: 'tool.completed',
+          itemId: 'i1',
+          turnId: 'turn-a',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          status: 'success',
+          output: 'A result',
+          eventId: 'a-result',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-c',
+          finishReason: 'stop',
+        }),
+      ]);
+
+      const byTurn = (turnId: string) =>
+        messages.find(
+          (message) =>
+            message.role === 'assistant' && message.metadata?.turnId === turnId,
+        )!;
+      const aTools = toolPartsOf(byTurn('turn-a'));
+      expect(aTools).toHaveLength(1);
+      expect(aTools[0]).toMatchObject({
+        state: 'result',
+        result: 'A result',
+        sourceEventId: 'a-result',
+      });
+      const bTools = toolPartsOf(byTurn('turn-b'));
+      expect(bTools).toHaveLength(1);
+      expect(bTools[0]).toMatchObject({ state: 'result', result: 'B result' });
+      expect(toolPartsOf(byTurn('turn-c'))).toHaveLength(0);
+    });
+
+    /**
+     * station#1569 (H1): `unresolved` is the one terminal that can be
+     * overtaken. The adapter publishes it when the stop grace elapses, then
+     * publishes the real `tool_result` if the SDK was still holding one
+     * (`claude-adapter-events.ts`'s `settledToolCalls`). Retiring the slot
+     * like any other terminal left the reader with two rows for one call —
+     * "no result was reported" sitting beside the result.
+     */
+    describe('a real result supersedes an unresolved row (station#1569 H1)', () => {
+      it('leaves ONE row, carrying the real outcome and the real event id', () => {
+        const messages = projectRuntimeEventsToMessages([
+          ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+          ev({
+            method: 'tool.started',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            arguments: { command: 'npm test' },
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'unresolved',
+            output:
+              'No result was reported before the session ended; whether the tool ran is unknown.',
+            eventId: 'settle-result',
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'success',
+            output: 'real output',
+            eventId: 'real-result',
+          }),
+          ev({
+            method: 'turn.completed',
+            turnId: 'turn-a',
+            finishReason: 'stop',
+          }),
+        ]);
+
+        const turnA = messages.find(
+          (message) =>
+            message.role === 'assistant' &&
+            message.metadata?.turnId === 'turn-a',
+        )!;
+        const tools = toolPartsOf(turnA);
+        expect(tools).toHaveLength(1);
+        expect(tools[0]).toMatchObject({
+          toolCallId: 'call-1',
+          state: 'result',
+          result: 'real output',
+          sourceEventId: 'real-result',
+          isError: false,
+        });
+      });
+
+      // Review D1: a superseding terminal with no text (empty or image-only
+      // content) must still replace the body, or the completed row keeps
+      // Station's own "no result was reported" sentence as its output.
+      it('drops the unresolved sentence when the real result carries no text', () => {
+        const messages = projectRuntimeEventsToMessages([
+          ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+          ev({
+            method: 'tool.started',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            arguments: { command: 'npm test' },
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'unresolved',
+            output:
+              'No result was reported before the session ended; whether the tool ran is unknown.',
+            eventId: 'settle-result',
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'success',
+            eventId: 'real-result',
+          }),
+          ev({
+            method: 'turn.completed',
+            turnId: 'turn-a',
+            finishReason: 'stop',
+          }),
+        ]);
+
+        const turnA = messages.find(
+          (message) =>
+            message.role === 'assistant' &&
+            message.metadata?.turnId === 'turn-a',
+        )!;
+        const tools = toolPartsOf(turnA);
+        expect(tools).toHaveLength(1);
+        expect(tools[0]).toMatchObject({
+          state: 'result',
+          sourceEventId: 'real-result',
+        });
+        expect(tools[0]).not.toHaveProperty('result');
+        expect(JSON.stringify(tools[0])).not.toContain(
+          'No result was reported',
+        );
+      });
+
+      it('supersedes across the turn boundary, where the real case lives', () => {
+        // What actually happens: the settle rides `session.exited`, the turn
+        // is emitted, and the SDK drains the held result afterwards.
+        const messages = projectRuntimeEventsToMessages([
+          ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+          ev({
+            method: 'tool.started',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'unresolved',
+            output: 'No result was reported before the session ended.',
+            eventId: 'settle-result',
+          }),
+          ev({
+            method: 'turn.completed',
+            turnId: 'turn-a',
+            finishReason: 'stop',
+          }),
+          ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+          ev({
+            method: 'content.text-delta',
+            itemId: 'i2',
+            delta: 'B answers.',
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'success',
+            output: 'real output',
+            eventId: 'real-result',
+          }),
+          ev({
+            method: 'turn.completed',
+            turnId: 'turn-b',
+            finishReason: 'stop',
+          }),
+        ]);
+
+        const byTurn = (turnId: string) =>
+          messages.find(
+            (message) =>
+              message.role === 'assistant' &&
+              message.metadata?.turnId === turnId,
+          )!;
+        const aTools = toolPartsOf(byTurn('turn-a'));
+        expect(aTools).toHaveLength(1);
+        expect(aTools[0]).toMatchObject({
+          state: 'result',
+          result: 'real output',
+          sourceEventId: 'real-result',
+        });
+        // …and not as a second row on whatever turn was open.
+        expect(toolPartsOf(byTurn('turn-b'))).toHaveLength(0);
+      });
+
+      it('does not settle it from a completion that names another turn', () => {
+        // The M2 rule still governs: superseding is a relaxation of finality,
+        // not of turn identity.
+        const messages = projectRuntimeEventsToMessages([
+          ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+          ev({
+            method: 'tool.started',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'unresolved',
+            output: 'No result was reported before the session ended.',
+            eventId: 'settle-result',
+          }),
+          ev({
+            method: 'turn.completed',
+            turnId: 'turn-a',
+            finishReason: 'stop',
+          }),
+          ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i9',
+            turnId: 'turn-b',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'success',
+            output: 'B result',
+            eventId: 'b-result',
+          }),
+          ev({
+            method: 'turn.completed',
+            turnId: 'turn-b',
+            finishReason: 'stop',
+          }),
+        ]);
+
+        const byTurn = (turnId: string) =>
+          messages.find(
+            (message) =>
+              message.role === 'assistant' &&
+              message.metadata?.turnId === turnId,
+          )!;
+        expect(toolPartsOf(byTurn('turn-a'))[0]).toMatchObject({
+          state: 'unresolved',
+          sourceEventId: 'settle-result',
+        });
+        expect(toolPartsOf(byTurn('turn-b'))[0]).toMatchObject({
+          state: 'result',
+          result: 'B result',
+        });
+      });
+
+      it('keeps a settled success final — only unresolved is overtakeable', () => {
+        // The discriminating control for the "distinct durable result" rule
+        // this change carves an exception into.
+        const messages = projectRuntimeEventsToMessages([
+          ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+          ev({
+            method: 'tool.started',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'success',
+            output: 'first output',
+            eventId: 'first-result',
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'success',
+            output: 'second output',
+            eventId: 'second-result',
+          }),
+          ev({
+            method: 'turn.completed',
+            turnId: 'turn-a',
+            finishReason: 'stop',
+          }),
+        ]);
+
+        const tools = toolPartsOf(
+          messages.find(
+            (message) =>
+              message.role === 'assistant' &&
+              message.metadata?.turnId === 'turn-a',
+          )!,
+        );
+        expect(tools).toHaveLength(2);
+        expect(tools).toMatchObject([
+          { sourceEventId: 'first-result', result: 'first output' },
+          { sourceEventId: 'second-result', result: 'second output' },
+        ]);
+      });
+    });
+
+    // station#1569 (item 2): the other half of the M2 rule — a CARRIED row
+    // whose own turn had no identity is not a mismatch. Only the comment said
+    // so; these execute the `carriedEntry.turnKey === undefined` branch and
+    // pin what it buys and what it costs.
+    describe('a carried row whose turn had no identity (station#1569 item 2)', () => {
+      /** The mixed-vintage shape: a turn recorded before `turnId` reached
+       * these events, whose result arrives once it had. */
+      const unidentifiedTurnWithOpenCall = [
+        ev({ method: 'turn.started', prompt: 'first' }),
+        ev({
+          method: 'tool.started',
+          itemId: 'i1',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+        }),
+        ev({ method: 'turn.completed', finishReason: 'stop' }),
+      ];
+
+      it('is settled in place by a completion that names a turn, rather than stranded', () => {
+        const messages = projectRuntimeEventsToMessages([
+          ...unidentifiedTurnWithOpenCall,
+          ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+          ev({
+            method: 'content.text-delta',
+            itemId: 'i2',
+            delta: 'B answers.',
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i1',
+            turnId: 'turn-b',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'success',
+            output: 'late output',
+            eventId: 'late-result',
+          }),
+          ev({
+            method: 'turn.completed',
+            turnId: 'turn-b',
+            finishReason: 'stop',
+          }),
+        ]);
+
+        const assistants = messages.filter(
+          (message) => message.role === 'assistant',
+        );
+        const unidentified = assistants.find(
+          (message) => message.metadata?.turnId === undefined,
+        )!;
+        const turnB = assistants.find(
+          (message) => message.metadata?.turnId === 'turn-b',
+        )!;
+        const carried = toolPartsOf(unidentified);
+        expect(carried).toHaveLength(1);
+        expect(carried[0]).toMatchObject({
+          toolCallId: 'call-1',
+          state: 'result',
+          result: 'late output',
+          sourceEventId: 'late-result',
+        });
+        // Treating it as a mismatch would have appended a duplicate,
+        // result-only row here and left the row above reading "running".
+        expect(toolPartsOf(turnB)).toHaveLength(0);
+      });
+
+      it('loses to the CURRENT turn when that turn reuses the call id', () => {
+        const messages = projectRuntimeEventsToMessages([
+          ...unidentifiedTurnWithOpenCall,
+          ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+          ev({
+            method: 'tool.started',
+            itemId: 'i2',
+            turnId: 'turn-b',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i2',
+            turnId: 'turn-b',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'success',
+            output: 'B result',
+            eventId: 'b-result',
+          }),
+          ev({
+            method: 'turn.completed',
+            turnId: 'turn-b',
+            finishReason: 'stop',
+          }),
+        ]);
+
+        const assistants = messages.filter(
+          (message) => message.role === 'assistant',
+        );
+        const unidentified = assistants.find(
+          (message) => message.metadata?.turnId === undefined,
+        )!;
+        const turnB = assistants.find(
+          (message) => message.metadata?.turnId === 'turn-b',
+        )!;
+        // The carried map is consulted LAST, so an open call on the current
+        // turn always outranks a same-id row carried from an earlier one.
+        expect(toolPartsOf(turnB)).toHaveLength(1);
+        expect(toolPartsOf(turnB)[0]).toMatchObject({
+          state: 'result',
+          result: 'B result',
+        });
+        // The identity-less row is still owed the result it was promised —
+        // it is not retired by another turn's answer.
+        expect(toolPartsOf(unidentified)).toHaveLength(1);
+        expect(toolPartsOf(unidentified)[0]).toMatchObject({ state: 'call' });
+        expect(toolPartsOf(unidentified)[0]).not.toHaveProperty('result');
+      });
+    });
+
+    it('puts a start-less late completion on the turn its own turnId names, never on the open one', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+        ev({ method: 'content.text-delta', itemId: 'i0', delta: 'A answers.' }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-a',
+          finishReason: 'stop',
+        }),
+        ev({ method: 'turn.started', turnId: 'turn-b', prompt: 'second' }),
+        ev({ method: 'content.text-delta', itemId: 'i2', delta: 'B answers.' }),
+        ev({
+          method: 'tool.completed',
+          itemId: 'i9',
+          turnId: 'turn-a',
+          toolCallId: 'orphan-call',
+          toolName: 'Bash',
+          status: 'success',
+          output: 'orphan output',
+          eventId: 'orphan-result',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'turn-b',
+          finishReason: 'stop',
+        }),
+      ]);
+
+      const turnA = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-a',
+      )!;
+      const turnB = messages.find(
+        (message) =>
+          message.role === 'assistant' && message.metadata?.turnId === 'turn-b',
+      )!;
+      expect(toolPartsOf(turnA)).toHaveLength(1);
+      expect(toolPartsOf(turnA)[0]).toMatchObject({
+        toolCallId: 'orphan-call',
+        sourceEventId: 'orphan-result',
+      });
+      expect(toolPartsOf(turnB)).toHaveLength(0);
     });
   });
 });

@@ -355,6 +355,83 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
     expect(screen.queryByText('Failed')).toBe(null);
   });
 
+  // station#1558 (fix round, M7): pins the compatibility claim the
+  // `ToolCompletedEvent.status` docblock now makes. A client built before
+  // `unresolved` existed folds the status to `state: 'result'` and keeps the
+  // "no result" sentence as the row's result — and THAT shape reads as an
+  // outright success here: no badge, past tense, "Success" in the footer.
+  // The docblock used to say only that the outcome was "wrong"; this is the
+  // positive claim it actually makes, and the test exists so the note cannot
+  // drift back to something softer.
+  test('the pre-unresolved fold of the same event still reads as a success (the documented degrade)', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 't-old-client',
+          toolName: 'shell_exec',
+          args: { command: 'npm test' },
+          state: 'result',
+          result:
+            'No result was reported before the session ended; whether the tool ran is unknown.',
+        }}
+      />,
+    );
+
+    expect(screen.queryByText('No result was reported')).toBe(null);
+    expect(screen.queryByText('No result recorded')).toBe(null);
+    expect(document.querySelector('.tool-call__label')?.textContent).toBe(
+      'Ran npm test',
+    );
+    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    // Read the footer's own text: it renders a glyph and the word as sibling
+    // nodes, so `queryByText('Success')` is null whether or not the word is
+    // there — an absence assertion on it proves nothing.
+    expect(
+      document.querySelector('.tool-call__status-footer')?.textContent,
+    ).toContain('Success');
+  });
+
+  // station#1558: the session ended with the call still open, and the adapter
+  // said so explicitly. The row must say that — not "Cancelled" (nobody asked
+  // it to stop), not "Failed" (nothing observed a failure), and above all not
+  // "Success", which is what the sentence riding in `result` would otherwise
+  // have produced through the `result !== undefined` arm.
+  test('an unresolved call reports that no result arrived, not success, failure or cancellation', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 't-unresolved',
+          toolName: 'shell_exec',
+          args: { command: 'npm test' },
+          state: 'unresolved',
+          result:
+            'No result was reported before the session ended; whether the tool ran is unknown.',
+        }}
+      />,
+    );
+
+    expect(screen.getByText('No result was reported')).toBeTruthy();
+    expect(screen.queryByText('Failed')).toBe(null);
+    expect(screen.queryByText('Cancelled')).toBe(null);
+    // The inferred badge for a start with no terminal at all must not also
+    // fire — this call HAS a terminal event.
+    expect(screen.queryByText('No result recorded')).toBe(null);
+    // Past tense would claim work that may never have happened.
+    expect(document.querySelector('.tool-call__label')?.textContent).toBe(
+      'Run npm test',
+    );
+
+    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    // The footer renders its glyph and its word as sibling text nodes, so
+    // `queryByText('Success')` is null either way — assert what the footer
+    // actually says instead.
+    const footer = document.querySelector('.tool-call__status-footer');
+    expect(footer?.textContent).toBe('No result was reported');
+    expect(footer?.textContent).not.toContain('Success');
+  });
+
   test('a call awaiting approval is labelled as PROPOSED work, with its approval buttons inline', () => {
     const onApprove = vi.fn();
     render(

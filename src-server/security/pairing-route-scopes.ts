@@ -236,7 +236,11 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // Body-shaped reads, including fresh open resolution, have no navigation or mutation effect.
-  ...['/api/search', '/api/search/resolve-open'].map(
+  ...[
+    '/api/search',
+    '/api/search/resolve-open',
+    '/api/search/read-message',
+  ].map(
     (prefix): PairingScopeRouteRule => ({
       id: `${prefix}:query`,
       method: 'POST',
@@ -1974,6 +1978,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/knowledge/roots' },
     { method: 'POST', path: '/api/knowledge/roots' },
     { method: 'DELETE', path: '/api/knowledge/roots/:id' },
+    {
+      method: 'GET',
+      path: '/api/knowledge/roots/:rootId/records/:id/source-observation',
+    },
     { method: 'GET', path: '/api/knowledge/roots/:rootId/graph' },
     { method: 'GET', path: '/api/knowledge/roots/:rootId/graph/neo4j' },
     { method: 'POST', path: '/api/knowledge/roots/:rootId/graph/neo4j-sync' },
@@ -2068,6 +2076,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     { method: 'GET', path: '/api/orchestration/sessions' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/requests/:requestId',
+    },
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/builder-run',

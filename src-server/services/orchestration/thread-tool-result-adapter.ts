@@ -64,7 +64,12 @@ function inertText(value: unknown): string | undefined {
 
 /**
  * Exact mapping only. In particular, policy denial comes exclusively from
- * the explicit durable marker and status is never folded into another value.
+ * the explicit durable marker, and a status is never folded into another
+ * value that would MISSTATE it.
+ *
+ * The one translation is station#1558's `unresolved`, which Thread's own
+ * published vocabulary spells `unknown` — the same fact under the other
+ * schema's name, not a different claim. Every other status crosses verbatim.
  */
 export function projectToolCompletedEvent(
   event: Pick<
@@ -89,7 +94,11 @@ export function projectToolCompletedEvent(
   return projectToolResult(
     createToolResult({
       resultId: event.eventId,
-      terminalStatus: event.status,
+      // station#1558: Thread's own vocabulary already has the slot for a
+      // call whose outcome was never observed. `unresolved` is exactly that,
+      // so it projects as `unknown` rather than being folded into `cancelled`
+      // (nobody asked it to stop) or `error` (nothing observed it fail).
+      terminalStatus: event.status === 'unresolved' ? 'unknown' : event.status,
       toolCallId: event.toolCallId,
       name: event.toolName,
       content: text === undefined ? [] : [{ type: 'text', text }],
@@ -127,7 +136,8 @@ export function projectToolCompletedDescriptor(
     !boundedText(event.toolName, MAX_PROJECTED_TOOL_RESULT_LABEL_BYTES) ||
     (event.status !== 'success' &&
       event.status !== 'error' &&
-      event.status !== 'cancelled') ||
+      event.status !== 'cancelled' &&
+      event.status !== 'unresolved') ||
     (event.error !== undefined &&
       (typeof event.error !== 'string' ||
         !boundedText(event.error, MAX_TOOL_RESULT_DESCRIPTOR_OUTPUT_BYTES))) ||

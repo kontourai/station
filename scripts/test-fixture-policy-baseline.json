@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "description": "Existing unqualified browser interactions. Entries may be removed, never added after this introduction. PASS does not qualify these sites.",
+  "entries": [
+    {
+      "file": "tests/android/mobile-layout.spec.ts",
+      "rule": "synthetic-click",
+      "fingerprint": "a85e1736da56899b23e741ff55eac5adf6121ec808768e89548e3fb339cd8ed1",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/banner-stack-bound.spec.ts",
+      "rule": "dom-click-bypasses-actionability",
+      "fingerprint": "fba0b7bcd91ce1e558c2083ba29aee655363b040be86e469fd1452bf7cd900ea",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/builtin-runtime-workflow.spec.ts",
+      "rule": "synthetic-click",
+      "fingerprint": "d79f4d21d56dbb0c41f7db39d70551c8830b3584c5c2a76af2773d751b53784b",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/builtin-runtime-workflow.spec.ts",
+      "rule": "synthetic-click",
+      "fingerprint": "ea9dd995ff147abfe257efa2140cce468fae8b137eff1ce864cee40f0cad0ffe",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/builtin-runtime-workflow.spec.ts",
+      "rule": "forced-user-action",
+      "fingerprint": "1d82e6f12b3f4248a400463cb5646e47f3f9a88e76f58f187dd174e6d378a790",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/builtin-runtime-workflow.spec.ts",
+      "rule": "forced-user-action",
+      "fingerprint": "4a366e8c6674b83cc8c89d08882a55af06896da2216fc61d623c17423ff7f1f8",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/builtin-runtime-workflow.spec.ts",
+      "rule": "forced-user-action",
+      "fingerprint": "4a366e8c6674b83cc8c89d08882a55af06896da2216fc61d623c17423ff7f1f8",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/credential-recovery-groups.spec.ts",
+      "rule": "forced-user-action",
+      "fingerprint": "99dde231b04a5ddebec3036b56486131be77d10b0881f480d4bcc0e986153af6",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/cross-runtime-chat-switching.spec.ts",
+      "rule": "synthetic-click",
+      "fingerprint": "c1a2bd2639fdfe977f02fc53f1e0f1d504dca82dca0ef7d9635a0a9f256e999e",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/default-agent-workflow.spec.ts",
+      "rule": "synthetic-click",
+      "fingerprint": "d79f4d21d56dbb0c41f7db39d70551c8830b3584c5c2a76af2773d751b53784b",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/pending-message-queue.spec.ts",
+      "rule": "forced-user-action",
+      "fingerprint": "1d82e6f12b3f4248a400463cb5646e47f3f9a88e76f58f187dd174e6d378a790",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/project-architecture.spec.ts",
+      "rule": "synthetic-click",
+      "fingerprint": "c6f04a5a29e1e50c7b1ffbe69a71af09213ec71784b55268461b0c5dad6f2f28",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/project-context-path.spec.ts",
+      "rule": "unmodeled-success-fallback",
+      "fingerprint": "9b089e9c0ea407c0090640bbcfac5c4e1878002365f04fc84d2a128036a3c718",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/registry.spec.ts",
+      "rule": "synthetic-click",
+      "fingerprint": "ba2977f485a379c5026dfbb5e2549d4dc752dc02599d5e2eedc99e85fe55295f",
+      "reason": "legacy-unqualified"
+    },
+    {
+      "file": "tests/task-answer-support.spec.ts",
+      "rule": "unmodeled-success-fallback",
+      "fingerprint": "9b089e9c0ea407c0090640bbcfac5c4e1878002365f04fc84d2a128036a3c718",
+      "reason": "legacy-unqualified"
+    }
+  ]
+}

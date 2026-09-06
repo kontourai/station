@@ -1,8 +1,10 @@
+import type { ChatContentPart } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { derivePlanArtifactFromStreamingState } from '../../utils/planArtifacts';
 import { extractUIBlocks } from '../../utils/uiBlocks';
 import {
   createAssistantStreamingMessage,
+  toolPartSettleableBy,
   upsertTextPart,
   upsertToolPart,
   upsertToolResultBlocks,
@@ -132,6 +134,28 @@ export function handleToolProgressEvent(
   });
 }
 
+/**
+ * station#1558: does this part list already hold the call this result
+ * settles? A part already pinned to a DIFFERENT terminal event id is a
+ * distinct durable result and does not count.
+ *
+ * station#1569 (H1): shares `toolPartSettleableBy` with `upsertToolPart`
+ * rather than restating it. These two must agree — this one decides WHICH
+ * message the result lands on, that one decides which row inside it — and
+ * when they disagreed about an `unresolved` row the scan skipped past the
+ * message holding the call and the upsert then appended a second row to a
+ * different message entirely.
+ */
+function holdsToolCall(
+  parts: ChatContentPart[] | undefined,
+  toolCallId: string,
+  resultEventId: string | undefined,
+): boolean {
+  return (parts ?? []).some((part) =>
+    toolPartSettleableBy(part, toolCallId, resultEventId),
+  );
+}
+
 export function handleToolCompletedEvent(
   event: Extract<OrchestrationEvent, { method: 'tool.completed' }>,
 ) {
@@ -145,55 +169,128 @@ export function handleToolCompletedEvent(
   // mere presence of an error. Its absence means "we don't know why this
   // failed", not "policy denied it", so no fallback is applied.
   const policyDenied = event.policyDenied === true;
-  let contentParts = upsertToolPart(
-    streamingMessage.contentParts,
-    event.toolCallId,
-    {
-      toolName: event.toolName,
-      sourceEventId: event.eventId,
-      state:
-        event.status === 'success'
-          ? 'completed'
-          : event.status === 'cancelled'
-            ? 'cancelled'
+  const updates = {
+    toolName: event.toolName,
+    sourceEventId: event.eventId,
+    state:
+      event.status === 'success'
+        ? 'completed'
+        : event.status === 'cancelled'
+          ? 'cancelled'
+          : // station#1558: an `unresolved` result reports that no outcome
+            // will ever arrive — the session ended with the call open. It is
+            // its own state: not `error` (nothing observed the tool fail),
+            // not `cancelled` (nobody asked it to stop), and not `completed`
+            // (there is no result). The durable projection
+            // (`runtime-event-projection.ts`) derives the identical state.
+            event.status === 'unresolved'
+            ? 'unresolved'
             : 'error',
-      result: event.output,
-      error: event.error,
-      ...(event.outputReceipt?.truncated
-        ? { outputTruncated: true as const }
-        : {}),
-      // archive#3167: `isError` means "failed" specifically — a
-      // cancellation is a correct user-initiated outcome, not a failure,
-      // so it must not flip this. Anything downstream that counts
-      // failures from this flag (e.g. `thread-projection.ts`'s export
-      // fold) must not start counting cancellations.
-      isError: event.status === 'error',
-      // Overrides any call-time `approvalStatus` (e.g. an optimistic
-      // 'auto-approved' from the session's own trust list) — Station's
-      // own policy can deny a call the client believed was pre-approved
-      // (config-protection runs before the auto-approve check), and
-      // this is the authoritative, later verdict.
-      ...(policyDenied ? { approvalStatus: 'policy-denied' as const } : {}),
-    },
-  );
-  if (event.eventId) {
-    contentParts = upsertToolResultBlocks(
-      contentParts,
+    result: event.output,
+    error: event.error,
+    ...(event.outputReceipt?.truncated
+      ? { outputTruncated: true as const }
+      : {}),
+    // archive#3167: `isError` means "failed" specifically — a
+    // cancellation is a correct user-initiated outcome, not a failure,
+    // so it must not flip this. Anything downstream that counts
+    // failures from this flag (e.g. `thread-projection.ts`'s export
+    // fold) must not start counting cancellations.
+    isError: event.status === 'error',
+    // Overrides any call-time `approvalStatus` (e.g. an optimistic
+    // 'auto-approved' from the session's own trust list) — Station's
+    // own policy can deny a call the client believed was pre-approved
+    // (config-protection runs before the auto-approve check), and
+    // this is the authoritative, later verdict.
+    ...(policyDenied ? { approvalStatus: 'policy-denied' as const } : {}),
+  };
+
+  const settle = (parts: ChatContentPart[] | undefined) => {
+    const next = upsertToolPart(parts, event.toolCallId, updates);
+    // `eventId` is optional on the live event envelope. A missing identity
+    // is a corrupt/incomplete result, not a license to coalesce its blocks
+    // by the reusable tool-call id; retain the terminal result above but
+    // omit unpinnable UI blocks.
+    return event.eventId
+      ? upsertToolResultBlocks(
+          next,
+          event.toolCallId,
+          event.eventId,
+          extractUIBlocks(event.output),
+        )
+      : next;
+  };
+
+  // station#1558: a result belongs to the turn that ISSUED the call, which
+  // the event names (`turnId`, PR #1560) and which is not always the turn
+  // streaming right now — a stopped turn's in-flight tool and a backgrounded
+  // Task both settle after their turn's bubble was committed. Folding by
+  // stream position moved the row (or invented a result-only one) onto the
+  // wrong turn. The durable projection (`runtime-event-projection.ts`) and
+  // the provenance fold (`turn-provenance-fold.ts`) both attribute by
+  // `turnId`; this is the live path saying the same thing.
+  if (
+    !holdsToolCall(
+      streamingMessage.contentParts,
       event.toolCallId,
       event.eventId,
-      extractUIBlocks(event.output),
-    );
+    )
+  ) {
+    const messages = chat.messages ?? [];
+    let index = -1;
+    // Fix round (M2): matching the call id is not enough. When the event
+    // names a turn and a committed row belongs to a DIFFERENT one, settling
+    // there would put the newer turn's result on the older row — the same
+    // misattribution by another route, which a provider that reuses call ids
+    // across turns would hit. Such a row is skipped and the named-turn route
+    // below takes over. A row carrying no turn id of its own is not a
+    // mismatch: there is no competing claim, and rejecting it would strand
+    // every pre-turn-id row.
+    for (let position = messages.length - 1; position >= 0; position -= 1) {
+      const candidate = messages[position];
+      const contradicts =
+        event.turnId !== undefined &&
+        candidate.turnId !== undefined &&
+        candidate.turnId !== event.turnId;
+      if (
+        !contradicts &&
+        holdsToolCall(candidate.contentParts, event.toolCallId, event.eventId)
+      ) {
+        index = position;
+        break;
+      }
+    }
+    if (index === -1 && event.turnId !== undefined) {
+      // No call to match anywhere: the row becomes a standalone result on the
+      // turn the event names. Only when that turn has no committed message
+      // either (it is the streaming one, or it predates this client's
+      // history) does the streaming message take it, below.
+      for (let position = messages.length - 1; position >= 0; position -= 1) {
+        if (messages[position].turnId === event.turnId) {
+          index = position;
+          break;
+        }
+      }
+    }
+    if (index >= 0) {
+      const nextMessages = [...messages];
+      nextMessages[index] = {
+        ...messages[index],
+        contentParts: settle(messages[index].contentParts),
+      };
+      // `isProcessingStep` describes the turn in flight. A result for an
+      // EARLIER turn says nothing about it, so it is left alone.
+      activeChatsStore.updateChat(event.threadId, { messages: nextMessages });
+      notifyToolCompletion(event, chat);
+      return;
+    }
   }
 
   activeChatsStore.updateChat(event.threadId, {
     isProcessingStep: false,
     streamingMessage: {
       ...streamingMessage,
-      // `eventId` is optional on the live event envelope. A missing identity
-      // is a corrupt/incomplete result, not a license to coalesce its blocks
-      // by the reusable tool-call id; retain the terminal result above but
-      // omit unpinnable UI blocks.
-      contentParts,
+      contentParts: settle(streamingMessage.contentParts),
     },
   });
 
