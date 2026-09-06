@@ -122,15 +122,36 @@ export class UsageTelemetryService {
     // A changed inventory stops emission: otherwise new fields could leave before disclosure.
     await this.loadDisclosureReceipt();
   }
+  /**
+   * Whether THIS Station has somewhere to send events.
+   *
+   * Reported to the client because the first-run disclosure says "none is
+   * configured here, so nothing is sent" — a claim about this host, not a
+   * general reassurance. Without this field the UI would be asserting a fact
+   * it cannot see: the endpoint is read from the environment at construction
+   * and appears nowhere else in the API.
+   */
+  get endpointConfigured(): boolean {
+    return this.endpoint !== undefined;
+  }
   async disclosure(): Promise<{
     acknowledged: boolean;
     inventoryRevision: string;
     events: typeof USAGE_TELEMETRY_EVENTS;
+    endpointConfigured: boolean;
+    telemetryEnabled: boolean;
   }> {
     return {
       acknowledged: await this.loadDisclosureReceipt(),
       inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
       events: USAGE_TELEMETRY_EVENTS,
+      endpointConfigured: this.endpointConfigured,
+      // The EFFECTIVE setting, which is `telemetryEnabled` folded over the
+      // `STATION_TELEMETRY_ENABLED` fallback and the default. A client that
+      // read `AppConfig.telemetryEnabled` alone would render "on" for a host
+      // the environment has switched off, and offer to turn off something
+      // that is already off.
+      telemetryEnabled: this.enabled,
     };
   }
   get bufferedCount(): number {

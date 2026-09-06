@@ -39,11 +39,14 @@ import {
   useOnboardingSetupState,
 } from '../../contexts/onboarding-setup-store';
 import { useSystemStatus } from '../../hooks/useSystemStatus';
+import { Button } from '../Button';
 import { LazyBoundary } from '../LazyBoundary';
+import { PageCallout } from '../PageCallout';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
+import { SkeletonBlock } from '../state';
 import {
   dismissUsageTelemetryDisclosure,
   UsageTelemetryDisclosureStep,
@@ -137,29 +140,20 @@ const STEP_TITLES: Record<ChapterStep, string> = {
  */
 function FirstRunHomeCard({ onOpen }: { onOpen: () => void }) {
   return (
-    // A <p>, not a heading: this card renders ABOVE Home's own <h1>, and a
-    // heading there either outranks the page title or lands out of order.
-    // `aria-label` gives the region its name without inventing a level.
-    <section
-      className="first-run-home-card"
-      aria-label="Finish setting up Station"
+    <PageCallout
+      calloutId="first-run-setup"
+      ariaLabel="Finish setting up Station"
       data-testid="first-run-home-card"
+      title="Finish setting up Station"
+      action={
+        <Button variant="primary" onClick={onOpen}>
+          Set up Station
+        </Button>
+      }
     >
-      <div>
-        <p className="first-run-home-card__title">Finish setting up Station</p>
-        <p className="first-run-home-card__body">
-          Pick the agent CLIs you use and tell Station how you like your
-          answers. Two minutes, and you can change everything later.
-        </p>
-      </div>
-      <button
-        type="button"
-        className="editor-btn editor-btn--primary"
-        onClick={onOpen}
-      >
-        Set up Station
-      </button>
-    </section>
+      Pick the agent CLIs you use and tell Station how you like your answers.
+      Two minutes, and you can change everything later.
+    </PageCallout>
   );
 }
 
@@ -198,7 +192,14 @@ export function FirstRunHomeChapter() {
   } = useUsageTelemetryDisclosureState();
 
   const [open, setOpen] = useState(false);
-  const [enginePickerOpen, setEnginePickerOpen] = useState(false);
+  /**
+   * The engine-role step's own title, when the picker resolves a different
+   * one. #1582 A5 moved that step inside this dialog, so the shared header
+   * prints the step title — and "Choose what powers Station" over a panel
+   * that says nothing here CAN power Station is a question the screen cannot
+   * answer. The picker reports the title it actually rendered.
+   */
+  const [roleTitle, setRoleTitle] = useState<string | undefined>(undefined);
   const [steps, setSteps] = useState<ChapterStep[]>(() =>
     planFirstRunChapterSteps({
       disclosureOutstanding: false,
@@ -313,8 +314,8 @@ export function FirstRunHomeChapter() {
   //  The cleanup matters as much as the set: leaving Home, or the
   // route unmounting mid-chapter, must hand the screen back.
   useEffect(() => {
-    firstRunChapterPresence.set(open || enginePickerOpen);
-  }, [enginePickerOpen, open]);
+    firstRunChapterPresence.set(open);
+  }, [open]);
   useEffect(() => () => firstRunChapterPresence.set(false), []);
 
   const writeStatus = useCallback(
@@ -418,7 +419,6 @@ export function FirstRunHomeChapter() {
   const continueToAboutYou = useCallback(() => {
     firstRunStore.enterChapter('about-you');
     setStep('about-you');
-    setEnginePickerOpen(false);
     setOpen(true);
   }, []);
 
@@ -444,8 +444,7 @@ export function FirstRunHomeChapter() {
             ],
       );
       setStep('engine-role');
-      setOpen(false);
-      setEnginePickerOpen(true);
+      setOpen(true);
       return;
     }
     // The role was answered while this run was open, so a step the plan
@@ -469,7 +468,11 @@ export function FirstRunHomeChapter() {
         >
           <ResponsiveDialogHeader
             title={
-              <span id="first-run-chapter-title">{STEP_TITLES[step]}</span>
+              <span id="first-run-chapter-title">
+                {step === 'engine-role'
+                  ? (roleTitle ?? STEP_TITLES['engine-role'])
+                  : STEP_TITLES[step]}
+              </span>
             }
             subtitle={firstRunStepCounterLabel(steps, step)}
             closeLabel="Close setup"
@@ -481,7 +484,6 @@ export function FirstRunHomeChapter() {
                 firstRunStore.enterChapter('engines');
                 setStep('engines');
               }}
-              onDefer={defer}
             />
           ) : step === 'engines' ? (
             <FirstRunEnginesChapter
@@ -495,6 +497,24 @@ export function FirstRunHomeChapter() {
               }}
               onDefer={defer}
               onGiveUp={giveUp}
+            />
+          ) : step === 'engine-role' ? (
+            <LazyBoundary
+              load={loadFirstRunEnginePicker}
+              componentProps={{
+                variant: 'step' as const,
+                description:
+                  'Choose the engine that runs the Station agent. Station Control and Station Docs stay attached to the role.',
+                onChosen: continueToAboutYou,
+                onDismiss: continueToAboutYou,
+                // The picker answers a different question when nothing on
+                // this host can run the assistant, and the header must not
+                // keep asking the one it cannot answer.
+                onTitleChange: setRoleTitle,
+              }}
+              pending={
+                <SkeletonBlock count={1} label="Loading engine options" />
+              }
             />
           ) : (
             <AboutYouStep
@@ -533,25 +553,6 @@ export function FirstRunHomeChapter() {
             />
           )}
         </ResponsiveDialogSurface>
-      ) : null}
-      {enginePickerOpen ? (
-        <LazyBoundary
-          load={loadFirstRunEnginePicker}
-          componentProps={{
-            // The role screen is a step of this run, so it carries the run's
-            // own counter instead of a decorative eyebrow that left it looking
-            // like a fourth screen in a three-step wizard.
-            eyebrow:
-              firstRunStepCounterLabel(steps, 'engine-role') ??
-              'Set up Station',
-            title: STEP_TITLES['engine-role'],
-            description:
-              'Choose the engine that runs the Station agent. Station Control and Station Docs stay attached to the role.',
-            onChosen: continueToAboutYou,
-            onDismiss: continueToAboutYou,
-          }}
-          pending={null}
-        />
       ) : null}
     </>
   );

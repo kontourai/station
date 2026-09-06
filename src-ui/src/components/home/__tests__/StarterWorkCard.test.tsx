@@ -66,7 +66,11 @@ describe('StarterWorkCard', () => {
     const { container } = render(<StarterWorkCard />);
 
     const card = screen.getByLabelText('Starter work');
-    expect(card.classList.contains('starter-work-card--loading')).toBe(true);
+    // #1582 C4: the shimmer's flex sizing hangs off the shared primitive's
+    // busy modifier now (`.page-callout--busy .skeleton-block`), which is
+    // what stops the block collapsing to nothing inside a flex row.
+    expect(card.classList.contains('page-callout--busy')).toBe(true);
+    expect(card.getAttribute('aria-busy')).toBe('true');
     expect(
       screen.getByRole('status', { name: 'Checking starter work' }),
     ).toBeTruthy();

@@ -123,19 +123,10 @@ const { dismissUsageTelemetryDisclosure } = vi.hoisted(() => ({
 vi.mock('../../UsageTelemetryDisclosure', () => ({
   useUsageTelemetryDisclosureState: () => disclosureState,
   dismissUsageTelemetryDisclosure,
-  UsageTelemetryDisclosureStep: ({
-    onAdvance,
-    onDefer,
-  }: {
-    onAdvance: () => void;
-    onDefer: () => void;
-  }) => (
+  UsageTelemetryDisclosureStep: ({ onAdvance }: { onAdvance: () => void }) => (
     <div data-testid="first-run-disclosure">
-      <button type="button" onClick={onDefer}>
-        Not now
-      </button>
       <button type="button" onClick={onAdvance}>
-        I understand
+        Keep usage telemetry on
       </button>
     </div>
   ),
@@ -149,21 +140,33 @@ vi.mock('../../../hooks/useSystemStatus', () => ({
     isFetching: engineState.statusLoading || engineState.statusRestored,
   }),
 }));
+/**
+ * #1582 A5: the picker renders as a STEP of this chapter — no chrome of its
+ * own, and its title reported UP so the chapter's shared header prints it.
+ * The stub carries exactly that contract; the picker's own rendering is
+ * covered in `EnginePicker.test.tsx`.
+ */
 vi.mock('../../EnginePicker', () => ({
   EnginePicker: ({
-    eyebrow,
-    title,
+    variant,
     onChosen,
     onDismiss,
+    onTitleChange,
   }: {
-    eyebrow?: string;
-    title?: string;
+    variant?: string;
     onChosen: () => void;
     onDismiss: () => void;
+    onTitleChange?: (title: string) => void;
   }) => (
-    <div data-testid="engine-picker">
-      <div>{eyebrow}</div>
-      <div>{title}</div>
+    <div data-testid="engine-picker" data-variant={variant}>
+      {enginePickerTitleOverride ? (
+        <button
+          type="button"
+          onClick={() => onTitleChange?.(enginePickerTitleOverride)}
+        >
+          Report a different title
+        </button>
+      ) : null}
       <button type="button" onClick={onChosen}>
         Use selected engine
       </button>
@@ -173,6 +176,8 @@ vi.mock('../../EnginePicker', () => ({
     </div>
   ),
 }));
+/** Set by the one test that proves the header follows the picker's own title. */
+let enginePickerTitleOverride: string | null = null;
 
 import {
   FirstRunHomeChapter,
@@ -210,6 +215,7 @@ const UNVERIFIABLE_CLAUDE = {
 } as ExternalEngineReadinessProjection;
 
 beforeEach(() => {
+  enginePickerTitleOverride = null;
   updateConfig.mockReset().mockResolvedValue(undefined);
   recordFirstRunDecision.mockReset().mockResolvedValue(undefined);
   presence.length = 0;
@@ -797,30 +803,34 @@ describe('the disclosure is the first step of the run, not a modal over it', () 
     // The engines step is BEHIND it, not beside it.
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
 
-    // Acknowledging is the ONLY way forward; the counter follows the steps
+    // Deciding is the ONLY way forward; the counter follows the steps
     // the run actually rendered.
-    fireEvent.click(screen.getByRole('button', { name: 'I understand' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Keep usage telemetry on' }),
+    );
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
     expect(screen.getByText('Step 2 of 3')).toBeTruthy();
     expect(screen.queryByTestId('first-run-disclosure')).toBeNull();
   });
 
-  test('"Not now" on the disclosure step CLOSES the run, never advances (#765 B1)', async () => {
-    // Reproduced live: "Not now" on "Step 1 of 3" advanced to step 2, which
-    // reads as the modal refusing to be dismissed. Declining the disclosure
-    // is a deferral of the run — the dialog closes, the durable fact is
-    // written, and the Home card keeps offering the run.
+  test('closing over the disclosure step CLOSES the run, never advances (#765 B1)', async () => {
+    // Reproduced live: declining on "Step 1 of 3" advanced to step 2, which
+    // reads as the modal refusing to be dismissed. #1582 A3 replaced the
+    // step's own "Not now" with the two named telemetry decisions, so the
+    // dialog's close is now the ONLY exit that decides nothing — and it must
+    // still behave exactly as the declined step did: the dialog closes, the
+    // durable fact is written, and the Home card keeps offering the run.
     disclosureState.outstanding = true;
     render(<FirstRunHomeChapter />);
     expect(screen.getByTestId('first-run-disclosure')).toBeTruthy();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Close setup' }));
     });
 
     expect(
       screen.queryByTestId('first-run-engines'),
-      '"Not now" advanced into the engines step',
+      'closing the disclosure step advanced into the engines step',
     ).toBeNull();
     expect(screen.queryByTestId('first-run-disclosure')).toBeNull();
     expect(recordFirstRunDecision).toHaveBeenCalledWith({ status: 'skipped' });
@@ -1055,19 +1065,59 @@ describe('the engine-role screen is a counted step of the run', () => {
     render(<FirstRunHomeChapter />);
 
     expect(screen.getByText('Step 1 of 4')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'I understand' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Keep usage telemetry on' }),
+    );
     expect(screen.getByText('Step 2 of 4')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    const picker = await screen.findByTestId('engine-picker');
-    // The screen that used to carry a decorative eyebrow and no number.
-    expect(picker.textContent).toContain('Step 3 of 4');
-    expect(picker.textContent).toContain('Choose what powers Station');
+    await screen.findByTestId('engine-picker');
+    // #1582 A5: the role screen is a step INSIDE this dialog, so the number
+    // and the title come from the SAME header steps 1 and 2 use — not from a
+    // second overlay's own eyebrow, which is what left it reading as a
+    // fourth screen in a three-step wizard.
+    expect(screen.getByText('Step 3 of 4')).toBeTruthy();
+    expect(
+      document.getElementById('first-run-chapter-title')?.textContent,
+    ).toBe('Choose what powers Station');
+    expect(
+      screen.getByTestId('engine-picker').getAttribute('data-variant'),
+      'the role step rendered the picker in its own modal chrome',
+    ).toBe('step');
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Use selected engine' }),
     );
     expect(screen.getByText('Step 4 of 4')).toBeTruthy();
+  });
+
+  test('the shared header prints the title the role step actually rendered', async () => {
+    // #1582 A5 moved the role screen inside this dialog, so the header is the
+    // only title on screen — and "Choose what powers Station" over a panel
+    // that says nothing here CAN power Station is a question the screen
+    // cannot answer. The picker reports what it rendered; the header follows.
+    disclosureState.outstanding = false;
+    configValue.builtinAgentEngineConnectionId = undefined;
+    engineState.engines = [];
+    enginePickerTitleOverride =
+      'No connected engine can run the built-in assistant';
+    render(<FirstRunHomeChapter />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByTestId('engine-picker');
+    expect(
+      document.getElementById('first-run-chapter-title')?.textContent,
+    ).toBe('Choose what powers Station');
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Report a different title' }),
+      );
+    });
+    expect(
+      document.getElementById('first-run-chapter-title')?.textContent,
+      'the header kept asking a question the step had stopped answering',
+    ).toBe('No connected engine can run the built-in assistant');
   });
 
   test('stops counting the role screen when the role is answered mid-run', async () => {

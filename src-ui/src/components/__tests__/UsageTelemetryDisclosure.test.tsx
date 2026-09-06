@@ -1,18 +1,39 @@
 /** @vitest-environment jsdom */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
-  within,
 } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 
-const { authenticatedFetch } = vi.hoisted(() => ({
+const { authenticatedFetch, updateConfig } = vi.hoisted(() => ({
   authenticatedFetch: vi.fn(),
+  updateConfig: vi.fn(),
 }));
-vi.mock('@kontourai/station-sdk', () => ({ authenticatedFetch }));
+/**
+ * The SAME write path the Settings row uses: `useUpdateConfigMutation` is
+ * `PUT /config/app` (`packages/sdk/.../agentAdmin.ts`), so a preference this
+ * step records is a preference Settings shows. The spy stands in for the
+ * mutation, and every assertion below is on what it was CALLED with.
+ */
+vi.mock('@kontourai/station-sdk', () => ({
+  authenticatedFetch,
+  useUpdateConfigMutation: () => ({
+    isPending: false,
+    mutate: (
+      variables: Record<string, unknown>,
+      handlers?: {
+        onSuccess?: (result: {
+          ignoredKeys?: { key: string; reason: string }[];
+        }) => void;
+        onError?: (error: unknown) => void;
+      },
+    ) => updateConfig(variables, handlers),
+  }),
+}));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
@@ -22,6 +43,7 @@ import {
   USAGE_TELEMETRY_SNOOZE_STORAGE_KEY,
   UsageTelemetryDisclosure,
   UsageTelemetryDisclosureStep,
+  usageTelemetryDisclosureSummary,
 } from '../UsageTelemetryDisclosure';
 
 test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and acknowledges it', async () => {
@@ -207,12 +229,17 @@ test('a persistently failing acknowledgement does not trap the user behind the f
 });
 
 /** The inventory the first-run step renders, answered from the server. */
-function inventoryResponse(acknowledged: boolean) {
+function inventoryResponse(
+  acknowledged: boolean,
+  derived: { endpointConfigured?: boolean; telemetryEnabled?: boolean } = {},
+) {
   return new Response(
     JSON.stringify({
       data: {
         acknowledged,
         inventoryRevision: 'rev',
+        endpointConfigured: derived.endpointConfigured ?? false,
+        telemetryEnabled: derived.telemetryEnabled ?? true,
         events: {
           station_started: {
             description: 'Station completed startup.',
@@ -225,6 +252,28 @@ function inventoryResponse(acknowledged: boolean) {
   );
 }
 
+/**
+ * Every step test drives the same surface: the step alone, with the receipt
+ * POST answering an acknowledged inventory.
+ */
+function renderStep(
+  advance: () => void,
+  derived: { endpointConfigured?: boolean; telemetryEnabled?: boolean } = {},
+) {
+  authenticatedFetch.mockReset();
+  authenticatedFetch.mockImplementation(async (url: string) =>
+    String(url).endsWith('/acknowledgements')
+      ? inventoryResponse(true, derived)
+      : inventoryResponse(false, derived),
+  );
+  updateConfig.mockReset();
+  return render(
+    <QueryClientProvider client={new QueryClient()}>
+      <UsageTelemetryDisclosureStep onAdvance={advance} />
+    </QueryClientProvider>,
+  );
+}
+
 const ACKNOWLEDGEMENTS_URL =
   'http://station.test/api/usage-telemetry/disclosure/acknowledgements';
 
@@ -232,19 +281,8 @@ test('the first-run STEP acknowledges through the same endpoint, then advances',
   // Same copy, same receipt: moving the disclosure into the first-run chapter
   // must not fork the acknowledgement into a second write path.
   resetUsageTelemetryDisclosureDismissal();
-  authenticatedFetch.mockReset();
-  authenticatedFetch.mockImplementation(async (url: string) =>
-    String(url).endsWith('/acknowledgements')
-      ? inventoryResponse(true)
-      : inventoryResponse(false),
-  );
   const advance = vi.fn();
-
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <UsageTelemetryDisclosureStep onAdvance={advance} onDefer={vi.fn()} />
-    </QueryClientProvider>,
-  );
+  renderStep(advance);
 
   expect(
     await screen.findByText('station_started'),
@@ -256,7 +294,9 @@ test('the first-run STEP acknowledges through the same endpoint, then advances',
     'the step advanced before anything was clicked',
   ).not.toHaveBeenCalled();
 
-  fireEvent.click(screen.getByRole('button', { name: 'I understand' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Keep usage telemetry on' }),
+  );
 
   await waitFor(() =>
     expect(authenticatedFetch).toHaveBeenLastCalledWith(ACKNOWLEDGEMENTS_URL, {
@@ -266,49 +306,140 @@ test('the first-run STEP acknowledges through the same endpoint, then advances',
   // And only AFTER the receipt landed: advancing on the click would leave a
   // failed write looking like an acknowledgement.
   await waitFor(() => expect(advance).toHaveBeenCalledTimes(1));
+  // Keeping the current state is not a change, so it writes nothing.
+  expect(
+    updateConfig,
+    'keeping the current setting still wrote to the config',
+  ).not.toHaveBeenCalled();
   resetUsageTelemetryDisclosureDismissal();
 });
 
-test('"Not now" in the step DEFERS — writes nothing, never advances (#765 B1)', async () => {
-  // Same semantics as the standalone modal's "Not now": no receipt, the
-  // dialog closes. It used to call `onAdvance`, which pushed the reader into
-  // step 2 of the run they had just declined — reproduced live as the modal
-  // refusing to be dismissed.
+test('#1582 A3: the step leads with a derived sentence and hides the schema behind a disclosure', async () => {
+  // The first screen of the first run used to open with the whole generated
+  // inventory. It is still there — the acknowledgement is worthless if the
+  // reader cannot reach what they are acknowledging — but behind a summary.
   resetUsageTelemetryDisclosureDismissal();
-  authenticatedFetch.mockReset();
-  authenticatedFetch.mockImplementation(async () => inventoryResponse(false));
-  const advance = vi.fn();
-  const defer = vi.fn();
+  renderStep(vi.fn(), { endpointConfigured: false });
 
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <UsageTelemetryDisclosureStep onAdvance={advance} onDefer={defer} />
-      <UsageTelemetryDisclosure firstRun />
-    </QueryClientProvider>,
-  );
-
-  // The standalone modal renders beside the step here on purpose — that is
-  // what makes the dismissal assertion below observable — so every query is
-  // scoped to the step rather than to the page.
-  expect(await screen.findByRole('dialog')).toBeTruthy();
-  const step = screen.getByTestId('first-run-disclosure');
-  fireEvent.click(within(step).getByRole('button', { name: 'Not now' }));
-
-  await waitFor(() => expect(defer).toHaveBeenCalledTimes(1));
   expect(
-    advance,
-    '"Not now" advanced the run instead of deferring it',
-  ).not.toHaveBeenCalled();
+    await screen.findByText(
+      'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+    ),
+  ).toBeTruthy();
+  const details = screen
+    .getByTestId('first-run-disclosure')
+    .querySelector('details');
+  expect(details, 'the inventory is not behind a disclosure').toBeTruthy();
+  expect(
+    details?.hasAttribute('open'),
+    'the inventory is expanded on the first screen',
+  ).toBe(false);
+  expect(details?.querySelector('summary')?.textContent).toBe(
+    'See exactly what is sent',
+  );
+  // The schema is INSIDE the disclosure, not beside it.
+  expect(details?.textContent).toContain('station_started');
+  resetUsageTelemetryDisclosureDismissal();
+});
+
+test('#1582 A3: the summary is derived from the host, never asserted', () => {
+  // "none is configured here" is a claim about THIS Station. A build that
+  // cannot see the endpoint says less rather than guessing.
+  expect(usageTelemetryDisclosureSummary(false)).toBe(
+    'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+  );
+  expect(usageTelemetryDisclosureSummary(true)).toBe(
+    'Station can send anonymous usage events, only when a telemetry endpoint is configured; one is configured on this Station.',
+  );
+  expect(usageTelemetryDisclosureSummary(undefined)).toBe(
+    'Station can send anonymous usage events, only when a telemetry endpoint is configured.',
+  );
+});
+
+test('#1582 A3: "Turn it off" writes the setting Settings reads, then acknowledges', async () => {
+  // The button names a decision, so the decision has to happen: a label with
+  // nothing behind it is the defect this change exists to remove. The write
+  // is `telemetryEnabled` through `PUT /config/app` — the Settings row's own
+  // key and the server's own emission gate.
+  resetUsageTelemetryDisclosureDismissal();
+  const advance = vi.fn();
+  renderStep(advance, { telemetryEnabled: true });
+  await screen.findByRole('button', { name: 'Turn it off' });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Turn it off' }));
+
+  expect(updateConfig).toHaveBeenCalledTimes(1);
+  expect(updateConfig.mock.calls[0][0]).toEqual({ telemetryEnabled: false });
+  // Nothing is acknowledged until the setting has actually landed.
   expect(
     authenticatedFetch.mock.calls.filter((call) =>
       String(call[0]).endsWith('/acknowledgements'),
     ),
-    '"Not now" wrote an acknowledgement receipt',
+    'the receipt was written before the setting',
   ).toEqual([]);
-  // The standalone modal beside it stands down — the same dismissal the
-  // modal's own "Not now" performs — rather than re-offering the moment the
-  // run ends.
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(advance).not.toHaveBeenCalled();
+
+  await act(async () => {
+    updateConfig.mock.calls[0][1]?.onSuccess?.({});
+  });
+  await waitFor(() =>
+    expect(authenticatedFetch).toHaveBeenLastCalledWith(ACKNOWLEDGEMENTS_URL, {
+      method: 'POST',
+    }),
+  );
+  await waitFor(() => expect(advance).toHaveBeenCalledTimes(1));
+  resetUsageTelemetryDisclosureDismissal();
+});
+
+test('#1582 A3: an already-off host is offered the decision it can actually make', async () => {
+  // `telemetryEnabled` folds `STATION_TELEMETRY_ENABLED` and the default, so
+  // a host the environment switched off reports off. Offering "Turn it off"
+  // there would be an action with nothing behind it, and "Keep usage
+  // telemetry on" would name a state that is not the case.
+  resetUsageTelemetryDisclosureDismissal();
+  const advance = vi.fn();
+  renderStep(advance, { telemetryEnabled: false });
+
+  expect(
+    await screen.findByRole('button', { name: 'Keep usage telemetry off' }),
+  ).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Turn it off' })).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Turn it on' }));
+  expect(updateConfig.mock.calls[0][0]).toEqual({ telemetryEnabled: true });
+  resetUsageTelemetryDisclosureDismissal();
+});
+
+test('#1582 A3: a REFUSED setting write neither acknowledges nor advances', async () => {
+  // `PUT /config/app` answers 2xx and reports a key it declined in
+  // `ignoredKeys`, so the obvious success path would write the receipt, move
+  // the run on, and leave the reader told telemetry was turned off while it
+  // is still on.
+  resetUsageTelemetryDisclosureDismissal();
+  const advance = vi.fn();
+  renderStep(advance, { telemetryEnabled: true });
+  await screen.findByRole('button', { name: 'Turn it off' });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Turn it off' }));
+  await act(async () => {
+    updateConfig.mock.calls[0][1]?.onSuccess?.({
+      ignoredKeys: [{ key: 'telemetryEnabled', reason: 'unknown' }],
+    });
+  });
+
+  expect(
+    authenticatedFetch.mock.calls.filter((call) =>
+      String(call[0]).endsWith('/acknowledgements'),
+    ),
+    'a refused setting write still wrote an acknowledgement receipt',
+  ).toEqual([]);
+  expect(
+    advance,
+    'a refused setting write still advanced the run',
+  ).not.toHaveBeenCalled();
+  expect(screen.getByRole('alert').textContent).toBe(
+    'The usage telemetry setting could not be saved.',
+  );
   resetUsageTelemetryDisclosureDismissal();
 });
 

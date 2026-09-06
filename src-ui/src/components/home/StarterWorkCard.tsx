@@ -2,9 +2,17 @@ import { useStarterWorkQuery, useTaskQuery } from '@kontourai/station-sdk';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { Button } from '../Button';
+import { PageCallout } from '../PageCallout';
 import { SkeletonBlock } from '../state';
 
 const START_TASK = 'start-task';
+
+/**
+ * One identity across every state this card renders — loading, unavailable,
+ * bound, unbound. They are the same offer in different conditions, so a
+ * stack must never show two of them.
+ */
+const STARTER_CALLOUT_ID = 'starter-work';
 
 /**
  * The Home affordance owns no completion state.  It offers an existing Task
@@ -28,108 +36,110 @@ export function StarterWorkCard() {
   // one merely to make an onboarding card actionable.
   if (isLoading || projects.length === 0) return null;
   if (starter.isError)
-    return (
-      <section
-        className="starter-work-card"
-        role="status"
-        aria-label="Starter work"
-      >
-        Starter Work is unavailable.{' '}
-        <Button onClick={() => void starter.refetch()}>Retry</Button>
-      </section>
-    );
+    return <StarterWorkUnavailable onRetry={() => void starter.refetch()} />;
   if (starter.isLoading || !status)
     return (
-      <section
-        className="starter-work-card starter-work-card--loading"
-        aria-label="Starter work"
-        aria-busy="true"
+      <PageCallout
+        calloutId={STARTER_CALLOUT_ID}
+        ariaLabel="Starter work"
+        className="page-callout--busy"
+        busy
       >
         <SkeletonBlock count={1} label="Checking starter work" />
-      </section>
+      </PageCallout>
     );
   if (status.state === 'unavailable')
-    return (
-      <section
-        className="starter-work-card"
-        role="status"
-        aria-label="Starter work"
-      >
-        Starter Work is unavailable.{' '}
-        <Button onClick={() => void starter.refetch()}>Retry</Button>
-      </section>
-    );
+    return <StarterWorkUnavailable onRetry={() => void starter.refetch()} />;
   if (status?.state === 'bound' && status.binding.targetRef.kind === 'task') {
     if (boundTask.isLoading)
       return (
-        <section
-          className="starter-work-card starter-work-card--loading"
-          aria-label="Starter work"
-          aria-busy="true"
+        <PageCallout
+          calloutId={STARTER_CALLOUT_ID}
+          ariaLabel="Starter work"
+          className="page-callout--busy"
+          busy
         >
           <SkeletonBlock count={1} label="Resolving your starter task" />
-        </section>
+        </PageCallout>
       );
     if (boundTask.isError || !boundTask.data)
       return (
-        <section
-          className="starter-work-card"
+        <PageCallout
+          calloutId={STARTER_CALLOUT_ID}
+          tone="warning"
+          ariaLabel="Starter work"
           role="status"
-          aria-label="Starter work"
+          action={
+            <Button onClick={() => void boundTask.refetch()}>Try again</Button>
+          }
         >
           {/* archive#3965: was "Starter task is NOT_VERIFIED or unavailable" —
               an internal verification token, and two states at once. */}
-          We couldn’t open your first task.{' '}
-          <Button onClick={() => void boundTask.refetch()}>Try again</Button>
-        </section>
+          We couldn’t open your first task.
+        </PageCallout>
       );
     return (
-      <section
-        className="starter-work-card"
-        aria-label="Starter work"
+      <PageCallout
+        calloutId={STARTER_CALLOUT_ID}
+        ariaLabel="Starter work"
         data-testid="starter-work-card"
+        title="Your first task is ready"
+        action={
+          <Button
+            variant="primary"
+            onClick={() =>
+              navigate(
+                `/tasks/${encodeURIComponent(status.binding.targetRef.id)}`,
+              )
+            }
+          >
+            Open task
+          </Button>
+        }
       >
-        <div>
-          <p className="starter-work-card__title">Your first task is ready</p>
-          <p className="starter-work-card__body">
-            Resume the exact task you started.
-          </p>
-        </div>
-        <Button
-          variant="primary"
-          onClick={() =>
-            navigate(
-              `/tasks/${encodeURIComponent(status.binding.targetRef.id)}`,
-            )
-          }
-        >
-          Open task
-        </Button>
-      </section>
+        Resume the exact task you started.
+      </PageCallout>
     );
   }
   return (
-    <section
-      className="starter-work-card"
-      aria-label="Starter work"
+    <PageCallout
+      calloutId={STARTER_CALLOUT_ID}
+      ariaLabel="Starter work"
       data-testid="starter-work-card"
+      title="Start your first task"
+      action={
+        <Button
+          variant="primary"
+          onClick={() =>
+            navigate(`/projects/${encodeURIComponent(projects[0].slug)}`, {
+              starter: START_TASK,
+            })
+          }
+        >
+          Create task
+        </Button>
+      }
     >
-      <div>
-        <p className="starter-work-card__title">Start your first task</p>
-        <p className="starter-work-card__body">
-          Create one focused task in {projects[0].name || projects[0].slug}.
-        </p>
-      </div>
-      <Button
-        variant="primary"
-        onClick={() =>
-          navigate(`/projects/${encodeURIComponent(projects[0].slug)}`, {
-            starter: START_TASK,
-          })
-        }
-      >
-        Create task
-      </Button>
-    </section>
+      Create one focused task in {projects[0].name || projects[0].slug}.
+    </PageCallout>
+  );
+}
+
+/**
+ * One unreachable-ledger state, rendered from one place. It was written out
+ * twice — for the query error and for the server's own `unavailable` — with
+ * byte-identical copy, which is two chances for the two to drift apart.
+ */
+function StarterWorkUnavailable({ onRetry }: { onRetry: () => void }) {
+  return (
+    <PageCallout
+      calloutId={STARTER_CALLOUT_ID}
+      tone="warning"
+      ariaLabel="Starter work"
+      role="status"
+      action={<Button onClick={onRetry}>Retry</Button>}
+    >
+      Starter Work is unavailable.
+    </PageCallout>
   );
 }
