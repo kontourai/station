@@ -507,9 +507,11 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    * Station never saw a result, and cannot tell whether the tool ran. Every
    * adapter that tracks its open calls settles them this way when a session
    * IT STILL OWNS ends (station#1569 item 4 extended this past Claude to
-   * ACP, Codex and station-agent); a record already superseded by a restart
-   * on the same thread deliberately publishes nothing, since its terminals
-   * would land on the live session. It is
+   * ACP, Codex and station-agent). What a record superseded by a restart on
+   * the same thread does is adapter-specific: Claude still settles the
+   * stopped session's own calls on their own turns (only the thread-keyed
+   * `session.exited` is withheld), while Codex publishes nothing for a
+   * superseded record. It is
    * NOT a failure (nothing observed the tool fail) and NOT a cancellation
    * (nobody asked for it to stop); folding it into either would be a claim
    * Station cannot support. Without it, the row simply stayed "running"

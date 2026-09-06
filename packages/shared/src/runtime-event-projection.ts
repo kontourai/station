@@ -545,7 +545,12 @@ export function projectRuntimeEventsToMessages(
           existing.error = ev.error;
           existing.sourceEventId = ev.eventId;
           existing.cancelled = isCancelled;
+          // A superseded `unresolved` row must not keep Station's own "no
+          // result was reported" sentence as the body of a call that now
+          // has a real outcome — a terminal with no text (empty or
+          // image-only content) still replaces it (station#1569 review D1).
           if (text !== undefined) existing.result = text;
+          else if (existing === superseded) delete existing.result;
           existing.isError = isError;
           // Overrides any earlier call-time approvalStatus (e.g. an
           // optimistic 'auto-approved') — Station's own policy can deny a

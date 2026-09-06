@@ -1502,6 +1502,64 @@ describe('projectRuntimeEventsToMessages', () => {
         });
       });
 
+      // Review D1: a superseding terminal with no text (empty or image-only
+      // content) must still replace the body, or the completed row keeps
+      // Station's own "no result was reported" sentence as its output.
+      it('drops the unresolved sentence when the real result carries no text', () => {
+        const messages = projectRuntimeEventsToMessages([
+          ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'first' }),
+          ev({
+            method: 'tool.started',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            arguments: { command: 'npm test' },
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'unresolved',
+            output:
+              'No result was reported before the session ended; whether the tool ran is unknown.',
+            eventId: 'settle-result',
+          }),
+          ev({
+            method: 'tool.completed',
+            itemId: 'i1',
+            turnId: 'turn-a',
+            toolCallId: 'call-1',
+            toolName: 'Bash',
+            status: 'success',
+            eventId: 'real-result',
+          }),
+          ev({
+            method: 'turn.completed',
+            turnId: 'turn-a',
+            finishReason: 'stop',
+          }),
+        ]);
+
+        const turnA = messages.find(
+          (message) =>
+            message.role === 'assistant' &&
+            message.metadata?.turnId === 'turn-a',
+        )!;
+        const tools = toolPartsOf(turnA);
+        expect(tools).toHaveLength(1);
+        expect(tools[0]).toMatchObject({
+          state: 'result',
+          sourceEventId: 'real-result',
+        });
+        expect(tools[0]).not.toHaveProperty('result');
+        expect(JSON.stringify(tools[0])).not.toContain(
+          'No result was reported',
+        );
+      });
+
       it('supersedes across the turn boundary, where the real case lives', () => {
         // What actually happens: the settle rides `session.exited`, the turn
         // is emitted, and the SDK drains the held result afterwards.
