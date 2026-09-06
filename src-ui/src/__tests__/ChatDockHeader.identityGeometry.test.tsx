@@ -26,6 +26,15 @@ import {
  * stylesheet — the same harness as
  * `ConnectionsSectionFrame.banner-hittest.test.tsx`.
  *
+ * OWNERSHIP, after #1536 F merged: `ChatDockActiveIdentity.overflow.test.tsx`
+ * is the identity row's authority — it measures real dock widths (down to
+ * 260px, below `MIN_DOCK_WIDTH`) and pins the yield ORDER their policy sets
+ * (engine, then agent, then title). The identity assertions below still hold
+ * under that policy and are kept as containment guards, not as a second opinion
+ * on priority. What this file uniquely owns is the PROJECT-CONTEXT half: the
+ * project badge and the git badge, which #1536 F left in place when it deleted
+ * the visible path segment beside them.
+ *
  * DRIVEN: three widths, each chosen because it makes a different part of the
  * row the binding constraint — 320px (the identity row's own contents no
  * longer fit its box: the overprint), 800px (the project row is squeezed and
@@ -182,7 +191,7 @@ describe.skipIf(!chromiumAvailable)(
           [
             '.chat-dock__active-identity-text',
             '.chat-dock__active-identity-agent',
-            '.chat-dock__active-identity-model',
+            '.chat-dock__active-identity-engine',
             '.chat-dock__active-identity-title',
             '.chat-dock__project-context',
             '.chat-dock__project-badge',

@@ -565,9 +565,9 @@ describe('ChatDockInboxPanel', () => {
   // archive#1797: collapsing the inbox is now the caller's responsibility —
   // `ChatDock.tsx` mounts this component only while expanded, so there is no
   // in-component collapsed rail/state to render or test here any more. The
-  // sole expand/collapse control lives in the dock header (archive#3309; see
-  // `ChatDockHeaderWorkspaceControls.test.tsx`'s `chat-dock__inbox-toggle`
-  // coverage).
+  // sole expand/collapse control lives in the dock header (archive#3309; a row
+  // of its More menu since #1536 F — see
+  // `ChatDockHeaderWorkspaceControls.test.tsx`'s chat-list coverage).
 });
 
 /**

@@ -131,11 +131,6 @@
   color: var(--text-primary);
 }
 
-.app-toolbar__region-btn[aria-pressed="true"] {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
-}
-
 .app-toolbar__region-btn svg {
   width: 18px;
   height: 14px;
@@ -144,33 +139,61 @@
   stroke-width: 1.5;
 }
 
-.app-toolbar__region-control {
-  display: inline-flex;
-  gap: 2px;
-  align-items: center;
+/* #1536 F: the one folded region control. `width: auto` overrides the square
+   glyph box above — this button carries a visible word, which is the whole
+   point of folding five unlabeled rectangles into it. */
+.app-toolbar__region-layout {
+  width: auto;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: var(--text-base);
+  font-family: inherit;
 }
 
-.app-toolbar__region-swap {
-  position: static;
-  flex: 0 0 24px;
-  min-width: 24px;
-  min-height: 24px;
+.app-toolbar__region-layout-label {
+  white-space: nowrap;
+}
+
+/* One region's block of the Layout menu. A `fieldset` because its implicit
+   role is `group`, and its `legend` is both the group's accessible name and
+   the visible heading — so the rows say "Hide Chat" instead of repeating the
+   region in every label. `min-inline-size: 0` because a fieldset's default is
+   `min-content`, which would let a long surface title widen the menu. */
+.app-toolbar__region-menu-group {
+  margin: 0;
   padding: 0;
   border: 0;
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  line-height: 1;
-  cursor: pointer;
+  min-inline-size: 0;
 }
 
-.app-toolbar__region-add {
-  position: absolute;
-  right: 1px;
-  bottom: -1px;
+.app-toolbar__region-menu-group + .app-toolbar__region-menu-group {
+  border-top: 1px solid var(--border-primary);
+}
+
+/* One divider per GROUP, not one per row. `.app-toolbar__overflow-menu button +
+   button` (below) draws a hairline between every row, which is right for the
+   header's flat ⋯ menu but turns a grouped arrangement into a ruled table where
+   the group boundary — the only division that means anything here — reads
+   exactly like the six that do not. The legends and the group border carry the
+   structure.
+
+   TWO classes, both on the same element: at one class each these selectors tie
+   on specificity and SOURCE ORDER decides, and the flat rule is ~90 lines
+   further down — so the single-class form parsed, read correct, and was
+   overridden, with the hairlines still drawn inside every group. archive#3341's
+   lesson in a second place. The guard for this is a measurement in Chromium for
+   the same reason: a text scan sees the declaration, not the cascade. */
+.app-toolbar__overflow-menu.app-toolbar__region-menu button + button {
+  border-top: 0;
+}
+
+.app-toolbar__region-menu-group > legend {
+  padding: 8px 14px 4px;
+  color: var(--text-tertiary);
   font-size: var(--text-xs);
-  font-weight: 700;
-  line-height: 1;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 @media (max-width: 480px) {
@@ -404,6 +427,17 @@
 
 .app-toolbar__conn-state--alert {
   color: var(--warning-text);
+}
+
+/* #1536 F: the collapsed steady state — connected, one Station, nothing
+   qualifying it. Only the dot renders, so the button needs its own hit target
+   rather than borrowing width from text it no longer has. 44px on every
+   pointer, not only touch: this is the smallest control in the row and the one
+   most often aimed at in a hurry. */
+.app-toolbar__conn--compact {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
 }
 
 /* The bundled-server lifetime note ("App only"), which QUALIFIES the identity
@@ -1101,6 +1135,28 @@
   .composer-attachments__remove {
     width: 44px;
     height: 44px;
+  }
+}
+
+/* #1536 F: the dock header's folded commands (Chat settings, the chat list,
+   Background tasks, Session inventory, Copy thread ID, Copy project path) are
+   rows of the `.dock-placement-menu` family, whose 32px row is a fine-pointer
+   height. A coarse device too wide to render the mobile dock header — a tablet
+   in landscape — reaches them with a finger, and station#923 sized one of those
+   commands (Copy ID) at 44px back when it was a button in the bar. The blast
+   radius is the pre-existing dock placement menu, which owed a finger the same
+   floor.
+   HERE rather than in index.css: `useIsMobile.test.tsx` requires every coarse
+   query in the ENTRY sheet to spell `MOBILE_MEDIA_QUERY` byte-for-byte, so
+   component behaviour and stylesheet cannot disagree about the breakpoint — and
+   that condition does not describe a 1180px tablet. This sheet already carries
+   the `(pointer: coarse)` touch-target query below/above (archive#3344), which
+   is the right question for a hit target.
+   The class is DOUBLED so this beats index.css's single-class base rule on
+   specificity rather than on which sheet the bundler emitted last. */
+@media (max-width: 768px), (pointer: coarse) {
+  .dock-placement-menu__item.dock-placement-menu__item {
+    min-height: 44px;
   }
 }
 

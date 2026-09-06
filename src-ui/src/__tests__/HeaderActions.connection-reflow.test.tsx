@@ -264,21 +264,26 @@ describe.skipIf(!chromiumAvailable)(
     }
 
     test('the Settings control holds its position across every label-bearing state on a desktop-width toolbar', async () => {
-      // At desktop widths the state label is always visible (the mobile
-      // breakpoint's dot-only-while-healthy rule, below, does not apply), so
-      // this is the full reproduction of the reported class: every visibly
-      // different label this chip can show — including the two widest,
-      // "Needs re-pairing" and "Awaiting approval" — must not move any
+      // Every visibly different label this chip can show — including the two
+      // widest, "Needs re-pairing" and "Awaiting approval" — must not move any
       // sibling control.
+      //
+      // #1536 F removed `connected` from this list, and that is a trade, not
+      // an oversight: its single-Station form now renders NO label at all
+      // (`compactConn` in `HeaderActions.tsx`), so a connect or a drop moves
+      // the cluster once by design — the same trade #1401 already made at
+      // phone width, where `connected` has been dot-only since archive#3311.
+      // What that buys is measured by the test below. The reservation this
+      // file pinned is still what holds the remaining states to one width, and
+      // `connected` is the only state leaving the set.
       const viewport = { width: 1280, height: 400 };
       const states: ChipState[] = [
-        'connected',
         'connecting',
         'error',
         'needs-credential',
         'needs-repair',
         'awaiting-approval',
-        'connected',
+        'connecting',
       ];
       const xs: number[] = [];
       for (const state of states) {
@@ -291,12 +296,47 @@ describe.skipIf(!chromiumAvailable)(
       ).toEqual(states.map(() => xs[0]));
     });
 
+    test('the collapsed connected chip reclaims the width the label-bearing states reserve (#1536 F)', async () => {
+      // The point of collapsing it: a fact that never changes while you work
+      // stops holding ~150px of the row that runs out of width first. Measured
+      // against the widest label-bearing state in the same fixture, so this
+      // cannot pass on an absolute number that drifts with the font.
+      const viewport = { width: 1280, height: 400 };
+      const chipWidth = async (state: ChipState): Promise<number> => {
+        const page = await browser.newPage({ viewport });
+        try {
+          await page.setContent(
+            buildFixtureHtml(await renderMarkupForState(state)),
+          );
+          const box = await page.locator('.app-toolbar__conn').boundingBox();
+          expect(box, `connection chip not visible in ${state}`).not.toBe(null);
+          return box!.width;
+        } finally {
+          await page.close();
+        }
+      };
+
+      const collapsed = await chipWidth('connected');
+      const widest = await chipWidth('awaiting-approval');
+
+      // 44px is the hit-target floor the collapsed form sets for itself
+      // (`.app-toolbar__conn--compact`), and it must not have grown a label
+      // back: a chip still rendering "Connected · Default" measures ~200px.
+      expect(Math.round(collapsed)).toBeLessThanOrEqual(56);
+      expect(Math.round(collapsed)).toBeGreaterThanOrEqual(44);
+      expect(collapsed).toBeLessThan(widest - 80);
+
     /**
-     * #1536 C3: the chip read "Connected · Default" with the middle dot
-     * detached from "Connected" and leading "Default" — because the
-     * separator was the IDENTITY's `::before` while the state label sat
-     * centred inside its 116px reservation, leaving ~23px of empty box
-     * between the two.
+     * #1536 C3: the chip read "<state> · Default" with the middle dot detached
+     * from the state word and leading the identity — because the separator was
+     * the IDENTITY's `::before` while the state label sat centred inside its
+     * 116px reservation, leaving ~23px of empty box between the two.
+     *
+     * MEASURED ON A NON-COMPACT STATE. #1536 F collapsed the `connected` chip
+     * to its status dot when there is one Station and an identity to name
+     * (`compactConn`), so that state renders neither part and has no separator
+     * to place. Every label-bearing state still renders both, which is where
+     * the defect lived and where it must stay fixed.
      */
     async function measureChip(
       state: ChipState,
@@ -345,7 +385,10 @@ describe.skipIf(!chromiumAvailable)(
     }
 
     test('the separator belongs to the part before it, next to the state it follows', async () => {
-      const chip = await measureChip('connected', { width: 1280, height: 400 });
+      const chip = await measureChip('connecting', {
+        width: 1280,
+        height: 400,
+      });
 
       // Structural: the dot is the STATE's trailing separator, not the
       // identity's leading one, so inline layout puts it against "Connected".
