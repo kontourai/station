@@ -17,13 +17,6 @@
      `.split-pane__item-trailing`); the pill just fills what it is given and
      ellipsizes, with the full label on `title`. */
   max-width: 100%;
-  /*
-   * A floor, so a chip is either legible or absent — never three glyphs.
-   * `max-width` above still bounds it, and `min-width` winning over
-   * `max-width` cannot overflow the slot: the narrowest rail (220px) gives the
-   * trailing slot ~83px, which is wider than this. #1582 E7.
-   */
-  min-width: 4rem;
   padding: 0.12rem 0.45rem;
   border: 1px solid var(--border-primary);
   border-radius: 999px;

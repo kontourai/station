@@ -228,13 +228,14 @@ describe.skipIf(!chromiumAvailable)(
      * them, so a font-metric difference between this fixture's fallback face
      * and the shipped one cannot make the test the thing that fails.
      *
-     * It is deliberately ABOVE `.session-project-pill`'s own `min-width: 4rem`
-     * (64px), and stated as a literal rather than derived from it. A floor
-     * equal to that constant is satisfied by the constant alone: with
-     * `flex-wrap` removed from the trailing slot the pill measures exactly
-     * 64px, and a 64px floor passed that injection — a test bound to the
-     * constant it is meant to check. 78 measures the WRAP's contribution,
-     * which is the half of the fix the floor cannot supply.
+     * It has to be above 64px. The first version of this fix also gave the
+     * pill `min-width: 4rem`, and with `flex-wrap` removed from the trailing
+     * slot the pill fell back to exactly that 64px — so a 64px floor passed
+     * the injection that deletes the actual fix. Raising the floor made the
+     * injection red at 220 and 280, and then a second injection showed the
+     * `min-width` itself was never load-bearing at any width the rail can be
+     * (220px still leaves the trailing slot ~83px), so it is gone: the wrap is
+     * the whole fix, and this number measures the wrap.
      */
     const MIN_READABLE_PILL_PX = 78;
 
