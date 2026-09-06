@@ -1544,11 +1544,27 @@ describe('every Tauri invocation is rooted at the app directory', () => {
 
 describe('iOS verification proves packaged runtime readiness', () => {
   const ios = workflow('build-ios.yml');
+  const classifier = readFileSync(
+    resolve(root, 'scripts/classify-ci-change.mjs'),
+    'utf8',
+  );
 
   it('emits a stable check while reserving macOS for affected pull requests', () => {
     expect(ios).toContain('pull_request_target:');
     expect(ios).toContain('merge_group:');
-    expect(ios).toContain('src-desktop/*|src-ui/*|packages/connect/*');
+    expect(classifier).toContain("'src-desktop/'");
+    expect(classifier).toContain("'src-ui/'");
+    expect(classifier).toContain("'packages/connect/'");
+    expect(ios).toContain(
+      'if [ "$GITHUB_EVENT_NAME" != "pull_request_target" ] && [ "$GITHUB_EVENT_NAME" != "merge_group" ]',
+    );
+    expect(ios).toContain(
+      'git show "$BASE_SHA:scripts/classify-ci-change.mjs"',
+    );
+    expect(ios).toContain('--scope ios --mode candidate');
+    expect(ios).toContain('relevant=true|relevant=false)');
+    expect(ios).toContain('fail_closed "classifier execution failed"');
+    expect(ios).toContain('fail_closed "classifier returned malformed output"');
     expect(ios).toContain('needs: classify');
     expect(ios).toContain("if: needs.classify.outputs.relevant == 'true'");
     expect(ios).toContain('runs-on: macos-26');

@@ -107,6 +107,14 @@ evidence: it runs base-pinned affected Vitest tests followed by fixed bounded
 invariants, not the global static/build chain or full corpus.
 Ordinary pull requests use focused evidence plus `npm run ci:fast`.
 GitHub's merge queue runs the required checks on the synthesized latest-main candidate.
+The iOS relevance check compares pull-request and merge-queue candidates from
+their merge base to the candidate head, so changes added only to a newer base
+do not trigger a candidate build. The shared change classifier retains direct
+before-to-after ranges for push classification, while the iOS workflow keeps
+running every admitted push and manual dispatch. The `pull_request_target` job
+executes the base-controlled classifier and runs the iOS check when that
+classifier is missing, fails, or returns anything other than one exact
+`relevant=true` or `relevant=false` line.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 

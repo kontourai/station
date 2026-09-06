@@ -59,24 +59,36 @@ jobs:
       - id: relevance
         name: Classify iOS verification inputs
         env:
-          BASE_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
+          BASE_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '' }}
           HEAD_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
         run: |
+          fail_closed() {
+            echo "::warning::iOS change classification failed closed: $1"
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
           if [ "$GITHUB_EVENT_NAME" != "pull_request_target" ] && [ "$GITHUB_EVENT_NAME" != "merge_group" ]; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          relevant=false
-          while IFS= read -r changed; do
-            case "$changed" in
-              .github/workflows/build-ios.yml|src-desktop/*|src-ui/*|packages/connect/*|packages/contracts/*|packages/sdk/*|scripts/ios-simulator-runtime-smoke.mjs|scripts/__tests__/ios-simulator-runtime-smoke.test.ts|tests/ios-runtime-smoke/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|patches/*)
-                relevant=true
-                break
-                ;;
-            esac
-          done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+          classifier="$RUNNER_TEMP/classify-ci-change.mjs"
+          git show "$BASE_SHA:scripts/classify-ci-change.mjs" > "$classifier" || \
+            fail_closed "base-controlled classifier unavailable"
+          output="$RUNNER_TEMP/ios-change-classification"
+          node "$classifier" --scope ios --mode candidate \
+            --before "$BASE_SHA" --after "$HEAD_SHA" > "$output" || \
+            fail_closed "classifier execution failed"
+          classification=$(cat "$output")
+          case "$classification" in
+            relevant=true|relevant=false)
+              printf '%s\n' "$classification" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              fail_closed "classifier returned malformed output"
+              ;;
+          esac
 
   build-ios-verification:
     needs: classify
