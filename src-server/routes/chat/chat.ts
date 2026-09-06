@@ -9,6 +9,7 @@ import {
   isStationAgentIdentity,
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { AppConfig } from '@kontourai/station-contracts/config';
 import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import { Hono } from 'hono';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
@@ -26,8 +27,9 @@ import {
   runtimeConfigurationLeaseIsCurrent,
 } from '../../runtime/plugins/runtime-configuration-lease.js';
 import {
+  createStationEngineAvailabilityReader,
   ManagedModelUnavailableError,
-  resolveManagedAvailabilityReason,
+  type StationEngineAvailabilitySource,
 } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
@@ -78,6 +80,21 @@ type ChatRuntimeContext = RuntimeContext & {
     }>
   >;
   getDefaultAgentIds?: () => Promise<ReadonlySet<string>>;
+  /**
+   * #1536 D8 delta review DM1: the LIVE inputs the shared availability reader
+   * needs. `RuntimeContext.appConfig` is the snapshot the process booted with,
+   * so this route answered 409 "Multiple enabled LLM provider connections
+   * require an explicit default" until restart, while the New Chat picker and
+   * the inbox — reading live config through the same reader — had already
+   * cleared. Threaded in here rather than widening the shared context, exactly
+   * as `connectionService` above; optional so a caller that omits them falls
+   * back to the boot snapshot it used before.
+   */
+  getLiveAppConfig?: () => AppConfig;
+  checkGatedModelConnectionIds?: () => ReadonlyMap<
+    string,
+    'failed' | 'unreachable'
+  >;
 };
 
 /**
@@ -282,6 +299,35 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
  * registration path swallowed; falls back to a generic message when the spec
  * resolves yet the agent still isn't active (#chat).
  */
+/**
+ * This route's inputs to the shared availability reader (#1536 D8 delta review
+ * DM1). Exported because the MAPPING is what was wrong: the reader was correct
+ * everywhere and this route fed it `RuntimeContext.appConfig`, the snapshot the
+ * process booted with, so `/chat` answered 409 "Multiple enabled LLM provider
+ * connections require an explicit default" until restart while the picker and
+ * the inbox had already cleared. A test can now assert this adapter agrees with
+ * the others rather than reaching through the HTTP surface for it.
+ *
+ * The `??` fallbacks preserve the pre-DM1 behaviour for a caller that threads
+ * neither field — an older wiring, or a test — rather than making them
+ * required and breaking it.
+ */
+export function chatStationEngineAvailabilitySource(
+  ctx: ChatRuntimeContext,
+): StationEngineAvailabilitySource {
+  return {
+    getLiveAppConfig: () => ctx.getLiveAppConfig?.() ?? ctx.appConfig,
+    providerService: {
+      listProviderConnections: () =>
+        ctx.providerService.listProviderConnections(),
+    },
+    connectionService: {
+      checkGatedModelConnectionIds: () =>
+        ctx.checkGatedModelConnectionIds?.() ?? new Map(),
+    },
+  };
+}
+
 async function resolveUnavailablePersistedAgent(
   ctx: ChatRuntimeContext,
   slug: string,
@@ -373,11 +419,12 @@ async function resolveUnavailablePersistedAgent(
     }
   }
 
-  const reason = resolveManagedAvailabilityReason(spec, {
-    appConfig: ctx.appConfig,
-    listProviderConnections: () =>
-      ctx.providerService.listProviderConnections(),
-  });
+  // Delta review DM1: the one reader every availability surface goes through,
+  // on live inputs. This site was the sixth caller and the last one still
+  // building the call itself.
+  const reason = createStationEngineAvailabilityReader(
+    chatStationEngineAvailabilitySource(ctx),
+  )(spec);
   return {
     kind: 'unavailable',
     reason: reason ?? `Agent '${slug}' is not currently launchable.`,

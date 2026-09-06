@@ -417,6 +417,46 @@ describe('ChatInputArea', () => {
     expect(modelButton.getAttribute('aria-label')).toContain('agent default');
   });
 
+  // #1536 B5: the pill is an identity surface. The engine catalog publishes
+  // its default alias as "Default (recommended)" — right on an option, and on
+  // this pill it told the owner nothing while the dock header, Home and the
+  // sidebar named the same session something else.
+  test('names the engine default "Default", keeping the catalog option copy for the accessible name', () => {
+    renderChatInputArea({
+      modelProviderLabel: 'Claude Code',
+      currentModel: 'default',
+      agentDefaultModel: 'default',
+      availableModels: [{ id: 'default', name: 'Default (recommended)' }],
+    });
+
+    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    expect(modelButton.textContent).toContain('Default');
+    expect(modelButton.textContent).not.toContain('recommended');
+    // Nothing is lost: the catalog's own option name still reaches assistive
+    // tech through the accessible name.
+    expect(modelButton.getAttribute('aria-label')).toContain(
+      'Default (recommended)',
+    );
+  });
+
+  test('shows the concrete model an engine default resolved to', () => {
+    renderChatInputArea({
+      currentModel: 'default',
+      agentDefaultModel: 'default',
+      availableModels: [
+        {
+          id: 'default',
+          name: 'Default (recommended)',
+          resolvedModel: 'claude-opus-5',
+        },
+        { id: 'claude-opus-5', name: 'Opus 5', originalId: 'claude-opus-5' },
+      ],
+    });
+
+    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    expect(modelButton.textContent).toContain('Opus 5');
+  });
+
   test('offers the model and effort picker without exposing unknown telemetry or "runtime" vocabulary', () => {
     renderChatInputArea({
       agentDefaultModel: undefined,

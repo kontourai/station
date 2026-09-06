@@ -65,6 +65,9 @@ export function createPullRequestRoutes(
         data: {
           available: false,
           reason: resolution?.reason ?? 'Pull request context is unavailable',
+          // #1536 G5: carried through so the panel can tell the ordinary
+          // local repository from a forge that refused.
+          ...(resolution?.cause ? { cause: resolution.cause } : {}),
         },
       });
     }

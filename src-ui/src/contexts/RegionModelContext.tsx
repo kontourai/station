@@ -34,6 +34,7 @@ import {
   showSurfaceAlone,
   surfaceMayOccupy,
   syncRegionArrangementFromDock,
+  toggleSurface as toggleSurfaceInArrangement,
   updateRegion,
 } from '../regions/region-model';
 import { normalizeDockMode } from '../types';
@@ -73,6 +74,15 @@ interface RegionModelValue {
   setRegion(id: RegionId, patch: Partial<RegionState>): void;
   placeSurface(surfaceId: string, regionId: RegionId): void;
   showSurface(surfaceId: string, intent?: SurfaceIntent): void;
+  /**
+   * The surface's toggle — its chord, its row in the folded Regions menu, its
+   * dock control's show/hide half. Decided once here, by the pure
+   * `toggleSurface` in region-model.ts (#1523): a dock occupant's region is
+   * hidden or revealed (the coarse fold rule included); a `main` occupant
+   * returns to its default dock region, leaving Home in `main`; an unplaced
+   * surface is shown. No caller carries its own copy of these rules (#1420).
+   */
+  toggleSurface(surfaceId: string): void;
   /**
    * Undelivered one-shot instructions, keyed by surface — an OUTBOX, not a
    * store of "what this surface is showing". A mounted placement takes its
@@ -299,6 +309,30 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     [bottomOnly],
   );
 
+  const toggleSurface = useCallback(
+    (surfaceId: string) => {
+      const surface = REGION_SURFACE_REGISTRY.get(surfaceId);
+      if (!surface) return;
+      const toggled = toggleSurfaceInArrangement(
+        regionsRef.current,
+        surfaceId,
+        surface.defaultRegion,
+        { lastShownRegion, bottomOnly },
+      );
+      if (toggled.kind === 'none') return;
+      if (toggled.kind === 'show') {
+        // Showing is `showSurface`'s: it owns the unplaced landing, the
+        // coarse show-alone fold and the `main` navigation.
+        showSurface(surfaceId);
+        return;
+      }
+      regionsRef.current = toggled.arrangement;
+      if (toggled.shownRegion) setLastShownRegion(toggled.shownRegion);
+      setRegions(toggled.arrangement);
+    },
+    [bottomOnly, lastShownRegion, showSurface],
+  );
+
   // Counted rather than a boolean: React can commit a replacement host before
   // running the departing one's cleanup, and a boolean would then end up
   // false with a host on screen.
@@ -491,6 +525,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       setRegion,
       placeSurface,
       showSurface,
+      toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,
       canRenderRegionSurfaces: mountedSurfaceHosts > 0,
@@ -502,6 +537,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       setRegion,
       placeSurface,
       showSurface,
+      toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,
       mountedSurfaceHosts,

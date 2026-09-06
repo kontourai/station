@@ -8,7 +8,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '../types';
@@ -418,5 +418,51 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       screen.queryByRole('button', { name: /Add this answer to a Task/ }),
     ).toBeNull();
     expect(screen.getByText('Here is the answer.')).toBeTruthy();
+  });
+  /**
+   * #1536 B3. `GET …/turns/:turnId/basis` answers 404 unless the turn's own
+   * ordered lifecycle says it completed normally, and 404 there is an answer
+   * rather than a fault — the route keeps 503 for a read it could not perform.
+   * The client's precondition was `answerEligible` alone, a weaker claim, so an
+   * ABORTED turn asked for a basis the server can only refuse and rendered that
+   * refusal as "Basis · Unavailable" on a healthy instance.
+   */
+  describe('the Basis affordance asks only what the route can answer', () => {
+    /** The affordance lives inside the card's expanded detail. */
+    async function expandProvenance() {
+      fireEvent.click(
+        within(screen.getByLabelText(/^Answer provenance/)).getByRole('button'),
+      );
+      await act(async () => {});
+    }
+
+    it('offers Basis for a turn whose envelope records a completed outcome', async () => {
+      renderRow({
+        role: 'assistant',
+        content: 'Here is the answer.',
+        turnId: 'turn-7',
+        answerEligible: true,
+        provenance: envelope,
+      });
+      await expandProvenance();
+
+      expect(screen.getByRole('button', { name: 'Basis' })).toBeTruthy();
+    });
+
+    it('offers no Basis for an aborted turn, however eligible its answer', async () => {
+      renderRow({
+        role: 'assistant',
+        content: 'Partial answer.',
+        turnId: 'turn-7',
+        answerEligible: true,
+        provenance: { ...envelope, outcome: 'aborted' },
+      });
+      await expandProvenance();
+
+      expect(screen.queryByRole('button', { name: 'Basis' })).toBeNull();
+      // The rest of the provenance card is unaffected: an aborted turn still
+      // has an engine and a turn id worth checking.
+      expect(screen.getByLabelText(/^Answer provenance/)).toBeTruthy();
+    });
   });
 });

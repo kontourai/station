@@ -71,6 +71,7 @@ export type {
   NeedsInputAttentionItem,
   ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
+  SetupIncompleteAttentionItem,
 } from '@kontourai/station-contracts/attention';
 export type {
   AdoptedSessionResult,
