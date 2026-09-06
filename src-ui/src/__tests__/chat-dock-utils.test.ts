@@ -583,6 +583,21 @@ describe('resolveDockProjectContextDirectory (#1536 G6)', () => {
     ).toBe('/tmp/session-cwd');
   });
 
+  test("a foreign session still reports its OWN directory", () => {
+    // station#4525 review HIGH-2, which used to be pinned as an inline shape in
+    // `ChatDock.tsx` and moved here with the derivation: a project-binding
+    // MISMATCH must not suppress the session's own facts. Step 2 precedes the
+    // mismatch refusal below for exactly this reason — the refusal is about
+    // substituting the badge's path, never about withholding the session's.
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        sessionDisplayCwd: '/tmp/other-project-cwd',
+        sessionProjectSlug: 'other-project',
+      }),
+    ).toBe('/tmp/other-project-cwd');
+  });
+
   test("never captions a foreign session with the bound project's directory", () => {
     // station#1146's class of lie, facing the other way: the transcript on
     // screen belongs to another project, so the badge's path is not its path.
