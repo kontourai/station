@@ -8038,6 +8038,64 @@ describe('EventStore', () => {
     ).toThrow('attachment storage is full');
   });
 
+  test('retains explicit persistence refusal after reopen and leaves legacy rows unknown', () => {
+    const databasePath = join(dir, 'orchestration.sqlite');
+    for (const [threadId, persistSession] of [
+      ['retained', true],
+      ['refused', false],
+      ['undeclared', undefined],
+      ['legacy', undefined],
+    ] as const) {
+      store.upsertSession({
+        provider: 'station-agent',
+        threadId,
+        status: 'closed',
+        ...(persistSession !== undefined ? { persistSession } : {}),
+        createdAt: '2026-09-06T00:00:00.000Z',
+        updatedAt: '2026-09-06T00:00:00.000Z',
+      });
+    }
+    store.close();
+    const database = new DatabaseSync(databasePath);
+    try {
+      // Model an existing row written before explicit false had an encoding.
+      database.exec(
+        "UPDATE provider_session_state SET persist_session = 0 WHERE thread_id = 'legacy'",
+      );
+      expect(
+        database
+          .prepare(
+            'SELECT thread_id, persist_session FROM provider_session_state ORDER BY thread_id',
+          )
+          .all(),
+      ).toEqual([
+        { thread_id: 'legacy', persist_session: 0 },
+        { thread_id: 'refused', persist_session: -1 },
+        { thread_id: 'retained', persist_session: 1 },
+        { thread_id: 'undeclared', persist_session: 0 },
+      ]);
+    } finally {
+      database.close();
+      store = new EventStore(databasePath);
+    }
+    const sessions = new Map(
+      store.readSessions().map((session) => [session.threadId, session]),
+    );
+    expect(sessions.get('retained')?.persistSession).toBe(true);
+    expect(sessions.get('refused')?.persistSession).toBe(false);
+    for (const threadId of ['legacy', 'undeclared']) {
+      expect(sessions.get(threadId)).toBeDefined();
+      expect(sessions.get(threadId)).not.toHaveProperty('persistSession');
+    }
+    // An ordinary later update must retain the explicit refusal as well.
+    store.upsertSession({ ...sessions.get('refused')!, status: 'ready' });
+    store.close();
+    store = new EventStore(databasePath);
+    expect(
+      store.readSessions().find((session) => session.threadId === 'refused'),
+    ).toMatchObject({ persistSession: false, status: 'ready' });
+  });
+
   test('round-trips provider session state with resume cursors', () => {
     store.upsertSession({
       provider: 'codex',

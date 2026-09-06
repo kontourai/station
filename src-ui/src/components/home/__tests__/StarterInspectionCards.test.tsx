@@ -57,6 +57,35 @@ describe('StarterInspectionCards', () => {
     });
   });
 
+  test('#1582 C4: both cards are the shared page callout, each with its own identity', () => {
+    // They rendered `.starter-work-card`, a class HomeView.css no longer
+    // carries. Distinct ids matter as much as the shared primitive: one id
+    // for both would let a stack drop the second.
+    render(<StarterInspectionCards />);
+
+    const approval = screen.getByLabelText('Inspect an approval');
+    const receipt = screen.getByLabelText('Inspect review evidence');
+    expect(approval.getAttribute('data-callout-id')).toBe(
+      'starter-inspect-approval',
+    );
+    expect(receipt.getAttribute('data-callout-id')).toBe(
+      'starter-inspect-receipt',
+    );
+    expect(approval.className).toBe('page-callout page-callout--info');
+    expect(approval.querySelector('.page-callout__title')?.textContent).toBe(
+      'Inspect an approval',
+    );
+    expect(approval.querySelector('.page-callout__body')?.textContent).toBe(
+      'Open one real approval request without deciding it.',
+    );
+    // The receipt candidate is `missing` in this fixture: an owner Station
+    // cannot reach is a warning, not an ordinary offer.
+    expect(receipt.className).toContain('page-callout--warning');
+    expect(receipt.querySelector('.page-callout__body')?.textContent).toBe(
+      'An exact owner-backed item is not available yet.',
+    );
+  });
+
   test('launches one exact approval with a stable identity and owner href', async () => {
     launch.mockResolvedValue({
       state: 'opened',

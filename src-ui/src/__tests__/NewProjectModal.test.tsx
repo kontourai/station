@@ -284,16 +284,26 @@ describe('NewProjectModal starter layout picker', () => {
       target: { value: '/tmp/repo/' },
     });
 
-    await waitFor(() =>
-      expect(
-        screen.getByText('Recommended for this Git directory'),
-      ).toBeTruthy(),
+    // Detection and selection settle in that order, one commit apart: the
+    // Recommended group renders as soon as the settled directory reports a
+    // repo, and the effect that SELECTS Coding runs after that commit. Waiting
+    // on the group and then reading `aria-pressed` synchronously read the
+    // pre-selection render whenever the host was busy enough to separate the
+    // two (#1603). The pressed state is the later signal, so it is the one to
+    // await; the group is still asserted, after it. Above the 1s default,
+    // because the hook's own 400ms settle has to elapse before discovery is
+    // even asked — that leaves ~600ms for the query, the render and the
+    // selection effect on a loaded host.
+    await waitFor(
+      () =>
+        expect(
+          screen
+            .getByRole('button', { name: /Coding/ })
+            .getAttribute('aria-pressed'),
+        ).toBe('true'),
+      { timeout: 3_000 },
     );
-    expect(
-      screen
-        .getByRole('button', { name: /Coding/ })
-        .getAttribute('aria-pressed'),
-    ).toBe('true');
+    expect(screen.getByText('Recommended for this Git directory')).toBeTruthy();
   });
 
   test('does not surface or create Coding when the distribution omits it', async () => {

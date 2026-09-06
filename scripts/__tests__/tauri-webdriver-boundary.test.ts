@@ -61,8 +61,11 @@ describe('Tauri embedded WebDriver boundary', () => {
   });
 
   test('does not install unrelated external browser drivers', () => {
-    const lock = JSON.parse(read('package-lock.json'));
-    expect(lock.packages).not.toHaveProperty('node_modules/edgedriver');
-    expect(lock.packages).not.toHaveProperty('node_modules/geckodriver');
+    // Station has one pnpm lockfile. Reading a removed npm lockfile made this
+    // policy test fail before it could establish anything about the resolved
+    // dependency graph.
+    const lock = read('pnpm-lock.yaml');
+    expect(lock).not.toMatch(/^\s{2}edgedriver@/m);
+    expect(lock).not.toMatch(/^\s{2}geckodriver@/m);
   });
 });

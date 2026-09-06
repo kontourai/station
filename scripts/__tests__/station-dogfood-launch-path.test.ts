@@ -143,7 +143,7 @@ describe('Station dogfood client launch path', () => {
     for (const command of ['kiro-cli', 'cursor-agent', 'opencode']) {
       expect(defaults).toContain(`command: '${command}'`);
     }
-    expect(claude).toContain("command: 'claude'");
+    expect(claude).toContain("const CLAUDE_CLI_COMMAND = 'claude';");
     expect(codex).toContain("command: 'codex'");
   });
 
