@@ -70,6 +70,7 @@ async function runCommand(
     env: options.env,
     timeout: options.timeoutMs ?? 120_000,
     maxBuffer: 10 * 1024 * 1024,
+    windowsHide: true,
   });
   return { stdout: String(stdout), stderr: String(stderr) };
 }
@@ -104,6 +105,8 @@ export async function startStation(
   options: {
     taskRoomControlSocket?: string;
     performanceReference?: boolean;
+    runtimeFramework?: 'voltagent' | 'strands';
+    deterministicReadiness?: boolean;
   } = {},
 ): Promise<string> {
   const args = [
@@ -125,7 +128,20 @@ export async function startStation(
       PATH: `${NODE_BIN}:${process.env.PATH ?? ''}`,
       STATION_ROOT: stationRootForLiveHome(live.home),
       STATION_HOME: live.home,
-      STATION_E2E_SYSTEM_STATUS_READY: '1',
+      STATION_E2E_SYSTEM_STATUS_READY:
+        options.deterministicReadiness === false ? undefined : '1',
+      ...(options.runtimeFramework
+        ? {
+            STATION_FEATURES: [
+              ...(process.env.STATION_FEATURES ?? '')
+                .split(',')
+                .filter((feature) => feature && feature !== 'strands-runtime'),
+              ...(options.runtimeFramework === 'strands'
+                ? ['strands-runtime']
+                : []),
+            ].join(','),
+          }
+        : {}),
       ...(options.performanceReference
         ? {
             STATION_PERFORMANCE_REFERENCE: '1',

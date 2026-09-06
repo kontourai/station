@@ -473,6 +473,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/native-conversation-restart.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Regression #574: two completed native turns followed by an actual same-home server restart and public CLI conversation continuation. Independently owned temporary Station instances qualify VoltAgent and Strands with deterministic readiness disabled; captured model requests must retain both prior user/assistant exchanges and original Project/cwd binding.',
+    exceptions: [],
+  },
+  {
     path: 'tests/chat-multi-turn-context.spec.ts',
     bucket: 'smoke-live',
     surface: 'Chat / Orchestration',
