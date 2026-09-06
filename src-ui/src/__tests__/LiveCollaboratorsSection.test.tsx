@@ -18,7 +18,10 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: mocks.navigate }),
 }));
 
-import { LiveCollaboratorsSection } from '../components/live-activity/LiveCollaboratorsSection';
+import {
+  LiveCollaboratorsSection,
+  liveCollaboratorSummary,
+} from '../components/live-activity/LiveCollaboratorsSection';
 
 beforeEach(() => {
   mocks.data = undefined;
@@ -58,9 +61,7 @@ test('hides empty activity and renders published human/agent work with safe acti
   };
   rerender(<LiveCollaboratorsSection />);
   expect(screen.getByText('Live collaborators')).toBeTruthy();
-  expect(
-    screen.getByText(/3 connected clients · 2 publishing live work/),
-  ).toBeTruthy();
+  expect(screen.getByText('3 clients, 2 publishing live work')).toBeTruthy();
   expect(screen.getByText(/Following Codex/)).toBeTruthy();
   expect(
     screen.queryByRole('button', {
@@ -84,10 +85,36 @@ test('hides empty activity and renders published human/agent work with safe acti
   );
 });
 
-test('explains a connected client without inferring activity', () => {
+// #1582 D5. The panel said the same thing four ways — a heading, a mono
+// eyebrow, a mono count pair and a status line — for the state that is almost
+// always true. One sentence, and the jargon behind a disclosure.
+test('says "just you" for one client publishing nothing, in one line', () => {
   mocks.data = { connectedClients: 1, participants: [] };
-  render(<LiveCollaboratorsSection />);
-  expect(screen.getByText('Connected — activity not published.')).toBeTruthy();
+  const { container } = render(<LiveCollaboratorsSection />);
+  expect(screen.getByText('Just you on this host')).toBeTruthy();
+  // The line it replaces is gone, not merely restyled: two renderings of one
+  // pair of counts is how a surface starts disagreeing with itself.
+  expect(screen.queryByText(/activity not published/)).toBeNull();
+  // The jargon is present but collapsed — `details` with no `open`.
+  const details = container.querySelector('details');
+  expect(details).toBeTruthy();
+  expect(details?.hasAttribute('open')).toBe(false);
+  expect(screen.getByText('Published work across this host')).toBeTruthy();
+});
+
+test('the sentence is derived from both counts, not from "no participants"', () => {
+  // Only the exact pair (one client, nothing published) is "just you". Two
+  // clients with nothing published is a different fact and must not claim it.
+  expect(liveCollaboratorSummary(1, 0)).toBe('Just you on this host');
+  expect(liveCollaboratorSummary(2, 0)).toBe(
+    '2 clients, 0 publishing live work',
+  );
+  expect(liveCollaboratorSummary(1, 1)).toBe(
+    '1 client, 1 publishing live work',
+  );
+  expect(liveCollaboratorSummary(0, 3)).toBe(
+    '0 clients, 3 publishing live work',
+  );
 });
 
 test('keeps simultaneous human rows distinct with opaque roster keys', () => {
