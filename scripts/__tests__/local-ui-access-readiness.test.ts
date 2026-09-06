@@ -80,13 +80,16 @@ describe('local UI access readiness wait', () => {
   });
 
   test('a recovery reload spends the same deadline rather than restarting it', async () => {
-    const { observation: port } = observation(['host-unavailable', 'ready']);
+    const { observation: port, state } = observation([
+      'host-unavailable',
+      'ready',
+    ]);
 
     await waitForLocalUiAccessReadinessThrough(port, 10_000);
 
-    // First wait gets the whole budget; the second gets what the first wait
-    // (1s) and the reload (1s) left of it.
-    expect(port.now()).toBe(3_000);
+    // The second wait is offered what the first wait (1s) and the reload (1s)
+    // left of the original 10s — not a fresh 10s.
+    expect(state.waits).toEqual([10_000, 8_000]);
   });
 
   test('a host that stays unavailable fails naming the state and the reloads taken', async () => {
