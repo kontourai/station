@@ -43,13 +43,33 @@ const INVENTORY = join(ROOT, 'docs/ui/accent-foreground-exceptions.json');
  * `FullScreenLoader` is rendered by `PlatformProfileContext` — so its rules
  * land in the same built stylesheets as src-ui's; four white-on-accent rules
  * were live in the entry stylesheet while this gate reported the class clean.
- * `examples/` is deliberately absent: those are standalone demo apps, not
- * surfaces this product renders.
+ * Most of `examples/` is deliberately absent: those are standalone demo apps,
+ * not surfaces this product renders. The three STARTER plugins are the
+ * exception — `examples/registry/manifest.json` publishes them, Station
+ * installs them, and their layouts render inside the shell, so their CTA is a
+ * surface this product paints. All three shipped `color: var(--accent-contrast,
+ * #fff)` on an `--accent-primary` fill; `--accent-contrast` is defined nowhere
+ * in this repo, so the fallback won and the label rendered white at 1.62:1 —
+ * the exact pair measured in this file's opening paragraph, in the one part of
+ * `examples/` the gate could not see (#1582 G9).
+ *
+ * The scope split also decides the FALLBACK. A starter renders only inside the
+ * shell, so it consumes `--text-on-accent` bare, which is what this gate
+ * requires — a fallback on this pair is the same defect wherever the token is
+ * absent. The demo apps outside this scope keep `var(--text-on-accent, #fff)`:
+ * they may render with no Station token layer at all, where their own literal
+ * fill is one white text belongs on. `ConnectionManagerDiscoverPanel` keeps
+ * `var(--text-on-accent, white)` for the same reason — and note that it is an
+ * INLINE JSX style, so this gate never reads that declaration either way
+ * (limitation 2 above): its root is in scope, the rule is not (review L3).
  */
 const SOURCE_ROOTS = [
   'src-ui/src',
   'packages/connect/src/react',
   'packages/sdk/src',
+  'examples/getting-started-starter/src',
+  'examples/coding-starter/src',
+  'examples/knowledge-docs-starter/src',
 ];
 
 /** Fill tokens whose contrast partner is derived at runtime. */
