@@ -473,18 +473,29 @@ test('binding-change queue review blocks automatic and delayed dispatch', () => 
   expect(vi.getTimerCount()).toBe(scheduledBeforeDrain);
   drainQueuedMessageOnTurnCompleted('http://station.test', id, true);
   expect(activeChatsStore.getSnapshot()[id].queuedMessages).toEqual([]);
-  activeChatsStore.updateChat(id, {
-    queuedMessageFailure: {
-      reviewReason: 'execution-binding-changed',
-      message: 'Another binding change',
-      at: 2,
-    },
-  });
+  const newExecution = resolved(true);
+  newExecution.execution = {
+    sessionId: newExecution.currentSessionId,
+    agentId: conversation.agentSlug,
+    provider: 'claude',
+    model: 'opus',
+  };
+  activeChatsStore.updateChat(
+    id,
+    conversationOpenPatch(newExecution, activeChatsStore.getSnapshot()[id]),
+  );
+  // There is no stored queue head for the controller to mark at this moment.
+  expect(
+    activeChatsStore.getSnapshot()[id].queuedMessageFailure,
+  ).toBeUndefined();
   vi.runAllTimers();
   expect(activeChatsStore.getSnapshot()[id].queuedMessages).toEqual([
     'keep this exact prompt',
   ]);
   expect(activeChatsStore.getSnapshot()[id].messages).toEqual([]);
+  expect(
+    activeChatsStore.getSnapshot()[id].queuedMessageFailure?.reviewReason,
+  ).toBe('execution-binding-changed');
   activeChatsStore.removeChat(id);
   vi.useRealTimers();
 });

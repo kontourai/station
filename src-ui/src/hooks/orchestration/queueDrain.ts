@@ -101,6 +101,17 @@ export function drainQueuedMessageOnTurnCompleted(
     return;
   }
 
+  // The popped head is still owned by this execution during the settle
+  // delay, even though it is no longer visible in queuedMessages.
+  const bindingKeys = [
+    'conversationId',
+    'currentSessionId',
+    'agentSlug',
+    'executionMode',
+    'orchestrationProvider',
+    'agentConnectionId',
+  ] as const;
+  const scheduledBinding = bindingKeys.map((key) => chat[key]);
   const [nextMessage, ...remainingQueue] = chat.queuedMessages;
   const continueUnbound =
     chat.queuedMessageFailure?.code === 'continuation_workspace_unbound';
@@ -116,15 +127,29 @@ export function drainQueuedMessageOnTurnCompleted(
     if (!current) {
       return;
     }
+    const changedBinding = bindingKeys.some(
+      (key, index) => current[key] !== scheduledBinding[index],
+    );
     // The terminal event and the resolver can race across the settle delay.
     // Requeue the exact head before any optimistic row or provider effect if
     // the current authoritative state ceased to admit continuation.
     if (
+      changedBinding ||
       !conversationCanMutate(current) ||
       current.queuedMessageFailure?.reviewReason === 'execution-binding-changed'
     ) {
       activeChatsStore.updateChat(threadId, {
         queuedMessages: [nextMessage, ...(current.queuedMessages ?? [])],
+        ...(changedBinding
+          ? {
+              queuedMessageFailure: {
+                reviewReason: 'execution-binding-changed' as const,
+                message:
+                  'This conversation changed Agent or Session. Review queued messages before retrying.',
+                at: Date.now(),
+              },
+            }
+          : {}),
       });
       return;
     }
@@ -144,6 +169,16 @@ export function drainQueuedMessageOnTurnCompleted(
         error:
           'This chat has no agent to send to. Your message is still queued.',
         queuedMessages: [nextMessage, ...(current.queuedMessages ?? [])],
+        ...(changedBinding
+          ? {
+              queuedMessageFailure: {
+                reviewReason: 'execution-binding-changed' as const,
+                message:
+                  'This conversation changed Agent or Session. Review queued messages before retrying.',
+                at: Date.now(),
+              },
+            }
+          : {}),
       });
       return;
     }
