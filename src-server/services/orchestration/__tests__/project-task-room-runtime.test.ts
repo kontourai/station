@@ -1,9 +1,13 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ProjectTaskRoomAuthority } from '@kontourai/station-contracts/project-task-room';
+import type {
+  ProjectTaskRoomAuthority,
+  ProjectTaskRoomGrant,
+  ProjectTaskRoomGrantKind,
+} from '@kontourai/station-contracts/project-task-room';
 import { PROJECT_TASK_ROOM_LIVE_HEARTBEAT_INTERVAL_MS } from '@kontourai/station-contracts/project-task-room-browser';
 import type {
   TaskDispatchResult,
@@ -50,6 +54,137 @@ afterEach(() => {
   vi.restoreAllMocks();
   for (const directory of directories.splice(0))
     rmSync(directory, { recursive: true, force: true });
+});
+
+test('a source room seal refuses writes from an independently running old process', {
+  timeout: 30000,
+}, async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'station-source-process-'));
+  directories.push(directory);
+  const path = join(directory, 'orchestration.sqlite');
+  const scope = {
+    projectId: 'source-project',
+    projectSlug: 'source-project',
+    taskId: 'source-task',
+  };
+  const childSource = `
+    import { EventStore } from './src-server/services/orchestration/event-store.ts';
+    const scope = ${JSON.stringify(scope)};
+    const grant = capability => Object.freeze({schemaVersion:'station.project-task-room-grant/v1',capability,opaqueToken:'test'});
+    const store = new EventStore(process.argv[1]);
+    const room = store.createProjectTaskRoomHistory({capabilities:{resolve:async({required})=>({kind:'granted',receipt:{
+      receiptId:'process-test-'+required,capability:required,scope,
+      principal:{kind:'operator',operatorId:'operator',deviceId:'device'},policyRevision:'process-test'
+    }})}});
+    const append = id => room.append({grant:grant('message-write'),intent:{proposalId:id,
+      occurredAt:'2026-09-05T00:00:00.000Z',body:{kind:'human-message',text:id}}});
+    await room.open({grant:grant('discover')});
+    const first = await append('before-seal');
+    let sequence = Promise.resolve();
+    process.on('message', message => { sequence=sequence.then(async()=>{
+      if(message==='close') { await room.close(); store.close(); process.disconnect(); return; }
+      const result=await append(message);
+      process.send({kind:result.kind,pid:process.pid});
+    }); });
+    process.send({kind:first.kind,pid:process.pid});
+  `;
+  const child = spawn(
+    process.execPath,
+    ['--import', 'tsx', '--input-type=module', '-e', childSource, path],
+    {
+      cwd: process.cwd(),
+      windowsHide: true,
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    },
+  );
+  let stderr = '';
+  child.stderr?.on('data', (chunk) => {
+    stderr = (stderr + chunk.toString()).slice(-4096);
+  });
+  const messages: unknown[] = [];
+  let deliver: ((value: unknown) => void) | undefined;
+  child.on('message', (value) => {
+    if (deliver) {
+      const next = deliver;
+      deliver = undefined;
+      next(value);
+    } else messages.push(value);
+  });
+  const exited = new Promise<void>((resolve) =>
+    child.once('close', () => resolve()),
+  );
+  const next = () =>
+    new Promise<unknown>((resolve, reject) => {
+      if (messages.length) {
+        resolve(messages.shift());
+        return;
+      }
+      const timer = setTimeout(() => {
+        deliver = undefined;
+        reject(new Error(`Child response missing: ${stderr}`));
+      }, 10000);
+      deliver = (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      };
+    });
+  let store: EventStore | undefined;
+  let room: ReturnType<EventStore['createProjectTaskRoomHistory']> | undefined;
+  try {
+    expect(await next()).toEqual({ kind: 'committed', pid: child.pid });
+    expect(child.pid).not.toBe(process.pid);
+    store = new EventStore(path);
+    room = store.createProjectTaskRoomHistory({
+      capabilities: {
+        resolve: async ({ required }) => ({
+          kind: 'granted',
+          receipt: {
+            receiptId: `process-test-${required}`,
+            capability: required,
+            scope,
+            principal: {
+              kind: 'operator',
+              operatorId: 'operator',
+              deviceId: 'device',
+            },
+            policyRevision: 'process-test',
+          },
+        }),
+      },
+    });
+    const grant = <K extends ProjectTaskRoomGrantKind>(capability: K) =>
+      Object.freeze({
+        schemaVersion: 'station.project-task-room-grant/v1',
+        capability,
+        opaqueToken: 'test',
+      }) as ProjectTaskRoomGrant<K>;
+    expect(
+      await room.sealSource({
+        grant: grant('home-transfer'),
+        operationId: 'cross-process-transfer',
+        sourceHomeRef: 'source',
+        targetHomeRef: 'target',
+      }),
+    ).toMatchObject({
+      kind: 'sealed',
+      seal: { checkpoint: { throughSeq: 1 } },
+    });
+    child.send('after-seal');
+    expect(await next()).toEqual({ kind: 'denied', pid: child.pid });
+    child.send('second-attempt');
+    expect(await next()).toEqual({ kind: 'denied', pid: child.pid });
+    expect(await room.read({ grant: grant('history-read') })).toMatchObject({
+      kind: 'available',
+      records: [{ body: { text: 'before-seal' } }],
+    });
+  } finally {
+    if (child.connected) child.send('close');
+    const kill = setTimeout(() => child.kill('SIGKILL'), 5000);
+    await exited;
+    clearTimeout(kill);
+    await room?.close();
+    store?.close();
+  }
 });
 
 function hardExitRoomRuntime(

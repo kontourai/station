@@ -5,7 +5,13 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { NewChatModal } from '../components/modals/NewChatModal';
@@ -329,18 +335,17 @@ describe('NewChatModal engine chips', () => {
     }
   });
 
-  test('keeps an unavailable Agent non-selectable with its one server-selected repair', () => {
+  test('keeps an unavailable Agent non-selectable with its one server-selected repair', async () => {
     const onSelect = vi.fn();
-    const order: string[] = [];
-    const onClose = vi.fn(() => order.push('close'));
-    const navigate = vi
-      .spyOn(navigationStore, 'navigate')
-      .mockImplementation(() => {
-        order.push('navigate');
-      });
+    const onClose = vi.fn();
 
     render(
       <NewChatModal
+        requestAuthority={{
+          apiBase: 'http://station.test/api',
+          authorityKey: 'station:operator',
+          isCurrent: () => true,
+        }}
         agents={[
           NATIVE_OPENCODE,
           ACP_OPENCODE,
@@ -367,19 +372,25 @@ describe('NewChatModal engine chips', () => {
     );
 
     expect(onSelect).not.toHaveBeenCalled();
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(navigate).toHaveBeenCalledWith('/connections/models');
-    expect(order).toEqual(['close', 'navigate']);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().pathname).toBe(
+        '/connections/models',
+      ),
+    );
   });
 
-  test('leaves agent configuration and unknown unavailable states with an editor action, not a guessed fix', () => {
+  test('leaves agent configuration and unknown unavailable states with an editor action, not a guessed fix', async () => {
     const onClose = vi.fn();
-    const navigate = vi
-      .spyOn(navigationStore, 'navigate')
-      .mockImplementation(() => undefined);
 
     render(
       <NewChatModal
+        requestAuthority={{
+          apiBase: 'http://station.test/api',
+          authorityKey: 'station:operator',
+          isCurrent: () => true,
+        }}
         agents={[
           NATIVE_OPENCODE,
           ACP_OPENCODE,
@@ -409,8 +420,13 @@ describe('NewChatModal engine chips', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Edit agent Custom configuration' }),
     );
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(navigate).toHaveBeenCalledWith('/agents/custom-config-agent');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().pathname).toBe(
+        '/agents/custom-config-agent',
+      ),
+    );
   });
 });
 

@@ -160,7 +160,13 @@ function foldToolCompleted(
   event: Extract<OrchestrationEvent, { method: 'tool.completed' }>,
 ): BackgroundTasksState {
   const existing = state.entries[event.toolCallId];
-  if (existing?.state !== 'running') return state;
+  // An `unresolved` card is the one settled state that is not final: the
+  // engine can still report the real result after the session-end settle
+  // (station#1569), and the transcript folds honour that correction, so the
+  // card must too. Every other settled state stays put.
+  const correctable =
+    existing?.state === 'unresolved' && event.status !== 'unresolved';
+  if (existing?.state !== 'running' && !correctable) return state;
   const nextState: BackgroundTaskState =
     event.status === 'success'
       ? 'completed'

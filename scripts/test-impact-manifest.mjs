@@ -45,6 +45,20 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
 
 /** Repository data read directly by tests, invisible to import analysis. */
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
+  {
+    pattern: 'src-ui/src/components/modals/useNewChatSetupReturn.ts',
+    tests: [
+      'src-ui/src/__tests__/NewChatModalEngineChips.test.tsx',
+      'src-ui/src/__tests__/NewChatModalSetupReturn.test.tsx',
+    ],
+    reason: 'setup changes must preserve repair routing and return behavior',
+  },
+  {
+    pattern: 'docs/conformance/**',
+    tests: ['scripts/__tests__/repo-docs-hygiene.test.ts'],
+    reason: 'public repository documentation privacy boundary',
+  },
+
   Object.freeze({
     pattern: '.github/ISSUE_TEMPLATE/**',
     tests: Object.freeze([
