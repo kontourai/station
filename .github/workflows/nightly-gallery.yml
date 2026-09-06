@@ -3,6 +3,14 @@ name: Nightly gallery
 on:
   schedule:
     # Gallery: 07:30 UTC daily, distinct from nightly.yml at 09:00 UTC.
+    #
+    # GitHub's scheduler runs this late and the delay is not small: the six
+    # runs between 2026-08-31 and 2026-09-05 were created between 11:20 and
+    # 12:39 UTC, a lag of ~3.8-5.1h, which lands this alongside Nightly rather
+    # than 90 minutes ahead of it. The cron is the request, not the schedule;
+    # nothing here may assume the gap the comment above describes. The
+    # freshness window in gallery-freshness.yml is sized from the observed lag
+    # rather than from this cron (#1645).
     - cron: '30 7 * * *'
   workflow_dispatch:
 
@@ -11,14 +19,52 @@ permissions:
 
 concurrency:
   group: nightly-gallery-${{ github.ref }}
-  cancel-in-progress: true
+  # Deliberately NOT cancel-in-progress. Two daily runs are 24h apart, so
+  # there is no legitimate case for one cancelling its predecessor — and while
+  # this job was unable to reach a runner at all (#1645), that setting is what
+  # converted four of six consecutive stalls into a fresh-looking `cancelled`
+  # run instead of leaving the stalled one visible. A run still executing when
+  # the next one starts is information worth keeping, not noise to discard.
+  cancel-in-progress: false
 
 jobs:
   screenshot-diff:
     name: Capture and diff screenshot gallery
     if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
+    # A digest-pinned container on a hosted runner, NOT the self-hosted fleet
+    # (#1645). The comparator is exact — the sha256 of a decoded RGBA buffer,
+    # with no threshold — so the baseline is bound to whichever renderer
+    # produced it, and that renderer has to be reproducible for the contract to
+    # mean anything. The fleet's `kontour-linux` runner is a WSL2 instance
+    # inside a shared developer desktop whose system libraries and installed
+    # fonts are unmanaged and unpinnable; it cannot even install Playwright's
+    # own dependencies (`--with-deps` needs passwordless sudo it does not
+    # have). Fonts are not incidental here: `--font-sans` resolves to
+    # `"DM Sans", system-ui, sans-serif` and the bundled woff2 subsets cover
+    # latin + latin-ext only, so the glyphs the UI actually draws for `⌘`,
+    # `⋯`, `─`, `→`, `●`, `✓` and friends come from the HOST's fonts. Pinning
+    # the image by digest pins the rasterizer, fontconfig and that font set
+    # together, and lets anyone reproduce the gate's renderer locally instead
+    # of learning to discount a local diff.
+    #
+    # Pinned by digest, not by tag: `v1.62.1-noble` is republished, and a
+    # rebuilt base image is a different renderer wearing the same name.
+    # Bump this in lockstep with `@playwright/test` (currently 1.62.1), and
+    # expect a re-baseline to be part of that change.
+    runs-on: ubuntu-22.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+      # Playwright's documented remedy for Chromium crashing on the 64MB
+      # /dev/shm a container job gets by default.
+      options: --ipc=host
     timeout-minutes: 60
+    env:
+      # The image ships the browser build this Playwright pins, at this path.
+      # `run-e2e-suite.mjs` honours an already-set value and fails loudly when
+      # Chromium is not present at it, so a container/`@playwright/test`
+      # version skew surfaces as a named error rather than a silent download of
+      # some other revision.
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -28,28 +74,25 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "5"
-          timeout-seconds: "600"
-          owner-lifetime-seconds: "7800"
-
       - name: Setup pinned pnpm
         uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with: { install: false }
 
       - run: npm run dependencies:ci
 
-      - name: Install repo-pinned Chromium
+      # Informational, and deliberately so: the failure path already belongs to
+      # `run-e2e-suite.mjs`. What this records is the identity of the renderer
+      # the captured pixels are bound to — Playwright build and the font set
+      # the fallback stack will actually resolve against — so a future diff can
+      # be attributed to the product or to the image rather than argued about.
+      - name: Record the pinned renderer identity
         run: |
-          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
-          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" npx playwright install chromium
+          set -euo pipefail
+          npx playwright --version
+          echo "browsers path: ${PLAYWRIGHT_BROWSERS_PATH}"
+          ls -1 "${PLAYWRIGHT_BROWSERS_PATH}"
+          echo "fontconfig families: $(fc-list --format '%{family[0]}\n' | sort -u | wc -l)"
+          fc-list --format '%{family[0]}\n' | sort -u
 
       - name: Capture screenshot bucket and enforce exact baseline
         run: |
