@@ -15,7 +15,7 @@ import {
 import { useMemo, useReducer, useState } from 'react';
 import { selectChatReadyAgents } from '../components/agent-selection-policy';
 import { Button } from '../components/Button';
-import { PageCallout } from '../components/PageCallout';
+import { PageCallout, PageCalloutStack } from '../components/PageCallout';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
@@ -283,34 +283,39 @@ export function ProjectPage({ slug }: { slug: string }) {
         <ProjectLiveWorkSection slug={slug} />
 
         {conversations.length === 0 && !navigator.webdriver && chatCta && (
-          <PageCallout
-            calloutId="project-chat-cta"
-            ariaLabel="Start a chat in this project"
-            title={chatCta.headline}
-            action={
-              <Button
-                variant="primary"
-                onClick={() => {
-                  // Reveal the dock first: its New Chat dialog renders inside
-                  // the dock shell, which is collapsed to its header strip
-                  // while closed. Then ask the dock to route — it focuses a
-                  // chat already bound to this project, or opens the picker
-                  // preselected to it. `setDockState(true)` alone was the bug:
-                  // it just revealed whatever conversation was last active.
-                  setDockState(true);
-                  requestProjectChat({
-                    projectSlug: slug,
-                    projectName: project.name || slug,
-                    source: 'project-page-cta',
-                  });
-                }}
-              >
-                {chatCta.actionLabel}
-              </Button>
-            }
-          >
-            {chatCta.detail}
-          </PageCallout>
+          // In a stack even as the only callout: the stack owns the rhythm
+          // between a callout and the page under it, so a page that renders
+          // one directly loses the space the card it replaces had.
+          <PageCalloutStack>
+            <PageCallout
+              calloutId="project-chat-cta"
+              ariaLabel="Start a chat in this project"
+              title={chatCta.headline}
+              action={
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    // Reveal the dock first: its New Chat dialog renders inside
+                    // the dock shell, which is collapsed to its header strip
+                    // while closed. Then ask the dock to route — it focuses a
+                    // chat already bound to this project, or opens the picker
+                    // preselected to it. `setDockState(true)` alone was the bug:
+                    // it just revealed whatever conversation was last active.
+                    setDockState(true);
+                    requestProjectChat({
+                      projectSlug: slug,
+                      projectName: project.name || slug,
+                      source: 'project-page-cta',
+                    });
+                  }}
+                >
+                  {chatCta.actionLabel}
+                </Button>
+              }
+            >
+              {chatCta.detail}
+            </PageCallout>
+          </PageCalloutStack>
         )}
 
         {gitStatus && gitStatus.isRepo === false && (
