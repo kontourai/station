@@ -650,12 +650,29 @@ describe('CI verification workflow contracts', () => {
     // file, so a digest quoted in a comment cannot stand in for the pin. The
     // version is a strict dotted triple rather than `[\d.]+`, which would
     // accept `1..2` or a bare `1`.
-    const containerImage = (
+    const galleryJob = (
       galleryDocument as
-        | { jobs?: Record<string, { container?: { image?: unknown } }> }
+        | {
+            jobs?: Record<
+              string,
+              {
+                container?: { image?: unknown };
+                defaults?: { run?: { shell?: unknown } };
+              }
+            >;
+          }
         | undefined
-    )?.jobs?.['screenshot-diff']?.container?.image;
+    )?.jobs?.['screenshot-diff'];
+    const containerImage = galleryJob?.container?.image;
     expect(containerImage).toEqual(expect.any(String));
+
+    // A CONTAINER job's default shell is `sh`, not `bash`. Measured in run
+    // 34064794212: dash rejected `set -euo pipefail` with "Illegal option -o
+    // pipefail" and the job died before any real work. Every `run:` here needs
+    // pipefail — without it the `tee` in the dependency install masks a failed
+    // `dependencies:ci`, which is precisely the pipe-masking this job exists
+    // not to do — so the job must declare bash for all of them at once.
+    expect(galleryJob?.defaults?.run?.shell).toBe('bash');
     const container = String(containerImage).match(
       /^mcr\.microsoft\.com\/playwright:v(?<version>\d+\.\d+\.\d+)-[a-z]+@sha256:(?<digest>[0-9a-f]{64})$/,
     );

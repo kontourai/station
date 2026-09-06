@@ -58,6 +58,17 @@ jobs:
       # /dev/shm a container job gets by default.
       options: --ipc=host
     timeout-minutes: 60
+    defaults:
+      run:
+        # A CONTAINER job's default shell is `sh`, not the `bash` a job on the
+        # runner host gets — measured, in run 34064794212: GitHub invoked
+        # `sh -e {0}` and dash rejected `set -euo pipefail` with "Illegal
+        # option -o pipefail" before a single step of real work ran. Every
+        # `run:` below relies on `pipefail` (the `tee` in the install step
+        # would otherwise mask a failed `dependencies:ci`, which is the exact
+        # pipe-masking this job must not do). Declared once for the job so a
+        # step added later cannot silently inherit dash.
+        shell: bash
     env:
       # The image ships the browser build this Playwright pins, at this path.
       # `run-e2e-suite.mjs` honours an already-set value and fails loudly when
