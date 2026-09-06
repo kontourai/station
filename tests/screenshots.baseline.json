@@ -181,12 +181,6 @@
       "sha256": "8692e752f8e92dc018d488c28a9233b7ce71f5ddc5ad1f4d84f1ebb03d96dbf5"
     },
     {
-      "name": "overlay-dock-picker",
-      "width": 1440,
-      "height": 900,
-      "sha256": "e561aca2f0a638ab26643fa2988f80a1c0f3f8b6736888f4ebf751b0a97da290"
-    },
-    {
       "name": "overlay-dock-project-bound",
       "width": 1440,
       "height": 900,
@@ -197,6 +191,12 @@
       "width": 1440,
       "height": 900,
       "sha256": "6097eb88df2e925988cc38774d0360ee603598794a025729a9b57e03252898f4"
+    },
+    {
+      "name": "overlay-layout-picker",
+      "width": 1440,
+      "height": 900,
+      "sha256": "85ff03b678caad05c649acfdb8b6efd09c5391ccc22185b197191d259b2374db"
     },
     {
       "name": "overlay-mobile-sheet",
