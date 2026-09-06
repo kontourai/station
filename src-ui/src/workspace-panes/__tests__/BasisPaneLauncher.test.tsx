@@ -13,6 +13,10 @@ import { useBasisPaneLauncher } from '../BasisPaneLauncher';
 import { readSessionInventorySelection } from '../sessionInventorySelection';
 import { WorkspacePaneHost } from '../WorkspacePaneHost';
 import { WorkspacePaneHostOpenContext } from '../WorkspacePaneHostOpenContext';
+import {
+  WORKSPACE_PANE_OPENED,
+  workspacePaneOpenRefused,
+} from '../workspacePaneHostOpenOutcome';
 
 const authority = {
   apiBase: 'http://station.test',
@@ -165,7 +169,7 @@ function NestedHostLauncher() {
 
 describe('Basis Pane launcher', () => {
   test('uses the Workspace Pane host when available', () => {
-    const open = vi.fn(() => true);
+    const open = vi.fn(() => WORKSPACE_PANE_OPENED);
     render(
       <WorkspacePaneHostOpenContext.Provider value={{ open }}>
         <Harness />
@@ -177,7 +181,7 @@ describe('Basis Pane launcher', () => {
   });
 
   test('focuses an existing host pane before attempting a new open', () => {
-    const open = vi.fn(() => false);
+    const open = vi.fn(() => workspacePaneOpenRefused('refused'));
     const focusExisting = vi.fn(() => true);
     render(
       <WorkspacePaneHostOpenContext.Provider value={{ open, focusExisting }}>
@@ -260,7 +264,7 @@ describe('Basis Pane launcher', () => {
   });
 
   test('prepares an exact Session scope before synchronous host admission', () => {
-    const open = vi.fn(() => true);
+    const open = vi.fn(() => WORKSPACE_PANE_OPENED);
     function ExactScopeHarness() {
       const { openBasis } = useBasisPaneLauncher();
       return (
