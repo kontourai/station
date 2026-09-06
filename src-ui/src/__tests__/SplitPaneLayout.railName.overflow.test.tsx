@@ -75,22 +75,32 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 /**
- * The row the audit photographed: the built-in agent named "Station", whose
- * engine chip is suppressed (the chip label equals the name) so the badge is
- * the readiness pill alone, plus the Connect action in the trailing slot.
+ * The row the audit photographed: the agent named "Station" in a caution
+ * state. `agentReadinessState` prints the server's sentence VERBATIM
+ * (`Needs: <unavailableReason>`), which is the whole point — the pill's length
+ * is the server's to choose, so it can spend any width the rail is given. Its
+ * fix route puts "Connect" in the trailing slot, the other half of the squeeze
+ * the audit named.
+ *
+ * A fixture whose badge reads "Ready" cannot discriminate: at every rail width
+ * "Station" plus five characters fits, so the pre-fix single-ellipsis-run
+ * arrangement passes it. That fixture was this file's first draft and an
+ * injection walked straight through it.
  */
-const STATION_AGENT = {
+const STATION_AGENT_NEEDING_SETUP = {
   slug: 'station',
   name: 'Station',
   engineId: 'station',
   engineDisplayName: 'Station',
   provenance: { origin: 'builtin' },
-  runnability: { status: 'needs-setup', reason: 'no connection configured' },
+  available: false,
+  unavailableReason: 'no enabled LLM provider connection is configured.',
+  unavailableFix: { kind: 'models' },
 } as unknown as AgentData;
 
 function railMarkup(): string {
   const items = buildAgentsViewItems(
-    [STATION_AGENT],
+    [STATION_AGENT_NEEDING_SETUP],
     [],
     undefined,
     { onChat: () => {}, onFix: () => {} },
