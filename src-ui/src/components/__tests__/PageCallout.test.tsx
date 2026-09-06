@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { render, screen } from '@testing-library/react';
@@ -102,6 +102,67 @@ describe('the tone scale is shared with banners, not copied', () => {
         `${name} still writes a tone border colour of its own`,
       ).toBe(false);
     }
+  });
+});
+
+describe('the cards C4 replaced leave nothing behind', () => {
+  /**
+   * The defect this exists for, found in review: `HomeView.css` deleted
+   * `.starter-work-card` and its `--loading > .skeleton-block` rule, and two
+   * OTHER Home cards were still rendering that class — so on a completed home
+   * with developer tools on they silently lost their border, their radius and
+   * their row layout, and the skeleton-collapse fix came back. A deleted rule
+   * with a live consumer is invisible to every per-component test, because
+   * each one still renders exactly what its author wrote.
+   *
+   * A structural rule, checked structurally: no source names a class no
+   * stylesheet defines. Comment lines are excluded — the primitive's own CSS
+   * explains which rules it carried over by name.
+   */
+  const RETIRED = [
+    'starter-work-card',
+    'first-run-home-card',
+    'project-page__chat-cta',
+  ];
+
+  function sourceFiles(directory: string): string[] {
+    return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) return sourceFiles(path);
+      return /\.(tsx?|css)$/.test(entry.name) ? [path] : [];
+    });
+  }
+
+  test.each(RETIRED)('nothing renders or styles %s any more', (name) => {
+    // CLASS uses only. `data-testid="starter-work-card"` and friends are
+    // deliberately unchanged — the browser journeys find these surfaces by
+    // them, and a test id is not a style.
+    const styled = new RegExp(`\\.${name}(?![\\w-])`);
+    const applied = new RegExp(`(className|class)\\s*=[^=]*?${name}(?![\\w-])`);
+    const offenders: string[] = [];
+    for (const file of sourceFiles(resolve(HERE, '../..'))) {
+      // Tests still name these classes, on purpose: they are what proves the
+      // migration happened.
+      if (file.includes('__tests__')) continue;
+      const isStylesheet = file.endsWith('.css');
+      for (const [index, line] of readFileSync(file, 'utf8')
+        .split('\n')
+        .entries()) {
+        const trimmed = line.trim();
+        if (
+          trimmed.startsWith('//') ||
+          trimmed.startsWith('*') ||
+          trimmed.startsWith('/*')
+        )
+          continue;
+        if (isStylesheet ? styled.test(line) : applied.test(line))
+          offenders.push(`${file.split('/src-ui/')[1]}:${index + 1}`);
+      }
+    }
+    expect(
+      offenders,
+      `${name} was deleted from the stylesheets but is still applied here`,
+    ).toEqual([]);
   });
 });
 
