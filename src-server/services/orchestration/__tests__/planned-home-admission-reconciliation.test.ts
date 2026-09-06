@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,10 +7,9 @@ import {
   PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPE_HOME_TRANSFER,
 } from '@kontourai/station-contracts/environment-security';
-import {
-  isProjectTaskRoomAppendReceipt,
-  type ProjectTaskRoomGrant,
-  type ProjectTaskRoomGrantKind,
+import type {
+  ProjectTaskRoomGrant,
+  ProjectTaskRoomGrantKind,
 } from '@kontourai/station-contracts/project-task-room';
 import { afterEach, expect, test } from 'vitest';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
@@ -24,6 +23,8 @@ import {
   type PlannedHomeAdmissionReceiptVerifier,
 } from '../planned-home-admission-reconciliation.js';
 import { readPlannedHomeAdmissionJournal } from '../planned-home-admission-schema.js';
+import { plannedHomeControlRoomWriteAdmissionId } from '../planned-home-control-room-write-identity.js';
+import { createPlannedHomeControlRoomWriteReceiptVerifier } from '../planned-home-control-room-write-receipt-verifier.js';
 import {
   createPlannedHomeControlSessionAuthority,
   type PlannedHomeControlResult,
@@ -133,11 +134,9 @@ async function fixture() {
       },
     },
   });
-  let reader: DatabaseSync | undefined;
   cleanup.push(async () => {
     await room.close();
     source.close();
-    reader?.close();
     database.close();
     rmSync(root, { recursive: true, force: true });
   });
@@ -155,6 +154,10 @@ async function fixture() {
   if (committed.kind !== 'committed')
     throw new Error('Fixture room did not commit');
   const receipt = committed.receipt;
+  const admissionId = plannedHomeControlRoomWriteAdmissionId(
+    receipt.coordinate.channelId,
+    receipt.proposalId,
+  );
   stored(
     transfers.initialize({
       tenantId: personalControllerTenantId(controller.environmentId),
@@ -176,54 +179,30 @@ async function fixture() {
   // the room-write integration suite; this fixture owns receipt reconciliation.
   expect(
     port.begin({
-      admissionId: receipt.proposalId,
+      admissionId,
       intentDigest: receipt.proposalDigest,
     }).kind,
   ).toBe('begun');
-  reader = new DatabaseSync(sourcePath, { readOnly: true });
   let reads = 0;
+  const durable = createPlannedHomeControlRoomWriteReceiptVerifier({
+    receipts: {
+      readProjectTaskRoomAppendReceipt(input) {
+        reads += 1;
+        return source.readProjectTaskRoomAppendReceipt(input);
+      },
+    },
+    proposalId: receipt.proposalId,
+    expectedOwner: {
+      tenantId: personalControllerTenantId(controller.environmentId),
+      homeRef: pairedHomeRef(paired.device.id),
+      channelId: receipt.coordinate.channelId,
+      ownerRevision: 0,
+    },
+  });
   const receipts: PlannedHomeAdmissionReceiptVerifier = {
-    async verify(admission) {
-      reads += 1;
+    verify(admission, signal) {
       expect(Object.isFrozen(admission)).toBe(true);
-      const row = reader!
-        .prepare(
-          'SELECT receipt_json,receipt_digest FROM project_task_room_identities WHERE channel_id=? AND proposal_id=?',
-        )
-        .get(admission.channelId, admission.admissionId) as
-        | { receipt_json: string; receipt_digest: string }
-        | undefined;
-      if (
-        !row ||
-        createHash('sha256').update(row.receipt_json).digest('hex') !==
-          row.receipt_digest
-      )
-        return { kind: 'unavailable' };
-      const persisted = JSON.parse(row.receipt_json) as unknown;
-      if (
-        !isProjectTaskRoomAppendReceipt(persisted) ||
-        persisted.proposalId !== admission.admissionId ||
-        persisted.proposalDigest !== admission.intentDigest ||
-        persisted.coordinate.channelId !== admission.channelId
-      )
-        return { kind: 'unavailable' };
-      const record = await room.findByProposal({
-        grant: grant('history-read'),
-        proposalId: admission.admissionId,
-      });
-      if (
-        !record ||
-        record.checkpointDigest !== persisted.checkpoint.checkpointDigest
-      )
-        return { kind: 'unavailable' };
-      return {
-        kind: 'verified',
-        admission: {
-          ...admission,
-          state: 'finished',
-          receiptDigest: row.receipt_digest,
-        },
-      };
+      return durable.verify(admission, signal);
     },
   };
   const reconcile = (verifier = receipts, receiptTimeoutMs?: number) =>
@@ -246,7 +225,7 @@ async function fixture() {
     receipts,
     reconcile,
     receipt,
-    input: { deviceId: paired.device.id, admissionId: receipt.proposalId },
+    input: { deviceId: paired.device.id, admissionId },
     reads: () => reads,
   };
 }

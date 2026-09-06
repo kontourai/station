@@ -290,11 +290,26 @@ the revoked session or grant permission for another effect. An operator can
 retire that session once all its admissions are settled, then explicitly open
 its replacement with fresh control permission.
 
-This service has no production receipt-verifier or HTTP composition yet. A
-missing effect is not proof of completion or cancellation: this path cannot
-clear an unresolved attempt by inferring that nothing happened. The fixture
-checks a real retained room receipt and its verified history record; provider
-execution reconciliation remains a separate owner-adapter requirement.
+The internal room-write verifier reads one indexed immutable append receipt
+through EventStore. It accepts a bounded proposal ID only as a lookup hint, then
+proves the canonical channel-plus-proposal admission hash, the exact trusted
+controller tenant/home/channel/owner revision, the proposal intent digest, and
+every stored receipt identity column before returning the stored receipt digest.
+That expected owner is a trusted server-composition binding to the selected
+EventStore. It is not inferred from the receipt and must never come from an HTTP
+request.
+This local verifier does not let a separate controller open a participant's
+portable database. Future remote recovery needs authenticated receipt transport
+bound to the persisted paired-home mapping, with no raw path or caller-supplied
+expected owner crossing HTTP.
+It does not scan room history, equate room epoch with owner revision, or expose
+SQLite. A missing or corrupt receipt is not proof of completion or cancellation.
+
+Operator reconciliation HTTP composition is still absent. The later route must
+accept no receipt digest, compose the verifier with the server-owned EventStore
+and trusted owner binding, and retain the existing five-second reconciliation
+ceiling. Provider execution reconciliation remains a separate owner-adapter
+requirement.
 
 ## Reproduce the integration checks
 
@@ -304,7 +319,9 @@ From an isolated repository worktree with managed dependencies installed:
 npm run test:focused -- \
   src-server/services/orchestration/__tests__/planned-home-control-session-authority.test.ts \
   src-server/services/orchestration/__tests__/planned-home-control-room-write-adapter.test.ts \
+  src-server/services/orchestration/__tests__/planned-home-control-room-write-receipt-verifier.test.ts \
   src-server/services/orchestration/__tests__/planned-home-admission-reconciliation.test.ts \
+  src-server/services/orchestration/__tests__/project-task-room-append-receipt.test.ts \
   src-server/services/orchestration/__tests__/planned-home-admission-store.test.ts \
   src-server/services/orchestration/__tests__/planned-home-transfer-store.test.ts \
   src-server/services/orchestration/__tests__/home-transfer-room-binding.test.ts \

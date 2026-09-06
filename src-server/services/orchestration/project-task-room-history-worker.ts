@@ -22,6 +22,12 @@ import { SharedWorkingState } from '../../domain/shared-working-state.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { measureBoundedJson, plainDataObject } from './bounded-json.js';
 import {
+  PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS,
+  PROJECT_TASK_ROOM_APPEND_RECEIPT_LIMITS,
+  type ProjectTaskRoomAppendReceiptRow,
+  parseDurableProjectTaskRoomAppendReceipt,
+} from './project-task-room-append-receipt.js';
+import {
   hasPendingProjectTaskRoomExecution,
   initializeProjectTaskRoomSourceSeals,
   persistProjectTaskRoomSourceSeal,
@@ -67,18 +73,6 @@ interface Row {
   checkpoint_digest: string;
   record_json: string;
   record_bytes: number;
-}
-interface Identity {
-  proposal_id: string;
-  proposal_digest: string;
-  epoch: number;
-  seq: number;
-  envelope_digest: string;
-  checkpoint_digest: string;
-  committed_at: string;
-  receipt_json: string;
-  receipt_bytes: number;
-  receipt_digest: string;
 }
 interface WorkerInit {
   databasePath: string;
@@ -526,46 +520,18 @@ function checkpoint(
 function readIdentity(
   channelId: string,
   proposalId: string,
-): Identity | undefined {
+): ProjectTaskRoomAppendReceiptRow | undefined {
   return db
     .prepare(
-      'SELECT proposal_id,proposal_digest,epoch,seq,envelope_digest,checkpoint_digest,committed_at,receipt_json,receipt_bytes,receipt_digest FROM project_task_room_identities WHERE channel_id=? AND proposal_id=?',
+      `SELECT ${PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS} FROM project_task_room_identities WHERE channel_id=? AND proposal_id=?`,
     )
-    .get(channelId, proposalId) as Identity | undefined;
+    .get(channelId, proposalId) as ProjectTaskRoomAppendReceiptRow | undefined;
 }
 function exactReceipt(
-  identity: Identity,
+  identity: ProjectTaskRoomAppendReceiptRow,
   channelId: string,
 ): ProjectTaskRoomAppendReceipt | undefined {
-  try {
-    if (
-      utf8.encode(identity.receipt_json).byteLength !== identity.receipt_bytes
-    )
-      return;
-    if (sha(identity.receipt_json) !== identity.receipt_digest) return;
-    const value = JSON.parse(
-      identity.receipt_json,
-    ) as ProjectTaskRoomAppendReceipt;
-    if (
-      value?.schemaVersion !== 'station.project-task-room-append-receipt/v1' ||
-      value.proposalId !== identity.proposal_id ||
-      value.proposalDigest !== identity.proposal_digest ||
-      value.coordinate.channelId !== channelId ||
-      value.coordinate.epoch !== identity.epoch ||
-      value.coordinate.seq !== identity.seq ||
-      value.checkpoint.channelId !== channelId ||
-      value.checkpoint.epoch !== identity.epoch ||
-      value.checkpoint.throughSeq !== identity.seq ||
-      value.checkpoint.retainedAnchorSeq > value.checkpoint.throughSeq ||
-      value.envelopeDigest !== identity.envelope_digest ||
-      value.checkpoint.checkpointDigest !== identity.checkpoint_digest ||
-      value.committedAt !== identity.committed_at
-    )
-      return;
-    return value;
-  } catch {
-    return;
-  }
+  return parseDurableProjectTaskRoomAppendReceipt(identity, channelId)?.receipt;
 }
 
 async function open(
@@ -1129,11 +1095,7 @@ async function append(request: AppendRequest, requestId: number) {
       assurance: 'L0',
     };
     const receiptMeasure = measureBoundedJson(receipt, {
-      maxBytes: 4_096,
-      maxDepth: 8,
-      maxItems: 80,
-      maxStringCodeUnits: 1_024,
-      maxKeyCodeUnits: 128,
+      ...PROJECT_TASK_ROOM_APPEND_RECEIPT_LIMITS,
     });
     if (!receiptMeasure.ok) throw new Error('room receipt exceeds budget');
     const receiptJson = canonical(receipt);
@@ -1266,9 +1228,11 @@ function validateHistory(room: Head, rows: Iterable<Row>): boolean {
   }
   const identities = db
     .prepare(
-      'SELECT proposal_id,proposal_digest,epoch,seq,envelope_digest,checkpoint_digest,committed_at,receipt_json,receipt_bytes,receipt_digest FROM project_task_room_identities WHERE channel_id=? ORDER BY seq',
+      `SELECT ${PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS} FROM project_task_room_identities WHERE channel_id=? ORDER BY seq`,
     )
-    .iterate(room.channel_id) as IterableIterator<Identity>;
+    .iterate(
+      room.channel_id,
+    ) as IterableIterator<ProjectTaskRoomAppendReceiptRow>;
   let identityCount = 0;
   for (const identity of identities) {
     identityCount += 1;
@@ -1283,10 +1247,10 @@ function validateHistory(room: Head, rows: Iterable<Row>): boolean {
   if (room.retained_anchor_seq > 0) {
     const anchorIdentity = db
       .prepare(
-        'SELECT proposal_id,proposal_digest,epoch,seq,envelope_digest,checkpoint_digest,committed_at,receipt_json,receipt_bytes,receipt_digest FROM project_task_room_identities WHERE channel_id=? AND epoch=? AND seq=?',
+        `SELECT ${PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS} FROM project_task_room_identities WHERE channel_id=? AND epoch=? AND seq=?`,
       )
       .get(room.channel_id, room.epoch, room.retained_anchor_seq) as
-      | Identity
+      | ProjectTaskRoomAppendReceiptRow
       | undefined;
     const anchorReceipt = anchorIdentity
       ? exactReceipt(anchorIdentity, room.channel_id)
@@ -1357,9 +1321,11 @@ function historicalCheckpoint(
   }
   const identity = db
     .prepare(
-      'SELECT proposal_id,proposal_digest,epoch,seq,envelope_digest,checkpoint_digest,committed_at,receipt_json,receipt_bytes,receipt_digest FROM project_task_room_identities WHERE channel_id=? AND epoch=? AND seq=?',
+      `SELECT ${PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS} FROM project_task_room_identities WHERE channel_id=? AND epoch=? AND seq=?`,
     )
-    .get(room.channel_id, room.epoch, seq) as Identity | undefined;
+    .get(room.channel_id, room.epoch, seq) as
+    | ProjectTaskRoomAppendReceiptRow
+    | undefined;
   return identity
     ? exactReceipt(identity, room.channel_id)?.checkpoint
     : undefined;
@@ -1371,9 +1337,11 @@ function historicalReceipt(
   if (seq === 0) return undefined;
   const identity = db
     .prepare(
-      'SELECT proposal_id,proposal_digest,epoch,seq,envelope_digest,checkpoint_digest,committed_at,receipt_json,receipt_bytes,receipt_digest FROM project_task_room_identities WHERE channel_id=? AND epoch=? AND seq=?',
+      `SELECT ${PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS} FROM project_task_room_identities WHERE channel_id=? AND epoch=? AND seq=?`,
     )
-    .get(room.channel_id, room.epoch, seq) as Identity | undefined;
+    .get(room.channel_id, room.epoch, seq) as
+    | ProjectTaskRoomAppendReceiptRow
+    | undefined;
   return identity ? exactReceipt(identity, room.channel_id) : undefined;
 }
 /** Locate only; the parent must feed this cursor through the existing full
