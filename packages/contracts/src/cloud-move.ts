@@ -90,3 +90,28 @@ export interface PairedHomeIdentityObservation {
   executionAuthorityTransferred: false;
   executionResumeAvailable: false;
 }
+
+/** Personal controller decisions only: these records never enable execution. */
+export type PersonalHomeDecisionObservation = {
+  schemaVersion: 'station.personal-home-decision/v1';
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+} & (
+  | {
+      kind: 'owner-binding';
+      channelId: string;
+      homeRef: string;
+      policyRevision: string;
+      revision: number;
+    }
+  | {
+      kind: 'transfer-decision';
+      channelId: string;
+      operationId: string;
+      sourceHomeRef: string;
+      targetHomeRef: string;
+      policyRevision: string;
+      expectedRevision: number;
+      phase: 'prepared' | 'source-closed' | 'target-ready' | 'committed';
+    }
+);
