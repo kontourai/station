@@ -864,15 +864,30 @@ describe('the disclosure is the first step of the run, not a modal over it', () 
     const advance = screen.getByRole('button', {
       name: 'Keep usage telemetry on',
     });
+    // FOCUS IT FIRST, which is what activating it does in a browser and what
+    // jsdom's `click()` does NOT do on its own. Without this the panel still
+    // holds the mount focus, the panel never unmounts, and the assertion
+    // below passes whether or not anything refocuses — an injection that
+    // removed the refocus was green until this line existed.
+    advance.focus();
+    expect(document.activeElement).toBe(advance);
     await act(async () => {
       advance.click();
     });
 
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
     expect(
-      document.activeElement && panel?.contains(document.activeElement),
-      'advancing dropped focus out of the dialog',
+      document.activeElement,
+      'advancing dropped focus to <body>, outside the dialog',
+    ).not.toBe(document.body);
+    expect(
+      document.activeElement &&
+        panel?.contains(document.activeElement) === true,
     ).toBe(true);
+    expect(
+      (document.activeElement as HTMLElement | null)?.className,
+      'focus did not land on the step region the next screen lives in',
+    ).toContain('first-run-chapter__step');
   });
 
   test('an already-acknowledged home runs two steps and says so', () => {
