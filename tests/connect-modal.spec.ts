@@ -1,3 +1,4 @@
+import { dismissSetupLauncher } from './helpers/orchestration';
 /**
  * E2E: Connection Manager Modal
  *
@@ -145,9 +146,7 @@ test.describe('Connection Manager Modal', () => {
         hasText: 'Loading connection recovery…',
       }),
     ).toHaveCount(0, { timeout: 10_000 });
-    await page.evaluate(() => {
-      document.querySelector('[data-testid="setup-launcher"]')?.remove();
-    });
+    await dismissSetupLauncher(page);
   });
 
   test('connection chip is visible in the header', async ({ page }) => {
@@ -574,9 +573,7 @@ test.describe('Connection Manager Modal', () => {
     });
     await page.reload();
     await expect(page.locator('body')).toBeVisible({ timeout: 15_000 });
-    await page.evaluate(() => {
-      document.querySelector('[data-testid="setup-launcher"]')?.remove();
-    });
+    await dismissSetupLauncher(page);
     await expect(
       page.getByRole('status').filter({
         hasText: 'Loading connection recovery…',

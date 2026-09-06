@@ -1,3 +1,4 @@
+import { dismissSetupLauncher } from './helpers/orchestration';
 import { createHmac } from 'node:crypto';
 import { buildStationProofMessage } from '@kontourai/station-contracts';
 import { expect, type Locator, type Page, test } from '@playwright/test';
@@ -20,11 +21,7 @@ const STATUS_READY = {
   },
 };
 
-async function removeSetupLauncher(page: Page) {
-  await page.evaluate(() => {
-    document.querySelector('[data-testid="setup-launcher"]')?.remove();
-  });
-}
+
 
 /**
  * Per-connection actions (Edit/Check/Forget) live behind a "More actions"
@@ -505,7 +502,7 @@ for (const fixture of [
 
     await page.goto('/');
     await expect(page.locator('body')).toBeVisible();
-    await removeSetupLauncher(page);
+    await dismissSetupLauncher(page);
     const connectionsCard = await openConnections(
       page,
       fixture.name === 'phone',
@@ -701,7 +698,7 @@ for (const fixture of [
       };
     });
     expect(activeAfterReload.activeName).toBe('Phone Station');
-    await removeSetupLauncher(page);
+    await dismissSetupLauncher(page);
     await openConnections(page, fixture.name === 'phone');
     await expect(
       connectionsCard.getByText('Phone Station', { exact: true }),

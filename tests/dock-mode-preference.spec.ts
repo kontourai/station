@@ -1,3 +1,4 @@
+import { dismissSetupLauncher } from './helpers/orchestration';
 /**
  * E2E: Dock Mode Preference
  *
@@ -192,11 +193,7 @@ async function seedRoutes(page: import('@playwright/test').Page) {
   ]);
 }
 
-async function dismissSetupLauncher(page: import('@playwright/test').Page) {
-  await page.evaluate(() => {
-    document.querySelector('[data-testid="setup-launcher"]')?.remove();
-  });
-}
+
 
 async function dragDockTo(page: Page, placement: 'left' | 'right') {
   const handle = page.getByRole('button', { name: 'Move the dock' });
