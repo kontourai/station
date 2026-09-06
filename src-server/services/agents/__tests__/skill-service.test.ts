@@ -1421,28 +1421,26 @@ describe('SkillService', () => {
   // frontmatter name, and a workspace package genuinely of that name registers
   // second in the same key.
   test('compare-delete verifies and deletes the same package', async () => {
-    // `<home>/skills/other-directory` whose frontmatter says `shared`.
-    const machineDir = join(testDir, 'skills', 'other-directory');
-    mkdirSync(machineDir, { recursive: true });
-    writeFileSync(
-      join(machineDir, 'SKILL.md'),
-      '---\nname: shared\ndescription: Machine copy\n---\nMachine body',
-      'utf-8',
-    );
-    // …and a workspace package that really is called `shared`.
+    // The divergence, built deliberately: the package that answers to `shared`
+    // is the WORKSPACE one (discovery scans the project root and the machine
+    // root, and this name exists only in the project root), while
+    // `<home>/skills/shared` is a directory holding a DIFFERENT package —
+    // discovery keys on the frontmatter name, so it registers as
+    // `machine-only` and never claims `shared`.
+    //
+    // `packageDirectoryFor` therefore answers with the project directory and
+    // `resolveSkillDir(home, name, undefined)` answers with the machine one.
+    // Verifying through one and deleting through the other is H1.
     const projectDir = seedProjectSkill('shared');
-    await service.discoverSkills(testDir, 'demo');
-    // The name-derived directory the old code digested, holding a THIRD
-    // package — the one whose revision would have been compared.
     const nameDerived = join(testDir, 'skills', 'shared');
     mkdirSync(nameDerived, { recursive: true });
     writeFileSync(
       join(nameDerived, 'SKILL.md'),
-      '---\nname: shared\ndescription: Name-derived\n---\nName-derived body',
+      '---\nname: machine-only\ndescription: A different package\n---\nMachine body',
       'utf-8',
     );
+    await service.discoverSkills(testDir, 'demo');
 
-    // A revision of whatever the service says this package is…
     const revision = await service.localSkillRevision('shared', testDir);
     const result = await service.removeSkillIfRevision(
       'shared',
@@ -1450,22 +1448,14 @@ describe('SkillService', () => {
       testDir,
     );
 
-    // …and the tree that goes is the tree that was verified. Whichever package
-    // the service resolves, the two must be the same one — that is the claim,
-    // not which of them wins.
-    expect(result.removed).toBe(true);
-    const survivors = [projectDir, nameDerived].filter((dir) =>
-      existsSync(dir),
-    );
+    // The filesystem first. The verified package is the deleted one, and the
+    // package that was never verified is untouched, byte for byte.
     expect(
-      survivors.length,
-      'compare-delete removed a package it never verified',
-    ).toBe(1);
-    // The verified one is gone; the other is untouched, byte for byte.
-    const [survivor] = survivors;
-    expect(readFileSync(join(survivor, 'SKILL.md'), 'utf-8')).toContain(
-      survivor === projectDir ? 'Workspace body' : 'Name-derived body',
-    );
+      readFileSync(join(nameDerived, 'SKILL.md'), 'utf-8'),
+      'compare-delete destroyed a package it never verified',
+    ).toContain('Machine body');
+    expect(existsSync(projectDir)).toBe(false);
+    expect(result).toEqual({ removed: true, conflict: false });
   });
 
   // A stale revision still refuses, and refusing must not delete either tree.
