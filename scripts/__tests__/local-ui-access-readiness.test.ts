@@ -17,7 +17,12 @@ function observation(
   overrides: Partial<LocalUiAccessObservation> = {},
 ) {
   const queue = [...screens];
-  const state = { now: 0, reloads: 0, waits: [] as number[] };
+  const state = {
+    now: 0,
+    reloads: 0,
+    waits: [] as number[],
+    reloadBudgets: [] as number[],
+  };
   return {
     state,
     observation: {
@@ -34,7 +39,8 @@ function observation(
       accessRequiredDetail: async () => 'Failed to fetch',
       pendingScreenDetail: async () =>
         'the gate’s "taking longer than expected" alert',
-      reloadAfterHostRecovery: async () => {
+      reloadAfterHostRecovery: async (timeoutMs: number) => {
+        state.reloadBudgets.push(timeoutMs);
         state.reloads += 1;
         state.now += 1_000;
       },
@@ -88,8 +94,10 @@ describe('local UI access readiness wait', () => {
     await waitForLocalUiAccessReadinessThrough(port, 10_000);
 
     // The second wait is offered what the first wait (1s) and the reload (1s)
-    // left of the original 10s — not a fresh 10s.
+    // left of the original 10s — not a fresh 10s. The reload itself is bounded
+    // by the same deadline, so its own navigation wait cannot outlive it.
     expect(state.waits).toEqual([10_000, 8_000]);
+    expect(state.reloadBudgets).toEqual([9_000]);
   });
 
   test('a host that stays unavailable fails naming the state and the reloads taken', async () => {

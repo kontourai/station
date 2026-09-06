@@ -57,8 +57,11 @@ export type LocalUiAccessObservation = {
   accessRequiredDetail(): Promise<string>;
   /** What was on screen when the budget ran out, for the failure message. */
   pendingScreenDetail(): Promise<string>;
-  /** Take the recovery screen's own offered way forward. */
-  reloadAfterHostRecovery(): Promise<void>;
+  /**
+   * Take the recovery screen's own offered way forward, and do not return
+   * until the screen it was on can no longer be observed.
+   */
+  reloadAfterHostRecovery(timeoutMs: number): Promise<void>;
   now(): number;
 };
 
@@ -103,7 +106,7 @@ export async function waitForLocalUiAccessReadinessThrough(
         );
       }
       hostRecoveryReloads += 1;
-      await observation.reloadAfterHostRecovery();
+      await observation.reloadAfterHostRecovery(deadline - observation.now());
       continue;
     }
 
@@ -173,7 +176,21 @@ export async function waitForLocalUiAccessReadiness(
         if (!(await gate.isVisible())) return 'nothing the gate renders';
         return `"${(await gate.innerText()).trim().slice(0, 200)}"`;
       },
-      reloadAfterHostRecovery: () => hostRecoveryReload.click(),
+      reloadAfterHostRecovery: async (budgetMs) => {
+        // Arm the navigation wait BEFORE the click. `window.location.reload()`
+        // does not tear the current document down synchronously, so the screen
+        // that prompted this reload keeps rendering for a moment afterwards —
+        // re-observing it there spends a second reload on an answer already
+        // acted on (observed live: two reloads for one unavailable host).
+        const navigated = page
+          .waitForEvent('framenavigated', {
+            predicate: (frame) => frame === page.mainFrame(),
+            timeout: Math.max(1, budgetMs),
+          })
+          .catch(() => undefined);
+        await hostRecoveryReload.click();
+        await navigated;
+      },
       now: () => Date.now(),
     },
     timeoutMs,
